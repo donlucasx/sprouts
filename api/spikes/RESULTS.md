@@ -18,9 +18,21 @@ Matches `research/new/13` (2026-09-24) probe for probe, including the compute un
 
 To re-run: `pnpm tsx --env-file=.env.local spikes/find-stakers.ts`, then `pnpm tsx --env-file=.env.local spikes/stake-sim.ts <payer> <existing staker>`. With the puller funded (2 SKR), `spikes/stake-sim.ts - <existing staker>` runs the same three probes with the puller as payer.
 
-## Spike 2: Jupiter quote, swap-instructions and price with the free key
+## Spike 2: Jupiter quote, swap-instructions and price with the free key (2026-09-25)
 
-Pending (Task 7).
+`spikes/jupiter-check.ts`, mainnet, read-only (no transaction sent). Ten cents of USDC (100,000 raw), 50 bps platform fee, `maxAccounts` 24.
+
+| Probe | Result |
+| --- | --- |
+| USDC to SKR quote, direct routes only | 1 hop, out 4,905,350 raw SKR, minimum 4,856,297 (1% slippage) |
+| Platform fee on the quote | `{"amount":"24650","feeBps":50}`; the no-fee quote returns 4,930,000, ratio 0.9950, so `outAmount` is net of the fee |
+| USDC to stORE quote | 2 hops, out 122,495,137 raw; routable at dust size |
+| `/swap-instructions` for the puller | 1 setup instruction, swap instruction with 27 accounts, 0 cleanup, 1 lookup table, 2 compute-budget instructions |
+| Jupiter price v3, SOL | 121.10 USD |
+| v2 `/order` | HTTP 200; returns a whole signed-ready `transaction` plus quote fields, no instruction list |
+| v2 `/build` | HTTP 404 (no such endpoint) |
+
+Readings: the fee comes out of the output (SKR), as the spec says. `/swap-instructions` with `platformFeeBps` refuses without `feeAccount` (`NOT_SUPPORTED: feeAccount is required for swap with platformFee`); `feeAccount` is the fee wallet's token account for the output mint, which `planting.ts` already derives. The spike stood in the puller's own SKR account until `FEE_WALLET` is set; Spike 3b exercises the real fee leg. v2 answers K15: it hands back a complete transaction, not instructions, so the pull and the stake could not sit beside it; v1 `/swap-instructions` stays.
 
 ## Spike 3a: a throwaway trading wallet approves the puller
 

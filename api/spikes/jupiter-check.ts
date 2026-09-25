@@ -6,6 +6,8 @@ import { pullerSigner } from "../src/lib/puller";
 import { config } from "../src/lib/config";
 import { USDC_MINT, SKR_MINT, STORE_MINT } from "../src/lib/constants";
 import { WSOL } from "../src/domain/sizing";
+import { address } from "@solana/kit";
+import { findAssociatedTokenPda, TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
 
 const puller = await pullerSigner();
 console.log(`puller ${puller.address}`);
@@ -20,7 +22,12 @@ console.log(`no-fee quote out ${noFee.outAmount}; with fee out ${quote.outAmount
 const storeQuote = await getQuote({ inputMint: USDC_MINT, outputMint: STORE_MINT, amountRaw: 100_000n, platformFeeBps: 50, maxAccounts: 24, onlyDirectRoutes: false });
 console.log(`stORE quote: out ${storeQuote.outAmount} hops ${storeQuote.routePlan.length}`);
 
-const ixs = await getSwapInstructions({ quote, userPublicKey: puller.address });
+// swap-instructions with a platform fee requires feeAccount: the fee wallet's token account for the output mint.
+// Before FEE_WALLET is set, the puller's own SKR account stands in (same shape; the real fee leg is exercised by Spike 3b).
+const feeOwner = process.env.FEE_WALLET ? address(process.env.FEE_WALLET) : puller.address;
+const [feeAccount] = await findAssociatedTokenPda({ owner: feeOwner, mint: SKR_MINT, tokenProgram: TOKEN_PROGRAM_ADDRESS });
+console.log(`feeAccount ${feeAccount} (owner ${feeOwner === puller.address ? "puller, stand-in" : "fee wallet"})`);
+const ixs = await getSwapInstructions({ quote, userPublicKey: puller.address, feeAccount });
 console.log(`swap-instructions: setup ${ixs.setup.length}, swap accounts ${ixs.swap.accounts?.length}, cleanup ${ixs.cleanup ? 1 : 0}, lookup tables ${ixs.lookupTables.length}, compute budget ${ixs.computeBudget.length}`);
 
 console.log(`SOL price: ${await priceUsd(WSOL)}`);
