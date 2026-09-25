@@ -13,6 +13,7 @@ const ALL = {
   HELIUS_WEBHOOK_SECRET: "wh",
   APP_ORIGIN: "https://sprouts.money",
   FEE_WALLET: "ADaL11LqTrsaqMh5XkyVGV6nE2wPdvPaR7GgFSvvJWuD",
+  HELIUS_WEBHOOK_ID: "hook-1",
 };
 
 describe("config", () => {

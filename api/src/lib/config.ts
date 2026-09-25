@@ -10,6 +10,7 @@ export type Config = {
   heliusWebhookSecret: string;
   appOrigin: string;
   feeWallet: string;
+  heliusWebhookId: string;
 };
 
 const MAP: Record<keyof Config, string> = {
@@ -24,6 +25,7 @@ const MAP: Record<keyof Config, string> = {
   heliusWebhookSecret: "HELIUS_WEBHOOK_SECRET",
   appOrigin: "APP_ORIGIN",
   feeWallet: "FEE_WALLET",
+  heliusWebhookId: "HELIUS_WEBHOOK_ID",
 };
 
 let cached: Config | null = null;

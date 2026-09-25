@@ -6,7 +6,7 @@ import { issueSession } from "@/lib/session";
 vi.mock("@/lib/subscriptions", async (orig) => ({
   ...(await orig<object>()),
   readDelegation: vi.fn(async () => ({ exists: true, amountPerPeriodRaw: 5_000_000n, pulledInPeriodRaw: 0n, periodStartTs: 0n, periodLengthS: 86_400n })),
-  delegationPda: vi.fn(async () => "PDA111"),
+  delegationPda: vi.fn(async () => "7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs"),
 }));
 vi.mock("@/lib/helius", () => ({ heliusAddAddress: vi.fn(async () => undefined) }));
 vi.mock("@/lib/puller", () => ({ pullerSigner: vi.fn(async () => ({ address: "4wiD3N7FrBNJSmZUQDkGHM4CsvDrvyvx7G1FApLGEbJ1" })) }));
@@ -50,7 +50,7 @@ describe("link flow", () => {
     const r = await confirm(new Request("http://x/api/link/confirm", { method: "POST", body: JSON.stringify({ code: c.code, wallet: WALLET }) }));
     expect(await r.json()).toEqual({ linked: true, skrName: "lucas.skr" });
     expect((await repo.getWallet(WALLET))?.userPubkey).toBe("U");
-    expect((await repo.getWallet(WALLET))?.delegationPda).toBe("PDA111");
+    expect((await repo.getWallet(WALLET))?.delegationPda).toBe("7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs");
   });
 
   it("binds the code to the first wallet that fetches it", async () => {
