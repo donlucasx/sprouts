@@ -12,6 +12,7 @@ const ALL = {
   CRON_SECRET: "cron",
   HELIUS_WEBHOOK_SECRET: "wh",
   APP_ORIGIN: "https://sprouts.money",
+  FEE_WALLET: "ADaL11LqTrsaqMh5XkyVGV6nE2wPdvPaR7GgFSvvJWuD",
 };
 
 describe("config", () => {
@@ -24,6 +25,7 @@ describe("config", () => {
     Object.assign(process.env, ALL);
     expect(config().jupiterApiKey).toBe("j");
     expect(config().appOrigin).toBe("https://sprouts.money");
+    expect(config().feeWallet).toBe("ADaL11LqTrsaqMh5XkyVGV6nE2wPdvPaR7GgFSvvJWuD");
   });
 
   it("names the missing variable", () => {
