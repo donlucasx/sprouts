@@ -10,7 +10,7 @@ import { rpc } from "@/lib/rpc";
 
 export const runtime = "nodejs";
 
-export const DAILY_CAP_CENTS = 500;
+const DAILY_CAP_CENTS = 500; // not exported: Next.js allows only handler exports from a route file
 const DAILY_CAP_RAW = 5_000_000n;
 
 /**
