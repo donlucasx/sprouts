@@ -7,18 +7,27 @@
     "build": "next build",
     "start": "next start",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "gen:staking": "tsx scripts/generate-staking-client.ts"
   },
   "dependencies": {
+    "@solana-program/compute-budget": "^0.19.0",
+    "@solana-program/system": "^0.15.0",
+    "@solana-program/token": "^0.17.0",
+    "@solana-program/token-2022": "^0.19.0",
+    "@solana/kit": "^7.1.1",
     "next": "15.5.26",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@codama/nodes-from-anchor": "^1.5.6",
+    "@codama/renderers-js": "^1.7.1",
     "@types/node": "^20.19.43",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "codama": "^1.11.0",
     "tsx": "^4.23.15",
     "typescript": "^5",
     "vitest": "^3.2.7"
