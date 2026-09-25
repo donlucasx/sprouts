@@ -1,0 +1,24 @@
+{
+  "computeBudgetInstructions": [
+    { "programId": "ComputeBudget111111111111111111111111111111", "accounts": [], "data": "AsBcFQA=" }
+  ],
+  "setupInstructions": [
+    {
+      "programId": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+      "accounts": [
+        { "pubkey": "9H7ChDC2o32wC8jcpVDjLGQhwyx1hmLW1fiCjsjUuzFm", "isSigner": true, "isWritable": true },
+        { "pubkey": "4wiD3N7FrBNJSmZUQDkGHM4CsvDrvyvx7G1FApLGEbJ1", "isSigner": false, "isWritable": true }
+      ],
+      "data": "AQ=="
+    }
+  ],
+  "swapInstruction": {
+    "programId": "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
+    "accounts": [
+      { "pubkey": "9H7ChDC2o32wC8jcpVDjLGQhwyx1hmLW1fiCjsjUuzFm", "isSigner": true, "isWritable": false }
+    ],
+    "data": "5RfLl3rjrSoBAAAA"
+  },
+  "cleanupInstruction": null,
+  "addressLookupTableAddresses": ["D1ZN9Wj1fRSUQfCjhvnu1hqDMT7hzjzBBpi12nVniYD6"]
+}
