@@ -1,0 +1,24 @@
+{
+  "signature": "5xSwapSig111111111111111111111111111111111111111111111111111111111111111111111111111",
+  "timestamp": 1758800000,
+  "type": "SWAP",
+  "source": "JUPITER",
+  "feePayer": "WALLET",
+  "tokenTransfers": [
+    { "fromUserAccount": "WALLET", "toUserAccount": "POOL", "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", "tokenAmount": 1.17 },
+    { "fromUserAccount": "POOL", "toUserAccount": "WALLET", "mint": "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263", "tokenAmount": 52000.5 }
+  ],
+  "nativeTransfers": [],
+  "events": {
+    "swap": {
+      "nativeInput": null,
+      "nativeOutput": null,
+      "tokenInputs": [
+        { "userAccount": "WALLET", "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", "tokenAmount": 1.17 }
+      ],
+      "tokenOutputs": [
+        { "userAccount": "WALLET", "mint": "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263", "tokenAmount": 52000.5 }
+      ]
+    }
+  }
+}

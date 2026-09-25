@@ -19,7 +19,7 @@ describe("sign-in with Solana", () => {
     const signer = await generateKeyPairSigner();
     const other = await generateKeyPairSigner();
     const input = createSignInPayload({ address: signer.address, nonce: "abc123" });
-    const message = getUtf8Encoder().encode(renderSignInMessage(input));
+    const message = new Uint8Array(getUtf8Encoder().encode(renderSignInMessage(input)));
     const good = new Uint8Array(await signBytes(signer.keyPair.privateKey, message));
     expect((await verifySignIn({ input, output: { address: signer.address, signedMessage: message, signature: good } })).ok).toBe(true);
     const bad = new Uint8Array(await signBytes(other.keyPair.privateKey, message));
@@ -29,7 +29,7 @@ describe("sign-in with Solana", () => {
   it("rejects a signature that is not 64 bytes", async () => {
     const signer = await generateKeyPairSigner();
     const input = createSignInPayload({ address: signer.address, nonce: "abc123" });
-    const message = getUtf8Encoder().encode(renderSignInMessage(input));
+    const message = new Uint8Array(getUtf8Encoder().encode(renderSignInMessage(input)));
     expect((await verifySignIn({ input, output: { address: signer.address, signedMessage: message, signature: new Uint8Array(10) } })).ok).toBe(false);
   });
 });

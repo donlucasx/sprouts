@@ -54,9 +54,10 @@ describe("MemoryRepo", () => {
     expect((await r.peekLinkCode("ABC234"))?.nonce).toBe(7n);
     await r.bindLinkCode("ABC234", "W", "PDA");
     expect((await r.peekLinkCode("ABC234"))?.walletPubkey).toBe("W");
-    expect((await r.takeLinkCode("ABC234"))?.delegationPda).toBe("PDA");
+    expect(await r.takeLinkCode("ABC234", "OTHER")).toBeNull();
+    expect((await r.takeLinkCode("ABC234", "W"))?.delegationPda).toBe("PDA");
     expect(await r.peekLinkCode("ABC234")).toBeNull();
-    expect(await r.takeLinkCode("ABC234")).toBeNull();
+    expect(await r.takeLinkCode("ABC234", "W")).toBeNull();
   });
 
   it("wallet status and the ledger", async () => {

@@ -125,6 +125,18 @@ create table proposals (
   status text not null default 'open' check (status in ('open', 'accepted', 'dismissed'))
 );
 
+-- Atomic ledger increment (no read-then-write from the server).
+create or replace function bump_ledger(p_pubkey text, p_asset text, p_cents integer) returns void
+language plpgsql as $$
+begin
+  if p_asset = 'SKR' then
+    update wallets set ledger_skr_cents = ledger_skr_cents + p_cents where pubkey = p_pubkey;
+  else
+    update wallets set ledger_store_cents = ledger_store_cents + p_cents where pubkey = p_pubkey;
+  end if;
+end;
+$$;
+
 -- Atomic nonce consumption for sign-in (one statement, no check-then-set).
 create or replace function use_nonce(p_nonce text, p_pubkey text) returns boolean
 language plpgsql as $$

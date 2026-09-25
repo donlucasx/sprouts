@@ -28,8 +28,15 @@ export class SupabaseRepo implements Repo {
     return ((data as Row[]) ?? []).map(map);
   }
 
+  /** A returning key keeps its registered mint (one account per device stays stable); only the name refreshes. A mint held by another key is refused. */
   async upsertUser(u: { seedVaultPubkey: string; sgtMint: string; skrName: string | null }) {
-    const { data, error } = await this.db.from("users").upsert({ seed_vault_pubkey: u.seedVaultPubkey, sgt_mint: u.sgtMint, skr_name: u.skrName }, { onConflict: "seed_vault_pubkey" }).select().single();
+    const existing = await this.getUser(u.seedVaultPubkey);
+    if (existing) {
+      const { error } = await this.db.from("users").update({ skr_name: u.skrName }).eq("seed_vault_pubkey", u.seedVaultPubkey);
+      if (error) throw new Error(error.message);
+      return { ...existing, skrName: u.skrName };
+    }
+    const { data, error } = await this.db.from("users").insert({ seed_vault_pubkey: u.seedVaultPubkey, sgt_mint: u.sgtMint, skr_name: u.skrName }).select().single();
     if (error) throw new Error(error.code === UNIQUE_VIOLATION ? "This Seeker is already registered." : error.message);
     return userRow(data as Row);
   }
@@ -42,7 +49,10 @@ export class SupabaseRepo implements Repo {
   async getRules(userPubkey: string) {
     const { data } = await this.db.from("rules").select().eq("user_pubkey", userPubkey).maybeSingle();
     if (data) return rulesRow(data as Row);
-    return this.one(this.db.from("rules").insert({ user_pubkey: userPubkey }).select().single(), rulesRow);
+    // Two first reads at once: the second insert is ignored and both read the same defaults row.
+    const { error } = await this.db.from("rules").upsert({ user_pubkey: userPubkey }, { onConflict: "user_pubkey", ignoreDuplicates: true });
+    if (error) throw new Error(error.message);
+    return this.one(this.db.from("rules").select().eq("user_pubkey", userPubkey).single(), rulesRow);
   }
 
   async saveRules(userPubkey: string, patch: Partial<Omit<T.RulesRow, "userPubkey" | "updatedAt">>) {
@@ -82,11 +92,9 @@ export class SupabaseRepo implements Repo {
     if (error) throw new Error(error.message);
   }
 
+  /** One statement on the server (bump_ledger), so concurrent plantings never lose an increment. */
   async bumpLedger(pubkey: string, asset: Asset, cents: number) {
-    const column = asset === "SKR" ? "ledger_skr_cents" : "ledger_store_cents";
-    const { data } = await this.db.from("wallets").select(column).eq("pubkey", pubkey).single();
-    const current = Number((data as Row | null)?.[column] ?? 0);
-    const { error } = await this.db.from("wallets").update({ [column]: current + cents }).eq("pubkey", pubkey);
+    const { error } = await this.db.rpc("bump_ledger", { p_pubkey: pubkey, p_asset: asset, p_cents: cents });
     if (error) throw new Error(error.message);
   }
 
@@ -161,8 +169,9 @@ export class SupabaseRepo implements Repo {
     if (error) throw new Error(error.message);
   }
 
-  async takeLinkCode(code: string) {
-    const { data, error } = await this.db.from("link_codes").update({ used: true }).eq("code", code).eq("used", false).gt("expires_at", new Date().toISOString()).select().maybeSingle();
+  /** Consumes the code only for the wallet it was bound to, in one statement. */
+  async takeLinkCode(code: string, walletPubkey: string) {
+    const { data, error } = await this.db.from("link_codes").update({ used: true }).eq("code", code).eq("used", false).eq("wallet_pubkey", walletPubkey).gt("expires_at", new Date().toISOString()).select().maybeSingle();
     if (error) throw new Error(error.message);
     return data ? linkCodeRow(data as Row) : null;
   }

@@ -36,8 +36,8 @@ export interface Repo {
   peekLinkCode(code: string): Promise<T.LinkCodeRow | null>;
   /** The first wallet that fetches the transaction owns the code. */
   bindLinkCode(code: string, walletPubkey: string, delegationPda: string): Promise<void>;
-  /** Consumes the code; only after the chain confirmed the delegation. */
-  takeLinkCode(code: string): Promise<T.LinkCodeRow | null>;
+  /** Consumes the code for the wallet it is bound to, only after the chain confirmed the delegation. */
+  takeLinkCode(code: string, walletPubkey: string): Promise<T.LinkCodeRow | null>;
 
   dueWithdrawals(before: Date): Promise<T.WithdrawalRow[]>;
   setWithdrawalDone(id: string, signature: string, amountOutRaw: bigint): Promise<void>;

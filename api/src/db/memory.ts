@@ -143,9 +143,9 @@ export class MemoryRepo implements Repo {
     c.delegationPda = delegationPda;
   }
 
-  async takeLinkCode(code: string): Promise<T.LinkCodeRow | null> {
+  async takeLinkCode(code: string, walletPubkey: string): Promise<T.LinkCodeRow | null> {
     const c = await this.peekLinkCode(code);
-    if (!c) return null;
+    if (!c || c.walletPubkey !== walletPubkey) return null;
     this.linkCodes.get(code)!.used = true;
     return c;
   }
