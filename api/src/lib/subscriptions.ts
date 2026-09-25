@@ -9,6 +9,7 @@ import {
   findSubscriptionAuthorityPda,
   findRecurringDelegationPda,
   fetchMaybeRecurringDelegation,
+  UNKNOWN_INIT_ID,
 } from "@solana/subscriptions";
 import { USDC_MINT } from "./constants";
 import { rpc } from "./rpc";
@@ -40,9 +41,11 @@ export async function buildApproveOnceIxs(a: { delegator: Address; delegatee: Ad
     startTs: now(),
     expiryTs: 0n,
     nonce: a.nonce,
-    // A first-time wallet has no subscription authority yet, so its init id is 0. A wallet that already has one needs its
-    // live init id (read from the SubscriptionAuthority account); Spike 3a exercises the first-time path.
-    expectedSubscriptionAuthorityInitId: 0n,
+    // One-transaction signup: the authority is initialised by the instruction before this one, so its init id is not known
+    // yet; the SDK's sentinel tells the program to accept an authority initialised in the current slot (0 fails with error
+    // 136 STALE_SUBSCRIPTION_AUTHORITY). A wallet that already has an authority needs its live init id instead (read the
+    // SubscriptionAuthority account); re-linking is a Plan 2 concern.
+    expectedSubscriptionAuthorityInitId: UNKNOWN_INIT_ID,
   });
   return [init, create];
 }

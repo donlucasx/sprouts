@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { address, AccountRole, createNoopSigner } from "@solana/kit";
 import { buildApproveOnceIxs, buildTransferRecurringIx, delegationPda, usdcAta } from "@/lib/subscriptions";
 import { SUBSCRIPTIONS_PROGRAM } from "@/lib/constants";
+import { UNKNOWN_INIT_ID, getCreateRecurringDelegationInstructionDataDecoder } from "@solana/subscriptions";
 
 const delegator = address("9H7ChDC2o32wC8jcpVDjLGQhwyx1hmLW1fiCjsjUuzFm");
 const delegatee = address("4wiD3N7FrBNJSmZUQDkGHM4CsvDrvyvx7G1FApLGEbJ1");
@@ -15,6 +16,10 @@ describe("subscriptions builders", () => {
       expect(ix.programAddress).toBe(SUBSCRIPTIONS_PROGRAM);
       expect(ix.accounts!.some((a) => a.address === delegator && isSigner(a.role))).toBe(true);
     }
+    // One-transaction signup: the authority is initialised in the same slot, so the create carries the SDK's sentinel,
+    // not 0 (0 fails on chain with STALE_SUBSCRIPTION_AUTHORITY, error 136; Spike 3a, 2026-09-25).
+    const data = getCreateRecurringDelegationInstructionDataDecoder().decode(ixs[1].data!);
+    expect(data.recurringDelegation.expectedSubscriptionAuthorityInitId).toBe(UNKNOWN_INIT_ID);
   });
 
   it("the delegation address is deterministic for a delegator, delegatee and nonce", async () => {
