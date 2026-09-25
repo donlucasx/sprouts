@@ -2,10 +2,10 @@
 // First run: generates the wallet into spikes/keys/throwaway.json (git-ignored) and prints its address; fund it with $1 USDC
 // and 0.01 SOL, then run again: it simulates, sends, and prints the delegation state, the nonce and the delegation address.
 // Run from api/: pnpm tsx --env-file=.env.local spikes/delegate-throwaway.ts
-import { createKeyPairSignerFromPrivateKeyBytes, pipe, createTransactionMessage, setTransactionMessageFeePayerSigner,
-  setTransactionMessageLifetimeUsingBlockhash, appendTransactionMessageInstructions, signTransactionMessageWithSigners,
+import { createKeyPairSignerFromPrivateKeyBytes, pipe, createTransactionMessage, setTransactionMessageFeePayer,
+  setTransactionMessageLifetimeUsingBlockhash, appendTransactionMessageInstructions, compileTransaction, signTransaction,
   getBase64EncodedWireTransaction, getSignatureFromTransaction, sendAndConfirmTransactionFactory, createSolanaRpcSubscriptions,
-  assertIsTransactionWithBlockhashLifetime } from "@solana/kit";
+  assertIsTransactionWithBlockhashLifetime, assertIsTransactionWithinSizeLimit } from "@solana/kit";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import path from "node:path";
@@ -45,10 +45,13 @@ console.log(`throwaway USDC balance: ${usdc?.value.uiAmountString ?? "no account
 
 const ixs = await buildApproveOnceIxs({ delegator: wallet.address, delegatee: puller.address, capRaw: 5_000_000n, nonce });
 const { value: { blockhash, lastValidBlockHeight } } = await rpc().getLatestBlockhash().send();
-const message = pipe(createTransactionMessage({ version: 0 }), (m) => setTransactionMessageFeePayerSigner(wallet, m),
+// The builder marks the delegator with a placeholder signer (in production the wallet app signs the bytes). Signing the
+// compiled transaction with the raw keypair mirrors that path; a KeyPairSigner as fee payer would be a second signer for the same address.
+const message = pipe(createTransactionMessage({ version: 0 }), (m) => setTransactionMessageFeePayer(wallet.address, m),
   (m) => setTransactionMessageLifetimeUsingBlockhash({ blockhash, lastValidBlockHeight }, m), (m) => appendTransactionMessageInstructions(ixs, m));
-const tx = await signTransactionMessageWithSigners(message);
+const tx = await signTransaction([wallet.keyPair], compileTransaction(message));
 assertIsTransactionWithBlockhashLifetime(tx);
+assertIsTransactionWithinSizeLimit(tx);
 
 const sim = await rpc().simulateTransaction(getBase64EncodedWireTransaction(tx), { encoding: "base64", sigVerify: false, replaceRecentBlockhash: true }).send();
 if (sim.value.err) {

@@ -1,4 +1,4 @@
-import { createNoopSigner, type Address, type Instruction } from "@solana/kit";
+import { createNoopSigner, type Address, type Instruction, type TransactionSigner } from "@solana/kit";
 import { findAssociatedTokenPda, TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
 import {
   getInitSubscriptionAuthorityOverlayInstructionAsync,
@@ -55,13 +55,13 @@ export async function delegationPda(a: { delegator: Address; delegatee: Address;
 }
 
 /** Pull USDC from the delegator's account into the delegatee's own account, inside the delegation's period allowance. */
-export async function buildTransferRecurringIx(a: { delegator: Address; delegatee: Address; delegationPda: Address; amountRaw: bigint }): Promise<Instruction> {
+export async function buildTransferRecurringIx(a: { delegator: Address; delegatee: TransactionSigner; delegationPda: Address; amountRaw: bigint }): Promise<Instruction> {
   return getTransferRecurringOverlayInstructionAsync({
-    delegatee: createNoopSigner(a.delegatee),
+    delegatee: a.delegatee,
     delegator: a.delegator,
     delegationPda: a.delegationPda,
     delegatorAta: await usdcAta(a.delegator),
-    receiverAta: await usdcAta(a.delegatee),
+    receiverAta: await usdcAta(a.delegatee.address),
     tokenMint: USDC_MINT,
     amount: a.amountRaw,
     tokenProgram: TOKEN_PROGRAM_ADDRESS,

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { address, AccountRole } from "@solana/kit";
+import { address, AccountRole, createNoopSigner } from "@solana/kit";
 import { buildApproveOnceIxs, buildTransferRecurringIx, delegationPda, usdcAta } from "@/lib/subscriptions";
 import { SUBSCRIPTIONS_PROGRAM } from "@/lib/constants";
 
@@ -24,9 +24,12 @@ describe("subscriptions builders", () => {
 
   it("transfer recurring has nine accounts, delegatee signs, delegator does not", async () => {
     const pda = await delegationPda({ delegator, delegatee, nonce: 7n });
-    const ix = await buildTransferRecurringIx({ delegator, delegatee, delegationPda: pda, amountRaw: 217_000n });
+    const delegateeSigner = createNoopSigner(delegatee);
+    const ix = await buildTransferRecurringIx({ delegator, delegatee: delegateeSigner, delegationPda: pda, amountRaw: 217_000n });
     expect(ix.accounts!.length).toBe(9);
     expect(ix.accounts!.some((a) => a.address === delegatee && isSigner(a.role))).toBe(true);
+    // the caller's signer instance rides on the account, so the fee payer and this account are one signer (kit refuses two per address)
+    expect(ix.accounts!.some((a) => a.address === delegatee && (a as { signer?: unknown }).signer === delegateeSigner)).toBe(true);
     expect(ix.accounts!.some((a) => a.address === delegator && isSigner(a.role))).toBe(false);
     const addresses = ix.accounts!.map((a) => a.address);
     expect(addresses).toContain(await usdcAta(delegator));

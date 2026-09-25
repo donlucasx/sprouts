@@ -43,7 +43,7 @@ export async function buildPlantingTx(a: { delegator: Address; user: Address; as
   const ixs: Instruction[] = [
     getSetComputeUnitLimitInstruction({ units: 400_000 }),
     getSetComputeUnitPriceInstruction({ microLamports: 1_000n }),
-    await buildTransferRecurringIx({ delegator: a.delegator, delegatee: puller.address, delegationPda: a.delegationPda, amountRaw: a.pullRaw }),
+    await buildTransferRecurringIx({ delegator: a.delegator, delegatee: puller, delegationPda: a.delegationPda, amountRaw: a.pullRaw }),
     ...swap.setup,
     swap.swap,
     ...(swap.cleanup ? [swap.cleanup] : []),
