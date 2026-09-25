@@ -47,6 +47,16 @@ Readings: the fee comes out of the output (SKR), as the spec says. `/swap-instru
 
 Also found on the way: kit refuses two signer instances for one address (error 5508000). The builders wrap the wallet in a placeholder signer for the wallet app to sign later, so a script holding the real key must sign the compiled transaction bytes (as a wallet does) rather than set the same key as a fee-payer signer. The same shape applied to the puller in the planting builder and was fixed there (the transfer instruction now takes the puller signer itself).
 
+## Task 15 steps 2 and 3: deploy and webhook (2026-09-25)
+
+| Step | Result |
+| --- | --- |
+| First production deploy | failed: `src/app/api/link/[code]/route.ts` exported a constant, which Next.js refuses from a route file; un-exported |
+| Second deploy | Ready; stable alias `https://sprouts-api-gamma.vercel.app` (the team-scoped URL sits behind Vercel's deployment protection and redirects) |
+| Env vars | twelve pushed into Vercel production from the env file by stdin (the project also carries the Supabase-Vercel integration's own set; the app reads only `SUPABASE_URL` and `SUPABASE_SERVICE_KEY`) |
+| Helius webhook | creation refused with an empty address list (400 "At least one account address is required"); now seeded with the first wallet (the throwaway); id `d9fd27e8-3f48-42b1-a50d-6281f9497f1b`, type enhanced, SWAP only, bearer auth |
+| Probes after redeploy | `/api/cron/plant` 401, `POST /api/link/new` 401, `POST /api/webhooks/helius` 401 (all without credentials) |
+
 ## Spike 3b: one real ten-cent planting, end to end (2026-09-25, dry run)
 
 `spikes/plant-once.ts <seed vault> SKR`: position before 0; built 1,215 bytes (limit 1,232) with one lookup table, expected out 4,897,987 raw SKR, minimum 4,849,008; simulation OK, 92,493 compute units. The `--send` run is recorded below when done.
