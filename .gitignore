@@ -1,0 +1,10 @@
+node_modules
+.env
+.env.*
+!.env.example
+.vercel
+.next
+dist
+*.log
+spikes/keys/
+.superpowers/
