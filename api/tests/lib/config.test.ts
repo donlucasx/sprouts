@@ -28,9 +28,15 @@ describe("config", () => {
     expect(config().feeWallet).toBe("ADaL11LqTrsaqMh5XkyVGV6nE2wPdvPaR7GgFSvvJWuD");
   });
 
-  it("names the missing variable", () => {
+  it("names the missing variable when it is read", () => {
     Object.assign(process.env, ALL);
     delete process.env.CRON_SECRET;
-    expect(() => config()).toThrow("Missing env: CRON_SECRET");
+    expect(() => config().cronSecret).toThrow("Missing env: CRON_SECRET");
+  });
+
+  it("reads a present variable even while another is missing", () => {
+    Object.assign(process.env, ALL);
+    delete process.env.CRON_SECRET;
+    expect(config().jupiterApiKey).toBe("j");
   });
 });

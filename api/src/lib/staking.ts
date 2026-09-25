@@ -31,6 +31,7 @@ export async function buildStakeIx(a: { payer: TransactionSigner; user: Address;
     userTokenAccount: await skrAta(a.payer.address),
     stakeVault: STAKE_VAULT,
     mint: SKR_MINT,
+    program: SKR_STAKING_PROGRAM,
     amount: a.amountRaw,
   });
 }
@@ -43,6 +44,7 @@ export async function buildWithdrawIx(a: { user: Address }): Promise<Instruction
     user: a.user,
     stakeVault: STAKE_VAULT,
     userTokenAccount: await skrAta(a.user),
+    program: SKR_STAKING_PROGRAM,
   });
 }
 

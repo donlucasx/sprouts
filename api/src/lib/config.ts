@@ -28,13 +28,19 @@ const MAP: Record<keyof Config, string> = {
 
 let cached: Config | null = null;
 
+/** Each setting is validated when it is first read, so a script that needs only the RPC URL runs without the rest. */
 export function config(): Config {
   if (cached) return cached;
   const out = {} as Config;
   for (const key of Object.keys(MAP) as (keyof Config)[]) {
-    const value = process.env[MAP[key]];
-    if (!value) throw new Error(`Missing env: ${MAP[key]}`);
-    out[key] = value;
+    Object.defineProperty(out, key, {
+      enumerable: true,
+      get() {
+        const value = process.env[MAP[key]];
+        if (!value) throw new Error(`Missing env: ${MAP[key]}`);
+        return value;
+      },
+    });
   }
   cached = out;
   return cached;

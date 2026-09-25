@@ -11,7 +11,7 @@ The puller key is hot. Its authority is at most the daily limit, revocable on ch
 ## What is here
 
 - `api/`: the backend. Next.js 15 on Vercel: sign-in with your Seeker and the Genesis Token check, the trading-wallet delegation, the Helius swap webhook that books round-ups, and the daily cron that plants them (pull, swap, stake in one transaction). Supabase Postgres holds the tables.
-- `spikes/`: throwaway scripts that proved the mechanism on mainnet with dust. Results in `spikes/RESULTS.md`.
+- `api/spikes/`: throwaway scripts that proved the mechanism on mainnet with dust. Results in `api/spikes/RESULTS.md`.
 - `app/`: the Seeker app (Expo), arriving in Plan 2.
 
 ## Run it
@@ -26,4 +26,4 @@ pnpm dev
 
 ## Spikes
 
-See `spikes/RESULTS.md` for the three day-one proofs: staking into another user's position with only the payer's signature, Jupiter quote and swap-instructions with a free key, and one real ten-cent planting end to end.
+See `api/spikes/RESULTS.md` for the three day-one proofs: staking into another user's position with only the payer's signature, Jupiter quote and swap-instructions with a free key, and one real ten-cent planting end to end.

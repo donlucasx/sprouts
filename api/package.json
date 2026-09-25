@@ -32,12 +32,5 @@
     "typescript": "^5",
     "vitest": "^3.2.7"
   },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "esbuild",
-      "sharp",
-      "@tailwindcss/oxide",
-      "unrs-resolver"
-    ]
-  }
+  "type": "module"
 }
