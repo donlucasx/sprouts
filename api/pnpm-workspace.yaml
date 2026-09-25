@@ -2,3 +2,6 @@ allowBuilds:
   esbuild: true
   sharp: true
   unrs-resolver: true
+  bigint-buffer: true
+  bufferutil: true
+  utf-8-validate: true
