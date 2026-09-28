@@ -22,6 +22,15 @@ describe("subscriptions builders", () => {
     expect(data.recurringDelegation.expectedSubscriptionAuthorityInitId).toBe(UNKNOWN_INIT_ID);
   });
 
+  it("re-link: a wallet whose authority already exists gets only the create, carrying that authority's init id", async () => {
+    // The throwaway is in this state (its authority was initialised on 2026-09-25); a second approve-once must not re-init.
+    const ixs = await buildApproveOnceIxs({ delegator, delegatee, capRaw: 5_000_000n, nonce: 8n, existingInitId: 42n });
+    expect(ixs.length).toBe(1);
+    expect(ixs[0].programAddress).toBe(SUBSCRIPTIONS_PROGRAM);
+    const data = getCreateRecurringDelegationInstructionDataDecoder().decode(ixs[0].data!);
+    expect(data.recurringDelegation.expectedSubscriptionAuthorityInitId).toBe(42n);
+  });
+
   it("the delegation address is deterministic for a delegator, delegatee and nonce", async () => {
     expect(await delegationPda({ delegator, delegatee, nonce: 7n })).toBe(await delegationPda({ delegator, delegatee, nonce: 7n }));
     expect(await delegationPda({ delegator, delegatee, nonce: 7n })).not.toBe(await delegationPda({ delegator, delegatee, nonce: 8n }));

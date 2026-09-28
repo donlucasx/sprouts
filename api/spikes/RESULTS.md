@@ -71,3 +71,16 @@ Also found on the way: kit refuses two signer instances for one address (error 5
 
 Reading: `TransferRecurring` + Jupiter swap (with the 0.5% platform fee to the fee wallet's SKR account) + SKR `stake(user = Seed Vault key)` land atomically in one v0 transaction under the size limit, and only the Seed Vault key can ever unstake what landed. This is the demo's Solscan shot. Size varies with Jupiter's route (1,087 to 1,215 bytes seen); the 1,232 limit leaves little room, which is why the fee leg stays inside the swap and nothing else joins the transaction.
 
+
+## Re-link path and the .skr fallback (2026-09-27 evening, read-only)
+
+`spikes/read-authority.ts <wallet>` reads a wallet's USDC SubscriptionAuthority through the new `readSubscriptionAuthority`.
+
+| Wallet | Result |
+| --- | --- |
+| The throwaway (delegated 09-25) | authority EXISTS, initId 450487017 (the init slot), so its next approve-once is the create alone, carrying that id |
+| The puller (never delegated) | authority MISSING, so it would get the two-instruction approval (init, then create) |
+
+`spikes/resolve-seeker.ts hammathyme.skr`: forward resolves to the Seed Vault key; the reverse now returns `hammathyme.skr` through the fallback (list the key's .skr names when no main domain is set; it returned null on 09-25); Genesis OK; position **5,260,937 raw** SKR.
+
+Observation for the fruit audit: the position read 5,256,186 raw right after the planting earlier today and 5,260,937 raw this evening, +4,751 raw = +0.0904%, with no new planting. That is one reward step landing in the share price; 0.09% is what 16.4% APY pays over about two days, so rewards look like they land in discrete epoch-sized steps rather than per slot, and a fresh planting received a full step. Single observation, not yet a rule: watch the next step.

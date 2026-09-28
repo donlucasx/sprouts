@@ -4,7 +4,7 @@ import { address, createNoopSigner, pipe, createTransactionMessage, setTransacti
   getBase64EncodedWireTransaction, type Address } from "@solana/kit";
 import { getRepo } from "@/db/repo";
 import { rateLimited } from "@/lib/auth-guard";
-import { buildApproveOnceIxs, delegationPda } from "@/lib/subscriptions";
+import { buildApproveOnceIxs, delegationPda, readSubscriptionAuthority } from "@/lib/subscriptions";
 import { pullerSigner } from "@/lib/puller";
 import { rpc } from "@/lib/rpc";
 
@@ -39,7 +39,9 @@ export async function GET(request: Request, ctx: { params: Promise<{ code: strin
   const pda = await delegationPda({ delegator: wallet, delegatee: puller, nonce: link.nonce });
   if (!link.walletPubkey) await repo.bindLinkCode(link.code, wallet, pda);
 
-  const ixs = await buildApproveOnceIxs({ delegator: wallet, delegatee: puller, capRaw: DAILY_CAP_RAW, nonce: link.nonce });
+  // A wallet that linked before already has its USDC authority on chain: re-init would fail, so the create carries its init id.
+  const authority = await readSubscriptionAuthority(wallet);
+  const ixs = await buildApproveOnceIxs({ delegator: wallet, delegatee: puller, capRaw: DAILY_CAP_RAW, nonce: link.nonce, existingInitId: authority.exists ? authority.initId : undefined });
   const { value: { blockhash, lastValidBlockHeight } } = await rpc().getLatestBlockhash().send();
   const message = pipe(
     createTransactionMessage({ version: 0 }),
