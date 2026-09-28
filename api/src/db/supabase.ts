@@ -70,13 +70,18 @@ export class SupabaseRepo implements Repo {
     return this.one(this.db.from("rules").update(update).eq("user_pubkey", userPubkey).select().single(), rulesRow);
   }
 
-  async addWallet(w: { pubkey: string; userPubkey: string; delegationPda: string; dailyCapCents: number }) {
-    return this.one(this.db.from("wallets").insert({ pubkey: w.pubkey, user_pubkey: w.userPubkey, delegation_pda: w.delegationPda, daily_cap_cents: w.dailyCapCents }).select().single(), walletRow);
+  async addWallet(w: { pubkey: string; userPubkey: string; delegationPda: string; dailyCapCents: number; webhookAdded?: boolean }) {
+    return this.one(this.db.from("wallets").insert({ pubkey: w.pubkey, user_pubkey: w.userPubkey, delegation_pda: w.delegationPda, daily_cap_cents: w.dailyCapCents, webhook_added: w.webhookAdded ?? false }).select().single(), walletRow);
   }
 
   async getWallet(pubkey: string) {
     const { data } = await this.db.from("wallets").select().eq("pubkey", pubkey).maybeSingle();
     return data ? walletRow(data as Row) : null;
+  }
+
+  async keepalive() {
+    const { error } = await this.db.from("users").select("*", { head: true, count: "exact" });
+    if (error) throw new Error(error.message);
   }
 
   async listActiveWallets() {

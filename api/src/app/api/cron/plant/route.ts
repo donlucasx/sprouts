@@ -42,11 +42,19 @@ const json = (v: unknown) => JSON.parse(JSON.stringify(v, (_k, x) => (typeof x =
 /** Once a day (Vercel cron, bearer = CRON_SECRET): plant, crank withdrawals, keep the database awake. */
 export async function GET(request: Request) {
   if (!authorized(request.headers.get("authorization"))) return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
-  const repo = await getRepo();
-  const now = new Date();
-  const planting = await runPlanting({ repo, now, chain: realChain() });
-  const withdrawals = await runWithdrawCrank({ repo, now, chain: { readPosition: (u) => readPosition(address(u)), crankWithdraw: (u) => crankWithdraw(address(u)) } });
-  await repo.getRules("keepalive");
-  console.log(`cron: planted ${planting.planted.length}, skipped ${planting.skipped.length}, cranked ${withdrawals.cranked.length}, failed ${withdrawals.failed.length}`);
-  return NextResponse.json(json({ planting, withdrawals }));
+  try {
+    const repo = await getRepo();
+    const now = new Date();
+    const planting = await runPlanting({ repo, now, chain: realChain() });
+    const withdrawals = await runWithdrawCrank({ repo, now, chain: { readPosition: (u) => readPosition(address(u)), crankWithdraw: (u) => crankWithdraw(address(u)) } });
+    // The first production run (2026-09-28) planted and then answered 500 here: reading rules for a made-up user violates the
+    // rules -> users foreign key. The keepalive is now a read that needs no row.
+    await repo.keepalive();
+    console.log(`cron: planted ${planting.planted.length}, skipped ${planting.skipped.length}, cranked ${withdrawals.cranked.length}, failed ${withdrawals.failed.length}`);
+    return NextResponse.json(json({ planting, withdrawals }));
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    console.error(`cron failed: ${message}`);
+    return NextResponse.json({ error: `Cron failed: ${message}` }, { status: 500 });
+  }
 }

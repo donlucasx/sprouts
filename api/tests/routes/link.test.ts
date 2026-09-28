@@ -60,6 +60,19 @@ describe("link flow", () => {
     expect(await r.json()).toEqual({ linked: true, skrName: "lucas.skr" });
     expect((await repo.getWallet(WALLET))?.userPubkey).toBe("U");
     expect((await repo.getWallet(WALLET))?.delegationPda).toBe("7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs");
+    // the wallet row carries the webhook outcome, not only the event (the first real link on 09-28 showed false on the row, true on the event)
+    expect((await repo.getWallet(WALLET))?.webhookAdded).toBe(true);
+  });
+
+  it("still links when the webhook add fails, and the row says so", async () => {
+    const { heliusAddAddress } = await import("@/lib/helius");
+    const mock = heliusAddAddress as unknown as { mockRejectedValueOnce: (e: unknown) => void };
+    mock.mockRejectedValueOnce(new Error("helius down"));
+    const c = await mintCode(repo);
+    await getTx(new Request(`http://x/api/link/${c.code}?wallet=${WALLET}`), { params: Promise.resolve({ code: c.code }) });
+    const r = await confirm(new Request("http://x/api/link/confirm", { method: "POST", body: JSON.stringify({ code: c.code, wallet: WALLET }) }));
+    expect(r.status).toBe(200);
+    expect((await repo.getWallet(WALLET))?.webhookAdded).toBe(false);
   });
 
   it("re-link: a wallet with an existing authority gets a one-instruction approval instead of a re-init", async () => {

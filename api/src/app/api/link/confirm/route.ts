@@ -46,7 +46,7 @@ export async function POST(request: Request) {
   const taken = await repo.takeLinkCode(code, wallet);
   if (!taken) return NextResponse.json({ error: "This code is unknown, expired or already used." }, { status: 404 });
 
-  await repo.addWallet({ pubkey: wallet, userPubkey: link.userPubkey, delegationPda: link.delegationPda, dailyCapCents: Number(delegation.amountPerPeriodRaw / 10_000n) });
+  // The webhook add comes first so the wallet row can carry its outcome; a Helius failure never fails the link (repair pass later).
   let webhookAdded = true;
   try {
     await heliusAddAddress(config().heliusWebhookId, wallet);
@@ -54,6 +54,7 @@ export async function POST(request: Request) {
     webhookAdded = false;
     console.error(`helius add address failed for ${wallet}: ${e instanceof Error ? e.message : String(e)}`);
   }
+  await repo.addWallet({ pubkey: wallet, userPubkey: link.userPubkey, delegationPda: link.delegationPda, dailyCapCents: Number(delegation.amountPerPeriodRaw / 10_000n), webhookAdded });
   await repo.addEvent({ userPubkey: link.userPubkey, walletPubkey: wallet, kind: "wallet_linked", detail: { webhookAdded } });
   const user = await repo.getUser(link.userPubkey);
   return NextResponse.json({ linked: true, skrName: user?.skrName ?? null });

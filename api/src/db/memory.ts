@@ -33,7 +33,11 @@ export class MemoryRepo implements Repo {
     return this.users.get(pubkey) ?? null;
   }
 
+  async keepalive() {}
+
   async getRules(userPubkey: string): Promise<T.RulesRow> {
+    // Mirrors the schema: rules.user_pubkey references users, so a first read for an unknown user fails (as it did in production).
+    if (!this.users.has(userPubkey) && !this.rules.has(userPubkey)) throw new Error(`insert or update on table "rules" violates foreign key constraint "rules_user_pubkey_fkey" (${userPubkey})`);
     let r = this.rules.get(userPubkey);
     if (!r) {
       r = { ...DEFAULT_RULES, allocation: { ...DEFAULT_RULES.allocation }, userPubkey, updatedAt: new Date() };
@@ -49,8 +53,9 @@ export class MemoryRepo implements Repo {
     return next;
   }
 
-  async addWallet(w: { pubkey: string; userPubkey: string; delegationPda: string; dailyCapCents: number }): Promise<T.WalletRow> {
-    const row: T.WalletRow = { ...w, status: "active", webhookAdded: false, ledgerSkrCents: 0, ledgerStoreCents: 0, createdAt: new Date() };
+  async addWallet(w: { pubkey: string; userPubkey: string; delegationPda: string; dailyCapCents: number; webhookAdded?: boolean }): Promise<T.WalletRow> {
+    const { webhookAdded = false, ...rest } = w;
+    const row: T.WalletRow = { ...rest, status: "active", webhookAdded, ledgerSkrCents: 0, ledgerStoreCents: 0, createdAt: new Date() };
     this.wallets.set(w.pubkey, row);
     return row;
   }

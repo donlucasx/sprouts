@@ -30,8 +30,9 @@ describe("MemoryRepo", () => {
     expect(await r.useNonce("n2", "p")).toBe(false);
   });
 
-  it("getRules creates defaults and saveRules changes them", async () => {
+  it("getRules creates defaults for a known user and saveRules changes them", async () => {
     const r = new MemoryRepo();
+    await r.upsertUser({ seedVaultPubkey: "U", sgtMint: "M", skrName: null });
     expect((await r.getRules("U")).dailyCapCents).toBe(500);
     await r.saveRules("U", { roundupOn: false });
     expect((await r.getRules("U")).roundupOn).toBe(false);
