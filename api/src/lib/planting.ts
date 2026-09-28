@@ -6,7 +6,7 @@ import {
 } from "@solana/kit";
 import { getSetComputeUnitLimitInstruction, getSetComputeUnitPriceInstruction } from "@solana-program/compute-budget";
 import { findAssociatedTokenPda, TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
-import { getQuote, getSwapInstructions } from "./jupiter";
+import { getQuote, getSwapInstructions, checkSwapInstructions } from "./jupiter";
 import { buildTransferRecurringIx } from "./subscriptions";
 import { buildStakeIx } from "./staking";
 import { pullerSigner } from "./puller";
@@ -39,6 +39,8 @@ export async function buildPlantingTx(a: { delegator: Address; user: Address; as
   const quote = await getQuote({ inputMint: USDC_MINT, outputMint, amountRaw: a.pullRaw, platformFeeBps: a.feeBps, maxAccounts: 24, onlyDirectRoutes: a.asset === "SKR" });
   const [userStoreAta] = await findAssociatedTokenPda({ owner: a.user, mint: STORE_MINT, tokenProgram: TOKEN_PROGRAM_ADDRESS });
   const swap = await getSwapInstructions({ quote, userPublicKey: puller.address, feeAccount, ...(a.asset === "stORE" ? { destinationTokenAccount: userStoreAta } : {}) });
+  // Nothing from the network is signed unchecked: the aggregator, the helper programs, the signers, the fee and destination accounts.
+  checkSwapInstructions(swap, { puller: puller.address, feeAccount, ...(a.asset === "stORE" ? { destination: userStoreAta } : {}) });
   // Spike 2 confirms whether the threshold is quoted net of the platform fee; the stake uses the post-fee minimum.
   const minOutRaw = BigInt(quote.otherAmountThreshold);
 

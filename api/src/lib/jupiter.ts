@@ -33,6 +33,43 @@ export function toKitInstruction(j: JupiterIx): Instruction {
   };
 }
 
+export const JUPITER_AGGREGATOR = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4";
+
+/** Programs a setup or cleanup instruction may call: token accounts, tokens, system transfers, compute budget. */
+const SETUP_PROGRAMS = new Set<string>([
+  "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL", // Associated Token
+  "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", // Token
+  "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb", // Token-2022
+  "11111111111111111111111111111111", // System
+  "ComputeBudget111111111111111111111111111111",
+]);
+
+export type ParsedSwap = ReturnType<typeof parseSwapInstructions>;
+
+/**
+ * The puller signs whatever Jupiter's HTTP response contains, so the response is checked before it is signed (review I5):
+ * the swap must be the Jupiter aggregator, setup and cleanup may only touch the programs above, nobody but the puller may be
+ * a signer, and the fee account (and the destination, when one was requested) must appear in the swap.
+ */
+export function checkSwapInstructions(p: ParsedSwap, a: { puller: string; feeAccount?: string; destination?: string }): void {
+  if (p.swap.programAddress !== JUPITER_AGGREGATOR) throw new Error(`Jupiter response refused: swap program is ${p.swap.programAddress}`);
+  for (const [kind, ixs] of [["setup", p.setup], ["cleanup", p.cleanup ? [p.cleanup] : []], ["compute budget", p.computeBudget]] as const) {
+    for (const ix of ixs) {
+      if (!SETUP_PROGRAMS.has(ix.programAddress)) throw new Error(`Jupiter response refused: ${kind} program ${ix.programAddress} is not allowed`);
+    }
+  }
+  const all = [...p.computeBudget, ...p.setup, p.swap, ...(p.cleanup ? [p.cleanup] : [])];
+  for (const ix of all) {
+    for (const acc of ix.accounts ?? []) {
+      const signer = acc.role === AccountRole.READONLY_SIGNER || acc.role === AccountRole.WRITABLE_SIGNER;
+      if (signer && acc.address !== a.puller) throw new Error(`Jupiter response refused: signer ${acc.address} is not the puller`);
+    }
+  }
+  const swapAccounts = new Set((p.swap.accounts ?? []).map((x) => x.address as string));
+  if (a.feeAccount && !swapAccounts.has(a.feeAccount)) throw new Error("Jupiter response refused: the fee account is missing from the swap");
+  if (a.destination && !swapAccounts.has(a.destination)) throw new Error("Jupiter response refused: the destination account is missing from the swap");
+}
+
 export function parseSwapInstructions(r: SwapInstructionsResponse) {
   return {
     computeBudget: r.computeBudgetInstructions.map(toKitInstruction),
