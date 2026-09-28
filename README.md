@@ -12,7 +12,7 @@ The puller key is hot. Its authority is at most the daily limit, revocable on ch
 
 - `api/`: the backend. Next.js 15 on Vercel: sign-in with your Seeker and the Genesis Token check, the trading-wallet delegation, the Helius swap webhook that books round-ups, and the daily cron that plants them (pull, swap, stake in one transaction). Supabase Postgres holds the tables.
 - `api/spikes/`: throwaway scripts that proved the mechanism on mainnet with dust. Results in `api/spikes/RESULTS.md`.
-- `app/`: the Seeker app (Expo), arriving in Plan 2.
+- `app/`: the Seeker app. Expo SDK 57 from the `expo-kit-wallet` template: signs in with the Seed Vault through Mobile Wallet Adapter, reads everything from `api/`, holds no key and no secret. Builds are EAS cloud builds (`app/BUILDS.md`); Mobile Wallet Adapter needs a development build, never Expo Go.
 
 ## Run it
 
