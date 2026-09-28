@@ -4,7 +4,7 @@ import { setRepoForTests } from "@/db/repo";
 
 vi.mock("@/lib/rpc", () => ({ rpc: () => ({}) }));
 vi.mock("@/lib/staking", () => ({ readPosition: vi.fn(), crankWithdraw: vi.fn() }));
-vi.mock("@/lib/planting", () => ({ buildPlantingTx: vi.fn(), simulatePlanting: vi.fn(), sendPlanting: vi.fn() }));
+vi.mock("@/lib/planting", () => ({ buildPlantingTx: vi.fn(), simulatePlanting: vi.fn(), sendPlanting: vi.fn(), signatureStatus: vi.fn() }));
 vi.mock("@/lib/subscriptions", () => ({ readDelegation: vi.fn(), usdcAta: vi.fn() }));
 
 import { GET } from "@/app/api/cron/plant/route";

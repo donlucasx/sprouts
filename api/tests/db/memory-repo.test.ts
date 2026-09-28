@@ -38,15 +38,21 @@ describe("MemoryRepo", () => {
     expect((await r.getRules("U")).roundupOn).toBe(false);
   });
 
-  it("markPlanted removes swaps from the unplanted set", async () => {
+  it("claimSwaps takes only unclaimed swaps, reports how many, and releaseSwaps gives them back", async () => {
     const r = await withWallet();
     await r.insertSwap(swap("s", 100));
     const p = await r.insertPlanting(
-      { userPubkey: "U", walletPubkey: "W", signature: null, usdcPulledCents: 103, networkFeeCents: 3, status: "sent", aiLine: null },
+      { userPubkey: "U", walletPubkey: "W", signature: "sig", usdcPulledCents: 103, networkFeeCents: 3, status: "sent", aiLine: null },
       [{ asset: "SKR", usdcInCents: 100, amountOutRaw: 4_800_000n, staked: true, feeAmountRaw: 24_000n }],
     );
-    await r.markPlanted(["s"], p.id);
+    expect(await r.claimSwaps(["s"], p.id)).toBe(1);
+    expect(await r.claimSwaps(["s"], "another")).toBe(0);
     expect((await r.unplantedSwaps("W")).length).toBe(0);
+    expect((await r.plantingLegs(p.id))[0].asset).toBe("SKR");
+    await r.releaseSwaps(p.id);
+    expect((await r.unplantedSwaps("W")).length).toBe(1);
+    expect((await r.unplantedSwaps("W"))[0].plantingId).toBeNull();
+    await r.claimSwaps(["s"], p.id);
   });
 
   it("link codes: peek, bind, take; a taken code cannot be peeked again", async () => {

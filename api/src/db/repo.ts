@@ -20,10 +20,16 @@ export interface Repo {
   /** False when the signature is already booked. */
   insertSwap(s: Omit<T.SwapRow, "plantingId" | "createdAt">): Promise<boolean>;
   unplantedSwaps(walletPubkey: string): Promise<T.SwapRow[]>;
-  markPlanted(signatures: string[], plantingId: string): Promise<void>;
+  /** Claims the swaps for a planting in one conditional statement (only unclaimed ones); returns how many were claimed. */
+  claimSwaps(signatures: string[], plantingId: string): Promise<number>;
+  /** Gives a planting's swaps back to the unplanted set (a send that never landed, or a claim another run won). */
+  releaseSwaps(plantingId: string): Promise<void>;
 
   insertPlanting(p: Omit<T.PlantingRow, "id" | "ts">, legs: Omit<T.PlantingLegRow, "plantingId">[]): Promise<T.PlantingRow>;
   setPlantingStatus(id: string, status: T.PlantingStatus, signature?: string): Promise<void>;
+  /** Plantings still `sent` (their send threw before confirmation) that started before `olderThan`. */
+  listSentPlantings(olderThan: Date): Promise<T.PlantingRow[]>;
+  plantingLegs(plantingId: string): Promise<T.PlantingLegRow[]>;
 
   addEvent(e: Omit<T.EventRow, "id" | "ts">): Promise<void>;
 

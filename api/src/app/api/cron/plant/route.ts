@@ -7,7 +7,7 @@ import { rpc } from "@/lib/rpc";
 import { runPlanting, type Chain } from "@/lib/plant-run";
 import { runWithdrawCrank } from "@/lib/withdraw-run";
 import { readDelegation, usdcAta } from "@/lib/subscriptions";
-import { buildPlantingTx, simulatePlanting, sendPlanting, type BuiltPlanting } from "@/lib/planting";
+import { buildPlantingTx, simulatePlanting, sendPlanting, signatureStatus, type BuiltPlanting } from "@/lib/planting";
 import { readPosition, crankWithdraw } from "@/lib/staking";
 
 export const runtime = "nodejs";
@@ -24,16 +24,17 @@ function realChain(): Chain {
   return {
     readDelegation: (pda) => readDelegation(address(pda)),
     usdcBalanceRaw: async (owner) => {
-      try {
-        const { value } = await rpc().getTokenAccountBalance(await usdcAta(address(owner))).send();
-        return BigInt(value.amount);
-      } catch {
-        return 0n;
-      }
+      // A missing token account is "no USDC"; anything else (an RPC outage) throws, so the wallet is skipped, not paused (review I8).
+      const ata = await usdcAta(address(owner));
+      const info = await rpc().getAccountInfo(ata, { encoding: "base64" }).send();
+      if (!info.value) return 0n;
+      const { value } = await rpc().getTokenAccountBalance(ata).send();
+      return BigInt(value.amount);
     },
     buildPlantingTx: (a) => buildPlantingTx({ ...a, delegator: address(a.delegator), user: address(a.user), delegationPda: address(a.delegationPda) }),
     simulatePlanting: (b) => simulatePlanting(b as BuiltPlanting),
     sendPlanting: (b) => sendPlanting(b as BuiltPlanting),
+    signatureStatus,
   };
 }
 

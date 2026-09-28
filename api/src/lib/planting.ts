@@ -17,6 +17,8 @@ import type { Asset } from "@/domain/allocation";
 
 export type BuiltPlanting = {
   tx: Awaited<ReturnType<typeof signTransactionMessageWithSigners>>;
+  /** Known as soon as the puller signs, so it is recorded before the send. */
+  signature: string;
   expectedOutRaw: bigint;
   minOutRaw: bigint;
   lookupTables: Address[];
@@ -59,7 +61,7 @@ export async function buildPlantingTx(a: { delegator: Address; user: Address; as
     (m) => compressTransactionMessageUsingAddressLookupTables(m, tables),
   );
   const tx = await signTransactionMessageWithSigners(message);
-  return { tx, expectedOutRaw: BigInt(quote.outAmount), minOutRaw, lookupTables: swap.lookupTables, lastValidBlockHeight };
+  return { tx, signature: getSignatureFromTransaction(tx), expectedOutRaw: BigInt(quote.outAmount), minOutRaw, lookupTables: swap.lookupTables, lastValidBlockHeight };
 }
 
 /** Mainnet simulation, no side effects: signature verification off, blockhash replaced. */
@@ -68,11 +70,19 @@ export async function simulatePlanting(b: BuiltPlanting): Promise<{ ok: boolean;
   return { ok: !res.value.err, err: res.value.err, logs: [...(res.value.logs ?? [])], units: Number(res.value.unitsConsumed ?? 0) };
 }
 
-/** Send and wait for confirmation; returns the signature. */
-export async function sendPlanting(b: BuiltPlanting): Promise<string> {
+/** Send and wait for confirmation. May throw after the transaction landed (a dropped websocket): the caller asks the chain. */
+export async function sendPlanting(b: BuiltPlanting): Promise<void> {
   const tx = b.tx;
   assertIsTransactionWithBlockhashLifetime(tx);
   const send = sendAndConfirmTransactionFactory({ rpc: rpc(), rpcSubscriptions: createSolanaRpcSubscriptions(config().heliusRpcUrl.replace("https://", "wss://")) });
   await send(tx, { commitment: "confirmed" });
-  return getSignatureFromTransaction(tx);
+}
+
+/** What the chain says about a signature: landed, landed and failed, or not seen (still in flight or never sent). */
+export async function signatureStatus(sig: string): Promise<"confirmed" | "failed" | "pending"> {
+  const { value } = await rpc().getSignatureStatuses([sig as Parameters<ReturnType<typeof rpc>["getSignatureStatuses"]>[0][number]], { searchTransactionHistory: true }).send();
+  const s = value[0];
+  if (!s) return "pending";
+  if (s.err) return "failed";
+  return s.confirmationStatus === "confirmed" || s.confirmationStatus === "finalized" ? "confirmed" : "pending";
 }
