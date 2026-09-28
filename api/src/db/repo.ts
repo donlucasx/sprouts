@@ -10,7 +10,7 @@ export interface Repo {
   getRules(userPubkey: string): Promise<T.RulesRow>;
   saveRules(userPubkey: string, r: Partial<Omit<T.RulesRow, "userPubkey" | "updatedAt">>): Promise<T.RulesRow>;
 
-  addWallet(w: { pubkey: string; userPubkey: string; delegationPda: string; dailyCapCents: number }): Promise<T.WalletRow>;
+  addWallet(w: { pubkey: string; userPubkey: string; delegationPda: string; dailyCapCents: number; webhookAdded?: boolean }): Promise<T.WalletRow>;
   getWallet(pubkey: string): Promise<T.WalletRow | null>;
   listActiveWallets(): Promise<T.WalletRow[]>;
   listPausedWallets(): Promise<T.WalletRow[]>;
@@ -41,6 +41,9 @@ export interface Repo {
 
   dueWithdrawals(before: Date): Promise<T.WithdrawalRow[]>;
   setWithdrawalDone(id: string, signature: string, amountOutRaw: bigint): Promise<void>;
+
+  /** One light read so a free-tier database sees traffic every day; needs no user row. */
+  keepalive(): Promise<void>;
 }
 
 let forTests: Repo | null = null;

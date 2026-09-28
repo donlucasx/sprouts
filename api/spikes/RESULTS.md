@@ -88,3 +88,18 @@ Observation for the fruit audit: the position read 5,256,186 raw right after the
 ## Demo planting 1 of 2 (2026-09-28, R59: about $10 into his position this week)
 
 `spikes/plant-once.ts Hammathyme.skr SKR 4.90 --send`, run by Lucas in Terminal: delegation `Fjos…` had 0.10 pulled of its 5 USDC period; built 991 bytes, expected out 268,683,463, minimum 265,996,629; simulation OK, 80,987 CU; **PLANTED** `4SR57eMDRsRCsTCikXP9tA9A9oMEqwchCcKR2PcDyPQCDnnB3RxFczD8jN9KX4pPRskx5LxKwqi9xNfUzNvwjZCx`; position 5,260,937 -> 271,257,565 raw (+265,996,628, the quoted minimum less one raw unit again). The second $5 planting follows after the period rolls at 22:28Z.
+
+## Day 4: the loop end to end, first planting from booked data (2026-09-28, Task 15 step 4)
+
+Run by Lucas in Terminal (deploy 8xeyv4ww of HEAD 39bbe05 to https://sprouts-api-gamma.vercel.app, then the two spikes), booked and planted by the live system.
+
+| Step | Result |
+| --- | --- |
+| Link (re-link path, production) | `link-throwaway.ts Hammathyme.skr --send`: user row `hammathyme.skr`, code N9W2CW, approval = ONE instruction (the throwaway's authority existed), 353 bytes, 5,075 CU; sent `2dQBdk9rQfzQbDA1oq5kAwUtrEC9h1QdUQn6mkDGyDJRKQt9nEY3CSRPnEo5cTmqzjMK8yxHExPdHcsjhS1TvRBx`; second delegation `58TBSbJXXYyRv7SmKbsAZRWhpiVAZFqnCfQLdWEKDXon` (5 USDC/day); confirm 200 `{linked:true, skrName:"hammathyme.skr"}`; wallet row active. Bug found: the row's `webhook_added` stayed false while the event said true (fixed the same day, test-first: the add runs before the insert and the row carries the outcome). |
+| Swap (real money) | `swap-once.ts 0.80 --send`: 0.80 USDC -> 227,946 BONK via Byreal + Whirlpool + Meteora DLMM, 192,138 CU; `57ZG6En3QqgpDgkt81Bxef3vzbiBB1QNvyFwsYZvXBPx42kbvMASdnHNttRARWr6HSMkdemgKiu1eKGShxpfXNJF` |
+| Webhook | booked within seconds: `swaps` row size 80c, round-up 20c (the throwaway had been seeded on webhook `d9fd27e8…` at creation; the Helius read lists it) |
+| Rules | `set-rules.ts <seeker> plantThresholdCents=10` (200 -> 10) so one round-up plants instead of waiting for the 7-day rule |
+| Cron by hand | bearer from the env file inside node; answered **500 with an empty body**, but the run had already done its work: the planting below, the swap marked, the ledger +20c. Cause verified against the real database: the route's keepalive `getRules("keepalive")` violates the rules -> users foreign key (the in-memory repo never did). Fix in progress, test-first: a repo `keepalive()` that needs no user, and a JSON 500 with the reason. |
+| **Planting from booked data** | `plantings` row confirmed, pulled 23c (20c round-up + 3c network fee), leg SKR 20c -> **12,484,479 raw**, signature `QXX6pKCYH9bnShUB1zDLMYtfLASCFjv4u6TeBWv1wJK9k6XGqrCHiD8LB3KN7HJwF8NVoyAvCtrtbNWQnRm7RYw`; position 271,257,565 -> **283,742,044 raw** SKR |
+
+Reading: a real swap on a linked wallet became a round-up, a booked row, a daily pull through the delegation, a Jupiter swap with the fee leg, and a stake into the Seed Vault's position, with no signature from the Seeker and none from the trading wallet after its one approval. Plan 1's loop is complete.
