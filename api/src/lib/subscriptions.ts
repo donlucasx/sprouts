@@ -85,6 +85,11 @@ export async function buildTransferRecurringIx(a: { delegator: Address; delegate
   });
 }
 
+/** Revoke one delegation only (rent back to the wallet); the authority stays, so a new delegation can be created in the same transaction. */
+export function buildRevokeDelegationIx(a: { delegator: Address; delegationPda: Address }): Instruction {
+  return getRevokeDelegationOverlayInstruction({ authority: createNoopSigner(a.delegator), delegationAccount: a.delegationPda });
+}
+
 /** Revoke everything: close the delegation (rent back to the wallet), then remove the program's delegate and close the authority. */
 export async function buildRevokeIxs(a: { delegator: Address; delegationPda: Address }): Promise<Instruction[]> {
   const authority = createNoopSigner(a.delegator);

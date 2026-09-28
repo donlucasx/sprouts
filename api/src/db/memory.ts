@@ -54,8 +54,13 @@ export class MemoryRepo implements Repo {
   }
 
   async addWallet(w: { pubkey: string; userPubkey: string; delegationPda: string; dailyCapCents: number; webhookAdded?: boolean }): Promise<T.WalletRow> {
+    // An upsert, like Supabase: a re-link resets the delegation, cap, status and webhook flag and keeps the ledger (review I3).
     const { webhookAdded = false, ...rest } = w;
-    const row: T.WalletRow = { ...rest, status: "active", webhookAdded, ledgerSkrCents: 0, ledgerStoreCents: 0, createdAt: new Date() };
+    const existing = this.wallets.get(w.pubkey);
+    const row: T.WalletRow = {
+      ...rest, status: "active", webhookAdded,
+      ledgerSkrCents: existing?.ledgerSkrCents ?? 0, ledgerStoreCents: existing?.ledgerStoreCents ?? 0, createdAt: existing?.createdAt ?? new Date(),
+    };
     this.wallets.set(w.pubkey, row);
     return row;
   }
@@ -161,7 +166,7 @@ export class MemoryRepo implements Repo {
 
   async bindLinkCode(code: string, walletPubkey: string, delegationPda: string) {
     const c = this.linkCodes.get(code);
-    if (!c) return;
+    if (!c || c.walletPubkey) return; // the first wallet keeps the code (review M6)
     c.walletPubkey = walletPubkey;
     c.delegationPda = delegationPda;
   }

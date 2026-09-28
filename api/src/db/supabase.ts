@@ -70,8 +70,12 @@ export class SupabaseRepo implements Repo {
     return this.one(this.db.from("rules").update(update).eq("user_pubkey", userPubkey).select().single(), rulesRow);
   }
 
+  /** An upsert on the wallet: a re-link resets the delegation, cap, status and webhook flag; the ledger columns are untouched. */
   async addWallet(w: { pubkey: string; userPubkey: string; delegationPda: string; dailyCapCents: number; webhookAdded?: boolean }) {
-    return this.one(this.db.from("wallets").insert({ pubkey: w.pubkey, user_pubkey: w.userPubkey, delegation_pda: w.delegationPda, daily_cap_cents: w.dailyCapCents, webhook_added: w.webhookAdded ?? false }).select().single(), walletRow);
+    return this.one(this.db.from("wallets").upsert(
+      { pubkey: w.pubkey, user_pubkey: w.userPubkey, delegation_pda: w.delegationPda, daily_cap_cents: w.dailyCapCents, status: "active", webhook_added: w.webhookAdded ?? false },
+      { onConflict: "pubkey" },
+    ).select().single(), walletRow);
   }
 
   async getWallet(pubkey: string) {
@@ -187,8 +191,9 @@ export class SupabaseRepo implements Repo {
     return data ? linkCodeRow(data as Row) : null;
   }
 
+  /** Binds only an unbound code, so two wallets fetching the same code in the same second cannot both take it (review M6). */
   async bindLinkCode(code: string, walletPubkey: string, delegationPda: string) {
-    const { error } = await this.db.from("link_codes").update({ wallet_pubkey: walletPubkey, delegation_pda: delegationPda }).eq("code", code);
+    const { error } = await this.db.from("link_codes").update({ wallet_pubkey: walletPubkey, delegation_pda: delegationPda }).eq("code", code).is("wallet_pubkey", null);
     if (error) throw new Error(error.message);
   }
 

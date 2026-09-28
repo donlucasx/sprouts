@@ -39,6 +39,10 @@ export async function POST(request: Request) {
   if (!link) return NextResponse.json({ error: "This code is unknown, expired or already used." }, { status: 404 });
   if (!link.walletPubkey || !link.delegationPda) return NextResponse.json({ error: "Fetch the approval for this code first." }, { status: 409 });
   if (link.walletPubkey !== wallet) return NextResponse.json({ error: "This code belongs to another wallet." }, { status: 409 });
+  const existing = await repo.getWallet(wallet);
+  if (existing && existing.userPubkey !== link.userPubkey && existing.status !== "revoked") {
+    return NextResponse.json({ error: "This wallet is linked to another Seeker. Revoke it there first." }, { status: 409 });
+  }
 
   const delegation = await delegationAppears(address(link.delegationPda), parsed.data.waitMs ?? 10_000);
   if (!delegation.exists) return NextResponse.json({ error: "No delegation found for this wallet yet. Sign the approval first." }, { status: 409 });
