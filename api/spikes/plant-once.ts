@@ -54,7 +54,7 @@ if (!doSend) {
   console.log("dry run; pass --send to plant for real");
   process.exit(0);
 }
-const signature = await sendPlanting(built);
-console.log(`PLANTED ${signature}`);
+await sendPlanting(built);
+console.log(`PLANTED ${built.signature}`);
 const after = await readPosition(user);
 console.log(`position after: ${after.stakedRaw} raw SKR staked (+${after.stakedRaw - before.stakedRaw})`);

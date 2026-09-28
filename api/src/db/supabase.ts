@@ -117,10 +117,28 @@ export class SupabaseRepo implements Repo {
     return this.many(this.db.from("swaps").select().eq("wallet_pubkey", walletPubkey).is("planting_id", null).order("ts"), swapRow);
   }
 
-  async markPlanted(signatures: string[], plantingId: string) {
-    if (!signatures.length) return;
-    const { error } = await this.db.from("swaps").update({ planting_id: plantingId }).in("signature", signatures);
+  /** One conditional UPDATE: only swaps nobody has claimed; the returned rows say how many this planting got. */
+  async claimSwaps(signatures: string[], plantingId: string) {
+    if (!signatures.length) return 0;
+    const { data, error } = await this.db.from("swaps").update({ planting_id: plantingId }).in("signature", signatures).is("planting_id", null).select("signature");
     if (error) throw new Error(error.message);
+    return (data ?? []).length;
+  }
+
+  async releaseSwaps(plantingId: string) {
+    const { error } = await this.db.from("swaps").update({ planting_id: null }).eq("planting_id", plantingId);
+    if (error) throw new Error(error.message);
+  }
+
+  async listSentPlantings(olderThan: Date) {
+    return this.many(this.db.from("plantings").select().eq("status", "sent").lt("ts", olderThan.toISOString()), plantingRow);
+  }
+
+  async plantingLegs(plantingId: string) {
+    return this.many(this.db.from("planting_legs").select().eq("planting_id", plantingId), (r) => ({
+      plantingId: String(r.planting_id), asset: r.asset as Asset, usdcInCents: Number(r.usdc_in_cents), amountOutRaw: BigInt(String(r.amount_out_raw)),
+      staked: Boolean(r.staked), feeAmountRaw: BigInt(String(r.fee_amount_raw)),
+    }));
   }
 
   async insertPlanting(p: Omit<T.PlantingRow, "id" | "ts">, legs: Omit<T.PlantingLegRow, "plantingId">[]) {

@@ -22,7 +22,8 @@ export async function runWithdrawCrank(a: { repo: Repo; now: Date; chain: Withdr
       cranked.push(w.id);
     } catch (e) {
       failed.push(w.id);
-      await a.repo.addEvent({ userPubkey: w.userPubkey, walletPubkey: null, kind: "pull_failed", detail: { withdrawal: w.id, err: e instanceof Error ? e.message : String(e) } });
+      console.error(`withdraw crank for ${w.userPubkey} failed: ${e instanceof Error ? e.message : String(e)}`);
+      await a.repo.addEvent({ userPubkey: w.userPubkey, walletPubkey: null, kind: "withdraw_failed", detail: { withdrawal: w.id, err: e instanceof Error ? e.message : String(e) } });
     }
   }
   return { cranked, failed };

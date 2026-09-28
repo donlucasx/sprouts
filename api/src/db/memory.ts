@@ -94,11 +94,29 @@ export class MemoryRepo implements Repo {
     return [...this.swaps.values()].filter((s) => s.walletPubkey === walletPubkey && s.plantingId === null).sort((a, b) => a.ts.getTime() - b.ts.getTime());
   }
 
-  async markPlanted(signatures: string[], plantingId: string) {
+  async claimSwaps(signatures: string[], plantingId: string) {
+    // No await between the check and the set: the claim is atomic here, as the conditional UPDATE is on Supabase.
+    let claimed = 0;
     for (const sig of signatures) {
       const s = this.swaps.get(sig);
-      if (s) s.plantingId = plantingId;
+      if (s && s.plantingId === null) {
+        s.plantingId = plantingId;
+        claimed++;
+      }
     }
+    return claimed;
+  }
+
+  async releaseSwaps(plantingId: string) {
+    for (const s of this.swaps.values()) if (s.plantingId === plantingId) s.plantingId = null;
+  }
+
+  async listSentPlantings(olderThan: Date) {
+    return [...this.plantings.values()].filter((p) => p.status === "sent" && p.ts.getTime() < olderThan.getTime());
+  }
+
+  async plantingLegs(plantingId: string) {
+    return this.legs.filter((l) => l.plantingId === plantingId);
   }
 
   async insertPlanting(p: Omit<T.PlantingRow, "id" | "ts">, legs: Omit<T.PlantingLegRow, "plantingId">[]): Promise<T.PlantingRow> {

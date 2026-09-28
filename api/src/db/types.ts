@@ -67,6 +67,8 @@ export type EventKind =
   | "over_cap_rejected"
   | "revoke_seen"
   | "pull_failed"
+  | "withdraw_failed"
+  | "run_stopped"
   | "paused_no_usdc"
   | "resumed"
   | "proposal_made"

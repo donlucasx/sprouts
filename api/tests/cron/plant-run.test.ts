@@ -10,9 +10,11 @@ function fakeChain(over: Partial<Chain> = {}): Chain {
   return {
     readDelegation: async () => DELEGATION,
     usdcBalanceRaw: async () => 50_000_000n,
-    buildPlantingTx: async (a) => ({ tx: {}, expectedOutRaw: a.pullRaw * 48n, minOutRaw: a.pullRaw * 47n, lookupTables: [], lastValidBlockHeight: 0n }),
+    // the signature is known once the puller signs, before anything is sent
+    buildPlantingTx: async (a) => ({ tx: {}, signature: `sig${++n}`, expectedOutRaw: a.pullRaw * 48n, minOutRaw: a.pullRaw * 47n, lookupTables: [], lastValidBlockHeight: 0n }),
     simulatePlanting: async () => ({ ok: true, err: null, logs: [], units: 200_000 }),
-    sendPlanting: async () => `sig${++n}`,
+    sendPlanting: async () => {},
+    signatureStatus: async () => "pending",
     ...over,
   };
 }
@@ -112,5 +114,110 @@ describe("runPlanting", () => {
     const r = await runPlanting({ repo, now: NOW, chain: fakeChain({ readDelegation: async () => ({ ...DELEGATION, pulledInPeriodRaw: 4_000_000n, periodStartTs: periodStart }) }) });
     expect(r.planted).toEqual([]);
     expect((await repo.unplantedSwaps("W")).length).toBe(1);
+  });
+
+  // Review C1 (2026-09-28): Vercel Hobby occasionally fires the cron twice and Lucas triggers it by hand; two runs that both
+  // read the same unplanted set must not both pull. The claim on the swaps is one conditional statement.
+  it("two overlapping runs pull the same round-ups once", async () => {
+    const repo = await seeded([83, 62, 70]);
+    const chain = fakeChain({ sendPlanting: async () => { await new Promise((r) => setTimeout(r, 5)); } });
+    const [a, b] = await Promise.all([runPlanting({ repo, now: NOW, chain }), runPlanting({ repo, now: NOW, chain })]);
+    expect(a.planted.length + b.planted.length).toBe(1);
+    expect((await repo.getWallet("W"))!.ledgerSkrCents).toBe(215);
+    expect([...repo.plantings.values()].filter((p) => p.status === "confirmed").length).toBe(1);
+  });
+
+  it("a send that errors after landing is reconciled as confirmed, never pulled again", async () => {
+    const repo = await seeded([83, 62, 70]);
+    const chain = fakeChain({ sendPlanting: async () => { throw new Error("websocket closed"); }, signatureStatus: async () => "confirmed" });
+    const r = await runPlanting({ repo, now: NOW, chain });
+    expect(r.planted.length).toBe(1);
+    expect((await repo.unplantedSwaps("W")).length).toBe(0);
+    expect((await repo.getWallet("W"))!.ledgerSkrCents).toBe(215);
+    const again = await runPlanting({ repo, now: NOW, chain });
+    expect(again.planted).toEqual([]);
+  });
+
+  it("a send that failed on chain releases the round-ups for the next run", async () => {
+    const repo = await seeded([83, 62, 70]);
+    const chain = fakeChain({ sendPlanting: async () => { throw new Error("blockhash expired"); }, signatureStatus: async () => "failed" });
+    const r = await runPlanting({ repo, now: NOW, chain });
+    expect(r.skipped[0].reason).toBe("send failed");
+    expect((await repo.unplantedSwaps("W")).length).toBe(3);
+    expect((await repo.getWallet("W"))!.ledgerSkrCents).toBe(0);
+  });
+
+  it("a send whose fate is unknown stays claimed and is reconciled on the next run", async () => {
+    const repo = await seeded([83, 62, 70]);
+    const chain = fakeChain({ sendPlanting: async () => { throw new Error("timeout"); } });
+    const r = await runPlanting({ repo, now: NOW, chain });
+    expect(r.skipped[0].reason).toBe("send unknown");
+    expect((await repo.unplantedSwaps("W")).length).toBe(0);
+    expect([...repo.plantings.values()][0].status).toBe("sent");
+    // ten minutes later the chain shows it landed: confirmed, ledger bumped once, nothing re-pulled
+    const later = new Date(NOW.getTime() + 10 * 60_000);
+    const r2 = await runPlanting({ repo, now: later, chain: fakeChain({ signatureStatus: async () => "confirmed" }) });
+    expect(r2.planted).toEqual([]);
+    expect([...repo.plantings.values()][0].status).toBe("confirmed");
+    expect((await repo.getWallet("W"))!.ledgerSkrCents).toBe(215);
+  });
+
+  it("a sent planting that never lands within half an hour is failed and its round-ups released", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await runPlanting({ repo, now: NOW, chain: fakeChain({ sendPlanting: async () => { throw new Error("timeout"); } }) });
+    const later = new Date(NOW.getTime() + 31 * 60_000);
+    await runPlanting({ repo, now: later, chain: fakeChain({ signatureStatus: async () => "pending", buildPlantingTx: async () => { throw new Error("not reached in this test"); } }) });
+    expect([...repo.plantings.values()][0].status).toBe("failed");
+    expect((await repo.unplantedSwaps("W")).length).toBe(3);
+  });
+
+  // Review I1: one wallet's Jupiter or build error must not abort everyone's day.
+  it("one wallet's build error is recorded and the next wallet still plants", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await repo.upsertUser({ seedVaultPubkey: "U2", sgtMint: "M2", skrName: null });
+    await repo.addWallet({ pubkey: "W2", userPubkey: "U2", delegationPda: "D2", dailyCapCents: 500 });
+    await repo.insertSwap({ signature: "t1", walletPubkey: "W2", ts: NOW, inMint: "a", inAmount: 1, outMint: "b", outAmount: 1, usdSizeCents: 100, class: "major", roundupCents: 215 });
+    const base = fakeChain();
+    const chain = fakeChain({ buildPlantingTx: async (a) => { if (a.delegator === "W") throw new Error("Jupiter quote failed: 400 no route"); return base.buildPlantingTx(a); } });
+    const r = await runPlanting({ repo, now: NOW, chain });
+    expect(r.planted.map((p) => p.wallet)).toEqual(["W2"]);
+    expect(r.skipped.find((s) => s.wallet === "W")?.reason).toBe("build failed");
+    expect(repo.events.some((e) => e.kind === "pull_failed" && e.walletPubkey === "W")).toBe(true);
+  });
+
+  it("three build failures in a row stop the run and leave the rest for tomorrow", async () => {
+    // Wallets run eight at a time, so an outage hits the first eight before the stop lands; the other four wait for tomorrow.
+    const repo = new MemoryRepo();
+    for (let i = 0; i < 12; i++) {
+      await repo.upsertUser({ seedVaultPubkey: `U${i}`, sgtMint: `M${i}`, skrName: null });
+      await repo.addWallet({ pubkey: `W${i}`, userPubkey: `U${i}`, delegationPda: `D${i}`, dailyCapCents: 500 });
+      await repo.insertSwap({ signature: `x${i}`, walletPubkey: `W${i}`, ts: NOW, inMint: "a", inAmount: 1, outMint: "b", outAmount: 1, usdSizeCents: 100, class: "major", roundupCents: 215 });
+    }
+    let builds = 0;
+    const r = await runPlanting({ repo, now: NOW, chain: fakeChain({ buildPlantingTx: async () => { builds++; throw new Error("Jupiter quote failed: 429"); } }) });
+    expect(r.planted).toEqual([]);
+    expect(builds).toBe(8);
+    expect(r.skipped.filter((s) => s.reason === "run stopped").length).toBe(4);
+    expect(repo.events.filter((e) => e.kind === "run_stopped").length).toBe(1);
+  });
+
+  // Review I8: an RPC blip is not "no USDC".
+  it("an RPC error reading the balance skips the wallet without pausing it", async () => {
+    const repo = await seeded([83, 62, 70]);
+    const r = await runPlanting({ repo, now: NOW, chain: fakeChain({ usdcBalanceRaw: async () => { throw new Error("rpc: 503"); } }) });
+    expect(r.skipped[0].reason).toBe("build failed");
+    expect((await repo.getWallet("W"))!.status).toBe("active");
+    expect(repo.events.some((e) => e.kind === "paused_no_usdc")).toBe(false);
+  });
+
+  // Review M1: the user's own daily limit (rules) binds when it is lower than the delegation's.
+  it("the user's daily limit in the rules bounds the pull", async () => {
+    // $3 a day in the rules against a $5 delegation: the pull is $3 (the fee inside it), and the rest of the change waits.
+    const repo = await seeded([1000, 1000]);
+    await repo.saveRules("U", { dailyCapCents: 300 });
+    const r = await runPlanting({ repo, now: NOW, chain: fakeChain() });
+    expect(r.planted[0].pullCents).toBe(300);
+    expect((await repo.unplantedSwaps("W")).length).toBe(0);
+    expect((await repo.getWallet("W"))!.ledgerSkrCents).toBe(297);
   });
 });

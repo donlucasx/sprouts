@@ -32,6 +32,6 @@ describe("runWithdrawCrank", () => {
     });
     expect(r.cranked).toEqual(["b"]);
     expect(r.failed).toEqual(["a"]);
-    expect(repo.events.some((e) => e.kind === "pull_failed")).toBe(true);
+    expect(repo.events.some((e) => e.kind === "withdraw_failed")).toBe(true);
   });
 });
