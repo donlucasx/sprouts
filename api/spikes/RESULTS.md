@@ -57,7 +57,17 @@ Also found on the way: kit refuses two signer instances for one address (error 5
 | Helius webhook | creation refused with an empty address list (400 "At least one account address is required"); now seeded with the first wallet (the throwaway); id `d9fd27e8-3f48-42b1-a50d-6281f9497f1b`, type enhanced, SWAP only, bearer auth |
 | Probes after redeploy | `/api/cron/plant` 401, `POST /api/link/new` 401, `POST /api/webhooks/helius` 401 (all without credentials) |
 
-## Spike 3b: one real ten-cent planting, end to end (2026-09-25, dry run)
+## Spike 3b: one real ten-cent planting, end to end (dry run 2026-09-25, sent 2026-09-27)
 
-`spikes/plant-once.ts <seed vault> SKR`: position before 0; built 1,215 bytes (limit 1,232) with one lookup table, expected out 4,897,987 raw SKR, minimum 4,849,008; simulation OK, 92,493 compute units. The `--send` run is recorded below when done.
+`spikes/plant-once.ts <seed vault> SKR --send`, mainnet, one transaction signed by the puller only. Delegator = the throwaway wallet from Spike 3a; user = a real Seeker's Seed Vault key (Genesis Token verified by `spikes/resolve-seeker.ts`).
+
+| Step | Result |
+| --- | --- |
+| Dry run (09-25) | built 1,215 bytes (limit 1,232), one lookup table, expected out 4,897,987 raw SKR, minimum 4,849,008; simulation OK, 92,493 compute units |
+| Send (09-27) | built 1,087 bytes, expected out 5,309,279, minimum 5,256,187; simulation OK, 82,337 compute units; **PLANTED** `3Frz5iwELCJ6DhbL3YafrKjWxeG5reXzgEszjT1oUpWYbw3xQsV4aPreppuWGwYQ5vTFMXSroEz83u4YmK8GrGo7` |
+| Position | 0 before, 5,256,186 raw SKR after (the quoted minimum, less one raw unit of rounding) |
+| Delegator's USDC | 1.00 before, 0.90 after: exactly the ten-cent pull, nothing else moved |
+| Who signed | the puller alone; the Seed Vault key never signed and the delegator's wallet signed nothing after its one-time approval |
+
+Reading: `TransferRecurring` + Jupiter swap (with the 0.5% platform fee to the fee wallet's SKR account) + SKR `stake(user = Seed Vault key)` land atomically in one v0 transaction under the size limit, and only the Seed Vault key can ever unstake what landed. This is the demo's Solscan shot. Size varies with Jupiter's route (1,087 to 1,215 bytes seen); the 1,232 limit leaves little room, which is why the fee leg stays inside the swap and nothing else joins the transaction.
 
