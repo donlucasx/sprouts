@@ -1,17 +1,21 @@
 // Spike 3b: one real ten-cent planting from the throwaway wallet into a Seeker's SKR position: pull, swap, stake in one transaction.
 // Simulates first and aborts on any error. The only "send" in Plan 1 besides Spike 3a.
-// Run from api/: pnpm tsx --env-file=.env.local spikes/plant-once.ts <seed vault address> [SKR|stORE] [--send]
+// Run from api/: pnpm tsx --env-file=.env.local spikes/plant-once.ts <seed vault address> [SKR|stORE] [usdc amount, default 0.10] [--send]
+// The pull must fit the delegation's daily allowance (5 USD per period); the delegation state is printed before building.
 import { address, createKeyPairSignerFromPrivateKeyBytes } from "@solana/kit";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { pullerSigner } from "../src/lib/puller";
-import { delegationPda } from "../src/lib/subscriptions";
+import { delegationPda, readDelegation } from "../src/lib/subscriptions";
 import { buildPlantingTx, simulatePlanting, sendPlanting } from "../src/lib/planting";
 import { readPosition } from "../src/lib/staking";
 import { getBase64EncodedWireTransaction } from "@solana/kit";
 
-const user = address(process.argv[2] ?? "");
-const asset = (process.argv[3] === "stORE" ? "stORE" : "SKR") as "SKR" | "stORE";
+const args = process.argv.slice(2).filter((a) => !a.startsWith("--"));
+const user = address(args[0] ?? "");
+const asset = (args[1] === "stORE" ? "stORE" : "SKR") as "SKR" | "stORE";
+const usdc = Number(args[2] ?? "0.10");
+const pullRaw = BigInt(Math.round(usdc * 1_000_000));
 const doSend = process.argv.includes("--send");
 
 const saved = JSON.parse(readFileSync(path.join(import.meta.dirname, "keys/throwaway.json"), "utf8")) as { secret: string; nonce: string };
@@ -19,9 +23,13 @@ const wallet = await createKeyPairSignerFromPrivateKeyBytes(new Uint8Array(Buffe
 const puller = await pullerSigner();
 const pda = await delegationPda({ delegator: wallet.address, delegatee: puller.address, nonce: BigInt(saved.nonce) });
 
+const d = await readDelegation(pda);
+const periodEnds = new Date(Number(d.periodStartTs + d.periodLengthS) * 1000);
+console.log(`delegation ${pda}: allowance ${Number(d.amountPerPeriodRaw) / 1e6} USDC per period, pulled this period ${Number(d.pulledInPeriodRaw) / 1e6}, period ends ${periodEnds.toISOString()}`);
+console.log(`pulling ${usdc} USDC (${pullRaw} raw)`);
 const before = await readPosition(user);
 console.log(`position before: ${before.stakedRaw} raw SKR staked`);
-const built = await buildPlantingTx({ delegator: wallet.address, user, asset, pullRaw: 100_000n, feeBps: 50, delegationPda: pda });
+const built = await buildPlantingTx({ delegator: wallet.address, user, asset, pullRaw, feeBps: 50, delegationPda: pda });
 const bytes = Buffer.from(getBase64EncodedWireTransaction(built.tx), "base64").length;
 console.log(`built ${asset} planting: ${bytes} bytes, expected out ${built.expectedOutRaw}, minimum ${built.minOutRaw}, lookup tables ${built.lookupTables.length}`);
 const sim = await simulatePlanting(built);
