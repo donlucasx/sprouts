@@ -7,7 +7,8 @@ import { getBase64Encoder, getCompiledTransactionMessageDecoder, getTransactionD
 vi.mock("@/lib/subscriptions", async (orig) => ({
   ...(await orig<object>()),
   readDelegation: vi.fn(async () => ({ exists: true, amountPerPeriodRaw: 5_000_000n, pulledInPeriodRaw: 0n, periodStartTs: 0n, periodLengthS: 86_400n })),
-  delegationPda: vi.fn(async () => "7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs"),
+  // a different (valid) address per nonce parity, so a re-link gets a new delegation address like it does on chain
+  delegationPda: vi.fn(async (a: { nonce: bigint }) => (a.nonce % 2n === 0n ? "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v" : "SKRbvo6Gf7GondiT3BbTfuRDPqLWei4j2Qy2NPGZhW3")),
   readSubscriptionAuthority: vi.fn(async () => ({ exists: false })),
 }));
 vi.mock("@/lib/helius", () => ({ heliusAddAddress: vi.fn(async () => undefined) }));
@@ -59,7 +60,7 @@ describe("link flow", () => {
     const r = await confirm(new Request("http://x/api/link/confirm", { method: "POST", body: JSON.stringify({ code: c.code, wallet: WALLET }) }));
     expect(await r.json()).toEqual({ linked: true, skrName: "lucas.skr" });
     expect((await repo.getWallet(WALLET))?.userPubkey).toBe("U");
-    expect((await repo.getWallet(WALLET))?.delegationPda).toBe("7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs");
+    expect((await repo.getWallet(WALLET))?.delegationPda).toBe(t.delegationPda);
     // the wallet row carries the webhook outcome, not only the event (the first real link on 09-28 showed false on the row, true on the event)
     expect((await repo.getWallet(WALLET))?.webhookAdded).toBe(true);
   });
@@ -92,6 +93,49 @@ describe("link flow", () => {
     const c = await mintCode(repo);
     const t = await (await getTx(new Request(`http://x/api/link/${c.code}?wallet=${WALLET}`), { params: Promise.resolve({ code: c.code }) })).json();
     expect(instructionCount(t.transaction)).toBe(2);
+  });
+
+  // Review I3: a wallet linked before (revoked, or re-approving) must re-link, not 500 on the row after the code is burned.
+  it("re-linking a revoked wallet reactivates it with the new delegation and keeps its ledger", async () => {
+    const OLD = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+    await repo.addWallet({ pubkey: WALLET, userPubkey: "U", delegationPda: OLD, dailyCapCents: 500 });
+    await repo.bumpLedger(WALLET, "SKR", 215);
+    await repo.setWalletStatus(WALLET, "revoked");
+    const c = await mintCode(repo);
+    const t = await (await getTx(new Request(`http://x/api/link/${c.code}?wallet=${WALLET}`), { params: Promise.resolve({ code: c.code }) })).json();
+    const r = await confirm(new Request("http://x/api/link/confirm", { method: "POST", body: JSON.stringify({ code: c.code, wallet: WALLET }) }));
+    expect(r.status).toBe(200);
+    const row = await repo.getWallet(WALLET);
+    expect(row?.status).toBe("active");
+    expect(row?.delegationPda).toBe(t.delegationPda);
+    expect(row?.delegationPda).not.toBe(OLD);
+    expect(row?.ledgerSkrCents).toBe(215);
+  });
+
+  it("refuses a wallet that another Seeker still holds", async () => {
+    await repo.upsertUser({ seedVaultPubkey: "U2", sgtMint: "M2", skrName: null });
+    await repo.addWallet({ pubkey: WALLET, userPubkey: "U2", delegationPda: "11111111111111111111111111111111", dailyCapCents: 500 });
+    const c = await mintCode(repo);
+    const res = await getTx(new Request(`http://x/api/link/${c.code}?wallet=${WALLET}`), { params: Promise.resolve({ code: c.code }) });
+    expect(res.status).toBe(409);
+    expect(await repo.peekLinkCode(c.code)).not.toBeNull();
+  });
+
+  // Review I4: a wallet must hold one delegation to the puller; re-approving revokes the live one in the same transaction.
+  it("re-linking a wallet whose delegation is still live revokes it in the same approval", async () => {
+    const { readSubscriptionAuthority } = await import("@/lib/subscriptions");
+    const auth = readSubscriptionAuthority as unknown as { mockResolvedValue: (v: unknown) => void };
+    auth.mockResolvedValue({ exists: true, initId: 42n });
+    try {
+      await repo.addWallet({ pubkey: WALLET, userPubkey: "U", delegationPda: "7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs", dailyCapCents: 500 });
+      const c = await mintCode(repo);
+      const t = await (await getTx(new Request(`http://x/api/link/${c.code}?wallet=${WALLET}`), { params: Promise.resolve({ code: c.code }) })).json();
+      // revoke the old delegation, then create the new one (the authority exists, so no init)
+      expect(instructionCount(t.transaction)).toBe(2);
+      expect(t.revokes).toBe("7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs");
+    } finally {
+      auth.mockResolvedValue({ exists: false });
+    }
   });
 
   it("binds the code to the first wallet that fetches it", async () => {

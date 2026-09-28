@@ -55,6 +55,25 @@ describe("MemoryRepo", () => {
     await r.claimSwaps(["s"], p.id);
   });
 
+  it("bindLinkCode binds only an unbound code (two wallets racing: the first keeps it)", async () => {
+    const r = new MemoryRepo();
+    await r.putLinkCode({ code: "RACEME", userPubkey: "U", expiresAt: new Date(Date.now() + 60_000), nonce: 1n });
+    await r.bindLinkCode("RACEME", "W1", "pda1");
+    await r.bindLinkCode("RACEME", "W2", "pda2");
+    expect((await r.peekLinkCode("RACEME"))?.walletPubkey).toBe("W1");
+  });
+
+  it("addWallet on an existing wallet resets the delegation, cap and status and keeps the ledger", async () => {
+    const r = await withWallet();
+    await r.bumpLedger("W", "SKR", 50);
+    await r.setWalletStatus("W", "revoked");
+    const row = await r.addWallet({ pubkey: "W", userPubkey: "U", delegationPda: "D2", dailyCapCents: 300, webhookAdded: true });
+    expect(row.status).toBe("active");
+    expect(row.delegationPda).toBe("D2");
+    expect(row.dailyCapCents).toBe(300);
+    expect(row.ledgerSkrCents).toBe(50);
+  });
+
   it("link codes: peek, bind, take; a taken code cannot be peeked again", async () => {
     const r = new MemoryRepo();
     await r.putLinkCode({ code: "ABC234", userPubkey: "U", expiresAt: new Date(Date.now() + 60_000), nonce: 7n });
