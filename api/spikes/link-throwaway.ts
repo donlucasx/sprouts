@@ -4,7 +4,7 @@
 //   3. POST /api/link/new -> code; GET /api/link/{code}?wallet= -> unsigned approve-once (one instruction: the throwaway's
 //      authority already exists, so this exercises the re-link path); sign with the throwaway key; simulate; send with --send
 //   4. POST /api/link/confirm -> { linked, skrName }; the wallet row and the webhook address follow
-// Run from api/: pnpm tsx --env-file=.env.local spikes/link-throwaway.ts <seedVaultPubkey> [baseUrl] [--send]
+// Run from api/: pnpm tsx --env-file=.env.local spikes/link-throwaway.ts <seedVaultPubkey or name.skr> [baseUrl] [--send]
 import { createKeyPairSignerFromPrivateKeyBytes, getBase64Encoder, getBase64EncodedWireTransaction, getTransactionDecoder,
   signTransaction, getSignatureFromTransaction, address } from "@solana/kit";
 import { readFileSync } from "node:fs";
@@ -17,9 +17,19 @@ import { verifyGenesisHolder } from "../src/lib/genesis";
 import { skrNameOf } from "../src/lib/skr";
 import { readDelegation } from "../src/lib/subscriptions";
 
+/** A Seed Vault address, or a .skr name resolved through AllDomains to its owner. */
+async function seedVaultFrom(arg: string) {
+  if (!arg.toLowerCase().endsWith(".skr")) return address(arg);
+  const { Connection } = await import("@solana/web3.js");
+  const { TldParser } = await import("@onsol/tldparser");
+  const owner = await new TldParser(new Connection(config().heliusRpcUrl, "confirmed")).getOwnerFromDomainTld(arg.toLowerCase());
+  if (!owner) throw new Error(`${arg}: no owner found`);
+  return address(typeof owner === "string" ? owner : owner.toBase58());
+}
+
 const args = process.argv.slice(2).filter((a) => !a.startsWith("--"));
 const send = process.argv.includes("--send");
-const seeker = address(args[0] ?? "");
+const seeker = await seedVaultFrom(args[0] ?? "");
 const base = (args[1] ?? "https://sprouts-api-gamma.vercel.app").replace(/\/$/, "");
 
 const saved = JSON.parse(readFileSync(path.join(import.meta.dirname, "keys", "throwaway.json"), "utf8")) as { secret: string };
