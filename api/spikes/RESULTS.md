@@ -103,3 +103,9 @@ Run by Lucas in Terminal (deploy 8xeyv4ww of HEAD 39bbe05 to https://sprouts-api
 | **Planting from booked data** | `plantings` row confirmed, pulled 23c (20c round-up + 3c network fee), leg SKR 20c -> **12,484,479 raw**, signature `QXX6pKCYH9bnShUB1zDLMYtfLASCFjv4u6TeBWv1wJK9k6XGqrCHiD8LB3KN7HJwF8NVoyAvCtrtbNWQnRm7RYw`; position 271,257,565 -> **283,742,044 raw** SKR |
 
 Reading: a real swap on a linked wallet became a round-up, a booked row, a daily pull through the delegation, a Jupiter swap with the fee leg, and a stake into the Seed Vault's position, with no signature from the Seeker and none from the trading wallet after its one approval. Plan 1's loop is complete.
+
+## Over-cap rejection, seen by accident (2026-09-28, 12:30 PT)
+
+A dry run of `plant-once.ts <seeker> SKR 0.10` against the 09-25 delegation, after the day's 0.10 + 4.90 had used its 5 USDC period allowance: the transaction built (the new Jupiter response check passed on a live response) and the simulation failed in the Subscriptions program with custom error 0x190 (400, the period limit). Nothing moved. This is the on-chain cap doing its job, and the beat the spec asks the demo to show; the period rolls at 22:28Z.
+
+Row-level security enabled on all twelve tables (`0002_rls.sql`, pushed 2026-09-28): the anon key gets nothing; the server's service role is unaffected.

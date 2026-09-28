@@ -26,6 +26,32 @@ describe("sign-in with Solana", () => {
     expect((await verifySignIn({ input, output: { address: signer.address, signedMessage: message, signature: bad } })).ok).toBe(false);
   });
 
+  // Review I2: the server pins domain, uri, statement and expiry; a message a phishing page had the user sign for its own
+  // domain, carrying a fresh Sprouts nonce, must not verify.
+  it("rejects a correctly signed message for another domain", async () => {
+    const signer = await generateKeyPairSigner();
+    const input = { ...createSignInPayload({ address: signer.address, nonce: "abc123" }), domain: "evil.example", uri: "https://evil.example" };
+    const message = new Uint8Array(getUtf8Encoder().encode(renderSignInMessage(input)));
+    const signature = new Uint8Array(await signBytes(signer.keyPair.privateKey, message));
+    expect((await verifySignIn({ input, output: { address: signer.address, signedMessage: message, signature } })).ok).toBe(false);
+  });
+
+  it("rejects a correctly signed message whose statement was changed", async () => {
+    const signer = await generateKeyPairSigner();
+    const input = { ...createSignInPayload({ address: signer.address, nonce: "abc123" }), statement: "Approve unlimited spending." };
+    const message = new Uint8Array(getUtf8Encoder().encode(renderSignInMessage(input)));
+    const signature = new Uint8Array(await signBytes(signer.keyPair.privateKey, message));
+    expect((await verifySignIn({ input, output: { address: signer.address, signedMessage: message, signature } })).ok).toBe(false);
+  });
+
+  it("rejects a correctly signed message that has expired", async () => {
+    const signer = await generateKeyPairSigner();
+    const input = createSignInPayload({ address: signer.address, nonce: "abc123", now: new Date(Date.now() - 11 * 60_000) });
+    const message = new Uint8Array(getUtf8Encoder().encode(renderSignInMessage(input)));
+    const signature = new Uint8Array(await signBytes(signer.keyPair.privateKey, message));
+    expect((await verifySignIn({ input, output: { address: signer.address, signedMessage: message, signature } })).ok).toBe(false);
+  });
+
   it("rejects a signature that is not 64 bytes", async () => {
     const signer = await generateKeyPairSigner();
     const input = createSignInPayload({ address: signer.address, nonce: "abc123" });

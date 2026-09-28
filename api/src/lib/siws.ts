@@ -43,11 +43,18 @@ export function renderSignInMessage(input: SignInInput): string {
 
 /**
  * Verify a sign-in: the public key is derived from the address itself, never taken from the client; the signature must be
- * exactly 64 bytes; the signed message must match the payload we issued.
+ * exactly 64 bytes; the signed message must match the payload we issued. The client may only carry the address, the nonce
+ * and the times: domain, uri, statement, version and chain are pinned to what this server issues, and an expired payload is
+ * refused (review I2: otherwise a message signed for another site with a fresh Sprouts nonce would verify).
  */
-export async function verifySignIn(a: { input: SignInInput; output: SignInOutput }): Promise<{ ok: boolean; address: string }> {
+export async function verifySignIn(a: { input: SignInInput; output: SignInOutput; now?: Date }): Promise<{ ok: boolean; address: string }> {
   const { input, output } = a;
   if (output.signature.length !== 64 || output.signedMessage.length === 0) return { ok: false, address: output.address };
+  const expected = createSignInPayload({ nonce: input.nonce });
+  const pinned = (["domain", "uri", "statement", "version", "chainId"] as const).every((k) => input[k] === expected[k]);
+  if (!pinned) return { ok: false, address: output.address };
+  const expires = Date.parse(input.expirationTime);
+  if (!Number.isFinite(expires) || expires <= (a.now ?? new Date()).getTime()) return { ok: false, address: output.address };
   try {
     const publicKey = new Uint8Array(getBase58Encoder().encode(output.address));
     const ok = verifySignInStandard(input, {

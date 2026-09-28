@@ -1,7 +1,45 @@
 import { describe, it, expect } from "vitest";
 import { AccountRole } from "@solana/kit";
-import { toKitInstruction, parseSwapInstructions } from "@/lib/jupiter";
+import { toKitInstruction, parseSwapInstructions, checkSwapInstructions, JUPITER_AGGREGATOR } from "@/lib/jupiter";
 import fixture from "../fixtures/jupiter-swap-instructions.json";
+
+const PULLER = "9H7ChDC2o32wC8jcpVDjLGQhwyx1hmLW1fiCjsjUuzFm";
+const clone = () => JSON.parse(JSON.stringify(fixture)) as typeof fixture;
+
+// Review I5: the puller signs whatever Jupiter's HTTP response contains, so the response is checked before it is signed.
+describe("checkSwapInstructions", () => {
+  it("accepts Jupiter's own response", () => {
+    expect(() => checkSwapInstructions(parseSwapInstructions(fixture), { puller: PULLER })).not.toThrow();
+    expect(JUPITER_AGGREGATOR).toBe("JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4");
+  });
+
+  it("refuses a swap instruction that is not the Jupiter aggregator", () => {
+    const f = clone();
+    f.swapInstruction.programId = "SKRskrmtL83pcL4YqLWt6iPefDqwXQWHSw9S9vz94BZ";
+    expect(() => checkSwapInstructions(parseSwapInstructions(f), { puller: PULLER })).toThrow(/swap program/);
+  });
+
+  it("refuses a setup or cleanup instruction from a program outside the allowlist", () => {
+    const f = clone();
+    f.setupInstructions[0].programId = "SKRskrmtL83pcL4YqLWt6iPefDqwXQWHSw9S9vz94BZ";
+    expect(() => checkSwapInstructions(parseSwapInstructions(f), { puller: PULLER })).toThrow(/setup program/);
+  });
+
+  it("refuses any signer other than the puller", () => {
+    const f = clone();
+    f.swapInstruction.accounts.push({ pubkey: "8KiTtZXjcpxUGuH93G12iMVNcTYteTbRvaovdeQdfjc6", isSigner: true, isWritable: true });
+    expect(() => checkSwapInstructions(parseSwapInstructions(f), { puller: PULLER })).toThrow(/signer/);
+  });
+
+  it("requires the fee account and the destination account to appear in the swap when they were requested", () => {
+    const parsed = parseSwapInstructions(fixture);
+    expect(() => checkSwapInstructions(parsed, { puller: PULLER, feeAccount: "8KiTtZXjcpxUGuH93G12iMVNcTYteTbRvaovdeQdfjc6" })).toThrow(/fee account/);
+    expect(() => checkSwapInstructions(parsed, { puller: PULLER, destination: "8KiTtZXjcpxUGuH93G12iMVNcTYteTbRvaovdeQdfjc6" })).toThrow(/destination/);
+    const f = clone();
+    f.swapInstruction.accounts.push({ pubkey: "8KiTtZXjcpxUGuH93G12iMVNcTYteTbRvaovdeQdfjc6", isSigner: false, isWritable: true });
+    expect(() => checkSwapInstructions(parseSwapInstructions(f), { puller: PULLER, feeAccount: "8KiTtZXjcpxUGuH93G12iMVNcTYteTbRvaovdeQdfjc6" })).not.toThrow();
+  });
+});
 
 describe("jupiter instruction conversion", () => {
   it("maps signer and writable flags to kit roles", () => {
