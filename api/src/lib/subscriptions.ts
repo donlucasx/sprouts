@@ -9,6 +9,7 @@ import {
   findSubscriptionAuthorityPda,
   findRecurringDelegationPda,
   fetchMaybeRecurringDelegation,
+  fetchMaybeSubscriptionAuthority,
   UNKNOWN_INIT_ID,
 } from "@solana/subscriptions";
 import { USDC_MINT } from "./constants";
@@ -27,11 +28,12 @@ export async function usdcAta(owner: Address): Promise<Address> {
  * authority (the program becomes the delegate on the USDC account); the second creates the recurring delegation to the puller:
  * `capRaw` per day, starting now, no expiry. The nonce seeds the delegation address, so it is generated at link time and stored.
  * The wallet signs later (Phantom or Mobile Wallet Adapter), so the signer here is a placeholder.
+ *
+ * Re-link: a wallet whose USDC subscription authority already exists (it linked before, or revoked only the delegation) gets
+ * the create alone, carrying that authority's live `initId`; re-running the init would fail on chain.
  */
-export async function buildApproveOnceIxs(a: { delegator: Address; delegatee: Address; capRaw: bigint; nonce: bigint }): Promise<Instruction[]> {
+export async function buildApproveOnceIxs(a: { delegator: Address; delegatee: Address; capRaw: bigint; nonce: bigint; existingInitId?: bigint }): Promise<Instruction[]> {
   const owner = createNoopSigner(a.delegator);
-  const userAta = await usdcAta(a.delegator);
-  const init = await getInitSubscriptionAuthorityOverlayInstructionAsync({ owner, tokenMint: USDC_MINT, tokenProgram: TOKEN_PROGRAM_ADDRESS, userAta });
   const create = await getCreateRecurringDelegationOverlayInstructionAsync({
     delegator: owner,
     delegatee: a.delegatee,
@@ -43,11 +45,22 @@ export async function buildApproveOnceIxs(a: { delegator: Address; delegatee: Ad
     nonce: a.nonce,
     // One-transaction signup: the authority is initialised by the instruction before this one, so its init id is not known
     // yet; the SDK's sentinel tells the program to accept an authority initialised in the current slot (0 fails with error
-    // 136 STALE_SUBSCRIPTION_AUTHORITY). A wallet that already has an authority needs its live init id instead (read the
-    // SubscriptionAuthority account); re-linking is a Plan 2 concern.
-    expectedSubscriptionAuthorityInitId: UNKNOWN_INIT_ID,
+    // 136 STALE_SUBSCRIPTION_AUTHORITY). An existing authority needs its live init id instead (`readSubscriptionAuthority`).
+    expectedSubscriptionAuthorityInitId: a.existingInitId ?? UNKNOWN_INIT_ID,
   });
+  if (a.existingInitId !== undefined) return [create];
+  const userAta = await usdcAta(a.delegator);
+  const init = await getInitSubscriptionAuthorityOverlayInstructionAsync({ owner, tokenMint: USDC_MINT, tokenProgram: TOKEN_PROGRAM_ADDRESS, userAta });
   return [init, create];
+}
+
+export type SubscriptionAuthorityState = { exists: false } | { exists: true; initId: bigint };
+
+/** Whether the wallet's USDC subscription authority is already on chain, and its init id if so (needed to re-link). */
+export async function readSubscriptionAuthority(delegator: Address): Promise<SubscriptionAuthorityState> {
+  const [pda] = await findSubscriptionAuthorityPda({ user: delegator, tokenMint: USDC_MINT });
+  const maybe = await fetchMaybeSubscriptionAuthority(rpc(), pda);
+  return maybe.exists ? { exists: true, initId: BigInt(maybe.data.initId) } : { exists: false };
 }
 
 /** The recurring delegation account for a delegator, delegatee and nonce: seeded by the delegator's subscription authority. */
