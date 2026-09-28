@@ -6,7 +6,7 @@ Acorns for the Solana Seeker. You approve once, on each trading wallet, and neve
 
 ## The safety story, stated plainly
 
-The puller key is hot. Its authority is at most the daily limit, revocable on chain in one tap, and custody lasts one transaction. The recurring track of the Subscriptions program has no destination binding, so the limit and the revoke are the safety, plus the key in a Vercel secret and this open-source repo.
+The puller key is hot. Its authority is at most the daily limit, revocable on chain in one tap, and custody lasts one transaction. The recurring track of the Subscriptions program has no destination binding, so the limit and the revoke are the safety, plus the key in a Vercel secret and this open-source repo. A wallet holds one delegation to the puller: re-approving revokes the previous one in the same transaction, so the limit is per wallet, not per approval. Every Jupiter response is checked before the puller signs it (the aggregator program, an allowlist for helper programs, no signer but the puller, the fee and destination accounts present).
 
 ## What is here
 

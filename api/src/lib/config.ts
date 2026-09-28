@@ -33,10 +33,11 @@ let cached: Config | null = null;
 /** Each setting is validated when it is first read, so a script that needs only the RPC URL runs without the rest. */
 export function config(): Config {
   if (cached) return cached;
+  // Non-enumerable getters and a redacting toJSON: a stray console.log(config()) or a spread never prints a secret (review M11).
   const out = {} as Config;
   for (const key of Object.keys(MAP) as (keyof Config)[]) {
     Object.defineProperty(out, key, {
-      enumerable: true,
+      enumerable: false,
       get() {
         const value = process.env[MAP[key]];
         if (!value) throw new Error(`Missing env: ${MAP[key]}`);
@@ -44,6 +45,7 @@ export function config(): Config {
       },
     });
   }
+  Object.defineProperty(out, "toJSON", { enumerable: false, value: () => "[config: values redacted]" });
   cached = out;
   return cached;
 }

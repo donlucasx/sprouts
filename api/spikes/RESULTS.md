@@ -81,13 +81,13 @@ Reading: `TransferRecurring` + Jupiter swap (with the 0.5% platform fee to the f
 | The throwaway (delegated 09-25) | authority EXISTS, initId 450487017 (the init slot), so its next approve-once is the create alone, carrying that id |
 | The puller (never delegated) | authority MISSING, so it would get the two-instruction approval (init, then create) |
 
-`spikes/resolve-seeker.ts hammathyme.skr`: forward resolves to the Seed Vault key; the reverse now returns `hammathyme.skr` through the fallback (list the key's .skr names when no main domain is set; it returned null on 09-25); Genesis OK; position **5,260,937 raw** SKR.
+`spikes/resolve-seeker.ts <the Seeker's name>.skr`: forward resolves to the Seed Vault key; the reverse now returns `<the Seeker's name>.skr` through the fallback (list the key's .skr names when no main domain is set; it returned null on 09-25); Genesis OK; position **5,260,937 raw** SKR.
 
 Observation for the fruit audit: the position read 5,256,186 raw right after the planting earlier today and 5,260,937 raw this evening, +4,751 raw = +0.0904%, with no new planting. That is one reward step landing in the share price; 0.09% is what 16.4% APY pays over about two days, so rewards look like they land in discrete epoch-sized steps rather than per slot, and a fresh planting received a full step. Single observation, not yet a rule: watch the next step.
 
 ## Demo planting 1 of 2 (2026-09-28, R59: about $10 into his position this week)
 
-`spikes/plant-once.ts Hammathyme.skr SKR 4.90 --send`, run by Lucas in Terminal: delegation `Fjos…` had 0.10 pulled of its 5 USDC period; built 991 bytes, expected out 268,683,463, minimum 265,996,629; simulation OK, 80,987 CU; **PLANTED** `4SR57eMDRsRCsTCikXP9tA9A9oMEqwchCcKR2PcDyPQCDnnB3RxFczD8jN9KX4pPRskx5LxKwqi9xNfUzNvwjZCx`; position 5,260,937 -> 271,257,565 raw (+265,996,628, the quoted minimum less one raw unit again). The second $5 planting follows after the period rolls at 22:28Z.
+`spikes/plant-once.ts <the Seeker's name>.skr SKR 4.90 --send`, run by Lucas in Terminal: delegation `Fjos…` had 0.10 pulled of its 5 USDC period; built 991 bytes, expected out 268,683,463, minimum 265,996,629; simulation OK, 80,987 CU; **PLANTED** `4SR57eMDRsRCsTCikXP9tA9A9oMEqwchCcKR2PcDyPQCDnnB3RxFczD8jN9KX4pPRskx5LxKwqi9xNfUzNvwjZCx`; position 5,260,937 -> 271,257,565 raw (+265,996,628, the quoted minimum less one raw unit again). The second $5 planting follows after the period rolls at 22:28Z.
 
 ## Day 4: the loop end to end, first planting from booked data (2026-09-28, Task 15 step 4)
 
@@ -95,7 +95,7 @@ Run by Lucas in Terminal (deploy 8xeyv4ww of HEAD 39bbe05 to https://sprouts-api
 
 | Step | Result |
 | --- | --- |
-| Link (re-link path, production) | `link-throwaway.ts Hammathyme.skr --send`: user row `hammathyme.skr`, code N9W2CW, approval = ONE instruction (the throwaway's authority existed), 353 bytes, 5,075 CU; sent `2dQBdk9rQfzQbDA1oq5kAwUtrEC9h1QdUQn6mkDGyDJRKQt9nEY3CSRPnEo5cTmqzjMK8yxHExPdHcsjhS1TvRBx`; second delegation `58TBSbJXXYyRv7SmKbsAZRWhpiVAZFqnCfQLdWEKDXon` (5 USDC/day); confirm 200 `{linked:true, skrName:"hammathyme.skr"}`; wallet row active. Bug found: the row's `webhook_added` stayed false while the event said true (fixed the same day, test-first: the add runs before the insert and the row carries the outcome). |
+| Link (re-link path, production) | `link-throwaway.ts <the Seeker's name>.skr --send`: user row `<the Seeker's name>.skr`, code N9W2CW, approval = ONE instruction (the throwaway's authority existed), 353 bytes, 5,075 CU; sent `2dQBdk9rQfzQbDA1oq5kAwUtrEC9h1QdUQn6mkDGyDJRKQt9nEY3CSRPnEo5cTmqzjMK8yxHExPdHcsjhS1TvRBx`; second delegation `58TBSbJXXYyRv7SmKbsAZRWhpiVAZFqnCfQLdWEKDXon` (5 USDC/day); confirm 200 `{linked:true, skrName:"<the Seeker's name>.skr"}`; wallet row active. Bug found: the row's `webhook_added` stayed false while the event said true (fixed the same day, test-first: the add runs before the insert and the row carries the outcome). |
 | Swap (real money) | `swap-once.ts 0.80 --send`: 0.80 USDC -> 227,946 BONK via Byreal + Whirlpool + Meteora DLMM, 192,138 CU; `57ZG6En3QqgpDgkt81Bxef3vzbiBB1QNvyFwsYZvXBPx42kbvMASdnHNttRARWr6HSMkdemgKiu1eKGShxpfXNJF` |
 | Webhook | booked within seconds: `swaps` row size 80c, round-up 20c (the throwaway had been seeded on webhook `d9fd27e8…` at creation; the Helius read lists it) |
 | Rules | `set-rules.ts <seeker> plantThresholdCents=10` (200 -> 10) so one round-up plants instead of waiting for the 7-day rule |

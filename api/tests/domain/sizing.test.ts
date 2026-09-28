@@ -6,6 +6,12 @@ const BONK = "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263";
 const prices = async (m: string) => (m === WSOL ? 150 : m === USDC ? 1 : null);
 
 describe("usdSizeCents", () => {
+  // Review M8: a NaN amount (a malformed webhook item) is "unpriced", never a NaN round-up that breaks the insert.
+  it("a NaN or infinite amount is unpriced", async () => {
+    expect(await usdSizeCents({ wallet: "w", inMint: USDC, inAmount: Number.NaN, outMint: BONK, outAmount: 1e6 }, prices)).toBeNull();
+    expect(await usdSizeCents({ wallet: "w", inMint: WSOL, inAmount: Number.POSITIVE_INFINITY, outMint: BONK, outAmount: Number.NaN }, prices)).toBeNull();
+  });
+
   it("uses the USDC leg as is", async () => {
     expect(await usdSizeCents({ wallet: "w", inMint: USDC, inAmount: 12.34, outMint: BONK, outAmount: 1e6 }, prices)).toBe(1234);
   });

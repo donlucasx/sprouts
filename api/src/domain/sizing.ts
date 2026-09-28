@@ -12,10 +12,11 @@ export type PriceLookup = (mint: string) => Promise<number | null>;
  * Null when nothing can be priced: the caller books the swap with no round-up rather than blocking later swaps.
  */
 export async function usdSizeCents(legs: SwapLegs, priceUsd: PriceLookup): Promise<number | null> {
+  // A malformed item (NaN or infinite amount) is unpriced, never a NaN round-up that breaks the insert (review M8).
   const candidates = [
     { mint: legs.inMint, amount: legs.inAmount },
     { mint: legs.outMint, amount: legs.outAmount },
-  ];
+  ].filter((c) => Number.isFinite(c.amount) && c.amount >= 0);
   const stable = candidates.find((c) => STABLES.has(c.mint));
   if (stable) return Math.round(stable.amount * 100);
   const ordered = [...candidates.filter((c) => c.mint === WSOL), ...candidates.filter((c) => c.mint !== WSOL)];
