@@ -41,3 +41,6 @@ yarn-error.log*
 next-env.d.ts
 supabase/.temp/
 spikes/keys/
+
+# local run logs (scheduled plantings etc.)
+*.log

@@ -27,6 +27,17 @@ describe("extractSwapLegs", () => {
 });
 
 describe("bookSwap", () => {
+  // Review M14: when the Seed Vault key is also the trading wallet, a stORE planting moves USDC out of it and stORE into it,
+  // so the fallback scan would book Sprouts' own planting as a swap; anything the puller paid for is skipped.
+  it("never books a transaction the puller paid for", async () => {
+    const repo = await repoWithWallet();
+    const tx = clone();
+    tx.feePayer = "PULLER";
+    const r = await bookSwap({ repo, tx, priceUsd: prices, ignoreFeePayer: "PULLER" });
+    expect(r.booked).toBe(false);
+    expect((await repo.unplantedSwaps("WALLET")).length).toBe(0);
+  });
+
   it("books a $1.17 memecoin swap as an 83-cent round-up", async () => {
     const repo = await repoWithWallet();
     expect(await bookSwap({ repo, tx: fixture, priceUsd: prices })).toEqual({ booked: true, walletPubkey: "WALLET", roundupCents: 83 });

@@ -22,6 +22,16 @@ describe("config", () => {
     for (const k of Object.keys(ALL)) delete process.env[k];
   });
 
+  // Review M11: a stray console.log(config()) or a spread must never print a secret.
+  it("serializes and spreads without any value", () => {
+    Object.assign(process.env, ALL);
+    const c = config();
+    expect(JSON.stringify(c)).not.toContain("sess");
+    expect(JSON.stringify(c)).not.toContain("cron");
+    expect(Object.keys({ ...c })).toEqual([]);
+    expect(c.sessionSecret).toBe("sess");
+  });
+
   it("reads every variable", () => {
     Object.assign(process.env, ALL);
     expect(config().jupiterApiKey).toBe("j");

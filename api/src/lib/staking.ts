@@ -59,14 +59,14 @@ export async function buildWithdrawIx(a: { user: Address }): Promise<Instruction
 export async function crankWithdraw(user: Address): Promise<string> {
   const puller = await pullerSigner();
   const { value: { blockhash, lastValidBlockHeight } } = await rpc().getLatestBlockhash().send();
+  const withdrawIx = await buildWithdrawIx({ user });
   const message = pipe(
     createTransactionMessage({ version: 0 }),
     (m) => setTransactionMessageFeePayerSigner(puller, m),
     (m) => setTransactionMessageLifetimeUsingBlockhash({ blockhash, lastValidBlockHeight }, m),
-    (m) => appendTransactionMessageInstructions([], m),
+    (m) => appendTransactionMessageInstructions([withdrawIx], m),
   );
-  const withIx = appendTransactionMessageInstructions([await buildWithdrawIx({ user })], message);
-  const tx = await signTransactionMessageWithSigners(withIx);
+  const tx = await signTransactionMessageWithSigners(message);
   assertIsTransactionWithBlockhashLifetime(tx);
   const send = sendAndConfirmTransactionFactory({ rpc: rpc(), rpcSubscriptions: createSolanaRpcSubscriptions(config().heliusRpcUrl.replace("https://", "wss://")) });
   await send(tx, { commitment: "confirmed" });

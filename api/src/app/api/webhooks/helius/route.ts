@@ -4,6 +4,7 @@ import { getRepo } from "@/db/repo";
 import { config } from "@/lib/config";
 import { bookSwap, type HeliusEnhancedTx } from "@/lib/book-swap";
 import { priceUsd } from "@/lib/jupiter";
+import { pullerSigner } from "@/lib/puller";
 import type { PriceLookup } from "@/domain/sizing";
 
 export const runtime = "nodejs";
@@ -31,9 +32,10 @@ export async function POST(request: Request) {
 
   after(async () => {
     const repo = await getRepo();
+    const puller = (await pullerSigner()).address;
     for (const tx of items) {
       try {
-        const r = await bookSwap({ repo, tx, priceUsd: boundedPrice });
+        const r = await bookSwap({ repo, tx, priceUsd: boundedPrice, ignoreFeePayer: puller });
         if (r.booked) console.log(`booked ${tx.signature} for ${r.walletPubkey}: ${r.roundupCents} cents`);
       } catch (e) {
         console.error(`webhook item failed ${tx?.signature ?? "?"}: ${e instanceof Error ? e.message : String(e)}`);

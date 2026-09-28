@@ -46,9 +46,13 @@ export function extractSwapLegs(tx: HeliusEnhancedTx, wallet: string): SwapLegs 
 
 export type BookResult = { booked: true; walletPubkey: string; roundupCents: number } | { booked: false };
 
-/** Book one swap for the first known, non-revoked wallet among its parties: size it, class it, compute the round-up, insert once. */
-export async function bookSwap(a: { repo: Repo; tx: HeliusEnhancedTx; priceUsd: PriceLookup }): Promise<BookResult> {
+/**
+ * Book one swap for the first known, non-revoked wallet among its parties: size it, class it, compute the round-up, insert once.
+ * A transaction the puller paid for is one of Sprouts' own plantings, never a swap to round up (review M14).
+ */
+export async function bookSwap(a: { repo: Repo; tx: HeliusEnhancedTx; priceUsd: PriceLookup; ignoreFeePayer?: string }): Promise<BookResult> {
   if (a.tx.type !== "SWAP") return { booked: false };
+  if (a.ignoreFeePayer && a.tx.feePayer === a.ignoreFeePayer) return { booked: false };
   const parties = new Set<string>([a.tx.feePayer]);
   for (const t of a.tx.tokenTransfers) { parties.add(t.fromUserAccount); parties.add(t.toUserAccount); }
   for (const t of a.tx.events?.swap?.tokenInputs ?? []) parties.add(t.userAccount);
