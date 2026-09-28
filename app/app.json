@@ -1,0 +1,81 @@
+{
+  "expo": {
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#F4EEDF",
+        "backgroundImage": "./assets/images/android-icon-background.png",
+        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+      },
+      "package": "money.sprouts.app",
+      "predictiveBackGestureEnabled": false
+    },
+    "experiments": {
+      "reactCompiler": true,
+      "typedRoutes": true
+    },
+    "icon": "./assets/images/icon.png",
+    "ios": {
+      "icon": "./assets/expo.icon"
+    },
+    "name": "Sprouts",
+    "orientation": "portrait",
+    "plugins": [
+      [
+        "expo-dev-client",
+        {
+          "launchMode": "most-recent"
+        }
+      ],
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 120,
+          "backgroundColor": "#F4EEDF"
+        }
+      ],
+      "expo-status-bar",
+      "expo-secure-store",
+      [
+        "expo-notifications",
+        {
+          "defaultChannel": "plantings"
+        }
+      ],
+      "expo-background-task",
+      [
+        "react-native-android-widget",
+        {
+          "widgets": [
+            {
+              "name": "Sprouts",
+              "label": "Sprouts",
+              "minWidth": "160dp",
+              "minHeight": "110dp",
+              "description": "Your garden",
+              "previewImage": "./assets/widget-preview.png",
+              "updatePeriodMillis": 1800000
+            }
+          ]
+        }
+      ]
+    ],
+    "scheme": "sprouts",
+    "slug": "sprouts",
+    "userInterfaceStyle": "automatic",
+    "web": {
+      "favicon": "./assets/images/favicon.png",
+      "output": "static"
+    },
+    "version": "0.1.0",
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "f0c7cdcc-66d4-445b-9e81-8ef5035cbc31"
+      }
+    },
+    "owner": "donlucas"
+  }
+}
