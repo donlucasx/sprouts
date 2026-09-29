@@ -69,7 +69,7 @@ export default function Connect() {
   }
 
   return (
-    <Screen>
+    <Screen back>
       <Text style={{ fontSize: 24, color: "#2F5D3A", fontStyle: "italic", fontFamily: "serif" }}>Link a wallet</Text>
       <Text style={{ fontSize: 16, lineHeight: 24, color: "#2B2B2B" }}>
         Every swap from a linked wallet rounds up to the next dollar. The change is pulled once a day, up to $5, and planted into your garden. You approve once; you can revoke any time. Under a dollar of rent, refunded when you revoke. The underlying approval is unlimited; the program enforces the limit.
@@ -84,7 +84,8 @@ export default function Connect() {
         {code ? (
           <View style={{ gap: 6 }}>
             <Text style={{ fontSize: 34, letterSpacing: 6, fontWeight: "700", color: "#2B2B2B" }}>{code}</Text>
-            <Text style={{ fontSize: 14, color: "#6B6558" }}>Open sprouts.money/link on the computer with that wallet, enter this code, approve with Phantom. The code lasts 15 minutes.</Text>
+            <Text style={{ fontSize: 14, color: "#6B6558" }}>Open sprouts.money/link on the computer with that wallet, enter this code, and approve with that wallet. The code lasts 15 minutes and works for one wallet.</Text>
+            <Button title="Get a new code" kind="quiet" disabled={busy} onPress={codeForAnotherWallet} />
           </View>
         ) : (
           <Button title="Get a code" kind="quiet" disabled={busy} onPress={codeForAnotherWallet} />

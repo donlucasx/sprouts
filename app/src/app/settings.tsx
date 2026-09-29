@@ -49,7 +49,7 @@ export default function Settings() {
   }
 
   return (
-    <Screen>
+    <Screen back>
       <Text style={{ fontSize: 24, color: "#2F5D3A", fontStyle: "italic", fontFamily: "serif" }}>Settings</Text>
       <Card>
         <Text style={{ fontSize: 17, fontWeight: "600", color: "#2B2B2B" }}>Your Seeker</Text>

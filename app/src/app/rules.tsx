@@ -40,7 +40,7 @@ export default function Rules() {
   const invalidate = useInvalidateMe();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  if (!me) return <Screen><Text style={{ color: "#6B6558" }}>Loading</Text></Screen>;
+  if (!me) return <Screen back><Text style={{ color: "#6B6558" }}>Loading</Text></Screen>;
   const r = me.rules;
 
   /** Saves a change; raising the daily limit asks the Seeker for one fingerprint first (R84). */
@@ -99,7 +99,7 @@ export default function Rules() {
   const sentence = `${r.roundupOn ? "Round up every swap to the next dollar" : "No round-up"}${r.pctOn ? `, plus ${r.pctBps / 100}% on swaps of ${formatUsd(r.pctThresholdCents)} or more` : ""}. Plant when the change reaches ${formatUsd(r.plantThresholdCents)} or after ${r.plantMaxDays} days, at most ${formatUsd(r.dailyCapCents)} a day.`;
 
   return (
-    <Screen>
+    <Screen back>
       <Text style={{ fontSize: 24, color: "#2F5D3A", fontStyle: "italic", fontFamily: "serif" }}>Rules</Text>
       <Card>
         <Row label="Round up to the next dollar"><Switch value={r.roundupOn} disabled={busy} onValueChange={(v) => save({ roundupOn: v })} /></Row>
