@@ -40,7 +40,7 @@ export default function Welcome() {
         }}
       />
       {error ? <Text style={{ color: "#8C2F2F", fontSize: 15 }}>{error}</Text> : null}
-      <Text style={{ fontSize: 14, color: "#6B6558" }}>No transaction, no fee. The vault needs a Seeker with its Genesis Token.</Text>
+      <Text style={{ fontSize: 14, color: "#6B6558" }}>No transaction, no fee. The vault needs a Seeker or a Saga with its Genesis Token.</Text>
     </Screen>
   );
 }

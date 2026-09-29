@@ -37,7 +37,7 @@ export class SupabaseRepo implements Repo {
       return { row: { ...existing, skrName: u.skrName }, created: false };
     }
     const { data, error } = await this.db.from("users").insert({ seed_vault_pubkey: u.seedVaultPubkey, sgt_mint: u.sgtMint, skr_name: u.skrName }).select().single();
-    if (error) throw new Error(error.code === UNIQUE_VIOLATION ? "This Seeker is already registered." : error.message);
+    if (error) throw new Error(error.code === UNIQUE_VIOLATION ? "This phone is already registered." : error.message);
     return { row: userRow(data as Row), created: true };
   }
 

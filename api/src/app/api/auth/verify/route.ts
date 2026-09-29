@@ -3,7 +3,7 @@ import { z } from "zod";
 import { getRepo } from "@/db/repo";
 import { config } from "@/lib/config";
 import { verifySignIn, type SignInInput } from "@/lib/siws";
-import { verifyGenesisHolder } from "@/lib/genesis";
+import { verifyAnyGenesisHolder } from "@/lib/genesis";
 import { skrNameOf } from "@/lib/skr";
 import { issueSession } from "@/lib/session";
 import { readPosition, sharePrice } from "@/lib/staking";
@@ -22,7 +22,7 @@ const Body = z.object({
 });
 
 /**
- * Step two of sign-in: verify the signature, consume the nonce, require a Genesis Token, register the Seeker, issue a session.
+ * Step two of sign-in: verify the signature, consume the nonce, require a Genesis Token (Seeker or Saga, R86), register the phone, issue a session.
  * Every entitlement decision happens here, never on the phone.
  */
 export async function POST(request: Request) {
@@ -41,15 +41,15 @@ export async function POST(request: Request) {
   if (!(await repo.useNonce(input.nonce, output.address))) return NextResponse.json({ error: "This sign-in request expired. Try again." }, { status: 401 });
 
   const rpcUrl = config().heliusRpcUrl;
-  const genesis = await verifyGenesisHolder(rpcUrl, output.address);
-  if (!genesis) return NextResponse.json({ error: "This wallet holds no Seeker Genesis Token. The vault needs a Seeker." }, { status: 403 });
+  const genesis = await verifyAnyGenesisHolder(rpcUrl, output.address);
+  if (!genesis) return NextResponse.json({ error: "This wallet holds no Genesis Token. The vault needs a Seeker or a Saga." }, { status: 403 });
 
   const skrName = await skrNameOf(rpcUrl, output.address);
   let created: boolean;
   try {
     ({ created } = await repo.upsertUser({ seedVaultPubkey: output.address, sgtMint: genesis.mint, skrName }));
   } catch (e) {
-    if (e instanceof Error && e.message === "This Seeker is already registered.") return NextResponse.json({ error: e.message }, { status: 409 });
+    if (e instanceof Error && e.message === "This phone is already registered.") return NextResponse.json({ error: e.message }, { status: 409 });
     throw e;
   }
   if (created) {
