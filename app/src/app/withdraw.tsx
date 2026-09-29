@@ -76,7 +76,7 @@ export default function Withdraw() {
         <Card>
           <Text style={{ fontSize: 18, color: "#2B2B2B" }}>{formatSkr(BigInt(me.basket.amountRaw), skrUsd)}</Text>
           <Text style={{ fontSize: 15, color: "#6B6558" }}>
-            Arrives {new Date(me.basket.readyAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric" })}. It stopped earning when you signed. One basket at a time: your Seeker's wallet cannot start another withdrawal until this one arrives.
+            Arrives {new Date(me.basket.readyAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric" })}. It stopped earning when you signed. {"One basket at a time: your Seeker's wallet cannot start another withdrawal until this one arrives."}
           </Text>
           <Button title={busy ? "Waiting for your Seeker" : "Put it back"} kind="quiet" disabled={busy} onPress={putBack} />
         </Card>

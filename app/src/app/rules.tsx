@@ -11,7 +11,7 @@ import { freshSignIn } from "@/lib/signin";
 import { formatUsd } from "@/lib/format";
 import { useSession } from "@/lib/session";
 
-type Rules = MeResponse["rules"];
+type RulesShape = MeResponse["rules"];
 
 function Stepper({ label, value, step, min, max, format, onChange }: { label: string; value: number; step: number; min: number; max: number; format: (v: number) => string; onChange: (v: number) => void }) {
   return (
@@ -44,7 +44,7 @@ export default function Rules() {
   const r = me.rules;
 
   /** Saves a change; raising the daily limit asks the Seeker for one fingerprint first (R84). */
-  async function save(patch: Partial<Rules>) {
+  async function save(patch: Partial<RulesShape>) {
     setBusy(true);
     setError(null);
     try {
@@ -121,7 +121,7 @@ export default function Rules() {
             </View>
           </View>
         ))}
-        <Text style={{ fontSize: 13, color: "#6B6558" }}>Revoke removes Sprouts' authority on chain and leaves the wallet with no delegate. Nothing in your garden moves.</Text>
+        <Text style={{ fontSize: 13, color: "#6B6558" }}>{"Revoke removes Sprouts' authority on chain and leaves the wallet with no delegate. Nothing in your garden moves."}</Text>
       </Card>
       {error ? <Text style={{ color: "#8C2F2F" }}>{error}</Text> : null}
     </Screen>

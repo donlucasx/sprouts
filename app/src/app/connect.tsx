@@ -56,7 +56,7 @@ export default function Connect() {
         Every swap from a linked wallet rounds up to the next dollar. The change is pulled once a day, up to $5, and planted into your garden. You approve once; you can revoke any time. Under a dollar of rent, refunded when you revoke. The underlying approval is unlimited; the program enforces the limit.
       </Text>
       <Card>
-        <Text style={{ fontSize: 17, fontWeight: "600", color: "#2B2B2B" }}>This phone's wallet</Text>
+        <Text style={{ fontSize: 17, fontWeight: "600", color: "#2B2B2B" }}>{"This phone's wallet"}</Text>
         <Text style={{ fontSize: 14, color: "#6B6558" }}>One fingerprint. Daily limit $5.</Text>
         <Button title={busy ? "Waiting for your Seeker" : "Approve"} disabled={busy} onPress={linkThisPhone} />
       </Card>
