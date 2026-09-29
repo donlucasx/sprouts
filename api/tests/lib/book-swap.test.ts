@@ -21,6 +21,22 @@ describe("extractSwapLegs", () => {
     expect(extractSwapLegs(fixture, "WALLET")).toEqual({ wallet: "WALLET", inMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", inAmount: 1.17, outMint: BONK, outAmount: 52000.5 });
   });
 
+  // The real Helius swap event nests token amounts as rawTokenAmount; this is the 09-29 Phantom dust swap (36vBH26K…),
+  // which failed to book with out_amount null because the flat tokenAmount the fixture assumed does not exist.
+  it("reads rawTokenAmount from a real Helius swap event (SOL in, USDC out)", () => {
+    const tx: HeliusEnhancedTx = {
+      signature: "36vBH26K", timestamp: 1790630280, type: "SWAP", feePayer: "WALLET", tokenTransfers: [],
+      events: { swap: {
+        nativeInput: { account: "WALLET", amount: "20000000" }, nativeOutput: null, tokenInputs: [],
+        tokenOutputs: [{ userAccount: "WALLET", mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", rawTokenAmount: { tokenAmount: "2380122", decimals: 6 } }],
+      } },
+    };
+    expect(extractSwapLegs(tx, "WALLET")).toEqual({
+      wallet: "WALLET", inMint: "So11111111111111111111111111111111111111112", inAmount: 0.02,
+      outMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", outAmount: 2.380122,
+    });
+  });
+
   it("returns null for a wallet not in the transfers", () => {
     expect(extractSwapLegs(fixture, "SOMEONE")).toBeNull();
   });
@@ -85,7 +101,7 @@ describe("bookSwap", () => {
     const tx = clone();
     tx.signature = "sig-sol";
     tx.tokenTransfers = [tx.tokenTransfers[1]];
-    tx.events = { swap: { nativeInput: { account: "WALLET", amount: "10000000" }, tokenOutputs: [{ userAccount: "WALLET", mint: BONK, tokenAmount: 52000.5 }] } };
+    tx.events = { swap: { nativeInput: { account: "WALLET", amount: "10000000" }, tokenOutputs: [{ userAccount: "WALLET", mint: BONK, rawTokenAmount: { tokenAmount: "5200050000", decimals: 5 } }] } };
     expect(roundup(await bookSwap({ repo, tx, priceUsd: prices }))).toBe(50);
   });
 

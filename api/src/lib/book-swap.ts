@@ -15,13 +15,18 @@ export type HeliusEnhancedTx = {
     swap?: {
       nativeInput?: { account: string; amount: string } | null;
       nativeOutput?: { account: string; amount: string } | null;
-      tokenInputs?: { userAccount: string; mint: string; tokenAmount: number }[];
-      tokenOutputs?: { userAccount: string; mint: string; tokenAmount: number }[];
+      tokenInputs?: SwapTokenLeg[];
+      tokenOutputs?: SwapTokenLeg[];
     };
   };
 };
 
+/** A token leg of the swap event: Helius nests the amount as raw units plus decimals (there is no flat tokenAmount). */
+type SwapTokenLeg = { userAccount: string; mint: string; rawTokenAmount: { tokenAmount: string; decimals: number } };
+
 const LAMPORTS = 1e9;
+
+const legAmount = (t: SwapTokenLeg) => Number(t.rawTokenAmount.tokenAmount) / 10 ** t.rawTokenAmount.decimals;
 
 /**
  * The wallet's own in and out legs. The swap event is preferred (it names the wallet's legs, native SOL included);
@@ -30,8 +35,10 @@ const LAMPORTS = 1e9;
 export function extractSwapLegs(tx: HeliusEnhancedTx, wallet: string): SwapLegs | null {
   const ev = tx.events?.swap;
   if (ev) {
-    const tokenIn = ev.tokenInputs?.find((t) => t.userAccount === wallet);
-    const tokenOut = ev.tokenOutputs?.find((t) => t.userAccount === wallet);
+    const tokenInLeg = ev.tokenInputs?.find((t) => t.userAccount === wallet);
+    const tokenOutLeg = ev.tokenOutputs?.find((t) => t.userAccount === wallet);
+    const tokenIn = tokenInLeg && { mint: tokenInLeg.mint, tokenAmount: legAmount(tokenInLeg) };
+    const tokenOut = tokenOutLeg && { mint: tokenOutLeg.mint, tokenAmount: legAmount(tokenOutLeg) };
     const nativeIn = ev.nativeInput && ev.nativeInput.account === wallet ? { mint: WSOL, tokenAmount: Number(ev.nativeInput.amount) / LAMPORTS } : undefined;
     const nativeOut = ev.nativeOutput && ev.nativeOutput.account === wallet ? { mint: WSOL, tokenAmount: Number(ev.nativeOutput.amount) / LAMPORTS } : undefined;
     const inn = tokenIn ?? nativeIn;
