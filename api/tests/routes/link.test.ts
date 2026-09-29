@@ -2,31 +2,36 @@ import { describe, it, expect, beforeEach, beforeAll, vi } from "vitest";
 import { MemoryRepo } from "@/db/memory";
 import { setRepoForTests } from "@/db/repo";
 import { issueSession } from "@/lib/session";
-import { getBase64Encoder, getCompiledTransactionMessageDecoder, getTransactionDecoder } from "@solana/kit";
+import { getBase64Encoder, getCompiledTransactionMessageDecoder, getTransactionDecoder, getBase64EncodedWireTransaction, generateKeyPairSigner, signTransaction, type KeyPairSigner } from "@solana/kit";
 
 vi.mock("@/lib/subscriptions", async (orig) => ({
   ...(await orig<object>()),
   readDelegation: vi.fn(async () => ({ exists: true, amountPerPeriodRaw: 5_000_000n, pulledInPeriodRaw: 0n, periodStartTs: 0n, periodLengthS: 86_400n })),
-  // a different (valid) address per nonce parity, so a re-link gets a new delegation address like it does on chain
-  delegationPda: vi.fn(async (a: { nonce: bigint }) => (a.nonce % 2n === 0n ? "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v" : "SKRbvo6Gf7GondiT3BbTfuRDPqLWei4j2Qy2NPGZhW3")),
   readSubscriptionAuthority: vi.fn(async () => ({ exists: false })),
 }));
 vi.mock("@/lib/helius", () => ({ heliusAddAddress: vi.fn(async () => undefined) }));
 vi.mock("@/lib/puller", () => ({ pullerSigner: vi.fn(async () => ({ address: "4wiD3N7FrBNJSmZUQDkGHM4CsvDrvyvx7G1FApLGEbJ1" })) }));
 vi.mock("@/lib/rpc", () => ({
-  rpc: () => ({ getLatestBlockhash: () => ({ send: async () => ({ value: { blockhash: "GHtXQBsoZHVnNFa9YevAzFr17DJjgHXk3ycTKD5xD3Zi", lastValidBlockHeight: 1n } }) }) }),
+  rpc: () => ({
+    getLatestBlockhash: () => ({ send: async () => ({ value: { blockhash: "GHtXQBsoZHVnNFa9YevAzFr17DJjgHXk3ycTKD5xD3Zi", lastValidBlockHeight: 1n } }) }),
+    sendTransaction: () => ({ send: async () => "sig" }),
+  }),
 }));
 
 import { POST as newCode } from "@/app/api/link/new/route";
 import { GET as getTx } from "@/app/api/link/[code]/route";
 import { POST as confirm } from "@/app/api/link/confirm/route";
 
-const WALLET = "9H7ChDC2o32wC8jcpVDjLGQhwyx1hmLW1fiCjsjUuzFm";
+// The wallet is a throwaway keypair so a test can sign the approval the GET builds (Task 5).
+let WALLET = "9H7ChDC2o32wC8jcpVDjLGQhwyx1hmLW1fiCjsjUuzFm";
+let walletKeyPair: KeyPairSigner;
 const OTHER = "8KiTtZXjcpxUGuH93G12iMVNcTYteTbRvaovdeQdfjc6";
 
-beforeAll(() => {
+beforeAll(async () => {
   process.env.SESSION_SECRET ??= "test-secret-test-secret-test-secret";
   process.env.HELIUS_WEBHOOK_ID ??= "hook-1";
+  walletKeyPair = await generateKeyPairSigner();
+  WALLET = walletKeyPair.address;
 });
 
 async function mintCode(repo: MemoryRepo) {
@@ -136,6 +141,24 @@ describe("link flow", () => {
     } finally {
       auth.mockResolvedValue({ exists: false });
     }
+  });
+
+  // Task 5 [A3]: the phone's own wallet signs the approval and posts it; the API checks it is the wallet's own approval before sending.
+  it("confirm can carry the signed approval and send it before waiting for the delegation", async () => {
+    const c = await mintCode(repo);
+    const t = await (await getTx(new Request(`http://x/api/link/${c.code}?wallet=${WALLET}`, { headers: { "x-forwarded-for": "10.0.0.5" } }), { params: Promise.resolve({ code: c.code }) })).json();
+    const signed = getBase64EncodedWireTransaction(await signTransaction([walletKeyPair.keyPair], getTransactionDecoder().decode(getBase64Encoder().encode(t.transaction))));
+    const r = await confirm(new Request("http://x/api/link/confirm", { method: "POST", body: JSON.stringify({ code: c.code, wallet: WALLET, signedTransaction: signed }) }));
+    expect(r.status).toBe(200);
+    expect((await repo.getWallet(WALLET))?.status).toBe("active");
+  });
+
+  it("confirm refuses a posted transaction that is not the wallet's own approval", async () => {
+    const c = await mintCode(repo);
+    await getTx(new Request(`http://x/api/link/${c.code}?wallet=${WALLET}`, { headers: { "x-forwarded-for": "10.0.0.6" } }), { params: Promise.resolve({ code: c.code }) });
+    const r = await confirm(new Request("http://x/api/link/confirm", { method: "POST", body: JSON.stringify({ code: c.code, wallet: WALLET, signedTransaction: "AAAA" }) }));
+    expect(r.status).toBe(400);
+    expect(await repo.peekLinkCode(c.code)).not.toBeNull();
   });
 
   it("binds the code to the first wallet that fetches it", async () => {
