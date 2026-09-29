@@ -1,14 +1,17 @@
 import { NextResponse } from "next/server";
-import { address, type Address } from "@solana/kit";
+import { address, type Address, type Base64EncodedWireTransaction } from "@solana/kit";
 import { z } from "zod";
 import { getRepo } from "@/db/repo";
 import { config } from "@/lib/config";
 import { readDelegation } from "@/lib/subscriptions";
 import { heliusAddAddress } from "@/lib/helius";
+import { verifyPostedTransaction } from "@/lib/verify-tx";
+import { rpc } from "@/lib/rpc";
+import { SUBSCRIPTIONS_PROGRAM } from "@/lib/constants";
 
 export const runtime = "nodejs";
 
-const Body = z.object({ code: z.string().length(6), wallet: z.string().min(32).max(44), waitMs: z.number().int().min(0).max(10_000).optional() });
+const Body = z.object({ code: z.string().length(6), wallet: z.string().min(32).max(44), waitMs: z.number().int().min(0).max(10_000).optional(), signedTransaction: z.string().optional() });
 const RETRY_MS = 2_000;
 
 /** Waits for the delegation to appear (RPC lag right after the signature), up to `waitMs`. */
@@ -42,6 +45,22 @@ export async function POST(request: Request) {
   const existing = await repo.getWallet(wallet);
   if (existing && existing.userPubkey !== link.userPubkey && existing.status !== "revoked") {
     return NextResponse.json({ error: "This wallet is linked to another Seeker. Revoke it there first." }, { status: 409 });
+  }
+
+  // The phone's own wallet posts the signed approval here [A3]: it must be this wallet's own approval for this delegation, then the API sends it.
+  if (parsed.data.signedTransaction) {
+    let posted;
+    try {
+      posted = verifyPostedTransaction({ base64: parsed.data.signedTransaction, feePayer: wallet, programs: [SUBSCRIPTIONS_PROGRAM] });
+    } catch (e) {
+      return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 400 });
+    }
+    if (!posted.instructions.some((ix) => ix.accounts.includes(address(link.delegationPda)))) return NextResponse.json({ error: "This approval is for another delegation." }, { status: 400 });
+    try {
+      await rpc().sendTransaction(posted.wire as Base64EncodedWireTransaction, { encoding: "base64", preflightCommitment: "confirmed" }).send();
+    } catch {
+      return NextResponse.json({ error: "The approval did not go through. Try again." }, { status: 409 });
+    }
   }
 
   const delegation = await delegationAppears(address(link.delegationPda), parsed.data.waitMs ?? 10_000);
