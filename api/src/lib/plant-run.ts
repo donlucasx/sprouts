@@ -195,27 +195,34 @@ async function plantOneOrThrow(a: { repo: Repo; now: Date; chain: Chain }, w: Wa
     return { wallet: w.pubkey, reason: "claimed elsewhere" };
   }
 
+  // From here the transaction may be on chain: an error (a database write, the confirm, the share read) is "send unknown",
+  // never "build failed" (09-29), so it does not count toward the outage stop; the row stays `sent` for the next run to reconcile.
   try {
-    await a.chain.sendPlanting(built);
+    try {
+      await a.chain.sendPlanting(built);
+    } catch (e) {
+      // The send threw, which is not the same as the transaction failing: ask the chain.
+      const status = await a.chain.signatureStatus(built.signature).catch(() => "pending" as const);
+      if (status === "failed") {
+        console.error(`planting for ${w.pubkey} failed on chain: ${message(e)}`);
+        await a.repo.setPlantingStatus(planting.id, "failed");
+        await a.repo.releaseSwaps(planting.id);
+        await a.repo.addEvent({ userPubkey: w.userPubkey, walletPubkey: w.pubkey, kind: "pull_failed", detail: { stage: "send", err: message(e) } });
+        return { wallet: w.pubkey, reason: "send failed" };
+      }
+      if (status === "pending") {
+        // Left as `sent` with its round-ups claimed; the next run reconciles it by signature instead of pulling again.
+        console.error(`planting for ${w.pubkey} sent but unconfirmed (${built.signature}): ${message(e)}; reconciled next run`);
+        await a.repo.addEvent({ userPubkey: w.userPubkey, walletPubkey: w.pubkey, kind: "pull_failed", detail: { stage: "confirm", err: message(e), signature: built.signature } });
+        return { wallet: w.pubkey, reason: "send unknown" };
+      }
+    }
+    await bookConfirmed(a.repo, a.chain, planting);
+    return { wallet: w.pubkey, asset, pullCents: amount.pullCents, signature: built.signature };
   } catch (e) {
-    // The send threw, which is not the same as the transaction failing: ask the chain.
-    const status = await a.chain.signatureStatus(built.signature).catch(() => "pending" as const);
-    if (status === "failed") {
-      console.error(`planting for ${w.pubkey} failed on chain: ${message(e)}`);
-      await a.repo.setPlantingStatus(planting.id, "failed");
-      await a.repo.releaseSwaps(planting.id);
-      await a.repo.addEvent({ userPubkey: w.userPubkey, walletPubkey: w.pubkey, kind: "pull_failed", detail: { stage: "send", err: message(e) } });
-      return { wallet: w.pubkey, reason: "send failed" };
-    }
-    if (status === "pending") {
-      // Left as `sent` with its round-ups claimed; the next run reconciles it by signature instead of pulling again.
-      console.error(`planting for ${w.pubkey} sent but unconfirmed (${built.signature}): ${message(e)}; reconciled next run`);
-      await a.repo.addEvent({ userPubkey: w.userPubkey, walletPubkey: w.pubkey, kind: "pull_failed", detail: { stage: "confirm", err: message(e), signature: built.signature } });
-      return { wallet: w.pubkey, reason: "send unknown" };
-    }
+    console.error(`planting for ${w.pubkey} sent (${built.signature}), booking interrupted: ${message(e)}; reconciled next run`);
+    return { wallet: w.pubkey, reason: "send unknown" };
   }
-  await bookConfirmed(a.repo, a.chain, planting);
-  return { wallet: w.pubkey, asset, pullCents: amount.pullCents, signature: built.signature };
 }
 
 /** The error's message, plus its cause when it has one: Node's "fetch failed" keeps the host and the reason only in the cause. */

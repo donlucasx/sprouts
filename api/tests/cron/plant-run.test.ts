@@ -197,6 +197,21 @@ describe("runPlanting", () => {
     expect((ev!.detail as { err: string }).err).toBe("fetch failed (getaddrinfo ENOTFOUND api.jup.ag)");
   });
 
+  // 09-29: the Saga's first planting was sent, then a network call after the send threw and the run reported "build failed",
+  // which also counts toward the three-strikes stop. Once sent, an error is "send unknown": the next run reconciles it by signature.
+  it("an error after the send is send unknown, not build failed, and the next run books it", async () => {
+    const repo = await seeded([83, 62, 70]);
+    const setStatus = repo.setPlantingStatus.bind(repo);
+    let fail = true;
+    repo.setPlantingStatus = async (id, st) => { if (fail) { fail = false; throw new TypeError("fetch failed"); } return setStatus(id, st); };
+    const chain = fakeChain({ signatureStatus: async () => "confirmed" });
+    const r = await runPlanting({ repo, now: NOW, chain });
+    expect(r.skipped).toEqual([{ wallet: "W", reason: "send unknown" }]);
+    expect((await repo.listPlantings("U", 5))[0].status).toBe("sent");
+    await runPlanting({ repo, now: new Date(NOW.getTime() + 10 * 60_000), chain });
+    expect((await repo.listPlantings("U", 5))[0].status).toBe("confirmed");
+  });
+
   it("three build failures in a row stop the run and leave the rest for tomorrow", async () => {
     // Wallets run eight at a time, so an outage hits the first eight before the stop lands; the other four wait for tomorrow.
     const repo = new MemoryRepo();
