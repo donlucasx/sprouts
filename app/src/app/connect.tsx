@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Text, View } from "react-native";
 import { router } from "expo-router";
 import { useMobileWallet } from "@wallet-ui/react-native-kit";
@@ -7,7 +7,9 @@ import { Button } from "@/components/Button";
 import { Card } from "@/components/Card";
 import { api, ApiError } from "@/lib/api";
 import { makeSigner } from "@/lib/sign";
-import { useInvalidateMe } from "@/lib/me";
+import { useInvalidateMe, useMe } from "@/lib/me";
+import { newlyLinked } from "@/lib/newly-linked";
+import { formatWallet } from "@/lib/format";
 import { useSession } from "@/lib/session";
 
 /**
@@ -36,6 +38,17 @@ export default function Connect() {
   const [code, setCode] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { data: me, refetch } = useMe();
+  const [before, setBefore] = useState<string[]>([]);
+  // Derived, not stored: the wallet that appeared since this code was made.
+  const linked = code && me ? newlyLinked(before, me.wallets) : null;
+
+  // While a code is on screen, look for the wallet the web page links (the Saga, 2026-09-29: the app never noticed).
+  useEffect(() => {
+    if (!code || linked) return;
+    const t = setInterval(() => void refetch(), 4_000);
+    return () => clearInterval(t);
+  }, [code, linked, refetch]);
 
   /** This phone's wallet is the trading wallet: the Seed Vault key approves the delegation for itself. */
   async function linkThisPhone() {
@@ -60,6 +73,7 @@ export default function Connect() {
     setBusy(true);
     setError(null);
     try {
+      setBefore((me?.wallets ?? []).filter((w) => w.status !== "revoked").map((w) => w.pubkey));
       setCode((await api<{ code: string }>("/api/link/new", { method: "POST", body: {} })).code);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Could not make a code. Try again.");
@@ -81,7 +95,13 @@ export default function Connect() {
       </Card>
       <Card>
         <Text style={{ fontSize: 17, fontWeight: "600", color: "#2B2B2B" }}>Another wallet</Text>
-        {code ? (
+        {linked ? (
+          <View style={{ gap: 6 }}>
+            <Text style={{ fontSize: 16, color: "#2F5D3A" }}>{`Linked ${formatWallet(linked)}.`}</Text>
+            <Text style={{ fontSize: 14, color: "#6B6558" }}>Swaps from this wallet now round up into your garden.</Text>
+            <Button title="Done" onPress={() => router.replace("/home")} />
+          </View>
+        ) : code ? (
           <View style={{ gap: 6 }}>
             <Text style={{ fontSize: 34, letterSpacing: 6, fontWeight: "700", color: "#2B2B2B" }}>{code}</Text>
             <Text style={{ fontSize: 14, color: "#6B6558" }}>Open sprouts.money/link on the computer with that wallet, enter this code, and approve with that wallet. The code lasts 15 minutes and works for one wallet.</Text>
