@@ -109,3 +109,11 @@ Reading: a real swap on a linked wallet became a round-up, a booked row, a daily
 A dry run of `plant-once.ts <seeker> SKR 0.10` against the 09-25 delegation, after the day's 0.10 + 4.90 had used its 5 USDC period allowance: the transaction built (the new Jupiter response check passed on a live response) and the simulation failed in the Subscriptions program with custom error 0x190 (400, the period limit). Nothing moved. This is the on-chain cap doing its job, and the beat the spec asks the demo to show; the period rolls at 22:28Z.
 
 Row-level security enabled on all twelve tables (`0002_rls.sql`, pushed 2026-09-28): the anon key gets nothing; the server's service role is unaffected.
+
+## Demo planting 2 of 2 (2026-09-28 evening, R59)
+
+`spikes/plant-once.ts <the Seeker's name>.skr SKR 5 --send`, run by Lucas in Terminal after the delegation's period rolled (the 15:35 PT sleep job never fired: the Mac slept and `sleep` does not count sleep time; killed and run by hand): built 1,009 bytes, expected out 266,819,200, minimum 264,151,008; simulation OK, 125,317 CU; **PLANTED** `5n8PY1jLfYQ8en2Aea9Pw38Dd4kVcRMYf7chFei5kcrot6Kh3jP1tufoz6MpanmzahHtWgBgPpSZhdrLzntTMtLi` (00:29Z 09-29); position 283,742,044 -> **547,893,051 raw** SKR (+264,151,007, the quoted minimum less one raw unit, the third time).
+
+## The ledger catches up with the spikes (2026-09-28, Plan 2 Task 2)
+
+The spike plantings above never wrote `plantings` rows; the daily reconciliation (R61) compares the chain's share count with what the ledger says was minted, so they had to be booked. `spikes/book-planting.ts` books one as a confirmed row with its real signature, its time read from the chain, one SKR leg (change = pulled minus the 3c network fee, as the cron books) and the wallet's ledger bump; `spikes/set-joined.ts` then records the shares each confirmed planting minted (all but the newest estimated from the leg at today's share price 1,145,995,530; the newest takes the remainder) and the position at join (0 shares). Result: four confirmed plantings (10c, $4.90, the cron's 23c, $5), minted 4,586,567 + 232,109,655 + 10,898,151 + 230,499,160 = 478,093,533 shares = the chain, delta 0. The first reconciliation on production may now find nothing to adjust.
