@@ -72,7 +72,7 @@ export function Garden({ scene, justOpened }: { scene: Scene; justOpened: Set<st
     <View style={{ width: w, height: HEIGHT }}>
       <Svg width={w} height={HEIGHT} style={{ position: "absolute" }}>
         <G y={soilY}><Soil width={w} /></G>
-        {wet ? <G x={w * 0.5} y={soilY + soilSurface(0.5) + 4}><WetSpot age={wet.age} /></G> : null}
+        {wet ? <G x={w * wet.x} y={soilY + soilSurface(wet.x) + 4}><WetSpot age={wet.age} /></G> : null}
         {seeds.map((s) => <G key={s.id} x={s.x * w} y={soilY + soilSurface(s.x) + 3}><Circle r={2.2} fill={INK} opacity={0.7} /></G>)}
         {skrFruit.map((f) => { const at = hang(f.on!); return <G key={`f${f.index}`} x={at.x} y={at.y}><Fruit bud={f.bud} /></G>; })}
         {pups.map((f) => <G key={`p${f.index}`} x={w * (0.7 + (f.index % 3) * 0.08)} y={soilY + soilSurface(0.7 + (f.index % 3) * 0.08) - 3}><Pup /></G>)}

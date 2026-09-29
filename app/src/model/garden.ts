@@ -18,7 +18,7 @@ export type Part =
   | { kind: "fruit"; index: number; plant: "skr" | "ore"; ripe: true; bud: boolean; on: string | null }   // on: the sprout it hangs from; ORE pups sit on the soil (null)
   | { kind: "ripening"; plant: "skr" | "ore"; progress: number; on: string }
   | { kind: "basket"; amountRaw: bigint; readyAt: Date }
-  | { kind: "wetSpot"; age: number }
+  | { kind: "wetSpot"; age: number; x: number }   // x: under the newest sprout, the one the watering opened (0.5 with none)
   | { kind: "pruned"; count: number };
 
 export type Scene = { parts: Part[]; unrevealed: number; wateredToday: boolean };
@@ -98,7 +98,9 @@ export function buildScene(g: GardenInput): Scene {
   const wateredToday = wateredAt !== null && sameDay(wateredAt, g.now);
   if (wateredAt !== null) {
     const age = Math.min(1, (g.now.getTime() - wateredAt.getTime()) / DAY);
-    if (age < 1) parts.push({ kind: "wetSpot", age });
+    // Under the newest sprout still in the garden, the one this watering opened (09-29: it was always the centre).
+    const newest = [...g.plantings].filter((p) => p.asset !== "SKR" || kept.has(p.id)).sort((a, b) => b.ts.getTime() - a.ts.getTime())[0];
+    if (age < 1) parts.push({ kind: "wetSpot", age, x: newest ? hashX(newest.id) : 0.5 });
   }
   return { parts, unrevealed, wateredToday };
 }
