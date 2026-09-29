@@ -12,6 +12,7 @@ import { Button } from "@/components/Button";
 import { WatcherLine } from "@/components/WatcherLine";
 import { formatUsd, formatSkr, formatAsOf, formatWallet } from "@/lib/format";
 import { useSession } from "@/lib/session";
+import { noPlantingLine } from "@/lib/me-state";
 
 const shortDate = (iso: string) => new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 
@@ -85,7 +86,7 @@ export default function Home() {
             Last planting {shortDate(me.lastReceipt.ts)}: {formatUsd(me.lastReceipt.usdcPulledCents)} pulled, {formatSkr(BigInt(me.lastReceipt.amountOutRaw), skrUsd)} planted, network fee {formatUsd(me.lastReceipt.networkFeeCents)}
           </Text>
         ) : (
-          <Text style={{ fontSize: 14, color: "#6B6558" }}>No planting yet. Link a wallet and swap.</Text>
+          <Text style={{ fontSize: 14, color: "#6B6558" }}>{noPlantingLine(me)}</Text>
         )}
         <Link href="/activity" asChild><Button title="Activity" kind="quiet" onPress={() => {}} /></Link>
       </Card>
