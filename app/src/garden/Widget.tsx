@@ -1,3 +1,4 @@
+"use no memo";
 import { FlexWidget, TextWidget, SvgWidget } from "react-native-android-widget";
 import type { MeResponse } from "@/lib/api";
 import { buildScene } from "@/model/garden";
