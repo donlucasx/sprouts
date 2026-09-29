@@ -24,7 +24,7 @@ export class MemoryRepo implements Repo {
 
   async upsertUser(u: { seedVaultPubkey: string; sgtMint: string; skrName: string | null }) {
     for (const other of this.users.values()) {
-      if (other.sgtMint === u.sgtMint && other.seedVaultPubkey !== u.seedVaultPubkey) throw new Error("This Seeker is already registered.");
+      if (other.sgtMint === u.sgtMint && other.seedVaultPubkey !== u.seedVaultPubkey) throw new Error("This phone is already registered.");
     }
     const existing = this.users.get(u.seedVaultPubkey);
     const row: T.UserRow = {

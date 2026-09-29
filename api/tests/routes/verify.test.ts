@@ -8,11 +8,12 @@ import { generateKeyPairSigner, signBytes, getUtf8Encoder, type KeyPairSigner } 
 
 const SP = 1_146_000_000n;
 const { positionMock } = vi.hoisted(() => ({ positionMock: vi.fn() }));
-vi.mock("@/lib/genesis", () => ({ verifyGenesisHolder: vi.fn(async () => ({ mint: "GENESIS" })) }));
+vi.mock("@/lib/genesis", () => ({ verifyGenesisHolder: vi.fn(async () => ({ mint: "GENESIS" })), verifyAnyGenesisHolder: vi.fn(async () => ({ mint: "GENESIS", kind: "seeker" })) }));
 vi.mock("@/lib/skr", () => ({ skrNameOf: vi.fn(async () => null) }));
 vi.mock("@/lib/staking", async (orig) => ({ ...(await orig<object>()), readPosition: (...a: unknown[]) => positionMock(...a), sharePrice: vi.fn(async () => SP) }));
 
 import { POST as verify } from "@/app/api/auth/verify/route";
+import { verifyAnyGenesisHolder } from "@/lib/genesis";
 
 let user: KeyPairSigner;
 const b64 = (b: Uint8Array) => Buffer.from(b).toString("base64");
@@ -80,5 +81,32 @@ describe("POST /api/auth/verify, the first sign-in", () => {
     positionMock.mockResolvedValue({ shares: 5_000_000_000n, stakedRaw: 5_730_000_000n, unstakingRaw: 0n, unstakeTs: null });
     await post(await signedIn(repo, "phone-1"));
     expect((await repo.getUser(user.address))!.joinedShares).toBe(1_000_000_000n);
+  });
+});
+
+// R86: the Saga Genesis Token opens the vault too; the gate is one call that tries the Seeker token first, then the Saga token.
+describe("POST /api/auth/verify, the Saga Genesis Token (R86)", () => {
+  let repo: MemoryRepo;
+  beforeEach(() => {
+    repo = new MemoryRepo();
+    setRepoForTests(repo);
+    positionMock.mockReset();
+    positionMock.mockResolvedValue({ shares: 0n, stakedRaw: 0n, unstakingRaw: 0n, unstakeTs: 0n });
+  });
+
+  it("a Saga holder registers with the Saga mint recorded", async () => {
+    vi.mocked(verifyAnyGenesisHolder).mockResolvedValueOnce({ mint: "SAGA-MINT", kind: "saga" });
+    const r = await post(await signedIn(repo, "saga-1"));
+    expect(r.status).toBe(200);
+    expect((await r.json()).sgtMint).toBe("SAGA-MINT");
+    expect((await repo.getUser(user.address))!.sgtMint).toBe("SAGA-MINT");
+  });
+
+  it("no token of either kind is refused with copy that names both phones", async () => {
+    vi.mocked(verifyAnyGenesisHolder).mockResolvedValueOnce(null);
+    const r = await post(await signedIn(repo, "saga-1"));
+    expect(r.status).toBe(403);
+    expect((await r.json()).error).toBe("This wallet holds no Genesis Token. The vault needs a Seeker or a Saga.");
+    expect(await repo.getUser(user.address)).toBeNull();
   });
 });
