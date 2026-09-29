@@ -4,7 +4,7 @@ import Svg, { G, Circle } from "react-native-svg";
 import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withSequence, withTiming, withDelay, Easing } from "react-native-reanimated";
 import type { Scene, Part } from "@/model/garden";
 import { soilSurface } from "@/model/soil";
-import { Soil, Sprout, Succulent, Transplant, Fruit, Ripening, Pup, Basket, WetSpot, INK } from "./parts";
+import { plantHeight, Soil, Sprout, Succulent, Transplant, Fruit, Ripening, Pup, Basket, WetSpot, INK } from "./parts";
 
 const HEIGHT = 260;
 
@@ -55,6 +55,18 @@ export function Garden({ scene, justOpened }: { scene: Scene; justOpened: Set<st
   const wet = scene.parts.find((p): p is Extract<Part, { kind: "wetSpot" }> => p.kind === "wetSpot");
   const basket = scene.parts.find((p): p is Extract<Part, { kind: "basket" }> => p.kind === "basket");
   const transplant = scene.parts.find((p) => p.kind === "transplant");
+  // Fruit hang near the tip of the sprout the scene names (09-29: they were on a fixed grid, mid-air); a few per plant fan out.
+  const tip = (id: string) => {
+    const s = sprouts.find((p) => p.id === id)!;
+    return { x: s.x * w, y: soilY + soilSurface(s.x) + 2 - plantHeight(s.plant, s.stage) };
+  };
+  const perHost = new Map<string, number>();
+  const hang = (id: string) => {
+    const k = perHost.get(id) ?? 0;
+    perHost.set(id, k + 1);
+    const t = tip(id);
+    return { x: t.x + ((k % 3) - 1) * 9, y: t.y + 10 + Math.floor(k / 3) * 10 };
+  };
   let order = 0;
   return (
     <View style={{ width: w, height: HEIGHT }}>
@@ -62,9 +74,9 @@ export function Garden({ scene, justOpened }: { scene: Scene; justOpened: Set<st
         <G y={soilY}><Soil width={w} /></G>
         {wet ? <G x={w * 0.5} y={soilY + soilSurface(0.5) + 4}><WetSpot age={wet.age} /></G> : null}
         {seeds.map((s) => <G key={s.id} x={s.x * w} y={soilY + soilSurface(s.x) + 3}><Circle r={2.2} fill={INK} opacity={0.7} /></G>)}
-        {skrFruit.map((f) => <G key={`f${f.index}`} x={w * (0.2 + (f.index % 6) * 0.12)} y={soilY - 60 - Math.floor(f.index / 6) * 22}><Fruit bud={f.bud} /></G>)}
+        {skrFruit.map((f) => { const at = hang(f.on!); return <G key={`f${f.index}`} x={at.x} y={at.y}><Fruit bud={f.bud} /></G>; })}
         {pups.map((f) => <G key={`p${f.index}`} x={w * (0.7 + (f.index % 3) * 0.08)} y={soilY + soilSurface(0.7 + (f.index % 3) * 0.08) - 3}><Pup /></G>)}
-        {ripening.map((r) => <G key={r.plant} x={r.plant === "skr" ? w * 0.5 : w * 0.8} y={soilY - 40}><Ripening progress={r.progress} /></G>)}
+        {ripening.map((r) => { const t = tip(r.on); return <G key={r.plant} x={t.x} y={t.y - 3}><Ripening progress={r.progress} /></G>; })}
         {basket ? <G x={w - 40} y={soilY + 30}><Basket /></G> : null}
       </Svg>
       {transplant ? (

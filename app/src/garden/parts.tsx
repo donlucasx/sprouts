@@ -15,6 +15,11 @@ export function Soil({ width }: { width: number }) {
   return <Path d={SOIL_PATH(width)} fill={OCHRE} opacity={0.9} />;
 }
 
+/** How far above its base an open plant's tip is, so fruit can hang from it: the SKR stem, or the ORE succulent's rosette. */
+export function plantHeight(plant: "skr" | "ore", stage: 0 | 1 | 2 | 3): number {
+  return plant === "skr" ? [18, 34, 52, 72][stage] : 10 + [7, 11, 15, 19][stage];
+}
+
 /** A sprout by stage: a stem with one to four leaves; stage 3 is a small branch. Drawn in a 40 x 80 box, anchored at the bottom centre. */
 export function Sprout({ stage, bud }: { stage: 0 | 1 | 2 | 3; bud: boolean }) {
   if (bud) return <Circle cx={20} cy={70} r={5} fill={GREEN} opacity={0.6} />;

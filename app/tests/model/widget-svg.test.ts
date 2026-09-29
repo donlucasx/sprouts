@@ -30,4 +30,15 @@ describe("widgetGardenSvg", () => {
     const m = svg.match(/<path d="M150 ([\d.]+) q/);
     expect(Number(m![1])).toBeCloseTo(140 - WIDGET_SOIL_BAND + soilSurface(0.5) / 2, 5);
   });
+
+  it("hangs a fruit near the tip of the sprout it names", () => {
+    const svg = widgetGardenSvg(scene([
+      { kind: "sprout", id: "p1", plant: "skr", x: 0.5, y: 0, stage: 2, bud: false, sizeRaw: 1n },
+      { kind: "fruit", index: 0, plant: "skr", ripe: true, bud: false, on: "p1" },
+    ]), 300, 140);
+    const [fruit] = [...svg.matchAll(/<circle cx="([\d.]+)" cy="([\d.]+)" r="3" fill="#C9553D"/g)].map((m) => ({ x: Number(m[1]), y: Number(m[2]) }));
+    const tipY = 140 - WIDGET_SOIL_BAND + soilSurface(0.5) / 2 - (10 + 2 * 12) * ((140 - WIDGET_SOIL_BAND) / 60);
+    expect(fruit.x).toBeCloseTo(150 - 6, 5);
+    expect(fruit.y).toBeCloseTo(tipY + 6, 1);
+  });
 });
