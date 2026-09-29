@@ -3,6 +3,7 @@ import { View, useWindowDimensions } from "react-native";
 import Svg, { G, Circle } from "react-native-svg";
 import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withSequence, withTiming, withDelay, Easing } from "react-native-reanimated";
 import type { Scene, Part } from "@/model/garden";
+import { soilSurface } from "@/model/soil";
 import { Soil, Sprout, Succulent, Transplant, Fruit, Ripening, Pup, Basket, WetSpot, INK } from "./parts";
 
 const HEIGHT = 260;
@@ -59,20 +60,20 @@ export function Garden({ scene, justOpened }: { scene: Scene; justOpened: Set<st
     <View style={{ width: w, height: HEIGHT }}>
       <Svg width={w} height={HEIGHT} style={{ position: "absolute" }}>
         <G y={soilY}><Soil width={w} /></G>
-        {wet ? <G x={w * 0.5} y={soilY + 18}><WetSpot age={wet.age} /></G> : null}
-        {seeds.map((s) => <G key={s.id} x={s.x * w} y={soilY + 8}><Circle r={2.2} fill={INK} opacity={0.7} /></G>)}
+        {wet ? <G x={w * 0.5} y={soilY + soilSurface(0.5) + 4}><WetSpot age={wet.age} /></G> : null}
+        {seeds.map((s) => <G key={s.id} x={s.x * w} y={soilY + soilSurface(s.x) + 3}><Circle r={2.2} fill={INK} opacity={0.7} /></G>)}
         {skrFruit.map((f) => <G key={`f${f.index}`} x={w * (0.2 + (f.index % 6) * 0.12)} y={soilY - 60 - Math.floor(f.index / 6) * 22}><Fruit bud={f.bud} /></G>)}
-        {pups.map((f) => <G key={`p${f.index}`} x={w * (0.7 + (f.index % 3) * 0.08)} y={soilY - 10}><Pup /></G>)}
+        {pups.map((f) => <G key={`p${f.index}`} x={w * (0.7 + (f.index % 3) * 0.08)} y={soilY + soilSurface(0.7 + (f.index % 3) * 0.08) - 3}><Pup /></G>)}
         {ripening.map((r) => <G key={r.plant} x={r.plant === "skr" ? w * 0.5 : w * 0.8} y={soilY - 40}><Ripening progress={r.progress} /></G>)}
         {basket ? <G x={w - 40} y={soilY + 30}><Basket /></G> : null}
       </Svg>
       {transplant ? (
-        <Bloom order={0} active={false} x={w * 0.5 - 40} y={soilY - 80} w={80} h={80}>
+        <Bloom order={0} active={false} x={w * 0.5 - 40} y={soilY + soilSurface(0.5) - 78} w={80} h={80}>
           <Sway seed={3} w={80} h={80}><Transplant /></Sway>
         </Bloom>
       ) : null}
       {sprouts.map((s, i) => (
-        <Bloom key={s.id} order={justOpened.has(s.id) ? order++ : 0} active={justOpened.has(s.id)} x={s.x * w - 20} y={soilY - 80} w={40} h={80}>
+        <Bloom key={s.id} order={justOpened.has(s.id) ? order++ : 0} active={justOpened.has(s.id)} x={s.x * w - 20} y={soilY + soilSurface(s.x) - 78} w={40} h={80}>
           <Sway seed={i} w={40} h={80}>{s.plant === "skr" ? <Sprout stage={s.stage} bud={s.bud} /> : <Succulent stage={s.stage} bud={s.bud} />}</Sway>
         </Bloom>
       ))}

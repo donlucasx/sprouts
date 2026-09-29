@@ -1,4 +1,5 @@
 import { G, Path, Circle, Ellipse, Rect } from "react-native-svg";
+import { SOIL_PATH } from "@/model/soil";
 
 // The parts library as SVG placeholders. The branding session delivers watercolor images for the same names (soil, sprout stages
 // 0 to 3, bud, fruit, ripening bud, transplant, succulent, pup, basket, wet spot, watering can); the swap is one file: replace each
@@ -11,7 +12,7 @@ export const FRUIT = "#C9553D";
 export const WATER = "#5C8BB3";
 
 export function Soil({ width }: { width: number }) {
-  return <Path d={`M0 40 Q ${width / 2} 0 ${width} 40 L ${width} 60 L 0 60 Z`} fill={OCHRE} opacity={0.9} />;
+  return <Path d={SOIL_PATH(width)} fill={OCHRE} opacity={0.9} />;
 }
 
 /** A sprout by stage: a stem with one to four leaves; stage 3 is a small branch. Drawn in a 40 x 80 box, anchored at the bottom centre. */
