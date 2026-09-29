@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { address, createNoopSigner, AccountRole } from "@solana/kit";
 import { userStakePda, buildStakeIx, buildWithdrawIx, buildUnstakeIx, buildCancelUnstakeIx } from "@/lib/staking";
-import { getUnstakeInstructionDataDecoder, getCancelUnstakeInstructionDataDecoder } from "@/generated/staking";
+import { getUnstakeInstructionDataDecoder, UNSTAKE_DISCRIMINATOR, CANCEL_UNSTAKE_DISCRIMINATOR } from "@/generated/staking";
 import { STAKE_CONFIG, GUARDIAN_POOL, SKR_STAKING_PROGRAM } from "@/lib/constants";
 
 const user = address("DdpHknAJvVsG8HYTAN3ZmSLLiPh2GfXP2pMoJJFa1p9m");
@@ -42,7 +42,7 @@ describe("staking helpers", () => {
   it("cancel-unstake instruction lists the user as the only signer and decodes as a cancel", async () => {
     const ix = await buildCancelUnstakeIx({ user: createNoopSigner(user) });
     expect(ix.accounts!.filter((a) => isSigner(a.role)).map((a) => a.address)).toEqual([user]);
-    expect(() => getCancelUnstakeInstructionDataDecoder().decode(ix.data!)).not.toThrow();
-    expect(() => getUnstakeInstructionDataDecoder().decode(ix.data!)).toThrow();
+    expect(ix.data!.slice(0, 8)).toEqual(CANCEL_UNSTAKE_DISCRIMINATOR);
+    expect(ix.data!.slice(0, 8)).not.toEqual(UNSTAKE_DISCRIMINATOR);
   });
 });

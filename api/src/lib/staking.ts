@@ -5,7 +5,7 @@ import {
   type Address, type Instruction, type TransactionSigner,
 } from "@solana/kit";
 import { findAssociatedTokenPda, TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
-import { getStakeInstructionAsync, getWithdrawInstructionAsync, fetchMaybeUserStake, fetchStakeConfig } from "@/generated/staking";
+import { getStakeInstructionAsync, getWithdrawInstructionAsync, getUnstakeInstructionAsync, getCancelUnstakeInstructionAsync, fetchMaybeUserStake, fetchStakeConfig } from "@/generated/staking";
 import { SKR_STAKING_PROGRAM, STAKE_CONFIG, STAKE_VAULT, GUARDIAN_POOL, SKR_MINT } from "./constants";
 import { rpc } from "./rpc";
 import { pullerSigner } from "./puller";
@@ -40,6 +40,21 @@ export async function buildStakeIx(a: { payer: TransactionSigner; user: Address;
     mint: SKR_MINT,
     program: SKR_STAKING_PROGRAM,
     amount: a.amountRaw,
+  });
+}
+
+/** The unstake, signed by the Seed Vault key (the user), which is the one act only the Seeker can do. The shares are in the data the wallet signs. */
+export async function buildUnstakeIx(a: { user: TransactionSigner; shares: bigint }): Promise<Instruction> {
+  return getUnstakeInstructionAsync({
+    user: a.user, stakeConfig: STAKE_CONFIG, guardianPool: GUARDIAN_POOL, userStake: await userStakePda(a.user.address), stakeVault: STAKE_VAULT, mint: SKR_MINT,
+    shares: a.shares, program: SKR_STAKING_PROGRAM,
+  });
+}
+
+/** Put the fruit back during the cooldown: cancel_unstake restores the shares. Signed by the user. */
+export async function buildCancelUnstakeIx(a: { user: TransactionSigner }): Promise<Instruction> {
+  return getCancelUnstakeInstructionAsync({
+    user: a.user, stakeConfig: STAKE_CONFIG, guardianPool: GUARDIAN_POOL, userStake: await userStakePda(a.user.address), stakeVault: STAKE_VAULT, program: SKR_STAKING_PROGRAM,
   });
 }
 
