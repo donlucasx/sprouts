@@ -218,8 +218,11 @@ async function plantOneOrThrow(a: { repo: Repo; now: Date; chain: Chain }, w: Wa
   return { wallet: w.pubkey, asset, pullCents: amount.pullCents, signature: built.signature };
 }
 
+/** The error's message, plus its cause when it has one: Node's "fetch failed" keeps the host and the reason only in the cause. */
 function message(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
+  if (!(e instanceof Error)) return String(e);
+  const cause = e.cause instanceof Error ? e.cause.message : e.cause !== undefined ? String(e.cause) : "";
+  return cause ? `${e.message} (${cause})` : e.message;
 }
 
 async function mapWithConcurrency<T>(items: T[], limit: number, fn: (item: T) => Promise<void>) {

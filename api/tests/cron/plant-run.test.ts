@@ -187,6 +187,16 @@ describe("runPlanting", () => {
     expect(repo.events.some((e) => e.kind === "pull_failed" && e.walletPubkey === "W")).toBe(true);
   });
 
+  // 09-29: the first Saga planting failed on Vercel with a bare "TypeError: fetch failed"; Node keeps the host and the reason
+  // (DNS, connect timeout, reset) in the error's cause, which the log dropped. The recorded error now carries it.
+  it("a network error records its cause, so the log names the failing call", async () => {
+    const repo = await seeded([83, 62, 70]);
+    const netErr = new TypeError("fetch failed", { cause: new Error("getaddrinfo ENOTFOUND api.jup.ag") });
+    await runPlanting({ repo, now: NOW, chain: fakeChain({ buildPlantingTx: async () => { throw netErr; } }) });
+    const ev = repo.events.find((e) => e.kind === "pull_failed");
+    expect((ev!.detail as { err: string }).err).toBe("fetch failed (getaddrinfo ENOTFOUND api.jup.ag)");
+  });
+
   it("three build failures in a row stop the run and leave the rest for tomorrow", async () => {
     // Wallets run eight at a time, so an outage hits the first eight before the stop lands; the other four wait for tomorrow.
     const repo = new MemoryRepo();
