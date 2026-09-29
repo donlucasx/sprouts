@@ -45,7 +45,7 @@ export default function LinkPage() {
       </div>
       {message ? <p style={{ marginTop: 16 }}>{message}</p> : null}
       <p style={{ marginTop: 32, fontSize: 14, color: "#555" }}>
-        To revoke later: <a href="/revoke">sprouts-api-gamma.vercel.app/revoke</a>.
+        To revoke later: <a href="/revoke">the revoke page</a> on this site, with the wallet that approved.
       </p>
     </main>
   );

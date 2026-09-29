@@ -1,0 +1,5 @@
+Contact: https://github.com/donlucasx/sprouts/security/advisories/new
+Contact: https://github.com/donlucasx/sprouts/issues
+Expires: 2027-09-29T00:00:00.000Z
+Preferred-Languages: en
+Canonical: https://sprouts.money/.well-known/security.txt
