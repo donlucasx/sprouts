@@ -24,6 +24,18 @@ pnpm test
 pnpm dev
 ```
 
+The app (`app/`) needs a development build, never Expo Go: Mobile Wallet Adapter is native. This Mac has no Android SDK, so builds are EAS cloud builds.
+
+```bash
+cd app
+pnpm install
+pnpm test                                             # the pure model, the format helpers, the offline state
+eas build --platform android --profile development    # the dev client, once; the JavaScript then comes from `pnpm dev`
+eas build --platform android --profile preview        # the APK the beta and the video use
+```
+
+Install the APK on the Seeker from the EAS build page (`app/BUILDS.md` lists every build). The app holds no key and no secret; `EXPO_PUBLIC_API_ORIGIN` in `eas.json` is the only setting and it is public.
+
 ## Spikes
 
 See `api/spikes/RESULTS.md` for the three day-one proofs: staking into another user's position with only the payer's signature, Jupiter quote and swap-instructions with a free key, and one real ten-cent planting end to end.
