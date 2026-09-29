@@ -7,7 +7,7 @@ import { SproutsWidget } from "@/garden/Widget";
 export async function refreshWidget(me: MeResponse | null) {
   await requestWidgetUpdate({
     widgetName: "Sprouts",
-    renderWidget: (info) => React.createElement(SproutsWidget, { me, width: info.width, wide: info.width >= 300 }),
+    renderWidget: (info) => React.createElement(SproutsWidget, { me, width: info.width, height: info.height, wide: info.width >= 300 }),
     widgetNotFound: () => {},
   });
 }

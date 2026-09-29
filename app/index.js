@@ -10,5 +10,5 @@ import { readLastMe } from './src/lib/me'
 registerWidgetTaskHandler(async (props) => {
   const me = readLastMe()
   const wide = props.widgetInfo.width >= 300
-  props.renderWidget(React.createElement(SproutsWidget, { me, width: props.widgetInfo.width, wide }))
+  props.renderWidget(React.createElement(SproutsWidget, { me, width: props.widgetInfo.width, height: props.widgetInfo.height, wide }))
 })
