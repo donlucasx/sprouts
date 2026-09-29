@@ -9,6 +9,9 @@ export default function Home() {
         one tap, and custody lasts one transaction. Nothing here holds user funds.
       </p>
       <p>
+        <a href="/link">Link a wallet</a> with a code from the app. <a href="/revoke">Revoke</a> with the wallet that approved.
+      </p>
+      <p>
         Code and the safety story: <a href="https://github.com/donlucasx/sprouts">github.com/donlucasx/sprouts</a>
       </p>
     </main>
