@@ -22,6 +22,7 @@
     "@solana/wallet-standard-util": "^1.1.4",
     "@solana/web3.js": "^1.99.0",
     "@supabase/supabase-js": "^2.117.1",
+    "@wallet-standard/app": "^1.1.1",
     "jose": "^6.2.12",
     "next": "15.5.26",
     "react": "19.1.0",
