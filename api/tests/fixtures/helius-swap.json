@@ -14,10 +14,10 @@
       "nativeInput": null,
       "nativeOutput": null,
       "tokenInputs": [
-        { "userAccount": "WALLET", "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", "tokenAmount": 1.17 }
+        { "userAccount": "WALLET", "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", "rawTokenAmount": { "tokenAmount": "1170000", "decimals": 6 } }
       ],
       "tokenOutputs": [
-        { "userAccount": "WALLET", "mint": "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263", "tokenAmount": 52000.5 }
+        { "userAccount": "WALLET", "mint": "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263", "rawTokenAmount": { "tokenAmount": "5200050000", "decimals": 5 } }
       ]
     }
   }
