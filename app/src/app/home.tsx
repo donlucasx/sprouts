@@ -85,6 +85,7 @@ export default function Home() {
         ) : (
           <Text style={{ fontSize: 14, color: "#6B6558" }}>No planting yet. Link a wallet and swap.</Text>
         )}
+        <Link href="/activity" asChild><Button title="Activity" kind="quiet" onPress={() => {}} /></Link>
       </Card>
       {me.basket ? (
         <Card>
