@@ -21,7 +21,7 @@ export default function Withdraw() {
   const [plan, setPlan] = useState<Plan | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  if (!me) return <Screen><Text style={{ color: "#6B6558" }}>Loading</Text></Screen>;
+  if (!me) return <Screen back><Text style={{ color: "#6B6558" }}>Loading</Text></Screen>;
   const skrUsd = me.pot.skrUsd;
   const earned = BigInt(me.pot.skrEarnedRaw);
   const canEarned = earned >= 1_000_000n;
@@ -71,7 +71,7 @@ export default function Withdraw() {
 
   if (me.basket) {
     return (
-      <Screen>
+      <Screen back>
         <Text style={{ fontSize: 24, color: "#2F5D3A", fontStyle: "italic", fontFamily: "serif" }}>In the basket</Text>
         <Card>
           <Text style={{ fontSize: 18, color: "#2B2B2B" }}>{formatSkr(BigInt(me.basket.amountRaw), skrUsd)}</Text>
@@ -86,7 +86,7 @@ export default function Withdraw() {
   }
 
   return (
-    <Screen>
+    <Screen back>
       <Text style={{ fontSize: 24, color: "#2F5D3A", fontStyle: "italic", fontFamily: "serif" }}>Withdraw</Text>
       {!plan ? (
         <Card>
