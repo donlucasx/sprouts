@@ -27,9 +27,11 @@ export function eligibleWallets<W extends StdWallet>(wallets: readonly W[]): W[]
 /** The chosen wallet's account for mainnet (the object itself goes back to the wallet when it signs). */
 export async function connectWith(w: StdWallet): Promise<StdAccount> {
   const { accounts } = await (w.features[CONNECT] as { connect(): Promise<{ accounts: readonly StdAccount[] }> }).connect();
-  const account = accounts.find((a) => a.chains?.includes(MAINNET)) ?? accounts[0];
-  if (!account) throw new Error(`${w.name} did not share an account. Unlock it and try again.`);
-  return account;
+  const solana = accounts.find((a) => a.chains?.includes(MAINNET)) ?? accounts.find((a) => !a.chains || a.chains.length === 0);
+  if (solana) return solana;
+  // A multi-network wallet (Backpack on Eclipse, 2026-09-29) can share only an account on another network: never use it.
+  if (accounts.length) throw new Error(`Switch ${w.name} to Solana mainnet, then try again. Sprouts works on Solana only.`);
+  throw new Error(`${w.name} did not share an account. Unlock it and try again.`);
 }
 
 /** The programs an approval or a revoke may touch; anything else is refused before the wallet is asked [A10]. */

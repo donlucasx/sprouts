@@ -42,7 +42,7 @@ export async function POST(request: Request) {
   const link = await repo.peekLinkCode(code);
   if (!link) return NextResponse.json({ error: "This code is unknown, expired or already used." }, { status: 404 });
   if (!link.walletPubkey || !link.delegationPda) return NextResponse.json({ error: "Fetch the approval for this code first." }, { status: 409 });
-  if (link.walletPubkey !== wallet) return NextResponse.json({ error: "This code belongs to another wallet." }, { status: 409 });
+  if (link.walletPubkey !== wallet) return NextResponse.json({ error: "This code was already used with another wallet. Get a new code in the app, then try again." }, { status: 409 });
   const existing = await repo.getWallet(wallet);
   if (existing && existing.userPubkey !== link.userPubkey && existing.status !== "revoked") {
     return NextResponse.json({ error: "This wallet is linked to another Seeker. Revoke it there first." }, { status: 409 });
