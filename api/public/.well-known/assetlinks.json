@@ -1,0 +1,10 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls", "delegate_permission/common.get_login_creds"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "money.sprouts.app",
+      "sha256_cert_fingerprints": ["B9:B0:58:6E:A7:08:26:68:73:BD:04:9A:C4:CB:7F:D0:24:92:6D:4E:FD:E1:60:61:04:42:0D:8C:B9:30:99:42"]
+    }
+  }
+]
