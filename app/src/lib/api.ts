@@ -1,7 +1,7 @@
 import { loadSession } from "./session";
 
 /** The API's origin: public, overridable at build time through eas.json's env (Task 0 ruling: no env file in the app). */
-export const API_ORIGIN = process.env.EXPO_PUBLIC_API_ORIGIN ?? "https://sprouts-api-gamma.vercel.app";
+export const API_ORIGIN = process.env.EXPO_PUBLIC_API_ORIGIN ?? "https://sprouts.money";
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) {

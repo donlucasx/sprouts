@@ -6,7 +6,7 @@ import { loadSession, saveSession, SessionContext, type Session } from "@/lib/se
 import { registerBackgroundRefresh } from "@/lib/background"; // importing it defines the background task at module scope
 import { askNotificationPermissionOnce } from "@/lib/notify";
 
-const identity: AppIdentity = { name: "Sprouts", uri: "https://sprouts-api-gamma.vercel.app" };
+const identity: AppIdentity = { name: "Sprouts", uri: "https://sprouts.money" };
 // Only Mobile Wallet Adapter's plumbing touches this endpoint; every read the app shows comes from the API.
 const cluster = createSolanaMainnet({ url: "https://api.mainnet-beta.solana.com" });
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1, staleTime: 15_000 } } });

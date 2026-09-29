@@ -11,7 +11,7 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_ORIGIN": "https://sprouts-api-gamma.vercel.app"
+        "EXPO_PUBLIC_API_ORIGIN": "https://sprouts.money"
       }
     },
     "preview": {
@@ -20,7 +20,7 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_ORIGIN": "https://sprouts-api-gamma.vercel.app"
+        "EXPO_PUBLIC_API_ORIGIN": "https://sprouts.money"
       }
     }
   }
