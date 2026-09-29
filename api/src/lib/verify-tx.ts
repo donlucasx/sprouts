@@ -1,5 +1,7 @@
 import { getBase64Encoder, getTransactionDecoder, getCompiledTransactionMessageDecoder, getSignatureFromTransaction, type Address } from "@solana/kit";
 
+type CompiledIx = { programAddressIndex: number; accountIndices?: readonly number[]; data?: Uint8Array };
+
 export type PostedTx = { signature: string; feePayer: Address; programs: Address[]; instructions: { program: Address; data: Uint8Array; accounts: Address[] }[]; wire: string };
 
 /**
@@ -27,7 +29,8 @@ export function verifyPostedTransaction(a: { base64: string; feePayer: Address; 
   if (feePayer !== a.feePayer) throw new Error("This transaction was not built for this wallet.");
   const signature = tx.signatures[a.feePayer];
   if (!signature || signature.every((b) => b === 0)) throw new Error("The wallet has not signed this transaction.");
-  const instructions = (message.instructions ?? []).map((ix) => ({
+  const compiled = ("instructions" in message ? message.instructions : []) as readonly CompiledIx[];
+  const instructions = compiled.map((ix) => ({
     program: keys[ix.programAddressIndex], data: ix.data ?? new Uint8Array(), accounts: (ix.accountIndices ?? []).map((i) => keys[i]),
   }));
   for (const ix of instructions) if (!a.programs.includes(ix.program)) throw new Error("This transaction touches a program Sprouts does not use.");
