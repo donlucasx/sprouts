@@ -10,7 +10,7 @@ import { WateringCan } from "@/garden/parts";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
 import { WatcherLine } from "@/components/WatcherLine";
-import { formatUsd, formatSkr, formatAsOf } from "@/lib/format";
+import { formatUsd, formatSkr, formatAsOf, formatWallet } from "@/lib/format";
 import { useSession } from "@/lib/session";
 
 const shortDate = (iso: string) => new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
@@ -86,6 +86,15 @@ export default function Home() {
           <Text style={{ fontSize: 14, color: "#6B6558" }}>No planting yet. Link a wallet and swap.</Text>
         )}
         <Link href="/activity" asChild><Button title="Activity" kind="quiet" onPress={() => {}} /></Link>
+      </Card>
+      <Card>
+        <Text style={{ fontSize: 16, color: "#2B2B2B" }}>Linked wallets</Text>
+        {me.wallets.filter((w) => w.status !== "revoked").length === 0 ? (
+          <Text style={{ fontSize: 14, color: "#6B6558" }}>No wallet linked yet. Swaps from a linked wallet round up into your garden.</Text>
+        ) : (
+          me.wallets.filter((w) => w.status !== "revoked").map((w) => <Text key={w.pubkey} style={{ fontSize: 14, color: "#6B6558" }}>{formatWallet(w)}</Text>)
+        )}
+        <Link href="/connect" asChild><Button title={me.wallets.some((w) => w.status !== "revoked") ? "Link another wallet" : "Link a wallet"} kind="quiet" onPress={() => {}} /></Link>
       </Card>
       {me.basket ? (
         <Card>
