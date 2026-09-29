@@ -8,6 +8,7 @@ import { heliusAddAddress } from "@/lib/helius";
 import { verifyPostedTransaction } from "@/lib/verify-tx";
 import { rpc } from "@/lib/rpc";
 import { SUBSCRIPTIONS_PROGRAM } from "@/lib/constants";
+import { ASSOCIATED_TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
 
 export const runtime = "nodejs";
 export const maxDuration = 60; // the delegation poll (up to 10 s) plus the send
@@ -52,7 +53,8 @@ export async function POST(request: Request) {
   if (parsed.data.signedTransaction) {
     let posted;
     try {
-      posted = verifyPostedTransaction({ base64: parsed.data.signedTransaction, feePayer: wallet, programs: [SUBSCRIPTIONS_PROGRAM] });
+      // The approval may begin by creating the wallet's USDC account (a wallet that never held USDC).
+      posted = verifyPostedTransaction({ base64: parsed.data.signedTransaction, feePayer: wallet, programs: [SUBSCRIPTIONS_PROGRAM, ASSOCIATED_TOKEN_PROGRAM_ADDRESS] });
     } catch (e) {
       return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 400 });
     }
