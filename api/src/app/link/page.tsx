@@ -25,7 +25,7 @@ export default function LinkPage() {
       const done = await call<{ skrName: string | null }>("/api/link/confirm", {
         method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ code: c, wallet, signedTransaction: signed }),
       });
-      setMessage(`Linked to ${done.skrName ?? "your Seeker"}'s Sprouts, limit $${(t.cap / 100).toFixed(2)} a day.${t.revokes ? " The previous approval was revoked." : ""}`);
+      setMessage(`Linked${done.skrName ? ` to ${done.skrName}'s garden` : ""}. This wallet's swaps now round up into your garden, at most $${(t.cap / 100).toFixed(2)} a day.${t.revokes ? " The previous approval was revoked." : ""} You can close this page and go back to the app.`);
       setState("done");
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "Something did not go through. Nothing moved.");
@@ -41,9 +41,9 @@ export default function LinkPage() {
       </p>
       <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="CODE" maxLength={6} autoCapitalize="characters" style={{ fontSize: 28, letterSpacing: 6, padding: 12, width: 220, textTransform: "uppercase" }} />
       <div style={{ marginTop: 16 }}>
-        {state === "busy" ? <p>Waiting for your wallet.</p> : <WalletButtons wallets={wallets} verb="Approve with" disabled={state !== "idle" || code.trim().length !== 6} onPick={approve} />}
+        {state === "done" ? null : state === "busy" ? <p>Waiting for your wallet.</p> : <WalletButtons wallets={wallets} verb="Approve with" disabled={code.trim().length !== 6} onPick={approve} />}
       </div>
-      {message ? <p style={{ marginTop: 16 }}>{message}</p> : null}
+      {message ? <p style={{ marginTop: 16, fontWeight: state === "done" ? 600 : 400, color: state === "done" ? "#2F5D3A" : undefined }}>{message}</p> : null}
       <p style={{ marginTop: 32, fontSize: 14, color: "#555" }}>
         To revoke later: <a href="/revoke">the revoke page</a> on this site, with the wallet that approved.
       </p>
