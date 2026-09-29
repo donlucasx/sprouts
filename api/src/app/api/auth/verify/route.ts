@@ -6,6 +6,8 @@ import { verifySignIn, type SignInInput } from "@/lib/siws";
 import { verifyGenesisHolder } from "@/lib/genesis";
 import { skrNameOf } from "@/lib/skr";
 import { issueSession } from "@/lib/session";
+import { readPosition, sharePrice } from "@/lib/staking";
+import { address } from "@solana/kit";
 
 export const runtime = "nodejs";
 
@@ -41,11 +43,20 @@ export async function POST(request: Request) {
   if (!genesis) return NextResponse.json({ error: "This wallet holds no Seeker Genesis Token. The vault needs a Seeker." }, { status: 403 });
 
   const skrName = await skrNameOf(rpcUrl, output.address);
+  let created: boolean;
   try {
-    await repo.upsertUser({ seedVaultPubkey: output.address, sgtMint: genesis.mint, skrName });
+    ({ created } = await repo.upsertUser({ seedVaultPubkey: output.address, sgtMint: genesis.mint, skrName }));
   } catch (e) {
     if (e instanceof Error && e.message === "This Seeker is already registered.") return NextResponse.json({ error: e.message }, { status: 409 });
     throw e;
   }
-  return NextResponse.json({ token: await issueSession(output.address), skrName, sgtMint: genesis.mint });
+  if (created) {
+    // R61: what the Seeker already holds today is put in, never earned; the pot and the reconciliation count from here.
+    const p = await readPosition(address(output.address));
+    await repo.setJoinedPosition(output.address, { shares: p.shares, sharePrice: await sharePrice() });
+    // A cooldown already running from the wallet: a wallet-source row so the basket shows and the crank delivers it [A24].
+    if (p.unstakingRaw > 0n) await repo.insertWithdrawal({ userPubkey: output.address, asset: "SKR", source: "wallet", unstakeSignature: null, sharesUnstaked: 0n, amountRaw: p.unstakingRaw, principalRaw: p.unstakingRaw });
+  }
+  // The session is bound to this device (the Genesis mint the sign-in proved): one live session per wallet per device (R84).
+  return NextResponse.json({ token: await issueSession(output.address, genesis.mint), skrName, sgtMint: genesis.mint });
 }

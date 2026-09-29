@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import type { Repo } from "./repo";
+import type { Repo, NewPlanting, NewWithdrawal } from "./repo";
 import type * as T from "./types";
 import type { Asset } from "@/domain/allocation";
 import { DEFAULT_RULES } from "@/domain/roundup";
@@ -34,16 +34,30 @@ export class SupabaseRepo implements Repo {
     if (existing) {
       const { error } = await this.db.from("users").update({ skr_name: u.skrName }).eq("seed_vault_pubkey", u.seedVaultPubkey);
       if (error) throw new Error(error.message);
-      return { ...existing, skrName: u.skrName };
+      return { row: { ...existing, skrName: u.skrName }, created: false };
     }
     const { data, error } = await this.db.from("users").insert({ seed_vault_pubkey: u.seedVaultPubkey, sgt_mint: u.sgtMint, skr_name: u.skrName }).select().single();
     if (error) throw new Error(error.code === UNIQUE_VIOLATION ? "This Seeker is already registered." : error.message);
-    return userRow(data as Row);
+    return { row: userRow(data as Row), created: true };
   }
 
   async getUser(pubkey: string) {
     const { data } = await this.db.from("users").select().eq("seed_vault_pubkey", pubkey).maybeSingle();
     return data ? userRow(data as Row) : null;
+  }
+
+  async listUsers() {
+    return this.many(this.db.from("users").select().order("created_at"), userRow);
+  }
+
+  async setJoinedPosition(userPubkey: string, p: { shares: bigint; sharePrice: bigint }) {
+    const { error } = await this.db.from("users").update({ joined_shares: p.shares.toString(), joined_share_price: p.sharePrice.toString() }).eq("seed_vault_pubkey", userPubkey);
+    if (error) throw new Error(error.message);
+  }
+
+  async setWateredAt(userPubkey: string, at: Date) {
+    const { error } = await this.db.from("users").update({ watered_at: at.toISOString() }).eq("seed_vault_pubkey", userPubkey);
+    if (error) throw new Error(error.message);
   }
 
   async getRules(userPubkey: string) {
@@ -96,6 +110,10 @@ export class SupabaseRepo implements Repo {
     return this.many(this.db.from("wallets").select().eq("status", "paused"), walletRow);
   }
 
+  async listWalletsOf(userPubkey: string) {
+    return this.many(this.db.from("wallets").select().eq("user_pubkey", userPubkey).order("created_at"), walletRow);
+  }
+
   async setWalletStatus(pubkey: string, status: T.WalletStatus) {
     const { error } = await this.db.from("wallets").update({ status }).eq("pubkey", pubkey);
     if (error) throw new Error(error.message);
@@ -119,6 +137,12 @@ export class SupabaseRepo implements Repo {
 
   async unplantedSwaps(walletPubkey: string) {
     return this.many(this.db.from("swaps").select().eq("wallet_pubkey", walletPubkey).is("planting_id", null).order("ts"), swapRow);
+  }
+
+  async listSwaps(userPubkey: string, limit: number) {
+    const wallets = (await this.listWalletsOf(userPubkey)).map((w) => w.pubkey);
+    if (!wallets.length) return [];
+    return this.many(this.db.from("swaps").select().in("wallet_pubkey", wallets).order("ts", { ascending: false }).limit(limit), swapRow);
   }
 
   /** One conditional UPDATE: only swaps nobody has claimed; the returned rows say how many this planting got. */
@@ -145,10 +169,10 @@ export class SupabaseRepo implements Repo {
     }));
   }
 
-  async insertPlanting(p: Omit<T.PlantingRow, "id" | "ts">, legs: Omit<T.PlantingLegRow, "plantingId">[]) {
+  async insertPlanting(p: NewPlanting, legs: Omit<T.PlantingLegRow, "plantingId">[]) {
     const row = await this.one(this.db.from("plantings").insert({
       user_pubkey: p.userPubkey, wallet_pubkey: p.walletPubkey, signature: p.signature, usdc_pulled_cents: p.usdcPulledCents,
-      network_fee_cents: p.networkFeeCents, status: p.status, ai_line: p.aiLine,
+      network_fee_cents: p.networkFeeCents, status: p.status, ai_line: p.aiLine, shares_before: p.sharesBefore == null ? null : p.sharesBefore.toString(),
     }).select().single(), plantingRow);
     if (legs.length) {
       const { error } = await this.db.from("planting_legs").insert(legs.map((l) => ({
@@ -162,6 +186,28 @@ export class SupabaseRepo implements Repo {
   async setPlantingStatus(plantingId: string, status: T.PlantingStatus, signature?: string) {
     const { error } = await this.db.from("plantings").update({ status, ...(signature ? { signature } : {}) }).eq("id", plantingId);
     if (error) throw new Error(error.message);
+  }
+
+  async setPlantingShares(plantingId: string, s: { before: bigint | null; after: bigint; minted: bigint }) {
+    const { error } = await this.db.from("plantings").update({ shares_before: s.before === null ? null : s.before.toString(), shares_after: s.after.toString(), shares_minted: s.minted.toString() }).eq("id", plantingId);
+    if (error) throw new Error(error.message);
+  }
+
+  async listPlantings(userPubkey: string, limit: number) {
+    return this.many(this.db.from("plantings").select().eq("user_pubkey", userPubkey).order("ts", { ascending: false }).limit(limit), plantingRow);
+  }
+
+  async listConfirmedPlantings(userPubkey: string) {
+    return this.many(this.db.from("plantings").select().eq("user_pubkey", userPubkey).eq("status", "confirmed").order("ts"), plantingRow);
+  }
+
+  async addStakeAdjustment(a: Omit<T.StakeAdjustmentRow, "id" | "ts">) {
+    const { error } = await this.db.from("stake_adjustments").insert({ user_pubkey: a.userPubkey, kind: a.kind, shares_delta: a.sharesDelta.toString(), amount_raw: a.amountRaw.toString(), share_price: a.sharePrice.toString() });
+    if (error) throw new Error(error.message);
+  }
+
+  async listStakeAdjustments(userPubkey: string) {
+    return this.many(this.db.from("stake_adjustments").select().eq("user_pubkey", userPubkey).order("ts"), stakeAdjustmentRow);
   }
 
   async addEvent(e: Omit<T.EventRow, "id" | "ts">) {
@@ -204,12 +250,74 @@ export class SupabaseRepo implements Repo {
     return data ? linkCodeRow(data as Row) : null;
   }
 
+  async insertWithdrawal(w: NewWithdrawal) {
+    return this.one(this.db.from("withdrawals").insert({
+      user_pubkey: w.userPubkey, asset: w.asset, source: w.source, unstake_ts: new Date().toISOString(), unstake_signature: w.unstakeSignature,
+      shares_unstaked: w.sharesUnstaked.toString(), amount_raw: w.amountRaw.toString(), principal_raw: w.principalRaw.toString(),
+    }).select().single(), withdrawalRow);
+  }
+
+  /** Open rows: not delivered, not cancelled, not skipped [A11]. */
+  private openWithdrawals() {
+    return this.db.from("withdrawals").select().is("withdraw_signature", null).is("cancel_signature", null).is("skipped_at", null);
+  }
+
+  async pendingWithdrawal(userPubkey: string) {
+    const { data, error } = await this.openWithdrawals().eq("user_pubkey", userPubkey).eq("source", "sprouts").order("unstake_ts", { ascending: false }).limit(1).maybeSingle();
+    if (error) throw new Error(error.message);
+    return data ? withdrawalRow(data as Row) : null;
+  }
+
+  async listWithdrawals(userPubkey: string, limit: number) {
+    return this.many(this.db.from("withdrawals").select().eq("user_pubkey", userPubkey).order("unstake_ts", { ascending: false }).limit(limit), withdrawalRow);
+  }
+
   async dueWithdrawals(before: Date) {
-    return this.many(this.db.from("withdrawals").select().is("withdraw_signature", null).lte("unstake_ts", before.toISOString()), withdrawalRow);
+    return this.many(this.openWithdrawals().lte("unstake_ts", before.toISOString()), withdrawalRow);
   }
 
   async setWithdrawalDone(withdrawalId: string, signature: string, amountOutRaw: bigint) {
     const { error } = await this.db.from("withdrawals").update({ withdraw_signature: signature, amount_out_raw: amountOutRaw.toString() }).eq("id", withdrawalId);
+    if (error) throw new Error(error.message);
+  }
+
+  async setWithdrawalCancelled(withdrawalId: string, signature: string) {
+    const { error } = await this.db.from("withdrawals").update({ cancel_signature: signature }).eq("id", withdrawalId);
+    if (error) throw new Error(error.message);
+  }
+
+  async setWithdrawalSkipped(withdrawalId: string) {
+    const { error } = await this.db.from("withdrawals").update({ skipped_at: new Date().toISOString() }).eq("id", withdrawalId);
+    if (error) throw new Error(error.message);
+  }
+
+  /** Revokes the user's live session on this device, then inserts the new one (R84: one per wallet per device). */
+  async putSession(s: { tokenHash: string; userPubkey: string; device: string; expiresAt: Date }) {
+    const now = new Date().toISOString();
+    const revoke = await this.db.from("sessions").update({ revoked_at: now }).eq("user_pubkey", s.userPubkey).eq("device", s.device).is("revoked_at", null);
+    if (revoke.error) throw new Error(revoke.error.message);
+    const { error } = await this.db.from("sessions").insert({ token_hash: s.tokenHash, user_pubkey: s.userPubkey, device: s.device, expires_at: s.expiresAt.toISOString() });
+    if (error) throw new Error(error.message);
+  }
+
+  async getSession(tokenHash: string) {
+    const { data, error } = await this.db.from("sessions").select().eq("token_hash", tokenHash).maybeSingle();
+    if (error) throw new Error(error.message);
+    return data ? sessionRow(data as Row) : null;
+  }
+
+  async revokeSession(tokenHash: string) {
+    const { error } = await this.db.from("sessions").update({ revoked_at: new Date().toISOString() }).eq("token_hash", tokenHash).is("revoked_at", null);
+    if (error) throw new Error(error.message);
+  }
+
+  async revokeAllSessions(userPubkey: string) {
+    const { error } = await this.db.from("sessions").update({ revoked_at: new Date().toISOString() }).eq("user_pubkey", userPubkey).is("revoked_at", null);
+    if (error) throw new Error(error.message);
+  }
+
+  async cleanupExpired() {
+    const { error } = await this.db.rpc("cleanup_expired");
     if (error) throw new Error(error.message);
   }
 }
@@ -219,7 +327,10 @@ const date = (v: unknown) => new Date(String(v));
 const big = (v: unknown) => (v === null || v === undefined ? null : BigInt(String(v)));
 
 function userRow(r: Row): T.UserRow {
-  return { seedVaultPubkey: String(r.seed_vault_pubkey), sgtMint: String(r.sgt_mint), skrName: str(r.skr_name), proUntil: r.pro_until ? date(r.pro_until) : null, createdAt: date(r.created_at) };
+  return {
+    seedVaultPubkey: String(r.seed_vault_pubkey), sgtMint: String(r.sgt_mint), skrName: str(r.skr_name), proUntil: r.pro_until ? date(r.pro_until) : null, createdAt: date(r.created_at),
+    wateredAt: r.watered_at ? date(r.watered_at) : null, joinedShares: big(r.joined_shares) ?? 0n, joinedSharePrice: big(r.joined_share_price) ?? 0n,
+  };
 }
 
 function rulesRow(r: Row): T.RulesRow {
@@ -250,6 +361,7 @@ function plantingRow(r: Row): T.PlantingRow {
   return {
     id: String(r.id), userPubkey: String(r.user_pubkey), walletPubkey: String(r.wallet_pubkey), ts: date(r.ts), signature: str(r.signature),
     usdcPulledCents: Number(r.usdc_pulled_cents), networkFeeCents: Number(r.network_fee_cents), status: r.status as T.PlantingStatus, aiLine: str(r.ai_line),
+    sharesBefore: big(r.shares_before), sharesAfter: big(r.shares_after), sharesMinted: big(r.shares_minted),
   };
 }
 
@@ -261,5 +373,18 @@ function withdrawalRow(r: Row): T.WithdrawalRow {
   return {
     id: String(r.id), userPubkey: String(r.user_pubkey), asset: r.asset as Asset, unstakeTs: date(r.unstake_ts), unstakeSignature: str(r.unstake_signature),
     withdrawSignature: str(r.withdraw_signature), amountOutRaw: big(r.amount_out_raw), rewardDeltaRaw: big(r.reward_delta_raw),
+    cancelSignature: str(r.cancel_signature), sharesUnstaked: big(r.shares_unstaked), amountRaw: big(r.amount_raw), principalRaw: big(r.principal_raw) ?? 0n,
+    source: (r.source as T.WithdrawalSource) ?? "sprouts", skippedAt: r.skipped_at ? date(r.skipped_at) : null,
   };
+}
+
+function stakeAdjustmentRow(r: Row): T.StakeAdjustmentRow {
+  return {
+    id: String(r.id), userPubkey: String(r.user_pubkey), ts: date(r.ts), kind: r.kind as T.StakeAdjustmentRow["kind"],
+    sharesDelta: BigInt(String(r.shares_delta)), amountRaw: BigInt(String(r.amount_raw)), sharePrice: BigInt(String(r.share_price)),
+  };
+}
+
+function sessionRow(r: Row): T.SessionRow {
+  return { tokenHash: String(r.token_hash), userPubkey: String(r.user_pubkey), device: String(r.device), createdAt: date(r.created_at), expiresAt: date(r.expires_at), revokedAt: r.revoked_at ? date(r.revoked_at) : null };
 }

@@ -6,7 +6,7 @@ import { config } from "../src/lib/config";
 
 const pubkey = `smoke-${Date.now()}`;
 const repo = await getRepo();
-const user = await repo.upsertUser({ seedVaultPubkey: pubkey, sgtMint: `smoke-mint-${Date.now()}`, skrName: null });
+const { row: user } = await repo.upsertUser({ seedVaultPubkey: pubkey, sgtMint: `smoke-mint-${Date.now()}`, skrName: null });
 console.log(`user row: ${user.seedVaultPubkey}`);
 const rules = await repo.getRules(pubkey);
 console.log(`default rules: roundup to ${rules.roundupToCents} cents, pct ${rules.pctBps} bps over ${rules.pctThresholdCents} cents, plant at ${rules.plantThresholdCents} cents or ${rules.plantMaxDays} days`);

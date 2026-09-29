@@ -30,7 +30,7 @@ beforeAll(() => {
 });
 
 async function mintCode(repo: MemoryRepo) {
-  const token = await issueSession("U");
+  const token = await issueSession("U", "M");
   const res = await newCode(new Request("http://x/api/link/new", { method: "POST", headers: { authorization: `Bearer ${token}` } }));
   return (await res.json()) as { code: string; expiresAt: string };
 }

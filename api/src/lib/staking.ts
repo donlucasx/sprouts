@@ -75,6 +75,11 @@ export async function crankWithdraw(user: Address): Promise<string> {
 
 export type Position = { shares: bigint; stakedRaw: bigint; unstakingRaw: bigint; unstakeTs: bigint | null };
 
+/** StakeConfig.share_price at 1e9 scale: the program's own price of one share in SKR, the only price the garden is drawn from. */
+export async function sharePrice(): Promise<bigint> {
+  return BigInt((await fetchStakeConfig(rpc(), STAKE_CONFIG)).data.sharePrice);
+}
+
 /** Read live from chain: staked amount = shares times the share price (9 decimals of scale). */
 export async function readPosition(user: Address): Promise<Position> {
   const [maybe, cfg] = await Promise.all([fetchMaybeUserStake(rpc(), await userStakePda(user)), fetchStakeConfig(rpc(), STAKE_CONFIG)]);

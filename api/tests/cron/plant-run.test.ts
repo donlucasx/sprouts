@@ -15,6 +15,8 @@ function fakeChain(over: Partial<Chain> = {}): Chain {
     simulatePlanting: async () => ({ ok: true, err: null, logs: [], units: 200_000 }),
     sendPlanting: async () => {},
     signatureStatus: async () => "pending",
+    readShares: async () => 1_000_000_000n,
+    sharePrice: async () => 1_146_000_000n,
     ...over,
   };
 }
@@ -219,5 +221,31 @@ describe("runPlanting", () => {
     expect(r.planted[0].pullCents).toBe(300);
     expect((await repo.unplantedSwaps("W")).length).toBe(0);
     expect((await repo.getWallet("W"))!.ledgerSkrCents).toBe(297);
+  });
+
+  // [A16] the reconciliation works from what each planting minted: shares before the send, shares after confirmation.
+  it("a confirmed planting records the shares it minted: read before the send, read again after confirmation", async () => {
+    const repo = await seeded([83, 62, 70]);
+    let shares = 1_000_000_000n;
+    const chain = fakeChain({ readShares: async () => shares, sendPlanting: async () => { shares += 250_000_000n; } });
+    const r = await runPlanting({ repo, now: NOW, chain });
+    expect(r.planted.length).toBe(1);
+    const p = (await repo.listConfirmedPlantings("U"))[0];
+    expect(p.sharesBefore).toBe(1_000_000_000n);
+    expect(p.sharesAfter).toBe(1_250_000_000n);
+    expect(p.sharesMinted).toBe(250_000_000n);
+  });
+
+  it("a sent planting booked late without a before-read estimates its minted shares from the leg and the share price", async () => {
+    const repo = await seeded([]);
+    const p = await repo.insertPlanting({ userPubkey: "U", walletPubkey: "W", signature: "old", usdcPulledCents: 218, networkFeeCents: 3, status: "sent", aiLine: null },
+      [{ asset: "SKR", usdcInCents: 215, amountOutRaw: 1_146_000_000n, staked: true, feeAmountRaw: 0n }]);
+    p.ts = new Date(NOW.getTime() - 10 * 60_000);
+    await runPlanting({ repo, now: NOW, chain: fakeChain({ signatureStatus: async () => "confirmed", readShares: async () => 5_000_000_000n }) });
+    const row = repo.plantings.get(p.id)!;
+    expect(row.status).toBe("confirmed");
+    expect(row.sharesBefore).toBeNull();
+    expect(row.sharesAfter).toBe(5_000_000_000n);
+    expect(row.sharesMinted).toBe(1_000_000_000n);
   });
 });
