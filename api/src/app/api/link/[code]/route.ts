@@ -15,7 +15,7 @@ const DAILY_CAP_RAW = 5_000_000n;
 
 /**
  * The approve-once transaction for a trading wallet, unsigned: the wallet (Phantom on the web page, or the phone's wallet) signs it.
- * The code binds to the first wallet that fetches it and is consumed only on confirm.
+ * The approval is simulated first; the code binds to the first wallet whose approval would land and is consumed only on confirm.
  */
 export async function GET(request: Request, ctx: { params: Promise<{ code: string }> }) {
   const ip = request.headers.get("x-forwarded-for") ?? "local";
@@ -33,7 +33,7 @@ export async function GET(request: Request, ctx: { params: Promise<{ code: strin
   const repo = await getRepo();
   const link = await repo.peekLinkCode(code.toUpperCase());
   if (!link) return NextResponse.json({ error: "This code is unknown, expired or already used." }, { status: 404 });
-  if (link.walletPubkey && link.walletPubkey !== wallet) return NextResponse.json({ error: "This code belongs to another wallet." }, { status: 409 });
+  if (link.walletPubkey && link.walletPubkey !== wallet) return NextResponse.json({ error: "This code was already used with another wallet. Get a new code in the app, then try again." }, { status: 409 });
 
   // A wallet another Seeker still holds cannot be taken over; a revoked one can be linked again, by anyone (review I3).
   const existing = await repo.getWallet(wallet);
@@ -43,7 +43,6 @@ export async function GET(request: Request, ctx: { params: Promise<{ code: strin
 
   const puller = (await pullerSigner()).address;
   const pda = await delegationPda({ delegator: wallet, delegatee: puller, nonce: link.nonce });
-  if (!link.walletPubkey) await repo.bindLinkCode(link.code, wallet, pda);
 
   // A wallet that linked before already has its USDC authority on chain: re-init would fail, so the create carries its init id.
   // A wallet with no USDC account yet gets it created in the same approval (the init needs it).
@@ -63,5 +62,18 @@ export async function GET(request: Request, ctx: { params: Promise<{ code: strin
     (m) => appendTransactionMessageInstructions(ixs, m),
   );
   const transaction = getBase64EncodedWireTransaction(compileTransaction(message));
+  // Simulated before any wallet sees it (MetaMask with no SOL, 2026-09-29): a wallet that cannot pay the rent hears it in plain
+  // words, and the code is bound only to a wallet whose approval would land, so a failed try leaves it free for another wallet.
+  const sim = await rpc().simulateTransaction(transaction, { encoding: "base64", sigVerify: false, replaceRecentBlockhash: true, commitment: "confirmed" }).send();
+  if (sim.value.err) return NextResponse.json({ error: simulationError(sim.value.err, sim.value.logs ?? []) }, { status: 400 });
+  if (!link.walletPubkey) await repo.bindLinkCode(link.code, wallet, pda);
   return NextResponse.json({ transaction, cap: DAILY_CAP_CENTS, puller, delegationPda: pda, revokes });
+}
+
+/** A failed simulation in the words the user needs: no SOL for the rent and fee, or a failure that would happen on chain. */
+function simulationError(err: unknown, logs: readonly string[]): string {
+  const text = JSON.stringify(err, (_k, v) => (typeof v === "bigint" ? v.toString() : v));
+  const noSol = err === "AccountNotFound" || /InsufficientFundsFor(Fee|Rent)/.test(text) || logs.some((l) => /insufficient lamports/i.test(l));
+  if (noSol) return "This wallet needs a little SOL first: about 0.01 SOL covers the one-time rent (refunded when you revoke) and the fee. Nothing was signed.";
+  return `This approval would fail on chain (${text.slice(0, 120)}), so no wallet was asked to sign it. Try again, or get a new code.`;
 }

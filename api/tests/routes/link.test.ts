@@ -11,11 +11,15 @@ vi.mock("@/lib/subscriptions", async (orig) => ({
   readUsdcAtaExists: vi.fn(async () => true),
 }));
 vi.mock("@/lib/helius", () => ({ heliusAddAddress: vi.fn(async () => undefined) }));
+// The per-address limiter has its own tests; these exercise the link flow, which now makes more requests than one window allows.
+vi.mock("@/lib/auth-guard", async (orig) => ({ ...(await orig<object>()), rateLimited: () => false }));
 vi.mock("@/lib/puller", () => ({ pullerSigner: vi.fn(async () => ({ address: "4wiD3N7FrBNJSmZUQDkGHM4CsvDrvyvx7G1FApLGEbJ1" })) }));
+const { simulateMock } = vi.hoisted(() => ({ simulateMock: vi.fn(async () => ({ value: { err: null as unknown, logs: [] as string[] } })) }));
 vi.mock("@/lib/rpc", () => ({
   rpc: () => ({
     getLatestBlockhash: () => ({ send: async () => ({ value: { blockhash: "GHtXQBsoZHVnNFa9YevAzFr17DJjgHXk3ycTKD5xD3Zi", lastValidBlockHeight: 1n } }) }),
     sendTransaction: () => ({ send: async () => "sig" }),
+    simulateTransaction: () => ({ send: simulateMock }),
   }),
 }));
 
@@ -107,6 +111,33 @@ describe("link flow", () => {
     const c = await mintCode(repo);
     const t = await (await getTx(new Request(`http://x/api/link/${c.code}?wallet=${WALLET}`), { params: Promise.resolve({ code: c.code }) })).json();
     expect(instructionCount(t.transaction)).toBe(3);
+  });
+
+  it("a wallet with no SOL is told so before any wallet is asked, and the code stays free for another wallet (MetaMask, 2026-09-29)", async () => {
+    simulateMock.mockResolvedValueOnce({ value: { err: "AccountNotFound", logs: [] } });
+    const c = await mintCode(repo);
+    const r = await getTx(new Request(`http://x/api/link/${c.code}?wallet=${WALLET}`), { params: Promise.resolve({ code: c.code }) });
+    expect(r.status).toBe(400);
+    expect((await r.json()).error).toMatch(/needs a little SOL/);
+    const again = await getTx(new Request(`http://x/api/link/${c.code}?wallet=${OTHER}`), { params: Promise.resolve({ code: c.code }) });
+    expect(again.status).toBe(200);
+  });
+
+  it("any other failing simulation is refused with the reason, the code still free", async () => {
+    simulateMock.mockResolvedValueOnce({ value: { err: { InstructionError: [1, { Custom: 136 }] }, logs: ["Program log: stale"] } });
+    const c = await mintCode(repo);
+    const r = await getTx(new Request(`http://x/api/link/${c.code}?wallet=${WALLET}`), { params: Promise.resolve({ code: c.code }) });
+    expect(r.status).toBe(400);
+    expect((await r.json()).error).toMatch(/would fail on chain/);
+    expect((await repo.peekLinkCode(c.code))!.walletPubkey).toBeNull();
+  });
+
+  it("a code another wallet already used says to get a new one", async () => {
+    const c = await mintCode(repo);
+    await getTx(new Request(`http://x/api/link/${c.code}?wallet=${WALLET}`), { params: Promise.resolve({ code: c.code }) });
+    const r = await getTx(new Request(`http://x/api/link/${c.code}?wallet=${OTHER}`), { params: Promise.resolve({ code: c.code }) });
+    expect(r.status).toBe(409);
+    expect((await r.json()).error).toBe("This code was already used with another wallet. Get a new code in the app, then try again.");
   });
 
   // Review I3: a wallet linked before (revoked, or re-approving) must re-link, not 500 on the row after the code is burned.

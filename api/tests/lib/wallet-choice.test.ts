@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { Keypair, PublicKey, SystemProgram, TransactionInstruction, TransactionMessage, VersionedTransaction } from "@solana/web3.js";
-import { eligibleWallets, signWith, CONNECT, SIGN, type StdWallet } from "@/lib/wallet-choice";
+import { eligibleWallets, signWith, connectWith, CONNECT, SIGN, type StdWallet } from "@/lib/wallet-choice";
 
 // The desktop link and revoke pages used whatever extension sat in Phantom's slot, and NUFI took it (2026-09-29). They now list the
 // Wallet Standard wallets installed in the browser and let the user pick; signing keeps the program allow-list [A10].
@@ -44,5 +44,18 @@ describe("signWith", () => {
     expect(b64(seen[0].transaction!)).toBe(good);
     expect(seen[0].chain).toBe("solana:mainnet");
     expect(seen[0].account).toBe(account);
+  });
+});
+
+describe("connectWith", () => {
+  const withAccounts = (accounts: { address: string; chains?: string[] }[]) => wallet("Backpack", { features: { [CONNECT]: { connect: async () => ({ accounts }) }, [SIGN]: {} } });
+  it("takes the wallet's Solana mainnet account when it shares several", async () => {
+    expect((await connectWith(withAccounts([{ address: "E1", chains: ["eclipse:mainnet"] }, { address: "S1", chains: ["solana:mainnet"] }]))).address).toBe("S1");
+  });
+  it("refuses an account on another network and says how to fix it (Backpack on Eclipse, 2026-09-29)", async () => {
+    await expect(connectWith(withAccounts([{ address: "E1", chains: ["eclipse:mainnet"] }]))).rejects.toThrow("Switch Backpack to Solana");
+  });
+  it("accepts an account that names no chains", async () => {
+    expect((await connectWith(withAccounts([{ address: "A1" }]))).address).toBe("A1");
   });
 });
