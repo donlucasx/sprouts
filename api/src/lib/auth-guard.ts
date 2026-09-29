@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
-import { readSession } from "./session";
+import { readSession, type Session } from "./session";
 
-/** The signed-in Seeker behind a request, or the 401 to return. */
-export async function requireSession(request: Request): Promise<{ pubkey: string } | NextResponse> {
+/** The signed-in Seeker behind a request (and the hash of its token, for sign-out), or the 401 to return. */
+export async function requireSession(request: Request): Promise<Session | NextResponse> {
   const header = request.headers.get("authorization") ?? "";
   const token = header.startsWith("Bearer ") ? header.slice(7) : "";
-  const pubkey = token ? await readSession(token) : null;
-  if (!pubkey) return NextResponse.json({ error: "Sign in first." }, { status: 401 });
-  return { pubkey };
+  const session = token ? await readSession(token) : null;
+  if (!session) return NextResponse.json({ error: "Sign in first." }, { status: 401 });
+  return session;
 }
 
 const buckets = new Map<string, { tokens: number; at: number }>();

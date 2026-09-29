@@ -32,6 +32,10 @@ export type Chain = {
   /** Sends and waits for confirmation; may throw after the transaction has landed (a dropped websocket), so the caller checks. */
   sendPlanting(built: Built): Promise<void>;
   signatureStatus(signature: string): Promise<SignatureStatus>;
+  /** The user's position share count, read before a send and again after confirmation: what the planting minted [A16]. */
+  readShares(user: string): Promise<bigint>;
+  /** StakeConfig.share_price at 1e9 scale, for a planting booked late without a before-read. */
+  sharePrice(): Promise<bigint>;
 };
 
 export type Planted = { wallet: string; asset: Asset; pullCents: number; signature: string };
@@ -84,7 +88,7 @@ async function reconcileSentPlantings(a: { repo: Repo; now: Date; chain: Chain }
     if (!p.signature) continue;
     const status = await a.chain.signatureStatus(p.signature);
     if (status === "confirmed") {
-      await bookConfirmed(a.repo, p);
+      await bookConfirmed(a.repo, a.chain, p);
       console.error(`planting ${p.id} for ${p.walletPubkey} reconciled: confirmed on chain (${p.signature})`);
     } else if (status === "failed" || a.now.getTime() - p.ts.getTime() >= GIVE_UP_AFTER_MS) {
       await a.repo.setPlantingStatus(p.id, "failed");
@@ -94,10 +98,21 @@ async function reconcileSentPlantings(a: { repo: Repo; now: Date; chain: Chain }
   }
 }
 
-/** The one place a planting becomes confirmed: status, then the ledger, from the recorded legs. */
-async function bookConfirmed(repo: Repo, p: PlantingRow) {
+/** The one place a planting becomes confirmed: status, the ledger from the recorded legs, then the shares it minted [A16]. */
+async function bookConfirmed(repo: Repo, chain: Chain, p: PlantingRow) {
   await repo.setPlantingStatus(p.id, "confirmed");
-  for (const leg of await repo.plantingLegs(p.id)) await repo.bumpLedger(p.walletPubkey, leg.asset, leg.usdcInCents);
+  const legs = await repo.plantingLegs(p.id);
+  for (const leg of legs) await repo.bumpLedger(p.walletPubkey, leg.asset, leg.usdcInCents);
+  const after = await chain.readShares(p.userPubkey);
+  const minted = p.sharesBefore === null ? await estimateMinted(chain, legs) : after - p.sharesBefore;
+  await repo.setPlantingShares(p.id, { before: p.sharesBefore, after, minted });
+}
+
+/** A planting booked late, with no before-read (a row from before the share columns existed): the SKR leg at today's share price. */
+async function estimateMinted(chain: Chain, legs: { asset: Asset; amountOutRaw: bigint }[]): Promise<bigint> {
+  const skr = legs.filter((l) => l.asset === "SKR").reduce((s, l) => s + l.amountOutRaw, 0n);
+  if (skr === 0n) return 0n;
+  return (skr * 1_000_000_000n) / (await chain.sharePrice());
 }
 
 async function resumePausedWallets(a: { repo: Repo; now: Date; chain: Chain }) {
@@ -166,8 +181,10 @@ async function plantOneOrThrow(a: { repo: Repo; now: Date; chain: Chain }, w: Wa
   }
 
   // Record the signed transaction before it goes anywhere, then claim the round-ups in one conditional statement (review C1).
+  // The share count right before the send: after confirmation the difference is what this planting minted [A16].
+  const sharesBefore = await a.chain.readShares(w.userPubkey);
   const planting = await a.repo.insertPlanting(
-    { userPubkey: w.userPubkey, walletPubkey: w.pubkey, signature: built.signature, usdcPulledCents: amount.pullCents, networkFeeCents: NETWORK_FEE_CENTS, status: "sent", aiLine: null },
+    { userPubkey: w.userPubkey, walletPubkey: w.pubkey, signature: built.signature, usdcPulledCents: amount.pullCents, networkFeeCents: NETWORK_FEE_CENTS, status: "sent", aiLine: null, sharesBefore },
     [{ asset, usdcInCents: amount.changeCents, amountOutRaw: built.minOutRaw, staked: asset === "SKR", feeAmountRaw: (built.expectedOutRaw * BigInt(FEE_BPS)) / 10_000n }],
   );
   const claimed = await a.repo.claimSwaps(swaps.map((s) => s.signature), planting.id);
@@ -197,7 +214,7 @@ async function plantOneOrThrow(a: { repo: Repo; now: Date; chain: Chain }, w: Wa
       return { wallet: w.pubkey, reason: "send unknown" };
     }
   }
-  await bookConfirmed(a.repo, planting);
+  await bookConfirmed(a.repo, a.chain, planting);
   return { wallet: w.pubkey, asset, pullCents: amount.pullCents, signature: built.signature };
 }
 

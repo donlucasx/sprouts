@@ -41,11 +41,11 @@ const genesis = await verifyGenesisHolder(config().heliusRpcUrl, seeker);
 if (!genesis) { console.log("the Seeker key holds no Genesis Token; stop"); process.exit(1); }
 const skrName = await skrNameOf(config().heliusRpcUrl, seeker);
 const repo = await getRepo();
-const user = await repo.upsertUser({ seedVaultPubkey: seeker, sgtMint: genesis.mint, skrName });
+const { row: user } = await repo.upsertUser({ seedVaultPubkey: seeker, sgtMint: genesis.mint, skrName });
 console.log(`user row ok: name ${user.skrName ?? "none"}, mint ${user.sgtMint.slice(0, 6)}..., created ${user.createdAt.toISOString().slice(0, 10)}`);
 
 // 2. a session, kept in memory
-const token = await issueSession(seeker);
+const token = await issueSession(seeker, genesis.mint);
 const authed = { authorization: `Bearer ${token}`, "content-type": "application/json" };
 
 // 3. the link flow
