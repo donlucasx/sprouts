@@ -84,7 +84,7 @@ export default function Connect() {
         {code ? (
           <View style={{ gap: 6 }}>
             <Text style={{ fontSize: 34, letterSpacing: 6, fontWeight: "700", color: "#2B2B2B" }}>{code}</Text>
-            <Text style={{ fontSize: 14, color: "#6B6558" }}>Open sprouts-api-gamma.vercel.app/link on the computer with that wallet, enter this code, approve with Phantom. The code lasts 15 minutes.</Text>
+            <Text style={{ fontSize: 14, color: "#6B6558" }}>Open sprouts.money/link on the computer with that wallet, enter this code, approve with Phantom. The code lasts 15 minutes.</Text>
           </View>
         ) : (
           <Button title="Get a code" kind="quiet" disabled={busy} onPress={codeForAnotherWallet} />

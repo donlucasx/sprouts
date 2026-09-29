@@ -79,7 +79,7 @@ export default function Rules() {
     if (!session) return;
     setError(null);
     if (wallet !== session.pubkey) {
-      setError("Revoke this wallet on sprouts-api-gamma.vercel.app/revoke with the wallet that approved it.");
+      setError("Revoke this wallet on sprouts.money/revoke with the wallet that approved it.");
       return;
     }
     setBusy(true);
