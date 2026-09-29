@@ -23,9 +23,16 @@ export function widgetGardenSvg(scene: Scene, width: number, height: number): st
     const h = f((10 + p.stage * 12) * scale);
     return [`<path d="M${x} ${base} q 2 ${f(-h / 2)} 0 ${-h}" stroke="#3F7A4A" stroke-width="2" fill="none"/>`];
   });
-  const fruit = scene.parts.filter((p) => p.kind === "fruit").length;
-  const fruits = Array.from({ length: fruit }, (_, i) =>
-    `<circle cx="${f(width * (0.2 + (i % 6) * 0.12))}" cy="${f(line - 30 * scale - Math.floor(i / 6) * 12)}" r="3" fill="#C9553D"/>`);
+  // Fruit hang near the tip of the sprout the scene names (ORE pups have none and are left to the app's garden).
+  const tips = new Map(scene.parts.flatMap((p) => p.kind === "sprout" && !p.bud ? [[p.id, { x: p.x * width, y: surface(p.x) - (10 + p.stage * 12) * scale }] as const] : []));
+  const perHost = new Map<string, number>();
+  const fruits = scene.parts.flatMap((p) => {
+    if (p.kind !== "fruit" || p.on === null || !tips.has(p.on)) return [];
+    const k = perHost.get(p.on) ?? 0;
+    perHost.set(p.on, k + 1);
+    const t = tips.get(p.on)!;
+    return [`<circle cx="${f(t.x + ((k % 3) - 1) * 6)}" cy="${f(t.y + 6 + Math.floor(k / 3) * 7)}" r="3" fill="#C9553D"/>`];
+  });
 
   const soil = `<path d="M0 ${line + 20} Q ${width / 2} ${line} ${width} ${line + 20} L ${width} ${height} L 0 ${height} Z" fill="#B08A4B" opacity="0.9"/>`;
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${soil}${stems.join("")}${seeds.join("")}${fruits.join("")}</svg>`;

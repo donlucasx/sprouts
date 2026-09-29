@@ -15,8 +15,8 @@ export type Part =
   | { kind: "seed"; id: string; x: number }
   | { kind: "sprout"; id: string; plant: "skr" | "ore"; x: number; y: number; stage: 0 | 1 | 2 | 3; bud: boolean; sizeRaw: bigint }
   | { kind: "transplant"; plant: "skr"; sizeRaw: bigint }
-  | { kind: "fruit"; index: number; plant: "skr" | "ore"; ripe: true; bud: boolean }
-  | { kind: "ripening"; plant: "skr" | "ore"; progress: number }
+  | { kind: "fruit"; index: number; plant: "skr" | "ore"; ripe: true; bud: boolean; on: string | null }   // on: the sprout it hangs from; ORE pups sit on the soil (null)
+  | { kind: "ripening"; plant: "skr" | "ore"; progress: number; on: string }
   | { kind: "basket"; amountRaw: bigint; readyAt: Date }
   | { kind: "wetSpot"; age: number }
   | { kind: "pruned"; count: number };
@@ -78,11 +78,20 @@ export function buildScene(g: GardenInput): Scene {
 
   // Fruit come from the pot's count (never from a market price); the next one swells with each reward event. A fruit that appeared
   // since the last watering is drawn as a fruit in this plan and the ripening bud carries the reveal (RECONCILED rule 4; Plan 3 refines it
-  // with the fruit's appearance times from the daily reads).
-  for (let i = 0; i < g.skrFruit; i++) parts.push({ kind: "fruit", index: i, plant: "skr", ripe: true, bud: false });
-  if (g.skrPutInRaw > 0n) parts.push({ kind: "ripening", plant: "skr", progress: g.skrNextFruitProgress });
-  for (let i = 0; i < g.storePups; i++) parts.push({ kind: "fruit", index: i, plant: "ore", ripe: true, bud: false });
-  if (g.storePutInRaw > 0n) parts.push({ kind: "ripening", plant: "ore", progress: g.storeNextPupProgress });
+  // with the fruit's appearance times from the daily reads). Fruit and the ripening bud hang on an open sprout, the largest first; a
+  // closed bud or the transplant (R82) holds none, so with no open sprout they wait for the watering (09-29: it floated mid-air).
+  const hosts = (plant: "skr" | "ore") => parts
+    .filter((p): p is Extract<Part, { kind: "sprout" }> => p.kind === "sprout" && p.plant === plant && !p.bud)
+    .sort((a, b) => b.stage - a.stage)
+    .map((p) => p.id);
+  const skrHosts = hosts("skr");
+  if (skrHosts.length > 0) {
+    for (let i = 0; i < g.skrFruit; i++) parts.push({ kind: "fruit", index: i, plant: "skr", ripe: true, bud: false, on: skrHosts[i % skrHosts.length] });
+    if (g.skrPutInRaw > 0n) parts.push({ kind: "ripening", plant: "skr", progress: g.skrNextFruitProgress, on: skrHosts[0] });
+  }
+  for (let i = 0; i < g.storePups; i++) parts.push({ kind: "fruit", index: i, plant: "ore", ripe: true, bud: false, on: null });
+  const oreHosts = hosts("ore");
+  if (g.storePutInRaw > 0n && oreHosts.length > 0) parts.push({ kind: "ripening", plant: "ore", progress: g.storeNextPupProgress, on: oreHosts[0] });
 
   if (g.basket) parts.push({ kind: "basket", amountRaw: g.basket.amountRaw, readyAt: g.basket.readyAt });
 

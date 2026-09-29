@@ -40,6 +40,25 @@ describe("buildScene", () => {
     expect((s.parts.find((p) => p.kind === "ripening") as { progress: number }).progress).toBe(0.4);
   });
 
+  // 09-29 Saga: the ripening bud was drawn at a fixed spot mid-air over a garden whose only sprout was still a closed bud.
+  // Fruit and the ripening bud hang on an open plant, the largest first; with no open plant they wait for the watering.
+  it("fruit and the ripening bud hang on the largest open sprout", () => {
+    const s = buildScene({ ...base, wateredAt: new Date(NOW.getTime() - 3 * 86_400_000), plantings: [planting("small", 4, 1n), planting("big", 20, 1n)], skrPutInRaw: 100n, skrFruit: 1, skrNextFruitProgress: 0.3 });
+    expect((s.parts.find((p) => p.kind === "ripening") as { on: string }).on).toBe("big");
+    expect((s.parts.find((p) => p.kind === "fruit") as { on: string }).on).toBe("big");
+  });
+
+  it("a garden of closed buds shows no fruit and no ripening bud until it is watered", () => {
+    const s = buildScene({ ...base, wateredAt: null, plantings: [planting("a", 0, 1n)], skrPutInRaw: 100n, skrFruit: 1, skrNextFruitProgress: 0 });
+    expect(kinds(s)).not.toContain("ripening");
+    expect(kinds(s)).not.toContain("fruit");
+  });
+
+  it("a transplanted plant never holds the fruit (R82): with no open sprout the ripening bud waits", () => {
+    const s = buildScene({ ...base, wateredAt: NOW, joinedValueRaw: 5n, skrPutInRaw: 100n, skrFruit: 0, skrNextFruitProgress: 0.5 });
+    expect(kinds(s)).not.toContain("ripening");
+  });
+
   it("a pre-existing position is a transplanted plant with no fruit (R61)", () => {
     const s = buildScene({ ...base, joinedValueRaw: 10_000_000_000n, wateredAt: NOW });
     expect(kinds(s)).toEqual(["soil", "transplant", "wetSpot"]);
