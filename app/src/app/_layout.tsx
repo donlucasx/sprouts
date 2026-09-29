@@ -26,6 +26,9 @@ export default function Layout() {
   }, []);
   const setSession = async (s: Session | null) => {
     await saveSession(s);
+    // Every read cached under the old session goes with it (09-29: after sign-out, Home's last read was a 401; signing back in
+    // found that 401 still cached, took the new session for dead and threw it away, so sign-in bounced back to Welcome).
+    queryClient.clear();
     setSessionState(s);
   };
   if (!ready) return null;
