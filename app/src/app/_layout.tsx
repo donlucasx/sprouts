@@ -3,6 +3,8 @@ import { Stack } from "expo-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createSolanaMainnet, MobileWalletProvider, type AppIdentity } from "@wallet-ui/react-native-kit";
 import { loadSession, saveSession, SessionContext, type Session } from "@/lib/session";
+import { registerBackgroundRefresh } from "@/lib/background"; // importing it defines the background task at module scope
+import { askNotificationPermissionOnce } from "@/lib/notify";
 
 const identity: AppIdentity = { name: "Sprouts", uri: "https://sprouts-api-gamma.vercel.app" };
 // Only Mobile Wallet Adapter's plumbing touches this endpoint; every read the app shows comes from the API.
@@ -16,6 +18,10 @@ export default function Layout() {
     loadSession().then((s) => {
       setSessionState(s);
       setReady(true);
+      if (s) {
+        registerBackgroundRefresh().catch(() => {});
+        askNotificationPermissionOnce().catch(() => {});
+      }
     });
   }, []);
   const setSession = async (s: Session | null) => {

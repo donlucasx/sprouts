@@ -2,7 +2,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createMMKV } from "react-native-mmkv"; // v4: a factory, and MMKV is a type only [A5]
 import { api, ApiError, type MeResponse } from "./api";
 import { pickMeState } from "./me-state";
-import type { GardenInput } from "@/model/garden";
+import { refreshWidget } from "./widget-refresh";
+export { toGardenInput } from "./garden-input";
 
 export const store = createMMKV({ id: "sprouts" });
 const KEY = "me.last";
@@ -23,6 +24,7 @@ export function useMe() {
     queryFn: async () => {
       const me = await api<MeResponse>("/api/me");
       writeLastMe(me);
+      void refreshWidget(me).catch(() => {}); // the home-screen widget follows every good read
       return me;
     },
     placeholderData: () => readLastMe() ?? undefined,
@@ -40,22 +42,4 @@ export function useMe() {
 export function useInvalidateMe() {
   const qc = useQueryClient();
   return () => qc.invalidateQueries({ queryKey: ["me"] });
-}
-
-/** The API's numbers (decimal strings on the wire) into the model's input; the app never computes money itself. */
-export function toGardenInput(me: MeResponse, now: Date): GardenInput {
-  const b = (s: string) => BigInt(s);
-  return {
-    now,
-    wateredAt: me.user.wateredAt ? new Date(me.user.wateredAt) : null,
-    plantings: me.history.plantings.map((p) => ({ id: p.id, ts: new Date(p.ts), asset: p.asset, amountOutRaw: b(p.amountOutRaw) })),
-    picks: me.history.picks.map((p) => ({ ts: new Date(p.ts), asset: p.asset, amountRaw: b(p.amountRaw) })),
-    skrPutInRaw: b(me.pot.skrPutInRaw), skrEarnedRaw: b(me.pot.skrEarnedRaw), skrPickedRaw: b(me.pot.skrPickedRaw),
-    skrFruit: me.pot.fruit, skrNextFruitProgress: me.pot.nextFruitProgress,
-    storePutInRaw: b(me.pot.storePutInRaw), storePups: 0, storeNextPupProgress: 0,
-    joinedValueRaw: b(me.pot.joinedValueRaw),
-    skrPrincipalPickedRaw: b(me.pot.skrPrincipalPickedRaw),
-    pendingCents: me.nextPlanting.pendingCents,
-    basket: me.basket ? { amountRaw: b(me.basket.amountRaw), readyAt: new Date(me.basket.readyAt) } : null,
-  };
 }
