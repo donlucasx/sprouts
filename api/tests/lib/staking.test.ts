@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { address, createNoopSigner, AccountRole } from "@solana/kit";
-import { userStakePda, buildStakeIx, buildWithdrawIx } from "@/lib/staking";
+import { userStakePda, buildStakeIx, buildWithdrawIx, buildUnstakeIx, buildCancelUnstakeIx } from "@/lib/staking";
+import { getUnstakeInstructionDataDecoder, getCancelUnstakeInstructionDataDecoder } from "@/generated/staking";
 import { STAKE_CONFIG, GUARDIAN_POOL, SKR_STAKING_PROGRAM } from "@/lib/constants";
 
 const user = address("DdpHknAJvVsG8HYTAN3ZmSLLiPh2GfXP2pMoJJFa1p9m");
@@ -27,5 +28,21 @@ describe("staking helpers", () => {
     const ix = await buildWithdrawIx({ user });
     expect(ix.accounts!.some((a) => isSigner(a.role))).toBe(false);
     expect(ix.accounts!.map((a) => a.address)).toContain(user);
+  });
+
+  // Task 7: the unstake is the one act only the Seeker's key can do; its shares are read back from the data the wallet signs.
+  it("unstake instruction lists the user as the only signer and carries the shares in its data", async () => {
+    const ix = await buildUnstakeIx({ user: createNoopSigner(user), shares: 80_279_232n });
+    expect(ix.accounts!.filter((a) => isSigner(a.role)).map((a) => a.address)).toEqual([user]);
+    expect(ix.accounts!.map((a) => a.address)).toContain(await userStakePda(user));
+    expect(getUnstakeInstructionDataDecoder().decode(ix.data!).shares).toBe(80_279_232n);
+    expect(ix.programAddress).toBe(SKR_STAKING_PROGRAM);
+  });
+
+  it("cancel-unstake instruction lists the user as the only signer and decodes as a cancel", async () => {
+    const ix = await buildCancelUnstakeIx({ user: createNoopSigner(user) });
+    expect(ix.accounts!.filter((a) => isSigner(a.role)).map((a) => a.address)).toEqual([user]);
+    expect(() => getCancelUnstakeInstructionDataDecoder().decode(ix.data!)).not.toThrow();
+    expect(() => getUnstakeInstructionDataDecoder().decode(ix.data!)).toThrow();
   });
 });

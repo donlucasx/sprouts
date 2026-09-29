@@ -55,7 +55,8 @@ export async function POST(request: Request) {
     } catch (e) {
       return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 400 });
     }
-    if (!posted.instructions.some((ix) => ix.accounts.includes(address(link.delegationPda)))) return NextResponse.json({ error: "This approval is for another delegation." }, { status: 400 });
+    const boundPda = address(link.delegationPda);
+    if (!posted.instructions.some((ix) => ix.accounts.includes(boundPda))) return NextResponse.json({ error: "This approval is for another delegation." }, { status: 400 });
     try {
       await rpc().sendTransaction(posted.wire as Base64EncodedWireTransaction, { encoding: "base64", preflightCommitment: "confirmed" }).send();
     } catch {
