@@ -11,10 +11,12 @@ const BASE64_TEXT = /^[A-Za-z0-9+/_-]+={0,2}$/;
  * The protocol hands the sign-in result's signature and signed message as base64 text; wallet-ui 4.3.0 turns each into the UTF-8
  * bytes of that text (its stringToUint8Array is a TextEncoder), so the server saw an 88-byte "signature" (the Saga, 2026-09-29).
  * Undo that when it happened and leave real bytes alone: 64 signature bytes are never all base64 characters, and a sign-in
- * message holds spaces and colons. A wrong guess cannot pass: the server still verifies the signature over the message.
+ * message holds spaces and colons. Padded, unpadded and URL-safe base64 all decode (js-base64). A wrong guess cannot pass: the
+ * server still verifies the signature over the message.
  */
 export function unwrapBase64Text(bytes: Uint8Array): Uint8Array {
-  if (bytes.length === 0 || bytes.length % 4 !== 0) return bytes;
+  // Standard base64 pads to a multiple of four; the adapter's fallback emits unpadded URL-safe base64 (lengths of 2 or 3 mod 4). Only 1 mod 4 is never base64.
+  if (bytes.length === 0 || bytes.length % 4 === 1) return bytes;
   let text = "";
   for (const b of bytes) {
     if (b > 127) return bytes;
@@ -32,7 +34,11 @@ export async function freshSignIn(signIn: SignInFn): Promise<SignedIn> {
   const input = await api<SignInInput>("/api/auth/nonce", { method: "POST", body: {}, auth: false });
   const output = await signIn({ ...input, chainId: "solana:mainnet" } as SignInPayload);
   const address = output.account.address;
-  return { input: { ...input, address }, output: { address, signedMessage: toBase64(unwrapBase64Text(output.signedMessage)), signature: toBase64(unwrapBase64Text(output.signature)) } };
+  const signedMessage = unwrapBase64Text(output.signedMessage);
+  const signature = unwrapBase64Text(output.signature);
+  // Dev builds only: the message and the address are public (the nonce is single-use); the signature never goes to a log.
+  if (typeof __DEV__ !== "undefined" && __DEV__) console.log(`[signin] address ${address}; signature ${signature.length} bytes; message (${signedMessage.length} bytes):\n${String.fromCharCode(...signedMessage)}\n[signin] input ${JSON.stringify(input)}`);
+  return { input: { ...input, address }, output: { address, signedMessage: toBase64(signedMessage), signature: toBase64(signature) } };
 }
 
 /**

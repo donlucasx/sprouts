@@ -23,6 +23,12 @@ describe("unwrapBase64Text", () => {
     expect(unwrapBase64Text(asWalletUi(sig))).toEqual(sig);
     expect(unwrapBase64Text(asWalletUi(message))).toEqual(message);
   });
+  it("undoes the adapter's unpadded URL-safe base64 too (the fallback path when the wallet has no native sign-in; the Saga, 2026-09-29)", () => {
+    const asFallback = (b: Uint8Array) => new TextEncoder().encode(Buffer.from(b).toString("base64url"));
+    expect(asFallback(message).length % 4).not.toBe(0);
+    expect(unwrapBase64Text(asFallback(message))).toEqual(message);
+    expect(unwrapBase64Text(asFallback(sig))).toEqual(sig);
+  });
   it("leaves real bytes alone", () => {
     expect(unwrapBase64Text(sig)).toBe(sig);
     expect(unwrapBase64Text(message)).toBe(message);
