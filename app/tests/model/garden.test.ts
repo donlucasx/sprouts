@@ -1,0 +1,75 @@
+import { describe, it, expect } from "vitest";
+import { buildScene, type GardenInput } from "@/model/garden";
+
+const NOW = new Date("2026-10-04T12:00:00-07:00");
+const base: GardenInput = {
+  now: NOW, wateredAt: null, plantings: [], picks: [], skrPutInRaw: 0n, skrEarnedRaw: 0n, skrFruit: 0, skrNextFruitProgress: 0,
+  skrPickedRaw: 0n, skrPrincipalPickedRaw: 0n, pendingCents: 0,
+  storePutInRaw: 0n, storePups: 0, storeNextPupProgress: 0, joinedValueRaw: 0n, basket: null,
+};
+const planting = (id: string, daysAgo: number, raw: bigint, asset: "SKR" | "stORE" = "SKR") => ({ id, ts: new Date(NOW.getTime() - daysAgo * 86_400_000), asset, amountOutRaw: raw });
+const kinds = (s: ReturnType<typeof buildScene>) => s.parts.map((p) => p.kind);
+
+describe("buildScene", () => {
+  it("zero is soil (R54)", () => {
+    expect(kinds(buildScene(base))).toEqual(["soil"]);
+  });
+
+  it("one growth event per planting: three plantings are three sprouts, oldest largest (R55)", () => {
+    const s = buildScene({ ...base, plantings: [planting("a", 30, 266_000_000n), planting("b", 8, 12_000_000n), planting("c", 1, 266_000_000n)], wateredAt: NOW });
+    const sprouts = s.parts.filter((p) => p.kind === "sprout");
+    expect(sprouts.length).toBe(3);
+    expect(sprouts.map((p) => (p as { stage: number }).stage)).toEqual([3, 1, 0]);
+  });
+
+  // Review Focus 5: growth since the last watering is buds until watered.
+  it("unwatered plantings are buds; watering today opens them", () => {
+    const watered = new Date(NOW.getTime() - 5 * 86_400_000);
+    const before = buildScene({ ...base, wateredAt: watered, plantings: [planting("a", 8, 1n), planting("b", 2, 1n), planting("c", 1, 1n)] });
+    expect(before.unrevealed).toBe(2);
+    expect(before.parts.filter((p) => p.kind === "sprout" && (p as { bud: boolean }).bud).length).toBe(2);
+    const after = buildScene({ ...base, wateredAt: NOW, plantings: [planting("a", 8, 1n), planting("b", 2, 1n), planting("c", 1, 1n)] });
+    expect(after.unrevealed).toBe(0);
+    expect(after.wateredToday).toBe(true);
+    expect(kinds(after)).toContain("wetSpot");
+  });
+
+  it("fruit are drawn from the count, the next one ripens, and a bud hides a fruit that appeared since watering", () => {
+    const s = buildScene({ ...base, wateredAt: new Date(NOW.getTime() - 3 * 86_400_000), plantings: [planting("a", 8, 1n)], skrPutInRaw: 100n, skrEarnedRaw: 2n, skrFruit: 2, skrNextFruitProgress: 0.4 });
+    expect(s.parts.filter((p) => p.kind === "fruit").length).toBe(2);
+    expect((s.parts.find((p) => p.kind === "ripening") as { progress: number }).progress).toBe(0.4);
+  });
+
+  it("a pre-existing position is a transplanted plant with no fruit (R61)", () => {
+    const s = buildScene({ ...base, joinedValueRaw: 10_000_000_000n, wateredAt: NOW });
+    expect(kinds(s)).toEqual(["soil", "transplant", "wetSpot"]);
+  });
+
+  it("a principal pick prunes sprouts in proportion, oldest last; a fruit-only pick prunes nothing (rule 6)", () => {
+    const plantings = [planting("a", 30, 100n), planting("b", 20, 100n), planting("c", 10, 100n), planting("d", 5, 100n)];
+    const fruitOnly = buildScene({ ...base, wateredAt: NOW, plantings, skrPutInRaw: 400n, skrEarnedRaw: 0n, skrPickedRaw: 4n, picks: [{ ts: NOW, asset: "SKR", amountRaw: 4n }] });
+    expect(fruitOnly.parts.filter((p) => p.kind === "sprout").length).toBe(4);
+    // 200 of the 400 that was put in: put in is now 200, principal picked 200, half the sprouts go, the newest first
+    const principal = buildScene({ ...base, wateredAt: NOW, plantings, skrPutInRaw: 200n, skrEarnedRaw: 0n, skrPickedRaw: 200n, skrPrincipalPickedRaw: 200n, picks: [{ ts: NOW, asset: "SKR", amountRaw: 200n }] });
+    expect(principal.parts.filter((p) => p.kind === "sprout").map((p) => (p as { id: string }).id)).toEqual(["a", "b"]);
+    expect((principal.parts.find((p) => p.kind === "pruned") as { count: number }).count).toBe(2);
+    // a small principal pick still removes one sprout, and the last sprout is never removed
+    const small = buildScene({ ...base, wateredAt: NOW, plantings, skrPutInRaw: 380n, skrPrincipalPickedRaw: 20n, skrPickedRaw: 20n });
+    expect(small.parts.filter((p) => p.kind === "sprout").length).toBe(3);
+    const almostAll = buildScene({ ...base, wateredAt: NOW, plantings, skrPutInRaw: 10n, skrPrincipalPickedRaw: 390n, skrPickedRaw: 390n });
+    expect(almostAll.parts.filter((p) => p.kind === "sprout").length).toBe(1);
+  });
+
+  it("change waiting to be planted shows as seeds on the soil, one per 25 cents, at most eight (R54)", () => {
+    expect(buildScene({ ...base, pendingCents: 20 }).parts.filter((p) => p.kind === "seed").length).toBe(0);
+    expect(buildScene({ ...base, pendingCents: 140 }).parts.filter((p) => p.kind === "seed").length).toBe(5);
+    expect(buildScene({ ...base, pendingCents: 900 }).parts.filter((p) => p.kind === "seed").length).toBe(8);
+  });
+
+  it("the basket is drawn while a pick ripens; the succulent grows pups by the same rule", () => {
+    const s = buildScene({ ...base, wateredAt: NOW, plantings: [planting("o", 3, 1n, "stORE")], storePutInRaw: 100n, storePups: 1, storeNextPupProgress: 0.1, basket: { amountRaw: 5n, readyAt: new Date(NOW.getTime() + 86_400_000) } });
+    expect(kinds(s)).toContain("basket");
+    expect(s.parts.filter((p) => p.kind === "sprout" && (p as { plant: string }).plant === "ore").length).toBe(1);
+    expect(s.parts.filter((p) => p.kind === "fruit" && (p as { plant: string }).plant === "ore").length).toBe(1);
+  });
+});
