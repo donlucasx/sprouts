@@ -1,5 +1,5 @@
 import { createNoopSigner, type Address, type Instruction, type TransactionSigner } from "@solana/kit";
-import { findAssociatedTokenPda, TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
+import { findAssociatedTokenPda, fetchMaybeToken, getCreateAssociatedTokenIdempotentInstructionAsync, TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
 import {
   getInitSubscriptionAuthorityOverlayInstructionAsync,
   getCreateRecurringDelegationOverlayInstructionAsync,
@@ -31,8 +31,16 @@ export async function usdcAta(owner: Address): Promise<Address> {
  *
  * Re-link: a wallet whose USDC subscription authority already exists (it linked before, or revoked only the delegation) gets
  * the create alone, carrying that authority's live `initId`; re-running the init would fail on chain.
+ *
+ * A wallet with no USDC account yet (the Saga, 2026-09-29): `createAta` prepends the idempotent associated-account create, paid
+ * by the wallet, since the init sets the program as delegate on that account and fails when it is missing.
  */
-export async function buildApproveOnceIxs(a: { delegator: Address; delegatee: Address; capRaw: bigint; nonce: bigint; existingInitId?: bigint }): Promise<Instruction[]> {
+/** Whether the wallet's USDC associated token account is on chain. The init sets a delegate on it, so it must exist first. */
+export async function readUsdcAtaExists(owner: Address): Promise<boolean> {
+  return (await fetchMaybeToken(rpc(), await usdcAta(owner))).exists;
+}
+
+export async function buildApproveOnceIxs(a: { delegator: Address; delegatee: Address; capRaw: bigint; nonce: bigint; existingInitId?: bigint; createAta?: boolean }): Promise<Instruction[]> {
   const owner = createNoopSigner(a.delegator);
   const create = await getCreateRecurringDelegationOverlayInstructionAsync({
     delegator: owner,
@@ -51,7 +59,9 @@ export async function buildApproveOnceIxs(a: { delegator: Address; delegatee: Ad
   if (a.existingInitId !== undefined) return [create];
   const userAta = await usdcAta(a.delegator);
   const init = await getInitSubscriptionAuthorityOverlayInstructionAsync({ owner, tokenMint: USDC_MINT, tokenProgram: TOKEN_PROGRAM_ADDRESS, userAta });
-  return [init, create];
+  if (!a.createAta) return [init, create];
+  const createAta = await getCreateAssociatedTokenIdempotentInstructionAsync({ payer: owner, owner: a.delegator, mint: USDC_MINT });
+  return [createAta, init, create];
 }
 
 export type SubscriptionAuthorityState = { exists: false } | { exists: true; initId: bigint };

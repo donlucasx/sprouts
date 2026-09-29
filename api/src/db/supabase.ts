@@ -173,6 +173,7 @@ export class SupabaseRepo implements Repo {
     const row = await this.one(this.db.from("plantings").insert({
       user_pubkey: p.userPubkey, wallet_pubkey: p.walletPubkey, signature: p.signature, usdc_pulled_cents: p.usdcPulledCents,
       network_fee_cents: p.networkFeeCents, status: p.status, ai_line: p.aiLine, shares_before: p.sharesBefore == null ? null : p.sharesBefore.toString(),
+      ...(p.ts ? { ts: p.ts.toISOString() } : {}),
     }).select().single(), plantingRow);
     if (legs.length) {
       const { error } = await this.db.from("planting_legs").insert(legs.map((l) => ({

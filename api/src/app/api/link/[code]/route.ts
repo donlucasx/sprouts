@@ -4,7 +4,7 @@ import { address, createNoopSigner, pipe, createTransactionMessage, setTransacti
   getBase64EncodedWireTransaction, type Address } from "@solana/kit";
 import { getRepo } from "@/db/repo";
 import { rateLimited } from "@/lib/auth-guard";
-import { buildApproveOnceIxs, buildRevokeDelegationIx, delegationPda, readDelegation, readSubscriptionAuthority } from "@/lib/subscriptions";
+import { buildApproveOnceIxs, buildRevokeDelegationIx, delegationPda, readDelegation, readSubscriptionAuthority, readUsdcAtaExists } from "@/lib/subscriptions";
 import { pullerSigner } from "@/lib/puller";
 import { rpc } from "@/lib/rpc";
 
@@ -46,8 +46,9 @@ export async function GET(request: Request, ctx: { params: Promise<{ code: strin
   if (!link.walletPubkey) await repo.bindLinkCode(link.code, wallet, pda);
 
   // A wallet that linked before already has its USDC authority on chain: re-init would fail, so the create carries its init id.
-  const authority = await readSubscriptionAuthority(wallet);
-  const ixs = await buildApproveOnceIxs({ delegator: wallet, delegatee: puller, capRaw: DAILY_CAP_RAW, nonce: link.nonce, existingInitId: authority.exists ? authority.initId : undefined });
+  // A wallet with no USDC account yet gets it created in the same approval (the init needs it).
+  const [authority, ataExists] = await Promise.all([readSubscriptionAuthority(wallet), readUsdcAtaExists(wallet)]);
+  const ixs = await buildApproveOnceIxs({ delegator: wallet, delegatee: puller, capRaw: DAILY_CAP_RAW, nonce: link.nonce, existingInitId: authority.exists ? authority.initId : undefined, createAta: !ataExists });
   // One delegation per wallet: if the previous one is still live, the same approval revokes it first (review I4).
   let revokes: string | null = null;
   if (existing && existing.delegationPda !== pda && (await readDelegation(address(existing.delegationPda))).exists) {

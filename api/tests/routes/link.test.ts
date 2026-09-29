@@ -8,6 +8,7 @@ vi.mock("@/lib/subscriptions", async (orig) => ({
   ...(await orig<object>()),
   readDelegation: vi.fn(async () => ({ exists: true, amountPerPeriodRaw: 5_000_000n, pulledInPeriodRaw: 0n, periodStartTs: 0n, periodLengthS: 86_400n })),
   readSubscriptionAuthority: vi.fn(async () => ({ exists: false })),
+  readUsdcAtaExists: vi.fn(async () => true),
 }));
 vi.mock("@/lib/helius", () => ({ heliusAddAddress: vi.fn(async () => undefined) }));
 vi.mock("@/lib/puller", () => ({ pullerSigner: vi.fn(async () => ({ address: "4wiD3N7FrBNJSmZUQDkGHM4CsvDrvyvx7G1FApLGEbJ1" })) }));
@@ -98,6 +99,14 @@ describe("link flow", () => {
     const c = await mintCode(repo);
     const t = await (await getTx(new Request(`http://x/api/link/${c.code}?wallet=${WALLET}`), { params: Promise.resolve({ code: c.code }) })).json();
     expect(instructionCount(t.transaction)).toBe(2);
+  });
+
+  it("a fresh wallet with no USDC account gets three instructions: the account is created in the same approval (the Saga, 2026-09-29)", async () => {
+    const { readUsdcAtaExists } = await import("@/lib/subscriptions");
+    (readUsdcAtaExists as unknown as { mockResolvedValueOnce: (v: unknown) => void }).mockResolvedValueOnce(false);
+    const c = await mintCode(repo);
+    const t = await (await getTx(new Request(`http://x/api/link/${c.code}?wallet=${WALLET}`), { params: Promise.resolve({ code: c.code }) })).json();
+    expect(instructionCount(t.transaction)).toBe(3);
   });
 
   // Review I3: a wallet linked before (revoked, or re-approving) must re-link, not 500 on the row after the code is burned.

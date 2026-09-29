@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { address, AccountRole, createNoopSigner } from "@solana/kit";
 import { buildApproveOnceIxs, buildTransferRecurringIx, delegationPda, usdcAta } from "@/lib/subscriptions";
+import { ASSOCIATED_TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
 import { SUBSCRIPTIONS_PROGRAM } from "@/lib/constants";
 import { UNKNOWN_INIT_ID, getCreateRecurringDelegationInstructionDataDecoder } from "@solana/subscriptions";
 
@@ -20,6 +21,17 @@ describe("subscriptions builders", () => {
     // not 0 (0 fails on chain with STALE_SUBSCRIPTION_AUTHORITY, error 136; Spike 3a, 2026-09-25).
     const data = getCreateRecurringDelegationInstructionDataDecoder().decode(ixs[1].data!);
     expect(data.recurringDelegation.expectedSubscriptionAuthorityInitId).toBe(UNKNOWN_INIT_ID);
+  });
+
+  it("a wallet with no USDC account gets its associated account created first, paid by the wallet (the Saga, 2026-09-29)", async () => {
+    // The init sets the program as delegate on the USDC account, which must exist; a fresh wallet has none, so the same approval creates it.
+    const ixs = await buildApproveOnceIxs({ delegator, delegatee, capRaw: 5_000_000n, nonce: 9n, createAta: true });
+    expect(ixs.length).toBe(3);
+    expect(ixs[0].programAddress).toBe(ASSOCIATED_TOKEN_PROGRAM_ADDRESS);
+    expect(ixs[0].accounts!.some((a) => a.address === delegator && isSigner(a.role))).toBe(true);
+    expect(ixs[0].accounts!.map((a) => a.address)).toContain(await usdcAta(delegator));
+    expect(ixs[1].programAddress).toBe(SUBSCRIPTIONS_PROGRAM);
+    expect(ixs[2].programAddress).toBe(SUBSCRIPTIONS_PROGRAM);
   });
 
   it("re-link: a wallet whose authority already exists gets only the create, carrying that authority's init id", async () => {
