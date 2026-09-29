@@ -4,7 +4,7 @@ import { setRepoForTests } from "@/db/repo";
 
 vi.mock("@/lib/rpc", () => ({ rpc: () => ({}) }));
 vi.mock("@/lib/staking", () => ({ readPosition: vi.fn(), crankWithdraw: vi.fn(), sharePrice: vi.fn(async () => 1_146_000_000n) }));
-vi.mock("@/lib/reconcile", () => ({ reconcileOwnStakes: vi.fn(async () => ({ adjusted: [], skipped: [] })) }));
+vi.mock("@/lib/reconcile", () => ({ reconcileOwnStakes: vi.fn(async () => ({ adjusted: [], skipped: [], deferred: [] })) }));
 vi.mock("@/lib/planting", () => ({ buildPlantingTx: vi.fn(), simulatePlanting: vi.fn(), sendPlanting: vi.fn(), signatureStatus: vi.fn() }));
 vi.mock("@/lib/subscriptions", () => ({ readDelegation: vi.fn(), usdcAta: vi.fn() }));
 
@@ -36,7 +36,7 @@ describe("cron route", () => {
     const body = (await res.json()) as { planting: { planted: unknown[]; skipped: unknown[] }; withdrawals: { cranked: unknown[]; failed: unknown[] }; reconciled: unknown };
     expect(body.planting.planted).toEqual([]);
     expect(body.withdrawals.cranked).toEqual([]);
-    expect(body.reconciled).toEqual({ adjusted: [], skipped: [] });
+    expect(body.reconciled).toEqual({ adjusted: [], skipped: [], deferred: [] });
   });
 
   it("answers a JSON 500 with the reason when the run throws, never an empty body", async () => {

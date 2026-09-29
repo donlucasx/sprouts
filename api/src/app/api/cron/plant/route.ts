@@ -52,12 +52,12 @@ export async function GET(request: Request) {
     const planting = await runPlanting({ repo, now, chain: realChain() });
     const withdrawals = await runWithdrawCrank({ repo, now, chain: { readPosition: (u) => readPosition(address(u)), crankWithdraw: (u) => crankWithdraw(address(u)) } });
     // R61: stakes and unstakes the Seed Vault made from its own wallet, found by comparing the chain's share count with the ledger's.
-    const reconciled = await reconcileOwnStakes({ repo, chain: { readPosition: (u) => readPosition(address(u)), sharePrice } });
+    const reconciled = await reconcileOwnStakes({ repo, chain: { readPosition: (u) => readPosition(address(u), "finalized"), sharePrice } });
     await repo.cleanupExpired();
     // The first production run (2026-09-28) planted and then answered 500 here: reading rules for a made-up user violates the
     // rules -> users foreign key. The keepalive is now a read that needs no row.
     await repo.keepalive();
-    console.log(`cron: planted ${planting.planted.length}, skipped ${planting.skipped.length}, cranked ${withdrawals.cranked.length}, failed ${withdrawals.failed.length}, closed ${withdrawals.skipped.length}, reconciled ${reconciled.adjusted.length} (skipped ${reconciled.skipped.length})`);
+    console.log(`cron: planted ${planting.planted.length}, skipped ${planting.skipped.length}, cranked ${withdrawals.cranked.length}, failed ${withdrawals.failed.length}, closed ${withdrawals.skipped.length}, reconciled ${reconciled.adjusted.length} (skipped ${reconciled.skipped.length}, deferred ${reconciled.deferred.length})`);
     return NextResponse.json(json({ planting, withdrawals, reconciled }));
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);

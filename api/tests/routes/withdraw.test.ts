@@ -5,14 +5,14 @@ import { issueSession } from "@/lib/session";
 import { generateKeyPairSigner, signTransaction, getBase64EncodedWireTransaction, getBase64Encoder, getTransactionDecoder, type KeyPairSigner } from "@solana/kit";
 
 const SP = 1_146_000_000n;
-const { positionMock } = vi.hoisted(() => ({ positionMock: vi.fn() }));
+const { positionMock, sendMock } = vi.hoisted(() => ({ positionMock: vi.fn(), sendMock: vi.fn(async () => "sig") }));
 vi.mock("@/lib/staking", async (orig) => ({ ...(await orig<object>()), readPosition: (...a: unknown[]) => positionMock(...a), sharePrice: vi.fn(async () => SP) }));
 vi.mock("@/lib/jupiter", () => ({ priceUsd: vi.fn(async () => 0.0183) }));
 vi.mock("@/lib/planting", () => ({ signatureStatus: vi.fn(async () => "confirmed") }));
 vi.mock("@/lib/rpc", () => ({
   rpc: () => ({
     getLatestBlockhash: () => ({ send: async () => ({ value: { blockhash: "GHtXQBsoZHVnNFa9YevAzFr17DJjgHXk3ycTKD5xD3Zi", lastValidBlockHeight: 1n } }) }),
-    sendTransaction: () => ({ send: async () => "sig" }),
+    sendTransaction: () => ({ send: sendMock }),
   }),
 }));
 
@@ -50,6 +50,27 @@ describe("withdraw routes", () => {
     await seed(2_200_000_000n); // 2,292 SKR in the garden at SP against 2,200 put in: 92 SKR earned
     positionMock.mockReset();
     positionMock.mockResolvedValue(staked(2_000_000_000n));
+    sendMock.mockReset();
+    sendMock.mockResolvedValue("sig");
+  });
+
+  // Review I2: a cooldown the wallet started is one basket too; the program allows one, so no fingerprint is asked for a second.
+  it("refuses a pick while the chain shows a cooldown the ledger does not know, before any signature", async () => {
+    positionMock.mockResolvedValue(staked(1_959_860_384n, 46_000_000n, 1_790_000_000n));
+    const r = await build(post("/api/withdraw/build", { mode: "earned" }));
+    expect(r.status).toBe(409);
+    expect((await r.json()).error).toContain("One basket at a time");
+  });
+
+  // Review I3: a send whose answer is lost is not "nothing moved"; the route holds the signature and asks the chain.
+  it("confirm records the basket when the send throws but the signature confirms", async () => {
+    const b = await (await build(post("/api/withdraw/build", { mode: "earned" }))).json();
+    const signed = await signAsUser(b.transaction);
+    sendMock.mockRejectedValueOnce(new Error("socket hang up"));
+    positionMock.mockResolvedValue(staked(1_919_720_768n, 92_000_000n, 1_790_000_000n));
+    const r = await confirmRoute(post("/api/withdraw/confirm", { signedTransaction: signed }));
+    expect(r.status).toBe(200);
+    expect((await repo.pendingWithdrawal(U))?.sharesUnstaked).toBe(80_279_232n);
   });
 
   it("builds an earned pick with the brief", async () => {

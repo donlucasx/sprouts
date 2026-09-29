@@ -263,7 +263,7 @@ export class SupabaseRepo implements Repo {
   }
 
   async pendingWithdrawal(userPubkey: string) {
-    const { data, error } = await this.openWithdrawals().eq("user_pubkey", userPubkey).eq("source", "sprouts").order("unstake_ts", { ascending: false }).limit(1).maybeSingle();
+    const { data, error } = await this.openWithdrawals().eq("user_pubkey", userPubkey).order("unstake_ts", { ascending: false }).limit(1).maybeSingle();
     if (error) throw new Error(error.message);
     return data ? withdrawalRow(data as Row) : null;
   }

@@ -4,8 +4,11 @@ import { Link, router } from "expo-router";
 import { Screen } from "@/components/Screen";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
+import { useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { useMe } from "@/lib/me";
+import { useMe, store } from "@/lib/me";
+import { refreshWidget } from "@/lib/widget-refresh";
+import { unregisterBackgroundRefresh } from "@/lib/background";
 import { useSession } from "@/lib/session";
 import { formatUsd } from "@/lib/format";
 
@@ -24,15 +27,22 @@ const DISCLOSURES: [string, string][] = [
 export default function Settings() {
   const { data: me } = useMe();
   const { session, setSession } = useSession();
+  const queryClient = useQueryClient();
   const [busy, setBusy] = useState(false);
 
-  /** Ends this device's session on the server (best effort) and forgets it here; "everywhere" ends every device's (R84). */
+  /**
+   * Ends this device's session on the server (best effort) and forgets everything here: the session, the last verified garden,
+   * the widget's picture, the background polling and the query cache (review I4). "Everywhere" ends every device's session (R84).
+   */
   async function signOut(everywhere: boolean) {
     setBusy(true);
     try {
       await api(everywhere ? "/api/auth/signout-all" : "/api/auth/signout", { method: "POST", body: {} }).catch(() => {});
     } finally {
       await setSession(null);
+      store.remove("me.last");
+      queryClient.clear();
+      await Promise.all([refreshWidget(null).catch(() => {}), unregisterBackgroundRefresh().catch(() => {})]);
       setBusy(false);
       router.replace("/");
     }

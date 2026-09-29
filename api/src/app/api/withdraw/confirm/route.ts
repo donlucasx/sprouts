@@ -11,6 +11,7 @@ import { json } from "@/lib/json";
 import { SKR_STAKING_PROGRAM } from "@/lib/constants";
 
 export const runtime = "nodejs";
+export const maxDuration = 60; // the confirmation poll (up to 30 s) must outlive any platform default
 
 const Body = z.object({ signedTransaction: z.string() });
 const COOLDOWN_S = 172_800n;
@@ -45,12 +46,14 @@ export async function POST(request: Request) {
   const price = await sharePrice();
   const amountRaw = sharesToRaw(shares, price);
 
+  // A send whose answer is lost is not "nothing moved" (review I3): the route holds the signature and asks the chain either way.
+  let status;
   try {
     await sendPosted(posted.wire);
+    status = await waitConfirmed(posted.signature);
   } catch {
-    return NextResponse.json({ error: "The withdrawal did not go through. Nothing moved." }, { status: 409 });
+    status = await waitConfirmed(posted.signature, 3);
   }
-  const status = await waitConfirmed(posted.signature);
   if (status !== "confirmed") return NextResponse.json({ error: status === "failed" ? "The withdrawal failed on chain. Nothing moved." : "The chain has not confirmed the withdrawal yet. Check again in a minute." }, { status: 409 });
   let after = await readPosition(owner);
   for (let i = 0; i < 3 && after.unstakingRaw === 0n; i++) {

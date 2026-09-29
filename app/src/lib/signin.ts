@@ -1,6 +1,6 @@
 import { fromUint8Array, type SignInPayload } from "@wallet-ui/react-native-kit";
 import { api } from "./api";
-import type { Session } from "./session";
+import { installationId, type Session } from "./session";
 
 type SignInInput = { domain: string; address?: string; statement: string; uri: string; version: string; chainId: string; nonce: string; issuedAt: string; expirationTime: string };
 
@@ -24,6 +24,6 @@ export async function freshSignIn(signIn: SignInFn): Promise<SignedIn> {
  */
 export async function signInWithSeeker(signIn: SignInFn): Promise<Session> {
   const signed = await freshSignIn(signIn);
-  const verified = await api<{ token: string; skrName: string | null }>("/api/auth/verify", { method: "POST", auth: false, body: signed });
+  const verified = await api<{ token: string; skrName: string | null }>("/api/auth/verify", { method: "POST", auth: false, body: { ...signed, device: await installationId() } });
   return { token: verified.token, pubkey: signed.output.address, skrName: verified.skrName };
 }

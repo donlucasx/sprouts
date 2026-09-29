@@ -9,6 +9,7 @@ import { sendPosted, waitConfirmed, userAddress } from "@/lib/user-tx";
 import { SKR_STAKING_PROGRAM } from "@/lib/constants";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 const Body = z.object({ signedTransaction: z.string() });
 const same = (a: Uint8Array, b: Uint8Array) => a.length === b.length && a.every((x, i) => x === b[i]);
@@ -34,12 +35,13 @@ export async function POST(request: Request) {
   if (posted.instructions.length !== 1 || !same(ix.data.slice(0, 8), CANCEL_UNSTAKE_DISCRIMINATOR)) return NextResponse.json({ error: "That is not a cancel." }, { status: 400 });
   if (!ix.accounts.includes(await userStakePda(owner))) return NextResponse.json({ error: "That cancel is for another position." }, { status: 400 });
 
+  let status;
   try {
     await sendPosted(posted.wire);
+    status = await waitConfirmed(posted.signature);
   } catch {
-    return NextResponse.json({ error: "Could not put it back. Try again." }, { status: 409 });
+    status = await waitConfirmed(posted.signature, 3); // review I3: the send's answer was lost, the chain decides
   }
-  const status = await waitConfirmed(posted.signature);
   if (status !== "confirmed") return NextResponse.json({ error: status === "failed" ? "The cancel failed on chain. The basket stands." : "The chain has not confirmed the cancel yet. Check again in a minute." }, { status: 409 });
   let after = await readPosition(owner);
   for (let i = 0; i < 3 && after.unstakingRaw !== 0n; i++) {

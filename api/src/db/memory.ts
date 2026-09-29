@@ -246,7 +246,8 @@ export class MemoryRepo implements Repo {
   }
 
   async pendingWithdrawal(userPubkey: string) {
-    return this.open().filter((w) => w.userPubkey === userPubkey && w.source === "sprouts").sort((a, b) => b.unstakeTs.getTime() - a.unstakeTs.getTime())[0] ?? null;
+    // Either source: a cooldown the wallet started is the basket too (review I2, [A24]).
+    return this.open().filter((w) => w.userPubkey === userPubkey).sort((a, b) => b.unstakeTs.getTime() - a.unstakeTs.getTime())[0] ?? null;
   }
 
   async listWithdrawals(userPubkey: string, limit: number) {

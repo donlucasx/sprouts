@@ -51,6 +51,14 @@ describe("GET /api/me", () => {
     expect(body.wallets[0].status).toBe("active");
   });
 
+  // Review I2 [A24]: a cooldown the wallet started (found by the reconciliation, or at join) is the basket too.
+  it("shows a wallet-side cooldown as the basket", async () => {
+    await repo.insertWithdrawal({ userPubkey: U, asset: "SKR", source: "wallet", unstakeSignature: null, sharesUnstaked: 40_139_616n, amountRaw: 46_000_000n, principalRaw: 0n });
+    const body = await (await me(new Request("http://x/api/me", bearer(await issueSession(U, "M"))))).json();
+    expect(body.basket).not.toBeNull();
+    expect(body.basket.amountRaw).toBe("46000000");
+  });
+
   it("requires a session", async () => {
     expect((await me(new Request("http://x/api/me"))).status).toBe(401);
   });
