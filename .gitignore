@@ -8,3 +8,4 @@ dist
 *.log
 spikes/keys/
 .superpowers/
+.DS_Store
