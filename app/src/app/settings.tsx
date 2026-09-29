@@ -10,7 +10,7 @@ import { useMe, store } from "@/lib/me";
 import { refreshWidget } from "@/lib/widget-refresh";
 import { unregisterBackgroundRefresh } from "@/lib/background";
 import { useSession } from "@/lib/session";
-import { formatUsd } from "@/lib/format";
+import { formatWallet } from "@/lib/format";
 
 const P = ({ children }: { children: string }) => <Text style={{ fontSize: 14, lineHeight: 21, color: "#2B2B2B" }}>{children}</Text>;
 const H = ({ children }: { children: string }) => <Text style={{ fontSize: 15, fontWeight: "600", color: "#2B2B2B", marginTop: 6 }}>{children}</Text>;
@@ -56,7 +56,7 @@ export default function Settings() {
         <P>{me?.user.skrName ?? (session ? `${session.pubkey.slice(0, 4)}...${session.pubkey.slice(-4)}` : "")}</P>
         <Text style={{ fontSize: 17, fontWeight: "600", color: "#2B2B2B", marginTop: 8 }}>Linked wallets</Text>
         {me && me.wallets.length === 0 ? <P>No wallet linked yet.</P> : null}
-        {me?.wallets.map((w) => <P key={w.pubkey}>{`${w.pubkey.slice(0, 4)}...${w.pubkey.slice(-4)}, ${w.status}, limit ${formatUsd(w.dailyCapCents)} a day`}</P>)}
+        {me?.wallets.map((w) => <P key={w.pubkey}>{formatWallet(w)}</P>)}
         <View style={{ flexDirection: "row", gap: 8, marginTop: 6 }}>
           <Link href="/connect" asChild><Button title="Link a wallet" kind="quiet" onPress={() => {}} /></Link>
           <Link href="/rules" asChild><Button title="Rules" kind="quiet" onPress={() => {}} /></Link>

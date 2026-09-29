@@ -38,3 +38,8 @@ export function roundUpTo(cents: number, toCents: number): number {
   const rest = cents % toCents;
   return rest === 0 ? toCents : toCents - rest;
 }
+
+/** One linked wallet in a line: the short address, its status, its daily limit. Home and Settings say it the same way. */
+export function formatWallet(w: { pubkey: string; status: string; dailyCapCents: number }): string {
+  return `${w.pubkey.slice(0, 4)}...${w.pubkey.slice(-4)}, ${w.status}, limit ${formatUsd(w.dailyCapCents)} a day`;
+}
