@@ -59,6 +59,18 @@ describe("buildScene", () => {
     expect(kinds(s)).not.toContain("ripening");
   });
 
+  // 09-29 Saga: the soil was watered at the centre while the sprout that opened stood at the side.
+  it("the wet spot lands under the newest sprout, the one the watering just opened", () => {
+    const s = buildScene({ ...base, wateredAt: NOW, plantings: [planting("old", 20, 1n), planting("new", 0.1, 1n)] });
+    const newest = s.parts.find((p) => p.kind === "sprout" && p.id === "new") as { x: number };
+    expect((s.parts.find((p) => p.kind === "wetSpot") as { x: number }).x).toBe(newest.x);
+  });
+
+  it("with no sprout the wet spot stays at the centre", () => {
+    const s = buildScene({ ...base, wateredAt: NOW });
+    expect((s.parts.find((p) => p.kind === "wetSpot") as { x: number }).x).toBe(0.5);
+  });
+
   it("a pre-existing position is a transplanted plant with no fruit (R61)", () => {
     const s = buildScene({ ...base, joinedValueRaw: 10_000_000_000n, wateredAt: NOW });
     expect(kinds(s)).toEqual(["soil", "transplant", "wetSpot"]);
