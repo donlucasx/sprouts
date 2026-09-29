@@ -9,6 +9,8 @@ import { SUBSCRIPTIONS_PROGRAM, SKR_MINT } from "@/lib/constants";
 
 const LIFETIME = { blockhash: "GHtXQBsoZHVnNFa9YevAzFr17DJjgHXk3ycTKD5xD3Zi" as Blockhash, lastValidBlockHeight: 1n };
 const SYSTEM = address("11111111111111111111111111111111");
+const COMPUTE_BUDGET = address("ComputeBudget111111111111111111111111111111");
+const LIGHTHOUSE = address("L2TExMFKdjpN9kozasaurPirfHy9P8sbXoAN1qA3S95");
 let wallet: KeyPairSigner;
 beforeAll(async () => {
   wallet = await generateKeyPairSigner();
@@ -51,6 +53,13 @@ describe("verifyPostedTransaction [A3]", () => {
   it("an unsigned transaction is refused", () => {
     const unsigned = build(wallet.address, [ix(SUBSCRIPTIONS_PROGRAM)]);
     expect(() => verifyPostedTransaction({ base64: b64(unsigned), feePayer: wallet.address, programs: [SUBSCRIPTIONS_PROGRAM] })).toThrow(/has not signed/);
+  });
+
+  it("a wallet's own priority fee and Lighthouse assertion are tolerated and set aside (Phantom, 2026-09-29)", async () => {
+    const signed = await signTransaction([wallet.keyPair], build(wallet.address, [ix(COMPUTE_BUDGET), ix(SUBSCRIPTIONS_PROGRAM, [SKR_MINT]), ix(LIGHTHOUSE)]));
+    const posted = verifyPostedTransaction({ base64: b64(signed), feePayer: wallet.address, programs: [SUBSCRIPTIONS_PROGRAM] });
+    expect(posted.instructions.map((i) => i.program)).toEqual([SUBSCRIPTIONS_PROGRAM]);
+    expect(posted.walletAdded).toEqual([COMPUTE_BUDGET, LIGHTHOUSE]);
   });
 
   it("an added System transfer is refused when only the Subscriptions program is allowed", async () => {

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, beforeAll, vi } from "vitest";
 import { MemoryRepo } from "@/db/memory";
 import { setRepoForTests } from "@/db/repo";
 import { issueSession } from "@/lib/session";
-import { getBase64Encoder, getCompiledTransactionMessageDecoder, getTransactionDecoder, getBase64EncodedWireTransaction, generateKeyPairSigner, signTransaction, type KeyPairSigner } from "@solana/kit";
+import { getBase64Encoder, getCompiledTransactionMessageDecoder, getTransactionDecoder, getBase64EncodedWireTransaction, generateKeyPairSigner, signTransaction, decompileTransactionMessage, prependTransactionMessageInstructions, compileTransaction, address, type KeyPairSigner } from "@solana/kit";
 
 vi.mock("@/lib/subscriptions", async (orig) => ({
   ...(await orig<object>()),
@@ -22,6 +22,15 @@ vi.mock("@/lib/rpc", () => ({
     simulateTransaction: () => ({ send: simulateMock }),
   }),
 }));
+
+
+/** What Phantom does before it signs (2026-09-29): prepends its own priority fee to the transaction the API built. */
+function withWalletPriorityFee(b64tx: string) {
+  const t = getTransactionDecoder().decode(getBase64Encoder().encode(b64tx));
+  const m = decompileTransactionMessage(getCompiledTransactionMessageDecoder().decode(t.messageBytes));
+  const fee = { programAddress: address("ComputeBudget111111111111111111111111111111"), accounts: [], data: new Uint8Array([3, 0x10, 0x27, 0, 0, 0, 0, 0, 0]) };
+  return compileTransaction(prependTransactionMessageInstructions([fee], m));
+}
 
 import { POST as newCode } from "@/app/api/link/new/route";
 import { GET as getTx } from "@/app/api/link/[code]/route";
@@ -191,6 +200,25 @@ describe("link flow", () => {
     const r = await confirm(new Request("http://x/api/link/confirm", { method: "POST", body: JSON.stringify({ code: c.code, wallet: WALLET, signedTransaction: signed }) }));
     expect(r.status).toBe(200);
     expect((await repo.getWallet(WALLET))?.status).toBe("active");
+  });
+
+  it("confirm accepts a signed approval that creates the USDC account first", async () => {
+    const { readUsdcAtaExists } = await import("@/lib/subscriptions");
+    (readUsdcAtaExists as unknown as { mockResolvedValueOnce: (v: unknown) => void }).mockResolvedValueOnce(false);
+    const c = await mintCode(repo);
+    const t = await (await getTx(new Request(`http://x/api/link/${c.code}?wallet=${WALLET}`), { params: Promise.resolve({ code: c.code }) })).json();
+    expect(instructionCount(t.transaction)).toBe(3);
+    const signed = getBase64EncodedWireTransaction(await signTransaction([walletKeyPair.keyPair], getTransactionDecoder().decode(getBase64Encoder().encode(t.transaction))));
+    const r = await confirm(new Request("http://x/api/link/confirm", { method: "POST", body: JSON.stringify({ code: c.code, wallet: WALLET, signedTransaction: signed }) }));
+    expect(r.status).toBe(200);
+  });
+
+  it("confirm accepts the approval after the wallet prepends its own priority fee (Phantom, 2026-09-29)", async () => {
+    const c = await mintCode(repo);
+    const t = await (await getTx(new Request(`http://x/api/link/${c.code}?wallet=${WALLET}`), { params: Promise.resolve({ code: c.code }) })).json();
+    const signed = getBase64EncodedWireTransaction(await signTransaction([walletKeyPair.keyPair], withWalletPriorityFee(t.transaction)));
+    const r = await confirm(new Request("http://x/api/link/confirm", { method: "POST", body: JSON.stringify({ code: c.code, wallet: WALLET, signedTransaction: signed }) }));
+    expect(r.status).toBe(200);
   });
 
   it("confirm refuses a posted transaction that is not the wallet's own approval", async () => {

@@ -2,7 +2,15 @@ import { describe, it, expect, beforeEach, beforeAll, vi } from "vitest";
 import { MemoryRepo } from "@/db/memory";
 import { setRepoForTests } from "@/db/repo";
 import { issueSession } from "@/lib/session";
-import { generateKeyPairSigner, signTransaction, getBase64EncodedWireTransaction, getBase64Encoder, getTransactionDecoder, type KeyPairSigner } from "@solana/kit";
+import { generateKeyPairSigner, signTransaction, getBase64EncodedWireTransaction, getBase64Encoder, getTransactionDecoder, getCompiledTransactionMessageDecoder, decompileTransactionMessage, prependTransactionMessageInstructions, compileTransaction, address, type KeyPairSigner } from "@solana/kit";
+
+/** What Phantom does before it signs (2026-09-29): prepends its own priority fee to the transaction the API built. */
+function withWalletPriorityFee(b64tx: string) {
+  const t = getTransactionDecoder().decode(getBase64Encoder().encode(b64tx));
+  const m = decompileTransactionMessage(getCompiledTransactionMessageDecoder().decode(t.messageBytes));
+  const fee = { programAddress: address("ComputeBudget111111111111111111111111111111"), accounts: [], data: new Uint8Array([3, 0x10, 0x27, 0, 0, 0, 0, 0, 0]) };
+  return compileTransaction(prependTransactionMessageInstructions([fee], m));
+}
 
 const SP = 1_146_000_000n;
 const { positionMock, sendMock } = vi.hoisted(() => ({ positionMock: vi.fn(), sendMock: vi.fn(async () => "sig") }));
@@ -60,6 +68,15 @@ describe("withdraw routes", () => {
     const r = await build(post("/api/withdraw/build", { mode: "earned" }));
     expect(r.status).toBe(409);
     expect((await r.json()).error).toContain("One basket at a time");
+  });
+
+  it("confirm still reads the unstake when the wallet prepended its own priority fee (Phantom, 2026-09-29)", async () => {
+    const b = await (await build(post("/api/withdraw/build", { mode: "earned" }))).json();
+    const signed = getBase64EncodedWireTransaction(await signTransaction([user.keyPair], withWalletPriorityFee(b.transaction)));
+    positionMock.mockResolvedValue(staked(1_919_720_768n, 92_000_000n, 1_790_000_000n));
+    const r = await confirmRoute(post("/api/withdraw/confirm", { signedTransaction: signed }));
+    expect(r.status).toBe(200);
+    expect((await repo.pendingWithdrawal(U))?.sharesUnstaked).toBe(80_279_232n);
   });
 
   // Review I3: a send whose answer is lost is not "nothing moved"; the route holds the signature and asks the chain.
