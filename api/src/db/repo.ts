@@ -2,7 +2,8 @@ import type * as T from "./types";
 import type { Asset } from "@/domain/allocation";
 
 /** A planting as the run records it; the share columns are filled in by the run and the confirmation [A16]. */
-export type NewPlanting = Omit<T.PlantingRow, "id" | "ts" | "sharesBefore" | "sharesAfter" | "sharesMinted"> & { sharesBefore?: bigint | null };
+/** `ts` is the run's own clock (the reconciliation measures age against it); left out, the store stamps the row itself. */
+export type NewPlanting = Omit<T.PlantingRow, "id" | "ts" | "sharesBefore" | "sharesAfter" | "sharesMinted"> & { sharesBefore?: bigint | null; ts?: Date };
 
 export type NewWithdrawal = { userPubkey: string; asset: Asset; source: T.WithdrawalSource; unstakeSignature: string | null; sharesUnstaked: bigint; amountRaw: bigint; principalRaw: bigint };
 

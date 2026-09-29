@@ -184,7 +184,7 @@ async function plantOneOrThrow(a: { repo: Repo; now: Date; chain: Chain }, w: Wa
   // The share count right before the send: after confirmation the difference is what this planting minted [A16].
   const sharesBefore = await a.chain.readShares(w.userPubkey);
   const planting = await a.repo.insertPlanting(
-    { userPubkey: w.userPubkey, walletPubkey: w.pubkey, signature: built.signature, usdcPulledCents: amount.pullCents, networkFeeCents: NETWORK_FEE_CENTS, status: "sent", aiLine: null, sharesBefore },
+    { userPubkey: w.userPubkey, walletPubkey: w.pubkey, signature: built.signature, usdcPulledCents: amount.pullCents, networkFeeCents: NETWORK_FEE_CENTS, status: "sent", aiLine: null, sharesBefore, ts: a.now },
     [{ asset, usdcInCents: amount.changeCents, amountOutRaw: built.minOutRaw, staked: asset === "SKR", feeAmountRaw: (built.expectedOutRaw * BigInt(FEE_BPS)) / 10_000n }],
   );
   const claimed = await a.repo.claimSwaps(swaps.map((s) => s.signature), planting.id);

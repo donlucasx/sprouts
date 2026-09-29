@@ -164,8 +164,8 @@ export class MemoryRepo implements Repo {
   }
 
   async insertPlanting(p: NewPlanting, legs: Omit<T.PlantingLegRow, "plantingId">[]): Promise<T.PlantingRow> {
-    const { sharesBefore = null, ...rest } = p;
-    const row: T.PlantingRow = { ...rest, id: id(), ts: new Date(), sharesBefore, sharesAfter: null, sharesMinted: null };
+    const { sharesBefore = null, ts, ...rest } = p;
+    const row: T.PlantingRow = { ...rest, id: id(), ts: ts ?? new Date(), sharesBefore, sharesAfter: null, sharesMinted: null };
     this.plantings.set(row.id, row);
     for (const leg of legs) this.legs.push({ ...leg, plantingId: row.id });
     return row;
