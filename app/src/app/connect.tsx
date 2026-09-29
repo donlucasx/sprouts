@@ -10,6 +10,25 @@ import { makeSigner } from "@/lib/sign";
 import { useInvalidateMe } from "@/lib/me";
 import { useSession } from "@/lib/session";
 
+/**
+ * Confirms the link; when the delegation is late on chain the API answers 409 and the same code is confirmed again (no new signature,
+ * no new code), so a late approval never leaves a stray delegation behind a fresh one (review I7).
+ */
+async function confirmWithRetries(code: string, wallet: string, signedTransaction: string) {
+  let body: Record<string, string> = { code, wallet, signedTransaction };
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await api("/api/link/confirm", { method: "POST", body });
+      return;
+    } catch (e) {
+      const late = e instanceof ApiError && e.status === 409 && e.message.includes("No delegation found");
+      if (!late || attempt >= 4) throw e;
+      body = { code, wallet }; // the approval was sent; only the delegation read is pending
+      await new Promise((r) => setTimeout(r, 4_000));
+    }
+  }
+}
+
 export default function Connect() {
   const { session } = useSession();
   const { signTransaction } = useMobileWallet();
@@ -27,7 +46,7 @@ export default function Connect() {
       const { code } = await api<{ code: string }>("/api/link/new", { method: "POST", body: {} });
       const t = await api<{ transaction: string; cap: number }>(`/api/link/${code}?wallet=${session.pubkey}`);
       const signed = await makeSigner(signTransaction)(t.transaction);
-      await api("/api/link/confirm", { method: "POST", body: { code, wallet: session.pubkey, signedTransaction: signed } });
+      await confirmWithRetries(code, session.pubkey, signed);
       await invalidate();
       router.replace("/home");
     } catch (e) {

@@ -32,6 +32,11 @@ export async function POST(request: Request) {
 
   const owner = userAddress(user.seedVaultPubkey);
   const [position, price, skrUsd] = await Promise.all([readPosition(owner), sharePrice(), priceUsd(SKR_MINT)]);
+  // The program allows one cooldown per position: a cooldown the wallet started refuses a second before any signature is asked (review I2).
+  if (position.unstakingRaw > 0n) {
+    const readyAt = position.unstakeTs === null ? null : new Date(Number(position.unstakeTs) * 1000 + COOLDOWN_MS);
+    return NextResponse.json({ error: `One basket at a time. Your Seeker's wallet is already ripening a withdrawal${readyAt ? `; it arrives ${when(readyAt)}` : ""}.` }, { status: 409 });
+  }
   const pot = await potForUser(repo, user, { position, sharePrice: price });
   let plan;
   try {

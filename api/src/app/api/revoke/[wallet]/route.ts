@@ -9,6 +9,7 @@ import { buildUserTransaction, sendPosted, waitConfirmed } from "@/lib/user-tx";
 import { SUBSCRIPTIONS_PROGRAM } from "@/lib/constants";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 const Body = z.object({ signedTransaction: z.string() });
 
@@ -54,12 +55,13 @@ export async function POST(request: Request, ctx: { params: Promise<{ wallet: st
   }
   const pda = address(row.delegationPda);
   if (!posted.instructions.some((ix) => ix.accounts.includes(pda))) return NextResponse.json({ error: "This revoke is for another delegation." }, { status: 400 });
+  let status;
   try {
     await sendPosted(posted.wire);
+    status = await waitConfirmed(posted.signature);
   } catch {
-    return NextResponse.json({ error: "The revoke did not go through. Try again." }, { status: 409 });
+    status = await waitConfirmed(posted.signature, 3); // review I3
   }
-  const status = await waitConfirmed(posted.signature);
   if (status !== "confirmed") return NextResponse.json({ error: status === "failed" ? "The revoke failed on chain." : "The chain has not confirmed the revoke yet. Check again in a minute." }, { status: 409 });
   let d = await readDelegation(pda);
   for (let i = 0; i < 3 && d.exists; i++) {

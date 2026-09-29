@@ -17,6 +17,8 @@ const Body = z.object({
     chainId: z.string(), nonce: z.string(), issuedAt: z.string(), expirationTime: z.string(),
   }),
   output: z.object({ address: z.string().min(32).max(44), signedMessage: z.string(), signature: z.string() }),
+  /** The client's own installation id (R84: one live session per wallet per device); a client that names none shares one slot. */
+  device: z.string().min(4).max(64).optional(),
 });
 
 /**
@@ -54,9 +56,10 @@ export async function POST(request: Request) {
     // R61: what the Seeker already holds today is put in, never earned; the pot and the reconciliation count from here.
     const p = await readPosition(address(output.address));
     await repo.setJoinedPosition(output.address, { shares: p.shares, sharePrice: await sharePrice() });
-    // A cooldown already running from the wallet: a wallet-source row so the basket shows and the crank delivers it [A24].
-    if (p.unstakingRaw > 0n) await repo.insertWithdrawal({ userPubkey: output.address, asset: "SKR", source: "wallet", unstakeSignature: null, sharesUnstaked: 0n, amountRaw: p.unstakingRaw, principalRaw: p.unstakingRaw });
+    // A cooldown already running from the wallet: a wallet-source row so the basket shows and the crank delivers it [A24]. Its shares
+    // already left the position the join recorded, so there is no principal to subtract (review I1).
+    if (p.unstakingRaw > 0n) await repo.insertWithdrawal({ userPubkey: output.address, asset: "SKR", source: "wallet", unstakeSignature: null, sharesUnstaked: 0n, amountRaw: p.unstakingRaw, principalRaw: 0n });
   }
-  // The session is bound to this device (the Genesis mint the sign-in proved): one live session per wallet per device (R84).
-  return NextResponse.json({ token: await issueSession(output.address, genesis.mint), skrName, sgtMint: genesis.mint });
+  // One live session per wallet per device (R84): the device is the client's own installation id (review I5), never the Genesis mint.
+  return NextResponse.json({ token: await issueSession(output.address, parsed.data.device ?? "unnamed"), skrName, sgtMint: genesis.mint });
 }

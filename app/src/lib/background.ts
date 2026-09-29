@@ -27,3 +27,8 @@ TaskManager.defineTask(TASK, async () => {
 export async function registerBackgroundRefresh() {
   await BackgroundTask.registerTaskAsync(TASK, { minimumInterval: 15 });
 }
+
+/** Sign-out stops the polling (review I4). */
+export async function unregisterBackgroundRefresh() {
+  await BackgroundTask.unregisterTaskAsync(TASK);
+}

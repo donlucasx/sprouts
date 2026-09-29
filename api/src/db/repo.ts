@@ -67,7 +67,7 @@ export interface Repo {
   takeLinkCode(code: string, walletPubkey: string): Promise<T.LinkCodeRow | null>;
 
   insertWithdrawal(w: NewWithdrawal): Promise<T.WithdrawalRow>;
-  /** Unstaked by Sprouts, not delivered, not cancelled, not skipped: the basket. */
+  /** Not delivered, not cancelled, not skipped, either source: the basket (a cooldown the wallet started is one too, review I2). */
   pendingWithdrawal(userPubkey: string): Promise<T.WithdrawalRow | null>;
   /** Newest first. */
   listWithdrawals(userPubkey: string, limit: number): Promise<T.WithdrawalRow[]>;

@@ -2,7 +2,7 @@ import {
   getProgramDerivedAddress, getAddressEncoder, pipe, createTransactionMessage, setTransactionMessageFeePayerSigner,
   setTransactionMessageLifetimeUsingBlockhash, appendTransactionMessageInstructions, signTransactionMessageWithSigners,
   assertIsTransactionWithBlockhashLifetime, sendAndConfirmTransactionFactory, createSolanaRpcSubscriptions, getSignatureFromTransaction,
-  type Address, type Instruction, type TransactionSigner,
+  type Address, type Instruction, type TransactionSigner, type Commitment,
 } from "@solana/kit";
 import { findAssociatedTokenPda, TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
 import { getStakeInstructionAsync, getWithdrawInstructionAsync, getUnstakeInstructionAsync, getCancelUnstakeInstructionAsync, fetchMaybeUserStake, fetchStakeConfig } from "@/generated/staking";
@@ -95,9 +95,10 @@ export async function sharePrice(): Promise<bigint> {
   return BigInt((await fetchStakeConfig(rpc(), STAKE_CONFIG)).data.sharePrice);
 }
 
-/** Read live from chain: staked amount = shares times the share price (9 decimals of scale). */
-export async function readPosition(user: Address): Promise<Position> {
-  const [maybe, cfg] = await Promise.all([fetchMaybeUserStake(rpc(), await userStakePda(user)), fetchStakeConfig(rpc(), STAKE_CONFIG)]);
+/** Read live from chain: staked amount = shares times the share price (9 decimals of scale). The reconciliation reads at `finalized` (review I6). */
+export async function readPosition(user: Address, commitment?: Commitment): Promise<Position> {
+  const config = commitment ? { commitment } : undefined;
+  const [maybe, cfg] = await Promise.all([fetchMaybeUserStake(rpc(), await userStakePda(user), config), fetchStakeConfig(rpc(), STAKE_CONFIG, config)]);
   if (!maybe.exists) return { shares: 0n, stakedRaw: 0n, unstakingRaw: 0n, unstakeTs: null };
   const shares = BigInt(maybe.data.shares);
   return {

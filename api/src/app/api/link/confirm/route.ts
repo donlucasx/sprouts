@@ -10,6 +10,7 @@ import { rpc } from "@/lib/rpc";
 import { SUBSCRIPTIONS_PROGRAM } from "@/lib/constants";
 
 export const runtime = "nodejs";
+export const maxDuration = 60; // the delegation poll (up to 10 s) plus the send
 
 const Body = z.object({ code: z.string().length(6), wallet: z.string().min(32).max(44), waitMs: z.number().int().min(0).max(10_000).optional(), signedTransaction: z.string().optional() });
 const RETRY_MS = 2_000;
@@ -59,8 +60,9 @@ export async function POST(request: Request) {
     if (!posted.instructions.some((ix) => ix.accounts.includes(boundPda))) return NextResponse.json({ error: "This approval is for another delegation." }, { status: 400 });
     try {
       await rpc().sendTransaction(posted.wire as Base64EncodedWireTransaction, { encoding: "base64", preflightCommitment: "confirmed" }).send();
-    } catch {
-      return NextResponse.json({ error: "The approval did not go through. Try again." }, { status: 409 });
+    } catch (e) {
+      // A lost answer is not a lost approval (review I3): the delegation poll below decides, and the app retries confirm with the same code.
+      console.error(`link confirm: send answered with an error for ${wallet}: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
 
