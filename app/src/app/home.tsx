@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Text, View, RefreshControl, ScrollView, Pressable } from "react-native";
-import { Link, Redirect } from "expo-router";
+import { Link, Redirect, useFocusEffect } from "expo-router";
 import Svg from "react-native-svg";
 import { useMe, useInvalidateMe, toGardenInput } from "@/lib/me";
 import { api } from "@/lib/api";
@@ -24,6 +24,8 @@ export default function Home() {
   const now = new Date();
   // eslint-disable-next-line react-hooks/exhaustive-deps -- `now` is taken once per render on purpose
   const scene = useMemo(() => (me ? buildScene(toGardenInput(me, now)) : null), [me]);
+  // Coming back to Home reads again: a wallet linked on the web, a planting, a withdrawal show without a pull-down.
+  useFocusEffect(useCallback(() => void refetch(), [refetch]));
 
   async function water() {
     if (!me || !scene) return;
