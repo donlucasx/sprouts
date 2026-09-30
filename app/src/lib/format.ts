@@ -1,4 +1,6 @@
-const SKR_DECIMALS = 6;
+/** Decimals per asset, from each mint (stORE read on chain 2026-09-29: 11, not 9). Every raw amount crosses this table. */
+export const DECIMALS = { SKR: 6, stORE: 11 } as const;
+const SKR_DECIMALS = DECIMALS.SKR;
 
 export function formatUsd(cents: number): string {
   const sign = cents < 0 ? "-" : "";
@@ -15,6 +17,27 @@ export function formatSkr(raw: bigint, skrUsd: number | null): string {
   if (skrUsd === null) return skr;
   const cents = Math.round((Number(raw) / 10 ** SKR_DECIMALS) * skrUsd * 100);
   return `${skr} (${formatUsd(cents)})`;
+}
+
+/** stORE with its dollar value beside it: four decimals shown, since a $2 planting is about 0.02 stORE. */
+export function formatStore(raw: bigint, storeUsd: number | null): string {
+  const unit = 10n ** BigInt(DECIMALS.stORE);
+  const whole = raw / unit;
+  const tenThousandths = Number((raw % unit) / 10n ** BigInt(DECIMALS.stORE - 4));
+  const store = `${whole}.${String(tenThousandths).padStart(4, "0")} stORE`;
+  if (storeUsd === null) return store;
+  const cents = Math.round((Number(raw) / 10 ** DECIMALS.stORE) * storeUsd * 100);
+  return `${store} (${formatUsd(cents)})`;
+}
+
+/** One amount in its own coin, dollars beside it: the receipt, Activity and the notification all say it this way. */
+export function formatAmount(asset: "SKR" | "stORE", raw: bigint, usd: number | null): string {
+  return asset === "SKR" ? formatSkr(raw, usd) : formatStore(raw, usd);
+}
+
+/** The line under the fence (audits/ore-plan, finding 9): the picker splits money delivered, not plantings counted. */
+export function oreShareLine(share: number): string {
+  return share === 0 ? "Every planting grows SKR." : `About ${share} cents of every dollar grows ORE.`;
 }
 
 function timeOf(d: Date): string {

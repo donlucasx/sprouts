@@ -16,6 +16,7 @@ export function toGardenInput(me: MeResponse, now: Date): GardenInput {
     skrPrincipalPickedRaw: b(me.pot.skrPrincipalPickedRaw),
     pendingCents: me.nextPlanting.pendingCents,
     thresholdCents: me.nextPlanting.thresholdCents,
+    nextAsset: me.nextPlanting.asset,
     basket: me.basket ? { amountRaw: b(me.basket.amountRaw), readyAt: new Date(me.basket.readyAt) } : null,
   };
 }

@@ -6,6 +6,7 @@ export type GardenInput = {
   skrPickedRaw: bigint; skrPrincipalPickedRaw: bigint;   // principal withdrawn prunes; fruit picked does not [A13]
   pendingCents: number;                                    // change waiting to be planted: seeds before the first planting (R54), then a bud forming (R89) [A23]
   thresholdCents: number;                                  // the planting threshold the forming bud swells toward
+  nextAsset?: "SKR" | "stORE";                             // the coin the next planting buys (/api/me), so the bud forms on that plant
   storePutInRaw: bigint; storePups: number; storeNextPupProgress: number;
   joinedValueRaw: bigint;
   basket: { amountRaw: bigint; readyAt: Date } | null;
@@ -77,7 +78,9 @@ export function buildScene(g: GardenInput): Scene {
     for (let i = 0; i < seeds; i++) parts.push({ kind: "seed", id: `seed${i}`, x: PLANT_X.skr + (i % 2 ? 1 : -1) * (0.015 + 0.012 * Math.floor(i / 2)) });
   } else if (g.pendingCents > 0) {
     // After it, one bud forms at the top of the plant and swells toward the threshold (R89, and his note: one thing filling up).
-    parts.push({ kind: "forming", plant: hasPlant.skr ? "skr" : "ore", progress: Math.min(1, g.pendingCents / Math.max(1, g.thresholdCents)) });
+    const next = g.nextAsset === "stORE" ? "ore" : g.nextAsset === "SKR" ? "skr" : null;
+    const plant = next && hasPlant[next] ? next : hasPlant.skr ? "skr" : "ore";
+    parts.push({ kind: "forming", plant, progress: Math.min(1, g.pendingCents / Math.max(1, g.thresholdCents)) });
   }
 
   for (const c of ["skr", "ore"] as const) {
