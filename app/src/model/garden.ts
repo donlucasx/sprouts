@@ -4,7 +4,8 @@ export type GardenInput = {
   picks: { ts: Date; asset: "SKR" | "stORE"; amountRaw: bigint }[];
   skrPutInRaw: bigint; skrEarnedRaw: bigint; skrFruit: number; skrNextFruitProgress: number;
   skrPickedRaw: bigint; skrPrincipalPickedRaw: bigint;   // principal withdrawn prunes; fruit picked does not [A13]
-  pendingCents: number;                                    // change waiting to be planted: seeds on the soil (R54) [A23]
+  pendingCents: number;                                    // change waiting to be planted: seeds before the first planting (R54), then a bud forming (R89) [A23]
+  thresholdCents: number;                                  // the planting threshold the forming bud swells toward
   storePutInRaw: bigint; storePups: number; storeNextPupProgress: number;
   joinedValueRaw: bigint;
   basket: { amountRaw: bigint; readyAt: Date } | null;
@@ -12,6 +13,8 @@ export type GardenInput = {
 
 export type Part =
   | { kind: "soil" }
+  | { kind: "plant"; plant: "skr" | "ore"; x: number; shoots: number }   // R89: one plant per coin; shoots = the plantings it carries
+  | { kind: "forming"; plant: "skr" | "ore"; progress: number }          // R89: waiting change after the first planting, 0 to 1 of the threshold
   | { kind: "seed"; id: string; x: number }
   | { kind: "sprout"; id: string; plant: "skr" | "ore"; x: number; y: number; stage: 0 | 1 | 2 | 3; bud: boolean; sizeRaw: bigint }
   | { kind: "transplant"; plant: "skr"; sizeRaw: bigint }
@@ -32,12 +35,8 @@ function stageOf(ageMs: number): 0 | 1 | 2 | 3 {
   return days < 3 ? 0 : days < 10 ? 1 : days < 30 ? 2 : 3;
 }
 
-/** A deterministic spread along the soil from the planting id, so the same garden always draws the same way. */
-function hashX(id: string): number {
-  let h = 7;
-  for (const c of id) h = (h * 31 + c.charCodeAt(0)) % 1000;
-  return 0.08 + (h / 1000) * 0.84;
-}
+/** R89: where each coin's plant stands; SKR a little left of centre, ORE beside it with room for both to grow. */
+export const PLANT_X = { skr: 0.4, ore: 0.64 } as const;
 
 /**
  * The scene from the user's own history (R55: parts assembled from history, never a fixed set of paintings).
@@ -65,15 +64,28 @@ export function buildScene(g: GardenInput): Scene {
   const kept = new Set(skrPlantings.slice(0, skrPlantings.length - prune).map((p) => p.id));
   if (prune > 0) parts.push({ kind: "pruned", count: prune });
 
-  // Change waiting to be planted shows as seeds on the soil (R54): one per 25 cents, up to eight.
-  const seeds = Math.min(8, Math.floor(g.pendingCents / 25));
-  for (let i = 0; i < seeds; i++) parts.push({ kind: "seed", id: `seed${i}`, x: 0.15 + i * 0.09 });
+  // R89: one plant per coin, every planting a shoot on it, the oldest lowest (y is the shoot's place on the stem, 0 at the bottom).
+  const growing = [...g.plantings].filter((p) => p.asset !== "SKR" || kept.has(p.id)).sort((a, b) => a.ts.getTime() - b.ts.getTime());
+  const coin = (p: { asset: "SKR" | "stORE" }) => (p.asset === "SKR" ? "skr" : "ore") as "skr" | "ore";
+  const shootsOf = (c: "skr" | "ore") => growing.filter((p) => coin(p) === c);
+  const hasPlant = { skr: shootsOf("skr").length > 0 || g.joinedValueRaw > 0n, ore: shootsOf("ore").length > 0 };
+  for (const c of ["skr", "ore"] as const) if (hasPlant[c]) parts.push({ kind: "plant", plant: c, x: PLANT_X[c], shoots: shootsOf(c).length });
 
-  for (const p of g.plantings) {
-    if (p.asset === "SKR" && !kept.has(p.id)) continue;
-    const bud = isUnrevealed(p.ts);
-    if (bud) unrevealed++;
-    parts.push({ kind: "sprout", id: p.id, plant: p.asset === "SKR" ? "skr" : "ore", x: hashX(p.id), y: 0, stage: stageOf(g.now.getTime() - p.ts.getTime()), bud, sizeRaw: p.amountOutRaw });
+  if (!hasPlant.skr && !hasPlant.ore) {
+    // Before the first planting, waiting change is seeds at the plant's base (R54): one per 25 cents, up to eight.
+    const seeds = Math.min(8, Math.floor(g.pendingCents / 25));
+    for (let i = 0; i < seeds; i++) parts.push({ kind: "seed", id: `seed${i}`, x: PLANT_X.skr + (i % 2 ? 1 : -1) * (0.015 + 0.012 * Math.floor(i / 2)) });
+  } else if (g.pendingCents > 0) {
+    // After it, one bud forms at the top of the plant and swells toward the threshold (R89, and his note: one thing filling up).
+    parts.push({ kind: "forming", plant: hasPlant.skr ? "skr" : "ore", progress: Math.min(1, g.pendingCents / Math.max(1, g.thresholdCents)) });
+  }
+
+  for (const c of ["skr", "ore"] as const) {
+    shootsOf(c).forEach((p, slot) => {
+      const bud = isUnrevealed(p.ts);
+      if (bud) unrevealed++;
+      parts.push({ kind: "sprout", id: p.id, plant: c, x: PLANT_X[c], y: slot, stage: stageOf(g.now.getTime() - p.ts.getTime()), bud, sizeRaw: p.amountOutRaw });
+    });
   }
 
   // Fruit come from the pot's count (never from a market price); the next one swells with each reward event. A fruit that appeared
@@ -98,9 +110,9 @@ export function buildScene(g: GardenInput): Scene {
   const wateredToday = wateredAt !== null && sameDay(wateredAt, g.now);
   if (wateredAt !== null) {
     const age = Math.min(1, (g.now.getTime() - wateredAt.getTime()) / DAY);
-    // Under the newest sprout still in the garden, the one this watering opened (09-29: it was always the centre).
-    const newest = [...g.plantings].filter((p) => p.asset !== "SKR" || kept.has(p.id)).sort((a, b) => b.ts.getTime() - a.ts.getTime())[0];
-    if (age < 1) parts.push({ kind: "wetSpot", age, x: newest ? hashX(newest.id) : 0.5 });
+    // At the foot of the plant that grew last, the one this watering opened (09-29: it was always the centre).
+    const newest = growing[growing.length - 1];
+    if (age < 1) parts.push({ kind: "wetSpot", age, x: newest ? PLANT_X[coin(newest)] : hasPlant.skr ? PLANT_X.skr : 0.5 });
   }
   return { parts, unrevealed, wateredToday };
 }

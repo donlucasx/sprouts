@@ -4,7 +4,9 @@ import Svg, { G, Circle } from "react-native-svg";
 import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withSequence, withTiming, withDelay, Easing } from "react-native-reanimated";
 import type { Scene, Part } from "@/model/garden";
 import { soilSurface } from "@/model/soil";
-import { plantHeight, Soil, Sprout, Succulent, Transplant, Fruit, Ripening, Pup, Basket, WetSpot, INK } from "./parts";
+import { Soil, Stem, Shoot, Forming, Transplant, Fruit, Ripening, Pup, Basket, WetSpot, INK } from "./parts";
+import { PLANT_X } from "@/model/garden";
+import { nodeRise, stemRise, side, leafSize, TRANSPLANT_BASE } from "@/model/plant-geometry";
 
 const HEIGHT = 260;
 
@@ -47,48 +49,60 @@ export function Garden({ scene, justOpened }: { scene: Scene; justOpened: Set<st
   const { width } = useWindowDimensions();
   const w = width - 40;
   const soilY = HEIGHT - 60;
-  const sprouts = scene.parts.filter((p): p is Extract<Part, { kind: "sprout" }> => p.kind === "sprout");
+  const ground = (x: number) => soilY + soilSurface(x) + 2;   // the soil's surface at x (0 to 1), in pixels
+  const plants = scene.parts.filter((p): p is Extract<Part, { kind: "plant" }> => p.kind === "plant");
+  const shoots = scene.parts.filter((p): p is Extract<Part, { kind: "sprout" }> => p.kind === "sprout");
   const seeds = scene.parts.filter((p): p is Extract<Part, { kind: "seed" }> => p.kind === "seed");
+  const forming = scene.parts.find((p): p is Extract<Part, { kind: "forming" }> => p.kind === "forming");
   const skrFruit = scene.parts.filter((p): p is Extract<Part, { kind: "fruit" }> => p.kind === "fruit" && p.plant === "skr");
   const pups = scene.parts.filter((p): p is Extract<Part, { kind: "fruit" }> => p.kind === "fruit" && p.plant === "ore");
   const ripening = scene.parts.filter((p): p is Extract<Part, { kind: "ripening" }> => p.kind === "ripening");
   const wet = scene.parts.find((p): p is Extract<Part, { kind: "wetSpot" }> => p.kind === "wetSpot");
   const basket = scene.parts.find((p): p is Extract<Part, { kind: "basket" }> => p.kind === "basket");
-  const transplant = scene.parts.find((p) => p.kind === "transplant");
-  // Fruit hang near the tip of the sprout the scene names (09-29: they were on a fixed grid, mid-air); a few per plant fan out.
-  const tip = (id: string) => {
-    const s = sprouts.find((p) => p.id === id)!;
-    return { x: s.x * w, y: soilY + soilSurface(s.x) + 2 - plantHeight(s.plant, s.stage) };
+  const transplant = scene.parts.some((p) => p.kind === "transplant");
+  // R89: each coin's one plant, its plantings stacked up its stem (plant-geometry.ts, shared with the widget).
+  const plantOf = (c: "skr" | "ore") => plants.find((p) => p.plant === c)!;
+  const base = (c: "skr" | "ore") => (c === "skr" && transplant ? TRANSPLANT_BASE : 0);
+  const node = (s: Extract<Part, { kind: "sprout" }>) => {
+    const p = plantOf(s.plant);
+    return { x: p.x * w, y: ground(p.x) - nodeRise(s.y, p.shoots, base(s.plant)) };
   };
+  // Fruit hang beside the shoot the scene names, on the side away from its leaf; a few per shoot fan out downward.
   const perHost = new Map<string, number>();
   const hang = (id: string) => {
+    const s = shoots.find((p) => p.id === id)!;
     const k = perHost.get(id) ?? 0;
     perHost.set(id, k + 1);
-    const t = tip(id);
-    return { x: t.x + ((k % 3) - 1) * 9, y: t.y + 10 + Math.floor(k / 3) * 10 };
+    const n = node(s);
+    return { x: n.x - side(s.y) * (8 + k * 7), y: n.y + 6 + k * 4 };
   };
   let order = 0;
   return (
     <View style={{ width: w, height: HEIGHT }}>
       <Svg width={w} height={HEIGHT} style={{ position: "absolute" }}>
         <G y={soilY}><Soil width={w} /></G>
-        {wet ? <G x={w * wet.x} y={soilY + soilSurface(wet.x) + 4}><WetSpot age={wet.age} /></G> : null}
-        {seeds.map((s) => <G key={s.id} x={s.x * w} y={soilY + soilSurface(s.x) + 3}><Circle r={2.2} fill={INK} opacity={0.7} /></G>)}
+        {wet ? <G x={w * wet.x} y={ground(wet.x) + 2}><WetSpot age={wet.age} /></G> : null}
+        {seeds.map((s) => <G key={s.id} x={s.x * w} y={ground(s.x) + 1}><Circle r={2.2} fill={INK} opacity={0.7} /></G>)}
+        {plants.map((p) => <G key={p.plant} x={p.x * w} y={ground(p.x)}><Stem plant={p.plant} rise={stemRise(p.shoots, base(p.plant))} /></G>)}
+        {forming ? (() => { const p = plantOf(forming.plant); return <G x={p.x * w} y={ground(p.x) - stemRise(p.shoots, base(p.plant)) - 3}><Forming progress={forming.progress} /></G>; })() : null}
         {skrFruit.map((f) => { const at = hang(f.on!); return <G key={`f${f.index}`} x={at.x} y={at.y}><Fruit bud={f.bud} /></G>; })}
-        {pups.map((f) => <G key={`p${f.index}`} x={w * (0.7 + (f.index % 3) * 0.08)} y={soilY + soilSurface(0.7 + (f.index % 3) * 0.08) - 3}><Pup /></G>)}
-        {ripening.map((r) => { const t = tip(r.on); return <G key={r.plant} x={t.x} y={t.y - 3}><Ripening progress={r.progress} /></G>; })}
+        {pups.map((f) => { const x = PLANT_X.ore + ((f.index % 3) - 1) * 0.05; return <G key={`p${f.index}`} x={w * x} y={ground(x) - 3}><Pup /></G>; })}
+        {ripening.map((r) => { const at = hang(r.on); return <G key={r.plant} x={at.x} y={at.y}><Ripening progress={r.progress} /></G>; })}
         {basket ? <G x={w - 40} y={soilY + 30}><Basket /></G> : null}
       </Svg>
       {transplant ? (
-        <Bloom order={0} active={false} x={w * 0.5 - 40} y={soilY + soilSurface(0.5) - 78} w={80} h={80}>
+        <Bloom order={0} active={false} x={PLANT_X.skr * w - 40} y={ground(PLANT_X.skr) - 80} w={80} h={80}>
           <Sway seed={3} w={80} h={80}><Transplant /></Sway>
         </Bloom>
       ) : null}
-      {sprouts.map((s, i) => (
-        <Bloom key={s.id} order={justOpened.has(s.id) ? order++ : 0} active={justOpened.has(s.id)} x={s.x * w - 20} y={soilY + soilSurface(s.x) - 78} w={40} h={80}>
-          <Sway seed={i} w={40} h={80}>{s.plant === "skr" ? <Sprout stage={s.stage} bud={s.bud} /> : <Succulent stage={s.stage} bud={s.bud} />}</Sway>
-        </Bloom>
-      ))}
+      {shoots.map((s) => {
+        const n = node(s);
+        return (
+          <Bloom key={s.id} order={justOpened.has(s.id) ? order++ : 0} active={justOpened.has(s.id)} x={n.x - 14} y={n.y - 14} w={28} h={28}>
+            <Svg width={28} height={28}><Shoot stage={s.stage} bud={s.bud} side={side(s.y)} size={leafSize(s.stage)} plant={s.plant} /></Svg>
+          </Bloom>
+        );
+      })}
     </View>
   );
 }

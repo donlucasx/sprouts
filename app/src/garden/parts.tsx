@@ -15,6 +15,27 @@ export function Soil({ width }: { width: number }) {
   return <Path d={SOIL_PATH(width)} fill={OCHRE} opacity={0.9} />;
 }
 
+/** R89: a coin's one stem, from the soil (0, 0) up `rise` pixels. The ORE succulent's stem is short and thick. */
+export function Stem({ rise, plant }: { rise: number; plant: "skr" | "ore" }) {
+  return <Path d={`M0 0 Q 2 ${-rise / 2} 0 ${-rise}`} stroke={GREEN} strokeWidth={plant === "skr" ? 3 : 4.5} fill="none" strokeLinecap="round" />;
+}
+
+/**
+ * R89: one planting, as a shoot on the stem, in a 28 x 28 box whose centre is its node. A closed bud until watered, then a leaf
+ * that grows with its age; the ORE succulent's leaves are rounder.
+ */
+export function Shoot({ stage, bud, side, size, plant }: { stage: 0 | 1 | 2 | 3; bud: boolean; side: -1 | 1; size: number; plant: "skr" | "ore" }) {
+  if (bud) return <Ellipse cx={14 + side * 3} cy={13} rx={3.5} ry={5} fill={GREEN} opacity={0.75} transform={`rotate(${side * 20} ${14 + side * 3} 13)`} />;
+  const rx = plant === "skr" ? size : size * 0.85;
+  const ry = plant === "skr" ? size / 2.2 : size / 1.6;
+  return <Ellipse cx={14 + side * rx} cy={14 - stage} rx={rx} ry={ry} fill={GREEN} transform={`rotate(${side * -25} ${14 + side * rx} ${14 - stage})`} />;
+}
+
+/** R89: change waiting to be planted, a bud forming at the stem's top that swells toward the threshold. */
+export function Forming({ progress }: { progress: number }) {
+  return <Circle cx={0} cy={0} r={2 + 3.5 * progress} fill={GREEN} opacity={0.45 + 0.4 * progress} />;
+}
+
 /** How far above its base an open plant's tip is, so fruit can hang from it: the SKR stem, or the ORE succulent's rosette. */
 export function plantHeight(plant: "skr" | "ore", stage: 0 | 1 | 2 | 3): number {
   return plant === "skr" ? [18, 34, 52, 72][stage] : 10 + [7, 11, 15, 19][stage];
