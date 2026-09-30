@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 import { Stack } from "expo-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { createSolanaMainnet, MobileWalletProvider, type AppIdentity } from "@wallet-ui/react-native-kit";
+import { createSolanaMainnet, MobileWalletProvider } from "@wallet-ui/react-native-kit";
+import { identity } from "@/lib/identity";
 import { loadSession, saveSession, SessionContext, type Session } from "@/lib/session";
 import { registerBackgroundRefresh } from "@/lib/background"; // the task itself is defined from index.js (headless starts)
 import { askNotificationPermissionOnce } from "@/lib/notify";
 
-const identity: AppIdentity = { name: "Sprouts", uri: "https://sprouts.money" };
 // Only Mobile Wallet Adapter's plumbing touches this endpoint; every read the app shows comes from the API.
 const cluster = createSolanaMainnet({ url: "https://api.mainnet-beta.solana.com" });
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1, staleTime: 15_000 } } });

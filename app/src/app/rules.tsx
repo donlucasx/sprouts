@@ -8,6 +8,8 @@ import { api, ApiError, type MeResponse } from "@/lib/api";
 import { useMe, useInvalidateMe } from "@/lib/me";
 import { makeSigner } from "@/lib/sign";
 import { freshSignIn } from "@/lib/signin";
+import { freshWalletSignIn } from "@/lib/reauth";
+import { identity } from "@/lib/identity";
 import { formatUsd } from "@/lib/format";
 import { rulesChanges } from "@/lib/forms";
 import { useSession } from "@/lib/session";
@@ -37,7 +39,7 @@ const Row = ({ label, children }: { label: string; children: React.ReactNode }) 
 export default function Rules() {
   const { data: me } = useMe();
   const { session } = useSession();
-  const { signTransaction, signIn } = useMobileWallet();
+  const { signTransaction } = useMobileWallet();
   const invalidate = useInvalidateMe();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -55,11 +57,13 @@ export default function Rules() {
     setBusy(true);
     setError(null);
     try {
-      const reauth = raises ? await freshSignIn(signIn) : undefined;
+      const reauth = raises ? await freshSignIn(freshWalletSignIn(identity)) : undefined;
       await api("/api/rules", { method: "PUT", body: { ...patch, ...(reauth ? { reauth } : {}) } });
       await invalidate();
       setDraft({});
     } catch (e) {
+      // Dev builds only: the real error for Metro's terminal (09-29: a save after the sign-in failed with only the generic line).
+      if (typeof __DEV__ !== "undefined" && __DEV__) console.warn(`[rules] save failed: ${e instanceof Error ? `${e.name}: ${e.message}` : String(e)}`);
       setError(e instanceof ApiError ? e.message : "Could not save. Try again.");
     } finally {
       setBusy(false);
@@ -72,7 +76,7 @@ export default function Rules() {
     setError(null);
     try {
       const action = w.status === "paused" ? "resume" : "pause";
-      const reauth = action === "resume" ? await freshSignIn(signIn) : undefined;
+      const reauth = action === "resume" ? await freshSignIn(freshWalletSignIn(identity)) : undefined;
       await api(`/api/wallets/${w.pubkey}`, { method: "POST", body: { action, ...(reauth ? { reauth } : {}) } });
       await invalidate();
     } catch (e) {
