@@ -1,10 +1,10 @@
 import { useEffect, type ReactNode } from "react";
 import { View, useWindowDimensions } from "react-native";
-import Svg, { G, Circle } from "react-native-svg";
+import Svg, { G, Circle, Path } from "react-native-svg";
 import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withSequence, withTiming, withDelay, Easing } from "react-native-reanimated";
 import type { Scene, Part } from "@/model/garden";
 import { soilSurface } from "@/model/soil";
-import { Soil, Stem, Shoot, Forming, Transplant, Fruit, Ripening, Pup, Basket, WetSpot, INK } from "./parts";
+import { Soil, Stem, Shoot, Forming, Transplant, Fruit, Ripening, Pup, Basket, WetSpot, INK, GREEN } from "./parts";
 import { PLANT_X } from "@/model/garden";
 import { nodeRise, stemRise, side, leafSize, TRANSPLANT_BASE } from "@/model/plant-geometry";
 
@@ -73,15 +73,18 @@ export function Garden({ scene, justOpened }: { scene: Scene; justOpened: Set<st
     const p = plantOf(s.plant);
     return { x: p.x * w, y: ground(p.x) - nodeRise(s.y, p.shoots, base(s.plant)) };
   };
-  // Fruit hang beside the shoot the scene names, on the side away from its leaf; a few per shoot fan out downward.
+  // Fruit hang beside the shoot the scene names, on the side away from its leaf, each on a short stalk from the shoot's node
+  // (09-30, the Saga: without the stalk a small one floated); a few per shoot fan out downward.
   const perHost = new Map<string, number>();
   const hang = (id: string) => {
     const s = shoots.find((p) => p.id === id)!;
     const k = perHost.get(id) ?? 0;
     perHost.set(id, k + 1);
     const n = node(s);
-    return { x: n.x - side(s.y) * (8 + k * 7), y: n.y + 6 + k * 4 };
+    return { x: n.x - side(s.y) * (8 + k * 7), y: n.y + 6 + k * 4, stalk: `M${n.x} ${n.y} L${n.x - side(s.y) * (8 + k * 7)} ${n.y + 6 + k * 4}` };
   };
+  // ORE pups sit on the soil beside the succulent, three slots; the next one forms in the slot after the last pup.
+  const pupX = (index: number) => PLANT_X.ore + ((index % 3) - 1) * 0.05;
   let order = 0;
   return (
     <View style={{ width: w, height: HEIGHT }}>
@@ -91,9 +94,13 @@ export function Garden({ scene, justOpened }: { scene: Scene; justOpened: Set<st
         {seeds.map((s) => <G key={s.id} x={s.x * w} y={ground(s.x) + 1}><Circle r={2.2} fill={INK} opacity={0.7} /></G>)}
         {plants.map((p) => <G key={p.plant} x={p.x * w} y={ground(p.x)}><Stem plant={p.plant} rise={stemRise(p.shoots, base(p.plant))} /></G>)}
         {forming ? (() => { const p = plantOf(forming.plant); return <G x={p.x * w} y={ground(p.x) - stemRise(p.shoots, base(p.plant)) - 3}><Forming progress={forming.progress} /></G>; })() : null}
-        {skrFruit.map((f) => { const at = hang(f.on!); return <G key={`f${f.index}`} x={at.x} y={at.y}><Fruit bud={f.bud} /></G>; })}
-        {pups.map((f) => { const x = PLANT_X.ore + ((f.index % 3) - 1) * 0.05; return <G key={`p${f.index}`} x={w * x} y={ground(x) - 3}><Pup /></G>; })}
-        {ripening.map((r) => { const at = hang(r.on); return <G key={r.plant} x={at.x} y={at.y}><Ripening progress={r.progress} /></G>; })}
+        {skrFruit.map((f) => { const at = hang(f.on!); return <G key={`f${f.index}`}><Path d={at.stalk} stroke={GREEN} strokeWidth={1.2} strokeLinecap="round" /><G x={at.x} y={at.y}><Fruit bud={f.bud} /></G></G>; })}
+        {pups.map((f) => { const x = pupX(f.index); return <G key={`p${f.index}`} x={w * x} y={ground(x) - 3}><Pup /></G>; })}
+        {ripening.map((r) => {
+          if (r.on === null) { const x = pupX(pups.length); return <G key={r.plant} x={w * x} y={ground(x) - 3}><Ripening progress={r.progress} /></G>; }
+          const at = hang(r.on);
+          return <G key={r.plant}><Path d={at.stalk} stroke={GREEN} strokeWidth={1.2} strokeLinecap="round" /><G x={at.x} y={at.y}><Ripening progress={r.progress} /></G></G>;
+        })}
         {basket ? <G x={w - 40} y={soilY + 30}><Basket /></G> : null}
       </Svg>
       {transplant ? (

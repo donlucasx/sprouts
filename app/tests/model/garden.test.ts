@@ -141,6 +141,14 @@ describe("the ORE plant", () => {
     expect(s.parts.filter((p) => p.kind === "plant")).toEqual([{ kind: "plant", plant: "ore", x: expect.any(Number), shoots: 1 }]);
     expect(s.parts.filter((p) => p.kind === "sprout" && p.plant === "ore").length).toBe(1);
   });
+  // 09-30, the Saga after watering: the ORE plant's ripening pup hung 8 px off its leaf as a floating green dot. Pups live on the
+  // soil beside the succulent (on: null, like the pups themselves), so the next one forms there; it still waits for the watering.
+  it("the next pup ripens at the soil beside the succulent, never on a leaf", () => {
+    const open = buildScene({ ...base, plantings: [ore], wateredAt: NOW, storePutInRaw: 100n, storeNextPupProgress: 0.1 });
+    expect(open.parts.find((p) => p.kind === "ripening")).toEqual({ kind: "ripening", plant: "ore", progress: 0.1, on: null });
+    const closed = buildScene({ ...base, plantings: [ore], wateredAt: null, storePutInRaw: 100n, storeNextPupProgress: 0.1 });
+    expect(kinds(closed)).not.toContain("ripening");
+  });
   it("the forming bud sits on the plant the next planting will grow", () => {
     const both = { ...base, plantings: [planting("a", 30, 266_000_000n), ore], wateredAt: NOW, pendingCents: 100 };
     const forming = (s: ReturnType<typeof buildScene>) => s.parts.find((p) => p.kind === "forming") as { plant: string } | undefined;
