@@ -2,10 +2,10 @@ import {
   address, pipe, createTransactionMessage, setTransactionMessageFeePayerSigner, setTransactionMessageLifetimeUsingBlockhash,
   appendTransactionMessageInstructions, compressTransactionMessageUsingAddressLookupTables, signTransactionMessageWithSigners,
   getBase64EncodedWireTransaction, getSignatureFromTransaction, fetchAddressesForLookupTables, sendAndConfirmTransactionFactory,
-  createSolanaRpcSubscriptions, assertIsTransactionWithBlockhashLifetime, type Address, type Instruction,
+  createSolanaRpcSubscriptions, assertIsTransactionWithBlockhashLifetime, type Address, type Instruction, type TransactionSigner,
 } from "@solana/kit";
 import { getSetComputeUnitLimitInstruction, getSetComputeUnitPriceInstruction } from "@solana-program/compute-budget";
-import { findAssociatedTokenPda, TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
+import { findAssociatedTokenPda, TOKEN_PROGRAM_ADDRESS, getCreateAssociatedTokenIdempotentInstruction } from "@solana-program/token";
 import { getQuote, getSwapInstructions, checkSwapInstructions } from "./jupiter";
 import { buildTransferRecurringIx } from "./subscriptions";
 import { buildStakeIx } from "./staking";
@@ -24,6 +24,21 @@ export type BuiltPlanting = {
   lookupTables: Address[];
   lastValidBlockHeight: bigint;
 };
+
+/**
+ * The accounts an stORE leg needs before the swap: the user's and the fee wallet's stORE token accounts, created if missing
+ * (audits/ore-plan, finding 3: Jupiter assumes a custom destination account exists). Idempotent, so an existing account is not
+ * an error; the puller pays the rent, about 0.002 SOL each, once. An SKR leg needs nothing: the puller's own accounts exist.
+ */
+export async function storeAccountInstructions(a: { asset: Asset; payer: TransactionSigner; user: Address; feeWallet: Address }): Promise<Instruction[]> {
+  if (a.asset !== "stORE") return [];
+  const ixs: Instruction[] = [];
+  for (const owner of [a.user, a.feeWallet]) {
+    const [ata] = await findAssociatedTokenPda({ owner, mint: STORE_MINT, tokenProgram: TOKEN_PROGRAM_ADDRESS });
+    ixs.push(getCreateAssociatedTokenIdempotentInstruction({ payer: a.payer, ata, owner, mint: STORE_MINT }));
+  }
+  return ixs;
+}
 
 /**
  * The planting: one versioned transaction the puller signs alone. Pull USDC from the trading wallet, swap it on Jupiter
@@ -47,6 +62,7 @@ export async function buildPlantingTx(a: { delegator: Address; user: Address; as
   const ixs: Instruction[] = [
     getSetComputeUnitLimitInstruction({ units: 400_000 }),
     getSetComputeUnitPriceInstruction({ microLamports: 1_000n }),
+    ...(await storeAccountInstructions({ asset: a.asset, payer: puller, user: a.user, feeWallet })),
     await buildTransferRecurringIx({ delegator: a.delegator, delegatee: puller, delegationPda: a.delegationPda, amountRaw: a.pullRaw }),
     ...swap.setup,
     swap.swap,

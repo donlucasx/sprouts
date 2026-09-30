@@ -171,9 +171,23 @@ async function plantOneOrThrow(a: { repo: Repo; now: Date; chain: Chain }, w: Wa
     return { wallet: w.pubkey, reason: "no usdc" };
   }
 
-  const asset = pickAsset({ SKR: w.ledgerSkrCents, stORE: w.ledgerStoreCents }, rules.allocation);
-  const built = await a.chain.buildPlantingTx({ delegator: w.pubkey, user: w.userPubkey, asset, pullRaw: BigInt(amount.pullCents) * USDC_PER_CENT, feeBps: FEE_BPS, delegationPda: w.delegationPda });
-  const sim = await a.chain.simulatePlanting(built);
+  let asset = pickAsset({ SKR: w.ledgerSkrCents, stORE: w.ledgerStoreCents }, rules.allocation);
+  const attempt = async (asset: Asset) => {
+    const built = await a.chain.buildPlantingTx({ delegator: w.pubkey, user: w.userPubkey, asset, pullRaw: BigInt(amount.pullCents) * USDC_PER_CENT, feeBps: FEE_BPS, delegationPda: w.delegationPda });
+    return { built, sim: await a.chain.simulatePlanting(built) };
+  };
+  let { built, sim } = await attempt(asset).then((r) => {
+    if (asset === "stORE" && !r.sim.ok) throw new Error(`simulation: ${JSON.stringify(r.sim.err)} ${r.sim.logs.slice(-2).join(" | ")}`);
+    return r;
+  }).catch(async (e: unknown) => {
+    // Plan v2 (audits/ore-plan, finding 4): an ORE leg that will not build or simulate must not freeze the wallet (the picker
+    // would choose stORE again tomorrow) nor count toward the outage stop: plant SKR today and say so.
+    if (asset !== "stORE") throw e;
+    console.error(`stORE leg for ${w.pubkey} failed (${message(e)}); planting SKR instead`);
+    await a.repo.addEvent({ userPubkey: w.userPubkey, walletPubkey: w.pubkey, kind: "store_fallback", detail: { err: message(e) } });
+    asset = "SKR";
+    return attempt(asset);
+  });
   if (!sim.ok) {
     console.error(`planting for ${w.pubkey} failed simulation: ${JSON.stringify(sim.err)} ${sim.logs.slice(-2).join(" | ")}`);
     await a.repo.addEvent({ userPubkey: w.userPubkey, walletPubkey: w.pubkey, kind: "pull_failed", detail: { stage: "simulate", err: sim.err, logs: sim.logs.slice(-5) } });

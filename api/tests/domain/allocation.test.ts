@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { pickAsset } from "@/domain/allocation";
+import { pickAsset, DECIMALS } from "@/domain/allocation";
 
 describe("pickAsset", () => {
   it("100/0 always picks SKR", () => expect(pickAsset({ SKR: 5000, stORE: 0 }, { SKR: 100, stORE: 0 })).toBe("SKR"));
@@ -19,5 +19,14 @@ describe("pickAsset", () => {
       ledger[a] += 200;
     }
     expect(picks.filter((p) => p === "SKR").length).toBe(7);
+  });
+});
+
+// audits/ore-plan, finding 1: stORE has 11 decimals (read from the mint 2026-09-29), not the 9 the code assumed; every raw amount
+// crosses this table. Spike 2's dust quote, 122,495,137 raw, is about 0.0012 stORE.
+describe("DECIMALS", () => {
+  it("names each asset's decimals from the mint", () => {
+    expect(DECIMALS).toEqual({ SKR: 6, stORE: 11 });
+    expect(Number(122_495_137n) / 10 ** DECIMALS.stORE).toBeCloseTo(0.00122, 4);
   });
 });

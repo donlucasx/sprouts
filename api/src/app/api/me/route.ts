@@ -6,6 +6,7 @@ import { requireSession } from "@/lib/auth-guard";
 import { readPosition, sharePrice } from "@/lib/staking";
 import { priceUsd } from "@/lib/jupiter";
 import { storeBalanceRaw, storeRedeemRate } from "@/lib/store";
+import { pickAsset } from "@/domain/allocation";
 import { potInputs, potFromInputs } from "@/lib/pot";
 import { capLeftCents } from "@/domain/cap";
 import { SKR_MINT, STORE_MINT } from "@/lib/constants";
@@ -35,13 +36,16 @@ export async function GET(request: Request) {
   const rules = await repo.getRules(user.seedVaultPubkey);
   const pending = (await Promise.all(wallets.map((w) => repo.unplantedSwaps(w.pubkey)))).flat().reduce((s, x) => s + x.roundupCents, 0);
   const pendingBasket = await repo.pendingWithdrawal(user.seedVaultPubkey);
+  const ledgerWallet = wallets.find((w) => w.status === "active") ?? wallets[0];
+  const nextAsset = pickAsset({ SKR: ledgerWallet?.ledgerSkrCents ?? 0, stORE: ledgerWallet?.ledgerStoreCents ?? 0 }, rules.allocation);
   const last = plantings[plantings.length - 1] ?? null; // the newest confirmed planting, never one in flight or failed [A20]
   const lastLegs = last ? legs.filter((l) => l.plantingId === last.id) : [];
 
   return NextResponse.json(str({
     user: { pubkey: user.seedVaultPubkey, skrName: user.skrName, joinedAt: user.createdAt, wateredAt: user.wateredAt },
     pot: {
-      ...pot, storeRaw, storePutInRaw, storeEarnedRaw: 0n, storeRedeemRate: storePutInRaw > 0n ? await storeRedeemRate() : null,
+      // The rate read may fail (audits/ore-plan, finding 2: it reads the wrong account today); nothing on Home needs it yet, so null.
+      ...pot, storeRaw, storePutInRaw, storeEarnedRaw: 0n, storeRedeemRate: storePutInRaw > 0n ? await storeRedeemRate().catch(() => null) : null,
       skrUsd, storeUsd, asOf: new Date(),
     },
     history: {
@@ -52,7 +56,8 @@ export async function GET(request: Request) {
       picks: withdrawals.filter((w) => w.cancelSignature === null).map((w) => ({ ts: w.unstakeTs, asset: w.asset, amountRaw: w.amountRaw ?? 0n })),
     },
     // Today's pulled amount is per delegation; the app shows the rule's limit, the exact "left today" is a later polish.
-    nextPlanting: { pendingCents: pending, thresholdCents: rules.plantThresholdCents, capLeftCents: capLeftCents(rules.dailyCapCents, 0) },
+    // The coin the next planting buys, from the picker on the active wallet's ledger, so the forming bud sits on the right plant.
+    nextPlanting: { pendingCents: pending, thresholdCents: rules.plantThresholdCents, capLeftCents: capLeftCents(rules.dailyCapCents, 0), asset: nextAsset },
     lastReceipt: last
       ? { ts: last.ts, usdcPulledCents: last.usdcPulledCents, networkFeeCents: last.networkFeeCents, asset: lastLegs[0]?.asset ?? "SKR", amountOutRaw: lastLegs[0]?.amountOutRaw ?? 0n, signature: last.signature }
       : null,

@@ -103,6 +103,42 @@ describe("runPlanting", () => {
     expect([a.planted[0].asset, b.planted[0].asset].sort()).toEqual(["SKR", "stORE"]);
   });
 
+  // Plan v2 (audits/ore-plan, finding 4): an ORE leg that cannot be built or simulated must not freeze the wallet (the picker
+  // would choose stORE again tomorrow) nor count as an outage: the run plants SKR instead and says so.
+  it("falls back to SKR in the same run when the stORE leg fails to build, outside the outage count", async () => {
+    const repo = await seeded([215]);
+    await repo.saveRules("U", { allocation: { SKR: 50, stORE: 50 } });
+    await repo.bumpLedger("W", "SKR", 200); // the picker wants stORE next
+    const assets: string[] = [];
+    const chain = fakeChain({ buildPlantingTx: async (a) => {
+      assets.push(a.asset);
+      if (a.asset === "stORE") throw new Error("Jupiter: no route");
+      return { tx: {} as never, signature: "sigF", expectedOutRaw: a.pullRaw * 48n, minOutRaw: a.pullRaw * 47n, lookupTables: [], lastValidBlockHeight: 0n };
+    } });
+    const r = await runPlanting({ repo, now: NOW, chain });
+    expect(assets).toEqual(["stORE", "SKR"]);
+    expect(r.planted[0]?.asset).toBe("SKR");
+    expect(repo.events.some((e) => e.kind === "store_fallback")).toBe(true);
+    expect(r.skipped.some((s) => s.reason === "build failed")).toBe(false);
+  });
+
+  it("falls back to SKR when the stORE leg fails simulation", async () => {
+    const repo = await seeded([215]);
+    await repo.saveRules("U", { allocation: { SKR: 50, stORE: 50 } });
+    await repo.bumpLedger("W", "SKR", 200);
+    const built: string[] = [];
+    const chain = fakeChain({
+      buildPlantingTx: async (a) => { built.push(a.asset); return { tx: { asset: a.asset } as never, signature: `sig-${a.asset}`, expectedOutRaw: a.pullRaw * 48n, minOutRaw: a.pullRaw * 47n, lookupTables: [], lastValidBlockHeight: 0n }; },
+      simulatePlanting: async (b) => (b.tx as unknown as { asset: string }).asset === "stORE"
+        ? { ok: false, err: { InstructionError: [3, "Custom"] }, logs: ["Program log: account not initialized"], units: 0 }
+        : { ok: true, err: null, logs: [], units: 200_000 },
+    });
+    const r = await runPlanting({ repo, now: NOW, chain });
+    expect(built).toEqual(["stORE", "SKR"]);
+    expect(r.planted[0]?.asset).toBe("SKR");
+    expect(repo.events.some((e) => e.kind === "store_fallback")).toBe(true);
+  });
+
   it("counts what the chain already pulled this period against the cap", async () => {
     const repo = await seeded([1000]);
     const periodStart = BigInt(Math.floor(NOW.getTime() / 1000) - 3600);

@@ -1,5 +1,8 @@
 export type Asset = "SKR" | "stORE";
 
+/** Decimals per asset, from each mint (stORE read on chain 2026-09-29: 11, not 9). Every raw amount crosses this table. */
+export const DECIMALS: Record<Asset, number> = { SKR: 6, stORE: 11 };
+
 export type Ledger = { SKR: number; stORE: number };
 
 /**
