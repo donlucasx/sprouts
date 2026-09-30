@@ -33,6 +33,7 @@ export default function Activity() {
         <>
           <Card>
             <Text style={{ fontSize: 17, fontWeight: "600", color: "#2B2B2B" }}>Plantings</Text>
+            <Text style={{ fontSize: 13, color: "#6B6558" }}>Each time your change was pulled, swapped and planted in your garden.</Text>
             {a.plantings.length === 0 ? <Text style={{ color: "#6B6558" }}>No planting yet.</Text> : null}
             {a.plantings.map((p) => {
               const leg = p.legs[0];
@@ -42,6 +43,7 @@ export default function Activity() {
           </Card>
           <Card>
             <Text style={{ fontSize: 17, fontWeight: "600", color: "#2B2B2B" }}>Swaps</Text>
+            <Text style={{ fontSize: 13, color: "#6B6558" }}>The trades seen in your linked wallets, and the change each one set aside.</Text>
             {a.swaps.length === 0 ? <Text style={{ color: "#6B6558" }}>No swap seen yet.</Text> : null}
             {a.swaps.map((s) => (
               <Line key={s.signature} text={`${day(s.ts)}, ${s.usdSizeCents === null ? "unpriced swap" : `${formatUsd(s.usdSizeCents)} swap`}, change ${formatUsd(s.roundupCents)}${s.plantingId ? ", planted" : ", waiting"}`} signature={s.signature} />
@@ -49,6 +51,7 @@ export default function Activity() {
           </Card>
           <Card>
             <Text style={{ fontSize: 17, fontWeight: "600", color: "#2B2B2B" }}>Withdrawals</Text>
+            <Text style={{ fontSize: 13, color: "#6B6558" }}>SKR you took out of your garden, on its way or delivered.</Text>
             {a.withdrawals.length === 0 ? <Text style={{ color: "#6B6558" }}>No withdrawal yet.</Text> : null}
             {a.withdrawals.map((w) => (
               <Line
