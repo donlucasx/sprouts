@@ -10,7 +10,9 @@ import { makeSigner } from "@/lib/sign";
 import { freshSignIn } from "@/lib/signin";
 import { freshWalletSignIn } from "@/lib/reauth";
 import { identity } from "@/lib/identity";
-import { formatUsd } from "@/lib/format";
+import { formatUsd, oreShareLine } from "@/lib/format";
+import { Fence } from "@/components/Fence";
+import { ORE_DISCLOSURE } from "@/lib/ore-copy";
 import { rulesChanges } from "@/lib/forms";
 import { useSession } from "@/lib/session";
 
@@ -107,7 +109,7 @@ export default function Rules() {
     }
   }
 
-  const sentence = `${r.roundupOn ? "Round up every swap to the next dollar" : "No round-up"}${r.pctOn ? `, plus ${r.pctBps / 100}% on swaps of ${formatUsd(r.pctThresholdCents)} or more` : ""}. Plant when the change reaches ${formatUsd(r.plantThresholdCents)} or after ${r.plantMaxDays} days, at most ${formatUsd(r.dailyCapCents)} a day.`;
+  const sentence = `${r.roundupOn ? "Round up every swap to the next dollar" : "No round-up"}${r.pctOn ? `, plus ${r.pctBps / 100}% on swaps of ${formatUsd(r.pctThresholdCents)} or more` : ""}. Plant when the change reaches ${formatUsd(r.plantThresholdCents)} or after ${r.plantMaxDays} days, at most ${formatUsd(r.dailyCapCents)} a day.${r.allocation.stORE > 0 ? ` ${oreShareLine(r.allocation.stORE)}` : ""}`;
 
   return (
     <Screen>
@@ -117,6 +119,16 @@ export default function Rules() {
         <Row label={`1% on swaps of ${formatUsd(r.pctThresholdCents)} or more`}><Switch value={r.pctOn} disabled={busy} onValueChange={(v) => edit({ pctOn: v })} /></Row>
         <Stepper label="Daily limit" value={r.dailyCapCents} step={100} min={100} max={2000} format={formatUsd} disabled={busy} onChange={(v) => edit({ dailyCapCents: v })} />
         <Stepper label="Plant at" value={r.plantThresholdCents} step={50} min={50} max={2000} format={formatUsd} disabled={busy} onChange={(v) => edit({ plantThresholdCents: v })} />
+        {/* The garden split (R92): the fence. Saved with the rest; never a raise, so never a sign-in. */}
+        <View style={{ gap: 6, marginTop: 4 }}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+            <Text style={{ fontSize: 16, color: "#2B2B2B" }}>Garden split</Text>
+            <Text style={{ fontSize: 16, color: "#2B2B2B" }}>SKR {r.allocation.SKR} · ORE {r.allocation.stORE}</Text>
+          </View>
+          <Fence share={r.allocation.stORE} disabled={busy} onChange={(v) => edit({ allocation: { SKR: 100 - v, stORE: v } })} />
+          <Text style={{ fontSize: 13, color: "#6B6558" }}>{oreShareLine(r.allocation.stORE)}</Text>
+          {r.allocation.stORE > 0 && saved.allocation.stORE === 0 ? <Text style={{ fontSize: 13, lineHeight: 19, color: "#6B6558" }}>{ORE_DISCLOSURE}</Text> : null}
+        </View>
         {dirty ? (
           <>
             <Text style={{ fontSize: 13, color: "#6B6558" }}>{raises ? "Saving asks your Seeker to sign in once, because it raises the daily limit." : "Nothing to sign for these changes."}</Text>

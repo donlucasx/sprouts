@@ -4,7 +4,7 @@ import { Screen } from "@/components/Screen";
 import { Card } from "@/components/Card";
 import { api, type ActivityResponse } from "@/lib/api";
 import { useMe } from "@/lib/me";
-import { formatSkr, formatUsd } from "@/lib/format";
+import { formatSkr, formatUsd, formatAmount } from "@/lib/format";
 
 const day = (iso: string) => new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 const solscan = (sig: string) => Linking.openURL(`https://solscan.io/tx/${sig}`);
@@ -22,6 +22,7 @@ function Line({ text, signature }: { text: string; signature?: string | null }) 
 export default function Activity() {
   const { data: me } = useMe();
   const skrUsd = me?.pot.skrUsd ?? null;
+  const storeUsd = me?.pot.storeUsd ?? null;
   const q = useQuery({ queryKey: ["activity"], queryFn: () => api<ActivityResponse>("/api/activity") });
   const a = q.data;
   return (
@@ -35,7 +36,7 @@ export default function Activity() {
             {a.plantings.length === 0 ? <Text style={{ color: "#6B6558" }}>No planting yet.</Text> : null}
             {a.plantings.map((p) => {
               const leg = p.legs[0];
-              const what = p.status === "confirmed" && leg ? `${formatUsd(p.usdcPulledCents)} pulled, ${formatSkr(BigInt(leg.amountOutRaw), skrUsd)} planted` : p.status === "failed" ? "did not land, nothing pulled" : "in flight";
+              const what = p.status === "confirmed" && leg ? `${formatUsd(p.usdcPulledCents)} pulled, ${formatAmount(leg.asset, BigInt(leg.amountOutRaw), leg.asset === "SKR" ? skrUsd : storeUsd)} planted` : p.status === "failed" ? "did not land, nothing pulled" : "in flight";
               return <Line key={p.id} text={`${day(p.ts)}, ${what}`} signature={p.signature} />;
             })}
           </Card>

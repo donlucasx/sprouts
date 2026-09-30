@@ -10,7 +10,7 @@ import { WateringCan } from "@/garden/parts";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
 import { WatcherLine } from "@/components/WatcherLine";
-import { formatUsd, formatSkr, formatAsOf, formatWallet } from "@/lib/format";
+import { formatUsd, formatSkr, formatStore, formatAmount, formatAsOf, formatWallet } from "@/lib/format";
 import { useSession } from "@/lib/session";
 import { noPlantingLine } from "@/lib/me-state";
 
@@ -73,6 +73,9 @@ export default function Home() {
         <Text style={{ fontSize: 15, color: "#6B6558" }}>In your garden, locked to your Seeker</Text>
         <Text style={{ fontSize: 28, fontWeight: "600", color: "#2B2B2B" }}>{formatSkr(BigInt(me.pot.skrStakedRaw), skrUsd)}</Text>
         <Text style={{ fontSize: 16, color: "#2B2B2B" }}>Put in {formatSkr(BigInt(me.pot.skrPutInRaw), skrUsd)}. Earned {formatSkr(BigInt(me.pot.skrEarnedRaw), skrUsd)}.</Text>
+        {BigInt(me.pot.storeRaw) > 0n ? (
+          <Text style={{ fontSize: 14, color: "#2B2B2B" }}>ORE: {formatStore(BigInt(me.pot.storeRaw), me.pot.storeUsd)}, in your Seeker wallet, not locked. Sprouts cannot sell it for you.</Text>
+        ) : null}
         {stale && asOf ? (
           <Text style={{ fontSize: 13, color: "#8C2F2F" }}>{formatAsOf(asOf, now)}, the chain could not be read just now.</Text>
         ) : asOf ? (
@@ -81,10 +84,10 @@ export default function Home() {
         <Link href="/withdraw" asChild><Button title="Withdraw" kind="quiet" onPress={() => {}} /></Link>
       </Card>
       <Card>
-        <Text style={{ fontSize: 16, color: "#2B2B2B" }}>Next planting: {formatUsd(me.nextPlanting.pendingCents)} of {formatUsd(me.nextPlanting.thresholdCents)}</Text>
+        <Text style={{ fontSize: 16, color: "#2B2B2B" }}>Next planting: {formatUsd(me.nextPlanting.pendingCents)} of {formatUsd(me.nextPlanting.thresholdCents)}{me.nextPlanting.asset === "stORE" ? ", grows ORE" : ""}</Text>
         {me.lastReceipt ? (
           <Text style={{ fontSize: 14, color: "#6B6558" }}>
-            Last planting {shortDate(me.lastReceipt.ts)}: {formatUsd(me.lastReceipt.usdcPulledCents)} pulled, {formatSkr(BigInt(me.lastReceipt.amountOutRaw), skrUsd)} planted, network fee {formatUsd(me.lastReceipt.networkFeeCents)}
+            Last planting {shortDate(me.lastReceipt.ts)}: {formatUsd(me.lastReceipt.usdcPulledCents)} pulled, {formatAmount(me.lastReceipt.asset, BigInt(me.lastReceipt.amountOutRaw), me.lastReceipt.asset === "SKR" ? skrUsd : me.pot.storeUsd)} planted, network fee {formatUsd(me.lastReceipt.networkFeeCents)}
           </Text>
         ) : (
           <Text style={{ fontSize: 14, color: "#6B6558" }}>{noPlantingLine(me)}</Text>

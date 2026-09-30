@@ -132,3 +132,20 @@ describe("buildScene", () => {
     expect(s.parts.filter((p) => p.kind === "fruit" && (p as { plant: string }).plant === "ore").length).toBe(1);
   });
 });
+
+// Plan v2: the ORE succulent from a stORE leg, and the forming bud on the coin the next planting buys (audits/ore-plan, finding 14).
+describe("the ORE plant", () => {
+  const ore = planting("o", 2, 2_150_000_000n, "stORE");
+  it("a stORE planting grows the ORE succulent with one shoot", () => {
+    const s = buildScene({ ...base, plantings: [ore], wateredAt: NOW });
+    expect(s.parts.filter((p) => p.kind === "plant")).toEqual([{ kind: "plant", plant: "ore", x: expect.any(Number), shoots: 1 }]);
+    expect(s.parts.filter((p) => p.kind === "sprout" && p.plant === "ore").length).toBe(1);
+  });
+  it("the forming bud sits on the plant the next planting will grow", () => {
+    const both = { ...base, plantings: [planting("a", 30, 266_000_000n), ore], wateredAt: NOW, pendingCents: 100 };
+    const forming = (s: ReturnType<typeof buildScene>) => s.parts.find((p) => p.kind === "forming") as { plant: string } | undefined;
+    expect(forming(buildScene({ ...both, nextAsset: "stORE" }))?.plant).toBe("ore");
+    expect(forming(buildScene({ ...both, nextAsset: "SKR" }))?.plant).toBe("skr");
+    expect(forming(buildScene(both))?.plant).toBe("skr");
+  });
+});

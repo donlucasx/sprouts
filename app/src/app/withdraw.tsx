@@ -111,7 +111,7 @@ export default function Withdraw() {
           ) : (
             <>
               <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                <Text style={{ fontSize: 15, color: "#2B2B2B" }}>Available: {formatSkr(held, skrUsd)}</Text>
+                <Text style={{ fontSize: 15, color: "#2B2B2B" }}>Available in SKR: {formatSkr(held, skrUsd)}</Text>
                 <Button title="Max" kind="quiet" onPress={() => setAmount(maxAmountText(held))} />
               </View>
               <TextInput value={amount} onChangeText={setAmount} keyboardType="decimal-pad" placeholder="Amount in SKR" placeholderTextColor="#9A9384" accessibilityLabel="Amount in SKR" style={{ fontSize: 22, borderBottomWidth: 1, borderBottomColor: "#CFC8B8", paddingVertical: 8, color: "#2B2B2B" }} />

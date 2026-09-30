@@ -11,6 +11,7 @@ import { refreshWidget } from "@/lib/widget-refresh";
 import { unregisterBackgroundRefresh } from "@/lib/background";
 import { useSession } from "@/lib/session";
 import { formatWallet } from "@/lib/format";
+import { ORE_DISCLOSURE } from "@/lib/ore-copy";
 
 const P = ({ children }: { children: string }) => <Text style={{ fontSize: 14, lineHeight: 21, color: "#2B2B2B" }}>{children}</Text>;
 const H = ({ children }: { children: string }) => <Text style={{ fontSize: 15, fontWeight: "600", color: "#2B2B2B", marginTop: 6 }}>{children}</Text>;
@@ -21,6 +22,7 @@ const DISCLOSURES: [string, string][] = [
   ["What \"earned\" means.", "Rewards are paid by the staking program every two days into the share price. Sprouts draws what the program shows and nothing else; a fruit is earned SKR since you joined, in SKR, with today's dollar value beside it. The dollar value of your garden moves with the price of SKR and can be lower than what you put in."],
   ["Fees.", "Sprouts takes 0.5% of the SKR bought at each planting, inside the swap, and passes through the network fee (about $0.03). The remainder of a swap's slippage (cents) stays with Sprouts. Both are on every receipt."],
   ["Signed in.", "Signing in keeps you signed in for seven days on this phone; sign out ends it at once. Raising your daily limit or resuming a wallet asks your Seeker for a fresh fingerprint."],
+  ["ORE, if you choose it.", ORE_DISCLOSURE],
   ["Not advice.", "Sprouts is not tax advice and not investment advice. It never sets or changes an amount without your confirmation. The tax export is a record, not a filing."],
 ];
 

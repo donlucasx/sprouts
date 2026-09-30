@@ -28,6 +28,14 @@ export function maxAmountText(heldRaw: bigint): string {
 /** The rules a draft changes, and whether it raises the daily limit (one fresh sign-in for the whole save, R84). */
 export function rulesChanges<R extends { dailyCapCents: number }>(saved: R, draft: Partial<R>): { patch: Partial<R>; raises: boolean } {
   const patch: Partial<R> = {};
-  for (const k of Object.keys(draft) as (keyof R)[]) if (draft[k] !== undefined && draft[k] !== saved[k]) patch[k] = draft[k];
+  // The allocation is an object (R92): compared by value, so a fence moved and moved back is not a change.
+  const same = (a: unknown, b: unknown) => (typeof a === "object" && a !== null ? JSON.stringify(a) === JSON.stringify(b) : a === b);
+  for (const k of Object.keys(draft) as (keyof R)[]) if (draft[k] !== undefined && !same(draft[k], saved[k])) patch[k] = draft[k];
   return { patch, raises: patch.dailyCapCents !== undefined && patch.dailyCapCents > saved.dailyCapCents };
+}
+
+/** Where a touch on the fence's track puts the post: the bed right of it is ORE's share, snapped to 10, at most 50 (R92). */
+export function fenceShare(x: number, width: number): number {
+  if (width <= 0) return 0;
+  return Math.max(0, Math.min(50, Math.round((1 - x / width) * 10) * 10));
 }
