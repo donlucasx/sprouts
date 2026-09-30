@@ -20,7 +20,7 @@ export type Part =
   | { kind: "sprout"; id: string; plant: "skr" | "ore"; x: number; y: number; stage: 0 | 1 | 2 | 3; bud: boolean; sizeRaw: bigint }
   | { kind: "transplant"; plant: "skr"; sizeRaw: bigint }
   | { kind: "fruit"; index: number; plant: "skr" | "ore"; ripe: true; bud: boolean; on: string | null }   // on: the sprout it hangs from; ORE pups sit on the soil (null)
-  | { kind: "ripening"; plant: "skr" | "ore"; progress: number; on: string }
+  | { kind: "ripening"; plant: "skr" | "ore"; progress: number; on: string | null }   // on: the sprout it hangs from; the ORE pup forms on the soil (null)
   | { kind: "basket"; amountRaw: bigint; readyAt: Date }
   | { kind: "wetSpot"; age: number; x: number }   // x: under the newest OPENED sprout, the one the last watering revealed (0.5 with none)
   | { kind: "pruned"; count: number };
@@ -104,9 +104,10 @@ export function buildScene(g: GardenInput): Scene {
     for (let i = 0; i < g.skrFruit; i++) parts.push({ kind: "fruit", index: i, plant: "skr", ripe: true, bud: false, on: skrHosts[i % skrHosts.length] });
     if (g.skrPutInRaw > 0n) parts.push({ kind: "ripening", plant: "skr", progress: g.skrNextFruitProgress, on: skrHosts[0] });
   }
+  // ORE pups sit on the soil beside the succulent, and the next one forms there too (09-30, the Saga: hung off a leaf, it floated);
+  // it waits for the watering like the fruit, since the plant it belongs to is still a bud until then.
   for (let i = 0; i < g.storePups; i++) parts.push({ kind: "fruit", index: i, plant: "ore", ripe: true, bud: false, on: null });
-  const oreHosts = hosts("ore");
-  if (g.storePutInRaw > 0n && oreHosts.length > 0) parts.push({ kind: "ripening", plant: "ore", progress: g.storeNextPupProgress, on: oreHosts[0] });
+  if (g.storePutInRaw > 0n && hosts("ore").length > 0) parts.push({ kind: "ripening", plant: "ore", progress: g.storeNextPupProgress, on: null });
 
   if (g.basket) parts.push({ kind: "basket", amountRaw: g.basket.amountRaw, readyAt: g.basket.readyAt });
 
