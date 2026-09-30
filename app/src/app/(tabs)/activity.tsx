@@ -25,7 +25,7 @@ export default function Activity() {
   const q = useQuery({ queryKey: ["activity"], queryFn: () => api<ActivityResponse>("/api/activity") });
   const a = q.data;
   return (
-    <Screen back>
+    <Screen>
       <Text style={{ fontSize: 24, color: "#2F5D3A", fontStyle: "italic", fontFamily: "serif" }}>Activity</Text>
       {!a ? <Text style={{ color: "#6B6558" }}>{q.isError ? "Could not load the activity just now." : "Loading"}</Text> : null}
       {a ? (

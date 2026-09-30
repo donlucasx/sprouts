@@ -49,7 +49,7 @@ export default function Settings() {
   }
 
   return (
-    <Screen back>
+    <Screen>
       <Text style={{ fontSize: 24, color: "#2F5D3A", fontStyle: "italic", fontFamily: "serif" }}>Settings</Text>
       <Card>
         <Text style={{ fontSize: 17, fontWeight: "600", color: "#2B2B2B" }}>Your Seeker</Text>
@@ -59,8 +59,6 @@ export default function Settings() {
         {me?.wallets.map((w) => <P key={w.pubkey}>{formatWallet(w)}</P>)}
         <View style={{ flexDirection: "row", gap: 8, marginTop: 6 }}>
           <Link href="/connect" asChild><Button title="Link a wallet" kind="quiet" onPress={() => {}} /></Link>
-          <Link href="/rules" asChild><Button title="Rules" kind="quiet" onPress={() => {}} /></Link>
-          <Link href="/activity" asChild><Button title="Activity" kind="quiet" onPress={() => {}} /></Link>
         </View>
       </Card>
       <Card>

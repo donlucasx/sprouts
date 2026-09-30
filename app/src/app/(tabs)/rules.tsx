@@ -45,7 +45,7 @@ export default function Rules() {
   const [error, setError] = useState<string | null>(null);
   // Changes are a draft until Save (09-29: each "+" asked for its own approval, and the first tap looked like nothing happened).
   const [draft, setDraft] = useState<Partial<RulesShape>>({});
-  if (!me) return <Screen back><Text style={{ color: "#6B6558" }}>Loading</Text></Screen>;
+  if (!me) return <Screen><Text style={{ color: "#6B6558" }}>Loading</Text></Screen>;
   const saved = me.rules;
   const r = { ...saved, ...draft };
   const { patch, raises } = rulesChanges(saved, draft);
@@ -110,7 +110,7 @@ export default function Rules() {
   const sentence = `${r.roundupOn ? "Round up every swap to the next dollar" : "No round-up"}${r.pctOn ? `, plus ${r.pctBps / 100}% on swaps of ${formatUsd(r.pctThresholdCents)} or more` : ""}. Plant when the change reaches ${formatUsd(r.plantThresholdCents)} or after ${r.plantMaxDays} days, at most ${formatUsd(r.dailyCapCents)} a day.`;
 
   return (
-    <Screen back>
+    <Screen>
       <Text style={{ fontSize: 24, color: "#2F5D3A", fontStyle: "italic", fontFamily: "serif" }}>Rules</Text>
       <Card>
         <Row label="Round up to the next dollar"><Switch value={r.roundupOn} disabled={busy} onValueChange={(v) => edit({ roundupOn: v })} /></Row>
