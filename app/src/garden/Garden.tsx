@@ -34,11 +34,17 @@ function Sway({ children, seed, w, h }: { children: ReactNode; seed: number; w: 
   );
 }
 
-/** Positions a part on the garden; when it was a bud until this reveal it blooms in (scale from 0.2 with a fade), one after another. */
+/**
+ * Positions a part on the garden; when it was a bud until this reveal it blooms in (scale from 0.2 with a fade), one after another.
+ * A bud mounted closed sits at 1, so the bloom starts by going back to 0 (audits/watering-ux, finding 5: from 1 to 1 was a no-op
+ * and the bloom never played for a bud already on the screen).
+ */
 function Bloom({ children, order, active, x, y, w, h }: { children: ReactNode; order: number; active: boolean; x: number; y: number; w: number; h: number }) {
   const t = useSharedValue(active ? 0 : 1);
   useEffect(() => {
-    if (active) t.value = withDelay(order * 260, withTiming(1, { duration: 900, easing: Easing.out(Easing.cubic) }));
+    if (!active) return;
+    t.value = 0;
+    t.value = withDelay(order * 260, withTiming(1, { duration: 900, easing: Easing.out(Easing.cubic) }));
   }, [active, order, t]);
   const style = useAnimatedStyle(() => ({ opacity: 0.2 + 0.8 * t.value, transform: [{ scale: 0.2 + 0.8 * t.value }] }));
   return <Animated.View style={[{ position: "absolute", left: x, top: y, width: w, height: h }, style]}>{children}</Animated.View>;

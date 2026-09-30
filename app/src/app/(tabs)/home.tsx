@@ -1,15 +1,15 @@
 import { useCallback, useMemo, useState } from "react";
-import { Text, View, RefreshControl, ScrollView, Pressable } from "react-native";
+import { Text, View, RefreshControl, ScrollView } from "react-native";
 import { Link, Redirect, useFocusEffect } from "expo-router";
-import Svg from "react-native-svg";
 import { useMe, useInvalidateMe, toGardenInput } from "@/lib/me";
 import { api } from "@/lib/api";
 import { buildScene } from "@/model/garden";
+import { watcherLine } from "@/model/watcher";
 import { Garden } from "@/garden/Garden";
-import { WateringCan } from "@/garden/parts";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
 import { WatcherLine } from "@/components/WatcherLine";
+import { WaterButton } from "@/components/WaterButton";
 import { formatUsd, formatSkr, formatStore, formatAmount, formatAsOf, formatWallet } from "@/lib/format";
 import { useSession } from "@/lib/session";
 import { noPlantingLine } from "@/lib/me-state";
@@ -22,20 +22,36 @@ export default function Home() {
   const invalidate = useInvalidateMe();
   const [justOpened, setJustOpened] = useState<Set<string>>(new Set());
   const [watering, setWatering] = useState(false);
+  const [failed, setFailed] = useState(false);
   const now = new Date();
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- `now` is taken once per render on purpose
-  const scene = useMemo(() => (me ? buildScene(toGardenInput(me, now)) : null), [me]);
-  // Coming back to Home reads again: a wallet linked on the web, a planting, a withdrawal show without a pull-down.
-  useFocusEffect(useCallback(() => void refetch(), [refetch]));
+  const today = now.toDateString();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- `now` is taken once per render on purpose; the scene follows the local date
+  const scene = useMemo(() => (me ? buildScene(toGardenInput(me, now)) : null), [me, today]);
+  // Coming back to Home reads again: a wallet linked on the web, a planting, a withdrawal show without a pull-down. Leaving it
+  // ends the "Opened" line and forgets a failed tap (audits/watering-ux, finding 10).
+  useFocusEffect(useCallback(() => {
+    void refetch();
+    return () => {
+      setJustOpened(new Set());
+      setFailed(false);
+    };
+  }, [refetch]));
 
+  /**
+   * The reveal (R55): the API records the moment, the fresh read opens the buds, then each one blooms in. The state comes from
+   * the read, never from the tap. A failed tap says so instead of nothing (finding 8).
+   */
   async function water() {
     if (!me || !scene) return;
+    setFailed(false);
     setWatering(true);
     const opening = new Set(scene.parts.filter((p) => p.kind === "sprout" && p.bud).map((p) => (p as { id: string }).id));
     try {
       await api("/api/water", { method: "POST", body: {} });
-      setJustOpened(opening);
       await invalidate();
+      setJustOpened(opening);
+    } catch {
+      setFailed(true);
     } finally {
       setWatering(false);
     }
@@ -49,9 +65,17 @@ export default function Home() {
   if (loading || !me || !scene) return <View style={{ flex: 1, backgroundColor: "#F4EEDF" }} />;
   const skrUsd = me.pot.skrUsd;
   const name = me.user.skrName;
-  const line = scene.unrevealed > 0
-    ? `${scene.unrevealed} new ${scene.unrevealed === 1 ? "sprout" : "sprouts"} since you last watered.`
-    : scene.wateredToday ? "Watered today." : "Nothing new since you last watered.";
+  // R96: the line and the can decided together, so they always agree; the can is there only while a bud waits.
+  const watcher = watcherLine({
+    unrevealed: scene.unrevealed,
+    hasPlant: scene.parts.some((p) => p.kind === "plant"),
+    neverWatered: me.user.wateredAt === null,
+    pendingCents: me.nextPlanting.pendingCents,
+    thresholdCents: me.nextPlanting.thresholdCents,
+    watering,
+    opened: justOpened.size,
+    failed,
+  });
   const allStopped = me.wallets.length > 0 && me.wallets.every((w) => w.status !== "active");
 
   return (
@@ -63,12 +87,13 @@ export default function Home() {
       <Text style={{ fontSize: 22, fontStyle: "italic", fontFamily: "serif", color: "#2F5D3A" }}>{name ? `${name}'s garden` : "Your garden"}</Text>
       <Garden scene={scene} justOpened={justOpened} />
       {allStopped ? <Text style={{ fontSize: 14, color: "#6B6558" }}>Planting is paused. Your plant keeps its fruit and keeps earning.</Text> : null}
-      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-        <WatcherLine text={line} />
-        <Pressable onPress={water} disabled={watering || scene.wateredToday} style={{ opacity: scene.wateredToday ? 0.35 : 1, padding: 8 }} accessibilityLabel="Water the garden">
-          <Svg width={36} height={24}><WateringCan /></Svg>
-        </Pressable>
-      </View>
+      <WatcherLine text={watcher.line} />
+      {watcher.button ? (
+        <View style={{ gap: 8 }}>
+          <WaterButton label={watcher.button} busy={watering} onPress={water} />
+          {watcher.note ? <Text style={{ fontSize: 13, lineHeight: 19, color: "#6B6558" }}>{watcher.note}</Text> : null}
+        </View>
+      ) : null}
       <Card>
         <Text style={{ fontSize: 15, color: "#6B6558" }}>In your garden, locked to your Seeker</Text>
         <Text style={{ fontSize: 28, fontWeight: "600", color: "#2B2B2B" }}>{formatSkr(BigInt(me.pot.skrStakedRaw), skrUsd)}</Text>

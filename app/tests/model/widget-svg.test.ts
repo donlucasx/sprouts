@@ -6,7 +6,7 @@ import type { Scene } from "@/model/garden";
 
 // The 09-29 Saga check: the widget drew a fixed 90-high garden with no seeds in a much taller widget, and its parts stood on a
 // flat line above the mound. The garden now fills the height it is given and every part stands on the mound.
-const scene = (parts: Scene["parts"]): Scene => ({ parts: [{ kind: "soil" }, ...parts], unrevealed: 0, wateredToday: false });
+const scene = (parts: Scene["parts"]): Scene => ({ parts: [{ kind: "soil" }, ...parts], unrevealed: 0, canReady: false });
 const circles = (svg: string) => [...svg.matchAll(/<circle cx="([\d.]+)" cy="([\d.]+)"/g)].map((m) => ({ x: Number(m[1]), y: Number(m[2]) }));
 
 describe("widgetGardenSvg", () => {

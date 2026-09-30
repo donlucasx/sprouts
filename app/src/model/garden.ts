@@ -22,13 +22,13 @@ export type Part =
   | { kind: "fruit"; index: number; plant: "skr" | "ore"; ripe: true; bud: boolean; on: string | null }   // on: the sprout it hangs from; ORE pups sit on the soil (null)
   | { kind: "ripening"; plant: "skr" | "ore"; progress: number; on: string }
   | { kind: "basket"; amountRaw: bigint; readyAt: Date }
-  | { kind: "wetSpot"; age: number; x: number }   // x: under the newest sprout, the one the watering opened (0.5 with none)
+  | { kind: "wetSpot"; age: number; x: number }   // x: under the newest OPENED sprout, the one the last watering revealed (0.5 with none)
   | { kind: "pruned"; count: number };
 
-export type Scene = { parts: Part[]; unrevealed: number; wateredToday: boolean };
+/** R96: `canReady` is the can. It is ready when a bud waits and resting otherwise; there is no clock. */
+export type Scene = { parts: Part[]; unrevealed: number; canReady: boolean };
 
 const DAY = 86_400_000;
-const sameDay = (a: Date, b: Date) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 
 /** A sprout's stage by age: it grows for a month, then holds; the plant reads as history, oldest largest. */
 function stageOf(ageMs: number): 0 | 1 | 2 | 3 {
@@ -41,7 +41,7 @@ export const PLANT_X = { skr: 0.4, ore: 0.64 } as const;
 
 /**
  * The scene from the user's own history (R55: parts assembled from history, never a fixed set of paintings).
- * Everything that happened after the last watering is a bud (the reveal); watering today opens it all and leaves a wet spot.
+ * Everything that happened after the last watering is a bud (the reveal); watering opens it all and leaves a wet spot for a day.
  * A principal withdrawal prunes sprouts in proportion to the share of the pot taken, oldest last (RECONCILED rule 6).
  * Nothing falls or rots; a price drop changes dollar numbers, never the plant.
  */
@@ -110,12 +110,16 @@ export function buildScene(g: GardenInput): Scene {
 
   if (g.basket) parts.push({ kind: "basket", amountRaw: g.basket.amountRaw, readyAt: g.basket.readyAt });
 
-  const wateredToday = wateredAt !== null && sameDay(wateredAt, g.now);
   if (wateredAt !== null) {
     const age = Math.min(1, (g.now.getTime() - wateredAt.getTime()) / DAY);
-    // At the foot of the plant that grew last, the one this watering opened (09-29: it was always the centre).
-    const newest = growing[growing.length - 1];
-    if (age < 1) parts.push({ kind: "wetSpot", age, x: newest ? PLANT_X[coin(newest)] : hasPlant.skr ? PLANT_X.skr : 0.5 });
+    // At the foot of the newest OPENED sprout, the one the last watering revealed; never under a bud that landed after it
+    // (09-29: it was always the centre; 09-30, the Saga: it sat under the closed ORE bud). With no open sprout, the SKR plant's foot.
+    const opened = growing.filter((p) => !isUnrevealed(p.ts));
+    const newest = opened[opened.length - 1];
+    const x = newest ? PLANT_X[coin(newest)] : hasPlant.skr ? PLANT_X.skr : hasPlant.ore ? PLANT_X.ore : 0.5;
+    if (age < 1) parts.push({ kind: "wetSpot", age, x });
   }
-  return { parts, unrevealed, wateredToday };
+  // R96 (09-30): the can is ready when a bud waits, resting otherwise. The once-a-day lock was the build's reading of R55, never a
+  // ruling, and it collided with the 14:00 UTC cron (watered before 7 AM PT, then that morning's planting: stuck all day).
+  return { parts, unrevealed, canReady: unrevealed > 0 };
 }
