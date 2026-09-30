@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Text, Switch, View } from "react-native";
+import { Text, Switch, TextInput, View } from "react-native";
 import { useMobileWallet } from "@wallet-ui/react-native-kit";
 import { Screen } from "@/components/Screen";
 import { Card } from "@/components/Card";
@@ -47,6 +47,10 @@ export default function Rules() {
   const [error, setError] = useState<string | null>(null);
   // Changes are a draft until Save (09-29: each "+" asked for its own approval, and the first tap looked like nothing happened).
   const [draft, setDraft] = useState<Partial<RulesShape>>({});
+  // The watcher (spec 6): a rule in plain English becomes a proposal, set on the controls as the draft; Save is the confirmation.
+  const [ask, setAsk] = useState("");
+  const [asking, setAsking] = useState(false);
+  const [watcher, setWatcher] = useState<{ understood: string; notes: string[] } | null>(null);
   if (!me) return <Screen><Text style={{ color: "#6B6558" }}>Loading</Text></Screen>;
   const saved = me.rules;
   const r = { ...saved, ...draft };
@@ -69,6 +73,21 @@ export default function Rules() {
       setError(e instanceof ApiError ? e.message : "Could not save. Try again.");
     } finally {
       setBusy(false);
+    }
+  }
+
+  /** The typed rule to the watcher; its patch lands on the controls as the draft, so the existing Save confirms it. */
+  async function askWatcher() {
+    setAsking(true);
+    setError(null);
+    try {
+      const r = await api<{ patch: Partial<RulesShape>; understood: string; notes: string[] }>("/api/watcher/compile", { method: "POST", body: { text: ask.trim() } });
+      setDraft((d) => ({ ...d, ...r.patch }));
+      setWatcher({ understood: r.understood, notes: r.notes });
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "The watcher could not read that. Use the controls below.");
+    } finally {
+      setAsking(false);
     }
   }
 
@@ -114,6 +133,23 @@ export default function Rules() {
   return (
     <Screen>
       <Text style={{ fontSize: 24, color: "#2F5D3A", fontStyle: "italic", fontFamily: "serif" }}>Rules</Text>
+      <Card>
+        <Text style={{ fontSize: 16, color: "#2B2B2B" }}>Say it in your words</Text>
+        <TextInput
+          value={ask}
+          onChangeText={setAsk}
+          multiline
+          maxLength={300}
+          placeholder="Plant every $5, and add 1% of swaps over $50"
+          placeholderTextColor="#9A9384"
+          accessibilityLabel="Your rule in plain English"
+          editable={!busy && !asking}
+          style={{ fontSize: 16, lineHeight: 22, minHeight: 48, borderBottomWidth: 1, borderBottomColor: "#CFC8B8", paddingVertical: 8, color: "#2B2B2B" }}
+        />
+        <Button title={asking ? "Reading..." : "Ask the watcher"} kind="quiet" disabled={busy || asking || ask.trim() === ""} onPress={askWatcher} />
+        {watcher ? <Text style={{ fontSize: 15, lineHeight: 22, color: "#2B2B2B" }}>{[watcher.understood, ...watcher.notes].join(" ")}</Text> : null}
+        <Text style={{ fontSize: 13, color: "#6B6558" }}>The watcher sets the controls below. Nothing changes until you save.</Text>
+      </Card>
       <Card>
         <Row label="Round up to the next dollar"><Switch value={r.roundupOn} disabled={busy} onValueChange={(v) => edit({ roundupOn: v })} /></Row>
         <Row label={`1% on swaps of ${formatUsd(r.pctThresholdCents)} or more`}><Switch value={r.pctOn} disabled={busy} onValueChange={(v) => edit({ pctOn: v })} /></Row>
