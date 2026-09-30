@@ -28,3 +28,17 @@ export const side = (slot: number) => (slot % 2 === 0 ? -1 : 1);
 
 /** A shoot's leaf grows with its age stage (0 to 3). */
 export const leafSize = (stage: 0 | 1 | 2 | 3) => [5, 7, 9, 11][stage];
+
+/** The ORE stem is drawn 4.5 wide (parts.tsx); a pup is a circle of radius 4. */
+export const ORE_STEM_HALF = 2.25;
+export const PUP_R = 4;
+
+/**
+ * Where pup `index` sits at the succulent's foot, in pixels from the stem's centre: touching the stem, then touching the pup
+ * before it on that side, alternating sides. A forming pup of radius `r` takes the next slot the same way (09-30, the Saga: 17 px
+ * out on its own, it read as a seed).
+ */
+export function pupOffset(index: number, r = PUP_R): number {
+  const edge = ORE_STEM_HALF + 2 * PUP_R * Math.floor(index / 2);   // how far out that side already reaches
+  return (index % 2 === 0 ? -1 : 1) * (edge + r);
+}

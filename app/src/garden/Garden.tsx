@@ -1,12 +1,12 @@
 import { useEffect, type ReactNode } from "react";
 import { View, useWindowDimensions } from "react-native";
-import Svg, { G, Circle, Path } from "react-native-svg";
+import Svg, { G, Circle, Path, Defs, ClipPath } from "react-native-svg";
 import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withSequence, withTiming, withDelay, Easing } from "react-native-reanimated";
 import type { Scene, Part } from "@/model/garden";
-import { soilSurface } from "@/model/soil";
-import { Soil, Stem, Shoot, Forming, Transplant, Fruit, Ripening, Pup, Basket, WetSpot, INK, GREEN } from "./parts";
+import { soilSurface, SOIL_PATH } from "@/model/soil";
+import { Soil, Stem, Shoot, Forming, Transplant, Fruit, Ripening, Pup, Basket, WetSpot, INK, GREEN, ripeningRadius } from "./parts";
 import { PLANT_X } from "@/model/garden";
-import { nodeRise, stemRise, side, leafSize, TRANSPLANT_BASE } from "@/model/plant-geometry";
+import { nodeRise, stemRise, side, leafSize, pupOffset, PUP_R, TRANSPLANT_BASE } from "@/model/plant-geometry";
 
 const HEIGHT = 260;
 
@@ -83,21 +83,29 @@ export function Garden({ scene, justOpened }: { scene: Scene; justOpened: Set<st
     const n = node(s);
     return { x: n.x - side(s.y) * (8 + k * 7), y: n.y + 6 + k * 4, stalk: `M${n.x} ${n.y} L${n.x - side(s.y) * (8 + k * 7)} ${n.y + 6 + k * 4}` };
   };
-  // ORE pups sit on the soil beside the succulent, three slots; the next one forms in the slot after the last pup.
-  const pupX = (index: number) => PLANT_X.ore + ((index % 3) - 1) * 0.05;
+  // ORE pups sit on the soil at the succulent's foot, touching it (plant-geometry.ts); the next one forms in the slot after the
+  // last pup, seated on the surface with a pixel sunk in.
+  const pupAt = (index: number, r: number) => {
+    const px = PLANT_X.ore * w + pupOffset(index, r);
+    return { x: px, y: ground(px / w) - r + 1 };
+  };
   let order = 0;
   return (
     <View style={{ width: w, height: HEIGHT }}>
       <Svg width={w} height={HEIGHT} style={{ position: "absolute" }}>
+        <Defs>
+          <ClipPath id="soil"><Path d={SOIL_PATH(w)} transform={`translate(0 ${soilY})`} /></ClipPath>
+        </Defs>
         <G y={soilY}><Soil width={w} /></G>
-        {wet ? <G x={w * wet.x} y={ground(wet.x) + 2}><WetSpot age={wet.age} /></G> : null}
+        {/* Water darkens the soil only: the patch is clipped to the mound (09-30, the Saga: its top half floated over the ground). */}
+        {wet ? <G clipPath="url(#soil)"><G x={w * wet.x} y={ground(wet.x) + 2}><WetSpot age={wet.age} /></G></G> : null}
         {seeds.map((s) => <G key={s.id} x={s.x * w} y={ground(s.x) + 1}><Circle r={2.2} fill={INK} opacity={0.7} /></G>)}
         {plants.map((p) => <G key={p.plant} x={p.x * w} y={ground(p.x)}><Stem plant={p.plant} rise={stemRise(p.shoots, base(p.plant))} /></G>)}
         {forming ? (() => { const p = plantOf(forming.plant); return <G x={p.x * w} y={ground(p.x) - stemRise(p.shoots, base(p.plant)) - 3}><Forming progress={forming.progress} /></G>; })() : null}
         {skrFruit.map((f) => { const at = hang(f.on!); return <G key={`f${f.index}`}><Path d={at.stalk} stroke={GREEN} strokeWidth={1.2} strokeLinecap="round" /><G x={at.x} y={at.y}><Fruit bud={f.bud} /></G></G>; })}
-        {pups.map((f) => { const x = pupX(f.index); return <G key={`p${f.index}`} x={w * x} y={ground(x) - 3}><Pup /></G>; })}
+        {pups.map((f) => { const at = pupAt(f.index, PUP_R); return <G key={`p${f.index}`} x={at.x} y={at.y}><Pup /></G>; })}
         {ripening.map((r) => {
-          if (r.on === null) { const x = pupX(pups.length); return <G key={r.plant} x={w * x} y={ground(x) - 3}><Ripening progress={r.progress} /></G>; }
+          if (r.on === null) { const at = pupAt(pups.length, ripeningRadius(r.progress)); return <G key={r.plant} x={at.x} y={at.y}><Ripening progress={r.progress} /></G>; }
           const at = hang(r.on);
           return <G key={r.plant}><Path d={at.stalk} stroke={GREEN} strokeWidth={1.2} strokeLinecap="round" /><G x={at.x} y={at.y}><Ripening progress={r.progress} /></G></G>;
         })}
