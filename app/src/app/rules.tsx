@@ -9,6 +9,7 @@ import { useMe, useInvalidateMe } from "@/lib/me";
 import { makeSigner } from "@/lib/sign";
 import { freshSignIn } from "@/lib/signin";
 import { formatUsd } from "@/lib/format";
+import { rulesChanges } from "@/lib/forms";
 import { useSession } from "@/lib/session";
 
 type RulesShape = MeResponse["rules"];
@@ -40,25 +41,27 @@ export default function Rules() {
   const invalidate = useInvalidateMe();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // The change shows at once while it saves (09-29: the number waited for the whole re-read and the screen looked frozen).
-  const [pending, setPending] = useState<Partial<RulesShape> | null>(null);
+  // Changes are a draft until Save (09-29: each "+" asked for its own approval, and the first tap looked like nothing happened).
+  const [draft, setDraft] = useState<Partial<RulesShape>>({});
   if (!me) return <Screen back><Text style={{ color: "#6B6558" }}>Loading</Text></Screen>;
-  const r = { ...me.rules, ...pending };
+  const saved = me.rules;
+  const r = { ...saved, ...draft };
+  const { patch, raises } = rulesChanges(saved, draft);
+  const dirty = Object.keys(patch).length > 0;
+  const edit = (p: Partial<RulesShape>) => setDraft((d) => ({ ...d, ...p }));
 
-  /** Saves a change; raising the daily limit asks the Seeker for one fingerprint first (R84). */
-  async function save(patch: Partial<RulesShape>) {
+  /** Saves the whole draft at once; if it raises the daily limit, the Seeker signs in once for all of it (R84). */
+  async function saveAll() {
     setBusy(true);
     setError(null);
-    setPending(patch);
     try {
-      const raising = patch.dailyCapCents !== undefined && patch.dailyCapCents > me!.rules.dailyCapCents;
-      const reauth = raising ? await freshSignIn(signIn) : undefined;
+      const reauth = raises ? await freshSignIn(signIn) : undefined;
       await api("/api/rules", { method: "PUT", body: { ...patch, ...(reauth ? { reauth } : {}) } });
       await invalidate();
+      setDraft({});
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Could not save. Try again.");
     } finally {
-      setPending(null);
       setBusy(false);
     }
   }
@@ -106,11 +109,19 @@ export default function Rules() {
     <Screen back>
       <Text style={{ fontSize: 24, color: "#2F5D3A", fontStyle: "italic", fontFamily: "serif" }}>Rules</Text>
       <Card>
-        <Row label="Round up to the next dollar"><Switch value={r.roundupOn} disabled={busy} onValueChange={(v) => save({ roundupOn: v })} /></Row>
-        <Row label={`1% on swaps of ${formatUsd(r.pctThresholdCents)} or more`}><Switch value={r.pctOn} disabled={busy} onValueChange={(v) => save({ pctOn: v })} /></Row>
-        <Stepper label="Daily limit" value={r.dailyCapCents} step={100} min={100} max={2000} format={formatUsd} disabled={busy} onChange={(v) => save({ dailyCapCents: v })} />
-        <Stepper label="Plant at" value={r.plantThresholdCents} step={50} min={50} max={2000} format={formatUsd} disabled={busy} onChange={(v) => save({ plantThresholdCents: v })} />
-        <Text style={{ fontSize: 13, color: "#6B6558" }}>{pending ? "Saving..." : "Raising the daily limit asks your Seeker for a fingerprint."}</Text>
+        <Row label="Round up to the next dollar"><Switch value={r.roundupOn} disabled={busy} onValueChange={(v) => edit({ roundupOn: v })} /></Row>
+        <Row label={`1% on swaps of ${formatUsd(r.pctThresholdCents)} or more`}><Switch value={r.pctOn} disabled={busy} onValueChange={(v) => edit({ pctOn: v })} /></Row>
+        <Stepper label="Daily limit" value={r.dailyCapCents} step={100} min={100} max={2000} format={formatUsd} disabled={busy} onChange={(v) => edit({ dailyCapCents: v })} />
+        <Stepper label="Plant at" value={r.plantThresholdCents} step={50} min={50} max={2000} format={formatUsd} disabled={busy} onChange={(v) => edit({ plantThresholdCents: v })} />
+        {dirty ? (
+          <>
+            <Text style={{ fontSize: 13, color: "#6B6558" }}>{raises ? "Saving asks your Seeker to sign in once, because it raises the daily limit." : "Nothing to sign for these changes."}</Text>
+            <Button title={busy ? "Saving..." : "Save changes"} disabled={busy} onPress={saveAll} />
+            <Button title="Discard" kind="quiet" disabled={busy} onPress={() => setDraft({})} />
+          </>
+        ) : (
+          <Text style={{ fontSize: 13, color: "#6B6558" }}>Change what you like, then save. Raising the daily limit asks your Seeker to sign in once.</Text>
+        )}
       </Card>
       <Card><Text style={{ fontSize: 15, lineHeight: 22, color: "#2B2B2B" }}>{sentence}</Text></Card>
       <Card>

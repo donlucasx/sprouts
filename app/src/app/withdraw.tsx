@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { TwoWay } from "@/components/TwoWay";
 import { withdrawMode } from "@/lib/me-state";
-import { Text, TextInput } from "react-native";
+import { amountProblem, maxAmountText, parseSkr } from "@/lib/forms";
+import { Text, TextInput, View } from "react-native";
 import { router } from "expo-router";
 import { useMobileWallet } from "@wallet-ui/react-native-kit";
 import { Screen } from "@/components/Screen";
@@ -28,12 +29,14 @@ export default function Withdraw() {
   const earned = BigInt(me.pot.skrEarnedRaw);
   const canEarned = earned >= 1_000_000n;
   const mode = withdrawMode(earned, chosen);
+  const held = BigInt(me.pot.skrStakedRaw);
+  const problem = mode === "amount" ? amountProblem(amount, held) : null;
 
   async function prepare() {
     setBusy(true);
     setError(null);
     try {
-      const amountRaw = mode === "amount" ? String(BigInt(Math.round(Number(amount) * 1e6))) : undefined;
+      const amountRaw = mode === "amount" ? String(parseSkr(amount)) : undefined;
       setPlan(await api<Plan>("/api/withdraw/build", { method: "POST", body: { mode, amountRaw } }));
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Could not prepare the withdrawal.");
@@ -95,12 +98,28 @@ export default function Withdraw() {
         <Card>
           <Text style={{ fontSize: 16, color: "#2B2B2B" }}>What do you want to take out?</Text>
           <TwoWay options={[{ value: "earned", label: "What it earned" }, { value: "amount", label: "An amount" }]} value={mode} onChange={setMode} />
-          {mode === "earned" ? <Text style={{ fontSize: 15, color: "#2B2B2B" }}>Earned so far: {formatSkr(earned, skrUsd)}</Text> : null}
-          {mode === "amount" ? (
-            <TextInput value={amount} onChangeText={setAmount} keyboardType="decimal-pad" placeholder="SKR" placeholderTextColor="#9A9384" style={{ fontSize: 22, borderBottomWidth: 1, borderBottomColor: "#CFC8B8", paddingVertical: 8, color: "#2B2B2B" }} />
-          ) : null}
-          {mode === "earned" && !canEarned ? <Text style={{ fontSize: 14, color: "#6B6558" }}>You can withdraw once your earned SKR reaches 1 SKR.</Text> : null}
-          <Button title="Continue" disabled={busy || (mode === "earned" && !canEarned) || (mode === "amount" && !(Number(amount) > 0))} onPress={prepare} />
+          <Text style={{ fontSize: 14, lineHeight: 20, color: "#6B6558" }}>
+            {mode === "earned"
+              ? "Only the rewards your garden earned. What you put in stays planted and keeps earning."
+              : "Any amount, up to everything in your garden. Taking more than it earned prunes a plant."}
+          </Text>
+          {mode === "earned" ? (
+            <>
+              <Text style={{ fontSize: 15, color: "#2B2B2B" }}>Earned so far: {formatSkr(earned, skrUsd)}</Text>
+              {!canEarned ? <Text style={{ fontSize: 14, color: "#6B6558" }}>You can withdraw once your earned SKR reaches 1 SKR.</Text> : null}
+            </>
+          ) : (
+            <>
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                <Text style={{ fontSize: 15, color: "#2B2B2B" }}>Available: {formatSkr(held, skrUsd)}</Text>
+                <Button title="Max" kind="quiet" onPress={() => setAmount(maxAmountText(held))} />
+              </View>
+              <TextInput value={amount} onChangeText={setAmount} keyboardType="decimal-pad" placeholder="Amount in SKR" placeholderTextColor="#9A9384" accessibilityLabel="Amount in SKR" style={{ fontSize: 22, borderBottomWidth: 1, borderBottomColor: "#CFC8B8", paddingVertical: 8, color: "#2B2B2B" }} />
+              {problem ? <Text style={{ fontSize: 14, color: amount.trim() === "" ? "#6B6558" : "#8C2F2F" }}>{problem}</Text> : null}
+            </>
+          )}
+          <Text style={{ fontSize: 14, color: "#6B6558" }}>{"It reaches your Seeker's wallet 48 hours after you sign."}</Text>
+          <Button title="Continue" disabled={busy || (mode === "earned" && !canEarned) || problem !== null} onPress={prepare} />
         </Card>
       ) : (
         <Card>
