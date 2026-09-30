@@ -11,6 +11,7 @@ export type HeliusEnhancedTx = {
   type: string;
   feePayer: string;
   tokenTransfers: { fromUserAccount: string; toUserAccount: string; mint: string; tokenAmount: number }[];
+  nativeTransfers?: { fromUserAccount: string; toUserAccount: string; amount: number }[]; // lamports
   events?: {
     swap?: {
       nativeInput?: { account: string; amount: string } | null;
@@ -45,10 +46,20 @@ export function extractSwapLegs(tx: HeliusEnhancedTx, wallet: string): SwapLegs 
     const out = tokenOut ?? nativeOut;
     if (inn && out) return { wallet, inMint: inn.mint, inAmount: Number(inn.tokenAmount), outMint: out.mint, outAmount: Number(out.tokenAmount) };
   }
-  const out = tx.tokenTransfers.find((t) => t.fromUserAccount === wallet);
-  const inn = [...tx.tokenTransfers].reverse().find((t) => t.toUserAccount === wallet);
-  if (!out || !inn) return null;
-  return { wallet, inMint: out.mint, inAmount: out.tokenAmount, outMint: inn.mint, outAmount: inn.tokenAmount };
+  // No swap event (09-30: Phantom's swaps through Jupiter's Order Engine parse as INITIALIZE_ACCOUNT, transfers listed plainly):
+  // the wallet's own transfers, native SOL included. A token leg wins over a native one, so rent paid alongside a token swap is
+  // not mistaken for the swap; the largest native transfer is the leg otherwise. One side only, or the same mint both ways
+  // (a SOL wrap), is not a swap.
+  const natives = tx.nativeTransfers ?? [];
+  const largest = (xs: { amount: number }[]) => xs.reduce<{ amount: number } | null>((best, t) => (best && best.amount >= t.amount ? best : t), null);
+  const tokenOut = tx.tokenTransfers.find((t) => t.fromUserAccount === wallet);
+  const tokenIn = [...tx.tokenTransfers].reverse().find((t) => t.toUserAccount === wallet);
+  const nativeOut = largest(natives.filter((t) => t.fromUserAccount === wallet));
+  const nativeIn = largest(natives.filter((t) => t.toUserAccount === wallet));
+  const out = tokenOut ? { mint: tokenOut.mint, amount: tokenOut.tokenAmount } : nativeOut ? { mint: WSOL, amount: nativeOut.amount / LAMPORTS } : null;
+  const inn = tokenIn ? { mint: tokenIn.mint, amount: tokenIn.tokenAmount } : nativeIn ? { mint: WSOL, amount: nativeIn.amount / LAMPORTS } : null;
+  if (!out || !inn || out.mint === inn.mint) return null;
+  return { wallet, inMint: out.mint, inAmount: out.amount, outMint: inn.mint, outAmount: inn.amount };
 }
 
 export type BookResult = { booked: true; walletPubkey: string; roundupCents: number } | { booked: false };
@@ -58,10 +69,12 @@ export type BookResult = { booked: true; walletPubkey: string; roundupCents: num
  * A transaction the puller paid for is one of Sprouts' own plantings, never a swap to round up (review M14).
  */
 export async function bookSwap(a: { repo: Repo; tx: HeliusEnhancedTx; priceUsd: PriceLookup; ignoreFeePayer?: string }): Promise<BookResult> {
-  if (a.tx.type !== "SWAP") return { booked: false };
+  // Not gated on Helius's type: a swap through a router Helius does not know arrives as INITIALIZE_ACCOUNT or UNKNOWN (09-30);
+  // the legs decide, and one-sided transfers never have two.
   if (a.ignoreFeePayer && a.tx.feePayer === a.ignoreFeePayer) return { booked: false };
   const parties = new Set<string>([a.tx.feePayer]);
   for (const t of a.tx.tokenTransfers) { parties.add(t.fromUserAccount); parties.add(t.toUserAccount); }
+  for (const t of a.tx.nativeTransfers ?? []) { parties.add(t.fromUserAccount); parties.add(t.toUserAccount); }
   for (const t of a.tx.events?.swap?.tokenInputs ?? []) parties.add(t.userAccount);
   for (const t of a.tx.events?.swap?.tokenOutputs ?? []) parties.add(t.userAccount);
   if (a.tx.events?.swap?.nativeInput) parties.add(a.tx.events.swap.nativeInput.account);

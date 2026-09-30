@@ -8,11 +8,13 @@ function url(path: string, extra = "") {
 
 /** The one enhanced webhook for SWAP transactions. Helius echoes `authHeader` verbatim, so it carries the full "Bearer <secret>". */
 /** Helius refuses an empty address list at creation (400 "At least one account address is required"), so the first linked wallet seeds it. */
+// Every transaction type, not SWAP only: a swap through a router Helius does not know parses as INITIALIZE_ACCOUNT or UNKNOWN
+// (09-30, Jupiter's Order Engine); the booking reads the legs itself.
 export async function heliusCreateWebhook(a: { webhookUrl: string; authHeader: string; accountAddresses: string[] }): Promise<{ webhookID: string }> {
   const res = await fetch(url("/v0/webhooks"), {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ webhookURL: a.webhookUrl, transactionTypes: ["SWAP"], accountAddresses: a.accountAddresses, webhookType: "enhanced", authHeader: a.authHeader }),
+    body: JSON.stringify({ webhookURL: a.webhookUrl, transactionTypes: ["ANY"], accountAddresses: a.accountAddresses, webhookType: "enhanced", authHeader: a.authHeader }),
   });
   if (!res.ok) throw new Error(`Helius create webhook failed: ${res.status} ${(await res.text()).slice(0, 200)}`);
   return (await res.json()) as { webhookID: string };

@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { extractSwapLegs, bookSwap, type HeliusEnhancedTx, type BookResult } from "@/lib/book-swap";
 import { MemoryRepo } from "@/db/memory";
 import fixtureJson from "../fixtures/helius-swap.json";
+import orderEngineJson from "../fixtures/helius-order-engine-swap.json";
 
 const fixture = fixtureJson as unknown as HeliusEnhancedTx;
 const roundup = (r: BookResult) => (r.booked ? r.roundupCents : -1);
@@ -111,13 +112,59 @@ describe("bookSwap", () => {
     expect(roundup(await bookSwap({ repo, tx: fixture, priceUsd: prices }))).toBe(0);
   });
 
-  it("ignores a revoked wallet and non-swap transactions", async () => {
+  it("ignores a revoked wallet and a one-sided transfer; Helius's label alone decides nothing (09-30)", async () => {
     const repo = await repoWithWallet();
     await repo.setWalletStatus("WALLET", "revoked");
     expect((await bookSwap({ repo, tx: fixture, priceUsd: prices })).booked).toBe(false);
     const repo2 = await repoWithWallet();
-    const tx = clone();
-    tx.type = "TRANSFER";
-    expect((await bookSwap({ repo: repo2, tx, priceUsd: prices })).booked).toBe(false);
+    const sent: HeliusEnhancedTx = { signature: "sent", timestamp: fixture.timestamp, type: "TRANSFER", feePayer: "WALLET",
+      tokenTransfers: [{ fromUserAccount: "WALLET", toUserAccount: "FRIEND", mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", tokenAmount: 5 }] };
+    expect((await bookSwap({ repo: repo2, tx: sent, priceUsd: prices })).booked).toBe(false);
+    const relabelled = clone();
+    relabelled.type = "TRANSFER"; // the same swap under another label still has two legs
+    expect((await bookSwap({ repo: repo2, tx: relabelled, priceUsd: prices })).booked).toBe(true);
+  });
+});
+
+// 09-30: Phantom routed two swaps through Jupiter's Order Engine (61DFfe…). Helius parses them as INITIALIZE_ACCOUNT with the
+// transfers listed plainly and no swap event, so nothing booked and the round-ups were lost. The fixture is the real 10:44 swap:
+// 0.1 SOL out as a native transfer, 11.899598 USDC in as a token transfer.
+describe("a swap Helius did not label SWAP", () => {
+  const WSOL = "So11111111111111111111111111111111111111112";
+  const USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  const PHANTOM = "887dEPR85vfSZ45zFrxttJ6cLomwvnYbh5HnyGbTAXVu";
+  const orderEngine = orderEngineJson as unknown as HeliusEnhancedTx;
+  const priced = async (m: string) => (m === WSOL ? 119 : m === USDC ? 1 : null);
+  async function repoWithPhantom() {
+    const r = new MemoryRepo();
+    await r.upsertUser({ seedVaultPubkey: "U", sgtMint: "M", skrName: null });
+    await r.addWallet({ pubkey: PHANTOM, userPubkey: "U", delegationPda: "D", dailyCapCents: 500 });
+    return r;
+  }
+
+  it("reads the wallet's legs from its native and token transfers when there is no swap event", () => {
+    expect(extractSwapLegs(orderEngine, PHANTOM)).toEqual({ wallet: PHANTOM, inMint: WSOL, inAmount: 0.1, outMint: USDC, outAmount: 11.899598 });
+  });
+
+  it("books it: $11.90 of SOL into USDC rounds up 10 cents", async () => {
+    const repo = await repoWithPhantom();
+    const r = await bookSwap({ repo, tx: orderEngine, priceUsd: priced });
+    expect(roundup(r)).toBe(10);
+    const [row] = await repo.unplantedSwaps(PHANTOM);
+    expect(row.usdSizeCents).toBe(1190);
+    expect([row.inMint, row.outMint]).toEqual([WSOL, USDC]);
+  });
+
+  it("never books a plain transfer: one side only is not a swap", async () => {
+    const repo = await repoWithPhantom();
+    const sent: HeliusEnhancedTx = { signature: "t1", timestamp: 1790800000, type: "TRANSFER", feePayer: PHANTOM, tokenTransfers: [],
+      nativeTransfers: [{ fromUserAccount: PHANTOM, toUserAccount: "FRIEND", amount: 50_000_000 }] };
+    const received: HeliusEnhancedTx = { signature: "t2", timestamp: 1790800000, type: "TRANSFER", feePayer: "FRIEND",
+      tokenTransfers: [{ fromUserAccount: "FRIEND", toUserAccount: PHANTOM, mint: USDC, tokenAmount: 5 }] };
+    const wrap: HeliusEnhancedTx = { signature: "t3", timestamp: 1790800000, type: "UNKNOWN", feePayer: PHANTOM,
+      tokenTransfers: [{ fromUserAccount: "", toUserAccount: PHANTOM, mint: WSOL, tokenAmount: 0.1 }],
+      nativeTransfers: [{ fromUserAccount: PHANTOM, toUserAccount: "", amount: 100_000_000 }] };
+    for (const tx of [sent, received, wrap]) expect((await bookSwap({ repo, tx, priceUsd: priced })).booked).toBe(false);
+    expect((await repo.unplantedSwaps(PHANTOM)).length).toBe(0);
   });
 });
