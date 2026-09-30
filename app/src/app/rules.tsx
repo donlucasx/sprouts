@@ -13,14 +13,14 @@ import { useSession } from "@/lib/session";
 
 type RulesShape = MeResponse["rules"];
 
-function Stepper({ label, value, step, min, max, format, onChange }: { label: string; value: number; step: number; min: number; max: number; format: (v: number) => string; onChange: (v: number) => void }) {
+function Stepper({ label, value, step, min, max, format, onChange, disabled }: { label: string; value: number; step: number; min: number; max: number; format: (v: number) => string; onChange: (v: number) => void; disabled: boolean }) {
   return (
     <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
       <Text style={{ fontSize: 16, color: "#2B2B2B" }}>{label}</Text>
       <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}>
-        <Button title="-" kind="quiet" onPress={() => onChange(Math.max(min, value - step))} />
+        <Button title="-" kind="quiet" disabled={disabled} onPress={() => onChange(Math.max(min, value - step))} />
         <Text style={{ fontSize: 16, minWidth: 64, textAlign: "center", color: "#2B2B2B" }}>{format(value)}</Text>
-        <Button title="+" kind="quiet" onPress={() => onChange(Math.min(max, value + step))} />
+        <Button title="+" kind="quiet" disabled={disabled} onPress={() => onChange(Math.min(max, value + step))} />
       </View>
     </View>
   );
@@ -40,21 +40,25 @@ export default function Rules() {
   const invalidate = useInvalidateMe();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The change shows at once while it saves (09-29: the number waited for the whole re-read and the screen looked frozen).
+  const [pending, setPending] = useState<Partial<RulesShape> | null>(null);
   if (!me) return <Screen back><Text style={{ color: "#6B6558" }}>Loading</Text></Screen>;
-  const r = me.rules;
+  const r = { ...me.rules, ...pending };
 
   /** Saves a change; raising the daily limit asks the Seeker for one fingerprint first (R84). */
   async function save(patch: Partial<RulesShape>) {
     setBusy(true);
     setError(null);
+    setPending(patch);
     try {
-      const raising = patch.dailyCapCents !== undefined && patch.dailyCapCents > r.dailyCapCents;
+      const raising = patch.dailyCapCents !== undefined && patch.dailyCapCents > me!.rules.dailyCapCents;
       const reauth = raising ? await freshSignIn(signIn) : undefined;
       await api("/api/rules", { method: "PUT", body: { ...patch, ...(reauth ? { reauth } : {}) } });
       await invalidate();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Could not save. Try again.");
     } finally {
+      setPending(null);
       setBusy(false);
     }
   }
@@ -104,9 +108,9 @@ export default function Rules() {
       <Card>
         <Row label="Round up to the next dollar"><Switch value={r.roundupOn} disabled={busy} onValueChange={(v) => save({ roundupOn: v })} /></Row>
         <Row label={`1% on swaps of ${formatUsd(r.pctThresholdCents)} or more`}><Switch value={r.pctOn} disabled={busy} onValueChange={(v) => save({ pctOn: v })} /></Row>
-        <Stepper label="Daily limit" value={r.dailyCapCents} step={100} min={100} max={2000} format={formatUsd} onChange={(v) => save({ dailyCapCents: v })} />
-        <Stepper label="Plant at" value={r.plantThresholdCents} step={50} min={50} max={2000} format={formatUsd} onChange={(v) => save({ plantThresholdCents: v })} />
-        <Text style={{ fontSize: 13, color: "#6B6558" }}>Raising the daily limit asks your Seeker for a fingerprint.</Text>
+        <Stepper label="Daily limit" value={r.dailyCapCents} step={100} min={100} max={2000} format={formatUsd} disabled={busy} onChange={(v) => save({ dailyCapCents: v })} />
+        <Stepper label="Plant at" value={r.plantThresholdCents} step={50} min={50} max={2000} format={formatUsd} disabled={busy} onChange={(v) => save({ plantThresholdCents: v })} />
+        <Text style={{ fontSize: 13, color: "#6B6558" }}>{pending ? "Saving..." : "Raising the daily limit asks your Seeker for a fingerprint."}</Text>
       </Card>
       <Card><Text style={{ fontSize: 15, lineHeight: 22, color: "#2B2B2B" }}>{sentence}</Text></Card>
       <Card>

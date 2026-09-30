@@ -1,5 +1,7 @@
 import { useState } from "react";
-import { Text, TextInput, View } from "react-native";
+import { TwoWay } from "@/components/TwoWay";
+import { withdrawMode } from "@/lib/me-state";
+import { Text, TextInput } from "react-native";
 import { router } from "expo-router";
 import { useMobileWallet } from "@wallet-ui/react-native-kit";
 import { Screen } from "@/components/Screen";
@@ -16,7 +18,7 @@ export default function Withdraw() {
   const { data: me } = useMe();
   const { signTransaction } = useMobileWallet();
   const invalidate = useInvalidateMe();
-  const [mode, setMode] = useState<"earned" | "amount">("earned");
+  const [chosen, setMode] = useState<"earned" | "amount" | null>(null);
   const [amount, setAmount] = useState("");
   const [plan, setPlan] = useState<Plan | null>(null);
   const [busy, setBusy] = useState(false);
@@ -25,6 +27,7 @@ export default function Withdraw() {
   const skrUsd = me.pot.skrUsd;
   const earned = BigInt(me.pot.skrEarnedRaw);
   const canEarned = earned >= 1_000_000n;
+  const mode = withdrawMode(earned, chosen);
 
   async function prepare() {
     setBusy(true);
@@ -90,10 +93,9 @@ export default function Withdraw() {
       <Text style={{ fontSize: 24, color: "#2F5D3A", fontStyle: "italic", fontFamily: "serif" }}>Withdraw</Text>
       {!plan ? (
         <Card>
-          <View style={{ flexDirection: "row", gap: 8 }}>
-            <Button title={`Earned, ${formatSkr(earned, skrUsd)}`} kind={mode === "earned" ? "primary" : "quiet"} onPress={() => setMode("earned")} />
-            <Button title="An amount" kind={mode === "amount" ? "primary" : "quiet"} onPress={() => setMode("amount")} />
-          </View>
+          <Text style={{ fontSize: 16, color: "#2B2B2B" }}>What do you want to take out?</Text>
+          <TwoWay options={[{ value: "earned", label: "What it earned" }, { value: "amount", label: "An amount" }]} value={mode} onChange={setMode} />
+          {mode === "earned" ? <Text style={{ fontSize: 15, color: "#2B2B2B" }}>Earned so far: {formatSkr(earned, skrUsd)}</Text> : null}
           {mode === "amount" ? (
             <TextInput value={amount} onChangeText={setAmount} keyboardType="decimal-pad" placeholder="SKR" placeholderTextColor="#9A9384" style={{ fontSize: 22, borderBottomWidth: 1, borderBottomColor: "#CFC8B8", paddingVertical: 8, color: "#2B2B2B" }} />
           ) : null}
