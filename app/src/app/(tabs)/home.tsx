@@ -78,6 +78,7 @@ export default function Home() {
         ) : asOf ? (
           <Text style={{ fontSize: 13, color: "#6B6558" }}>{formatAsOf(asOf, now)}</Text>
         ) : null}
+        <Link href="/withdraw" asChild><Button title="Withdraw" kind="quiet" onPress={() => {}} /></Link>
       </Card>
       <Card>
         <Text style={{ fontSize: 16, color: "#2B2B2B" }}>Next planting: {formatUsd(me.nextPlanting.pendingCents)} of {formatUsd(me.nextPlanting.thresholdCents)}</Text>
@@ -88,7 +89,6 @@ export default function Home() {
         ) : (
           <Text style={{ fontSize: 14, color: "#6B6558" }}>{noPlantingLine(me)}</Text>
         )}
-        <Link href="/activity" asChild><Button title="Activity" kind="quiet" onPress={() => {}} /></Link>
       </Card>
       <Card>
         <Text style={{ fontSize: 16, color: "#2B2B2B" }}>Linked wallets</Text>
@@ -104,15 +104,6 @@ export default function Home() {
           <Text style={{ fontSize: 16 }}>In the basket: {formatSkr(BigInt(me.basket.amountRaw), skrUsd)}, arrives {new Date(me.basket.readyAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric" })}</Text>
         </Card>
       ) : null}
-      <View style={{ flexDirection: "row", gap: 10 }}>
-        <Link href="/rules" asChild><Button title="Rules" kind="quiet" onPress={() => {}} /></Link>
-        <Link href="/withdraw" asChild><Button title="Withdraw" kind="quiet" onPress={() => {}} /></Link>
-        {me.wallets.length === 0 ? (
-          <Link href="/connect" asChild><Button title="Link a wallet" onPress={() => {}} /></Link>
-        ) : (
-          <Link href="/settings" asChild><Button title="Settings" kind="quiet" onPress={() => {}} /></Link>
-        )}
-      </View>
     </ScrollView>
   );
 }
