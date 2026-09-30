@@ -1,4 +1,4 @@
-import type { Repo, NewPlanting, NewWithdrawal } from "./repo";
+import type { Repo, NewPlanting, NewWithdrawal, NewWatcherCall } from "./repo";
 import type * as T from "./types";
 import type { Asset } from "@/domain/allocation";
 import { DEFAULT_RULES } from "@/domain/roundup";
@@ -21,6 +21,7 @@ export class MemoryRepo implements Repo {
   withdrawals = new Map<string, T.WithdrawalRow>();
   adjustments: T.StakeAdjustmentRow[] = [];
   sessions = new Map<string, T.SessionRow>();
+  watcherCalls: T.WatcherCallRow[] = [];
 
   async upsertUser(u: { seedVaultPubkey: string; sgtMint: string; skrName: string | null }) {
     for (const other of this.users.values()) {
@@ -192,6 +193,19 @@ export class MemoryRepo implements Repo {
 
   async listStakeAdjustments(userPubkey: string) {
     return this.adjustments.filter((a) => a.userPubkey === userPubkey);
+  }
+
+  async addWatcherCall(c: NewWatcherCall) {
+    this.watcherCalls.push({ ...c, id: this.watcherCalls.length + 1, ts: c.ts ?? new Date() });
+  }
+  async watcherSpendMicrocents(since: Date) {
+    return this.watcherCalls.filter((c) => c.ts.getTime() >= since.getTime()).reduce((sum, c) => sum + c.costMicrocents, 0);
+  }
+  async watcherCallsBy(userPubkey: string, since: Date) {
+    return this.watcherCalls.filter((c) => c.userPubkey === userPubkey && c.ts.getTime() >= since.getTime()).length;
+  }
+  async listWatcherCalls() {
+    return this.watcherCalls.map((c) => ({ ...c }));
   }
 
   async addEvent(e: Omit<T.EventRow, "id" | "ts">) {
