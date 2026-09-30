@@ -93,6 +93,10 @@ export type StakeAdjustmentRow = { id: string; userPubkey: string; ts: Date; kin
 /** One sign-in on one device (R84): the token itself is never stored, only its SHA-256. */
 export type SessionRow = { tokenHash: string; userPubkey: string; device: string; createdAt: Date; expiresAt: Date; revokedAt: Date | null };
 
+/** One model call by the watcher (spec 6), with what it cost, so the budget is read from the table. */
+export type WatcherCallKind = "compile" | "explain" | "propose";
+export type WatcherCallRow = { id: number; ts: Date; userPubkey: string; kind: WatcherCallKind; inputTokens: number; outputTokens: number; costMicrocents: number };
+
 export type EventKind =
   | "wallet_linked"
   | "over_cap_rejected"

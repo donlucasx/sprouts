@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import type { Repo, NewPlanting, NewWithdrawal } from "./repo";
+import type { Repo, NewPlanting, NewWithdrawal, NewWatcherCall } from "./repo";
 import type * as T from "./types";
 import type { Asset } from "@/domain/allocation";
 import { DEFAULT_RULES } from "@/domain/roundup";
@@ -211,6 +211,30 @@ export class SupabaseRepo implements Repo {
     return this.many(this.db.from("stake_adjustments").select().eq("user_pubkey", userPubkey).order("ts"), stakeAdjustmentRow);
   }
 
+  async addWatcherCall(c: NewWatcherCall) {
+    const { error } = await this.db.from("watcher_calls").insert({
+      user_pubkey: c.userPubkey, kind: c.kind, input_tokens: c.inputTokens, output_tokens: c.outputTokens, cost_microcents: c.costMicrocents,
+      ...(c.ts ? { ts: c.ts.toISOString() } : {}),
+    });
+    if (error) throw new Error(error.message);
+  }
+  /** Summed here, not in SQL: at $0.001 a call the month's cap is ten thousand rows of one column, read once per call. */
+  async watcherSpendMicrocents(since: Date) {
+    const { data, error } = await this.db.from("watcher_calls").select("cost_microcents").gte("ts", since.toISOString());
+    if (error) throw new Error(error.message);
+    return ((data ?? []) as Row[]).reduce((sum, r) => sum + Number(r.cost_microcents), 0);
+  }
+  async watcherCallsBy(userPubkey: string, since: Date) {
+    const { count, error } = await this.db.from("watcher_calls").select("id", { count: "exact", head: true }).eq("user_pubkey", userPubkey).gte("ts", since.toISOString());
+    if (error) throw new Error(error.message);
+    return count ?? 0;
+  }
+  async listWatcherCalls() {
+    const { data, error } = await this.db.from("watcher_calls").select().order("ts", { ascending: false }).limit(200);
+    if (error) throw new Error(error.message);
+    return ((data ?? []) as Row[]).map(watcherCallRow);
+  }
+
   async addEvent(e: Omit<T.EventRow, "id" | "ts">) {
     const { error } = await this.db.from("events").insert({ user_pubkey: e.userPubkey, wallet_pubkey: e.walletPubkey, kind: e.kind, detail: e.detail ?? null });
     if (error) throw new Error(error.message);
@@ -386,6 +410,9 @@ function stakeAdjustmentRow(r: Row): T.StakeAdjustmentRow {
   };
 }
 
+function watcherCallRow(r: Row): T.WatcherCallRow {
+  return { id: Number(r.id), ts: date(r.ts), userPubkey: String(r.user_pubkey), kind: r.kind as T.WatcherCallKind, inputTokens: Number(r.input_tokens), outputTokens: Number(r.output_tokens), costMicrocents: Number(r.cost_microcents) };
+}
 function sessionRow(r: Row): T.SessionRow {
   return { tokenHash: String(r.token_hash), userPubkey: String(r.user_pubkey), device: String(r.device), createdAt: date(r.created_at), expiresAt: date(r.expires_at), revokedAt: r.revoked_at ? date(r.revoked_at) : null };
 }

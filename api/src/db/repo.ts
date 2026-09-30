@@ -5,6 +5,7 @@ import type { Asset } from "@/domain/allocation";
 /** `ts` is the run's own clock (the reconciliation measures age against it); left out, the store stamps the row itself. */
 export type NewPlanting = Omit<T.PlantingRow, "id" | "ts" | "sharesBefore" | "sharesAfter" | "sharesMinted"> & { sharesBefore?: bigint | null; ts?: Date };
 
+export type NewWatcherCall = Omit<T.WatcherCallRow, "id" | "ts"> & { ts?: Date };
 export type NewWithdrawal = { userPubkey: string; asset: Asset; source: T.WithdrawalSource; unstakeSignature: string | null; sharesUnstaked: bigint; amountRaw: bigint; principalRaw: bigint };
 
 /** Everything the routes and the cron need from the database. One in-memory implementation for tests, one on Supabase. */
@@ -89,6 +90,12 @@ export interface Repo {
 
   /** One light read so a free-tier database sees traffic every day; needs no user row. */
   keepalive(): Promise<void>;
+
+  // The watcher's budget (spec 6): every model call recorded; spend since a moment, calls by one user since a moment.
+  addWatcherCall(c: NewWatcherCall): Promise<void>;
+  watcherSpendMicrocents(since: Date): Promise<number>;
+  watcherCallsBy(userPubkey: string, since: Date): Promise<number>;
+  listWatcherCalls(): Promise<T.WatcherCallRow[]>;
 }
 
 let forTests: Repo | null = null;
