@@ -79,9 +79,12 @@ export function Fruit({ bud, size = 1 }: { bud: boolean; size?: number }) {
   return <Circle cx={0} cy={0} r={5 * size} fill={bud ? GREEN : FRUIT} opacity={bud ? 0.6 : 1} />;
 }
 
+/** The next fruit's radius at `progress` (0 to 1): the layout needs it to seat the ORE pup on the soil. */
+export const ripeningRadius = (progress: number) => 2 + 3 * progress;
+
 /** The next fruit, swelling with each reward event: a bud that grows with progress. */
 export function Ripening({ progress }: { progress: number }) {
-  return <Circle cx={0} cy={0} r={2 + 3 * progress} fill={GREEN} opacity={0.7} />;
+  return <Circle cx={0} cy={0} r={ripeningRadius(progress)} fill={GREEN} opacity={0.7} />;
 }
 
 export function Pup() {
