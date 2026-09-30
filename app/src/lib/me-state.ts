@@ -14,3 +14,8 @@ export function noPlantingLine(me: Pick<MeResponse, "nextPlanting" | "wallets">)
   if (me.nextPlanting.pendingCents === 0) return "No planting yet. Your next swap starts it.";
   return `No planting yet. It plants when the change reaches ${formatUsd(me.nextPlanting.thresholdCents)}.`;
 }
+
+/** Withdraw's choice: the user's own once they tap; before that, "earned" only when there is 1 SKR of it to take (09-29). */
+export function withdrawMode(earnedRaw: bigint, chosen: "earned" | "amount" | null): "earned" | "amount" {
+  return chosen ?? (earnedRaw >= 1_000_000n ? "earned" : "amount");
+}

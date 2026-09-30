@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { pickMeState, noPlantingLine } from "@/lib/me-state";
+import { pickMeState, noPlantingLine, withdrawMode } from "@/lib/me-state";
 import type { MeResponse } from "@/lib/api";
 const cached = { pot: { asOf: "2026-09-28T16:00:00Z" } } as never;
 const live = { pot: { asOf: "2026-09-28T17:00:00Z" } } as never;
@@ -22,5 +22,20 @@ describe("noPlantingLine", () => {
   });
   it("names the threshold when change is waiting", () => {
     expect(noPlantingLine(me(62, ["active"]))).toBe("No planting yet. It plants when the change reaches $2.00.");
+  });
+});
+
+// The 09-29 Saga check: Withdraw opened on "Earned, 0.00 SKR", the one choice that could not be used.
+describe("withdrawMode", () => {
+  it("opens on an amount while earned is under 1 SKR", () => {
+    expect(withdrawMode(0n, null)).toBe("amount");
+    expect(withdrawMode(999_999n, null)).toBe("amount");
+  });
+  it("opens on earned once there is 1 SKR of it", () => {
+    expect(withdrawMode(1_000_000n, null)).toBe("earned");
+  });
+  it("keeps the user's own choice", () => {
+    expect(withdrawMode(0n, "earned")).toBe("earned");
+    expect(withdrawMode(5_000_000n, "amount")).toBe("amount");
   });
 });
