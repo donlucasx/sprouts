@@ -4,7 +4,7 @@ import { buildScene, type GardenInput } from "@/model/garden";
 const NOW = new Date("2026-10-04T12:00:00-07:00");
 const base: GardenInput = {
   now: NOW, wateredAt: null, plantings: [], picks: [], skrPutInRaw: 0n, skrEarnedRaw: 0n, skrFruit: 0, skrNextFruitProgress: 0,
-  skrPickedRaw: 0n, skrPrincipalPickedRaw: 0n, pendingCents: 0,
+  skrPickedRaw: 0n, skrPrincipalPickedRaw: 0n, pendingCents: 0, thresholdCents: 200,
   storePutInRaw: 0n, storePups: 0, storeNextPupProgress: 0, joinedValueRaw: 0n, basket: null,
 };
 const planting = (id: string, daysAgo: number, raw: bigint, asset: "SKR" | "stORE" = "SKR") => ({ id, ts: new Date(NOW.getTime() - daysAgo * 86_400_000), asset, amountOutRaw: raw });
@@ -71,9 +71,37 @@ describe("buildScene", () => {
     expect((s.parts.find((p) => p.kind === "wetSpot") as { x: number }).x).toBe(0.5);
   });
 
+  // R89 (09-29): one plant per coin; every planting is a new shoot on it, oldest lowest.
+  it("every SKR planting is a shoot on the one SKR plant, oldest lowest (R89)", () => {
+    const s = buildScene({ ...base, wateredAt: NOW, plantings: [planting("c", 1, 1n), planting("a", 30, 1n), planting("b", 8, 1n)] });
+    const plants = s.parts.filter((p) => p.kind === "plant") as { plant: string; x: number; shoots: number }[];
+    expect(plants).toEqual([{ kind: "plant", plant: "skr", x: 0.4, shoots: 3 }]);
+    const shoots = s.parts.filter((p) => p.kind === "sprout") as { id: string; x: number; y: number }[];
+    expect(shoots.every((p) => p.x === 0.4)).toBe(true);
+    expect(shoots.sort((p, q) => p.y - q.y).map((p) => p.id)).toEqual(["a", "b", "c"]);
+  });
+
+  it("ORE grows its own plant beside the SKR one (R89)", () => {
+    const s = buildScene({ ...base, wateredAt: NOW, plantings: [planting("s", 3, 1n), planting("o", 2, 1n, "stORE")] });
+    expect((s.parts.filter((p) => p.kind === "plant") as { plant: string; x: number }[]).map((p) => [p.plant, p.x])).toEqual([["skr", 0.4], ["ore", 0.64]]);
+  });
+
+  it("after the first planting, waiting change is one bud forming on the plant, not seeds (R89)", () => {
+    const s = buildScene({ ...base, wateredAt: NOW, plantings: [planting("a", 3, 1n)], pendingCents: 57, thresholdCents: 200 });
+    expect(kinds(s)).not.toContain("seed");
+    expect(s.parts.find((p) => p.kind === "forming")).toEqual({ kind: "forming", plant: "skr", progress: 0.285 });
+  });
+
+  it("before the first planting the seeds gather at the plant's base", () => {
+    const seeds = buildScene({ ...base, pendingCents: 62 }).parts.filter((p) => p.kind === "seed") as { x: number }[];
+    expect(seeds.length).toBe(2);
+    expect(seeds.every((p) => Math.abs(p.x - 0.4) <= 0.06)).toBe(true);
+  });
+
   it("a pre-existing position is a transplanted plant with no fruit (R61)", () => {
     const s = buildScene({ ...base, joinedValueRaw: 10_000_000_000n, wateredAt: NOW });
-    expect(kinds(s)).toEqual(["soil", "transplant", "wetSpot"]);
+    expect(kinds(s)).toEqual(["soil", "transplant", "plant", "wetSpot"]);   // R89: the transplant is the SKR plant's base
+    expect(kinds(s)).not.toContain("fruit");
   });
 
   it("a principal pick prunes sprouts in proportion, oldest last; a fruit-only pick prunes nothing (rule 6)", () => {

@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { widgetGardenSvg, WIDGET_SOIL_BAND } from "@/model/widget-svg";
 import { soilSurface } from "@/model/soil";
+import { MAX_RISE, nodeRise } from "@/model/plant-geometry";
 import type { Scene } from "@/model/garden";
 
 // The 09-29 Saga check: the widget drew a fixed 90-high garden with no seeds in a much taller widget, and its parts stood on a
@@ -25,20 +26,29 @@ describe("widgetGardenSvg", () => {
     });
   });
 
-  it("roots a sprout at the mound's surface", () => {
-    const svg = widgetGardenSvg(scene([{ kind: "sprout", id: "p1", plant: "skr", x: 0.5, y: 0, stage: 2, bud: false, sizeRaw: 1n }]), 300, 140);
-    const m = svg.match(/<path d="M150 ([\d.]+) q/);
-    expect(Number(m![1])).toBeCloseTo(140 - WIDGET_SOIL_BAND + soilSurface(0.5) / 2, 5);
+  // R89: one plant per coin; the stem roots on the mound and the plantings are shoots up it.
+  const plant = { kind: "plant" as const, plant: "skr" as const, x: 0.4, shoots: 2 };
+  const shoot = (id: string, y: number) => ({ kind: "sprout" as const, id, plant: "skr" as const, x: 0.4, y, stage: 2 as const, bud: false, sizeRaw: 1n });
+  const k = Math.min(1, (140 - WIDGET_SOIL_BAND - 6) / MAX_RISE);
+  const foot = 140 - WIDGET_SOIL_BAND + soilSurface(0.4) / 2;
+
+  it("roots the plant's stem on the mound", () => {
+    const svg = widgetGardenSvg(scene([plant, shoot("a", 0), shoot("b", 1)]), 300, 140);
+    const m = svg.match(/<path d="M120 ([\d.]+) q/);
+    expect(Number(m![1])).toBeCloseTo(foot, 1);
   });
 
-  it("hangs a fruit near the tip of the sprout it names", () => {
-    const svg = widgetGardenSvg(scene([
-      { kind: "sprout", id: "p1", plant: "skr", x: 0.5, y: 0, stage: 2, bud: false, sizeRaw: 1n },
-      { kind: "fruit", index: 0, plant: "skr", ripe: true, bud: false, on: "p1" },
-    ]), 300, 140);
+  it("draws one leaf per planting up the one stem", () => {
+    const svg = widgetGardenSvg(scene([plant, shoot("a", 0), shoot("b", 1)]), 300, 140);
+    expect([...svg.matchAll(/<ellipse /g)].length).toBe(2);
+    expect([...svg.matchAll(/stroke="#3F7A4A"/g)].length).toBe(1);
+  });
+
+  it("hangs a fruit beside the shoot it names", () => {
+    const svg = widgetGardenSvg(scene([plant, shoot("a", 0), shoot("b", 1), { kind: "fruit", index: 0, plant: "skr", ripe: true, bud: false, on: "a" }]), 300, 140);
     const [fruit] = [...svg.matchAll(/<circle cx="([\d.]+)" cy="([\d.]+)" r="3" fill="#C9553D"/g)].map((m) => ({ x: Number(m[1]), y: Number(m[2]) }));
-    const tipY = 140 - WIDGET_SOIL_BAND + soilSurface(0.5) / 2 - (10 + 2 * 12) * ((140 - WIDGET_SOIL_BAND) / 60);
-    expect(fruit.x).toBeCloseTo(150 - 6, 5);
-    expect(fruit.y).toBeCloseTo(tipY + 6, 1);
+    const nodeY = foot - nodeRise(0, 2) * k;
+    expect(fruit.x).toBeCloseTo(120 + 6, 1);   // slot 0's leaf is on the left, so the fruit hangs right
+    expect(fruit.y).toBeCloseTo(nodeY + 4, 1);
   });
 });
