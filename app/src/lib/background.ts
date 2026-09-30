@@ -4,7 +4,8 @@ import { api, type MeResponse } from "./api";
 import { readLastMe, writeLastMe } from "./me";
 import { notify } from "./notify";
 import { refreshWidget } from "./widget-refresh";
-import { formatSkr, formatUsd, formatAmount } from "./format";
+import { formatSkr } from "./format";
+import { plantingNotice } from "./notices";
 
 const TASK = "sprouts-refresh";
 
@@ -15,7 +16,7 @@ TaskManager.defineTask(TASK, async () => {
     const me = await api<MeResponse>("/api/me");
     writeLastMe(me);
     const newPlantings = me.history.plantings.filter((p) => !before?.history.plantings.some((q) => q.id === p.id));
-    for (const p of newPlantings) await notify("Planting landed", `${formatUsd(p.usdcInCents)} of change became ${formatAmount(p.asset, BigInt(p.amountOutRaw), p.asset === "SKR" ? me.pot.skrUsd : me.pot.storeUsd)}, ${p.asset === "SKR" ? "locked to your Seeker" : "in your Seeker wallet"}.`);
+    for (const p of newPlantings) await notify("Planting landed", plantingNotice(p, me.pot));
     if (before?.basket && !me.basket) await notify("Withdrawal delivered", `${formatSkr(BigInt(before.basket.amountRaw), me.pot.skrUsd)} is in your Seeker's wallet.`);
     await refreshWidget(me);
     return BackgroundTask.BackgroundTaskResult.Success;

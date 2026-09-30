@@ -30,7 +30,7 @@ describe("buildScene", () => {
     expect(before.parts.filter((p) => p.kind === "sprout" && (p as { bud: boolean }).bud).length).toBe(2);
     const after = buildScene({ ...base, wateredAt: NOW, plantings: [planting("a", 8, 1n), planting("b", 2, 1n), planting("c", 1, 1n)] });
     expect(after.unrevealed).toBe(0);
-    expect(after.wateredToday).toBe(true);
+    expect(after.canReady).toBe(false);
     expect(kinds(after)).toContain("wetSpot");
   });
 
@@ -147,5 +147,38 @@ describe("the ORE plant", () => {
     expect(forming(buildScene({ ...both, nextAsset: "stORE" }))?.plant).toBe("ore");
     expect(forming(buildScene({ ...both, nextAsset: "SKR" }))?.plant).toBe("skr");
     expect(forming(buildScene(both))?.plant).toBe("skr");
+  });
+});
+
+// R96 (09-30): the can is ready when a bud waits and resting otherwise; there is no clock (the once-a-day lock was the build's, never
+// a ruling, and it collided with the 14:00 UTC cron: watered before 7 AM PT, then that morning's planting, stuck all day).
+describe("the watering can (R96)", () => {
+  it("is ready when a bud waits, whatever the time of day", () => {
+    // watered at 07:00, the cron planted at 07:40: under the old rule the can stayed dead until tomorrow
+    const watered = new Date(NOW.getTime() - 5 * 3_600_000);
+    const s = buildScene({ ...base, wateredAt: watered, plantings: [planting("a", 8, 1n), planting("b", 0.18, 1n)] });
+    expect(s.unrevealed).toBe(1);
+    expect(s.canReady).toBe(true);
+  });
+  it("rests when nothing waits, even if it has not been used today", () => {
+    const s = buildScene({ ...base, wateredAt: new Date(NOW.getTime() - 3 * 86_400_000), plantings: [planting("a", 8, 1n)] });
+    expect(s.canReady).toBe(false);
+  });
+  it("is ready before the first watering, as soon as the first planting lands", () => {
+    expect(buildScene({ ...base, wateredAt: null, plantings: [planting("a", 0.1, 1n)] }).canReady).toBe(true);
+  });
+  it("rests on bare soil", () => {
+    expect(buildScene(base).canReady).toBe(false);
+  });
+  // 09-30, the Saga photo: watered at 10:10, the stORE planting landed at 11:40, and the wet spot sat under the closed ORE bud.
+  it("the wet spot lands under the newest OPENED sprout, never under a bud that landed after the watering", () => {
+    const watered = new Date(NOW.getTime() - 3_600_000);
+    const s = buildScene({ ...base, wateredAt: watered, plantings: [planting("old", 20, 1n), planting("o", 0.01, 1n, "stORE")] });
+    expect((s.parts.find((p) => p.kind === "wetSpot") as { x: number }).x).toBe(0.4);
+  });
+  it("with only buds and a transplant the wet spot sits at the SKR plant's foot", () => {
+    const watered = new Date(NOW.getTime() - 3_600_000);
+    const s = buildScene({ ...base, wateredAt: watered, joinedValueRaw: 5n, plantings: [planting("o", 0.01, 1n, "stORE")] });
+    expect((s.parts.find((p) => p.kind === "wetSpot") as { x: number }).x).toBe(0.4);
   });
 });
