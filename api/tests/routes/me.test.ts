@@ -13,6 +13,7 @@ vi.mock("@/lib/staking", () => ({
 vi.mock("@/lib/jupiter", () => ({ priceUsd: vi.fn(async () => 0.0183) }));
 vi.mock("@/lib/store", () => ({ storeBalanceRaw: vi.fn(async () => 0n), storeRedeemRate: vi.fn(async () => 1_048_350_000n) }));
 
+import { storeRedeemRate } from "@/lib/store";
 import { GET as me } from "@/app/api/me/route";
 import { GET as activity } from "@/app/api/activity/route";
 import { POST as water } from "@/app/api/water/route";
@@ -45,10 +46,30 @@ describe("GET /api/me", () => {
     expect(body.pot.skrEarnedRaw).toBe("46000000");
     expect(body.pot.fruit).toBe(4); // 46 SKR earned on 1,100 put in is 418 bps: the first fruit at 25 bps, then one per 100 [A4]
     expect(body.history.plantings.length).toBe(1);
-    expect(body.nextPlanting).toEqual({ pendingCents: 20, thresholdCents: 200, capLeftCents: 500 });
+    expect(body.nextPlanting).toEqual({ pendingCents: 20, thresholdCents: 200, capLeftCents: 500, asset: "SKR" });
     expect(body.lastReceipt.usdcPulledCents).toBe(23);
     expect(body.basket).toBeNull();
     expect(body.wallets[0].status).toBe("active");
+  });
+
+  // Plan v2 (audits/ore-plan, finding 2): the stORE rate read fails today; Home must not fail with it.
+  it("answers with a null stORE rate when the rate read fails, instead of failing the request", async () => {
+    await repo.insertPlanting({ userPubkey: U, walletPubkey: "W", signature: "sig2", usdcPulledCents: 23, networkFeeCents: 3, status: "confirmed", aiLine: null },
+      [{ asset: "stORE", usdcInCents: 20, amountOutRaw: 24_000_000_000n, staked: false, feeAmountRaw: 120_000_000n }]);
+    vi.mocked(storeRedeemRate).mockRejectedValueOnce(new Error("Invalid param: not a Token account"));
+    const res = await me(new Request("http://x/api/me", bearer(await issueSession(U, "M"))));
+    expect(res.status).toBe(200);
+    expect((await res.json()).pot.storeRedeemRate).toBeNull();
+  });
+
+  // Plan v2 item 6: the coin the next planting buys, so the forming bud sits on the right plant.
+  it("names the coin the next planting buys", async () => {
+    let body = await (await me(new Request("http://x/api/me", bearer(await issueSession(U, "M"))))).json();
+    expect(body.nextPlanting.asset).toBe("SKR");
+    await repo.saveRules(U, { allocation: { SKR: 50, stORE: 50 } });
+    await repo.bumpLedger("W", "SKR", 200);
+    body = await (await me(new Request("http://x/api/me", bearer(await issueSession(U, "M"))))).json();
+    expect(body.nextPlanting.asset).toBe("stORE");
   });
 
   // Review I2 [A24]: a cooldown the wallet started (found by the reconciliation, or at join) is the basket too.

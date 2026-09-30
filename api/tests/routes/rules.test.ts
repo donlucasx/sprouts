@@ -63,8 +63,17 @@ describe("rules, wallets, revoke", () => {
     expect((await repo.getRules(U)).dailyCapCents).toBe(300);
     expect((await repo.getRules(U)).pctOn).toBe(false);
     expect((await put({ dailyCapCents: 50_000 })).status).toBe(400);
-    expect((await put({ allocation: { SKR: 50, stORE: 50 } })).status).toBe(400); // the stORE leg has never been sent [A19]
     expect((await put({ roundupToCents: 200 })).status).toBe(400);
+  });
+
+  // Plan v2 (R91, R92): the ORE share opens, 0 to 50 in steps of 10, and the SKR side must be the complement.
+  it("PUT accepts an ORE share of 0 to 50 in steps of 10 and refuses anything else", async () => {
+    expect((await put({ allocation: { SKR: 50, stORE: 50 } })).status).toBe(200);
+    expect((await repo.getRules(U)).allocation).toEqual({ SKR: 50, stORE: 50 });
+    expect((await put({ allocation: { SKR: 40, stORE: 60 } })).status).toBe(400);
+    expect((await put({ allocation: { SKR: 45, stORE: 55 } })).status).toBe(400);
+    expect((await put({ allocation: { SKR: 60, stORE: 50 } })).status).toBe(400);
+    expect((await repo.getRules(U)).allocation).toEqual({ SKR: 50, stORE: 50 });
   });
 
   // R84: raising the limit is one of the two writes a stolen session must not be able to do.

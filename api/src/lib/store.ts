@@ -3,10 +3,14 @@ import { fetchToken, findAssociatedTokenPda, TOKEN_PROGRAM_ADDRESS } from "@sola
 import { rpc } from "./rpc";
 import { STORE_MINT } from "./constants";
 
-/** The stORE program's vault token account (its ORE stake), read by the fruit audit on 2026-09-28; `spikes/store-rate.ts` re-checks it. */
+/**
+ * NOT a token account: this is the ore-lst authority PDA (8 bytes, program-owned) and the stORE mint authority, so the balance
+ * read below errors "not a Token account" (audits/ore-plan, finding 2, checked on chain 2026-09-29). The caller treats a failure
+ * as "no rate"; the real ORE stake sits in an ore-stake account under this authority, and the rewrite ships with "earned" (Plan 3).
+ */
 const STORE_VAULT = address("GexGotZVLZdJ7N7w3BgHpKYmPs915pwZoZAqZVkCS8F7");
 
-/** The Seed Vault's stORE balance (raw, 9 decimals), 0 when the account does not exist. */
+/** The Seed Vault's stORE balance (raw; the mint has 11 decimals, DECIMALS.stORE), 0 when the account does not exist. */
 export async function storeBalanceRaw(owner: Address): Promise<bigint> {
   const [ata] = await findAssociatedTokenPda({ owner, mint: STORE_MINT, tokenProgram: TOKEN_PROGRAM_ADDRESS });
   try {

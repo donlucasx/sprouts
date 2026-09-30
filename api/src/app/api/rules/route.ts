@@ -7,7 +7,7 @@ import { ReauthSchema, verifyReauth } from "@/lib/reauth";
 
 export const runtime = "nodejs";
 
-// The ranges the app's steppers allow; the allocation stays SKR-only until the stORE leg has been sent once [A19].
+// The ranges the app's steppers allow. The ORE share is the fence on Rules (R92): 0 to 50 in steps of 10, SKR the complement.
 const Body = z.object({
   roundupOn: z.boolean().optional(),
   roundupToCents: z.literal(100).optional(),
@@ -17,7 +17,7 @@ const Body = z.object({
   plantThresholdCents: z.number().int().min(10).max(5_000).optional(),
   plantMaxDays: z.number().int().min(1).max(30).optional(),
   dailyCapCents: z.number().int().min(100).max(2_000).optional(),
-  allocation: z.object({ SKR: z.literal(100), stORE: z.literal(0) }).optional(),
+  allocation: z.object({ SKR: z.number().int(), stORE: z.number().int().min(0).max(50).multipleOf(10) }).refine((a) => a.SKR + a.stORE === 100).optional(),
   reauth: ReauthSchema.optional(),
 }).strict();
 
