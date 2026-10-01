@@ -107,7 +107,6 @@ export type EventKind =
   | "withdraw_failed"
   | "withdraw_skipped"
   | "run_stopped"
-  | "store_fallback"
   | "paused_no_usdc"
   | "resumed"
   | "proposal_made"

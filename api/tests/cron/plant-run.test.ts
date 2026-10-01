@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { MemoryRepo } from "@/db/memory";
+import { SKR_ONLY } from "@/domain/coins";
 import { runPlanting, type Chain } from "@/lib/plant-run";
 
 const NOW = new Date("2026-09-29T14:00:00Z");
@@ -37,7 +38,7 @@ describe("runPlanting", () => {
     const r = await runPlanting({ repo, now: NOW, chain: fakeChain() });
     expect(r.planted).toEqual([{ wallet: "W", asset: "SKR", pullCents: 218, signature: "sig1" }]);
     expect((await repo.unplantedSwaps("W")).length).toBe(0);
-    expect((await repo.getWallet("W"))!.ledgerSkrCents).toBe(215);
+    expect((await repo.getWallet("W"))!.ledgerCents).toEqual({ SKR: 215 });
   });
 
   it("waits below the threshold", async () => {
@@ -95,7 +96,7 @@ describe("runPlanting", () => {
 
   it("uses the allocation: 50/50 alternates assets over two plantings", async () => {
     const repo = await seeded([215]);
-    await repo.saveRules("U", { allocation: { SKR: 50, stORE: 50 } });
+    await repo.saveRules("U", { allocation: { ...SKR_ONLY, SKR: 50, stORE: 50 } });
     const chain = fakeChain();
     const a = await runPlanting({ repo, now: NOW, chain });
     await repo.insertSwap({ signature: "s9", walletPubkey: "W", ts: NOW, inMint: "a", inAmount: 1, outMint: "b", outAmount: 1, usdSizeCents: 100, class: "major", roundupCents: 215 });
@@ -107,7 +108,7 @@ describe("runPlanting", () => {
   // would choose stORE again tomorrow) nor count as an outage: the run plants SKR instead and says so.
   it("falls back to SKR in the same run when the stORE leg fails to build, outside the outage count", async () => {
     const repo = await seeded([215]);
-    await repo.saveRules("U", { allocation: { SKR: 50, stORE: 50 } });
+    await repo.saveRules("U", { allocation: { ...SKR_ONLY, SKR: 50, stORE: 50 } });
     await repo.bumpLedger("W", "SKR", 200); // the picker wants stORE next
     const assets: string[] = [];
     const chain = fakeChain({ buildPlantingTx: async (a) => {
@@ -118,13 +119,13 @@ describe("runPlanting", () => {
     const r = await runPlanting({ repo, now: NOW, chain });
     expect(assets).toEqual(["stORE", "SKR"]);
     expect(r.planted[0]?.asset).toBe("SKR");
-    expect(repo.events.some((e) => e.kind === "store_fallback")).toBe(true);
+    expect(repo.events.some((e) => e.kind === "leg_fallback")).toBe(true);
     expect(r.skipped.some((s) => s.reason === "build failed")).toBe(false);
   });
 
   it("falls back to SKR when the stORE leg fails simulation", async () => {
     const repo = await seeded([215]);
-    await repo.saveRules("U", { allocation: { SKR: 50, stORE: 50 } });
+    await repo.saveRules("U", { allocation: { ...SKR_ONLY, SKR: 50, stORE: 50 } });
     await repo.bumpLedger("W", "SKR", 200);
     const built: string[] = [];
     const chain = fakeChain({
@@ -136,7 +137,7 @@ describe("runPlanting", () => {
     const r = await runPlanting({ repo, now: NOW, chain });
     expect(built).toEqual(["stORE", "SKR"]);
     expect(r.planted[0]?.asset).toBe("SKR");
-    expect(repo.events.some((e) => e.kind === "store_fallback")).toBe(true);
+    expect(repo.events.some((e) => e.kind === "leg_fallback")).toBe(true);
   });
 
   it("counts what the chain already pulled this period against the cap", async () => {
@@ -161,7 +162,7 @@ describe("runPlanting", () => {
     const chain = fakeChain({ sendPlanting: async () => { await new Promise((r) => setTimeout(r, 5)); } });
     const [a, b] = await Promise.all([runPlanting({ repo, now: NOW, chain }), runPlanting({ repo, now: NOW, chain })]);
     expect(a.planted.length + b.planted.length).toBe(1);
-    expect((await repo.getWallet("W"))!.ledgerSkrCents).toBe(215);
+    expect(((await repo.getWallet("W"))!.ledgerCents.SKR ?? 0)).toBe(215);
     expect([...repo.plantings.values()].filter((p) => p.status === "confirmed").length).toBe(1);
   });
 
@@ -171,7 +172,7 @@ describe("runPlanting", () => {
     const r = await runPlanting({ repo, now: NOW, chain });
     expect(r.planted.length).toBe(1);
     expect((await repo.unplantedSwaps("W")).length).toBe(0);
-    expect((await repo.getWallet("W"))!.ledgerSkrCents).toBe(215);
+    expect(((await repo.getWallet("W"))!.ledgerCents.SKR ?? 0)).toBe(215);
     const again = await runPlanting({ repo, now: NOW, chain });
     expect(again.planted).toEqual([]);
   });
@@ -182,7 +183,7 @@ describe("runPlanting", () => {
     const r = await runPlanting({ repo, now: NOW, chain });
     expect(r.skipped[0].reason).toBe("send failed");
     expect((await repo.unplantedSwaps("W")).length).toBe(3);
-    expect((await repo.getWallet("W"))!.ledgerSkrCents).toBe(0);
+    expect(((await repo.getWallet("W"))!.ledgerCents.SKR ?? 0)).toBe(0);
   });
 
   it("a send whose fate is unknown stays claimed and is reconciled on the next run", async () => {
@@ -197,7 +198,7 @@ describe("runPlanting", () => {
     const r2 = await runPlanting({ repo, now: later, chain: fakeChain({ signatureStatus: async () => "confirmed" }) });
     expect(r2.planted).toEqual([]);
     expect([...repo.plantings.values()][0].status).toBe("confirmed");
-    expect((await repo.getWallet("W"))!.ledgerSkrCents).toBe(215);
+    expect(((await repo.getWallet("W"))!.ledgerCents.SKR ?? 0)).toBe(215);
   });
 
   it("a sent planting that never lands within half an hour is failed and its round-ups released", async () => {
@@ -281,7 +282,7 @@ describe("runPlanting", () => {
     const r = await runPlanting({ repo, now: NOW, chain: fakeChain() });
     expect(r.planted[0].pullCents).toBe(300);
     expect((await repo.unplantedSwaps("W")).length).toBe(0);
-    expect((await repo.getWallet("W"))!.ledgerSkrCents).toBe(297);
+    expect(((await repo.getWallet("W"))!.ledgerCents.SKR ?? 0)).toBe(297);
   });
 
   // [A16] the reconciliation works from what each planting minted: shares before the send, shares after confirmation.
@@ -300,7 +301,7 @@ describe("runPlanting", () => {
   it("a sent planting booked late without a before-read estimates its minted shares from the leg and the share price", async () => {
     const repo = await seeded([]);
     const p = await repo.insertPlanting({ userPubkey: "U", walletPubkey: "W", signature: "old", usdcPulledCents: 218, networkFeeCents: 3, status: "sent", aiLine: null },
-      [{ asset: "SKR", usdcInCents: 215, amountOutRaw: 1_146_000_000n, staked: true, feeAmountRaw: 0n }]);
+      [{ asset: "SKR", usdcInCents: 215, amountOutRaw: 1_146_000_000n, staked: true, feeAmountRaw: 0n, feeCents: 1, rateAtPlanting: null }]);
     p.ts = new Date(NOW.getTime() - 10 * 60_000);
     await runPlanting({ repo, now: NOW, chain: fakeChain({ signatureStatus: async () => "confirmed", readShares: async () => 5_000_000_000n }) });
     const row = repo.plantings.get(p.id)!;
@@ -308,5 +309,40 @@ describe("runPlanting", () => {
     expect(row.sharesBefore).toBeNull();
     expect(row.sharesAfter).toBe(5_000_000_000n);
     expect(row.sharesMinted).toBe(1_000_000_000n);
+  });
+
+  it("an hSOL leg that fails to build plants SKR in the same run and records which coin fell back", async () => {
+    const repo = await seeded([215]);
+    await repo.saveRules("U", { allocation: { ...SKR_ONLY, SKR: 50, hSOL: 50 } });
+    await repo.bumpLedger("W", "SKR", 200); // the picker wants hSOL next
+    const assets: string[] = [];
+    const chain = fakeChain({ buildPlantingTx: async (a) => {
+      assets.push(a.asset);
+      if (a.asset === "hSOL") throw new Error("Jupiter: no route");
+      return { tx: {} as never, signature: "sigH", expectedOutRaw: a.pullRaw * 48n, minOutRaw: a.pullRaw * 47n, lookupTables: [], lastValidBlockHeight: 0n };
+    } });
+    const r = await runPlanting({ repo, now: NOW, chain });
+    expect(assets).toEqual(["hSOL", "SKR"]);
+    expect(r.planted[0]?.asset).toBe("SKR");
+    const ev = repo.events.find((e) => e.kind === "leg_fallback");
+    expect((ev?.detail as { asset: string }).asset).toBe("hSOL");
+    expect(r.skipped.some((s) => s.reason === "build failed")).toBe(false);
+  });
+
+  it("a leg records the USDC fee in cents and the coin's rate from today's snapshot, null before the first snapshot", async () => {
+    const repo = await seeded([215]);
+    await repo.saveRules("U", { allocation: { ...SKR_ONLY, SKR: 0, JupSOL: 100 } });
+    const a = await runPlanting({ repo, now: NOW, chain: fakeChain() });
+    expect(a.planted[0].asset).toBe("JupSOL");
+    const legA = (await repo.plantingLegs([...repo.plantings.values()][0].id))[0];
+    expect(legA.feeCents).toBe(1);          // 0.5% of $2.18, rounded
+    expect(legA.rateAtPlanting).toBeNull();
+    expect(legA.feeAmountRaw).toBe(0n);
+    await repo.insertSwap({ signature: "s9", walletPubkey: "W", ts: NOW, inMint: "a", inAmount: 1, outMint: "b", outAmount: 1, usdSizeCents: 100, class: "major", roundupCents: 215 });
+    await repo.putCoinDay({ day: "2026-09-30", asset: "JupSOL", rate: 1.21199, ratePrev: null, ratePrevDays: null, priceUsd: 143, liquidityUsd: 6e8, priceChange24h: 0, tradeable: true, lastUpdateEpoch: 1046, ok: true });
+    const b = await runPlanting({ repo, now: new Date(NOW.getTime() + 86_400_000), chain: fakeChain() });
+    expect(b.planted[0].asset).toBe("JupSOL");
+    const legB = (await repo.plantingLegs([...repo.plantings.values()][1].id))[0];
+    expect(legB.rateAtPlanting).toBeCloseTo(1.21199, 5);
   });
 });

@@ -2,6 +2,7 @@ import type { Repo } from "@/db/repo";
 import type { PlantingRow, WalletRow } from "@/db/types";
 import { rulesRowToRules } from "@/db/types";
 import { pickAsset, type Asset } from "@/domain/allocation";
+import { dayOf } from "@/domain/day";
 import { capLeftCents, plantAmountCents } from "@/domain/cap";
 
 /** The pass-through network fee, in cents, added to every pull and shown on the receipt. */
@@ -171,20 +172,20 @@ async function plantOneOrThrow(a: { repo: Repo; now: Date; chain: Chain }, w: Wa
     return { wallet: w.pubkey, reason: "no usdc" };
   }
 
-  let asset = pickAsset({ SKR: w.ledgerSkrCents, stORE: w.ledgerStoreCents }, rules.allocation);
+  let asset = pickAsset(w.ledgerCents, rules.allocation);
   const attempt = async (asset: Asset) => {
     const built = await a.chain.buildPlantingTx({ delegator: w.pubkey, user: w.userPubkey, asset, pullRaw: BigInt(amount.pullCents) * USDC_PER_CENT, feeBps: FEE_BPS, delegationPda: w.delegationPda });
     return { built, sim: await a.chain.simulatePlanting(built) };
   };
   let { built, sim } = await attempt(asset).then((r) => {
-    if (asset === "stORE" && !r.sim.ok) throw new Error(`simulation: ${JSON.stringify(r.sim.err)} ${r.sim.logs.slice(-2).join(" | ")}`);
+    if (asset !== "SKR" && !r.sim.ok) throw new Error(`simulation: ${JSON.stringify(r.sim.err)} ${r.sim.logs.slice(-2).join(" | ")}`);
     return r;
   }).catch(async (e: unknown) => {
-    // Plan v2 (audits/ore-plan, finding 4): an ORE leg that will not build or simulate must not freeze the wallet (the picker
-    // would choose stORE again tomorrow) nor count toward the outage stop: plant SKR today and say so.
-    if (asset !== "stORE") throw e;
-    console.error(`stORE leg for ${w.pubkey} failed (${message(e)}); planting SKR instead`);
-    await a.repo.addEvent({ userPubkey: w.userPubkey, walletPubkey: w.pubkey, kind: "store_fallback", detail: { err: message(e) } });
+    // A non-SKR leg that will not build or simulate must not freeze the wallet (the picker would choose it again tomorrow) nor
+    // count toward the outage stop: plant SKR today and say which coin fell back (spec 7.3; the ORE plan's finding 4, generalised).
+    if (asset === "SKR") throw e;
+    console.error(`${asset} leg for ${w.pubkey} failed (${message(e)}); planting SKR instead`);
+    await a.repo.addEvent({ userPubkey: w.userPubkey, walletPubkey: w.pubkey, kind: "leg_fallback", detail: { asset, err: message(e) } });
     asset = "SKR";
     return attempt(asset);
   });
@@ -197,9 +198,11 @@ async function plantOneOrThrow(a: { repo: Repo; now: Date; chain: Chain }, w: Wa
   // Record the signed transaction before it goes anywhere, then claim the round-ups in one conditional statement (review C1).
   // The share count right before the send: after confirmation the difference is what this planting minted [A16].
   const sharesBefore = await a.chain.readShares(w.userPubkey);
+  // The coin's rate on the day it was planted, for "earned" per coin (spec 7.6); null before the first snapshot.
+  const rateAtPlanting = (await a.repo.getCoinDay(dayOf(a.now), asset))?.rate ?? null;
   const planting = await a.repo.insertPlanting(
     { userPubkey: w.userPubkey, walletPubkey: w.pubkey, signature: built.signature, usdcPulledCents: amount.pullCents, networkFeeCents: NETWORK_FEE_CENTS, status: "sent", aiLine: null, sharesBefore, ts: a.now },
-    [{ asset, usdcInCents: amount.changeCents, amountOutRaw: built.minOutRaw, staked: asset === "SKR", feeAmountRaw: (built.expectedOutRaw * BigInt(FEE_BPS)) / 10_000n }],
+    [{ asset, usdcInCents: amount.changeCents, amountOutRaw: built.minOutRaw, staked: asset === "SKR", feeAmountRaw: 0n, feeCents: Math.round((amount.pullCents * FEE_BPS) / 10_000), rateAtPlanting }],
   );
   const claimed = await a.repo.claimSwaps(swaps.map((s) => s.signature), planting.id);
   if (claimed !== swaps.length) {
