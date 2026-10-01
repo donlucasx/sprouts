@@ -21,10 +21,11 @@ const DISCLOSURES: [string, string][] = [
   ["How Sprouts holds your money.", "It does not. Your SKR is staked in Solana Mobile's staking program under your Seeker's key; only that key can unstake it, with your fingerprint. Your linked wallets grant Sprouts' puller key an allowance of at most your daily limit in USDC, revocable on chain at any time. The puller holds your change for one transaction: pull, swap, stake. It keeps nothing beyond the disclosed fee and the slippage remainder. Sprouts pays the rent of your staking position, about $0.25, on your first planting."],
   ["What \"earned\" means.", "Rewards are paid by the staking program every two days into the share price. Sprouts draws what the program shows and nothing else; a fruit is earned SKR since you joined, in SKR, with today's dollar value beside it. The dollar value of your garden moves with the price of SKR and can be lower than what you put in."],
   ["Watering.", "Watering moves no money and signs nothing. It opens new growth on the screen."],
-  ["Fees.", "Sprouts takes 0.5% of the SKR bought at each planting, inside the swap, and passes through the network fee (about $0.03). The remainder of a swap's slippage (cents) stays with Sprouts. Both are on every receipt."],
+  ["Fees.", "Sprouts takes 0.5% of each planting, in USDC, inside the swap, and passes through the network fee (about $0.03). The remainder of a swap's slippage (cents) stays with Sprouts. Both are on every receipt."],
   ["Signed in.", "Signing in keeps you signed in for seven days on this phone; sign out ends it at once. Raising your daily limit or resuming a wallet asks your Seeker for a fresh fingerprint."],
   ["ORE, if you choose it.", ORE_DISCLOSURE],
-  ["Not advice.", "Sprouts is not tax advice and not investment advice. It never sets or changes an amount without your confirmation. The tax export is a record, not a filing."],
+  ["Coins the Yield Manager can buy.", "hSOL, JitoSOL and JupSOL are SOL staked with Helius, Jito and Jupiter; their value moves with SOL. cbBTC is bitcoin held by Coinbase; its value moves with bitcoin. All four sit in your Seeker wallet, not locked, and you can move them from any Solana wallet; Sprouts cannot sell or withdraw them for you, and pays each coin's one-time account rent. The list is fixed in code; nothing else can be bought."],
+  ["Not advice.", "Sprouts is not tax advice and not investment advice. The Yield Manager, if you turn it on, chooses how new round-ups are split across six coins inside limits you set and limits in code. It never sets the amount, never sells anything you hold, and every change it makes shows in Activity with an undo. The tax export is a record, not a filing."],
 ];
 
 export default function Settings() {
@@ -66,8 +67,6 @@ export default function Settings() {
       </Card>
       <Card>
         <Text style={{ fontSize: 17, fontWeight: "600", color: "#2B2B2B" }}>Export for taxes</Text>
-        <P>{"Coming in this build's next update."}</P>
-        <Text style={{ fontSize: 17, fontWeight: "600", color: "#2B2B2B", marginTop: 8 }}>Pro</Text>
         <P>{"Coming in this build's next update."}</P>
       </Card>
       <Card>
