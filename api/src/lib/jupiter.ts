@@ -13,7 +13,7 @@ export type SwapInstructionsResponse = {
   addressLookupTableAddresses: string[];
 };
 
-export type Quote = { inAmount: string; outAmount: string; otherAmountThreshold: string; routePlan: unknown[] };
+export type Quote = { inputMint: string; outputMint: string; inAmount: string; outAmount: string; otherAmountThreshold: string; priceImpactPct: string; routePlan: unknown[] };
 
 function headers(): Record<string, string> {
   return { "x-api-key": config().jupiterApiKey, "content-type": "application/json" };
@@ -70,6 +70,12 @@ export function checkSwapInstructions(p: ParsedSwap, a: { puller: string; feeAcc
   if (a.destination && !swapAccounts.has(a.destination)) throw new Error("Jupiter response refused: the destination account is missing from the swap");
 }
 
+/** The quote's mints against the registry's (spec 7.3): the only place a wrong coin could enter is Jupiter's answer, so it is checked before anything is signed. */
+export function checkQuoteMints(q: Quote, expect: { inputMint: string; outputMint: string }): void {
+  if (q.inputMint !== expect.inputMint) throw new Error(`Jupiter quote refused: input mint ${q.inputMint} is not ${expect.inputMint}`);
+  if (q.outputMint !== expect.outputMint) throw new Error(`Jupiter quote refused: output mint ${q.outputMint} is not ${expect.outputMint}`);
+}
+
 export function parseSwapInstructions(r: SwapInstructionsResponse) {
   return {
     computeBudget: r.computeBudgetInstructions.map(toKitInstruction),
@@ -119,4 +125,20 @@ export async function priceUsd(mint: string): Promise<number | null> {
   } catch {
     return null;
   }
+}
+
+export type PriceInfo = { usdPrice: number; liquidity: number | null; priceChange24h: number | null; decimals: number | null };
+
+/** Several mints' prices in one call (the daily snapshot, spec 5.2); a mint the API does not know is simply absent. Throws on a failed call so the snapshot marks the day. */
+export async function pricesUsd(mints: string[]): Promise<Record<string, PriceInfo>> {
+  const res = await fetch(`${BASE}/price/v3?ids=${mints.join(",")}`, { headers: headers() });
+  if (!res.ok) throw new Error(`Jupiter price failed: ${res.status}`);
+  const j = (await res.json()) as Record<string, { usdPrice?: number; liquidity?: number; priceChange24h?: number; decimals?: number } | undefined>;
+  const out: Record<string, PriceInfo> = {};
+  for (const m of mints) {
+    const p = j[m];
+    if (!p || typeof p.usdPrice !== "number" || p.usdPrice <= 0) continue;
+    out[m] = { usdPrice: p.usdPrice, liquidity: typeof p.liquidity === "number" ? p.liquidity : null, priceChange24h: typeof p.priceChange24h === "number" ? p.priceChange24h : null, decimals: typeof p.decimals === "number" ? p.decimals : null };
+  }
+  return out;
 }

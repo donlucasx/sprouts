@@ -1,6 +1,6 @@
 // Spike 3b: one real ten-cent planting from the throwaway wallet into a Seeker's SKR position: pull, swap, stake in one transaction.
 // Simulates first and aborts on any error. The only "send" in Plan 1 besides Spike 3a.
-// Run from api/: pnpm tsx --env-file=.env.local spikes/plant-once.ts <seed vault address or name.skr> [SKR|stORE] [usdc amount, default 0.10] [--send]
+// Run from api/: pnpm tsx --env-file=.env.local spikes/plant-once.ts <seed vault address or name.skr> [SKR|stORE|hSOL|JitoSOL|JupSOL|cbBTC] [usdc amount, default 0.10] [--send]
 // The pull must fit the delegation's daily allowance (5 USD per period); the delegation state is printed before building.
 import { address, createKeyPairSignerFromPrivateKeyBytes } from "@solana/kit";
 import { readFileSync } from "node:fs";
@@ -10,6 +10,7 @@ import { config } from "../src/lib/config";
 import { delegationPda, readDelegation } from "../src/lib/subscriptions";
 import { buildPlantingTx, simulatePlanting, sendPlanting } from "../src/lib/planting";
 import { readPosition } from "../src/lib/staking";
+import { isAsset, type Asset } from "../src/domain/coins";
 import { getBase64EncodedWireTransaction } from "@solana/kit";
 
 /** A Seed Vault address, or a .skr name resolved through AllDomains to its owner. */
@@ -24,7 +25,7 @@ async function seedVaultFrom(arg: string) {
 
 const args = process.argv.slice(2).filter((a) => !a.startsWith("--"));
 const user = await seedVaultFrom(args[0] ?? "");
-const asset = (args[1] === "stORE" ? "stORE" : "SKR") as "SKR" | "stORE";
+const asset: Asset = isAsset(args[1] ?? "") ? (args[1] as Asset) : "SKR";
 const usdc = Number(args[2] ?? "0.10");
 const pullRaw = BigInt(Math.round(usdc * 1_000_000));
 const doSend = process.argv.includes("--send");
