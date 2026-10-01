@@ -1,5 +1,11 @@
-/** Decimals per asset, from each mint (stORE read on chain 2026-09-29: 11, not 9). Every raw amount crosses this table. */
-export const DECIMALS = { SKR: 6, stORE: 11 } as const;
+import { type Asset, type Holding } from "./api";
+
+/** Display decimals per coin (the mints', read on chain; stORE is 11, not 9). Never money math: the API computes, the app formats. */
+export const DECIMALS: Record<Asset, number> = { SKR: 6, stORE: 11, hSOL: 9, JitoSOL: 9, JupSOL: 9, cbBTC: 8 };
+export const COIN_NAME: Record<Asset, string> = { SKR: "SKR", stORE: "stORE", hSOL: "hSOL", JitoSOL: "JitoSOL", JupSOL: "JupSOL", cbBTC: "cbBTC" };
+/** Places shown per coin. */
+const SHOWN: Record<Asset, number> = { SKR: 2, stORE: 4, hSOL: 4, JitoSOL: 4, JupSOL: 4, cbBTC: 6 };
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const SKR_DECIMALS = DECIMALS.SKR;
 
 export function formatUsd(cents: number): string {
@@ -30,14 +36,36 @@ export function formatStore(raw: bigint, storeUsd: number | null): string {
   return `${store} (${formatUsd(cents)})`;
 }
 
-/** One amount in its own coin, dollars beside it: the receipt, Activity and the notification all say it this way. */
-export function formatAmount(asset: "SKR" | "stORE", raw: bigint, usd: number | null): string {
-  return asset === "SKR" ? formatSkr(raw, usd) : formatStore(raw, usd);
+/** A coin amount with its dollar value beside it when a price is known. SKR and stORE keep their own formatters. */
+export function formatAmount(asset: Asset, raw: bigint, usd: number | null): string {
+  if (asset === "SKR") return formatSkr(raw, usd);
+  if (asset === "stORE") return formatStore(raw, usd);
+  const amount = Number(raw) / 10 ** DECIMALS[asset];
+  const text = `${amount.toFixed(SHOWN[asset])} ${COIN_NAME[asset]}`;
+  return usd === null ? text : `${text} (${formatUsd(Math.round(amount * usd * 100))})`;
 }
 
-/** The line under the fence (audits/ore-plan, finding 9): the picker splits money delivered, not plantings counted. */
-export function oreShareLine(share: number): string {
-  return share === 0 ? "Every planting grows SKR." : `About ${share} cents of every dollar grows ORE.`;
+/** The line under a pin (the ORE plan's finding 9, generalised): what a share of each dollar grows. */
+export function shareLine(asset: Asset, pct: number): string {
+  if (pct <= 0) return "Every planting grows SKR.";
+  return `About ${pct} cents of every dollar grows ${COIN_NAME[asset]}.`;
+}
+/** Kept for the summary sentence until Task 3 rewrites it. */
+export const oreShareLine = (share: number) => shareLine("stORE", share);
+
+/** Home's line per held coin (spec 3.3): the amount with its value, earned when the coin has a measured rate, and where it sits. */
+export function formatHolding(h: Holding): string {
+  const raw = BigInt(h.heldRaw);
+  const amount = Number(raw) / 10 ** DECIMALS[h.asset];
+  const value = h.valueUsd === null ? "" : ` (${formatUsd(Math.round(h.valueUsd * 100))})`;
+  const earned = h.earnedUsd === null ? "" : `, earned ${formatUsd(Math.round(h.earnedUsd * 100))}`;
+  return `${amount.toFixed(SHOWN[h.asset])} ${COIN_NAME[h.asset]}${value}${earned}, in your Seeker wallet, not locked. Sprouts cannot sell it for you.`;
+}
+
+/** A UTC `YYYY-MM-DD` as "Mon D", read as given: the API's day is the day, whatever the phone's zone. */
+export function dayLabel(day: string): string {
+  const [, m, d] = day.split("-");
+  return `${MONTHS[Number(m) - 1]} ${Number(d)}`;
 }
 
 function timeOf(d: Date): string {
