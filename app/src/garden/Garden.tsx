@@ -2,10 +2,9 @@ import { useEffect, type ReactNode } from "react";
 import { View, useWindowDimensions } from "react-native";
 import Svg, { G, Circle, Path, Defs, ClipPath } from "react-native-svg";
 import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withSequence, withTiming, withDelay, Easing } from "react-native-reanimated";
-import type { Scene, Part } from "@/model/garden";
+import type { Scene, Part, PlantId } from "@/model/garden";
 import { soilSurface, SOIL_PATH } from "@/model/soil";
 import { Soil, Stem, Shoot, Forming, Transplant, Fruit, Ripening, Pup, Basket, WetSpot, INK, GREEN, ripeningRadius } from "./parts";
-import { PLANT_X } from "@/model/garden";
 import { nodeRise, stemRise, side, leafSize, pupOffset, PUP_R, TRANSPLANT_BASE } from "@/model/plant-geometry";
 
 const HEIGHT = 260;
@@ -67,8 +66,11 @@ export function Garden({ scene, justOpened }: { scene: Scene; justOpened: Set<st
   const basket = scene.parts.find((p): p is Extract<Part, { kind: "basket" }> => p.kind === "basket");
   const transplant = scene.parts.some((p) => p.kind === "transplant");
   // R89: each coin's one plant, its plantings stacked up its stem (plant-geometry.ts, shared with the widget).
-  const plantOf = (c: "skr" | "ore") => plants.find((p) => p.plant === c)!;
-  const base = (c: "skr" | "ore") => (c === "skr" && transplant ? TRANSPLANT_BASE : 0);
+  const plantOf = (c: PlantId) => plants.find((p) => p.plant === c)!;
+  const base = (c: PlantId) => (c === "skr" && transplant ? TRANSPLANT_BASE : 0);
+  // The plants' x come from the scene (plantX, garden.ts); the pups and the transplant read theirs from the ore and skr plant parts.
+  const oreX = (scene.parts.find((p) => p.kind === "plant" && p.plant === "ore") as { x: number } | undefined)?.x ?? 0.64;
+  const skrX = (scene.parts.find((p) => p.kind === "plant" && p.plant === "skr") as { x: number } | undefined)?.x ?? 0.4;
   const node = (s: Extract<Part, { kind: "sprout" }>) => {
     const p = plantOf(s.plant);
     return { x: p.x * w, y: ground(p.x) - nodeRise(s.y, p.shoots, base(s.plant)) };
@@ -86,7 +88,7 @@ export function Garden({ scene, justOpened }: { scene: Scene; justOpened: Set<st
   // ORE pups sit on the soil at the succulent's foot, touching it (plant-geometry.ts); the next one forms in the slot after the
   // last pup, seated on the surface with a pixel sunk in.
   const pupAt = (index: number, r: number) => {
-    const px = PLANT_X.ore * w + pupOffset(index, r);
+    const px = oreX * w + pupOffset(index, r);
     return { x: px, y: ground(px / w) - r + 1 };
   };
   let order = 0;
@@ -112,7 +114,7 @@ export function Garden({ scene, justOpened }: { scene: Scene; justOpened: Set<st
         {basket ? <G x={w - 40} y={soilY + 30}><Basket /></G> : null}
       </Svg>
       {transplant ? (
-        <Bloom order={0} active={false} x={PLANT_X.skr * w - 40} y={ground(PLANT_X.skr) - 80} w={80} h={80}>
+        <Bloom order={0} active={false} x={skrX * w - 40} y={ground(skrX) - 80} w={80} h={80}>
           <Sway seed={3} w={80} h={80}><Transplant /></Sway>
         </Bloom>
       ) : null}

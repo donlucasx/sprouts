@@ -4,7 +4,7 @@ import type { MeResponse } from "@/lib/api";
 import { buildScene } from "@/model/garden";
 import { widgetGardenSvg } from "@/model/widget-svg";
 import { toGardenInput } from "@/lib/garden-input";
-import { formatSkr, formatUsd } from "@/lib/format";
+import { formatAmount, formatSkr, formatUsd } from "@/lib/format";
 
 /** The home-screen widget, drawn from the last verified read (never a network call of its own): the garden, the pot, next planting. */
 const PAD = 10;
@@ -29,7 +29,7 @@ export function SproutsWidget({ me, width, height, wide }: { me: MeResponse | nu
       <TextWidget text={formatSkr(BigInt(me.pot.skrStakedRaw), me.pot.skrUsd)} style={{ fontSize: 16, color: "#2B2B2B", fontWeight: "600" }} />
       <TextWidget text={`Next planting ${formatUsd(me.nextPlanting.pendingCents)} of ${formatUsd(me.nextPlanting.thresholdCents)}`} style={{ fontSize: 12, color: "#6B6558" }} />
       {showLast && me.lastReceipt ? (
-        <TextWidget text={`Last planting ${formatUsd(me.lastReceipt.usdcPulledCents)} pulled, ${formatSkr(BigInt(me.lastReceipt.amountOutRaw), me.pot.skrUsd)} planted`} style={{ fontSize: 12, color: "#6B6558" }} />
+        <TextWidget text={`Last planting ${formatUsd(me.lastReceipt.usdcPulledCents)} pulled, ${formatAmount(me.lastReceipt.asset, BigInt(me.lastReceipt.amountOutRaw), me.lastReceipt.usdPrice)} planted`} style={{ fontSize: 12, color: "#6B6558" }} />
       ) : null}
     </FlexWidget>
   );

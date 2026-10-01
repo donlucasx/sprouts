@@ -2,7 +2,16 @@ import { describe, it, expect } from "vitest";
 import { widgetGardenSvg, WIDGET_SOIL_BAND } from "@/model/widget-svg";
 import { soilSurface } from "@/model/soil";
 import { MAX_RISE, nodeRise } from "@/model/plant-geometry";
-import type { Scene } from "@/model/garden";
+import { buildScene, type GardenInput, type Scene } from "@/model/garden";
+import type { Asset } from "@/lib/coins";
+
+const NOW = new Date("2026-10-04T12:00:00-07:00");
+const base: GardenInput = {
+  now: NOW, wateredAt: null, plantings: [], picks: [], skrPutInRaw: 0n, skrEarnedRaw: 0n, skrFruit: 0, skrNextFruitProgress: 0,
+  skrPickedRaw: 0n, skrPrincipalPickedRaw: 0n, pendingCents: 0, thresholdCents: 200,
+  storePutInRaw: 0n, storePups: 0, storeNextPupProgress: 0, joinedValueRaw: 0n, basket: null,
+};
+const planting = (id: string, daysAgo: number, raw: bigint, asset: Asset = "SKR") => ({ id, ts: new Date(NOW.getTime() - daysAgo * 86_400_000), asset, amountOutRaw: raw });
 
 // The 09-29 Saga check: the widget drew a fixed 90-high garden with no seeds in a much taller widget, and its parts stood on a
 // flat line above the mound. The garden now fills the height it is given and every part stands on the mound.
@@ -50,5 +59,20 @@ describe("widgetGardenSvg", () => {
     const nodeY = foot - nodeRise(0, 2) * k;
     expect(fruit.x).toBeCloseTo(120 + 6, 1);   // slot 0's leaf is on the left, so the fruit hangs right
     expect(fruit.y).toBeCloseTo(nodeY + 4, 1);
+  });
+
+  // Review Focus 4: six plants fit the widget's narrowest size without overlapping stems (Ruling P3: the stems are paths, read by data-plant).
+  it("draws one stem per plant for six plants inside 160 px, each at its own x", () => {
+    const scene = buildScene({
+      ...base, wateredAt: NOW,
+      plantings: [planting("a", 5, 1n, "SKR"), planting("b", 4, 1n, "stORE"), planting("c", 3, 1n, "hSOL"), planting("d", 2, 1n, "JitoSOL"), planting("e", 1, 1n, "JupSOL"), planting("f", 1, 1n, "cbBTC")],
+    });
+    const svg = widgetGardenSvg(scene, 160, 90);
+    const stems = svg.match(/<path[^>]*data-plant="[a-z]+"/g) ?? [];
+    expect(stems.length).toBe(6);
+    const xs = stems.map((s) => Number(/d="M([\d.]+)/.exec(s)?.[1]));
+    expect(new Set(xs.map((x) => Math.round(x))).size).toBe(6);
+    expect(Math.min(...xs)).toBeGreaterThan(8);
+    expect(Math.max(...xs)).toBeLessThan(152);
   });
 });
