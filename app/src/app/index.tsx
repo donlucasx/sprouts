@@ -23,7 +23,7 @@ export default function Welcome() {
   return (
     <Screen>
       <Text style={{ fontSize: 34, fontStyle: "italic", fontFamily: "serif", color: "#2F5D3A", marginTop: 60 }}>Sprouts</Text>
-      <Text style={{ fontSize: 20, lineHeight: 28, color: "#2B2B2B" }}>Every swap rounds up. The change buys SKR and stakes it. Only your Seeker can open it.</Text>
+      <Text style={{ fontSize: 20, lineHeight: 28, color: "#2B2B2B" }}>A Yield Manager that rounds up your swaps and grows the change while you trade. SKR first, locked to your Seeker.</Text>
       <Button
         title={busy ? "Waiting for your Seeker" : "Sign in with your Seeker"}
         disabled={busy}
