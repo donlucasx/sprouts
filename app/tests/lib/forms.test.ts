@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { amountProblem, maxAmountText, rulesChanges } from "@/lib/forms";
-import type { Stop } from "@/lib/api";
+import type { Pins, Stop } from "@/lib/api";
 
 // 09-29 Saga check: Continue stayed grey with no reason; the limits mirror the server's planPick (1 SKR minimum, the garden maximum).
 describe("amountProblem", () => {
@@ -44,7 +44,7 @@ describe("rulesChanges", () => {
   });
   // Review Focus 1: a draft that restates the saved pins is no change.
   it("compares pins by value: no pins change, no patch; a changed pin is the whole pins object", () => {
-    const saved = { dailyCapCents: 500, managed: false, stop: "balanced" as Stop, pins: { stORE: 50 } };
+    const saved = { dailyCapCents: 500, managed: false, stop: "balanced" as Stop, pins: { stORE: 50 } as Pins };
     expect(rulesChanges(saved, { pins: { stORE: 50 } })).toEqual({ patch: {}, raises: false });
     expect(rulesChanges(saved, { pins: { stORE: 50, hSOL: 20 } })).toEqual({ patch: { pins: { stORE: 50, hSOL: 20 } }, raises: false });
     expect(rulesChanges(saved, { managed: true, stop: "bold" })).toEqual({ patch: { managed: true, stop: "bold" }, raises: false });
