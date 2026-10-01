@@ -6,7 +6,7 @@ import { siteMetadata } from "@/app/metadata";
 describe("site metadata", () => {
   it("names Sprouts, not the template", () => {
     expect(siteMetadata.title).toBe("Sprouts");
-    expect(String(siteMetadata.description)).toMatch(/rounds up/);
+    expect(String(siteMetadata.description)).toBe("A Yield Manager that rounds up your swaps and grows the change while you trade. SKR first, locked to your Seeker.");
     expect(JSON.stringify(siteMetadata)).not.toMatch(/Create Next App|create next app/);
   });
 });

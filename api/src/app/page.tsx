@@ -14,7 +14,7 @@ export default async function Home() {
   return (
     <main style={{ fontFamily: "system-ui, sans-serif", maxWidth: 640, margin: "8vh auto", padding: "0 24px", lineHeight: 1.55 }}>
       <h1 style={{ fontSize: 28, marginBottom: 8 }}>Sprouts</h1>
-      <p>Every swap rounds up. The change buys SKR and stakes it, into a garden only your phone&apos;s Seed Vault can open.</p>
+      <p>A Yield Manager that rounds up your swaps and grows the change while you trade. SKR first, locked to your Seeker.</p>
       <p>
         An Android app for the Solana Seeker, built for the CLOCK IN hackathon. You approve once per trading wallet; after that a daily
         job pulls at most your daily limit in USDC, swaps it to SKR through Jupiter and stakes it to your Seed Vault key, in one
