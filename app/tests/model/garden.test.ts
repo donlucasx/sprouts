@@ -245,3 +245,16 @@ describe("pupLadder", () => {
   });
   it("is nothing when nothing was put in", () => expect(pupLadder(1, 0)).toEqual({ count: 0, progress: 0 }));
 });
+
+// Review fix: ORE pups wait for the watering like the fruit; no open ORE shoot, no pups and no ripening pup.
+describe("ORE pups wait for an open ORE shoot", () => {
+  const ore = (s: ReturnType<typeof buildScene>) => s.parts.filter((p) => (p.kind === "fruit" || p.kind === "ripening") && p.plant === "ore");
+  it("a closed ORE bud hides the pups; once watered they show", () => {
+    const watered = new Date(NOW.getTime() - 3 * 86_400_000);
+    const closed = buildScene({ ...base, wateredAt: watered, plantings: [planting("o", 1, 1n, "stORE")], storePups: 2, storePutInRaw: 1n });
+    expect(ore(closed).length).toBe(0);
+    const open = buildScene({ ...base, wateredAt: NOW, plantings: [planting("o", 1, 1n, "stORE")], storePups: 2, storePutInRaw: 1n });
+    expect(open.parts.filter((p) => p.kind === "fruit" && p.plant === "ore").length).toBe(2);
+    expect(open.parts.filter((p) => p.kind === "ripening" && p.plant === "ore").length).toBe(1);
+  });
+});
