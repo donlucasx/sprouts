@@ -169,14 +169,15 @@ export function fallbackSplit(a: { stop: Stop; growth: Partial<Record<Asset, num
   return clampSplit({ stop: a.stop, proposed: x, noData: a.noData, yesterday: a.yesterday }) ?? base;
 }
 
-const ADVICE = /\b(should|buy|sell|recommend|advice)\b/i;
-const PERSONA = /\b(I|we|the watcher)\b/;
+const ADVICE = /\b(should|buy|sell|recommend|advice|advise|portfolio|boost)\b/i;
+const PERSONA = /\b(I|we|the watcher)\b/i;
+const BANNED_GLYPHS = /\u2014|\p{Extended_Pictographic}/u;
 
 /** The model's one line, or null (spec 6.4): stripped of URLs, under 140 characters, no exclamation marks, no persona or advice words, every number in the facts. */
 export function checkWhy(line: string, facts: number[]): string | null {
   const s = line.replace(/https?:\/\/\S+/g, "").replace(/\s+/g, " ").trim();
   if (!s || s.length > 140 || s.includes("!")) return null;
-  if (ADVICE.test(s) || PERSONA.test(s)) return null;
+  if (ADVICE.test(s) || PERSONA.test(s) || BANNED_GLYPHS.test(s)) return null;
   const table = new Set(facts.map((n) => Math.round(n * 10) / 10));
   for (const n of s.match(/-?\d+(?:\.\d+)?/g) ?? []) if (!table.has(Math.round(Number(n) * 10) / 10)) return null;
   return s;
