@@ -85,6 +85,15 @@ describe("effectiveSplit (spec 4.3)", () => {
     expect(sum(s)).toBe(100);
     for (const a of ASSETS) if (a !== "SKR") expect(s[a]).toBeLessThanOrEqual(STOPS.careful.max[a]);
   });
+  it("a pinned SKR is a floor: what the free coins cannot hold goes to SKR, not all of the rest", () => {
+    const s = effectiveSplit({ managed: true, stop: "careful", pins: { SKR: 50, stORE: 0, cbBTC: 0 }, stopSplit: STOP_DEFAULTS.careful });
+    expect(s).toEqual({ SKR: 55, hSOL: 15, JitoSOL: 15, JupSOL: 15, stORE: 0, cbBTC: 0 });
+  });
+  it("a pinned SKR the free coins can fill around stays exactly at its pin (positive control)", () => {
+    const s = effectiveSplit({ managed: true, stop: "balanced", pins: { SKR: 40 }, stopSplit: BAL });
+    expect(s.SKR).toBe(40);
+    expect(sum(s)).toBe(100);
+  });
   it("always sums to 100 over a sweep of pins and stops", () => {
     for (const stop of ["careful", "balanced", "bold"] as const) {
       for (const c of [0, 5, 10, 25]) for (const h of [0, 15, 30]) {

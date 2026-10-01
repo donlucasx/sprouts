@@ -35,7 +35,10 @@ export async function snapshotCoins(a: { repo: Repo; now: Date; reads: CoinReads
     console.error(`snapshot: prices failed: ${msg(e)}`);
     return {} as Record<string, PriceInfo>;
   });
-  const epoch = await a.reads.currentEpoch().catch(() => null);
+  const epoch = await a.reads.currentEpoch().catch((e) => {
+    console.error(`snapshot: epoch read failed: ${msg(e)}`);
+    return null;
+  });
   const rows: CoinDayRow[] = [];
   for (const asset of ASSETS) {
     const row: CoinDayRow = { day, asset, rate: null, ratePrev: null, ratePrevDays: null, priceUsd: null, liquidityUsd: null, priceChange24h: null, tradeable: false, lastUpdateEpoch: null, ok: false };

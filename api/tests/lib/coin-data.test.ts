@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { MemoryRepo } from "@/db/memory";
 import type { CoinDayRow } from "@/db/types";
 import { snapshotCoins, growth, priceChange, type CoinReads } from "@/lib/coin-data";
@@ -61,6 +61,16 @@ describe("snapshotCoins (spec 5.2)", () => {
     expect(by.cbBTC.ok).toBe(true);
   });
 
+  it("a failed epoch read is logged, not swallowed, and the snapshot still lands", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const rows = await snapshotCoins({ repo: new MemoryRepo(), now: NOW, reads: fakeReads({ currentEpoch: async () => { throw new Error("rpc down"); } }) });
+      expect(rows.length).toBe(6);
+      expect(spy.mock.calls.some((c) => /snapshot: epoch read failed: rpc down/.test(String(c[0])))).toBe(true);
+    } finally {
+      spy.mockRestore();
+    }
+  });
   it("a failed price call leaves prices null but the rates still land", async () => {
     const repo = new MemoryRepo();
     const rows = await snapshotCoins({ repo, now: NOW, reads: fakeReads({ prices: async () => { throw new Error("429"); } }) });

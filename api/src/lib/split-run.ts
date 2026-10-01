@@ -92,7 +92,9 @@ export async function decideSplits(a: { repo: Repo; now: Date; model: ModelCall 
   const day = dayOf(a.now);
   const facts = await readFacts(a.repo, day);
   const noData = facts.filter((f) => f.noData).map((f) => f.asset);
-  const growthMap: Partial<Record<Asset, number | null>> = Object.fromEntries(facts.map((f) => [f.asset, f.growthPct]));
+  // A coin with no measured span (cbBTC's constant 0, a collecting coin) is not a measured growth: the fallback skips it (spec 6.5).
+  const growthMap: Partial<Record<Asset, number | null>> = Object.fromEntries(facts.map((f) => [f.asset, f.days > 0 ? f.growthPct : null]));
+  const allNoData = facts.every((f) => f.asset === "SKR" || f.noData);
   const monthStart = new Date(Date.UTC(a.now.getUTCFullYear(), a.now.getUTCMonth(), 1));
   const overBudget = (await a.repo.watcherSpendMicrocents(monthStart)) >= MONTH_CAP_MICROCENTS;
   const out: SplitDayRow[] = [];
@@ -108,9 +110,13 @@ export async function decideSplits(a: { repo: Repo; now: Date; model: ModelCall 
       row.split = fallbackSplit({ stop, growth: growthMap, noData, yesterday });
       row.fallback = reason;
     };
-    if (!a.model) byRule("model");
+    if (allNoData) {
+      // Spec 5.5: every coin failed, so yesterday's split stands whatever the model's state (no clamp: the clamp would zero
+      // every no-data coin, and the move limit would then hold each coin to 10 points a day on the way back).
+      row.split = yesterday ?? STOP_DEFAULTS[stop];
+      row.fallback = "no data";
+    } else if (!a.model) byRule("model");
     else if (overBudget) byRule("budget");
-    else if (facts.every((f) => f.noData || f.asset === "SKR") && facts.filter((f) => f.asset !== "SKR").every((f) => f.noData)) byRule("no data");
     else {
       let raw: { input: unknown; usage: Usage } | null = null;
       try {

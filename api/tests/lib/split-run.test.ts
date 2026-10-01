@@ -112,6 +112,35 @@ describe("decideSplits (spec 6.2 to 6.5)", () => {
     expect(rows.every((r) => r.split.JupSOL === 0)).toBe(true);
   });
 
+  it("an every-coin-no-data day holds yesterday's split as no data and calls no model (spec 5.5)", async () => {
+    const repo = await seededRepo();
+    const prior = split({ SKR: 50, hSOL: 20, JitoSOL: 10, JupSOL: 10, cbBTC: 10 });
+    await repo.putSplitDay({ day: "2026-10-01", stop: "balanced", split: prior, modelAnswer: null, why: null, fallback: null, callId: null });
+    for (const a of ["stORE", "hSOL", "JitoSOL", "JupSOL", "cbBTC"] as const) await repo.putCoinDay(day(a, DAY, null, { ok: false, tradeable: false }));
+    let calls = 0;
+    const rows = await decideSplits({ repo, now: NOW, model: async () => { calls++; return { input: good, usage: { inputTokens: 1, outputTokens: 1 } }; } });
+    expect(calls).toBe(0);
+    expect(rows.every((r) => r.fallback === "no data")).toBe(true);
+    expect(rows[1].split).toEqual(prior);                          // yesterday stands
+    expect(rows[0].split).toEqual(STOP_DEFAULTS.careful);          // no yesterday: the stop default
+    const repo2 = await seededRepo();                                // no model key: the same day still holds, as no data
+    await repo2.putSplitDay({ day: "2026-10-01", stop: "balanced", split: prior, modelAnswer: null, why: null, fallback: null, callId: null });
+    for (const a of ["stORE", "hSOL", "JitoSOL", "JupSOL", "cbBTC"] as const) await repo2.putCoinDay(day(a, DAY, null, { ok: false, tradeable: false }));
+    const keyless = await decideSplits({ repo: repo2, now: NOW, model: null });
+    expect(keyless.every((r) => r.fallback === "no data")).toBe(true);
+    expect(keyless[1].split).toEqual(prior);
+  });
+
+  it("a fallback day skips coins with no measured span: cbBTC's 0 is not a measured growth (spec 6.5)", async () => {
+    const repo = await seededRepo();
+    for (const a of ["hSOL", "JitoSOL", "JupSOL"] as const) await repo.putCoinDay(day(a, DAY, null, { ok: false, tradeable: false }));
+    const [careful] = await decideSplits({ repo, now: NOW, model: null });
+    expect(careful.fallback).toBe("model");
+    expect(careful.split.cbBTC).toBe(0);
+    expect(careful.split.stORE).toBe(5);
+    expect(sum(careful.split)).toBe(100);
+  });
+
   it("the month's budget gone means every stop falls back as budget", async () => {
     const repo = await seededRepo();
     await repo.addWatcherCall({ userPubkey: "U", kind: "compile", inputTokens: 0, outputTokens: 0, costMicrocents: 1_000_000_000, ts: NOW });

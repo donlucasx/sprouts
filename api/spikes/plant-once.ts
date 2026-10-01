@@ -25,7 +25,11 @@ async function seedVaultFrom(arg: string) {
 
 const args = process.argv.slice(2).filter((a) => !a.startsWith("--"));
 const user = await seedVaultFrom(args[0] ?? "");
-const asset: Asset = isAsset(args[1] ?? "") ? (args[1] as Asset) : "SKR";
+if (args[1] !== undefined && !isAsset(args[1])) {
+  console.log(`bad asset: ${args[1]}`);
+  process.exit(1);
+}
+const asset: Asset = (args[1] as Asset | undefined) ?? "SKR";
 const usdc = Number(args[2] ?? "0.10");
 const pullRaw = BigInt(Math.round(usdc * 1_000_000));
 const doSend = process.argv.includes("--send");

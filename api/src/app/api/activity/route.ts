@@ -28,7 +28,7 @@ export async function GET(request: Request) {
     swaps: swaps.map((s) => ({ signature: s.signature, ts: s.ts, walletPubkey: s.walletPubkey, usdSizeCents: s.usdSizeCents, class: s.class, roundupCents: s.roundupCents, plantingId: s.plantingId })),
     plantings: plantings.map((p, i) => ({
       id: p.id, ts: p.ts, status: p.status, signature: p.signature, usdcPulledCents: p.usdcPulledCents, networkFeeCents: p.networkFeeCents,
-      legs: legs[i].map((l) => ({ asset: l.asset, usdcInCents: l.usdcInCents, amountOutRaw: l.amountOutRaw, feeAmountRaw: l.feeAmountRaw })),
+      legs: legs[i].map((l) => ({ asset: l.asset, usdcInCents: l.usdcInCents, amountOutRaw: l.amountOutRaw, feeAmountRaw: l.feeAmountRaw, feeCents: l.feeCents })),
     })),
     withdrawals: withdrawals.map((w) => ({
       id: w.id, ts: w.unstakeTs, asset: w.asset, source: w.source, amountRaw: w.amountRaw, principalRaw: w.principalRaw,

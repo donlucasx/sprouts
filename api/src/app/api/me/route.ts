@@ -76,13 +76,13 @@ export async function GET(request: Request) {
     history: {
       plantings: plantings.map((p) => {
         const l = legs.find((x) => x.plantingId === p.id);
-        return { id: p.id, ts: p.ts, asset: l?.asset ?? "SKR", usdcInCents: l?.usdcInCents ?? 0, amountOutRaw: l?.amountOutRaw ?? 0n, signature: p.signature };
+        return { id: p.id, ts: p.ts, asset: l?.asset ?? "SKR", usdcInCents: l?.usdcInCents ?? 0, amountOutRaw: l?.amountOutRaw ?? 0n, feeCents: l?.feeCents ?? 0, signature: p.signature };
       }),
       picks: withdrawals.filter((w) => w.cancelSignature === null).map((w) => ({ ts: w.unstakeTs, asset: w.asset, amountRaw: w.amountRaw ?? 0n })),
     },
     nextPlanting: { pendingCents: pending, thresholdCents: rules.plantThresholdCents, capLeftCents: capLeft, asset: nextAsset },
     lastReceipt: last
-      ? { ts: last.ts, usdcPulledCents: last.usdcPulledCents, networkFeeCents: last.networkFeeCents, asset: lastAsset, amountOutRaw: lastLegs[0]?.amountOutRaw ?? 0n, signature: last.signature,
+      ? { ts: last.ts, usdcPulledCents: last.usdcPulledCents, networkFeeCents: last.networkFeeCents, asset: lastAsset, amountOutRaw: lastLegs[0]?.amountOutRaw ?? 0n, feeCents: lastLegs[0]?.feeCents ?? 0, signature: last.signature,
           usdPrice: lastAsset === "SKR" ? skrUsd : (days[lastAsset]?.priceUsd ?? (lastAsset === "stORE" ? storeUsd : null)) }
       : null,
     basket: pendingBasket

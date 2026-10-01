@@ -61,7 +61,10 @@ function roundTo100(x: Record<Asset, number>): Split {
   return out;
 }
 
-/** Clamp the free non-SKR coins to their bound and pour the excess into free coins with room, SKR last and unbounded. */
+/**
+ * Clamp the free non-SKR coins to their bound and pour the excess into free coins with room, SKR last and unbounded. SKR takes the
+ * leftover even when pinned: a pinned SKR is a floor, since SKR has no max (spec 4.3).
+ */
 function waterFill(x: Record<Asset, number>, free: Asset[], bound: (a: Asset) => number) {
   let excess = 0;
   for (const a of free) {
@@ -78,7 +81,7 @@ function waterFill(x: Record<Asset, number>, free: Asset[], bound: (a: Asset) =>
     excess -= pour;
     room = room.filter((a) => x[a] < bound(a) - 1e-9);
   }
-  if (excess > 1e-9 && free.includes("SKR")) x.SKR += excess;
+  if (excess > 1e-9) x.SKR += excess;
 }
 
 /** Take `deficit` from the largest donors first, never below `lower(a)`; returns what was taken. */
@@ -122,7 +125,7 @@ export function effectiveSplit(a: { managed: boolean; stop: Stop; pins: Pins; st
   if (free.includes("SKR") && x.SKR < floor) x.SKR += takeFrom(x, free.filter((c) => c !== "SKR"), floor - x.SKR, () => 0);
   const out = roundTo100(x);
   const total = ASSETS.reduce((s, c) => s + out[c], 0);
-  const ok = total === 100 && ASSETS.every((c) => out[c] >= 0 && out[c] <= bound(c)) && (!free.includes("SKR") || out.SKR >= floor) && pinned.every((c) => out[c] === a.pins[c]);
+  const ok = total === 100 && ASSETS.every((c) => out[c] >= 0 && out[c] <= bound(c)) && (!free.includes("SKR") || out.SKR >= floor) && pinned.every((c) => (c === "SKR" ? out.SKR >= a.pins.SKR! : out[c] === a.pins[c]));
   if (ok) return out;
   // Fallback: pins fixed, SKR takes the rest, unpinned non-SKR coins 0 (never discard a pin).
   const fb = zeroSplit();
@@ -143,6 +146,8 @@ export function clampSplit(a: { stop: Stop; proposed: Split; noData: Asset[]; ye
   const lower = (c: Asset) => (a.noData.includes(c) || !a.yesterday ? 0 : Math.max(0, a.yesterday[c] - MOVE_LIMIT));
   const x = { ...a.proposed } as Record<Asset, number>;
   for (const c of NON_SKR) x[c] = Math.min(upper(c), Math.max(lower(c), x[c]));
+  // What the clamp removes goes to SKR by design, not water-filled into other coins with room: the plan's deliberate
+  // simplification of spec 6.3 step 3 (ruling C). effectiveSplit water-fills; this does not, on purpose.
   x.SKR = 100 - NON_SKR.reduce((s, c) => s + x[c], 0);
   if (x.SKR < floor) x.SKR += takeFrom(x, [...NON_SKR], floor - x.SKR, lower);
   const out = roundTo100(x);
