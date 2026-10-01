@@ -1,9 +1,11 @@
 import type { MeResponse } from "./api";
-import type { GardenInput } from "@/model/garden";
+import { pupLadder, type GardenInput } from "@/model/garden";
 
 /** The API's numbers (decimal strings on the wire) into the model's input; the app never computes money itself. */
 export function toGardenInput(me: MeResponse, now: Date): GardenInput {
   const b = (s: string) => BigInt(s);
+  const store = me.holdings.find((h) => h.asset === "stORE");
+  const pups = store && store.earnedUsd !== null ? pupLadder(store.earnedUsd, store.putInCents) : { count: 0, progress: 0 };
   return {
     now,
     wateredAt: me.user.wateredAt ? new Date(me.user.wateredAt) : null,
@@ -11,7 +13,7 @@ export function toGardenInput(me: MeResponse, now: Date): GardenInput {
     picks: me.history.picks.map((p) => ({ ts: new Date(p.ts), asset: p.asset, amountRaw: b(p.amountRaw) })),
     skrPutInRaw: b(me.pot.skrPutInRaw), skrEarnedRaw: b(me.pot.skrEarnedRaw), skrPickedRaw: b(me.pot.skrPickedRaw),
     skrFruit: me.pot.fruit, skrNextFruitProgress: me.pot.nextFruitProgress,
-    storePutInRaw: b(me.pot.storePutInRaw), storePups: 0, storeNextPupProgress: 0,
+    storePutInRaw: b(me.pot.storePutInRaw), storePups: pups.count, storeNextPupProgress: pups.progress,
     joinedValueRaw: b(me.pot.joinedValueRaw),
     skrPrincipalPickedRaw: b(me.pot.skrPrincipalPickedRaw),
     pendingCents: me.nextPlanting.pendingCents,

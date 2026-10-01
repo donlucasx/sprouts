@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { buildScene, type GardenInput } from "@/model/garden";
+import { buildScene, plantX, PLANT_OF, pupLadder, type GardenInput } from "@/model/garden";
+import type { Asset } from "@/lib/coins";
 
 const NOW = new Date("2026-10-04T12:00:00-07:00");
 const base: GardenInput = {
@@ -7,7 +8,7 @@ const base: GardenInput = {
   skrPickedRaw: 0n, skrPrincipalPickedRaw: 0n, pendingCents: 0, thresholdCents: 200,
   storePutInRaw: 0n, storePups: 0, storeNextPupProgress: 0, joinedValueRaw: 0n, basket: null,
 };
-const planting = (id: string, daysAgo: number, raw: bigint, asset: "SKR" | "stORE" = "SKR") => ({ id, ts: new Date(NOW.getTime() - daysAgo * 86_400_000), asset, amountOutRaw: raw });
+const planting = (id: string, daysAgo: number, raw: bigint, asset: Asset = "SKR") => ({ id, ts: new Date(NOW.getTime() - daysAgo * 86_400_000), asset, amountOutRaw: raw });
 const kinds = (s: ReturnType<typeof buildScene>) => s.parts.map((p) => p.kind);
 
 describe("buildScene", () => {
@@ -189,4 +190,58 @@ describe("the watering can (R96)", () => {
     const s = buildScene({ ...base, wateredAt: watered, joinedValueRaw: 5n, plantings: [planting("o", 0.01, 1n, "stORE")] });
     expect((s.parts.find((p) => p.kind === "wetSpot") as { x: number }).x).toBe(0.4);
   });
+});
+
+// Spec 10: one plant per coin, fixed order, spaced about 0.52; one alone at 0.4; two at today's 0.4 and 0.64.
+describe("plantX", () => {
+  it("one plant sits at 0.4", () => expect(plantX(["skr"])).toEqual({ skr: 0.4 }));
+  it("two plants land at 0.4 and 0.64", () => expect(plantX(["skr", "ore"])).toEqual({ skr: 0.4, ore: 0.64 }));
+  it("six plants are spaced evenly from 0.16 to 0.88", () => {
+    const x = plantX(["skr", "ore", "hsol", "jitosol", "jupsol", "cbbtc"]);
+    expect(Object.values(x).map((v) => Math.round(v * 1000) / 1000)).toEqual([0.16, 0.304, 0.448, 0.592, 0.736, 0.88]);
+  });
+  it("keeps the fixed order whatever order the ids arrive in", () => {
+    expect(Object.keys(plantX(["cbbtc", "skr"]))).toEqual(["skr", "cbbtc"]);
+  });
+});
+
+describe("six plants in the scene", () => {
+  it("a planting of each coin grows its own plant, in order, and the forming bud sits on nextAsset's plant", () => {
+    const s = buildScene({
+      ...base, wateredAt: NOW, pendingCents: 100, thresholdCents: 200, nextAsset: "cbBTC",
+      plantings: [planting("a", 5, 1n, "SKR"), planting("b", 4, 1n, "hSOL"), planting("c", 3, 1n, "JitoSOL"), planting("d", 2, 1n, "JupSOL"), planting("e", 1, 1n, "cbBTC"), planting("f", 1, 1n, "stORE")],
+    });
+    const plants = s.parts.filter((p) => p.kind === "plant") as { plant: string; x: number }[];
+    expect(plants.map((p) => p.plant)).toEqual(["skr", "ore", "hsol", "jitosol", "jupsol", "cbbtc"]);
+    expect(plants.map((p) => Math.round(p.x * 1000) / 1000)).toEqual([0.16, 0.304, 0.448, 0.592, 0.736, 0.88]);
+    expect((s.parts.find((p) => p.kind === "forming") as { plant: string }).plant).toBe("cbbtc");
+  });
+
+  // Review Focus 4: the new plants carry no fruit in this build.
+  it("fruit stays on SKR; a cbBTC plant with earned has none", () => {
+    const s = buildScene({ ...base, wateredAt: NOW, plantings: [planting("a", 5, 1n, "cbBTC")], skrPutInRaw: 0n, skrFruit: 0 });
+    expect(s.parts.filter((p) => p.kind === "fruit" || p.kind === "ripening").length).toBe(0);
+  });
+
+  it("PLANT_OF maps every asset", () => {
+    expect(PLANT_OF).toEqual({ SKR: "skr", stORE: "ore", hSOL: "hsol", JitoSOL: "jitosol", JupSOL: "jupsol", cbBTC: "cbbtc" });
+  });
+});
+
+// Spec 10: ORE pups follow the SKR fruit rule's steps: the first at 0.25% of put in, then one per further 1%, at most 12.
+describe("pupLadder", () => {
+  it("nothing below a quarter percent, the first at it, then one per percent, capped at 12", () => {
+    // putInCents 200 is $2.00; earnedUsd is dollars.
+    expect(pupLadder(0, 200)).toEqual({ count: 0, progress: 0 });
+    expect(pupLadder(0.004, 200).count).toBe(0);
+    expect(pupLadder(0.004, 200).progress).toBeCloseTo(0.8, 6);      // 0.2% of 0.25%
+    expect(pupLadder(0.005, 200).count).toBe(1);                      // exactly 0.25%
+    expect(pupLadder(0.005, 200).progress).toBeCloseTo(0, 6);
+    expect(pupLadder(0.025, 200).count).toBe(2);                      // 1.25%: the first at 0.25%, one more at 1.25%
+    expect(pupLadder(0.025, 200).progress).toBeCloseTo(0, 6);
+    expect(pupLadder(0.03, 200).count).toBe(2);                       // 1.5%: a quarter of the way to the third
+    expect(pupLadder(0.03, 200).progress).toBeCloseTo(0.25, 6);
+    expect(pupLadder(10, 200).count).toBe(12);
+  });
+  it("is nothing when nothing was put in", () => expect(pupLadder(1, 0)).toEqual({ count: 0, progress: 0 }));
 });
