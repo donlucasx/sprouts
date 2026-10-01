@@ -42,7 +42,7 @@ type Numeric = "pctBps" | "pctThresholdCents" | "plantThresholdCents" | "plantMa
 const usd = (cents: number) => `$${Math.floor(cents / 100)}.${String(cents % 100).padStart(2, "0")}`;
 const plain = (n: number) => String(n);
 const BOUNDS: Record<Numeric, { min: number; max: number; step: number; label: string; fmt: (n: number) => string }> = {
-  dailyCapCents: { min: 100, max: 2_000, step: 100, label: "The daily limit", fmt: usd },
+  dailyCapCents: { min: 100, max: 500, step: 100, label: "The daily limit", fmt: usd },
   plantThresholdCents: { min: 50, max: 2_000, step: 50, label: "Plant at", fmt: usd },
   pctThresholdCents: { min: 1_000, max: 100_000, step: 1_000, label: "The big-swap size", fmt: usd },
   pctBps: { min: 0, max: 500, step: 25, label: "The big-swap rate, in hundredths of a percent,", fmt: plain },
@@ -75,7 +75,7 @@ const TOOL = {
       pctThresholdCents: { type: "integer", description: "A swap is big from this size, in cents. 1000 to 100000." },
       plantThresholdCents: { type: "integer", description: "Plant when the change reaches this, in cents. 50 to 2000." },
       plantMaxDays: { type: "integer", description: "Plant at least every this many days. 1 to 30." },
-      dailyCapCents: { type: "integer", description: "The daily limit, in cents. 100 to 2000." },
+      dailyCapCents: { type: "integer", description: "The daily limit, in cents. 100 to 500." },
       oreShare: { type: "integer", description: "The percent of each planting that grows ORE instead of SKR. 0 to 50, steps of 10." },
       understood: { type: "string", description: "What you set, under 25 words, second person, dollars first, no advice, no exclamation marks. If nothing changes, say so." },
       cannot: { type: ["string", "null"], description: "If they asked for something outside these fields (selling, withdrawing, predictions, other coins, advice): one sentence saying Sprouts does not do it. Otherwise null." },
@@ -128,7 +128,7 @@ export async function compileRule(opts: { text: string; current: Rules; model: M
   }
   if (out.oreShare !== undefined) {
     const share = fit("oreShare", out.oreShare);
-    if (share !== opts.current.allocation.stORE) patch.allocation = { SKR: 100 - share, stORE: share };
+    if (share !== (opts.current.pins.stORE ?? 0)) patch.pins = { ...opts.current.pins, stORE: share };
   }
   if (out.cannot) notes.push(out.cannot.trim().slice(0, 300));
   return { patch, understood: out.understood.trim().slice(0, 200), notes, usage: raw.usage };

@@ -7,7 +7,8 @@ import type { Rules } from "@/domain/roundup";
 // confirmation; nothing changes until the user saves. The model is injected: these tests never call the network.
 const current: Rules = {
   roundupOn: true, roundupToCents: 100, pctOn: true, pctBps: 100, pctThresholdCents: 10_000,
-  plantThresholdCents: 200, plantMaxDays: 7, dailyCapCents: 500, allocation: { SKR: 100, stORE: 0 },
+  plantThresholdCents: 200, plantMaxDays: 7, dailyCapCents: 500, managed: false, stop: "balanced", pins: {},
+  allocation: { SKR: 100, stORE: 0, hSOL: 0, JitoSOL: 0, JupSOL: 0, cbBTC: 0 },
 };
 const answers = (input: unknown, usage = { inputTokens: 400, outputTokens: 60 }): ModelCall => async () => ({ input, usage });
 
@@ -20,9 +21,9 @@ describe("compileRule", () => {
   });
 
   it("clamps to the controls' ranges and says so", async () => {
-    const r = await compileRule({ text: "limit $50 a day", current, model: answers({ dailyCapCents: 5_000, understood: "Your daily limit is $50." }) });
-    expect(r.patch).toEqual({ dailyCapCents: 2_000 });
-    expect(r.notes).toEqual(["The daily limit tops out at $20.00."]);
+    const r = await compileRule({ text: "limit $50 a day", current: { ...current, dailyCapCents: 300 }, model: answers({ dailyCapCents: 5_000, understood: "Your daily limit is $50." }) });
+    expect(r.patch).toEqual({ dailyCapCents: 500 });
+    expect(r.notes).toEqual(["The daily limit tops out at $5.00."]);
   });
 
   it("snaps to the controls' steps", async () => {
@@ -30,9 +31,9 @@ describe("compileRule", () => {
     expect(r.patch).toEqual({ plantThresholdCents: 100 });
   });
 
-  it("an ORE share becomes the allocation, capped at the fence's 50 (R92)", async () => {
+  it("an ORE share becomes the stORE pin, capped at 50", async () => {
     const r = await compileRule({ text: "put 70% into ORE", current, model: answers({ oreShare: 70, understood: "70% grows ORE." }) });
-    expect(r.patch).toEqual({ allocation: { SKR: 50, stORE: 50 } });
+    expect(r.patch).toEqual({ pins: { stORE: 50 } });
     expect(r.notes).toEqual(["ORE's share tops out at 50."]);
   });
 
