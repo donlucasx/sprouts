@@ -33,9 +33,3 @@ export function rulesChanges<R extends { dailyCapCents: number }>(saved: R, draf
   for (const k of Object.keys(draft) as (keyof R)[]) if (draft[k] !== undefined && !same(draft[k], saved[k])) patch[k] = draft[k];
   return { patch, raises: patch.dailyCapCents !== undefined && patch.dailyCapCents > saved.dailyCapCents };
 }
-
-/** Where a touch on the fence's track puts the post: the bed right of it is ORE's share, snapped to 10, at most 50 (R92). */
-export function fenceShare(x: number, width: number): number {
-  if (width <= 0) return 0;
-  return Math.max(0, Math.min(50, Math.round((1 - x / width) * 10) * 10));
-}
