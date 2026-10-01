@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { MemoryRepo } from "@/db/memory";
 import { setRepoForTests } from "@/db/repo";
 import { issueSession } from "@/lib/session";
+import { SKR_ONLY } from "@/domain/coins";
 
 const SP = 1_146_000_000n;
 /** A real 44-character key: the routes validate the session pubkey as an address before reading the chain. */
@@ -12,6 +13,8 @@ vi.mock("@/lib/staking", () => ({
 }));
 vi.mock("@/lib/jupiter", () => ({ priceUsd: vi.fn(async () => 0.0183) }));
 vi.mock("@/lib/store", () => ({ storeBalanceRaw: vi.fn(async () => 0n), storeRedeemRate: vi.fn(async () => 1_048_350_000n) }));
+vi.mock("@/lib/holdings", async (orig) => ({ ...(await orig<object>()), readHoldings: vi.fn(async () => ({})) }));
+vi.mock("@/lib/subscriptions", () => ({ readDelegation: vi.fn(async () => ({ exists: false, amountPerPeriodRaw: 0n, pulledInPeriodRaw: 0n, periodStartTs: 0n, periodLengthS: 0n })) }));
 
 import { storeRedeemRate } from "@/lib/store";
 import { GET as me } from "@/app/api/me/route";
@@ -31,7 +34,7 @@ describe("GET /api/me", () => {
     await repo.setJoinedPosition(U, { shares: 0n, sharePrice: SP });
     await repo.addWallet({ pubkey: "W", userPubkey: U, delegationPda: "D", dailyCapCents: 500 });
     const p = await repo.insertPlanting({ userPubkey: U, walletPubkey: "W", signature: "sig", usdcPulledCents: 23, networkFeeCents: 3, status: "confirmed", aiLine: null },
-      [{ asset: "SKR", usdcInCents: 20, amountOutRaw: 1_100_000_000n, staked: true, feeAmountRaw: 5_500_000n }]);
+      [{ asset: "SKR", usdcInCents: 20, amountOutRaw: 1_100_000_000n, staked: true, feeAmountRaw: 5_500_000n, feeCents: 0, rateAtPlanting: null }]);
     await repo.setPlantingShares(p.id, { before: 0n, after: 1_000_000_000n, minted: 1_000_000_000n });
     await repo.insertSwap({ signature: "s1", walletPubkey: "W", ts: new Date(), inMint: "a", inAmount: 1, outMint: "b", outAmount: 1, usdSizeCents: 80, class: "major", roundupCents: 20 });
   });
@@ -55,7 +58,7 @@ describe("GET /api/me", () => {
   // Plan v2 (audits/ore-plan, finding 2): the stORE rate read fails today; Home must not fail with it.
   it("answers with a null stORE rate when the rate read fails, instead of failing the request", async () => {
     await repo.insertPlanting({ userPubkey: U, walletPubkey: "W", signature: "sig2", usdcPulledCents: 23, networkFeeCents: 3, status: "confirmed", aiLine: null },
-      [{ asset: "stORE", usdcInCents: 20, amountOutRaw: 24_000_000_000n, staked: false, feeAmountRaw: 120_000_000n }]);
+      [{ asset: "stORE", usdcInCents: 20, amountOutRaw: 24_000_000_000n, staked: false, feeAmountRaw: 120_000_000n, feeCents: 0, rateAtPlanting: null }]);
     vi.mocked(storeRedeemRate).mockRejectedValueOnce(new Error("Invalid param: not a Token account"));
     const res = await me(new Request("http://x/api/me", bearer(await issueSession(U, "M"))));
     expect(res.status).toBe(200);
@@ -66,7 +69,7 @@ describe("GET /api/me", () => {
   it("names the coin the next planting buys", async () => {
     let body = await (await me(new Request("http://x/api/me", bearer(await issueSession(U, "M"))))).json();
     expect(body.nextPlanting.asset).toBe("SKR");
-    await repo.saveRules(U, { allocation: { SKR: 50, stORE: 50 } });
+    await repo.saveRules(U, { allocation: { ...SKR_ONLY, SKR: 50, stORE: 50 } });
     await repo.bumpLedger("W", "SKR", 200);
     body = await (await me(new Request("http://x/api/me", bearer(await issueSession(U, "M"))))).json();
     expect(body.nextPlanting.asset).toBe("stORE");
