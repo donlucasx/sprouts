@@ -1,10 +1,16 @@
 import type { MeResponse } from "./api";
 import { formatUsd } from "./format";
 
+/** A cached read from before the Yield Manager build has no holdings or manager and would crash every screen that reads them: it counts as no cache (10-01 whole-branch review, I2). */
+export function usableMe(cached: MeResponse | null | undefined): MeResponse | null {
+  return cached && "holdings" in cached && "manager" in cached ? cached : null;
+}
+
 /** Review Focus 2, as a pure decision: a failed read keeps the last verified state and says so; never a zero garden. */
 export function pickMeState(live: MeResponse | undefined, cached: MeResponse | null, failed: boolean): { data: MeResponse | undefined; stale: boolean } {
   if (live) return { data: live, stale: false };
-  if (cached) return { data: cached, stale: failed };
+  const usable = usableMe(cached);
+  if (usable) return { data: usable, stale: failed };
   return { data: undefined, stale: failed };
 }
 

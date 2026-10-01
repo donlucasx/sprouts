@@ -62,6 +62,15 @@ export function stepPin(pins: Pins, asset: Asset, dir: 1 | -1): Pins {
   return { ...pins, [asset]: next };
 }
 
+/** Whether a pin's "+" may move it up by PIN_STEP. Off, SKR is the rest and must keep MANUAL_FLOOR (the API refuses less); on, the API is the authority and only the coin's own pin max applies here. */
+export function canStepUp(r: RulesView, asset: Asset): boolean {
+  const current = r.pins[asset] ?? 0;
+  if (current + PIN_STEP > PIN_MAX[asset]) return false;
+  if (r.managed) return true;
+  const pinned = NON_SKR.reduce((s, c) => s + (r.pins[c] ?? 0), 0);
+  return 100 - (pinned + PIN_STEP) >= MANUAL_FLOOR;
+}
+
 /** The pins to carry when the switch flips on: a 0 pin while off meant "nothing" (SKR was the rest), and carried into on-mode it would stop the manager from ever buying that coin. */
 export function pinsForOn(pins: Pins): Pins {
   const next: Pins = {};

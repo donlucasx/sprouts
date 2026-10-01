@@ -13,7 +13,7 @@ import { identity } from "@/lib/identity";
 import { formatUsd, COIN_NAME } from "@/lib/format";
 import { TwoWay } from "@/components/TwoWay";
 import { undoSplit } from "@/lib/manager-api";
-import { splitRows, togglePin, stepPin, pinsForOn, managerSentence, undoLine, SWITCH_LABEL, OFF_TEXT, ON_TEXT, STOP_LINE, UNDONE_TEXT, STORE_ROW_NOTE, PIN_MAX } from "@/model/manager";
+import { splitRows, togglePin, stepPin, pinsForOn, managerSentence, undoLine, SWITCH_LABEL, OFF_TEXT, ON_TEXT, STOP_LINE, UNDONE_TEXT, STORE_ROW_NOTE, canStepUp } from "@/model/manager";
 import { ORE_DISCLOSURE } from "@/lib/ore-copy";
 import { rulesChanges } from "@/lib/forms";
 import { useSession } from "@/lib/session";
@@ -238,7 +238,7 @@ export default function Rules() {
             {row.mode === "pinned" && (
               <View style={stepper}>
                 <Button title="-" kind="quiet" disabled={busy || row.pct <= 0} onPress={() => edit({ pins: stepPin(r.pins, row.asset, -1) })} />
-                <Button title="+" kind="quiet" disabled={busy || row.pct >= PIN_MAX[row.asset]} onPress={() => edit({ pins: stepPin(r.pins, row.asset, 1) })} />
+                <Button title="+" kind="quiet" disabled={busy || !canStepUp(r, row.asset)} onPress={() => edit({ pins: stepPin(r.pins, row.asset, 1) })} />
               </View>
             )}
           </View>

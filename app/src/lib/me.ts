@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createMMKV } from "react-native-mmkv"; // v4: a factory, and MMKV is a type only [A5]
 import { api, ApiError, type MeResponse } from "./api";
-import { pickMeState } from "./me-state";
+import { pickMeState, usableMe } from "./me-state";
 import { refreshWidget } from "./widget-refresh";
 export { toGardenInput } from "./garden-input";
 
@@ -27,7 +27,7 @@ export function useMe() {
       void refreshWidget(me).catch(() => {}); // the home-screen widget follows every good read
       return me;
     },
-    placeholderData: () => readLastMe() ?? undefined,
+    placeholderData: () => usableMe(readLastMe()) ?? undefined,
     retry: 1,
   });
   const { data, stale } = pickMeState(q.isPlaceholderData ? undefined : q.data, readLastMe(), q.isError);
