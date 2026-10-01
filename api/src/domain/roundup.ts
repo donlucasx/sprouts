@@ -1,4 +1,9 @@
-/** The user's rules. All money in integer cents; percentages in basis points. */
+import { SKR_ONLY, type Split, type Stop, type Asset } from "./coins";
+
+/** The user's own pins: a fixed percent per coin (spec 4.2); a missing coin is the manager's to set, or 0 when the manager is off. */
+export type Pins = Partial<Record<Asset, number>>;
+
+/** The user's rules. All money in integer cents; percentages in basis points; the split in whole percents. */
 export type Rules = {
   roundupOn: boolean;
   roundupToCents: number;
@@ -8,7 +13,11 @@ export type Rules = {
   plantThresholdCents: number;
   plantMaxDays: number;
   dailyCapCents: number;
-  allocation: { SKR: number; stORE: number };
+  /** The Yield Manager (R107): on or off, the risk stop, the pins, and the effective split the planting follows. */
+  managed: boolean;
+  stop: Stop;
+  pins: Pins;
+  allocation: Split;
 };
 
 export const DEFAULT_RULES: Rules = {
@@ -20,7 +29,10 @@ export const DEFAULT_RULES: Rules = {
   plantThresholdCents: 200,
   plantMaxDays: 7,
   dailyCapCents: 500,
-  allocation: { SKR: 100, stORE: 0 },
+  managed: false,
+  stop: "balanced",
+  pins: {},
+  allocation: { ...SKR_ONLY },
 };
 
 /**

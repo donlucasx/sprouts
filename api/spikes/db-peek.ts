@@ -8,7 +8,7 @@ import { config } from "../src/lib/config";
 const wallet = process.argv[2] ?? "";
 const repo = await getRepo();
 const row = await repo.getWallet(wallet);
-console.log(row ? `wallet: user ${row.userPubkey.slice(0, 6)}..., status ${row.status}, cap ${row.dailyCapCents}c, webhookAdded ${row.webhookAdded}, delegation ${row.delegationPda}, ledger SKR ${row.ledgerSkrCents}c stORE ${row.ledgerStoreCents}c` : "wallet row: none");
+console.log(row ? `wallet: user ${row.userPubkey.slice(0, 6)}..., status ${row.status}, cap ${row.dailyCapCents}c, webhookAdded ${row.webhookAdded}, delegation ${row.delegationPda}, ledger_cents ${JSON.stringify(row.ledgerCents)}` : "wallet row: none");
 if (row) {
   const rules = await repo.getRules(row.userPubkey);
   console.log(`rules: ${JSON.stringify(rules, (_k, v) => (v instanceof Date ? v.toISOString() : v))}`);

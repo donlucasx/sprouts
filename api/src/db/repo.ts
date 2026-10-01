@@ -1,5 +1,5 @@
 import type * as T from "./types";
-import type { Asset } from "@/domain/allocation";
+import type { Asset, Stop } from "@/domain/coins";
 
 /** A planting as the run records it; the share columns are filled in by the run and the confirmation [A16]. */
 /** `ts` is the run's own clock (the reconciliation measures age against it); left out, the store stamps the row itself. */
@@ -20,6 +20,8 @@ export interface Repo {
   /** Creates the defaults when the user has no rules yet. */
   getRules(userPubkey: string): Promise<T.RulesRow>;
   saveRules(userPubkey: string, r: Partial<Omit<T.RulesRow, "userPubkey" | "updatedAt">>): Promise<T.RulesRow>;
+  /** Every user whose Yield Manager is on, for the daily apply (spec 6.6). */
+  listManagedRules(): Promise<T.RulesRow[]>;
 
   addWallet(w: { pubkey: string; userPubkey: string; delegationPda: string; dailyCapCents: number; webhookAdded?: boolean }): Promise<T.WalletRow>;
   getWallet(pubkey: string): Promise<T.WalletRow | null>;
@@ -55,6 +57,8 @@ export interface Repo {
   listStakeAdjustments(userPubkey: string): Promise<T.StakeAdjustmentRow[]>;
 
   addEvent(e: Omit<T.EventRow, "id" | "ts">): Promise<void>;
+  /** The user's events of the given kinds, newest first, at most `limit`: Activity's split rows (spec 3.2). */
+  listEvents(userPubkey: string, kinds: T.EventKind[], limit: number): Promise<T.EventRow[]>;
 
   putNonce(n: { nonce: string; expiresAt: Date }): Promise<void>;
   /** One atomic step; false when unknown, used or expired. */
@@ -92,10 +96,20 @@ export interface Repo {
   keepalive(): Promise<void>;
 
   // The watcher's budget (spec 6): every model call recorded; spend since a moment, calls by one user since a moment.
-  addWatcherCall(c: NewWatcherCall): Promise<void>;
+  addWatcherCall(c: NewWatcherCall): Promise<number>;
   watcherSpendMicrocents(since: Date): Promise<number>;
   watcherCallsBy(userPubkey: string, since: Date): Promise<number>;
   listWatcherCalls(): Promise<T.WatcherCallRow[]>;
+
+  // The Yield Manager's tables (spec 5.2, 6.7).
+  putCoinDay(row: T.CoinDayRow): Promise<void>;
+  getCoinDay(day: string, asset: Asset): Promise<T.CoinDayRow | null>;
+  /** One asset's rows from `sinceDay` on, oldest first. */
+  listCoinDays(asset: Asset, sinceDay: string): Promise<T.CoinDayRow[]>;
+  putSplitDay(row: T.SplitDayRow): Promise<void>;
+  getSplitDay(day: string, stop: Stop): Promise<T.SplitDayRow | null>;
+  /** The newest row for the stop, or the newest strictly before `beforeDay` when given. */
+  latestSplitDay(stop: Stop, beforeDay?: string): Promise<T.SplitDayRow | null>;
 }
 
 let forTests: Repo | null = null;
