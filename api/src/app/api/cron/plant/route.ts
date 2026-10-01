@@ -10,6 +10,13 @@ import { readDelegation, usdcAta } from "@/lib/subscriptions";
 import { buildPlantingTx, simulatePlanting, sendPlanting, signatureStatus, type BuiltPlanting } from "@/lib/planting";
 import { readPosition, crankWithdraw, sharePrice } from "@/lib/staking";
 import { reconcileOwnStakes } from "@/lib/reconcile";
+import { snapshotCoins, IMPACT_LIMIT_PCT, type CoinReads } from "@/lib/coin-data";
+import { decideSplits, applyToUsers } from "@/lib/split-run";
+import { callTool } from "@/lib/anthropic";
+import { getQuote, pricesUsd } from "@/lib/jupiter";
+import { storeRedeemRate } from "@/lib/store";
+import { COINS, type Asset } from "@/domain/coins";
+import { USDC_MINT } from "@/lib/constants";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -41,6 +48,35 @@ function realChain(): Chain {
   };
 }
 
+/** The real reads behind the snapshot (spec 5.2): account bytes, the two share prices, the epoch, Jupiter's prices and a $2 quote. */
+function realCoinReads(): CoinReads {
+  return {
+    accountData: async (addr) => {
+      const info = await rpc().getAccountInfo(address(addr), { encoding: "base64" }).send();
+      return info.value ? new Uint8Array(Buffer.from(info.value.data[0], "base64")) : null;
+    },
+    skrSharePrice: sharePrice,
+    storeRate: storeRedeemRate,
+    currentEpoch: async () => (await rpc().getEpochInfo().send()).epoch,
+    prices: pricesUsd,
+    quoteOk: async (asset: Asset) => {
+      // The planting's own size and settings; Jupiter's priceImpactPct is a percentage string.
+      const q = await getQuote({ inputMint: USDC_MINT, outputMint: COINS[asset].mint, amountRaw: 2_000_000n, maxAccounts: 24, onlyDirectRoutes: asset === "SKR" });
+      return Number(q.priceImpactPct) < IMPACT_LIMIT_PCT;
+    },
+  };
+}
+
+/** One of the manager's steps: its failure is logged and the day goes on (planting reads whatever the rules hold). */
+async function step<T>(name: string, fn: () => Promise<T>): Promise<T | null> {
+  try {
+    return await fn();
+  } catch (e) {
+    console.error(`cron: ${name} failed: ${e instanceof Error ? e.message : String(e)}`);
+    return null;
+  }
+}
+
 const json = (v: unknown) => JSON.parse(JSON.stringify(v, (_k, x) => (typeof x === "bigint" ? x.toString() : x)));
 
 /** Once a day (Vercel cron, bearer = CRON_SECRET): plant, crank withdrawals, reconcile the Seed Vaults' own stakes, clean up, keep the database awake. */
@@ -49,6 +85,10 @@ export async function GET(request: Request) {
   try {
     const repo = await getRepo();
     const now = new Date();
+    // The Yield Manager's three steps before the planting run (spec 6.1): snapshot the coins, decide each stop's split, apply to users.
+    const coins = await step("snapshot", () => snapshotCoins({ repo, now, reads: realCoinReads() }));
+    const splits = await step("decide", () => decideSplits({ repo, now, model: process.env.ANTHROPIC_API_KEY ? callTool : null }));
+    const applied = await step("apply", () => applyToUsers({ repo, now }));
     const planting = await runPlanting({ repo, now, chain: realChain() });
     const withdrawals = await runWithdrawCrank({ repo, now, chain: { readPosition: (u) => readPosition(address(u)), crankWithdraw: (u) => crankWithdraw(address(u)) } });
     // R61: stakes and unstakes the Seed Vault made from its own wallet, found by comparing the chain's share count with the ledger's.
@@ -57,8 +97,9 @@ export async function GET(request: Request) {
     // The first production run (2026-09-28) planted and then answered 500 here: reading rules for a made-up user violates the
     // rules -> users foreign key. The keepalive is now a read that needs no row.
     await repo.keepalive();
-    console.log(`cron: planted ${planting.planted.length}, skipped ${planting.skipped.length}, cranked ${withdrawals.cranked.length}, failed ${withdrawals.failed.length}, closed ${withdrawals.skipped.length}, reconciled ${reconciled.adjusted.length} (skipped ${reconciled.skipped.length}, deferred ${reconciled.deferred.length})`);
-    return NextResponse.json(json({ planting, withdrawals, reconciled }));
+    const summary = { coins: coins ? coins.filter((c) => c.ok).length : null, splits: splits ? splits.map((s) => ({ stop: s.stop, fallback: s.fallback })) : null, applied: applied ? applied.changed.length : null };
+    console.log(`cron: coins ${summary.coins ?? "failed"}, splits ${summary.splits ? summary.splits.map((s) => `${s.stop}${s.fallback ? `(${s.fallback})` : ""}`).join(" ") : "failed"}, applied ${summary.applied ?? "failed"}, planted ${planting.planted.length}, skipped ${planting.skipped.length}, cranked ${withdrawals.cranked.length}, failed ${withdrawals.failed.length}, closed ${withdrawals.skipped.length}, reconciled ${reconciled.adjusted.length} (skipped ${reconciled.skipped.length}, deferred ${reconciled.deferred.length})`);
+    return NextResponse.json(json({ ...summary, planting, withdrawals, reconciled }));
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     console.error(`cron failed: ${message}`);
