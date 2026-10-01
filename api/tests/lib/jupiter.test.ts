@@ -59,3 +59,17 @@ describe("jupiter instruction conversion", () => {
     expect(p.swap.programAddress).toBe("JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4");
   });
 });
+
+import { checkQuoteMints, type Quote } from "@/lib/jupiter";
+
+// Spec 7.3: nothing checks mints today. The quote's mints are asserted against the registry before the puller signs.
+describe("checkQuoteMints", () => {
+  const quote: Quote = { inputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", outputMint: "he1iusmfkpAdwvxLNGV8Y1iSbj4rUy6yMhEA3fotn9A", inAmount: "2000000", outAmount: "14228499", otherAmountThreshold: "14086214", priceImpactPct: "0", routePlan: [] };
+  it("accepts the registry's mints", () => {
+    expect(() => checkQuoteMints(quote, { inputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", outputMint: "he1iusmfkpAdwvxLNGV8Y1iSbj4rUy6yMhEA3fotn9A" })).not.toThrow();
+  });
+  it("refuses a swapped output mint and a non-USDC input", () => {
+    expect(() => checkQuoteMints({ ...quote, outputMint: "J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn" }, { inputMint: quote.inputMint, outputMint: quote.outputMint })).toThrow(/output mint/);
+    expect(() => checkQuoteMints({ ...quote, inputMint: "So11111111111111111111111111111111111111112" }, { inputMint: quote.inputMint, outputMint: quote.outputMint })).toThrow(/input mint/);
+  });
+});

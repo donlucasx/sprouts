@@ -6,14 +6,14 @@ import {
 } from "@solana/kit";
 import { getSetComputeUnitLimitInstruction, getSetComputeUnitPriceInstruction } from "@solana-program/compute-budget";
 import { findAssociatedTokenPda, TOKEN_PROGRAM_ADDRESS, getCreateAssociatedTokenIdempotentInstruction } from "@solana-program/token";
-import { getQuote, getSwapInstructions, checkSwapInstructions } from "./jupiter";
+import { getQuote, getSwapInstructions, checkSwapInstructions, checkQuoteMints } from "./jupiter";
 import { buildTransferRecurringIx } from "./subscriptions";
 import { buildStakeIx } from "./staking";
 import { pullerSigner } from "./puller";
 import { rpc } from "./rpc";
 import { config } from "./config";
-import { USDC_MINT, SKR_MINT, STORE_MINT } from "./constants";
-import type { Asset } from "@/domain/allocation";
+import { USDC_MINT } from "./constants";
+import { COINS, type Asset } from "@/domain/coins";
 
 export type BuiltPlanting = {
   tx: Awaited<ReturnType<typeof signTransactionMessageWithSigners>>;
@@ -26,48 +26,48 @@ export type BuiltPlanting = {
 };
 
 /**
- * The accounts an stORE leg needs before the swap: the user's and the fee wallet's stORE token accounts, created if missing
- * (audits/ore-plan, finding 3: Jupiter assumes a custom destination account exists). Idempotent, so an existing account is not
- * an error; the puller pays the rent, about 0.002 SOL each, once. An SKR leg needs nothing: the puller's own accounts exist.
+ * The account a wallet-held coin needs before the swap: the user's own token account for that mint, created if missing
+ * (Jupiter assumes a custom destination exists). Idempotent, so an existing account is not an error; the puller pays the rent,
+ * about 0.002 SOL, once per user per coin. An SKR leg needs nothing: it is staked from the puller's own account.
  */
-export async function storeAccountInstructions(a: { asset: Asset; payer: TransactionSigner; user: Address; feeWallet: Address }): Promise<Instruction[]> {
-  if (a.asset !== "stORE") return [];
-  const ixs: Instruction[] = [];
-  for (const owner of [a.user, a.feeWallet]) {
-    const [ata] = await findAssociatedTokenPda({ owner, mint: STORE_MINT, tokenProgram: TOKEN_PROGRAM_ADDRESS });
-    ixs.push(getCreateAssociatedTokenIdempotentInstruction({ payer: a.payer, ata, owner, mint: STORE_MINT }));
-  }
-  return ixs;
+export async function coinAccountInstructions(a: { asset: Asset; payer: TransactionSigner; user: Address }): Promise<Instruction[]> {
+  const coin = COINS[a.asset];
+  if (coin.held !== "wallet") return [];
+  const [ata] = await findAssociatedTokenPda({ owner: a.user, mint: coin.mint, tokenProgram: TOKEN_PROGRAM_ADDRESS });
+  return [getCreateAssociatedTokenIdempotentInstruction({ payer: a.payer, ata, owner: a.user, mint: coin.mint })];
 }
 
 /**
- * The planting: one versioned transaction the puller signs alone. Pull USDC from the trading wallet, swap it on Jupiter
- * (SKR into the puller's account, or stORE straight into the Seed Vault's account), and for SKR stake the quoted minimum
- * into the position keyed by the Seed Vault key. If any step fails, nothing moves.
+ * The planting: one versioned transaction the puller signs alone. Pull USDC from the trading wallet, swap it on Jupiter with the
+ * 0.5% fee taken in USDC on the input side (R105), deliver the coin (SKR into the puller's account and then the stake keyed by
+ * the Seed Vault key; every other coin straight into the user's own token account). If any step fails, nothing moves.
  */
 export async function buildPlantingTx(a: { delegator: Address; user: Address; asset: Asset; pullRaw: bigint; feeBps: number; delegationPda: Address }): Promise<BuiltPlanting> {
   const puller = await pullerSigner();
-  const outputMint = a.asset === "SKR" ? SKR_MINT : STORE_MINT;
+  const coin = COINS[a.asset];
   const feeWallet = address(config().feeWallet);
-  const [feeAccount] = await findAssociatedTokenPda({ owner: feeWallet, mint: outputMint, tokenProgram: TOKEN_PROGRAM_ADDRESS });
-  // Direct routes only for SKR (one hop); stORE routes through two pools.
-  const quote = await getQuote({ inputMint: USDC_MINT, outputMint, amountRaw: a.pullRaw, platformFeeBps: a.feeBps, maxAccounts: 24, onlyDirectRoutes: a.asset === "SKR" });
-  const [userStoreAta] = await findAssociatedTokenPda({ owner: a.user, mint: STORE_MINT, tokenProgram: TOKEN_PROGRAM_ADDRESS });
-  const swap = await getSwapInstructions({ quote, userPublicKey: puller.address, feeAccount, ...(a.asset === "stORE" ? { destinationTokenAccount: userStoreAta } : {}) });
+  // R105: the fee account is the fee wallet's USDC token account, the same for every coin, created once by hand.
+  const [feeAccount] = await findAssociatedTokenPda({ owner: feeWallet, mint: USDC_MINT, tokenProgram: TOKEN_PROGRAM_ADDRESS });
+  // Direct routes only for SKR (one hop); the other coins route through two pools.
+  const quote = await getQuote({ inputMint: USDC_MINT, outputMint: coin.mint, amountRaw: a.pullRaw, platformFeeBps: a.feeBps, maxAccounts: 24, onlyDirectRoutes: a.asset === "SKR" });
+  checkQuoteMints(quote, { inputMint: USDC_MINT, outputMint: coin.mint });
+  const [userAta] = await findAssociatedTokenPda({ owner: a.user, mint: coin.mint, tokenProgram: TOKEN_PROGRAM_ADDRESS });
+  const destination = coin.held === "wallet" ? userAta : undefined;
+  const swap = await getSwapInstructions({ quote, userPublicKey: puller.address, feeAccount, ...(destination ? { destinationTokenAccount: destination } : {}) });
   // Nothing from the network is signed unchecked: the aggregator, the helper programs, the signers, the fee and destination accounts.
-  checkSwapInstructions(swap, { puller: puller.address, feeAccount, ...(a.asset === "stORE" ? { destination: userStoreAta } : {}) });
-  // Spike 2 confirms whether the threshold is quoted net of the platform fee; the stake uses the post-fee minimum.
+  checkSwapInstructions(swap, { puller: puller.address, feeAccount, ...(destination ? { destination } : {}) });
   const minOutRaw = BigInt(quote.otherAmountThreshold);
 
   const ixs: Instruction[] = [
     getSetComputeUnitLimitInstruction({ units: 400_000 }),
     getSetComputeUnitPriceInstruction({ microLamports: 1_000n }),
-    ...(await storeAccountInstructions({ asset: a.asset, payer: puller, user: a.user, feeWallet })),
+    ...(await coinAccountInstructions({ asset: a.asset, payer: puller, user: a.user })),
     await buildTransferRecurringIx({ delegator: a.delegator, delegatee: puller, delegationPda: a.delegationPda, amountRaw: a.pullRaw }),
     ...swap.setup,
     swap.swap,
     ...(swap.cleanup ? [swap.cleanup] : []),
-    ...(a.asset === "SKR" ? [await buildStakeIx({ payer: puller, user: a.user, amountRaw: minOutRaw })] : []),
+    // The one line Radiants ticket 367 may change: today SKR is staked into the position keyed by the Seed Vault key.
+    ...(coin.held === "staked" ? [await buildStakeIx({ payer: puller, user: a.user, amountRaw: minOutRaw })] : []),
   ];
   const tables = await fetchAddressesForLookupTables(swap.lookupTables, rpc());
   const { value: { blockhash, lastValidBlockHeight } } = await rpc().getLatestBlockhash().send();
