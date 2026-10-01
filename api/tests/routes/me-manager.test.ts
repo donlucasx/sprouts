@@ -45,7 +45,8 @@ describe("GET /api/me with the Yield Manager (spec 7.7)", () => {
       holdings: { asset: string; heldRaw: string; putInCents: number; valueUsd: number; earnedUsd: number }[];
       manager: { managed: boolean; stop: string; why: string; undoAvailable: boolean; changedDay: string; stopSplit: Split; fallback: string | null };
       nextPlanting: { capLeftCents: number; asset: string };
-      lastReceipt: { asset: string; usdPrice: number };
+      lastReceipt: { asset: string; usdPrice: number; feeCents: number };
+      history: { plantings: { asset: string; feeCents: number }[] };
       rules: { managed: boolean; pins: Record<string, number>; allocation: Split };
     };
     expect(b.holdings).toEqual([{ asset: "hSOL", heldRaw: "2000000000", putInCents: 200, valueUsd: 336, earnedUsd: expect.closeTo(2.8, 6), earnedUnderlyingRaw: "20000000" }]);
@@ -57,6 +58,8 @@ describe("GET /api/me with the Yield Manager (spec 7.7)", () => {
     expect(b.nextPlanting.asset).not.toBe("SKR");             // the ledger holds SKR only, the split wants the others
     expect(b.lastReceipt.asset).toBe("hSOL");
     expect(b.lastReceipt.usdPrice).toBe(168);
+    expect(b.lastReceipt.feeCents).toBe(1);                   // spec 7.4: the receipt's one-cent fee
+    expect(b.history.plantings[0].feeCents).toBe(1);
     expect(b.rules.allocation.hSOL).toBe(25);
   });
 });

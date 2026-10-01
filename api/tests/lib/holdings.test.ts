@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { holdingsFrom } from "@/lib/holdings";
+import { MemoryRepo } from "@/db/memory";
+import { holdingsFrom, latestCoinDays } from "@/lib/holdings";
 import type { CoinDayRow, PlantingLegRow } from "@/db/types";
 
 const day = (asset: CoinDayRow["asset"], rate: number | null, priceUsd: number): CoinDayRow => ({ day: "2026-10-04", asset, rate, ratePrev: null, ratePrevDays: null, priceUsd, liquidityUsd: null, priceChange24h: null, tradeable: true, lastUpdateEpoch: 1047, ok: true });
@@ -29,5 +30,22 @@ describe("holdingsFrom", () => {
     const jup = rows.find((r) => r.asset === "JupSOL")!;
     expect(jup.valueUsd).toBeNull();
     expect(jup.earnedUsd).toBeNull();
+  });
+});
+
+describe("latestCoinDays", () => {
+  it("a failed re-run today does not hide the rate: the rate from the latest good row, the price from the latest priced row", async () => {
+    const repo = new MemoryRepo();
+    await repo.putCoinDay({ ...day("hSOL", 1.2, 168), day: "2026-10-03" });
+    await repo.putCoinDay({ ...day("hSOL", null, 170), day: "2026-10-04", ok: false, tradeable: false });
+    await repo.putCoinDay({ ...day("JitoSOL", 1.3, 180), day: "2026-10-03" });
+    await repo.putCoinDay({ ...day("JitoSOL", null, 0), priceUsd: null, day: "2026-10-04", ok: false });
+    const d = await latestCoinDays(repo, "2026-10-04");
+    expect(d.hSOL?.rate).toBe(1.2);
+    expect(d.hSOL?.priceUsd).toBe(170);
+    expect(d.JitoSOL?.rate).toBe(1.3);
+    expect(d.JitoSOL?.priceUsd).toBe(180);
+    const [h] = holdingsFrom({ held: { hSOL: 1_000_000_000n }, legs: [leg("hSOL", 200, 1_000_000_000n, 1.18)], days: d });
+    expect(h.earnedUsd).not.toBeNull();
   });
 });

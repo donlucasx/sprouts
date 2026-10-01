@@ -18,13 +18,19 @@ export async function readHoldings(owner: Address): Promise<Partial<Record<Asset
   return out;
 }
 
-/** Today's snapshot per coin, or the newest within a week when today's has not run yet. */
+/**
+ * Each coin's newest numbers within a week: the rate from the latest good row (ok, with a rate), the price from the latest priced
+ * row. A failed re-run today (written ok false) never hides yesterday's good rate.
+ */
 export async function latestCoinDays(repo: Repo, day: string): Promise<Partial<Record<Asset, CoinDayRow>>> {
   const out: Partial<Record<Asset, CoinDayRow>> = {};
   for (const a of ASSETS) {
-    const rows = await repo.listCoinDays(a, addDays(day, -7));
-    const last = rows[rows.length - 1];
-    if (last) out[a] = last;
+    const rows = (await repo.listCoinDays(a, addDays(day, -7))).slice().reverse(); // newest first
+    if (!rows.length) continue;
+    const rated = rows.find((r) => r.ok && r.rate !== null) ?? null;
+    const priced = rows.find((r) => r.priceUsd !== null) ?? null;
+    const base = rated ?? rows.find((r) => r.ok) ?? rows[0];
+    out[a] = { ...base, rate: rated?.rate ?? null, priceUsd: priced?.priceUsd ?? null };
   }
   return out;
 }

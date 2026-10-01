@@ -28,8 +28,8 @@ const before = await repo.getRules(user);
 if (managed !== undefined || stop !== undefined || pins !== undefined) {
   const m = managed ?? before.managed;
   const s = stop ?? before.stop;
-  const p = pins ?? before.pins;
-  if (!m && p.SKR !== undefined) { console.log("pins refused: SKR is the rest when the Yield Manager is off"); process.exit(1); }
+  const p = { ...(pins ?? before.pins) };
+  if (!m) delete p.SKR; // as the route: off, SKR is always the rest (spec 4.2), so an SKR pin is dropped
   const problem = validatePins(p, floorFor(m, s));
   if (problem) { console.log(`pins refused: ${problem}`); process.exit(1); }
   const stopSplit = m ? ((await repo.latestSplitDay(s))?.split ?? STOP_DEFAULTS[s]) : STOP_DEFAULTS[s];

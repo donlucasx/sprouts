@@ -28,4 +28,13 @@ describe("GET /api/activity splits (spec 3.2)", () => {
     expect(body.splits[1].why).toBe("hSOL grew the most.");
     expect(body.splits[0].to.hSOL).toBe(20);
   });
+
+  it("serves each planting leg's USDC fee in cents (spec 7.4)", async () => {
+    await repo.insertPlanting({ userPubkey: U, walletPubkey: "W", signature: "sig", usdcPulledCents: 203, networkFeeCents: 3, status: "confirmed", aiLine: null },
+      [{ asset: "hSOL", usdcInCents: 200, amountOutRaw: 1_000_000_000n, staked: false, feeAmountRaw: 0n, feeCents: 1, rateAtPlanting: 1.18 }]);
+    const res = await activity(new Request("http://x/api/activity", { headers: { authorization: `Bearer ${await issueSession(U, "M")}` } }));
+    const body = (await res.json()) as { plantings: { legs: { asset: string; feeCents: number; feeAmountRaw: string }[] }[] };
+    expect(body.plantings[0].legs[0].feeCents).toBe(1);
+    expect(body.plantings[0].legs[0].feeAmountRaw).toBe("0");
+  });
 });

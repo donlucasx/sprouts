@@ -51,7 +51,7 @@ export async function PUT(request: Request) {
   const patch: Partial<Omit<RulesRow, "userPubkey" | "updatedAt">> = { ...rest, prevAllocation: null, allocationDay: null };
 
   if (managed !== undefined || stop !== undefined || rawPins !== undefined) {
-    let pins: Pins = current.pins;
+    let pins: Pins = { ...current.pins };
     if (rawPins !== undefined) {
       pins = {};
       for (const [k, v] of Object.entries(rawPins)) {
@@ -61,17 +61,18 @@ export async function PUT(request: Request) {
     }
     const nextManaged = managed ?? current.managed;
     const nextStop = stop ?? current.stop;
-    if (!nextManaged && pins.SKR !== undefined) return NextResponse.json({ error: "SKR is the rest when the Yield Manager is off." }, { status: 400 });
+    if (!nextManaged) delete pins.SKR; // spec 4.2: off, SKR is always the rest, so an SKR pin from the manager's time is dropped
     const floor = floorFor(nextManaged, nextStop);
     const problem = validatePins(pins, floor);
     if (problem) return NextResponse.json({ error: PIN_COPY(floor, STOP_LABEL[nextStop])[problem] }, { status: 400 });
     const stopSplit = nextManaged ? ((await repo.latestSplitDay(nextStop))?.split ?? STOP_DEFAULTS[nextStop]) : STOP_DEFAULTS[nextStop];
     const allocation = effectiveSplit({ managed: nextManaged, stop: nextStop, pins, stopSplit });
     Object.assign(patch, { managed: nextManaged, stop: nextStop, pins, allocation });
-    if (!sameSplit(allocation, current.allocation) || nextManaged !== current.managed || nextStop !== current.stop) {
-      await repo.addEvent({ userPubkey: session.pubkey, walletPubkey: null, kind: "split_changed", detail: { by: "you", from: current.allocation, to: allocation, stop: nextStop, managed: nextManaged, day: dayOf(new Date()) } });
-    }
   }
   const saved = await repo.saveRules(session.pubkey, patch);
+  // The event follows the save, so a failed save never leaves a change in Activity that did not happen.
+  if (patch.allocation && (!sameSplit(patch.allocation, current.allocation) || patch.managed !== current.managed || patch.stop !== current.stop)) {
+    await repo.addEvent({ userPubkey: session.pubkey, walletPubkey: null, kind: "split_changed", detail: { by: "you", from: current.allocation, to: patch.allocation, stop: patch.stop, managed: patch.managed, day: dayOf(new Date()) } });
+  }
   return NextResponse.json(rulesRowToRules(saved));
 }

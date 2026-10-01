@@ -55,7 +55,7 @@ describe("PUT /api/rules with the Yield Manager", () => {
     expect(bad.status).toBe(400);
   });
 
-  it("a pin fixes the coin and the rest is recomputed; off, SKR is the rest and cannot be pinned", async () => {
+  it("a pin fixes the coin and the rest is recomputed; off, SKR is the rest and an SKR pin is dropped", async () => {
     await put({ managed: true, stop: "balanced" });
     const res = await put({ pins: { cbBTC: 20 } });
     const a = ((await res.json()) as { allocation: Split }).allocation;
@@ -63,7 +63,23 @@ describe("PUT /api/rules with the Yield Manager", () => {
     expect(sum(a)).toBe(100);
     const off = await put({ managed: false, pins: { stORE: 20 } });
     expect(((await off.json()) as { allocation: Split }).allocation).toEqual(split({ SKR: 80, stORE: 20 }));
-    expect((await put({ managed: false, pins: { SKR: 50 } })).status).toBe(400);
+    const skrOff = await put({ managed: false, pins: { SKR: 50 } });
+    expect(skrOff.status).toBe(200);
+    const b = (await skrOff.json()) as { pins: Record<string, number>; allocation: Split };
+    expect(b.allocation).toEqual(SKR_ONLY);
+    expect("SKR" in b.pins).toBe(false);
+    expect("SKR" in (await repo.getRules(U)).pins).toBe(false);
+  });
+
+  it("switching off with an SKR pin saved while on drops the SKR pin and keeps the rest (spec 4.2)", async () => {
+    await put({ managed: true, stop: "balanced" });
+    expect((await put({ pins: { SKR: 40, cbBTC: 20 } })).status).toBe(200);
+    const res = await put({ managed: false });
+    expect(res.status).toBe(200);
+    const b = (await res.json()) as { managed: boolean; pins: Record<string, number>; allocation: Split };
+    expect(b.managed).toBe(false);
+    expect(b.pins).toEqual({ cbBTC: 20 });
+    expect(b.allocation).toEqual(split({ SKR: 80, cbBTC: 20 }));
   });
 
   it("allocation can no longer be set directly; the daily limit stops at the on-chain $5", async () => {
