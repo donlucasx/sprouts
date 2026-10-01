@@ -142,8 +142,10 @@ export function buildScene(g: GardenInput): Scene {
   }
   // ORE pups sit on the soil beside the succulent, and the next one forms there too (09-30, the Saga: hung off a leaf, it floated);
   // it waits for the watering like the fruit, since the plant it belongs to is still a bud until then.
-  for (let i = 0; i < g.storePups; i++) parts.push({ kind: "fruit", index: i, plant: "ore", ripe: true, bud: false, on: null });
-  if (g.storePutInRaw > 0n && hosts("ore").length > 0) parts.push({ kind: "ripening", plant: "ore", progress: g.storeNextPupProgress, on: null });
+  if (hosts("ore").length > 0) {
+    for (let i = 0; i < g.storePups; i++) parts.push({ kind: "fruit", index: i, plant: "ore", ripe: true, bud: false, on: null });
+    if (g.storePutInRaw > 0n) parts.push({ kind: "ripening", plant: "ore", progress: g.storeNextPupProgress, on: null });
+  }
 
   if (g.basket) parts.push({ kind: "basket", amountRaw: g.basket.amountRaw, readyAt: g.basket.readyAt });
 
