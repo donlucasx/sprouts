@@ -1,9 +1,13 @@
+import { useState } from "react";
 import { Linking, Pressable, Text, View } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import { Screen } from "@/components/Screen";
 import { Card } from "@/components/Card";
-import { api, type ActivityResponse } from "@/lib/api";
-import { useMe } from "@/lib/me";
+import { Button } from "@/components/Button";
+import { api, ApiError, type ActivityResponse, type Asset } from "@/lib/api";
+import { useMe, useInvalidateMe } from "@/lib/me";
+import { splitRowLine, SPLIT_SECTION } from "@/model/manager";
+import { undoSplit } from "@/lib/manager-api";
 import { formatSkr, formatUsd, formatAmount } from "@/lib/format";
 
 const day = (iso: string) => new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
@@ -22,9 +26,25 @@ function Line({ text, signature }: { text: string; signature?: string | null }) 
 export default function Activity() {
   const { data: me } = useMe();
   const skrUsd = me?.pot.skrUsd ?? null;
-  const storeUsd = me?.pot.storeUsd ?? null;
   const q = useQuery({ queryKey: ["activity"], queryFn: () => api<ActivityResponse>("/api/activity") });
   const a = q.data;
+  const invalidate = useInvalidateMe();
+  const [busy, setBusy] = useState(false);
+  const [undoError, setUndoError] = useState<string | null>(null);
+  const usdFor = (x: Asset) => (x === "SKR" ? me?.pot.skrUsd ?? null : x === "stORE" ? me?.pot.storeUsd ?? null : null);
+
+  async function undo() {
+    setBusy(true); setUndoError(null);
+    try {
+      await undoSplit();
+      await invalidate();
+      await q.refetch();
+    } catch (e) {
+      setUndoError(e instanceof ApiError ? e.message : "Could not undo. Try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
   return (
     <Screen>
       <Text style={{ fontSize: 24, color: "#2F5D3A", fontStyle: "italic", fontFamily: "serif" }}>Activity</Text>
@@ -37,9 +57,23 @@ export default function Activity() {
             {a.plantings.length === 0 ? <Text style={{ color: "#6B6558" }}>No planting yet.</Text> : null}
             {a.plantings.map((p) => {
               const leg = p.legs[0];
-              const what = p.status === "confirmed" && leg ? `${formatUsd(p.usdcPulledCents)} pulled, ${formatAmount(leg.asset, BigInt(leg.amountOutRaw), leg.asset === "SKR" ? skrUsd : storeUsd)} planted` : p.status === "failed" ? "did not land, nothing pulled" : "in flight";
+              const what = p.status === "confirmed" && leg ? `${formatUsd(p.usdcPulledCents)} pulled, ${formatAmount(leg.asset, BigInt(leg.amountOutRaw), usdFor(leg.asset))} planted, fee ${formatUsd(leg.feeCents)}` : p.status === "failed" ? "did not land, nothing pulled" : "in flight";
               return <Line key={p.id} text={`${day(p.ts)}, ${what}`} signature={p.signature} />;
             })}
+          </Card>
+          <Card>
+            <Text style={{ fontSize: 17, fontWeight: "600", color: "#2B2B2B" }}>{SPLIT_SECTION.title}</Text>
+            <Text style={{ fontSize: 13, color: "#6B6558" }}>{SPLIT_SECTION.sub}</Text>
+            {a.splits.length === 0 ? <Text style={{ color: "#6B6558" }}>{SPLIT_SECTION.empty}</Text> : null}
+            {a.splits.map((s, i) => (
+              <View key={`${s.ts}-${i}`} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                <Text style={{ fontSize: 14, color: "#2B2B2B", flex: 1 }}>{splitRowLine(s)}</Text>
+                {i === 0 && s.by === "manager" && me?.manager.undoAvailable ? (
+                  <Button title={busy ? "Undoing..." : "Undo"} kind="quiet" disabled={busy} onPress={undo} />
+                ) : null}
+              </View>
+            ))}
+            {undoError ? <Text style={{ color: "#8C2F2F" }}>{undoError}</Text> : null}
           </Card>
           <Card>
             <Text style={{ fontSize: 17, fontWeight: "600", color: "#2B2B2B" }}>Swaps</Text>
