@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getRepo } from "@/db/repo";
+import type { Split } from "@/domain/coins";
 import { requireSession } from "@/lib/auth-guard";
 
 export const runtime = "nodejs";
@@ -16,7 +17,14 @@ export async function GET(request: Request) {
     repo.listSwaps(session.pubkey, LIMIT), repo.listPlantings(session.pubkey, LIMIT), repo.listWithdrawals(session.pubkey, LIMIT),
   ]);
   const legs = await Promise.all(plantings.map((p) => repo.plantingLegs(p.id)));
+  const events = await repo.listEvents(session.pubkey, ["split_changed", "split_undone"], LIMIT);
+  type Detail = { by?: "manager" | "you"; from: Split; to: Split; stop?: string; why?: string | null; fallback?: string | null };
+  const splits = events.map((e) => {
+    const d = e.detail as Detail;
+    return { ts: e.ts, by: e.kind === "split_undone" ? "undo" : (d.by ?? "manager"), from: d.from, to: d.to, stop: d.stop ?? null, why: d.why ?? null, fallback: d.fallback ?? null };
+  });
   return NextResponse.json(str({
+    splits,
     swaps: swaps.map((s) => ({ signature: s.signature, ts: s.ts, walletPubkey: s.walletPubkey, usdSizeCents: s.usdSizeCents, class: s.class, roundupCents: s.roundupCents, plantingId: s.plantingId })),
     plantings: plantings.map((p, i) => ({
       id: p.id, ts: p.ts, status: p.status, signature: p.signature, usdcPulledCents: p.usdcPulledCents, networkFeeCents: p.networkFeeCents,
