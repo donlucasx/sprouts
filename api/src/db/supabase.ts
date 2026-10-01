@@ -259,7 +259,8 @@ export class SupabaseRepo implements Repo {
     if (error) throw new Error(error.message);
   }
   async getCoinDay(day: string, asset: Asset) {
-    const { data } = await this.db.from("coin_days").select().eq("day", day).eq("asset", asset).maybeSingle();
+    const { data, error } = await this.db.from("coin_days").select().eq("day", day).eq("asset", asset).maybeSingle();
+    if (error) throw new Error(error.message);
     return data ? coinDayRow(data as Row) : null;
   }
   async listCoinDays(asset: Asset, sinceDay: string) {
@@ -270,13 +271,15 @@ export class SupabaseRepo implements Repo {
     if (error) throw new Error(error.message);
   }
   async getSplitDay(day: string, stop: Stop) {
-    const { data } = await this.db.from("split_days").select().eq("day", day).eq("stop", stop).maybeSingle();
+    const { data, error } = await this.db.from("split_days").select().eq("day", day).eq("stop", stop).maybeSingle();
+    if (error) throw new Error(error.message);
     return data ? splitDayRow(data as Row) : null;
   }
   async latestSplitDay(stop: Stop, beforeDay?: string) {
     let q = this.db.from("split_days").select().eq("stop", stop);
     if (beforeDay) q = q.lt("day", beforeDay);
-    const { data } = await q.order("day", { ascending: false }).limit(1).maybeSingle();
+    const { data, error } = await q.order("day", { ascending: false }).limit(1).maybeSingle();
+    if (error) throw new Error(error.message);
     return data ? splitDayRow(data as Row) : null;
   }
 
