@@ -1,6 +1,10 @@
-import type { Part, Scene } from "./garden";
+import type { Part, PlantId, Scene } from "./garden";
 import { MAX_RISE, TRANSPLANT_BASE, leafSize, nodeRise, side, stemRise } from "./plant-geometry";
 import { soilSurface } from "./soil";
+
+/** Each plant's stem width in the widget: PLANT_STYLE's `stem` in src/garden/parts.tsx, two thirds scale (this pure module cannot
+ * import the React parts; keep the two in step). */
+const STEM_WIDTH: Record<PlantId, number> = { skr: 2, ore: 3, hsol: 2, jitosol: 2, jupsol: 2.3, cbbtc: 2.7 };
 
 /** The widget's soil band: the app's mound at half scale (edges 20 below the soil line, crown 10), 30 high. */
 export const WIDGET_SOIL_BAND = 30;
@@ -18,9 +22,9 @@ export function widgetGardenSvg(scene: Scene, width: number, height: number): st
   const k = Math.min(1, (height - WIDGET_SOIL_BAND - 6) / MAX_RISE);
   const transplant = scene.parts.some((p) => p.kind === "transplant");
   const plants = scene.parts.filter((p): p is Extract<Part, { kind: "plant" }> => p.kind === "plant");
-  const plantOf = (c: "skr" | "ore") => plants.find((p) => p.plant === c)!;
-  const base = (c: "skr" | "ore") => (c === "skr" && transplant ? TRANSPLANT_BASE : 0);
-  const node = (s: { plant: "skr" | "ore"; y: number }) => {
+  const plantOf = (c: PlantId) => plants.find((p) => p.plant === c)!;
+  const base = (c: PlantId) => (c === "skr" && transplant ? TRANSPLANT_BASE : 0);
+  const node = (s: { plant: PlantId; y: number }) => {
     const p = plantOf(s.plant);
     return { x: p.x * width, y: surface(p.x) - nodeRise(s.y, p.shoots, base(s.plant)) * k };
   };
@@ -29,7 +33,7 @@ export function widgetGardenSvg(scene: Scene, width: number, height: number): st
     ? [`<circle cx="${f(p.x * width)}" cy="${f(surface(p.x) + 2.5)}" r="2" fill="#2B2B2B" opacity="0.7"/>`] : []);
   const stems = plants.map((p) => {
     const x = f(p.x * width), foot = f(surface(p.x)), rise = f(stemRise(p.shoots, base(p.plant)) * k);
-    return `<path d="M${x} ${foot} q 1.5 ${f(-rise / 2)} 0 ${-rise}" stroke="#3F7A4A" stroke-width="${p.plant === "skr" ? 2 : 3}" fill="none"/>`;
+    return `<path d="M${x} ${foot} q 1.5 ${f(-rise / 2)} 0 ${-rise}" stroke="#3F7A4A" stroke-width="${STEM_WIDTH[p.plant]}" fill="none" data-plant="${p.plant}"/>`;
   });
   const leaves = scene.parts.flatMap((p) => {
     if (p.kind !== "sprout") return [];
