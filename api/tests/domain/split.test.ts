@@ -172,6 +172,11 @@ describe("checkWhy (spec 6.4)", () => {
     expect(checkWhy("hSOL leads at 7.2% this week. https://x.y", facts)).toBe("hSOL leads at 7.2% this week.");
     expect(checkWhy("I moved 10 points to hSOL, which grew 7.2%.", facts)).toBeNull();
     expect(checkWhy("You should buy more hSOL, it grew 7.2%.", facts)).toBeNull();
+    expect(checkWhy("We moved 10 points to hSOL.", facts)).toBeNull();
+    expect(checkWhy("The watcher leans to hSOL at 7.2%.", facts)).toBeNull();
+    expect(checkWhy("hSOL grew 7.2% \u2014 the most this week.", facts)).toBeNull();
+    expect(checkWhy("hSOL grew 7.2% this week \u{1F331}", facts)).toBeNull();
+    expect(checkWhy("Your portfolio leans to hSOL at 7.2%.", facts)).toBeNull();
     expect(checkWhy(`${"hSOL leads at 7.2%. ".repeat(10)}`, facts)).toBeNull();
   });
   it("the template names the top coin, or says it is collecting", () => {
