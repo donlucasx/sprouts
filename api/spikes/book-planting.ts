@@ -36,7 +36,7 @@ if (!write) { console.log("dry run; add --write to book it"); process.exit(0); }
 
 const row = await repo.insertPlanting(
   { userPubkey, walletPubkey, signature, usdcPulledCents: pulledCents, networkFeeCents: NETWORK_FEE_CENTS, status: "confirmed", aiLine: null },
-  [{ asset: "SKR", usdcInCents, amountOutRaw, staked: true, feeAmountRaw }],
+  [{ asset: "SKR", usdcInCents, amountOutRaw, staked: true, feeAmountRaw, feeCents: 0, rateAtPlanting: null }],
 );
 const { error } = await db.from("plantings").update({ ts: ts.toISOString() }).eq("id", row.id);
 if (error) { console.log(`booked ${row.id} but the time update failed: ${error.message}`); process.exit(1); }

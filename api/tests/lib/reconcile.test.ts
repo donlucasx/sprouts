@@ -95,7 +95,7 @@ describe("reconcileOwnStakes (R61, [A16])", () => {
     await repo.upsertUser({ seedVaultPubkey: "U", sgtMint: "M", skrName: null });
     await repo.setJoinedPosition("U", { shares: 0n, sharePrice: SP });
     const p = await repo.insertPlanting({ userPubkey: "U", walletPubkey: "W", signature: "s", usdcPulledCents: 23, networkFeeCents: 3, status: "confirmed", aiLine: null },
-      [{ asset: "SKR", usdcInCents: 20, amountOutRaw: 1_100_000_000n, staked: true, feeAmountRaw: 0n }]);
+      [{ asset: "SKR", usdcInCents: 20, amountOutRaw: 1_100_000_000n, staked: true, feeAmountRaw: 0n, feeCents: 0, rateAtPlanting: null }]);
     await repo.setPlantingShares(p.id, { before: 0n, after: 1_000_000_000n, minted: 1_000_000_000n });
     // 1,146 SKR against 1,100 put in: 46 SKR earned. The wallet unstakes exactly that: 40,139,616 shares burn, 46 SKR sit in the cooldown.
     const { potForUser } = await import("@/lib/pot");

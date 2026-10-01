@@ -163,7 +163,7 @@ describe("link flow", () => {
     expect(row?.status).toBe("active");
     expect(row?.delegationPda).toBe(t.delegationPda);
     expect(row?.delegationPda).not.toBe(OLD);
-    expect(row?.ledgerSkrCents).toBe(215);
+    expect(row?.ledgerCents).toEqual({ SKR: 215 });
   });
 
   it("refuses a wallet that another Seeker still holds", async () => {

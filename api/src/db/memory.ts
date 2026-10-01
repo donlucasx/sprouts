@@ -1,6 +1,7 @@
 import type { Repo, NewPlanting, NewWithdrawal, NewWatcherCall } from "./repo";
 import type * as T from "./types";
-import type { Asset } from "@/domain/allocation";
+import type { Asset, Stop } from "@/domain/coins";
+import { toSplit } from "@/domain/coins";
 import { DEFAULT_RULES } from "@/domain/roundup";
 
 let seq = 0;
@@ -22,6 +23,8 @@ export class MemoryRepo implements Repo {
   adjustments: T.StakeAdjustmentRow[] = [];
   sessions = new Map<string, T.SessionRow>();
   watcherCalls: T.WatcherCallRow[] = [];
+  coinDays = new Map<string, T.CoinDayRow>();
+  splitDays = new Map<string, T.SplitDayRow>();
 
   async upsertUser(u: { seedVaultPubkey: string; sgtMint: string; skrName: string | null }) {
     for (const other of this.users.values()) {
@@ -63,7 +66,7 @@ export class MemoryRepo implements Repo {
     if (!this.users.has(userPubkey) && !this.rules.has(userPubkey)) throw new Error(`insert or update on table "rules" violates foreign key constraint "rules_user_pubkey_fkey" (${userPubkey})`);
     let r = this.rules.get(userPubkey);
     if (!r) {
-      r = { ...DEFAULT_RULES, allocation: { ...DEFAULT_RULES.allocation }, userPubkey, updatedAt: new Date() };
+      r = { ...DEFAULT_RULES, pins: {}, allocation: { ...DEFAULT_RULES.allocation }, prevAllocation: null, allocationDay: null, userPubkey, updatedAt: new Date() };
       this.rules.set(userPubkey, r);
     }
     return r;
@@ -71,9 +74,19 @@ export class MemoryRepo implements Repo {
 
   async saveRules(userPubkey: string, patch: Partial<Omit<T.RulesRow, "userPubkey" | "updatedAt">>): Promise<T.RulesRow> {
     const current = await this.getRules(userPubkey);
-    const next: T.RulesRow = { ...current, ...patch, allocation: { ...(patch.allocation ?? current.allocation) }, userPubkey, updatedAt: new Date() };
+    const next: T.RulesRow = {
+      ...current, ...patch,
+      pins: { ...(patch.pins ?? current.pins) },
+      allocation: toSplit(patch.allocation ?? current.allocation),
+      prevAllocation: patch.prevAllocation === undefined ? current.prevAllocation : patch.prevAllocation ? toSplit(patch.prevAllocation) : null,
+      userPubkey, updatedAt: new Date(),
+    };
     this.rules.set(userPubkey, next);
     return next;
+  }
+
+  async listManagedRules() {
+    return [...this.rules.values()].filter((r) => r.managed);
   }
 
   async addWallet(w: { pubkey: string; userPubkey: string; delegationPda: string; dailyCapCents: number; webhookAdded?: boolean }): Promise<T.WalletRow> {
@@ -82,7 +95,7 @@ export class MemoryRepo implements Repo {
     const existing = this.wallets.get(w.pubkey);
     const row: T.WalletRow = {
       ...rest, status: "active", webhookAdded,
-      ledgerSkrCents: existing?.ledgerSkrCents ?? 0, ledgerStoreCents: existing?.ledgerStoreCents ?? 0, createdAt: existing?.createdAt ?? new Date(),
+      ledgerCents: { ...(existing?.ledgerCents ?? {}) }, createdAt: existing?.createdAt ?? new Date(),
     };
     this.wallets.set(w.pubkey, row);
     return row;
@@ -112,8 +125,7 @@ export class MemoryRepo implements Repo {
   async bumpLedger(pubkey: string, asset: Asset, cents: number) {
     const w = this.wallets.get(pubkey);
     if (!w) return;
-    if (asset === "SKR") w.ledgerSkrCents += cents;
-    else w.ledgerStoreCents += cents;
+    w.ledgerCents[asset] = (w.ledgerCents[asset] ?? 0) + cents;
   }
 
   async insertSwap(s: Omit<T.SwapRow, "plantingId" | "createdAt">): Promise<boolean> {
@@ -196,7 +208,9 @@ export class MemoryRepo implements Repo {
   }
 
   async addWatcherCall(c: NewWatcherCall) {
-    this.watcherCalls.push({ ...c, id: this.watcherCalls.length + 1, ts: c.ts ?? new Date() });
+    const id = this.watcherCalls.length + 1;
+    this.watcherCalls.push({ ...c, id, ts: c.ts ?? new Date() });
+    return id;
   }
   async watcherSpendMicrocents(since: Date) {
     return this.watcherCalls.filter((c) => c.ts.getTime() >= since.getTime()).reduce((sum, c) => sum + c.costMicrocents, 0);
@@ -210,6 +224,30 @@ export class MemoryRepo implements Repo {
 
   async addEvent(e: Omit<T.EventRow, "id" | "ts">) {
     this.events.push({ ...e, id: this.events.length + 1, ts: new Date() });
+  }
+
+  async listEvents(userPubkey: string, kinds: T.EventKind[], limit: number) {
+    return this.events.filter((e) => e.userPubkey === userPubkey && kinds.includes(e.kind)).sort((a, b) => b.id - a.id).slice(0, limit);
+  }
+
+  async putCoinDay(row: T.CoinDayRow) {
+    this.coinDays.set(`${row.day}|${row.asset}`, { ...row });
+  }
+  async getCoinDay(day: string, asset: Asset) {
+    return this.coinDays.get(`${day}|${asset}`) ?? null;
+  }
+  async listCoinDays(asset: Asset, sinceDay: string) {
+    return [...this.coinDays.values()].filter((r) => r.asset === asset && r.day >= sinceDay).sort((a, b) => a.day.localeCompare(b.day));
+  }
+  async putSplitDay(row: T.SplitDayRow) {
+    this.splitDays.set(`${row.day}|${row.stop}`, { ...row, split: toSplit(row.split) });
+  }
+  async getSplitDay(day: string, stop: Stop) {
+    return this.splitDays.get(`${day}|${stop}`) ?? null;
+  }
+  async latestSplitDay(stop: Stop, beforeDay?: string) {
+    const rows = [...this.splitDays.values()].filter((r) => r.stop === stop && (!beforeDay || r.day < beforeDay)).sort((a, b) => b.day.localeCompare(a.day));
+    return rows[0] ?? null;
   }
 
   async putNonce(n: { nonce: string; expiresAt: Date }) {

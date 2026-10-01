@@ -1,8 +1,8 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { Repo, NewPlanting, NewWithdrawal, NewWatcherCall } from "./repo";
 import type * as T from "./types";
-import type { Asset } from "@/domain/allocation";
-import { DEFAULT_RULES } from "@/domain/roundup";
+import type { Asset, Stop } from "@/domain/coins";
+import { toSplit } from "@/domain/coins";
 import { config } from "@/lib/config";
 
 type Row = Record<string, unknown>;
@@ -81,7 +81,16 @@ export class SupabaseRepo implements Repo {
     if (patch.plantMaxDays !== undefined) update.plant_max_days = patch.plantMaxDays;
     if (patch.dailyCapCents !== undefined) update.daily_cap_cents = patch.dailyCapCents;
     if (patch.allocation !== undefined) update.allocation = patch.allocation;
+    if (patch.managed !== undefined) update.managed = patch.managed;
+    if (patch.stop !== undefined) update.stop = patch.stop;
+    if (patch.pins !== undefined) update.pins = patch.pins;
+    if (patch.prevAllocation !== undefined) update.prev_allocation = patch.prevAllocation;
+    if (patch.allocationDay !== undefined) update.allocation_day = patch.allocationDay;
     return this.one(this.db.from("rules").update(update).eq("user_pubkey", userPubkey).select().single(), rulesRow);
+  }
+
+  async listManagedRules() {
+    return this.many(this.db.from("rules").select().eq("managed", true), rulesRow);
   }
 
   /** An upsert on the wallet: a re-link resets the delegation, cap, status and webhook flag; the ledger columns are untouched. */
@@ -163,10 +172,7 @@ export class SupabaseRepo implements Repo {
   }
 
   async plantingLegs(plantingId: string) {
-    return this.many(this.db.from("planting_legs").select().eq("planting_id", plantingId), (r) => ({
-      plantingId: String(r.planting_id), asset: r.asset as Asset, usdcInCents: Number(r.usdc_in_cents), amountOutRaw: BigInt(String(r.amount_out_raw)),
-      staked: Boolean(r.staked), feeAmountRaw: BigInt(String(r.fee_amount_raw)),
-    }));
+    return this.many(this.db.from("planting_legs").select().eq("planting_id", plantingId), legRow);
   }
 
   async insertPlanting(p: NewPlanting, legs: Omit<T.PlantingLegRow, "plantingId">[]) {
@@ -177,7 +183,7 @@ export class SupabaseRepo implements Repo {
     }).select().single(), plantingRow);
     if (legs.length) {
       const { error } = await this.db.from("planting_legs").insert(legs.map((l) => ({
-        planting_id: row.id, asset: l.asset, usdc_in_cents: l.usdcInCents, amount_out_raw: l.amountOutRaw.toString(), staked: l.staked, fee_amount_raw: l.feeAmountRaw.toString(),
+        planting_id: row.id, asset: l.asset, usdc_in_cents: l.usdcInCents, amount_out_raw: l.amountOutRaw.toString(), staked: l.staked, fee_amount_raw: l.feeAmountRaw.toString(), fee_cents: l.feeCents, rate_at_planting: l.rateAtPlanting,
       })));
       if (error) throw new Error(error.message);
     }
@@ -212,11 +218,12 @@ export class SupabaseRepo implements Repo {
   }
 
   async addWatcherCall(c: NewWatcherCall) {
-    const { error } = await this.db.from("watcher_calls").insert({
+    const { data, error } = await this.db.from("watcher_calls").insert({
       user_pubkey: c.userPubkey, kind: c.kind, input_tokens: c.inputTokens, output_tokens: c.outputTokens, cost_microcents: c.costMicrocents,
       ...(c.ts ? { ts: c.ts.toISOString() } : {}),
-    });
+    }).select("id").single();
     if (error) throw new Error(error.message);
+    return Number((data as Row).id);
   }
   /** Summed here, not in SQL: at $0.001 a call the month's cap is ten thousand rows of one column, read once per call. */
   async watcherSpendMicrocents(since: Date) {
@@ -238,6 +245,39 @@ export class SupabaseRepo implements Repo {
   async addEvent(e: Omit<T.EventRow, "id" | "ts">) {
     const { error } = await this.db.from("events").insert({ user_pubkey: e.userPubkey, wallet_pubkey: e.walletPubkey, kind: e.kind, detail: e.detail ?? null });
     if (error) throw new Error(error.message);
+  }
+
+  async listEvents(userPubkey: string, kinds: T.EventKind[], limit: number) {
+    return this.many(this.db.from("events").select().eq("user_pubkey", userPubkey).in("kind", kinds).order("id", { ascending: false }).limit(limit), eventRow);
+  }
+
+  async putCoinDay(r: T.CoinDayRow) {
+    const { error } = await this.db.from("coin_days").upsert({
+      day: r.day, asset: r.asset, rate: r.rate, rate_prev: r.ratePrev, rate_prev_days: r.ratePrevDays, price_usd: r.priceUsd, liquidity_usd: r.liquidityUsd,
+      price_change_24h: r.priceChange24h, tradeable: r.tradeable, last_update_epoch: r.lastUpdateEpoch, ok: r.ok,
+    }, { onConflict: "day,asset" });
+    if (error) throw new Error(error.message);
+  }
+  async getCoinDay(day: string, asset: Asset) {
+    const { data } = await this.db.from("coin_days").select().eq("day", day).eq("asset", asset).maybeSingle();
+    return data ? coinDayRow(data as Row) : null;
+  }
+  async listCoinDays(asset: Asset, sinceDay: string) {
+    return this.many(this.db.from("coin_days").select().eq("asset", asset).gte("day", sinceDay).order("day"), coinDayRow);
+  }
+  async putSplitDay(r: T.SplitDayRow) {
+    const { error } = await this.db.from("split_days").upsert({ day: r.day, stop: r.stop, split: r.split, model_answer: r.modelAnswer, why: r.why, fallback: r.fallback, call_id: r.callId }, { onConflict: "day,stop" });
+    if (error) throw new Error(error.message);
+  }
+  async getSplitDay(day: string, stop: Stop) {
+    const { data } = await this.db.from("split_days").select().eq("day", day).eq("stop", stop).maybeSingle();
+    return data ? splitDayRow(data as Row) : null;
+  }
+  async latestSplitDay(stop: Stop, beforeDay?: string) {
+    let q = this.db.from("split_days").select().eq("stop", stop);
+    if (beforeDay) q = q.lt("day", beforeDay);
+    const { data } = await q.order("day", { ascending: false }).limit(1).maybeSingle();
+    return data ? splitDayRow(data as Row) : null;
   }
 
   async putNonce(n: { nonce: string; expiresAt: Date }) {
@@ -358,20 +398,48 @@ function userRow(r: Row): T.UserRow {
   };
 }
 
-function rulesRow(r: Row): T.RulesRow {
-  const allocation = (r.allocation as { SKR?: number; stORE?: number } | null) ?? DEFAULT_RULES.allocation;
+export function rulesRow(r: Row): T.RulesRow {
   return {
     userPubkey: String(r.user_pubkey), roundupOn: Boolean(r.roundup_on), roundupToCents: Number(r.roundup_to_cents), pctOn: Boolean(r.pct_on), pctBps: Number(r.pct_bps),
     pctThresholdCents: Number(r.pct_threshold_cents), plantThresholdCents: Number(r.plant_threshold_cents), plantMaxDays: Number(r.plant_max_days),
-    dailyCapCents: Number(r.daily_cap_cents), allocation: { SKR: Number(allocation.SKR ?? 100), stORE: Number(allocation.stORE ?? 0) }, updatedAt: date(r.updated_at),
+    dailyCapCents: Number(r.daily_cap_cents),
+    managed: Boolean(r.managed), stop: (r.stop as Stop) ?? "balanced", pins: { ...((r.pins as Record<string, number> | null) ?? {}) },
+    allocation: toSplit(r.allocation as Record<string, number> | null),
+    prevAllocation: r.prev_allocation ? toSplit(r.prev_allocation as Record<string, number>) : null,
+    allocationDay: r.allocation_day ? String(r.allocation_day) : null,
+    updatedAt: date(r.updated_at),
   };
 }
 
-function walletRow(r: Row): T.WalletRow {
+export function walletRow(r: Row): T.WalletRow {
   return {
     pubkey: String(r.pubkey), userPubkey: String(r.user_pubkey), delegationPda: String(r.delegation_pda), dailyCapCents: Number(r.daily_cap_cents),
-    status: r.status as T.WalletStatus, webhookAdded: Boolean(r.webhook_added), ledgerSkrCents: Number(r.ledger_skr_cents), ledgerStoreCents: Number(r.ledger_store_cents), createdAt: date(r.created_at),
+    status: r.status as T.WalletStatus, webhookAdded: Boolean(r.webhook_added), ledgerCents: { ...((r.ledger_cents as Record<string, number> | null) ?? {}) }, createdAt: date(r.created_at),
   };
+}
+
+export function legRow(r: Row): T.PlantingLegRow {
+  return {
+    plantingId: String(r.planting_id), asset: r.asset as Asset, usdcInCents: Number(r.usdc_in_cents), amountOutRaw: BigInt(String(r.amount_out_raw)),
+    staked: Boolean(r.staked), feeAmountRaw: BigInt(String(r.fee_amount_raw ?? 0)), feeCents: Number(r.fee_cents ?? 0),
+    rateAtPlanting: r.rate_at_planting === null || r.rate_at_planting === undefined ? null : Number(r.rate_at_planting),
+  };
+}
+const num = (v: unknown) => (v === null || v === undefined ? null : Number(v));
+export function coinDayRow(r: Row): T.CoinDayRow {
+  return {
+    day: String(r.day), asset: r.asset as Asset, rate: num(r.rate), ratePrev: num(r.rate_prev), ratePrevDays: num(r.rate_prev_days), priceUsd: num(r.price_usd),
+    liquidityUsd: num(r.liquidity_usd), priceChange24h: num(r.price_change_24h), tradeable: Boolean(r.tradeable), lastUpdateEpoch: num(r.last_update_epoch), ok: Boolean(r.ok),
+  };
+}
+export function splitDayRow(r: Row): T.SplitDayRow {
+  return {
+    day: String(r.day), stop: r.stop as Stop, split: toSplit(r.split as Record<string, number>), modelAnswer: r.model_answer ?? null,
+    why: str(r.why), fallback: str(r.fallback), callId: num(r.call_id),
+  };
+}
+function eventRow(r: Row): T.EventRow {
+  return { id: Number(r.id), userPubkey: str(r.user_pubkey), walletPubkey: str(r.wallet_pubkey), ts: date(r.ts), kind: r.kind as T.EventKind, detail: r.detail ?? null };
 }
 
 function swapRow(r: Row): T.SwapRow {
@@ -411,7 +479,7 @@ function stakeAdjustmentRow(r: Row): T.StakeAdjustmentRow {
 }
 
 function watcherCallRow(r: Row): T.WatcherCallRow {
-  return { id: Number(r.id), ts: date(r.ts), userPubkey: String(r.user_pubkey), kind: r.kind as T.WatcherCallKind, inputTokens: Number(r.input_tokens), outputTokens: Number(r.output_tokens), costMicrocents: Number(r.cost_microcents) };
+  return { id: Number(r.id), ts: date(r.ts), userPubkey: str(r.user_pubkey), kind: r.kind as T.WatcherCallKind, inputTokens: Number(r.input_tokens), outputTokens: Number(r.output_tokens), costMicrocents: Number(r.cost_microcents) };
 }
 function sessionRow(r: Row): T.SessionRow {
   return { tokenHash: String(r.token_hash), userPubkey: String(r.user_pubkey), device: String(r.device), createdAt: date(r.created_at), expiresAt: date(r.expires_at), revokedAt: r.revoked_at ? date(r.revoked_at) : null };

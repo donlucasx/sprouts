@@ -1,5 +1,5 @@
 import type { Rules } from "@/domain/roundup";
-import type { Asset } from "@/domain/allocation";
+import type { Asset, Split, Stop } from "@/domain/coins";
 import type { SwapClass } from "@/domain/classify";
 
 export type UserRow = {
@@ -23,12 +23,13 @@ export type WalletRow = {
   dailyCapCents: number;
   status: WalletStatus;
   webhookAdded: boolean;
-  ledgerSkrCents: number;
-  ledgerStoreCents: number;
+  /** Cents delivered per asset (one jsonb map since 0005); a missing coin is zero. */
+  ledgerCents: Partial<Record<Asset, number>>;
   createdAt: Date;
 };
 
-export type RulesRow = Rules & { userPubkey: string; updatedAt: Date };
+/** `prevAllocation` and `allocationDay` are set only by the daily run (the undo, spec 4.5); any save by the user clears them. */
+export type RulesRow = Rules & { userPubkey: string; updatedAt: Date; prevAllocation: Split | null; allocationDay: string | null };
 
 export type SwapRow = {
   signature: string;
@@ -63,7 +64,8 @@ export type PlantingRow = {
   sharesMinted: bigint | null;
 };
 
-export type PlantingLegRow = { plantingId: string; asset: Asset; usdcInCents: number; amountOutRaw: bigint; staked: boolean; feeAmountRaw: bigint };
+/** `feeCents` is the 0.5% taken in USDC (R105); `rateAtPlanting` is the coin's `coin_days.rate` that day, null before the first snapshot. */
+export type PlantingLegRow = { plantingId: string; asset: Asset; usdcInCents: number; amountOutRaw: bigint; staked: boolean; feeAmountRaw: bigint; feeCents: number; rateAtPlanting: number | null };
 
 export type WithdrawalSource = "sprouts" | "wallet";
 
@@ -93,9 +95,9 @@ export type StakeAdjustmentRow = { id: string; userPubkey: string; ts: Date; kin
 /** One sign-in on one device (R84): the token itself is never stored, only its SHA-256. */
 export type SessionRow = { tokenHash: string; userPubkey: string; device: string; createdAt: Date; expiresAt: Date; revokedAt: Date | null };
 
-/** One model call by the watcher (spec 6), with what it cost, so the budget is read from the table. */
-export type WatcherCallKind = "compile" | "explain" | "propose";
-export type WatcherCallRow = { id: number; ts: Date; userPubkey: string; kind: WatcherCallKind; inputTokens: number; outputTokens: number; costMicrocents: number };
+/** One model call, with what it cost, so the budget is read from the table. The manager's daily calls have no user (kind `split`). */
+export type WatcherCallKind = "compile" | "explain" | "propose" | "split";
+export type WatcherCallRow = { id: number; ts: Date; userPubkey: string | null; kind: WatcherCallKind; inputTokens: number; outputTokens: number; costMicrocents: number };
 
 export type EventKind =
   | "wallet_linked"
@@ -109,9 +111,22 @@ export type EventKind =
   | "paused_no_usdc"
   | "resumed"
   | "proposal_made"
-  | "proposal_accepted";
+  | "proposal_accepted"
+  | "split_changed"
+  | "split_undone"
+  | "leg_fallback"
+  | "coin_no_data";
 
 export type EventRow = { id: number; userPubkey: string | null; walletPubkey: string | null; ts: Date; kind: EventKind; detail: unknown };
+
+/** One coin's daily snapshot (spec 5.2). `rate` is the growth measure for the coin's kind; `ok` false means no read landed. */
+export type CoinDayRow = {
+  day: string; asset: Asset; rate: number | null; ratePrev: number | null; ratePrevDays: number | null;
+  priceUsd: number | null; liquidityUsd: number | null; priceChange24h: number | null; tradeable: boolean; lastUpdateEpoch: number | null; ok: boolean;
+};
+
+/** One stop's split for one day (spec 6.7): what was applied, the raw model answer beside it, and why it fell back if it did. */
+export type SplitDayRow = { day: string; stop: Stop; split: Split; modelAnswer: unknown | null; why: string | null; fallback: string | null; callId: number | null };
 
 export type LinkCodeRow = {
   code: string;
@@ -134,6 +149,9 @@ export function rulesRowToRules(r: RulesRow): Rules {
     plantThresholdCents: r.plantThresholdCents,
     plantMaxDays: r.plantMaxDays,
     dailyCapCents: r.dailyCapCents,
+    managed: r.managed,
+    stop: r.stop,
+    pins: { ...r.pins },
     allocation: { ...r.allocation },
   };
 }
