@@ -1,4 +1,5 @@
-import { type Asset, type Holding } from "./api";
+import type { Asset } from "./coins";
+import type { Holding } from "./api";
 
 /** Display decimals per coin (the mints', read on chain; stORE is 11, not 9). Never money math: the API computes, the app formats. */
 export const DECIMALS: Record<Asset, number> = { SKR: 6, stORE: 11, hSOL: 9, JitoSOL: 9, JupSOL: 9, cbBTC: 8 };
@@ -50,8 +51,6 @@ export function shareLine(asset: Asset, pct: number): string {
   if (pct <= 0) return "Every planting grows SKR.";
   return `About ${pct} cents of every dollar grows ${COIN_NAME[asset]}.`;
 }
-/** Kept for the summary sentence until Task 3 rewrites it. */
-export const oreShareLine = (share: number) => shareLine("stORE", share);
 
 /** Home's line per held coin (spec 3.3): the amount with its value, earned when the coin has a measured rate, and where it sits. */
 export function formatHolding(h: Holding): string {

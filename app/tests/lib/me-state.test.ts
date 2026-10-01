@@ -1,9 +1,19 @@
 import { describe, it, expect } from "vitest";
-import { pickMeState, noPlantingLine, withdrawMode } from "@/lib/me-state";
+import { usableMe, pickMeState, noPlantingLine, withdrawMode } from "@/lib/me-state";
 import type { MeResponse } from "@/lib/api";
-const cached = { pot: { asOf: "2026-09-28T16:00:00Z" } } as never;
+const cached = { pot: { asOf: "2026-09-28T16:00:00Z" }, holdings: [], manager: { why: null } } as never;
 const live = { pot: { asOf: "2026-09-28T17:00:00Z" } } as never;
+const full = { pot: { asOf: "2026-09-28T16:00:00Z" }, holdings: [], manager: { why: null } } as unknown as MeResponse;
 describe("pickMeState", () => {
+  it("a cached me from before the Yield Manager build (no holdings or manager) counts as no cache (whole-branch review I2)", () => {
+    const old = { ...full } as Record<string, unknown>;
+    delete old.holdings; delete old.manager;
+    expect(usableMe(old as unknown as MeResponse)).toBeNull();
+    expect(usableMe(full)).toBe(full);
+    expect(pickMeState(undefined, old as unknown as MeResponse, false)).toEqual({ data: undefined, stale: false });
+    expect(pickMeState(undefined, old as unknown as MeResponse, true)).toEqual({ data: undefined, stale: true });
+    expect(pickMeState(undefined, full, false)).toEqual({ data: full, stale: false });
+  });
   it("keeps the last verified read on failure and says it is stale", () => { expect(pickMeState(undefined, cached, true)).toEqual({ data: cached, stale: true }); });
   it("prefers the live read", () => { expect(pickMeState(live, cached, false)).toEqual({ data: live, stale: false }); });
   it("never invents a garden", () => { expect(pickMeState(undefined, null, true)).toEqual({ data: undefined, stale: true }); });

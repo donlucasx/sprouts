@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatUsd, formatSkr, formatAsOf, roundUpTo, formatWallet, formatStore, formatAmount, oreShareLine, DECIMALS, formatHolding, shareLine, dayLabel, COIN_NAME } from "@/lib/format";
+import { formatUsd, formatSkr, formatAsOf, roundUpTo, formatWallet, formatStore, formatAmount, DECIMALS, formatHolding, shareLine, dayLabel, COIN_NAME } from "@/lib/format";
 
 describe("format", () => {
   it("dollars first, two decimals, whole cents", () => {
@@ -40,10 +40,6 @@ describe("stORE amounts", () => {
     expect(formatStore(122_495_137n, null)).toBe("0.0012 stORE"); // Spike 2's dust quote
     expect(formatAmount("SKR", 266_000_000n, 0.01833)).toBe("266.00 SKR ($4.88)");
     expect(formatAmount("stORE", 2_150_000_000n, 88.21)).toBe("0.0215 stORE ($1.90)");
-  });
-  it("the fence's line speaks in money, not plantings (finding 9)", () => {
-    expect(oreShareLine(0)).toBe("Every planting grows SKR.");
-    expect(oreShareLine(30)).toBe("About 30 cents of every dollar grows stORE.");
   });
 });
 

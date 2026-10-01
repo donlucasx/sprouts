@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { ASSETS, type Split } from "@/lib/coins";
+import { ASSETS, type Split, type Pins, type Stop } from "@/lib/coins";
 import {
   STOP_FLOOR, STOP_MAX, PIN_MAX, PIN_STEP, STOP_LINE, OFF_TEXT, ON_TEXT, UNDONE_TEXT,
-  splitRows, togglePin, stepPin, managerSentence, undoLine, changeSummary, splitRowLine, pinsForOn,
+  splitRows, togglePin, stepPin, canStepUp, managerSentence, undoLine, changeSummary, splitRowLine, pinsForOn,
 } from "@/model/manager";
 
 const split = (p: Partial<Split>): Split => ({ SKR: 0, stORE: 0, hSOL: 0, JitoSOL: 0, JupSOL: 0, cbBTC: 0, ...p });
@@ -58,6 +58,16 @@ describe("splitRows (spec 3.1)", () => {
 });
 
 describe("pins", () => {
+  it("canStepUp: off, the non-SKR pins stop where SKR would fall under the manual floor of 25; on, only the coin's pin max applies", () => {
+    const off = (pins: Pins) => ({ managed: false, stop: "balanced" as Stop, pins, allocation: split({ SKR: 100 }) });
+    expect(canStepUp(off({ stORE: 50, hSOL: 20 }), "hSOL")).toBe(true);    // 70 pinned, +5 leaves SKR 25
+    expect(canStepUp(off({ stORE: 50, hSOL: 25 }), "hSOL")).toBe(false);   // 75 pinned, +5 leaves SKR 20
+    expect(canStepUp(off({ stORE: 50, hSOL: 25 }), "cbBTC")).toBe(false);  // the floor binds every coin, not only the stepped one
+    expect(canStepUp(off({ stORE: 50 }), "stORE")).toBe(false);            // stORE's own max is 50
+    const on = (pins: Pins) => ({ managed: true, stop: "careful" as Stop, pins, allocation: split({ SKR: 50, hSOL: 50 }) });
+    expect(canStepUp(on({ stORE: 50, hSOL: 70 }), "hSOL")).toBe(true);     // on: the API decides the floor; +5 stays under hSOL's max 75
+    expect(canStepUp(on({ hSOL: 75 }), "hSOL")).toBe(false);
+  });
   it("togglePin pins a coin at its current percent and unpins it", () => {
     expect(togglePin({}, "hSOL", true, 23)).toEqual({ hSOL: 23 });
     expect(togglePin({ hSOL: 23, cbBTC: 10 }, "hSOL", false, 23)).toEqual({ cbBTC: 10 });
