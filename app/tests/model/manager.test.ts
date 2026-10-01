@@ -1,16 +1,9 @@
-import { describe, it, expect, vi } from "vitest";
-import type { Split } from "@/lib/api";
+import { describe, it, expect } from "vitest";
+import { ASSETS, type Split } from "@/lib/coins";
 import {
   STOP_FLOOR, STOP_MAX, PIN_MAX, PIN_STEP, STOP_LINE, OFF_TEXT, ON_TEXT, UNDONE_TEXT,
   splitRows, togglePin, stepPin, managerSentence, undoLine, changeSummary, splitRowLine, pinsForOn,
 } from "@/model/manager";
-
-// Mock react-native modules to avoid SSR parsing issues
-vi.mock("react", () => ({ createContext: () => ({}), useContext: () => ({}) }));
-vi.mock("expo-secure-store", () => ({ getItemAsync: async () => null, setItemAsync: async () => {}, deleteItemAsync: async () => {} }));
-
-// Use ASSETS from manager module instead of api
-const ASSETS = ["SKR", "stORE", "hSOL", "JitoSOL", "JupSOL", "cbBTC"] as const;
 
 const split = (p: Partial<Split>): Split => ({ SKR: 0, stORE: 0, hSOL: 0, JitoSOL: 0, JupSOL: 0, cbBTC: 0, ...p });
 const rules = (p: Partial<Parameters<typeof splitRows>[0]>) => ({ managed: false, stop: "balanced" as const, pins: {}, allocation: split({ SKR: 100 }), ...p });
