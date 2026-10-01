@@ -11,13 +11,13 @@ const argv = process.argv.slice(2);
 const user = argv[0];
 if (!user) { console.log("usage: set-rules.ts <user> key=value ... [--managed on|off] [--stop s] [--pin COIN=PCT] [--pins-clear]"); process.exit(1); }
 const allowed = new Set(["roundupToCents", "pctBps", "pctThresholdCents", "plantThresholdCents", "plantMaxDays", "dailyCapCents"]);
-const patch: Record<string, unknown> = {};
+const patch: Record<string, unknown> = { prevAllocation: null, allocationDay: null };
 let managed: boolean | undefined;
 let stop: Stop | undefined;
 let pins: Pins | undefined;
 for (let i = 1; i < argv.length; i++) {
   const a = argv[i];
-  if (a === "--managed") managed = argv[++i] === "on";
+  if (a === "--managed") { const v = argv[++i]; if (v !== "on" && v !== "off") { console.log(`bad --managed: ${v}`); process.exit(1); } managed = v === "on"; }
   else if (a === "--stop") { const s = argv[++i]; if (!isStop(s)) { console.log(`bad stop: ${s}`); process.exit(1); } stop = s; }
   else if (a === "--pin") { const [c, v] = argv[++i].split("="); if (!isAsset(c) || !Number.isInteger(Number(v))) { console.log(`bad pin: ${argv[i]}`); process.exit(1); } pins = { ...(pins ?? {}), [c as Asset]: Number(v) }; }
   else if (a === "--pins-clear") pins = {};
@@ -29,10 +29,11 @@ if (managed !== undefined || stop !== undefined || pins !== undefined) {
   const m = managed ?? before.managed;
   const s = stop ?? before.stop;
   const p = pins ?? before.pins;
+  if (!m && p.SKR !== undefined) { console.log("pins refused: SKR is the rest when the Yield Manager is off"); process.exit(1); }
   const problem = validatePins(p, floorFor(m, s));
   if (problem) { console.log(`pins refused: ${problem}`); process.exit(1); }
   const stopSplit = m ? ((await repo.latestSplitDay(s))?.split ?? STOP_DEFAULTS[s]) : STOP_DEFAULTS[s];
-  Object.assign(patch, { managed: m, stop: s, pins: p, allocation: effectiveSplit({ managed: m, stop: s, pins: p, stopSplit }), prevAllocation: null, allocationDay: null });
+  Object.assign(patch, { managed: m, stop: s, pins: p, allocation: effectiveSplit({ managed: m, stop: s, pins: p, stopSplit }) });
 }
 const after = await repo.saveRules(user, patch);
 for (const k of Object.keys(patch)) console.log(`${k}: ${JSON.stringify((before as unknown as Record<string, unknown>)[k])} -> ${JSON.stringify((after as unknown as Record<string, unknown>)[k])}`);
