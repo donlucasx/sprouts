@@ -1,6 +1,6 @@
 # Sprouts
 
-Every swap rounds up. The change buys SKR and stakes it, into a garden only your Seeker can open.
+Round-ups into SKR that your Seeker keeps and a yield manager grows.
 
 Acorns for the Solana Seeker. You approve once, on each trading wallet, and never sign again until you withdraw. The savings position is owned by your Seeker's Seed Vault key; a Genesis Token gates registration; the app is one screen plus a home-screen widget. Built for CLOCK IN, the Solana Mobile hackathon (Sept 8 to Oct 8, 2026).
 
