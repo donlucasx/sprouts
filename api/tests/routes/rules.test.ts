@@ -1,3 +1,4 @@
+import { SKR_ONLY } from "@/domain/coins";
 import { describe, it, expect, beforeEach, beforeAll, vi } from "vitest";
 import { MemoryRepo } from "@/db/memory";
 import { setRepoForTests } from "@/db/repo";
@@ -66,35 +67,38 @@ describe("rules, wallets, revoke", () => {
     expect((await put({ roundupToCents: 200 })).status).toBe(400);
   });
 
-  // Plan v2 (R91, R92): the ORE share opens, 0 to 50 in steps of 10, and the SKR side must be the complement.
-  it("PUT accepts an ORE share of 0 to 50 in steps of 10 and refuses anything else", async () => {
-    expect((await put({ allocation: { SKR: 50, stORE: 50 } })).status).toBe(200);
-    expect((await repo.getRules(U)).allocation).toEqual({ SKR: 50, stORE: 50 });
-    expect((await put({ allocation: { SKR: 40, stORE: 60 } })).status).toBe(400);
-    expect((await put({ allocation: { SKR: 45, stORE: 55 } })).status).toBe(400);
-    expect((await put({ allocation: { SKR: 60, stORE: 50 } })).status).toBe(400);
-    expect((await repo.getRules(U)).allocation).toEqual({ SKR: 50, stORE: 50 });
+  // The split is never set directly (spec 3.1): with the manager off the stORE share is a pin, up to 50, and SKR is the rest.
+  it("PUT takes the stORE share as a pin with the manager off, up to 50", async () => {
+    expect((await put({ pins: { stORE: 50 } })).status).toBe(200);
+    expect((await repo.getRules(U)).allocation).toEqual({ ...SKR_ONLY, SKR: 50, stORE: 50 });
+    expect((await put({ pins: { stORE: 60 } })).status).toBe(400);
+    expect((await put({ pins: { stORE: 55 } })).status).toBe(400);
+    expect((await put({ pins: { stORE: 50, hSOL: 30 } })).status).toBe(400);
+    expect((await repo.getRules(U)).allocation).toEqual({ ...SKR_ONLY, SKR: 50, stORE: 50 });
   });
 
   // R84: raising the limit is one of the two writes a stolen session must not be able to do.
   it("raising the daily limit needs a fresh Seed Vault sign-in; lowering does not; a sign-in is single-use", async () => {
-    const refused = await put({ dailyCapCents: 800 });
+    expect((await put({ dailyCapCents: 300 })).status).toBe(200); // the limit tops out at $5, so lower it first
+    const refused = await put({ dailyCapCents: 500 });
     expect(refused.status).toBe(403);
     expect((await refused.json()).error).toContain("sign in again");
-    expect((await repo.getRules(U)).dailyCapCents).toBe(500);
+    expect((await repo.getRules(U)).dailyCapCents).toBe(300);
     const r = await reauth(repo, user);
-    expect((await put({ dailyCapCents: 800, reauth: r })).status).toBe(200);
-    expect((await repo.getRules(U)).dailyCapCents).toBe(800);
-    expect((await put({ dailyCapCents: 900, reauth: r })).status).toBe(403); // the nonce was consumed
+    expect((await put({ dailyCapCents: 500, reauth: r })).status).toBe(200);
+    expect((await repo.getRules(U)).dailyCapCents).toBe(500);
+    await put({ dailyCapCents: 300 });
+    expect((await put({ dailyCapCents: 400, reauth: r })).status).toBe(403); // the nonce was consumed
     expect((await put({ dailyCapCents: 200 })).status).toBe(200); // lowering needs nothing
   });
 
   it("a sign-in by another key, or for another Seeker, is refused", async () => {
     const other = await generateKeyPairSigner();
+    await put({ dailyCapCents: 300 }); // the limit tops out at $5, so lower it to have something to raise
     const r = await reauth(repo, other);
-    expect((await put({ dailyCapCents: 800, reauth: r })).status).toBe(403);
+    expect((await put({ dailyCapCents: 500, reauth: r })).status).toBe(403);
     const forged = { ...(await reauth(repo, other)), output: { ...(await reauth(repo, other)).output, address: U } };
-    expect((await put({ dailyCapCents: 800, reauth: forged })).status).toBe(403);
+    expect((await put({ dailyCapCents: 500, reauth: forged })).status).toBe(403);
   });
 
   it("pause needs no sign-in, resume does; only the owner; never on a revoked wallet [A20]", async () => {
