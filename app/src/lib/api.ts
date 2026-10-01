@@ -1,4 +1,7 @@
 import { loadSession } from "./session";
+import type { Asset, Stop, Split, Pins } from "./coins";
+export { ASSETS } from "./coins";
+export type { Asset, Stop, Split, Pins } from "./coins";
 
 /** The API's origin: public, overridable at build time through eas.json's env (Task 0 ruling: no env file in the app). */
 export const API_ORIGIN = process.env.EXPO_PUBLIC_API_ORIGIN ?? "https://sprouts.money";
@@ -24,14 +27,6 @@ export async function api<T>(path: string, init: { method?: "GET" | "POST" | "PU
 }
 
 // Response types the screens use. Every raw amount is a decimal string (bigint on the wire).
-export type Asset = "SKR" | "stORE" | "hSOL" | "JitoSOL" | "JupSOL" | "cbBTC";
-/** The registry's order, the order every list in the app shows. */
-export const ASSETS: readonly Asset[] = ["SKR", "stORE", "hSOL", "JitoSOL", "JupSOL", "cbBTC"] as const;
-export type Stop = "careful" | "balanced" | "bold";
-/** Whole percents per coin, summing to 100. */
-export type Split = Record<Asset, number>;
-/** The user's pins: a fixed percent per coin; a missing coin is the manager's to set, or 0 when the manager is off. */
-export type Pins = Partial<Record<Asset, number>>;
 /** One wallet-held coin as /api/me serves it (zero balances are omitted). */
 export type Holding = { asset: Asset; heldRaw: string; putInCents: number; valueUsd: number | null; earnedUsd: number | null; earnedUnderlyingRaw: string | null };
 /** The Yield Manager block of /api/me. `changedDay` is a UTC date; `stopSplit` is today's split for the user's stop (the stop default before the first run). */
