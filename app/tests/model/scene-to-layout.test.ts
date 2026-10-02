@@ -21,34 +21,40 @@ describe("from the scene to the layouts", () => {
     expect(front).toBeGreaterThan(20); expect(back).toBeGreaterThan(30);
   });
 });
-describe("the frame (RG30, R167): automatic framing of what is planted, 2x cap, the view as tall as the content", () => {
+describe("the frame (RG30, R167, round 3 item 1): automatic framing of what is planted, 2x cap, the view as tall as the content plus room to grow", () => {
   const frame = (s: ReturnType<typeof buildScene>) => frameFor(s, plantLayouts(s), 320);
   const tallest = (s: ReturnType<typeof buildScene>) => Math.min(...plantLayouts(s).map((l) => FOOT_Y(l.row) - l.layout.top));   // canvas px
   it("day 1, SKR alone: zoom 2 on a 160 wide frame holding the sprout's foot and its sign; the view holds the whole ground (86) at 2x", () => {
-    // SKR's foot at 0.3 of 320 = 96 (stORE's bare sign holds its slot, B7); its sign on the left at 96 - 17 = 79, 64 to 94; the
-    // sprout about 35 above the front feet at 244, padded 16 to about 193; the ground's box (86, its wash painted from about 13 px
-    // under its top) is taller, so the view is 86 canvas px from the bed's bottom: y 174, 172 px on screen (it was 260)
+    // SKR's foot at 0.3 of 320 = 96 (stORE's bare sign holds its slot, B7); its sign (1.35x, half width 20.25) on the left at
+    // 96 - 18.05 = 77.95, 57.7 to 98.2; the sprout's top at 209.4, less the 40 px headroom at 2x (20 canvas px) is 189.4; the
+    // ground's box (86, its wash painted from about 13 px under its top) is taller, so the view is 86 canvas px from the bed's
+    // bottom: y 174, 172 px on screen (it was 260), 70.8 px of it above the sprout
     const f = frame(buildScene({ ...base, plantings: [p("a", 1)] }));
     expect(f).toMatchObject({ zoom: 2, w: 160, h: 86, y: 174, viewH: 172 });
-    expect(f.x).toBeGreaterThanOrEqual(0); expect(f.x).toBeLessThanOrEqual(64); expect(f.x + f.w).toBeGreaterThanOrEqual(96);
+    expect(f.x).toBeGreaterThanOrEqual(0); expect(f.x).toBeLessThanOrEqual(57.7); expect(f.x + f.w).toBeGreaterThanOrEqual(96);
   });
-  it("the full year: the whole breadth at zoom 1, the view from 16 px above the tallest part down to the bed's bottom", () => {
+  it("the full year: the whole breadth at zoom 1; the headroom (a quarter of 237.7) reaches past the bed's top, so the view is the whole bed", () => {
     const s = buildScene(previewInputAt(365)), f = frame(s);
-    expect(f).toMatchObject({ x: 0, w: 320, zoom: 1 });
-    expect(f.y).toBeCloseTo(tallest(s) - 16, 6); expect(f.viewH).toBeCloseTo(260 - f.y, 6);
+    expect(f).toMatchObject({ x: 0, w: 320, zoom: 1, y: 0, viewH: 260 });
+    expect(tallest(s)).toBeCloseTo(22.32, 2);   // the 22 px left above the tallest part is all the bed has
+  });
+  it("a tall garden at zoom 1: the headroom is a quarter of the content's height once that passes 40 px", () => {
+    const s = buildScene(previewInputAt(240)), f = frame(s), t = tallest(s);
+    expect(t).toBeCloseTo(67.12, 2); expect(f.zoom).toBe(1);   // the content 192.9 canvas px; a quarter of it is 48.2
+    expect(t - f.y).toBeCloseTo(0.25 * (260 - t), 6); expect(f.viewH).toBeCloseTo(241.1, 1);
   });
   it("no plant: the whole breadth at the floor, the soil band (60) plus 40", () => expect(frame(buildScene(base))).toEqual({ x: 0, y: 160, w: 320, h: 100, zoom: 1, viewH: 100 }));
-  it("six young plants, one planting each (the Saga's garden on 10-02): every plant in the breadth, no sky band: 100 px tall, not 260", () => {
+  it("six young plants, one planting each (the Saga's garden on 10-02): every plant in the breadth, 40 px of room above them: 116.7 px tall, not 260", () => {
     const now = new Date("2026-10-02T14:30:00-07:00"), d = (id: string, asset: GardenInput["plantings"][number]["asset"], iso: string, c: number) => ({ id, ts: new Date(iso), asset, amountOutRaw: 1n, usdcInCents: c });
     const s = buildScene({ ...base, now, wateredAt: now, pendingCents: 0, earned: {}, plantings: [d("s", "SKR", "2026-09-29T14:00:00-07:00", 65), d("o", "stORE", "2026-09-30T11:40:00-07:00", 10), d("h", "hSOL", "2026-10-01T19:00:00-07:00", 103), d("j", "JitoSOL", "2026-10-01T16:00:00-07:00", 25), d("u", "JupSOL", "2026-10-01T16:30:00-07:00", 25), d("c", "cbBTC", "2026-10-01T17:00:00-07:00", 25)] });
     const L = plantLayouts(s), f = frameFor(s, L, 320);
     expect(L).toHaveLength(6);
     for (const l of L) { expect(l.x * 320).toBeGreaterThanOrEqual(f.x); expect(l.x * 320).toBeLessThanOrEqual(f.x + f.w); }
-    expect(f.viewH).toBe(100);   // the floor: the content (about 92 px with its 16 px margin) is shorter
-    expect((tallest(s) - f.y) * f.zoom).toBeLessThan(24);   // measured 23.3 px of sky (183.3 before)
+    expect(f.viewH).toBeCloseTo(116.71, 2);   // the content 76.4 canvas px at zoom 1.004 plus the 40 px floor of headroom (a quarter is 19.1)
+    expect((tallest(s) - f.y) * f.zoom).toBeCloseTo(40, 6);   // 40 px of room to grow (23.3 in round 2, 183.3 before R167)
   });
-  it("the Oct 8 garden: the empty band above the tallest part is the 16 px margin at the frame's zoom", () => {
+  it("the Oct 8 garden: the band above the tallest part is the 40 px headroom floor (a quarter of its 93.8 canvas px is 23.5)", () => {
     const s = buildScene({ ...base, plantings: [p("a", 10.8), p("b", 8.4), p("c", 6), p("d", 3.6), p("e", 1.2), p("o", 9, "stORE"), p("o2", 2, "stORE"), p("h", 4, "hSOL"), p("j", 2, "JitoSOL")] }), f = frame(s);
-    expect((tallest(s) - f.y) * f.zoom).toBeCloseTo(16 * f.zoom, 6); expect(f.viewH).toBeLessThan(120);   // measured 115.0 (260 before)
+    expect((tallest(s) - f.y) * f.zoom).toBeCloseTo(40, 6); expect(f.viewH).toBeCloseTo(138.27, 2);   // 115.0 in round 2, 260 before R167
   });
 });

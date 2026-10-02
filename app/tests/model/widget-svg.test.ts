@@ -33,12 +33,12 @@ describe("the widget string (spec 5 and 8)", () => {
     expect(uses(svg).some((u) => u === "blade-snake-s1" || u.startsWith("leaf-sunflower"))).toBe(false);   // the back row is not drawn
     const d = defs(svg); expect(new Set(d).size).toBe(d.length); for (const u of new Set(uses(svg))) expect(d).toContain(u);
   });
-  it("the wide widget draws both rows and the signs at a fixed 0.8, not scaled by k", () => {
+  it("the wide widget draws both rows and the signs at a fixed 1.08 (0.8 times round 3's 1.35), not scaled by k", () => {
     const svg = widgetGardenSvg(year, 300, 120, true);
     expect(uses(svg).filter((u) => u === "sign")).toHaveLength(6);   // R168: one blank board, declared once
-    expect(svg).toMatch(/<use xlink:href="#s-sign" transform="translate\([\d.]+ [\d.]+\) rotate\(0\) scale\(0\.8 0\.8\)/);
-    // the word as vector text in a plain sans-serif, dark ink, on the board's lean at the fixed 0.8, each right after its board
-    const words = [...svg.matchAll(/<use xlink:href="#s-sign" transform="translate\(([\d.]+) ([\d.]+)\)[^>]*\/><g transform="translate\(([\d.]+) ([\d.]+)\) scale\(0\.8\) rotate\(-4\)"><text x="0" y="-4\.1" text-anchor="middle" font-family="sans-serif" font-size="6\.8" font-weight="500" fill="#2B2622">([A-Za-z]+)<\/text><\/g>/g)];
+    expect(svg).toMatch(/<use xlink:href="#s-sign" transform="translate\([\d.]+ [\d.]+\) rotate\(0\) scale\(1\.08 1\.08\)/);
+    // the word as vector text in a plain sans-serif, dark ink, on the board's lean at the fixed 1.08 (the board's own scale, so it stays fitted), each right after its board
+    const words = [...svg.matchAll(/<use xlink:href="#s-sign" transform="translate\(([\d.]+) ([\d.]+)\)[^>]*\/><g transform="translate\(([\d.]+) ([\d.]+)\) scale\(1\.08\) rotate\(-4\)"><text x="0" y="-4\.1" text-anchor="middle" font-family="sans-serif" font-size="6\.8" font-weight="500" fill="#2B2622">([A-Za-z]+)<\/text><\/g>/g)];
     expect(words.map((w) => w[5]).sort()).toEqual(["JitoSOL", "JupSOL", "SKR", "cbBTC", "hSOL", "stORE"]);
     for (const w of words) { expect(w[3]).toBe(w[1]); expect(w[4]).toBe(w[2]); }
     expect(widgetScale(year, 120, true)).toBeLessThan(0.6);

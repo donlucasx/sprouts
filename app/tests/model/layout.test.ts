@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { slotsFor, signSide, signX, ROW_OF, CANVAS } from "@/model/layout";
+import { slotsFor, signSide, signX, signScale, SIGN_SCALE, ROW_OF, CANVAS } from "@/model/layout";
 
 describe("the two rows (RG6, RG22, G6)", () => {
   it("six occupants take the locked slots", () => {
@@ -17,6 +17,12 @@ describe("the sign rule (RG7, gen06:68-74)", () => {
     const xs = [0.09, 0.3, 0.5, 0.67, 0.8, 0.92].map((f) => f * 320);
     expect(signSide(0.3 * 320, xs, 320)).toBe(-1);   // at x 96: left 67.2 to hSOL, right 64 to JitoSOL; right is not larger, so left
     expect(signSide(0.09 * 320, xs, 320)).toBe(1);   // at x 28.8: left is twice the edge, 57.6; right 67.2 to SKR; right is larger
-    expect(signX(0.92 * 320, 1, 320, 0.8)).toBeLessThanOrEqual(320 - 15 * 0.8 - 1);
+    expect(signX(0.92 * 320, 1, 320, signScale("back"))).toBeLessThanOrEqual(320 - 15 * signScale("back") - 1);
+  });
+  it("round 3 item 2: the signs 1.35x, the back row still 0.8 of the front; the offset and the clamp use the bigger half width", () => {
+    expect(SIGN_SCALE).toBe(1.35); expect(signScale("front")).toBe(1.35); expect(signScale("back")).toBeCloseTo(1.08, 12);
+    expect(signX(96, -1, 320, signScale("front"))).toBeCloseTo(96 - (14 + 20.25 * 0.2), 9);   // 77.95 (79 at 1x)
+    expect(signX(310, 1, 320, signScale("front"))).toBeCloseTo(320 - 20.25 - 1, 9);   // clamped a pixel inside: 298.75
+    expect(signX(5, -1, 320, signScale("back"))).toBeCloseTo(16.2 + 1, 9);   // 17.2
   });
 });

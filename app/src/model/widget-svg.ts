@@ -1,5 +1,5 @@
 import type { Scene } from "./garden";
-import { SIGN_LABEL, SIGN_TEXT, signX } from "./layout";
+import { SIGN_LABEL, SIGN_SCALE, SIGN_TEXT, signX } from "./layout";
 import { stemPaths, spriteTransform, soilPaths, leafPath } from "./paint";
 import { COLORS, SOIL } from "./species";
 import { plantLayouts } from "./scene-to-layout";
@@ -14,6 +14,8 @@ export const WIDGET_MODE: "use" | "image" | "path" = "use";
 const f = (n: number) => Number(n.toFixed(1));
 /** The room left above the tallest drawn part. */
 export const WIDGET_TOP_MARGIN = 6;
+/** The wide widget's signs: the app's 0.8 times SIGN_SCALE (1.08), not scaled by k. */
+export const WIDGET_SIGN_SCALE = 0.8 * SIGN_SCALE;
 /** The front row's feet sit 0.73 of the band under the soil line, the back row's 0.23 (the app's 44 and 14 of a 60 band). */
 const FOOT_IN_BAND = { front: 0.73, back: 0.23 } as const;
 type Drawn = { top: number; step: number };
@@ -35,13 +37,13 @@ export function widgetScale(scene: Scene, gardenH: number, wide: boolean): numbe
 export function widgetGardenHeight(scene: Scene, maxH: number, wide: boolean): number {
   const best = widgetScale(scene, maxH, wide), floor = Math.min(maxH, WIDGET_SOIL_BAND + 40), signAy = SPRITE_META["sign"]?.ay ?? 14;
   for (let h = Math.ceil(floor); h < maxH; h++) {
-    const band = soilBand(h), signRoom = !wide || roomAbove(h, band) >= (FOOT_IN_BAND.front - FOOT_IN_BAND.back) * band - 3 + 0.8 * signAy;
+    const band = soilBand(h), signRoom = !wide || roomAbove(h, band) >= (FOOT_IN_BAND.front - FOOT_IN_BAND.back) * band - 3 + WIDGET_SIGN_SCALE * signAy;
     if (signRoom && widgetScale(scene, h, wide) >= best - 1e-9) return h;
   }
   return maxH;
 }
 /** The garden as one SVG string for the widget: the sprites the scene uses declared once in <defs>, placed with <use>; stems as
- * paths; the wide widget shows both rows and the signs at a fixed 0.8; the small widget the front row only and no sign. */
+ * paths; the wide widget shows both rows and the signs at a fixed WIDGET_SIGN_SCALE (1.08); the small widget the front row only and no sign. */
 export function widgetGardenSvg(scene: Scene, width: number, height: number, wide: boolean): string {
   const k = widgetScale(scene, height, wide), band = soilBand(height);
   const line = height - band, foot = (row: "front" | "back") => line + band * FOOT_IN_BAND[row];
@@ -74,9 +76,9 @@ export function widgetGardenSvg(scene: Scene, width: number, height: number, wid
   }
   // R168: the one blank board, the word as vector text over it (AndroidSVG cannot load the app's font: a plain sans-serif, same ink and place)
   if (wide) for (const s of of("sign")) {
-    const x = signX(s.x * width, s.side, width, 0.8), y = foot(s.row) + 3;
-    place("sign", x, y, 0, 0.8);
-    body.push(`<g transform="translate(${Number(x.toFixed(2))} ${Number(y.toFixed(2))}) scale(0.8) rotate(${SIGN_TEXT.rot})"><text x="0" y="${SIGN_TEXT.y}" text-anchor="middle" font-family="sans-serif" font-size="${SIGN_TEXT.size}" font-weight="500" fill="${SOIL.ink}">${SIGN_LABEL[s.plant]}</text></g>`);
+    const x = signX(s.x * width, s.side, width, WIDGET_SIGN_SCALE), y = foot(s.row) + 3;
+    place("sign", x, y, 0, WIDGET_SIGN_SCALE);
+    body.push(`<g transform="translate(${Number(x.toFixed(2))} ${Number(y.toFixed(2))}) scale(${WIDGET_SIGN_SCALE}) rotate(${SIGN_TEXT.rot})"><text x="0" y="${SIGN_TEXT.y}" text-anchor="middle" font-family="sans-serif" font-size="${SIGN_TEXT.size}" font-weight="500" fill="${SOIL.ink}">${SIGN_LABEL[s.plant]}</text></g>`);
   }
   const defs = [...used].map((n) => `<image id="s-${n}" width="${SPRITE_META[n].w}" height="${SPRITE_META[n].h}" xlink:href="data:image/png;base64,${SPRITES_B64[n]}"/>`).join("");
   return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><defs>${defs}</defs>${body.join("")}</svg>`;
