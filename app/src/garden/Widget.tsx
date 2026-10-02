@@ -25,7 +25,7 @@ export function SproutsWidget({ me, width, height, wide }: { me: MeResponse | nu
   const scene = buildScene(toGardenInput(me, new Date()));
   return (
     <FlexWidget clickAction="OPEN_APP" style={{ height: "match_parent", width: "match_parent", backgroundColor: "#F4EEDF", borderRadius: 16, padding: PAD, flexDirection: "column", justifyContent: "flex-end" }}>
-      <SvgWidget svg={widgetGardenSvg(scene, gardenW, gardenH)} style={{ width: gardenW, height: gardenH }} />
+      <SvgWidget svg={widgetGardenSvg(scene, gardenW, gardenH, wide)} style={{ width: gardenW, height: gardenH }} />
       <TextWidget text={formatSkr(BigInt(me.pot.skrStakedRaw), me.pot.skrUsd)} style={{ fontSize: 16, color: "#2B2B2B", fontWeight: "600" }} />
       <TextWidget text={`Next planting ${formatUsd(me.nextPlanting.pendingCents)} of ${formatUsd(me.nextPlanting.thresholdCents)}`} style={{ fontSize: 12, color: "#6B6558" }} />
       {showLast && me.lastReceipt ? (
