@@ -112,6 +112,15 @@ describe("PUT /api/rules with the Yield Manager", () => {
     expect(on.allocation.cbBTC).toBe(10);
   });
 
+  it("a save that turns the manager on AND carries pins after an undo keeps the pins it carries (R137, review M6)", async () => {
+    await repo.saveRules(U, { managed: true, stop: "balanced", allocation: split({ SKR: 45, hSOL: 25, JitoSOL: 15, JupSOL: 10, cbBTC: 5 }), prevAllocation: split({ SKR: 60, hSOL: 20, cbBTC: 20 }), allocationDay: "2026-10-02" });
+    await undoNow();
+    const on = (await (await put({ managed: true, pins: { cbBTC: 10 } })).json()) as { pins: Record<string, number>; allocation: Split };
+    expect(on.pins).toEqual({ cbBTC: 10 });
+    expect(on.allocation.cbBTC).toBe(10);
+    expect((await repo.getRules(U)).pinsByUndo).toBe(false);
+  });
+
   it("a 0 pin from a bare PUT is dropped, as the app drops zeros on its side", async () => {
     await put({ managed: true, stop: "balanced" });
     const res = (await (await put({ pins: { hSOL: 0, cbBTC: 10 } })).json()) as { pins: Record<string, number> };
