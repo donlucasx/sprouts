@@ -4,7 +4,7 @@ import { formatSkr, formatUsd, plantedLine } from '@/lib/format'
 /** Activity's rows (spec 3.2, 7.7), pure, in the manual's words: a planting is what the change became; nothing is "pulled". */
 type Planting = Pick<ActivityResponse['plantings'][number], 'status' | 'usdcPulledCents' | 'legs'>
 type Swap = Pick<ActivityResponse['swaps'][number], 'usdSizeCents' | 'roundupCents' | 'plantingId'>
-type Withdrawal = Pick<ActivityResponse['withdrawals'][number], 'amountRaw' | 'cancelled' | 'delivered' | 'source'>
+type Withdrawal = Pick<ActivityResponse['withdrawals'][number], 'amountRaw' | 'cancelled' | 'delivered' | 'source' | 'ts'>
 
 export function plantingRowLine(day: string, p: Planting): string {
   const leg = p.legs[0]
@@ -19,8 +19,21 @@ export function swapRowLine(day: string, s: Swap): string {
   return `${day}, ${size}, change ${formatUsd(s.roundupCents)}${s.plantingId ? ', planted' : ', waiting'}`
 }
 
+const COOLDOWN_MS = 172_800_000
+/** R156: the row says when the SKR arrives (the staking program's 48 hours after the unstake), in the phone's time zone. */
+const arrives = (ts: string) => new Date(new Date(ts).getTime() + COOLDOWN_MS).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric' })
+
 export function withdrawalRowLine(day: string, w: Withdrawal, skrUsd: number | null): string {
   const amount = w.amountRaw ? formatSkr(BigInt(w.amountRaw), skrUsd) : 'an amount'
-  const state = w.cancelled ? 'put back' : w.delivered ? 'delivered' : 'in the basket'
-  return `${day}, ${amount} ${state}${w.source === 'wallet' ? ', from your wallet' : ''}`
+  const state = w.cancelled ? 'put back' : w.delivered ? 'delivered' : `arrives ${arrives(w.ts)}`
+  return `${day}, ${amount}, ${state}${w.source === 'wallet' ? ', from your wallet' : ''}`
+}
+
+/** R156 (supersedes R94's third line): the one-line explainer under the withdrawals. */
+export const TAKEN_OUT_LINE = 'What you took out.'
+
+/** A section shows its latest five rows (the API serves fifty, newest first); "Show N more" opens the rest in place (his note 6). */
+export function visibleRows<T>(rows: T[], open: boolean, limit = 5): { shown: T[]; hidden: number } {
+  if (open || rows.length <= limit) return { shown: rows, hidden: 0 }
+  return { shown: rows.slice(0, limit), hidden: rows.length - limit }
 }

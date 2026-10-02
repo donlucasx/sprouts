@@ -41,7 +41,9 @@
       [
         "expo-notifications",
         {
-          "defaultChannel": "plantings"
+          "defaultChannel": "plantings",
+          "icon": "./assets/images/notification-icon.png",
+          "color": "#1E6B44"
         }
       ],
       "expo-background-task",

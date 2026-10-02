@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react'
-import { View, RefreshControl } from 'react-native'
-import { Link, Redirect, useFocusEffect } from 'expo-router'
+import { View, Pressable, RefreshControl } from 'react-native'
+import { Link, Redirect, router, useFocusEffect } from 'expo-router'
+import { MaterialCommunityIcons } from '@expo/vector-icons'
 import { useQueryClient } from '@tanstack/react-query'
 import { useMe, useInvalidateMe, toGardenInput } from '@/lib/me'
 import { api, ApiError, type MeResponse } from '@/lib/api'
@@ -15,24 +16,13 @@ import { MarkedTitle } from '@/components/Lockup'
 import { WatcherLine } from '@/components/WatcherLine'
 import { WaterButton } from '@/components/WaterButton'
 import { PauseRow } from '@/components/PauseRow'
-import {
-  formatUsd,
-  formatSkr,
-  formatHolding,
-  HOLDINGS_NOTE,
-  formatAsOf,
-  formatWallet,
-  COIN_NAME,
-  plantedLine,
-} from '@/lib/format'
+import { formatUsd, formatSkr, formatAsOf } from '@/lib/format'
 import { useSession } from '@/lib/session'
-import { noPlantingLine, gardenTotals, gardenLine, pauseState } from '@/lib/me-state'
+import { gardenTotals, pauseState, coinRows, statTiles, walletsLine, lastPlantingLine } from '@/lib/me-state'
 import { setPaused } from '@/lib/pause-api'
 import { freshWalletSignIn } from '@/lib/reauth'
 import { identity } from '@/lib/identity'
-import { spacing, useTheme } from '@/theme'
-
-const shortDate = (iso: string) => new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+import { radius, spacing, TARGET, useTheme } from '@/theme'
 
 export default function Home() {
   const { setSession } = useSession()
@@ -168,93 +158,95 @@ export default function Home() {
           ) : null}
         </View>
       ) : null}
+      {lastPlantingLine(me.lastReceipt) ? (
+        <Pressable
+          onPress={() => router.push('/activity')}
+          accessibilityRole="button"
+          accessibilityLabel="Open Activity"
+          hitSlop={8}
+          style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: spacing.xs, minHeight: TARGET, opacity: pressed ? 0.6 : 1 })}
+        >
+          <ThemedText variant="caption" tone="secondary" style={{ flex: 1 }}>
+            {lastPlantingLine(me.lastReceipt)}
+          </ThemedText>
+          <MaterialCommunityIcons name="chevron-right" size={18} color={colors.textSecondary} />
+        </Pressable>
+      ) : null}
       <Card>
-        {/* R146: the whole garden first, in dollars; then what went in and what it earned; then each coin. */}
+        {/* R146 and R150: the whole garden in dollars, two stat tiles, then one row per coin; no sentences. */}
         <ThemedText variant="label" tone="secondary">
           In your garden
         </ThemedText>
         <ThemedText variant="display" numeric>
           {totals.valueUsd === null ? formatSkr(staked, null) : formatUsd(Math.round(totals.valueUsd * 100))}
         </ThemedText>
-        <ThemedText>{gardenLine(totals)}</ThemedText>
-        <View style={{ gap: spacing.xs, marginTop: spacing.sm }}>
-          <ThemedText variant="heading" numeric>
-            {formatSkr(staked, skrUsd)}
-          </ThemedText>
-          {/* R134: the SKR block's own line carries the lock. */}
-          <ThemedText tone="secondary">
-            Put in {formatSkr(BigInt(me.pot.skrPutInRaw), skrUsd)}. Earned{' '}
-            {formatSkr(BigInt(me.pot.skrEarnedRaw), skrUsd)}. Locked to your Seeker.
-          </ThemedText>
-          {me.holdings.map((h) => (
-            <ThemedText key={h.asset} numeric>
-              {formatHolding(h)}
-            </ThemedText>
+        <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+          {statTiles(totals).map((t) => (
+            <View key={t.label} style={{ flex: 1, backgroundColor: colors.background, borderRadius: radius.md, padding: spacing.md, gap: 2 }}>
+              <ThemedText variant="label" tone="secondary">
+                {t.label}
+              </ThemedText>
+              <ThemedText variant="heading" numeric>
+                {t.value}
+              </ThemedText>
+            </View>
           ))}
-          {me.holdings.length > 0 ? (
-            <ThemedText variant="caption" tone="secondary">
-              {HOLDINGS_NOTE}
-            </ThemedText>
-          ) : null}
+        </View>
+        <View style={{ gap: spacing.xs, marginTop: spacing.xs }}>
+          {coinRows(me).map((r) => (
+            <View key={r.asset} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 28 }}>
+              <ThemedText numeric style={{ flex: 1 }}>
+                {r.amount}
+              </ThemedText>
+              {r.locked ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
+                  <MaterialCommunityIcons name="lock-outline" size={14} color={colors.textSecondary} />
+                  <ThemedText variant="caption" tone="secondary">
+                    locked to your Seeker
+                  </ThemedText>
+                </View>
+              ) : null}
+            </View>
+          ))}
         </View>
         {stale && asOf ? (
           <ThemedText variant="caption" tone="error">
             {formatAsOf(asOf, now)}, the chain could not be read just now.
           </ThemedText>
-        ) : asOf ? (
-          <ThemedText variant="caption" tone="secondary">
-            {formatAsOf(asOf, now)}
-          </ThemedText>
         ) : null}
         <Link href="/withdraw" asChild>
-          <Button title="Withdraw" kind="quiet" onPress={() => {}} />
+          <Button title="Take out" kind="quiet" onPress={() => {}} />
         </Link>
       </Card>
-      <Card>
-        <ThemedText>
-          Next planting: {formatUsd(me.nextPlanting.pendingCents)} of {formatUsd(me.nextPlanting.thresholdCents)}
-          {me.nextPlanting.asset !== 'SKR' ? `, grows ${COIN_NAME[me.nextPlanting.asset]}` : ''}
-        </ThemedText>
-        {me.lastReceipt ? (
-          <ThemedText variant="caption" tone="secondary">
-            Last planting {shortDate(me.lastReceipt.ts)}:{' '}
-            {plantedLine({
-              usdcInCents: me.lastReceipt.usdcPulledCents - me.lastReceipt.networkFeeCents,
-              asset: me.lastReceipt.asset,
-              amountOutRaw: me.lastReceipt.amountOutRaw,
-              usdPrice: me.lastReceipt.usdPrice,
-              feeCents: me.lastReceipt.feeCents,
-              feeAmountRaw: me.lastReceipt.feeAmountRaw,
-            })}
-            , network fee {formatUsd(me.lastReceipt.networkFeeCents)}
-          </ThemedText>
-        ) : (
-          <ThemedText variant="caption" tone="secondary">
-            {noPlantingLine(me)}
-          </ThemedText>
-        )}
-      </Card>
-      <Card>
-        <ThemedText variant="heading">Linked wallets</ThemedText>
-        {wallets.length === 0 ? (
-          <ThemedText tone="secondary">
-            No wallet linked yet. Link one and every swap rounds up into your garden.
-          </ThemedText>
-        ) : (
-          wallets.map((w) => (
-            <ThemedText key={w.pubkey} tone="secondary" numeric>
-              {formatWallet(w)}
-            </ThemedText>
-          ))
-        )}
-        <Link href="/connect" asChild>
-          <Button
-            title={wallets.length > 0 ? 'Link another wallet' : 'Link a wallet'}
-            kind="quiet"
-            onPress={() => {}}
-          />
-        </Link>
-      </Card>
+      {walletsLine(wallets) ? (
+        <Pressable
+          onPress={() => router.push('/settings')}
+          accessibilityRole="button"
+          accessibilityLabel="Linked wallets, in Settings"
+          style={({ pressed }) => ({
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: spacing.sm,
+            minHeight: TARGET,
+            paddingHorizontal: spacing.lg,
+            backgroundColor: colors.surface,
+            borderRadius: radius.lg,
+            borderCurve: 'continuous',
+            opacity: pressed ? 0.7 : 1,
+          })}
+        >
+          <ThemedText style={{ flex: 1 }}>{walletsLine(wallets)}</ThemedText>
+          <MaterialCommunityIcons name="chevron-right" size={22} color={colors.accentText} />
+        </Pressable>
+      ) : (
+        <Card>
+          <ThemedText variant="heading">Linked wallets</ThemedText>
+          <ThemedText tone="secondary">No wallet linked yet. Link one and every swap rounds up into your garden.</ThemedText>
+          <Link href="/connect" asChild>
+            <Button title="Link a wallet" kind="quiet" onPress={() => {}} />
+          </Link>
+        </Card>
+      )}
       {me.basket ? (
         <Card>
           <ThemedText>

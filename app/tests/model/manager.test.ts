@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { ASSETS, type Split, type Pins, type Stop } from "@/lib/coins";
 import {
   STOP_FLOOR, STOP_MAX, PIN_MAX, PIN_STEP, STOP_LINE, OFF_TEXT, ON_TEXT, UNDONE_TEXT,
-  splitRows, togglePin, stepPin, canStepUp, managerSentence, undoLine, changeSummary, splitRowLine, pinsForOn,
+  splitRows, modeWord, togglePin, stepPin, canStepUp, managerSentence, undoLine, changeSummary, splitRowLine, pinsForOn,
 } from "@/model/manager";
 
 const split = (p: Partial<Split>): Split => ({ SKR: 0, stORE: 0, hSOL: 0, JitoSOL: 0, JupSOL: 0, cbBTC: 0, ...p });
@@ -145,3 +145,15 @@ describe("the sentence, the undo line, Activity's rows", () => {
     expect(splitRowLine({ ts: "2026-10-03T02:00:00.000Z", by: "you", from, to, stop: "balanced", why: null, fallback: null })).toBe("Oct 3, you: hSOL 15 to 20, cbBTC 10 to 5.");
   });
 });
+
+describe('modeWord (his note 5: the mode word only when it says something)', () => {
+  it('off: nothing on any row, pinned or not', () => {
+    expect(modeWord({ mode: 'pinned', bound: null }, false)).toBe('')
+    expect(modeWord({ mode: 'the rest', bound: null }, false)).toBe('')
+  })
+  it('on: pinned rows say pinned, auto rows say their bound, the rest says nothing', () => {
+    expect(modeWord({ mode: 'pinned', bound: null }, true)).toBe('pinned')
+    expect(modeWord({ mode: 'auto', bound: 'at most 15%' }, true)).toBe('at most 15%')
+    expect(modeWord({ mode: 'the rest', bound: null }, true)).toBe('')
+  })
+})

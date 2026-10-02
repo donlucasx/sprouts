@@ -8,6 +8,10 @@ import {
   gardenTotals,
   gardenLine,
   pauseState,
+  coinRows,
+  statTiles,
+  walletsLine,
+  lastPlantingLine,
 } from '@/lib/me-state'
 import type { MeResponse } from '@/lib/api'
 const cached = { pot: { asOf: '2026-09-28T16:00:00Z' }, holdings: [], manager: { why: null } } as never
@@ -145,14 +149,14 @@ describe('gardenTotals and gardenLine', () => {
       },
       { asset: 'cbBTC', heldRaw: '2389', putInCents: 200, valueUsd: 1.997, earnedUsd: null, earnedUnderlyingRaw: null },
     ],
-    history: { plantings: [{ usdcInCents: 200 }, { usdcInCents: 200 }, { usdcInCents: 23 }] },
+    history: { plantings: [{ asset: 'hSOL', usdcInCents: 400 }, { asset: 'cbBTC', usdcInCents: 200 }, { asset: 'SKR', usdcInCents: 23 }] },
   } as never
   it('sums the SKR pot at its price with every wallet coin; earned is the staking and pool growth in dollars; put in is the dollars planted', () => {
     const t = gardenTotals(me)
     expect(t.valueUsd).toBeCloseTo(361.54, 2)
     expect(t.earnedUsd).toBeCloseTo(4.35, 2)
-    expect(t.putInCents).toBe(423)
-    expect(gardenLine(t)).toBe('Put in $4.23. Earned $4.35.')
+    expect(t.putInCents).toBe(623)
+    expect(gardenLine(t)).toBe('Put in $6.23. Earned $4.35.')
   })
   it('without an SKR price the total and earned are unknown and the line says only what was put in', () => {
     const t = gardenTotals({
@@ -161,7 +165,7 @@ describe('gardenTotals and gardenLine', () => {
     } as never)
     expect(t.valueUsd).toBeNull()
     expect(t.earnedUsd).toBeNull()
-    expect(gardenLine(t)).toBe('Put in $4.23.')
+    expect(gardenLine(t)).toBe('Put in $6.23.')
   })
 })
 
@@ -179,5 +183,48 @@ describe('pauseState', () => {
       on: false,
       line: 'Paused. Nothing moves; your garden keeps earning.',
     })
+  })
+})
+
+describe('Home as numbers (R150)', () => {
+  const pot = { skrStakedRaw: '34900000', skrUsd: 0.0183 } as MeResponse['pot']
+  const hsol = { asset: 'hSOL', heldRaw: '12300000', putInCents: 203, valueUsd: 2.07, earnedUsd: 0.04, earnedUnderlyingRaw: '1' } as const
+  it('coinRows: SKR first and locked, then each holding in coin order', () => {
+    const rows = coinRows({ pot, holdings: [{ ...hsol, asset: 'cbBTC' }, hsol] })
+    expect(rows.map((r) => [r.asset, r.locked])).toEqual([['SKR', true], ['hSOL', false], ['cbBTC', false]])
+    expect(rows[0].amount).toBe('34.90 SKR ($0.64)')
+    expect(rows[1].amount).toBe('0.0123 hSOL ($2.07)')
+  })
+  it('coinRows: no SKR row while nothing is staked', () => {
+    expect(coinRows({ pot: { ...pot, skrStakedRaw: '0' }, holdings: [hsol] }).map((r) => r.asset)).toEqual(['hSOL'])
+  })
+  it('statTiles: Put in and Earned as two tiles; Earned left out when unknown', () => {
+    expect(statTiles({ valueUsd: 12.4, earnedUsd: 2.4, putInCents: 1000 })).toEqual([
+      { label: 'Put in', value: '$10.00' },
+      { label: 'Earned', value: '$2.40' },
+    ])
+    expect(statTiles({ valueUsd: null, earnedUsd: null, putInCents: 1000 })).toEqual([{ label: 'Put in', value: '$10.00' }])
+  })
+  it('walletsLine: counts the linked wallets in his words, revoked ones aside; null when none', () => {
+    expect(walletsLine([{ status: 'active' }, { status: 'paused' }, { status: 'revoked' }])).toBe('2 wallets linked')
+    expect(walletsLine([{ status: 'active' }])).toBe('1 wallet linked')
+    expect(walletsLine([{ status: 'revoked' }])).toBeNull()
+    expect(walletsLine([])).toBeNull()
+  })
+  it('lastPlantingLine: the date, what the change became, no fee clause', () => {
+    const r = { ts: '2026-10-01T14:00:00Z', usdcPulledCents: 206, networkFeeCents: 3, asset: 'hSOL', amountOutRaw: '12300000', feeCents: 1, usdPrice: 168.3, signature: 's' } as MeResponse['lastReceipt']
+    expect(lastPlantingLine(r)).toBe('Last planting Oct 1: $2.03 became 0.0123 hSOL ($2.07)')
+    expect(lastPlantingLine(null)).toBeNull()
+  })
+})
+
+describe('gardenTotals: put in follows the holdings (audit finding 7, R159)', () => {
+  it("put in is the SKR plantings plus each holding's pro-rated put in, so a sale moves Put in with Earned", () => {
+    const me = {
+      pot: { skrStakedRaw: '34900000', skrEarnedRaw: '0', skrUsd: 0.0183 },
+      holdings: [{ asset: 'hSOL', heldRaw: '6150000', putInCents: 101, valueUsd: 1.03, earnedUsd: 0.02, earnedUnderlyingRaw: '1' }],
+      history: { plantings: [{ asset: 'SKR', usdcInCents: 65 }, { asset: 'hSOL', usdcInCents: 203 }], picks: [] },
+    } as unknown as MeResponse
+    expect(gardenTotals(me).putInCents).toBe(166)
   })
 })
