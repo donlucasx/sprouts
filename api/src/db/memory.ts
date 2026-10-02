@@ -191,6 +191,11 @@ export class MemoryRepo implements Repo {
     if (signature) p.signature = signature;
   }
 
+  async setLegAmountOut(plantingId: string, asset: Asset, amountOutRaw: bigint) {
+    const leg = this.legs.find((l) => l.plantingId === plantingId && l.asset === asset);
+    if (leg) leg.amountOutRaw = amountOutRaw;
+  }
+
   async setPlantingShares(plantingId: string, s: { before: bigint | null; after: bigint; minted: bigint }) {
     const p = this.plantings.get(plantingId);
     if (!p) return;

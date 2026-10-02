@@ -1,5 +1,5 @@
 import type { Address } from "@solana/kit";
-import { fetchAllMaybeToken, findAssociatedTokenPda, TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
+import { fetchAllMaybeToken, fetchMaybeToken, findAssociatedTokenPda, TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
 import type { Repo } from "@/db/repo";
 import type { CoinDayRow, PlantingLegRow } from "@/db/types";
 import { ASSETS, COINS, type Asset } from "@/domain/coins";
@@ -16,6 +16,13 @@ export async function readHoldings(owner: Address): Promise<Partial<Record<Asset
   const out: Partial<Record<Asset, bigint>> = {};
   accounts.forEach((acc, i) => { out[WALLET_COINS[i]] = acc.exists ? acc.data.amount : 0n; });
   return out;
+}
+
+/** One wallet coin's balance in the Seed Vault wallet, 0n with no account; throws on an RPC error (which must not read as zero) [R141]. */
+export async function assetBalanceRaw(owner: Address, asset: Asset): Promise<bigint> {
+  const [ata] = await findAssociatedTokenPda({ owner, mint: COINS[asset].mint, tokenProgram: TOKEN_PROGRAM_ADDRESS });
+  const acc = await fetchMaybeToken(rpc(), ata);
+  return acc.exists ? acc.data.amount : 0n;
 }
 
 /**
