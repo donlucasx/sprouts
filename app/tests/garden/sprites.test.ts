@@ -11,9 +11,9 @@ const EXPECTED = [
   ...[0, 1, 2, 3].map((i) => `blade-snake-s${i}`), ...[0, 1, 2, 3].map((i) => `tier-spruce-s${i}`), ...[0, 1, 2].map((i) => `blade-succulent-${i}`),
   ...["mandarin", "succulent", "sunflower", "snake", "blueberry", "spruce"].map((s) => `bud-${s}`),
   ...["skr", "ore", "hsol", "jitosol", "jupsol", "cbbtc"].map((p) => `token-${p}`),
-  "sign", "blossom-mandarin", "bell-blueberry", "head-sunflower", "tip-spruce", "pup-succulent", "seed", "ring", "can", "can-tilt", "can-grey", "ground", "grain", "bar-track", "bar-fill",
+  "sign", "blossom-mandarin", "bell-blueberry", "head-sunflower", "tip-spruce", "pup-succulent", "seed", "ring", "can", "can-tilt", "can-grey", "can-shadow", "ground", "grain", "bar-track", "bar-fill",
 ];
-const APP_ONLY = ["grain", "bar-track", "bar-fill", "can-grey"];
+const APP_ONLY = ["grain", "bar-track", "bar-fill", "can-grey"];   // can-shadow rides in the widget literal unused (the bake writes every sheet part)
 
 describe("the baked sprite set", () => {
   it("has every part the geometry places, with a box and an anchor inside it", () => {
@@ -125,5 +125,16 @@ describe("the water ring reads as wet soil (R182): a damp brown, no blue", () =>
     let r = 0, b = 0;
     for (let i = 0; i < png.data.length; i += 4) { r += png.data[i] * png.data[i + 3]; b += png.data[i + 2] * png.data[i + 3]; }
     expect(b).toBeLessThan(r);
+  });
+});
+
+describe("the can's contact shadow (R184): a soft dark-brown wash, low opacity, a little wider than the can's base", () => {
+  it("is brown (blue below red), faint, and wider than the body's 27 px base at 1x", () => {
+    const m = (meta as unknown as Record<string, { w: number; h: number; ax: number; ay: number }>)["can-shadow"];
+    expect(m.w).toBeGreaterThan(27); expect(m.w).toBeLessThan(48); expect(m.h).toBeLessThan(m.w / 2);
+    const png = PNG.sync.read(readFileSync("assets/garden/can-shadow@3x.png"));
+    let r = 0, b = 0, a = 0, peak = 0;
+    for (let i = 0; i < png.data.length; i += 4) { const w = png.data[i + 3]; r += png.data[i] * w; b += png.data[i + 2] * w; a += w; peak = Math.max(peak, w); }
+    expect(b).toBeLessThan(r); expect(peak).toBeLessThan(255 * 0.6);   // never solid
   });
 });
