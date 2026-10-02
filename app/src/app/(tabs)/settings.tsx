@@ -10,6 +10,7 @@ import { useMe, store } from "@/lib/me";
 import { refreshWidget } from "@/lib/widget-refresh";
 import { unregisterBackgroundRefresh } from "@/lib/background";
 import { useSession } from "@/lib/session";
+import { useMobileWallet } from "@wallet-ui/react-native-kit";
 import { formatWallet } from "@/lib/format";
 import { ORE_DISCLOSURE } from "@/lib/ore-copy";
 
@@ -31,6 +32,8 @@ const DISCLOSURES: [string, string][] = [
 export default function Settings() {
   const { data: me } = useMe();
   const { session, setSession } = useSession();
+  // The kit's cached wallet authorization goes with the session: a stale token is declined by Solflare (-1) on the next sign-in or transaction (10-01).
+  const { disconnect } = useMobileWallet();
   const queryClient = useQueryClient();
   const [busy, setBusy] = useState(false);
 
@@ -46,6 +49,7 @@ export default function Settings() {
       await setSession(null);
       store.remove("me.last");
       queryClient.clear();
+      await disconnect().catch(() => {});
       await Promise.all([refreshWidget(null).catch(() => {}), unregisterBackgroundRefresh().catch(() => {})]);
       setBusy(false);
       router.replace("/");
