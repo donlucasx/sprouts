@@ -111,3 +111,19 @@ describe("the greyed can (R175; I4 fix round 1, ruling d): baked, desaturated, a
     expect(a1 / a0).toBeGreaterThan(0.43); expect(a1 / a0).toBeLessThan(0.47);
   });
 });
+
+describe("the water ring reads as wet soil (R182): a damp brown, no blue", () => {
+  it.each(["ring@3x.png", "ring@1x.png"])("%s: its average painted pixel has blue below red", (file) => {
+    const png = PNG.sync.read(readFileSync(`assets/garden/${file}`));
+    let r = 0, b = 0, a = 0;
+    for (let i = 0; i < png.data.length; i += 4) { const w = png.data[i + 3]; r += png.data[i] * w; b += png.data[i + 2] * w; a += w; }
+    expect(a).toBeGreaterThan(0);
+    expect(b / a).toBeLessThan(r / a);
+  });
+  it("the widget's literal is the same brown bake", () => {
+    const png = PNG.sync.read(Buffer.from(SPRITES_B64["ring"], "base64"));
+    let r = 0, b = 0;
+    for (let i = 0; i < png.data.length; i += 4) { r += png.data[i] * png.data[i + 3]; b += png.data[i + 2] * png.data[i + 3]; }
+    expect(b).toBeLessThan(r);
+  });
+});
