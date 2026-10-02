@@ -81,13 +81,18 @@ export const MIN_VIEW_H = CANVAS.height - CANVAS.soilLine + FRAME.aboveGround;
 /** The baked ground's own height in canvas px (86 at 1x, the manifest's): the view always holds all of it, because its wash is
  * painted from about 13 px under its top and a crop there would show as a hard line. */
 const groundH = () => SPRITE_META["ground"]?.h ?? CANVAS.height - CANVAS.soilLine;
+/** I4 fix round 5: the view's height cap on screen (it was the bed's 260 before R185's headroom). */
+export const MAX_VIEW_H = 320;
 /** RG30: the box (canvas px) around the present plants: each foot, its sideways reach and its height above the foot, and its own
- * sign; padded 16 at the sides; the top the tallest part less HEADROOM (60 percent of the content's height, at least 72 px on screen at
- * the breadth's zoom); the bottom the bed's. The zoom fits that box's breadth, capped at 2 (and at the bed's height, so the view is never
- * taller than 260); the frame is centred on the box's breadth and clamped inside the bed. R167: the view's height is the box's
- * (from its padded top down to the bed's bottom) times the zoom, floored at `minViewH`; only the empty top is cropped, so the ground
- * and the grain keep their anchor on the soil line, and the view always holds the whole ground sprite. Bare signs and seeds do not widen it; with no plant it is the whole breadth at the floor. */
-export function frameFor(scene: Scene, plants: PlantOnStage[], width: number): Frame {
+ * sign; padded 16 at the sides; the bottom the bed's. The zoom fits that box's breadth (capped at 2) and its CONTENT height (the tallest
+ * part down to the bed's bottom) in the bed's 260, never the headroom: R185's room to grow never shrinks the plants (I4 fix round 5).
+ * The view then grows upward by the headroom, max(72 px on screen, 60 percent of the content), and its height is capped at MAX_VIEW_H
+ * (the headroom gives way first); frame.y goes above the canvas's top (negative) when the headroom reaches past it, the paper showing
+ * there. The frame is centred on the box's breadth and clamped inside the bed. R167: the view's height floors at the soil band plus 40
+ * and always holds the whole ground sprite; only the empty top is cropped, so the ground and the grain keep their anchor on the soil
+ * line. Bare signs and seeds do not widen it; with no plant it is the whole breadth at the floor. `room` is the headroom rule (tests
+ * pass none to show the zoom does not depend on it). */
+export function frameFor(scene: Scene, plants: PlantOnStage[], width: number, room: { share: number; minPx: number } = HEADROOM): Frame {
   const floor = Math.max(MIN_VIEW_H, groundH());
   if (plants.length === 0) return { x: 0, y: CANVAS.height - floor, w: width, h: floor, zoom: 1, viewH: floor };
   const signs = new Map(scene.parts.flatMap((q) => (q.kind === "sign" ? [[q.plant, q] as const] : [])));
@@ -99,10 +104,10 @@ export function frameFor(scene: Scene, plants: PlantOnStage[], width: number): F
     if (s) { const sc = signScale(s.row), sx = signX(s.x * width, s.side, width, sc); x0 = Math.min(x0, sx - 15 * sc); x1 = Math.max(x1, sx + 15 * sc); }
   }
   x0 = Math.max(0, x0 - FRAME.pad); x1 = Math.min(width, x1 + FRAME.pad);
-  const breadthZoom = Math.min(FRAME.maxZoom, width / (x1 - x0));
-  y0 = Math.max(0, y0 - Math.max(HEADROOM.share * (CANVAS.height - y0), HEADROOM.minPx / breadthZoom));
-  const zoom = Math.min(breadthZoom, CANVAS.height / (CANVAS.height - y0));
-  const viewH = Math.min(CANVAS.height, Math.max(MIN_VIEW_H, groundH() * zoom, (CANVAS.height - y0) * zoom));
+  const content = CANVAS.height - Math.max(0, y0);
+  const zoom = Math.min(FRAME.maxZoom, width / (x1 - x0), CANVAS.height / content);
+  const headroom = Math.max(room.share * content, room.minPx / zoom);   // canvas px
+  const viewH = Math.min(MAX_VIEW_H, Math.max(MIN_VIEW_H, groundH() * zoom, (content + headroom) * zoom));
   const w = width / zoom, h = viewH / zoom;
   const x = Math.min(Math.max((x0 + x1) / 2 - w / 2, 0), width - w);
   return { x, y: CANVAS.height - h, w, h, zoom, viewH };
