@@ -1,5 +1,5 @@
 import type { Scene } from "./garden";
-import { CANVAS, signX } from "./layout";
+import { signX } from "./layout";
 import { stemPaths, spriteTransform, soilPaths, leafPath } from "./paint";
 import { COLORS } from "./species";
 import { plantLayouts } from "./scene-to-layout";
@@ -12,20 +12,39 @@ export const soilBand = (gardenH: number) => Math.min(WIDGET_SOIL_BAND, Math.rou
 /** From the spike's ledger: `use` (defs plus use, the plan), `image` (a data image per placement), `path` (vector outlines, no sprites). */
 export const WIDGET_MODE: "use" | "image" | "path" = "use";
 const f = (n: number) => Number(n.toFixed(1));
-/** Spec 5: k from the tallest placed part this scene has, floored at 60 px, over the garden's own height (60 on the small widget,
- * Widget.tsx:24): the Oct 8 garden shows at about k 0.4 there and near 0.9 on a 120 px wide widget; a year still fits. The top is
- * measured over the rows this widget DRAWS (the small one draws the front row only), the sensible reading of the spec's "any placed part".
- * Ruling (pre-flight, 10-02): this departs from spec 5's k = min(1, (h − 30 − 6) / max(90, top)) on purpose: that gives the Oct 8 garden k 0.267 on the small widget, under Review Focus 4's 0.4; this rule gives 0.437. */
+/** The room left above the tallest drawn part. */
+export const WIDGET_TOP_MARGIN = 6;
+/** The front row's feet sit 0.73 of the band under the soil line, the back row's 0.23 (the app's 44 and 14 of a 60 band). */
+const FOOT_IN_BAND = { front: 0.73, back: 0.23 } as const;
+type Drawn = { top: number; step: number };
+/** The plants this widget draws (the small one the front row only), each as its height above its foot (k = 1) and its foot's step above
+ * the front row's feet. */
+const drawnRows = (scene: Scene, band: number, wide: boolean): Drawn[] =>
+  plantLayouts(scene).filter((p) => wide || p.row === "front").map((p) => ({ top: p.layout.top, step: (FOOT_IN_BAND.front - FOOT_IN_BAND[p.row]) * band }));
+/** Room above the front row's feet in a garden `gardenH` tall, the margin kept. */
+const roomAbove = (gardenH: number, band: number) => gardenH - band + FOOT_IN_BAND.front * band - WIDGET_TOP_MARGIN;
+/** k: the largest scale, at most 1 (spec 5's cap), at which every drawn plant's top stays `WIDGET_TOP_MARGIN` under the garden's top
+ * edge, measured from where the feet actually stand (R167, 10-02: the old rule measured from the soil line and floored the top at
+ * 60 px, so a young garden drew small under a band of empty sky). */
 export function widgetScale(scene: Scene, gardenH: number, wide: boolean): number {
-  const rows = plantLayouts(scene).filter((p) => wide || p.row === "front");
-  const top = Math.max(0, ...rows.map((p) => p.layout.top + (p.row === "back" ? CANVAS.frontFeet - CANVAS.backFeet : 0)));
-  return Math.min(1, (gardenH - soilBand(gardenH) - 6) / Math.max(60, top));
+  const band = soilBand(gardenH), room = roomAbove(gardenH, band);
+  return Math.max(0, Math.min(1, ...drawnRows(scene, band, wide).filter((d) => d.top > 0).map((d) => (room - d.step) / d.top)));
+}
+/** R167: the garden's height on a widget whose host fixes `maxH`: the shortest height that draws the plants as large as `maxH` does
+ * (so they are never smaller) with the signs inside it, never under the soil band plus 40; the rest goes back to the text lines. */
+export function widgetGardenHeight(scene: Scene, maxH: number, wide: boolean): number {
+  const best = widgetScale(scene, maxH, wide), floor = Math.min(maxH, WIDGET_SOIL_BAND + 40), signAy = SPRITE_META["sign"]?.ay ?? 14;
+  for (let h = Math.ceil(floor); h < maxH; h++) {
+    const band = soilBand(h), signRoom = !wide || roomAbove(h, band) >= (FOOT_IN_BAND.front - FOOT_IN_BAND.back) * band - 3 + 0.8 * signAy;
+    if (signRoom && widgetScale(scene, h, wide) >= best - 1e-9) return h;
+  }
+  return maxH;
 }
 /** The garden as one SVG string for the widget: the sprites the scene uses declared once in <defs>, placed with <use>; stems as
  * paths; the wide widget shows both rows and the signs at a fixed 0.8; the small widget the front row only and no sign. */
 export function widgetGardenSvg(scene: Scene, width: number, height: number, wide: boolean): string {
   const k = widgetScale(scene, height, wide), band = soilBand(height);
-  const line = height - band, foot = (row: "front" | "back") => line + (row === "front" ? band * 0.73 : band * 0.23);   // the app's 44 and 14 of a 60 band
+  const line = height - band, foot = (row: "front" | "back") => line + band * FOOT_IN_BAND[row];
   const used = new Set<string>(); const body: string[] = [];
   // one placement, three modes (the spike's ledger): a <use> of a sprite declared once; a data image per placement; a vector outline
   const placeStr = (name: string, x: number, y: number, rot: number, scale: number, xScale = scale): string => {
