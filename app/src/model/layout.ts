@@ -24,13 +24,18 @@ export function signSide(x: number, allX: number[], width: number): -1 | 1 {
   const right = Math.min(...allX.filter((v) => v > x).map((v) => v - x), 2 * (width - x));
   return right > left ? 1 : -1;
 }
-/** gen06:72-74: 14 px from the foot plus a fifth of the sign's half width, clamped a pixel inside the canvas. `scale` is 1 or 0.8. */
+/** Device round 3, item 2 (10-02): the stakes and their words 1.35x the gen01 board, in the app and the widget. */
+export const SIGN_SCALE = 1.35;
+/** The drawn scale of a sign: SIGN_SCALE in the front row, times the back row's 0.8 behind it (1.35 and 1.08). */
+export const signScale = (row: "front" | "back") => SIGN_SCALE * (row === "front" ? 1 : CANVAS.backScale);
+/** gen06:72-74: 14 px from the foot plus a fifth of the sign's half width, clamped a pixel inside the canvas. `scale` is the sign's
+ * drawn scale (signScale: 1.35 front, 1.08 back), so its half width (15 at 1x) grows with the board. */
 export function signX(x: number, side: -1 | 1, width: number, scale: number): number {
   const half = 15 * scale;
   return Math.min(Math.max(x + side * (14 + half * 0.2), half + 1), width - half - 1);
 }
 /** R168 (10-02): the word on a stake, drawn as crisp type over the one blank baked board (`sign`), in the board's own frame: the anchor
- * at (0, 0) before the sign's scale (1 front, 0.8 back), the board 30 by 11 from y -12 to -1, leaning -4 degrees (gen01_garden.py
+ * at (0, 0) before the sign's scale (signScale: 1.35 front, 1.08 back), the board 30 by 11 from y -12 to -1, leaning -4 degrees (gen01_garden.py
  * sign()). 6.8 px fits the longest label, "JitoSOL" (3.62 em in Albert Sans Medium, 24.6 px), with 2.7 px a side; the baseline at
  * -4.1 centres the 0.70 em capitals on the face (its centre at -6.5). */
 export const SIGN_TEXT = { size: 6.8, y: -4.1, rot: -4 } as const;
@@ -39,6 +44,9 @@ export const SIGN_LABEL: Record<PlantId, string> = { skr: "SKR", ore: "stORE", h
 /** RG30 (10-02): the garden frames what is planted; 2x is the cap the 3x bakes hold; Garden.tsx eases each change over easeMs.
  * R167 (10-02): the view's HEIGHT follows the content, never shorter than the ground band plus `aboveGround`. */
 export const FRAME = { maxZoom: 2, pad: 16, easeMs: 1200, aboveGround: 40 } as const;
+/** Device round 3, item 1 (10-02): room to grow above the tallest part, a quarter of the content's height (the tallest part down to
+ * the bed's bottom), never under 40 px on screen; it replaces the 16 px margin on top only. */
+export const HEADROOM = { share: 0.25, minPx: 40 } as const;
 /** `x`, `y`, `w`, `h` in canvas px; `viewH` the view's height on screen (h times zoom). */
 export type Frame = { x: number; y: number; w: number; h: number; zoom: number; viewH: number };
 /** How far a part reaches sideways from its plant's foot, a safe bound as `topOf` takes it: a leaf-like sprite its baked length times
@@ -55,7 +63,8 @@ export const MIN_VIEW_H = CANVAS.height - CANVAS.soilLine + FRAME.aboveGround;
  * painted from about 13 px under its top and a crop there would show as a hard line. */
 const groundH = () => SPRITE_META["ground"]?.h ?? CANVAS.height - CANVAS.soilLine;
 /** RG30: the box (canvas px) around the present plants: each foot, its sideways reach and its height above the foot, and its own
- * sign; padded 16; the bottom the bed's. The zoom fits that box's breadth, capped at 2 (and at the bed's height, so the view is never
+ * sign; padded 16 at the sides; the top the tallest part less HEADROOM (a quarter of the content's height, at least 40 px on screen at
+ * the breadth's zoom); the bottom the bed's. The zoom fits that box's breadth, capped at 2 (and at the bed's height, so the view is never
  * taller than 260); the frame is centred on the box's breadth and clamped inside the bed. R167: the view's height is the box's
  * (from its padded top down to the bed's bottom) times the zoom, floored at `minViewH`; only the empty top is cropped, so the ground
  * and the grain keep their anchor on the soil line, and the view always holds the whole ground sprite. Bare signs and seeds do not widen it; with no plant it is the whole breadth at the floor. */
@@ -68,10 +77,12 @@ export function frameFor(scene: Scene, plants: PlantOnStage[], width: number): F
     const fx = p.x * width, reach = Math.max(0, ...p.layout.parts.map(sideReach));
     x0 = Math.min(x0, fx - reach); x1 = Math.max(x1, fx + reach); y0 = Math.min(y0, FOOT_Y(p.row) - p.layout.top);
     const s = signs.get(p.plant);
-    if (s) { const sc = s.row === "front" ? 1 : CANVAS.backScale, sx = signX(s.x * width, s.side, width, sc); x0 = Math.min(x0, sx - 15 * sc); x1 = Math.max(x1, sx + 15 * sc); }
+    if (s) { const sc = signScale(s.row), sx = signX(s.x * width, s.side, width, sc); x0 = Math.min(x0, sx - 15 * sc); x1 = Math.max(x1, sx + 15 * sc); }
   }
-  x0 = Math.max(0, x0 - FRAME.pad); x1 = Math.min(width, x1 + FRAME.pad); y0 = Math.max(0, y0 - FRAME.pad);
-  const zoom = Math.min(FRAME.maxZoom, width / (x1 - x0), CANVAS.height / (CANVAS.height - y0));
+  x0 = Math.max(0, x0 - FRAME.pad); x1 = Math.min(width, x1 + FRAME.pad);
+  const breadthZoom = Math.min(FRAME.maxZoom, width / (x1 - x0));
+  y0 = Math.max(0, y0 - Math.max(HEADROOM.share * (CANVAS.height - y0), HEADROOM.minPx / breadthZoom));
+  const zoom = Math.min(breadthZoom, CANVAS.height / (CANVAS.height - y0));
   const viewH = Math.min(CANVAS.height, Math.max(MIN_VIEW_H, groundH() * zoom, (CANVAS.height - y0) * zoom));
   const w = width / zoom, h = viewH / zoom;
   const x = Math.min(Math.max((x0 + x1) / 2 - w / 2, 0), width - w);

@@ -3,7 +3,7 @@ import { useWindowDimensions } from "react-native";
 import Animated, { Easing, useAnimatedStyle, useReducedMotion, useSharedValue, withTiming } from "react-native-reanimated";
 import Svg, { G } from "react-native-svg";
 import type { Scene, Part } from "@/model/garden";
-import { CANVAS, FOOT_Y, FRAME, frameFor, signX } from "@/model/layout";
+import { CANVAS, FOOT_Y, FRAME, frameFor, signScale, signX } from "@/model/layout";
 import { plantLayouts } from "@/model/scene-to-layout";
 import { Plant } from "./Plant";
 import { Soil, Ring, Seed, Sign, Basket, SpriteAt } from "./parts";
@@ -11,7 +11,7 @@ import { Soil, Ring, Seed, Sign, Basket, SpriteAt } from "./parts";
 const MOUNT_FADE_MS = 300;
 
 /** Spec 5: the canvas is the width minus 40 by 260; two rows; the back row draws first. R167: the view on it is as tall as the
- * planted content (frameFor's viewH), so no empty sky sits above the plants. `justOpened` is read by Task I4's washes. */
+ * planted content plus room to grow (frameFor's viewH, device round 3 item 1). `justOpened` is read by Task I4's washes. */
 export function Garden({ scene }: { scene: Scene; justOpened: Set<string> }) {
   const { width } = useWindowDimensions(); const w = width - 40;
   const of = <K extends Part["kind"]>(kind: K) => scene.parts.filter((p): p is Extract<Part, { kind: K }> => p.kind === kind);
@@ -40,7 +40,7 @@ export function Garden({ scene }: { scene: Scene; justOpened: Set<string> }) {
         <Soil width={w} soilY={CANVAS.soilLine} />
         {of("ring").map((r) => { const f = footOf(r.plant); return <G key={`r${r.plant}`} x={f.x} y={f.y + 2}><Ring age={r.age} k={r.plant === "skr" || r.plant === "ore" ? 1 : 2 / 3} /></G>; })}
         {of("seed").map((s) => { const f = footOf(s.plant); return <G key={s.id} x={f.x} y={f.y + 1}><Seed index={s.index} /></G>; })}
-        {of("sign").map((s) => { const scale = s.row === "front" ? 1 : 0.8; return <G key={`s${s.plant}`} x={signX(s.x * w, s.side, w, scale)} y={FOOT_Y(s.row) + 4}><Sign plant={s.plant} scale={scale} /></G>; })}
+        {of("sign").map((s) => { const scale = signScale(s.row); return <G key={`s${s.plant}`} x={signX(s.x * w, s.side, w, scale)} y={FOOT_Y(s.row) + 4}><Sign plant={s.plant} scale={scale} /></G>; })}
         {of("basket").length ? <G x={w - 40} y={CANVAS.soilLine + 30}><Basket /></G> : null}
         {/* Spec 3: the paper grain once over the whole garden, the static Svg's last child (app only). */}
         <G opacity={0.5}><SpriteAt name="grain" x={0} y={0} scale={CANVAS.height / 260} xScale={w / 320} /></G>
