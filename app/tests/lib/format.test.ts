@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatUsd, formatSkr, formatAsOf, roundUpTo, formatWallet, formatStore, formatAmount, DECIMALS, formatHolding, HOLDINGS_NOTE, shareLine, dayLabel, COIN_NAME, feeClause, plantedLine, potHeadline } from "@/lib/format";
+import { formatUsd, formatSkr, formatAsOf, roundUpTo, formatWallet, formatStore, formatAmount, DECIMALS, formatHolding, HOLDINGS_NOTE, shareLine, dayLabel, COIN_NAME, feeClause, plantedLine, potHeadline, holdingAmount } from "@/lib/format";
 
 describe("format", () => {
   it("dollars first, two decimals, whole cents", () => {
@@ -99,3 +99,15 @@ describe("six coins", () => {
     expect(dayLabel("2027-01-01")).toBe("Jan 1");
   });
 });
+
+describe('holdingAmount (R150: the row is the amount and its value, nothing else)', () => {
+  it('shows the amount with its value and no earned clause', () => {
+    expect(holdingAmount({ asset: 'hSOL', heldRaw: '12300000', putInCents: 203, valueUsd: 2.07, earnedUsd: 0.04, earnedUnderlyingRaw: '1' })).toBe('0.0123 hSOL ($2.07)')
+  })
+  it('stORE at its eleven decimals, four places shown', () => {
+    expect(holdingAmount({ asset: 'stORE', heldRaw: '2000000000', putInCents: 200, valueUsd: 2.01, earnedUsd: null, earnedUnderlyingRaw: null })).toBe('0.0200 stORE ($2.01)')
+  })
+  it('leaves the value out when none is known', () => {
+    expect(holdingAmount({ asset: 'cbBTC', heldRaw: '2389', putInCents: 200, valueUsd: null, earnedUsd: null, earnedUnderlyingRaw: null })).toBe('0.00002389 cbBTC')
+  })
+})
