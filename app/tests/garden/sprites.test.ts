@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync, existsSync } from "node:fs";
 import { PNG } from "pngjs";
 import { SPRITES_B64 } from "@/garden/sprites-b64";
-import { SPRITE_META } from "@/garden/sprite-meta";
+import { SPRITE_META, GROUND_OUTLINE } from "@/garden/sprite-meta";
 import { BAKED_L } from "@/model/species";
 import meta from "../../assets/garden/sprites.json";
 
@@ -56,7 +56,8 @@ describe("the baked sprite set", () => {
   });
   it("the three generated modules agree on the names, and the bake's length tables are species.ts's BAKED_L", () => {
     expect(readFileSync("src/garden/sprites.ts", "utf8")).toContain('"sign": { src: require("@/assets/garden/sign.png")');   // no @3x in a require: Metro cannot resolve an explicit scale (the spike, 10-02); it picks sign@3x.png itself
-    const { _bakedL, _strips, ...rest } = meta as Record<string, unknown> & { _bakedL: Record<string, number[]>; _strips: Record<string, unknown> };
+    const { _bakedL, _strips, _groundOutline, ...rest } = meta as Record<string, unknown> & { _bakedL: Record<string, number[]>; _strips: Record<string, unknown>; _groundOutline: number[][] };
+    expect(_groundOutline).toEqual(GROUND_OUTLINE);   // R176: the manifest and the module carry the one outline
     expect(Object.keys(_strips).sort()).toEqual(["blade", "broad", "heart", "small"]);
     expect(Object.keys(SPRITE_META).sort()).toEqual(Object.keys(rest).sort());
     expect(_bakedL).toEqual(BAKED_L);

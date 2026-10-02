@@ -1,8 +1,9 @@
-import { G, Path, Circle, Image as SvgImage, Rect, Text as SvgText } from "react-native-svg";
+import { G, Path, Circle, ClipPath, Defs, Image as SvgImage, Rect, Text as SvgText } from "react-native-svg";
 import { SPRITES } from "./sprites";
 import { stemPaths, spriteTransform } from "@/model/paint";
 import { COLORS, SOIL, type Placed, type PlantId } from "@/model/species";
 import { SIGN_LABEL, SIGN_TEXT } from "@/model/layout";
+import { SOIL_CLIP_ID, soilClipPath } from "@/model/soil-clip";
 import { FONT } from "@/theme/tokens";
 
 export const INK = SOIL.ink; export const WATER = SOIL.water; export const OCHRE = SOIL.front;
@@ -28,6 +29,12 @@ export function PlacedPart({ p, plant }: { p: Placed; plant: PlantId }) {
 export function Soil({ width, soilY }: { width: number; soilY: number }) {
   const m = SPRITES["ground"]; if (!m) return null;
   return <SpriteAt name="ground" x={0} y={soilY + 60 - m.h} scale={1} xScale={width / 320} />;
+}
+/** R176: the painted soil's outline as a STATIC clip (only animated ClipPath children fail on Android, the spike) for the water rings:
+ * the same placement as `Soil`, so the rings stop where the soil does. */
+export function SoilClip({ width, soilY }: { width: number; soilY: number }) {
+  const m = SPRITES["ground"]; if (!m) return null;
+  return <Defs><ClipPath id={SOIL_CLIP_ID}><Path d={soilClipPath(0, soilY + 60 - m.h, width / 320, 1)} /></ClipPath></Defs>;
 }
 /** The water ring (RG11): the front row's at 24, the back row's at 16 (gen06:77, :83: two thirds). */
 export function Ring({ age, k = 1 }: { age: number; k?: number }) {

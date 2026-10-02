@@ -5,8 +5,9 @@ import Svg, { G } from "react-native-svg";
 import type { Scene, Part } from "@/model/garden";
 import { CANVAS, FOOT_Y, FRAME, frameFor, signScale, signX } from "@/model/layout";
 import { plantLayouts } from "@/model/scene-to-layout";
+import { SOIL_CLIP_ID } from "@/model/soil-clip";
 import { Plant } from "./Plant";
-import { Soil, Ring, Seed, Sign, Basket, SpriteAt } from "./parts";
+import { Soil, SoilClip, Ring, Seed, Sign, Basket, SpriteAt } from "./parts";
 
 const MOUNT_FADE_MS = 300;
 
@@ -37,8 +38,9 @@ export function Garden({ scene }: { scene: Scene; justOpened: Set<string> }) {
     <Animated.View style={[{ width: w, overflow: "hidden" }, outer]}>
      <Animated.View style={[{ width: w, height: CANVAS.height, transformOrigin: "0 0" }, framed]}>
       <Svg width={w} height={CANVAS.height} style={{ position: "absolute" }}>
+        <SoilClip width={w} soilY={CANVAS.soilLine} />
         <Soil width={w} soilY={CANVAS.soilLine} />
-        {of("ring").map((r) => { const f = footOf(r.plant); return <G key={`r${r.plant}`} x={f.x} y={f.y + 2}><Ring age={r.age} k={r.plant === "skr" || r.plant === "ore" ? 1 : 2 / 3} /></G>; })}
+        <G clipPath={`url(#${SOIL_CLIP_ID})`}>{of("ring").map((r) => { const f = footOf(r.plant); return <G key={`r${r.plant}`} x={f.x} y={f.y + 2}><Ring age={r.age} k={r.plant === "skr" || r.plant === "ore" ? 1 : 2 / 3} /></G>; })}</G>
         {of("seed").map((s) => { const f = footOf(s.plant); return <G key={s.id} x={f.x} y={f.y + 1}><Seed index={s.index} /></G>; })}
         {of("sign").map((s) => { const scale = signScale(s.row); return <G key={`s${s.plant}`} x={signX(s.x * w, s.side, w, scale)} y={FOOT_Y(s.row) + 4}><Sign plant={s.plant} scale={scale} /></G>; })}
         {of("basket").length ? <G x={w - 40} y={CANVAS.soilLine + 30}><Basket /></G> : null}

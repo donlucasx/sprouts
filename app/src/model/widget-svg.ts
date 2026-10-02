@@ -2,6 +2,7 @@ import type { Scene } from "./garden";
 import { SIGN_LABEL, SIGN_SCALE, SIGN_TEXT, signX } from "./layout";
 import { stemPaths, spriteTransform, soilPaths, leafPath } from "./paint";
 import { COLORS, SOIL } from "./species";
+import { SOIL_CLIP_ID, soilClipPath } from "./soil-clip";
 import { plantLayouts } from "./scene-to-layout";
 import { SPRITE_META } from "@/garden/sprite-meta";
 import { SPRITES_B64 } from "@/garden/sprites-b64";
@@ -63,7 +64,10 @@ export function widgetGardenSvg(scene: Scene, width: number, height: number, wid
   else place("ground", 0, height - SPRITE_META["ground"].h * (band / 60), 0, band / 60, width / 320);   // RG28: the app's ground bake, its bottom on the widget's bottom, scaled from the app's 60 px band to this one
   const plants = plantLayouts(scene).filter((p) => wide || p.row === "front");
   const of = <K extends Scene["parts"][number]["kind"]>(kind: K) => scene.parts.filter((p): p is Extract<Scene["parts"][number], { kind: K }> => p.kind === kind);
-  for (const r of of("ring")) { const pl = plants.find((p) => p.plant === r.plant); if (pl) body.push(`<g opacity="${f(1 - r.age)}">${placeStr("ring", pl.x * width, foot(pl.row) + 1, 0, k * (pl.row === "front" ? 1 : 2 / 3))}</g>`); }
+  // R176 (no soil, no water): every ring sits in a group clipped to the soil's outline, placed as the ground sprite is (AndroidSVG: a <clipPath> of a path)
+  const gk = band / 60, clip = `<clipPath id="${SOIL_CLIP_ID}"><path d="${soilClipPath(0, height - SPRITE_META["ground"].h * gk, width / 320, gk)}"/></clipPath>`;
+  let rings = false;
+  for (const r of of("ring")) { const pl = plants.find((p) => p.plant === r.plant); if (pl) { rings = true; body.push(`<g clip-path="url(#${SOIL_CLIP_ID})"><g opacity="${f(1 - r.age)}">${placeStr("ring", pl.x * width, foot(pl.row) + 1, 0, k * (pl.row === "front" ? 1 : 2 / 3))}</g></g>`); } }
   for (const s of of("seed")) { const sg = of("sign").find((q) => q.plant === s.plant); if (sg && (wide || sg.row === "front")) place("seed", sg.x * width + (s.index % 2 ? 1 : -1) * (3 + 2.4 * Math.floor(s.index / 2)) * k, foot(sg.row), ((s.index * 37) % 60) - 30, k); }   // on the small widget they sit at the plant's foot (no sign)
   for (const p of [...plants.filter((q) => q.row === "back"), ...plants.filter((q) => q.row === "front")]) {
     const fx = p.x * width, fy = foot(p.row);
@@ -81,5 +85,5 @@ export function widgetGardenSvg(scene: Scene, width: number, height: number, wid
     body.push(`<g transform="translate(${Number(x.toFixed(2))} ${Number(y.toFixed(2))}) scale(${WIDGET_SIGN_SCALE}) rotate(${SIGN_TEXT.rot})"><text x="0" y="${SIGN_TEXT.y}" text-anchor="middle" font-family="sans-serif" font-size="${SIGN_TEXT.size}" font-weight="500" fill="${SOIL.ink}">${SIGN_LABEL[s.plant]}</text></g>`);
   }
   const defs = [...used].map((n) => `<image id="s-${n}" width="${SPRITE_META[n].w}" height="${SPRITE_META[n].h}" xlink:href="data:image/png;base64,${SPRITES_B64[n]}"/>`).join("");
-  return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><defs>${defs}</defs>${body.join("")}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><defs>${defs}${rings && WIDGET_MODE !== "path" ? clip : ""}</defs>${body.join("")}</svg>`;
 }
