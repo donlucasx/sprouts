@@ -107,8 +107,10 @@ describe("decideSplits (spec 6.2 to 6.5)", () => {
     const repo = await seededRepo();
     await repo.putCoinDay(day("JupSOL", DAY, null, { ok: false, tradeable: false }));
     let table = "";
-    const rows = await decideSplits({ repo, now: NOW, model: async (req) => { table = req.user; return { input: good, usage: { inputTokens: 1, outputTokens: 1 } }; } });
+    let system = "";
+    const rows = await decideSplits({ repo, now: NOW, model: async (req) => { table = req.user; system = req.system; return { input: good, usage: { inputTokens: 1, outputTokens: 1 } }; } });
     expect(table).toMatch(/JupSOL.*no data/);
+    expect(system).toMatch(/no data or not tradeable keeps yesterday's share/); // R132: the model is told what the clamp enforces
     expect(rows.every((r) => r.split.JupSOL === 0)).toBe(true);
   });
 

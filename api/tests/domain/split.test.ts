@@ -123,11 +123,24 @@ describe("clampSplit (spec 6.3)", () => {
     expect(withYesterday.SKR).toBeGreaterThanOrEqual(35);
     expect(sum(withYesterday)).toBe(100);
   });
-  it("a no-data coin is forced to 0 even if the model wanted it", () => {
+  it("with no yesterday a no-data coin is 0, even if the model wanted more (R132)", () => {
     const s = clampSplit({ stop: "bold", proposed: split({ SKR: 30, JupSOL: 35, hSOL: 35 }), noData: ["JupSOL"], yesterday: null })!;
     expect(s.JupSOL).toBe(0);
     expect(sum(s)).toBe(100);
   });
+  it("a no-data coin keeps yesterday's share for the stop when there is one (R132)", () => {
+    const s = clampSplit({ stop: "balanced", proposed: split({ SKR: 55, hSOL: 25, JitoSOL: 15, cbBTC: 5 }), noData: ["JupSOL"], yesterday: BAL })!;
+    expect(s.JupSOL).toBe(BAL.JupSOL);
+    expect(sum(s)).toBe(100);
+  });
+
+  it("a no-data coin's held share is capped at the stop max (R132)", () => {
+    const y = split({ SKR: 50, JupSOL: 20, hSOL: 15, cbBTC: 15 }); // a row from before the max applied
+    const s = clampSplit({ stop: "careful", proposed: split({ SKR: 70, hSOL: 15, cbBTC: 15 }), noData: ["JupSOL"], yesterday: y })!;
+    expect(s.JupSOL).toBe(STOPS.careful.max.JupSOL);
+    expect(sum(s)).toBe(100);
+  });
+
   it("a coin cannot fall more than the move limit either", () => {
     const s = clampSplit({ stop: "balanced", proposed: split({ SKR: 100 }), noData: [], yesterday: BAL })!;
     expect(s.hSOL).toBe(BAL.hSOL - MOVE_LIMIT);
@@ -158,7 +171,7 @@ describe("fallbackSplit (spec 6.5)", () => {
   it("skips coins without a measured number and obeys the move limit against yesterday", () => {
     const s = fallbackSplit({ stop: "balanced", growth: { hSOL: 7.2, JitoSOL: null, JupSOL: null, stORE: null, cbBTC: 0 }, noData: ["JupSOL"], yesterday: BAL });
     expect(s.hSOL).toBeLessThanOrEqual(BAL.hSOL + MOVE_LIMIT);
-    expect(s.JupSOL).toBe(0);
+    expect(s.JupSOL).toBe(BAL.JupSOL);                 // R132: the no-data coin keeps yesterday's share
     expect(sum(s)).toBe(100);
   });
   it("with nothing measured, yesterday stands, or the stop default on day one", () => {
