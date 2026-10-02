@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { plantingRowLine, swapRowLine, withdrawalRowLine, visibleRows, TAKEN_OUT_LINE } from '@/model/activity'
+import { plantingRowLine, swapRowLine, withdrawalRowLine, visibleRows, WITHDRAWN_LINE } from '@/model/activity'
 
 // Activity's rows (spec 3.2 and 7.7), in the manual's words: planting, change, withdraw; dollars first; never pulled.
 const EARLY = new Date('2026-10-01T00:00:00Z')
@@ -82,6 +82,6 @@ describe('withdrawalRowLine (R156: when it arrives, not "on its way")', () => {
     expect(withdrawalRowLine('Oct 2', { ...base, source: 'wallet', delivered: true }, 0.0183)).toBe('Oct 2, 1.00 SKR ($0.02), delivered, from your wallet')
   })
   it('the explainer is his simplified line', () => {
-    expect(TAKEN_OUT_LINE).toBe('What you took out.')
+    expect(WITHDRAWN_LINE).toBe('What you withdrew.')
   })
 })

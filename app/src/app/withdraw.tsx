@@ -14,7 +14,7 @@ import { api, ApiError } from '@/lib/api'
 import { useMe, useInvalidateMe } from '@/lib/me'
 import { makeSigner } from '@/lib/sign'
 import { arrivalLine, formatSkr } from '@/lib/format'
-import { takeOutRows } from '@/lib/take-out'
+import { withdrawRows } from '@/lib/withdraw-list'
 import { spacing, TARGET, type as ramp, useTheme } from '@/theme'
 
 type Plan = { transaction: string; shares: string; amountRaw: string; prunes: boolean; brief: string[] }
@@ -55,7 +55,7 @@ export default function Withdraw() {
   }, [picked, busy])
   if (!me)
     return (
-      <Screen back title="Take out">
+      <Screen back title="Withdraw">
         <ThemedText tone="secondary">Loading your garden.</ThemedText>
       </Screen>
     )
@@ -110,16 +110,17 @@ export default function Withdraw() {
   }
 
   if (picked === null) {
-    const rows = takeOutRows(me)
+    const rows = withdrawRows(me)
     return (
-      <Screen back title="Take out">
+      <Screen back title="Withdraw">
         <Card style={{ gap: 0 }}>
-          <ThemedText style={{ marginBottom: spacing.sm }}>What do you want to take out?</ThemedText>
+          <ThemedText style={{ marginBottom: spacing.sm }}>What do you want to withdraw?</ThemedText>
           {rows.length === 0 ? <ThemedText tone="secondary">Nothing in your garden yet.</ThemedText> : null}
           {rows.map((r, i) => {
             const inner = (
               <>
                 <View style={{ flex: 1, gap: 2 }}>
+                  {r.label ? <ThemedText>{r.label}</ThemedText> : null}
                   <ThemedText numeric>{r.amount}</ThemedText>
                   <ThemedText variant="caption" tone="secondary">
                     {r.note}
@@ -130,7 +131,7 @@ export default function Withdraw() {
             )
             const rowStyle = { minHeight: TARGET, flexDirection: 'row' as const, alignItems: 'center' as const, gap: spacing.sm, paddingVertical: spacing.sm, borderTopWidth: i === 0 ? 0 : 1, borderTopColor: colors.hairline }
             return r.opens ? (
-              <Pressable key={r.asset} onPress={() => setPicked('SKR')} accessibilityRole="button" accessibilityLabel="Take out SKR" style={({ pressed }) => ({ ...rowStyle, opacity: pressed ? 0.7 : 1 })}>
+              <Pressable key={r.asset} onPress={() => setPicked('SKR')} accessibilityRole="button" accessibilityLabel={r.label} style={({ pressed }) => ({ ...rowStyle, opacity: pressed ? 0.7 : 1 })}>
                 {inner}
               </Pressable>
             ) : (
@@ -167,7 +168,7 @@ export default function Withdraw() {
     <Screen back onBack={busy ? () => {} : backToList} title="Withdraw SKR">
       {!plan ? (
         <Card>
-          <ThemedText>What do you want to take out?</ThemedText>
+          <ThemedText>What do you want to withdraw?</ThemedText>
           <TwoWay
             options={[
               { value: 'earned', label: 'What it earned' },

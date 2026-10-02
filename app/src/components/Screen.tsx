@@ -22,7 +22,7 @@ export function Screen({
 }: PropsWithChildren<{
   scroll?: boolean
   back?: boolean
-  /** What the top Back does instead of leaving (the Take out flow steps back to its list). */
+  /** What the top Back does instead of leaving (the Withdraw flow steps back to its list). */
   onBack?: () => void
   title?: string
   inset?: 'both' | 'top'

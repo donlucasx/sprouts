@@ -223,7 +223,7 @@ export default function Home() {
           </ThemedText>
         ) : null}
         <Link href="/withdraw" asChild>
-          <Button title="Take out" kind="quiet" onPress={() => {}} />
+          <Button title="Withdraw" kind="quiet" onPress={() => {}} />
         </Link>
       </Card>
       {walletsRow ? (

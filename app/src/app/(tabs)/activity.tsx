@@ -9,7 +9,7 @@ import { ThemedText } from '@/components/ThemedText'
 import { api, ApiError, type ActivityResponse } from '@/lib/api'
 import { useMe, useInvalidateMe, useApplyRules } from '@/lib/me'
 import { splitRowLine, SPLIT_SECTION } from '@/model/manager'
-import { plantingRowLine, swapRowLine, withdrawalRowLine, visibleRows, TAKEN_OUT_LINE } from '@/model/activity'
+import { plantingRowLine, swapRowLine, withdrawalRowLine, visibleRows, WITHDRAWN_LINE } from '@/model/activity'
 import { undoSplit } from '@/lib/manager-api'
 import { spacing, TARGET, useTheme } from '@/theme'
 
@@ -151,7 +151,7 @@ export default function Activity() {
           />
           <Section
             title="Withdrawals"
-            sub={TAKEN_OUT_LINE}
+            sub={WITHDRAWN_LINE}
             rows={a.withdrawals}
             empty="No withdrawal yet."
             render={(w) => (
