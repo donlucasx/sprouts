@@ -8,21 +8,15 @@ import type { PlantId } from "@/model/garden";
 import { SPRITES } from "./sprites";
 import { WATER } from "./parts";
 import { REDUCED_MS } from "@/model/opening";
+import { canHome, canTouch, dropSize } from "@/model/can";
 
 /** The rose, in the rest sprite's frame at k = 1 (sprite units), from the body's centre, the anchor (gen11_motion.py:123). */
 const ROSE = { x: -38, y: -22 };
 /** gen11_motion.py:159: the tap's whole sequence, 5.4 s: 0 to 18 percent slide to the plant, 18 to 32 tilt to -40 degrees, 32 to 70
  * pour, 70 to 82 back to level, 82 to 100 home. */
 export const CAN_MS = 5400;
-const TILT = -40, LIFT = 1.08, MOVED = 8, OVERLAP = 8;
+const TILT = -40, LIFT = 1.08, MOVED = 8;
 const REST = SPRITES["can"], TILTED = SPRITES["can-tilt"], GREY = SPRITES["can-grey"];   // can-grey: baked desaturated at 45 percent (ruling d)
-/** How far the can reaches below the garden's view (R175: its top OVERLAP px over the soil's bottom edge) at sprite scale `s`. */
-export const canBelow = (s: number) => (REST ? REST.h * s - OVERLAP : 0);
-/** The can's seat in the wrapper's frame (px from the garden view's top-left): bottom right, 4 px in from the edge. */
-export const canHome = (width: number, viewH: number, s: number) => {
-  "worklet";
-  return { x: width - 4 - (REST ? REST.w - REST.ax : 0) * s, y: viewH - OVERLAP + (REST ? REST.ay : 0) * s };
-};
 /** The rose from the body's centre at `tilt` degrees, on screen at sprite scale `s` (gen11_motion.py:123-124). */
 export const roseAt = (tilt: number, s: number) => {
   "worklet";
@@ -30,7 +24,6 @@ export const roseAt = (tilt: number, s: number) => {
   return { x: (ROSE.x * Math.cos(a) - ROSE.y * Math.sin(a)) * s, y: (ROSE.x * Math.sin(a) + ROSE.y * Math.cos(a)) * s };
 };
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
-const half = (m?: { w: number; h: number; ax: number; ay: number }) => (m ? Math.max(m.ax, m.w - m.ax, m.ay, m.h - m.ay) : 0);
 
 /** One sprite with its anchor at the centre of an L by L box, at scale s. */
 function CanSprite({ m, L, s }: { m: (typeof SPRITES)[string]; L: number; s: number }) {
@@ -67,7 +60,7 @@ export function Can({ ready, reduced, tempo, width, viewH, viewHNow, s, targetAt
   const [pouring, setPouring] = useState(false);
   const inColour = ready || pouring;    // the minor: the can does not grey mid-pour (the read that empties the buds lands while it pours)
   const [drops, setDrops] = useState<{ x: number; y: number; groundY: number } | null>(null);
-  const L = Math.ceil(2 * Math.max(half(REST), half(TILTED)) * s) + 2;
+  const L = canTouch(s);   // R180: the square touch box, at least 48 dp
 
   // One wobble when a bud arrives (and when Home opens on a waiting bud): a few degrees over 600 ms, then still.
   useEffect(() => {
@@ -157,7 +150,7 @@ export function Can({ ready, reduced, tempo, width, viewH, viewHNow, s, targetAt
   if (!REST || !TILTED || !GREY) return null;
   return (
     <>
-      {drops ? <Drops x={drops.x} y={drops.y} groundY={drops.groundY} size={s * 3} tempo={tempo} /> : null}
+      {drops ? <Drops x={drops.x} y={drops.y} groundY={drops.groundY} size={dropSize(s)} tempo={tempo} /> : null}
       <GestureDetector gesture={gesture}>
         <Animated.View
           style={[{ position: "absolute", left: 0, top: 0, width: L, height: L }, place]}

@@ -11,9 +11,9 @@ import { diffScenes, gateDiff, sceneKey, NO_CHANGE, type Diff } from "@/lib/scen
 import { openingPlan, REDUCED_MS } from "@/model/opening";
 import { SWAY, clampZoom, pinchOffset } from "@/model/motion";
 import { Plant } from "./Plant";
-import { Can, canBelow } from "./Can";
+import { Can } from "./Can";
+import { canBelow, canScale } from "@/model/can";
 import { Appear } from "./Strip";
-import { SPRITES } from "./sprites";
 import { Soil, SoilClip, Ring, Seed, Sign, Basket, SpriteAt } from "./parts";
 
 const MOUNT_FADE_MS = 300;
@@ -73,7 +73,7 @@ export function Garden({ scene: incoming, live, canReady, onWater, onNudge, temp
   const framed = useAnimatedStyle(() => ({ transform: [{ translateX: -fx.value * z.value }, { translateY: -fy.value * z.value }, { scale: z.value }] }));
   // Spec 8's first frame: react-native-svg loads bundled PNGs through Fresco asynchronously on Android, so the garden fades in over
   // 300 ms on mount and no sprite pops in on its own. The same outer view carries the eased height (R167), with the can's room below.
-  const canS = Math.max(32 / (SPRITES["can"]?.w ?? 73.67), target.zoom / 3);   // G11's proportion (can11 at 1/3 against the plants), never under 32 px wide
+  const canS = canScale(target.zoom);   // R180: 1.6x G11's proportion (can11 at 1/3 against the plants, never under 32 px wide)
   const below = canBelow(canS);
   const shown = useSharedValue(0);
   useEffect(() => { shown.value = withTiming(1, { duration: MOUNT_FADE_MS }); }, [shown]);
