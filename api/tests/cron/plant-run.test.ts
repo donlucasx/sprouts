@@ -314,6 +314,19 @@ describe("runPlanting", () => {
     expect(leg.amountOutRaw).toBe(103_000_000n);                                 // the quote was 2_180_000 * 47 = 102_460_000
   });
 
+  it("one user's wallets plant in series, so two wallets planting the same coin at once do not each count the other's delivery (R141, review I1)", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await repo.addWallet({ pubkey: "W2", userPubkey: "U", delegationPda: "D2", dailyCapCents: 500 });
+    for (const [i, c] of [83, 62, 70].entries()) await repo.insertSwap({ signature: `t${i}`, walletPubkey: "W2", ts: new Date(NOW.getTime() - 3_600_000), inMint: "a", inAmount: 1, outMint: "b", outAmount: 1, usdSizeCents: 100, class: "major", roundupCents: c });
+    await repo.saveRules("U", { allocation: { ...SKR_ONLY, SKR: 0, hSOL: 100 } });
+    let bal = 5_000_000n;
+    const chain = fakeChain({ assetBalanceRaw: async () => bal, sendPlanting: async () => { await new Promise((r) => setTimeout(r, 5)); bal += 103_000_000n; } });
+    const r = await runPlanting({ repo, now: NOW, chain });
+    expect(r.planted.map((p) => p.asset)).toEqual(["hSOL", "hSOL"]);
+    const legs = await Promise.all((await repo.listPlantings("U", 2)).map((p) => repo.plantingLegs(p.id)));
+    expect(legs.map((l) => l[0].amountOutRaw)).toEqual([103_000_000n, 103_000_000n]);
+  });
+
   it("the SKR leg records the SKR its minted shares are worth at the share price, not the quote (R141)", async () => {
     const repo = await seeded([83, 62, 70]);
     let shares = 1_000_000_000n;

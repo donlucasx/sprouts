@@ -51,8 +51,9 @@ export type Skipped = { wallet: string; reason: string };
  * pause on an empty USDC balance; pick the asset from the allocation ledger; build, simulate, record the signed transaction,
  * claim the round-ups in one conditional statement, send, confirm, bump. Two overlapping runs cannot both pull the same round-ups:
  * the second claim finds nothing to claim. One wallet's failure is recorded and the run continues; three build failures in a row
- * stop the run. Wallets run eight at a time: sequential runs take 5 to 10 s per wallet against Vercel's 300 s and Jupiter's 60
- * requests a minute, so the free stack serves the 20 to 50 wallet beta and needs paid tiers somewhere past 100 wallets.
+ * stop the run. Users run eight at a time, each user's wallets in series (the balance and share reads around a send are per Seed
+ * Vault [A16, R141]): sequential runs take 5 to 10 s per wallet against Vercel's 300 s and Jupiter's 60 requests a minute, so the
+ * free stack serves the 20 to 50 wallet beta and needs paid tiers somewhere past 100 wallets.
  */
 export async function runPlanting(a: { repo: Repo; now: Date; chain: Chain }): Promise<{ planted: Planted[]; skipped: Skipped[] }> {
   const planted: Planted[] = [];
@@ -64,7 +65,7 @@ export async function runPlanting(a: { repo: Repo; now: Date; chain: Chain }): P
   const wallets = await a.repo.listActiveWallets();
   let buildFailures = 0;
   let stopped = false;
-  await mapWithConcurrency(wallets, CONCURRENCY, async (w) => {
+  const plantWallet = async (w: WalletRow) => {
     if (stopped) {
       skipped.push({ wallet: w.pubkey, reason: "run stopped" });
       return;
@@ -81,6 +82,13 @@ export async function runPlanting(a: { repo: Repo; now: Date; chain: Chain }): P
       console.error(`planting run stopped: ${OUTAGE_AFTER} build failures in a row (Jupiter or RPC outage); the rest wait for the next run`);
       await a.repo.addEvent({ userPubkey: null, walletPubkey: null, kind: "run_stopped", detail: { after: OUTAGE_AFTER, lastWallet: w.pubkey } });
     }
+  };
+  // One Seed Vault's wallets run in series: the share count and the coin balance are read per user before a send and after
+  // confirmation, so two wallets of one user planting the same coin at once would each count the other's delivery (review I1).
+  const byUser = new Map<string, WalletRow[]>();
+  for (const w of wallets) byUser.set(w.userPubkey, [...(byUser.get(w.userPubkey) ?? []), w]);
+  await mapWithConcurrency([...byUser.values()], CONCURRENCY, async (group) => {
+    for (const w of group) await plantWallet(w);
   });
   return { planted, skipped };
 }
