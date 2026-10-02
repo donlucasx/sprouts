@@ -21,12 +21,15 @@ const ART = (fill: string) =>
   `<path d="M0 0 C 11.0 -5.3, 9.6 -18.7, 0 -24.0 C -6.2 -16.8, -5.8 -6.2, 0 0 z" transform="translate(1 -17) rotate(54)"/>` +
   `</g></g></svg>`
 
-/** `decorative` inside a lockup, where the word beside it already says "sprouts"; alone, it is an image named Sprouts. */
-export function Mark({ size = 32, decorative = false }: { size?: number; decorative?: boolean }) {
+/**
+ * `decorative` inside a lockup, where the word beside it already says "sprouts"; alone, it is an image named Sprouts.
+ * `color` overrides the accent: the tab bar passes its own tint (R163).
+ */
+export function Mark({ size = 32, decorative = false, color }: { size?: number; decorative?: boolean; color?: string }) {
   const { colors } = useTheme()
   return (
     <SvgXml
-      xml={ART(colors.accent)}
+      xml={ART(color ?? colors.accent)}
       width={size}
       height={size}
       accessibilityRole={decorative ? undefined : 'image'}

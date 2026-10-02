@@ -2,6 +2,7 @@ import { Tabs } from 'expo-router'
 import { MaterialCommunityIcons } from '@expo/vector-icons'
 import type { ComponentProps } from 'react'
 import { FONT, useTheme } from '@/theme'
+import { Mark } from '@/components/Mark'
 
 type IconName = ComponentProps<typeof MaterialCommunityIcons>['name']
 function icon(on: IconName, off: IconName) {
@@ -34,7 +35,8 @@ export default function TabsLayout() {
         sceneStyle: { backgroundColor: colors.background },
       }}
     >
-      <Tabs.Screen name="home" options={{ title: 'Garden', tabBarIcon: icon('sprout', 'sprout-outline') }} />
+      {/* R163: the Garden tab carries the Sprouts mark in the tab bar's tint (the label already says Garden). */}
+      <Tabs.Screen name="home" options={{ title: 'Garden', tabBarIcon: ({ color }) => <Mark size={24} color={String(color)} decorative /> }} />
       <Tabs.Screen
         name="activity"
         options={{ title: 'Activity', tabBarIcon: icon('format-list-bulleted', 'format-list-bulleted') }}
