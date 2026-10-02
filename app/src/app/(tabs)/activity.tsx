@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Screen } from "@/components/Screen";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
-import { api, ApiError, type ActivityResponse, type Asset } from "@/lib/api";
+import { api, ApiError, type ActivityResponse } from "@/lib/api";
 import { useMe, useInvalidateMe, useApplyRules } from "@/lib/me";
 import { splitRowLine, SPLIT_SECTION } from "@/model/manager";
 import { undoSplit } from "@/lib/manager-api";
@@ -32,7 +32,6 @@ export default function Activity() {
   const applyRules = useApplyRules();
   const [busy, setBusy] = useState(false);
   const [undoError, setUndoError] = useState<string | null>(null);
-  const usdFor = (x: Asset) => (x === "SKR" ? me?.pot.skrUsd ?? null : x === "stORE" ? me?.pot.storeUsd ?? null : null);
 
   async function undo() {
     setBusy(true); setUndoError(null);
@@ -60,7 +59,7 @@ export default function Activity() {
             {a.plantings.length === 0 ? <Text style={{ color: "#6B6558" }}>No planting yet.</Text> : null}
             {a.plantings.map((p) => {
               const leg = p.legs[0];
-              const what = p.status === "confirmed" && leg ? `${formatUsd(p.usdcPulledCents)} pulled, ${formatAmount(leg.asset, BigInt(leg.amountOutRaw), usdFor(leg.asset))} planted${feeClause(leg.feeCents, leg.feeAmountRaw)}` : p.status === "failed" ? "did not land, nothing pulled" : "in flight";
+              const what = p.status === "confirmed" && leg ? `${formatUsd(p.usdcPulledCents)} pulled, ${formatAmount(leg.asset, BigInt(leg.amountOutRaw), leg.usdPrice ?? null)} planted${feeClause(leg.feeCents, leg.feeAmountRaw)}` : p.status === "failed" ? "did not land, nothing pulled" : "in flight";
               return <Line key={p.id} text={`${day(p.ts)}, ${what}`} signature={p.signature} />;
             })}
           </Card>

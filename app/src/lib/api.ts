@@ -64,7 +64,7 @@ export type ActivityResponse = {
   swaps: { signature: string; ts: string; walletPubkey: string; usdSizeCents: number | null; class: string; roundupCents: number; plantingId: string | null }[];
   plantings: {
     id: string; ts: string; status: "sent" | "confirmed" | "failed"; signature: string | null; usdcPulledCents: number; networkFeeCents: number;
-    legs: { asset: Asset; usdcInCents: number; amountOutRaw: string; feeCents: number; feeAmountRaw: string }[];
+    legs: { asset: Asset; usdcInCents: number; amountOutRaw: string; feeCents: number; feeAmountRaw: string; usdPrice: number | null }[];
   }[];
   withdrawals: {
     id: string; ts: string; asset: Asset; source: "sprouts" | "wallet"; amountRaw: string | null; principalRaw: string;
