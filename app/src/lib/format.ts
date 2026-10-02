@@ -103,6 +103,19 @@ export function formatAsOf(date: Date, now: Date = new Date()): string {
   return `as of ${date.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
 }
 
+/** A time as the staking withdrawals show it: "Oct 4, 3 PM", in the phone's zone. */
+const arrivalTime = (d: Date) => d.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric" });
+
+/**
+ * When a withdrawal arrives (R156), as a phrase: "arrives Oct 4, 3 PM" while that time is ahead; "arriving today" once readyAt has
+ * passed, since the daily delivery job has not yet marked it delivered. `capital` gives the sentence-start form.
+ */
+export function arrivalLine(readyAt: Date | string, now: Date = new Date(), capital = false): string {
+  const at = new Date(readyAt);
+  const text = at.getTime() <= now.getTime() ? "arriving today" : `arrives ${arrivalTime(at)}`;
+  return capital ? text.charAt(0).toUpperCase() + text.slice(1) : text;
+}
+
 /** The change on one swap: the distance to the next multiple of `toCents`; a whole multiple gives a whole step (R29). */
 export function roundUpTo(cents: number, toCents: number): number {
   const rest = cents % toCents;

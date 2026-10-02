@@ -1,20 +1,19 @@
 import { ASSETS, type Asset } from './coins'
 import type { MeResponse } from './api'
-import { formatSkr, holdingAmount } from './format'
+import { arrivalLine, formatSkr, holdingAmount } from './format'
 
 export type TakeOutRow = { asset: Asset; amount: string; note: string; opens: boolean }
 
-const when = (iso: string) => new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric' })
 /** A holding's amount with its value: the unit price is the value over the amount. */
 
 /**
  * Take out's list (R159): SKR first, the only coin that leaves through Sprouts (staked under the Seeker's key, the program's
  * 48 hours), then every wallet coin with where it sits; those rows open nothing, the user trades them from any wallet app.
  */
-export function takeOutRows(me: Pick<MeResponse, 'pot' | 'basket' | 'holdings'>): TakeOutRow[] {
+export function takeOutRows(me: Pick<MeResponse, 'pot' | 'basket' | 'holdings'>, now: Date = new Date()): TakeOutRow[] {
   const staked = BigInt(me.pot.skrStakedRaw)
   const rows: TakeOutRow[] = []
-  if (me.basket) rows.push({ asset: 'SKR', amount: formatSkr(BigInt(me.basket.amountRaw), me.pot.skrUsd), note: `in the basket, arrives ${when(me.basket.readyAt)}`, opens: true })
+  if (me.basket) rows.push({ asset: 'SKR', amount: formatSkr(BigInt(me.basket.amountRaw), me.pot.skrUsd), note: `in the basket, ${arrivalLine(me.basket.readyAt, now)}`, opens: true })
   else if (staked > 0n) rows.push({ asset: 'SKR', amount: formatSkr(staked, me.pot.skrUsd), note: 'locked to your Seeker, 48 hours to leave', opens: true })
   for (const asset of ASSETS) {
     const h = me.holdings.find((x) => x.asset === asset)
