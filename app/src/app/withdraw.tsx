@@ -15,9 +15,8 @@ import { useMe, useInvalidateMe } from '@/lib/me'
 import { makeSigner } from '@/lib/sign'
 import { arrivalLine, formatSkr } from '@/lib/format'
 import { withdrawRows } from '@/lib/withdraw-list'
+import { withdrawAtTap, type WithdrawPlan, type WithdrawRequest } from '@/lib/withdraw-flow'
 import { spacing, TARGET, type as ramp, useTheme } from '@/theme'
-
-type Plan = { transaction: string; shares: string; amountRaw: string; prunes: boolean; brief: string[] }
 
 const Waiting = () => (
   <ThemedText variant="caption" tone="secondary">
@@ -32,7 +31,8 @@ export default function Withdraw() {
   const invalidate = useInvalidateMe()
   const [chosen, setMode] = useState<'earned' | 'amount' | null>(null)
   const [amount, setAmount] = useState('')
-  const [plan, setPlan] = useState<Plan | null>(null)
+  // The plan on screen and the request that built it; the tap builds again from the same request (round 3, item 7).
+  const [plan, setPlan] = useState<(WithdrawPlan & { request: WithdrawRequest }) | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [picked, setPicked] = useState<'SKR' | null>(null)
@@ -66,12 +66,13 @@ export default function Withdraw() {
   const held = BigInt(me.pot.skrStakedRaw)
   const problem = mode === 'amount' ? amountProblem(amount, held) : null
 
+  const buildPlan = (request: WithdrawRequest) => api<WithdrawPlan>('/api/withdraw/build', { method: 'POST', body: request })
   async function prepare() {
     setBusy(true)
     setError(null)
     try {
-      const amountRaw = mode === 'amount' ? String(parseSkr(amount)) : undefined
-      setPlan(await api<Plan>('/api/withdraw/build', { method: 'POST', body: { mode, amountRaw } }))
+      const request: WithdrawRequest = { mode, amountRaw: mode === 'amount' ? String(parseSkr(amount)) : undefined }
+      setPlan({ ...(await buildPlan(request)), request })
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Could not prepare the withdrawal.')
     } finally {
@@ -83,8 +84,17 @@ export default function Withdraw() {
     setBusy(true)
     setError(null)
     try {
-      const signed = await makeSigner(signTransaction)(plan.transaction)
-      await api('/api/withdraw/confirm', { method: 'POST', body: { signedTransaction: signed } })
+      const out = await withdrawAtTap({
+        request: plan.request,
+        shown: plan,
+        build: buildPlan,
+        sign: makeSigner(signTransaction),
+        confirm: (signedTransaction) => api('/api/withdraw/confirm', { method: 'POST', body: { signedTransaction } }),
+      })
+      if ('replanned' in out) {
+        setPlan({ ...out.replanned, request: plan.request })   // the garden moved since the amount was picked: show it, tap again
+        return
+      }
       await invalidate()
       router.replace('/home')
     } catch (e) {
@@ -153,7 +163,7 @@ export default function Withdraw() {
             {formatSkr(BigInt(me.basket.amountRaw), skrUsd)}
           </ThemedText>
           <ThemedText tone="secondary">
-            {arrivalLine(me.basket.readyAt, new Date(), true)}. It stopped earning when you signed. One withdrawal at a time until it arrives.
+            {arrivalLine(me.basket.readyAt, new Date(), true)}. It stopped earning when you signed. One withdrawal at a time.
           </ThemedText>
           <Button title="Put it back" kind="quiet" loading={busy} onPress={putBack} />
           {busy ? <Waiting /> : null}
@@ -171,7 +181,7 @@ export default function Withdraw() {
           <ThemedText>What do you want to withdraw?</ThemedText>
           <TwoWay
             options={[
-              { value: 'earned', label: 'What it earned' },
+              { value: 'earned', label: 'Your earnings' },
               { value: 'amount', label: 'An amount' },
             ]}
             value={mode}
@@ -179,14 +189,14 @@ export default function Withdraw() {
           />
           <ThemedText tone="secondary">
             {mode === 'earned'
-              ? 'Only what your garden earned. What you put in stays planted and keeps earning.'
-              : 'Any amount, up to everything in your garden. Taking more than it earned prunes a plant.'}
+              ? 'Only your earnings. What you put in keeps earning.'
+              : 'Up to everything. Going past your earnings prunes a plant.'}
           </ThemedText>
           {mode === 'earned' ? (
             <>
               <ThemedText numeric>Earned so far: {formatSkr(earned, skrUsd)}</ThemedText>
               {!canEarned ? (
-                <ThemedText tone="secondary">You can withdraw once your earned SKR reaches 1 SKR.</ThemedText>
+                <ThemedText tone="secondary">You can withdraw once your earnings reach 1 SKR.</ThemedText>
               ) : null}
             </>
           ) : (
@@ -224,7 +234,7 @@ export default function Withdraw() {
             </>
           )}
           <ThemedText variant="caption" tone="secondary">
-            {"It reaches your Seeker's wallet 48 hours after you sign."}
+            {"It arrives in your Seeker's wallet 48 hours after you sign."}
           </ThemedText>
           <Button
             title="Continue"

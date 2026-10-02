@@ -10,12 +10,18 @@ describe("planPick", () => {
     expect(p.shares).toBe(80_279_232n);
     expect(p.amountRaw).toBeLessThanOrEqual(92_000_000n);
     expect(p.prunes).toBe(false);
-    expect(p.brief[0]).toContain("earned");
+    expect(p.brief).toEqual([   // round 3, item 7: every fact kept, shorter sentences
+      "Withdraw your earnings: 92.00 SKR ($1.68).",
+      "What you put in keeps earning.",
+      "It stops earning when you sign and arrives in your Seeker's wallet in 48 hours.",
+      "You can put it back until then. One withdrawal at a time.",
+      "Network fee: about $0.001.",
+    ]);
   });
   it("an amount above what was earned prunes the plant and says so", () => {
     const p = planPick({ mode: "amount", amountRaw: 1_000_000_000n, pot, sharePrice: SP, skrUsd: 0.0183 });
     expect(p.prunes).toBe(true);
-    expect(p.brief.some((l) => l.includes("prunes"))).toBe(true);
+    expect(p.brief.slice(0, 2)).toEqual(["Withdraw 1000.00 SKR ($18.30).", "This takes 908.00 SKR ($16.62) of what you put in and prunes a plant."]);
   });
   // Review Focus 3
   it("refuses a pick below 1 SKR", () => {
