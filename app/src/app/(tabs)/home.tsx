@@ -16,7 +16,6 @@ import { MarkedTitle } from '@/components/Lockup'
 import { WatcherLine } from '@/components/WatcherLine'
 import { NextPlanting } from '@/components/NextPlanting'
 import { nextPlantingRow } from '@/lib/next-planting'
-import { WaterButton } from '@/components/WaterButton'
 import { PauseRow } from '@/components/PauseRow'
 import { arrivalLine, formatUsd, formatSkr, formatAsOf } from '@/lib/format'
 import { useSession } from '@/lib/session'
@@ -32,9 +31,9 @@ export default function Home() {
   const { data: me, stale, refetch, asOf, loading, unauthorized } = useMe()
   const invalidate = useInvalidateMe()
   const queryClient = useQueryClient()
-  const [justOpened, setJustOpened] = useState<Set<string>>(new Set())
-  const [watering, setWatering] = useState(false)
+  const [opened, setOpened] = useState(0)
   const [failed, setFailed] = useState(false)
+  const [nudged, setNudged] = useState(false)
   const [pausing, setPausing] = useState(false)
   const [pauseError, setPauseError] = useState<string | null>(null)
   const now = new Date()
@@ -42,36 +41,36 @@ export default function Home() {
   // eslint-disable-next-line react-hooks/exhaustive-deps -- `now` is taken once per render on purpose; the scene follows the local date
   const scene = useMemo(() => (me ? buildScene(toGardenInput(me, now)) : null), [me, today])
   // Coming back to Home reads again: a wallet linked on the web, a planting, a withdrawal show without a pull-down. Leaving it
-  // ends the "Opened" line and forgets a failed tap (audits/watering-ux, finding 10).
+  // ends the "Opened" line and forgets a failed watering and the greyed can's hint (audits/watering-ux, finding 10).
   useFocusEffect(
     useCallback(() => {
       void refetch()
       return () => {
-        setJustOpened(new Set())
+        setOpened(0)
         setFailed(false)
+        setNudged(false)
       }
     }, [refetch]),
   )
 
   /**
-   * The reveal (R55): the API records the moment, the fresh read opens the buds, then each one blooms in. The state comes from
-   * the read, never from the tap. A failed tap says so instead of nothing (finding 8).
+   * The reveal (R55): the API records the moment, the fresh read opens the buds, then the garden plays each one opening from the
+   * scene diff. The state comes from the read, never from the gesture. The can's drag onto a plant and its tap send this same
+   * watering: the API opens every bud, and the garden opens the plant the can was dropped on first. The can holds its pour while
+   * this runs; a failure says so instead of nothing (finding 8) and sends the can home.
    */
-  async function water() {
-    if (!me || !scene) return
+  async function water(): Promise<boolean> {
+    if (!me || !scene) return false
     setFailed(false)
-    setWatering(true)
-    const opening = new Set(
-      scene.parts.filter((p) => p.kind === 'sprout' && p.bud).map((p) => (p as { id: string }).id),
-    )
+    const opening = scene.parts.filter((p) => p.kind === 'sprout' && p.bud).length
     try {
       await api('/api/water', { method: 'POST', body: {} })
       await invalidate()
-      setJustOpened(opening)
+      setOpened(opening)
+      return true
     } catch {
       setFailed(true)
-    } finally {
-      setWatering(false)
+      return false
     }
   }
 
@@ -118,13 +117,13 @@ export default function Home() {
   const staked = BigInt(me.pot.skrStakedRaw)
   const totals = gardenTotals(me)
   const pause = pauseState(me.wallets)
-  // R96: the line and the can decided together, so they always agree; the can is there only while a bud waits.
+  // R96 and R175: the line and the can decided together, so they always agree; the can is in colour only while a bud waits.
   const watcher = watcherLine({
     unrevealed: scene.unrevealed,
     neverWatered: me.user.wateredAt === null,
-    watering,
-    opened: justOpened.size,
+    opened,
     failed,
+    nudged,
   })
   const nextRow = nextPlantingRow({
     pendingCents: me.nextPlanting.pendingCents,
@@ -153,26 +152,31 @@ export default function Home() {
       {pause.shown ? (
         <PauseRow on={pause.on} line={pause.line} busy={pausing} error={pauseError} onChange={togglePaused} />
       ) : null}
-      <Garden scene={scene} justOpened={justOpened} />
+      <Garden scene={scene} canReady={watcher.can === 'ready'} onWater={water} onNudge={() => setNudged(true)} />
       {watcher.line ? <WatcherLine text={watcher.line} /> : null}
-      {watcher.button ? (
-        <View style={{ gap: spacing.sm }}>
-          <WaterButton label={watcher.button} busy={watering} onPress={water} />
-          {watcher.note ? (
-            <ThemedText variant="caption" tone="secondary">
-              {watcher.note}
-            </ThemedText>
-          ) : null}
-        </View>
+      {watcher.note ? (
+        <ThemedText variant="caption" tone="secondary">
+          {watcher.note}
+        </ThemedText>
       ) : null}
-      <NextPlanting row={nextRow} pendingCents={me.nextPlanting.pendingCents} thresholdCents={me.nextPlanting.thresholdCents} />
+      <NextPlanting
+        row={nextRow}
+        pendingCents={me.nextPlanting.pendingCents}
+        thresholdCents={me.nextPlanting.thresholdCents}
+      />
       {receiptLine ? (
         <Pressable
           onPress={() => router.push('/activity')}
           accessibilityRole="button"
           accessibilityLabel={`${receiptLine}. Opens Activity.`}
           hitSlop={8}
-          style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: spacing.xs, minHeight: TARGET, opacity: pressed ? 0.6 : 1 })}
+          style={({ pressed }) => ({
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: spacing.xs,
+            minHeight: TARGET,
+            opacity: pressed ? 0.6 : 1,
+          })}
         >
           <ThemedText variant="caption" tone="secondary" style={{ flex: 1 }}>
             {receiptLine}
@@ -190,7 +194,16 @@ export default function Home() {
         </ThemedText>
         <View style={{ flexDirection: 'row', gap: spacing.sm }}>
           {statTiles(totals).map((t) => (
-            <View key={t.label} style={{ flex: 1, backgroundColor: colors.background, borderRadius: radius.md, padding: spacing.md, gap: 2 }}>
+            <View
+              key={t.label}
+              style={{
+                flex: 1,
+                backgroundColor: colors.background,
+                borderRadius: radius.md,
+                padding: spacing.md,
+                gap: 2,
+              }}
+            >
               <ThemedText variant="label" tone="secondary">
                 {t.label}
               </ThemedText>
@@ -249,7 +262,9 @@ export default function Home() {
       ) : (
         <Card>
           <ThemedText variant="heading">Linked wallets</ThemedText>
-          <ThemedText tone="secondary">No wallet linked yet. Link one and every swap rounds up into your garden.</ThemedText>
+          <ThemedText tone="secondary">
+            No wallet linked yet. Link one and every swap rounds up into your garden.
+          </ThemedText>
           <Link href="/connect" asChild>
             <Button title="Link a wallet" kind="quiet" onPress={() => {}} />
           </Link>

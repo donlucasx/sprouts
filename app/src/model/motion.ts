@@ -28,8 +28,9 @@ export function panLimit(offset: number, s: number, size: number): number {
   "worklet";
   return Math.min(0, Math.max(size * (1 - s), offset));
 }
-/** The offset that keeps the content under the fingers' focal point still as the zoom goes from `s0` (offset `o0`) to `s`, clamped. */
-export function pinchOffset(o0: number, s0: number, s: number, focal: number, size: number): number {
+/** The offset that keeps the content that was under the fingers' focal point at the gesture's start (`focal0`, at zoom `s0` and offset
+ * `o0`) under the focal point now (`focal`) at zoom `s`, clamped: one pinch both zooms and, as the two fingers move, pans. */
+export function pinchOffset(o0: number, s0: number, s: number, focal0: number, focal: number, size: number): number {
   "worklet";
-  return panLimit(focal - ((focal - o0) * s) / s0, s, size);
+  return panLimit(focal - ((focal0 - o0) * s) / s0, s, size);
 }
