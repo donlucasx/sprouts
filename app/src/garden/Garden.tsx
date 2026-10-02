@@ -1,131 +1,51 @@
-import { useEffect, type ReactNode } from "react";
-import { View, useWindowDimensions } from "react-native";
-import Svg, { G, Circle, Path, Defs, ClipPath } from "react-native-svg";
-import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withSequence, withTiming, withDelay, Easing } from "react-native-reanimated";
-import type { Scene, Part, PlantId } from "@/model/garden";
-import { soilSurface, SOIL_PATH } from "@/model/soil";
-import { Soil, Stem, Shoot, Forming, Transplant, Fruit, Ripening, Pup, Basket, WetSpot, INK, GREEN, ripeningRadius } from "./parts";
-import { nodeRise, stemRise, side, leafSize, pupOffset, PUP_R, TRANSPLANT_BASE } from "@/model/plant-geometry";
+import { useEffect } from "react";
+import { useWindowDimensions } from "react-native";
+import Animated, { Easing, useAnimatedStyle, useReducedMotion, useSharedValue, withTiming } from "react-native-reanimated";
+import Svg, { G } from "react-native-svg";
+import type { Scene, Part } from "@/model/garden";
+import { CANVAS, FOOT_Y, FRAME, frameFor, signX } from "@/model/layout";
+import { plantLayouts } from "@/model/scene-to-layout";
+import { Plant } from "./Plant";
+import { Soil, Ring, Seed, Sign, Basket, SpriteAt } from "./parts";
 
-const HEIGHT = 260;
+const MOUNT_FADE_MS = 300;
 
-/**
- * Every animated part is its own small Svg inside an Animated.View: `useAnimatedStyle` with rotate, scale and opacity is the
- * documented Reanimated path, and animating `transform` on an SVG G through animatedProps has an Android failure on record [A21].
- */
-function Sway({ children, seed, w, h }: { children: ReactNode; seed: number; w: number; h: number }) {
-  const angle = useSharedValue(0);
+/** Spec 5: the canvas is the width minus 40 by 260; two rows; the back row draws first. `justOpened` is read by Task I4's washes. */
+export function Garden({ scene }: { scene: Scene; justOpened: Set<string> }) {
+  const { width } = useWindowDimensions(); const w = width - 40;
+  const of = <K extends Part["kind"]>(kind: K) => scene.parts.filter((p): p is Extract<Part, { kind: K }> => p.kind === kind);
+  const plants = plantLayouts(scene);
+  const footOf = (plant: string) => { const pl = plants.find((p) => p.plant === plant) ?? of("sign").find((s) => s.plant === plant); return pl ? { x: pl.x * w, y: FOOT_Y(pl.row) } : { x: w * 0.4, y: CANVAS.frontFeet }; };
+  const back = plants.filter((p) => p.row === "back"), front = plants.filter((p) => p.row === "front");
+  // RG30: one frame on the whole garden, eased over 1.2 s (none under reduced motion). The transform's origin is the top-left, so a
+  // canvas point p lands at (p - frame) * zoom and the frame fills the view; x and zoom ease linearly, and since the frame's right
+  // limit (width - width / zoom) is concave in a linearly eased zoom, a frame inside the bed at both ends stays inside it throughout.
+  const target = frameFor(scene, plants, w), reduced = useReducedMotion();
+  const fx = useSharedValue(target.x), fy = useSharedValue(target.y), z = useSharedValue(target.zoom);
   useEffect(() => {
-    angle.value = withRepeat(
-      withSequence(
-        withTiming(1.5, { duration: 1800 + seed * 90, easing: Easing.inOut(Easing.sin) }),
-        withTiming(-1.5, { duration: 1800 + seed * 90, easing: Easing.inOut(Easing.sin) }),
-      ),
-      -1,
-      true,
-    );
-  }, [angle, seed]);
-  const style = useAnimatedStyle(() => ({ transform: [{ rotate: `${angle.value}deg` }] }));
+    const t = { duration: reduced ? 0 : FRAME.easeMs, easing: Easing.inOut(Easing.cubic) };
+    fx.value = withTiming(target.x, t); fy.value = withTiming(target.y, t); z.value = withTiming(target.zoom, t);
+  }, [target.x, target.y, target.zoom, reduced, fx, fy, z]);
+  const framed = useAnimatedStyle(() => ({ transform: [{ translateX: -fx.value * z.value }, { translateY: -fy.value * z.value }, { scale: z.value }] }));
+  // Spec 8's first frame: react-native-svg loads bundled PNGs through Fresco asynchronously on Android, so the garden fades in over
+  // 300 ms on mount and no sprite pops in on its own.
+  const shown = useSharedValue(0);
+  useEffect(() => { shown.value = withTiming(1, { duration: MOUNT_FADE_MS }); }, [shown]);
+  const fadeIn = useAnimatedStyle(() => ({ opacity: shown.value }));
   return (
-    <Animated.View style={[{ width: w, height: h, transformOrigin: "bottom center" }, style]}>
-      <Svg width={w} height={h}>{children}</Svg>
-    </Animated.View>
-  );
-}
-
-/**
- * Positions a part on the garden; when it was a bud until this reveal it blooms in (scale from 0.2 with a fade), one after another.
- * A bud mounted closed sits at 1, so the bloom starts by going back to 0 (audits/watering-ux, finding 5: from 1 to 1 was a no-op
- * and the bloom never played for a bud already on the screen).
- */
-function Bloom({ children, order, active, x, y, w, h }: { children: ReactNode; order: number; active: boolean; x: number; y: number; w: number; h: number }) {
-  const t = useSharedValue(active ? 0 : 1);
-  useEffect(() => {
-    if (!active) return;
-    t.value = 0;
-    t.value = withDelay(order * 260, withTiming(1, { duration: 900, easing: Easing.out(Easing.cubic) }));
-  }, [active, order, t]);
-  const style = useAnimatedStyle(() => ({ opacity: 0.2 + 0.8 * t.value, transform: [{ scale: 0.2 + 0.8 * t.value }] }));
-  return <Animated.View style={[{ position: "absolute", left: x, top: y, width: w, height: h }, style]}>{children}</Animated.View>;
-}
-
-/** `justOpened` names the buds that opened on this watering; each blooms in order. Static parts draw in one Svg underneath. */
-export function Garden({ scene, justOpened }: { scene: Scene; justOpened: Set<string> }) {
-  const { width } = useWindowDimensions();
-  const w = width - 40;
-  const soilY = HEIGHT - 60;
-  const ground = (x: number) => soilY + soilSurface(x) + 2;   // the soil's surface at x (0 to 1), in pixels
-  const plants = scene.parts.filter((p): p is Extract<Part, { kind: "plant" }> => p.kind === "plant");
-  const shoots = scene.parts.filter((p): p is Extract<Part, { kind: "sprout" }> => p.kind === "sprout");
-  const seeds = scene.parts.filter((p): p is Extract<Part, { kind: "seed" }> => p.kind === "seed");
-  const forming = scene.parts.find((p): p is Extract<Part, { kind: "forming" }> => p.kind === "forming");
-  const skrFruit = scene.parts.filter((p): p is Extract<Part, { kind: "fruit" }> => p.kind === "fruit" && p.plant === "skr");
-  const pups = scene.parts.filter((p): p is Extract<Part, { kind: "fruit" }> => p.kind === "fruit" && p.plant === "ore");
-  const ripening = scene.parts.filter((p): p is Extract<Part, { kind: "ripening" }> => p.kind === "ripening");
-  const wet = scene.parts.find((p): p is Extract<Part, { kind: "wetSpot" }> => p.kind === "wetSpot");
-  const basket = scene.parts.find((p): p is Extract<Part, { kind: "basket" }> => p.kind === "basket");
-  const transplant = scene.parts.some((p) => p.kind === "transplant");
-  // R89: each coin's one plant, its plantings stacked up its stem (plant-geometry.ts, shared with the widget).
-  const plantOf = (c: PlantId) => plants.find((p) => p.plant === c)!;
-  const base = (c: PlantId) => (c === "skr" && transplant ? TRANSPLANT_BASE : 0);
-  // The plants' x come from the scene (plantX, garden.ts); the pups and the transplant read theirs from the ore and skr plant parts.
-  const oreX = (scene.parts.find((p) => p.kind === "plant" && p.plant === "ore") as { x: number } | undefined)?.x ?? 0.64;
-  const skrX = (scene.parts.find((p) => p.kind === "plant" && p.plant === "skr") as { x: number } | undefined)?.x ?? 0.4;
-  const node = (s: Extract<Part, { kind: "sprout" }>) => {
-    const p = plantOf(s.plant);
-    return { x: p.x * w, y: ground(p.x) - nodeRise(s.y, p.shoots, base(s.plant)) };
-  };
-  // Fruit hang beside the shoot the scene names, on the side away from its leaf, each on a short stalk from the shoot's node
-  // (09-30, the Saga: without the stalk a small one floated); a few per shoot fan out downward.
-  const perHost = new Map<string, number>();
-  const hang = (id: string) => {
-    const s = shoots.find((p) => p.id === id)!;
-    const k = perHost.get(id) ?? 0;
-    perHost.set(id, k + 1);
-    const n = node(s);
-    return { x: n.x - side(s.y) * (8 + k * 7), y: n.y + 6 + k * 4, stalk: `M${n.x} ${n.y} L${n.x - side(s.y) * (8 + k * 7)} ${n.y + 6 + k * 4}` };
-  };
-  // ORE pups sit on the soil at the succulent's foot, touching it (plant-geometry.ts); the next one forms in the slot after the
-  // last pup, seated on the surface with a pixel sunk in.
-  const pupAt = (index: number, r: number) => {
-    const px = oreX * w + pupOffset(index, r);
-    return { x: px, y: ground(px / w) - r + 1 };
-  };
-  let order = 0;
-  return (
-    <View style={{ width: w, height: HEIGHT }}>
-      <Svg width={w} height={HEIGHT} style={{ position: "absolute" }}>
-        <Defs>
-          <ClipPath id="soil"><Path d={SOIL_PATH(w)} transform={`translate(0 ${soilY})`} /></ClipPath>
-        </Defs>
-        <G y={soilY}><Soil width={w} /></G>
-        {/* Water darkens the soil only: the patch is clipped to the mound (09-30, the Saga: its top half floated over the ground). */}
-        {wet ? <G clipPath="url(#soil)"><G x={w * wet.x} y={ground(wet.x) + 2}><WetSpot age={wet.age} /></G></G> : null}
-        {seeds.map((s) => <G key={s.id} x={s.x * w} y={ground(s.x) + 1}><Circle r={2.2} fill={INK} opacity={0.7} /></G>)}
-        {plants.map((p) => <G key={p.plant} x={p.x * w} y={ground(p.x)}><Stem plant={p.plant} rise={stemRise(p.shoots, base(p.plant))} /></G>)}
-        {forming ? (() => { const p = plantOf(forming.plant); return <G x={p.x * w} y={ground(p.x) - stemRise(p.shoots, base(p.plant)) - 3}><Forming progress={forming.progress} /></G>; })() : null}
-        {skrFruit.map((f) => { const at = hang(f.on!); return <G key={`f${f.index}`}><Path d={at.stalk} stroke={GREEN} strokeWidth={1.2} strokeLinecap="round" /><G x={at.x} y={at.y}><Fruit bud={f.bud} /></G></G>; })}
-        {pups.map((f) => { const at = pupAt(f.index, PUP_R); return <G key={`p${f.index}`} x={at.x} y={at.y}><Pup /></G>; })}
-        {ripening.map((r) => {
-          if (r.on === null) { const at = pupAt(pups.length, ripeningRadius(r.progress)); return <G key={r.plant} x={at.x} y={at.y}><Ripening progress={r.progress} /></G>; }
-          const at = hang(r.on);
-          return <G key={r.plant}><Path d={at.stalk} stroke={GREEN} strokeWidth={1.2} strokeLinecap="round" /><G x={at.x} y={at.y}><Ripening progress={r.progress} /></G></G>;
-        })}
-        {basket ? <G x={w - 40} y={soilY + 30}><Basket /></G> : null}
+    <Animated.View style={[{ width: w, height: CANVAS.height, overflow: "hidden" }, fadeIn]}>
+     <Animated.View style={[{ width: w, height: CANVAS.height, transformOrigin: "0 0" }, framed]}>
+      <Svg width={w} height={CANVAS.height} style={{ position: "absolute" }}>
+        <Soil width={w} soilY={CANVAS.soilLine} />
+        {of("ring").map((r) => { const f = footOf(r.plant); return <G key={`r${r.plant}`} x={f.x} y={f.y + 2}><Ring age={r.age} k={r.plant === "skr" || r.plant === "ore" ? 1 : 2 / 3} /></G>; })}
+        {of("seed").map((s) => { const f = footOf(s.plant); return <G key={s.id} x={f.x} y={f.y + 1}><Seed index={s.index} /></G>; })}
+        {of("sign").map((s) => { const scale = s.row === "front" ? 1 : 0.8; return <G key={`s${s.plant}`} x={signX(s.x * w, s.side, w, scale)} y={FOOT_Y(s.row) + 4}><Sign plant={s.plant} scale={scale} /></G>; })}
+        {of("basket").length ? <G x={w - 40} y={CANVAS.soilLine + 30}><Basket /></G> : null}
+        {/* Spec 3: the paper grain once over the whole garden, the static Svg's last child (app only). */}
+        <G opacity={0.5}><SpriteAt name="grain" x={0} y={0} scale={CANVAS.height / 260} xScale={w / 320} /></G>
       </Svg>
-      {transplant ? (
-        <Bloom order={0} active={false} x={skrX * w - 40} y={ground(skrX) - 80} w={80} h={80}>
-          <Sway seed={3} w={80} h={80}><Transplant /></Sway>
-        </Bloom>
-      ) : null}
-      {shoots.map((s) => {
-        const n = node(s);
-        return (
-          <Bloom key={s.id} order={justOpened.has(s.id) ? order++ : 0} active={justOpened.has(s.id)} x={n.x - 14} y={n.y - 14} w={28} h={28}>
-            <Svg width={28} height={28}><Shoot stage={s.stage} bud={s.bud} side={side(s.y)} size={leafSize(s.stage)} plant={s.plant} /></Svg>
-          </Bloom>
-        );
-      })}
-    </View>
+      {[...back, ...front].map((p) => <Plant key={p.plant} p={p} footX={p.x * w} footY={FOOT_Y(p.row)} />)}
+     </Animated.View>
+    </Animated.View>
   );
 }
