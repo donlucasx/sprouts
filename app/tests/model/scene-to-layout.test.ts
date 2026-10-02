@@ -33,9 +33,9 @@ describe("the frame (RG30, R167, R185: room above the tallest part max(72 dp, 60
     expect((209.381 - f.y) * f.zoom).toBeCloseTo(72, 2);
     expect(f.x).toBeGreaterThanOrEqual(0); expect(f.x).toBeLessThanOrEqual(57.7); expect(f.x + f.w).toBeGreaterThanOrEqual(96);
   });
-  it("the full year: the whole breadth at zoom 1; the headroom (60 percent of 237.7) reaches past the bed's top, so the view is the whole bed", () => {
+  it("the full year: the whole breadth at zoom 1; the headroom (60 percent of 237.7 = 142.6) grows the view to its 320 cap, 60 px above the canvas's top", () => {
     const s = buildScene(previewInputAt(365)), f = frame(s);
-    expect(f).toMatchObject({ x: 0, w: 320, zoom: 1, y: 0, viewH: 260 });
+    expect(f).toMatchObject({ x: 0, w: 320, zoom: 1, y: -60, viewH: 320 });
     expect(tallest(s)).toBeCloseTo(22.32, 2);   // the 22 px left above the tallest part is all the bed has
   });
   it("a tall garden at zoom 1: the headroom is 60 percent of the content's height once that passes 72 px (day 120)", () => {
@@ -43,8 +43,19 @@ describe("the frame (RG30, R167, R185: room above the tallest part max(72 dp, 60
     expect(t).toBeCloseTo(107.22, 2); expect(f.zoom).toBe(1);   // the content 152.8 canvas px; 60 percent of it is 91.7
     expect(t - f.y).toBeCloseTo(0.6 * (260 - t), 6); expect(f.viewH).toBeCloseTo(244.45, 2);
   });
-  it("day 240: 60 percent of its 192.9 px reaches past the bed's top, so the view is the whole bed", () => {
-    expect(frame(buildScene(previewInputAt(240)))).toMatchObject({ y: 0, zoom: 1, viewH: 260 });
+  it("day 240: the view grows by 60 percent of its 192.9 px content (115.7) to 308.6, above the canvas's top", () => {
+    const f = frame(buildScene(previewInputAt(240)));
+    expect(f.zoom).toBe(1); expect(f.viewH).toBeCloseTo(308.61, 2); expect(f.y).toBeCloseTo(-48.61, 2);
+  });
+  it("R185's headroom never shrinks the plants (I4 fix round 5): the zoom with it equals the zoom without it", () => {
+    const tall = buildScene({ ...base, pendingCents: 0, earned: {}, plantings: Array.from({ length: 40 }, (_, i) => p(`h${i}`, 300 - i * 7, "hSOL")) });   // a lone sunflower: narrow and tall, so the height binds
+    for (const s of [buildScene(previewInputAt(120)), buildScene(previewInputAt(240)), buildScene(previewInputAt(365)), tall]) {
+      const L = plantLayouts(s);
+      expect(frameFor(s, L, 320).zoom).toBe(frameFor(s, L, 320, { share: 0, minPx: 0 }).zoom);
+    }
+    const L = plantLayouts(tall), f = frameFor(tall, L, 320);
+    expect(f.zoom).toBeGreaterThan(1); expect(f.zoom).toBeLessThan(2);   // the height binds: the case the old rule shrank
+    expect(f.viewH).toBeLessThanOrEqual(320);
   });
   it("no plant: the whole breadth at the floor, the soil band (60) plus 40", () => expect(frame(buildScene(base))).toEqual({ x: 0, y: 160, w: 320, h: 100, zoom: 1, viewH: 100 }));
   it("six young plants, one planting each (the Saga's garden on 10-02): every plant in the breadth, 72 px of room above them: 148.7 px tall, not 260", () => {
