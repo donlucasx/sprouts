@@ -46,6 +46,7 @@ export const SPRITES: Record<string, SpriteMeta & { src: number }> = {
   "ring": { src: require("@/assets/garden/ring.png"), w: 54.0, h: 20.0, ax: 27.33, ay: 10.0 },
   "can": { src: require("@/assets/garden/can.png"), w: 73.67, h: 57.33, ax: 47.67, ay: 31.33 },
   "can-tilt": { src: require("@/assets/garden/can-tilt.png"), w: 75.33, h: 49.0, ax: 50.67, ay: 24.67 },
+  "can-shadow": { src: require("@/assets/garden/can-shadow.png"), w: 41.0, h: 13.67, ax: 20.67, ay: 7.0 },
   "grain": { src: require("@/assets/garden/grain.png"), w: 320.0, h: 260.0, ax: 0.0, ay: 0.0 },
   "bar-track": { src: require("@/assets/garden/bar-track.png"), w: 308.0, h: 11.33, ax: 4.0, ay: 5.67 },
   "bar-fill": { src: require("@/assets/garden/bar-fill.png"), w: 308.0, h: 11.33, ax: 4.0, ay: 5.67 },

@@ -8,21 +8,15 @@ import type { PlantId } from "@/model/garden";
 import { SPRITES } from "./sprites";
 import { WATER } from "./parts";
 import { REDUCED_MS } from "@/model/opening";
-import { canHome, canTouch, dropSize } from "@/model/can";
+import { canArt, canHit, canHome, dropSize, roseAt, DRIP } from "@/model/can";
 
-/** The rose, in the rest sprite's frame at k = 1 (sprite units), from the body's centre, the anchor (gen11_motion.py:123). */
-const ROSE = { x: -38, y: -22 };
 /** gen11_motion.py:159: the tap's whole sequence, 5.4 s: 0 to 18 percent slide to the plant, 18 to 32 tilt to -40 degrees, 32 to 70
  * pour, 70 to 82 back to level, 82 to 100 home. */
 export const CAN_MS = 5400;
 const TILT = -40, LIFT = 1.08, MOVED = 8;
 const REST = SPRITES["can"], TILTED = SPRITES["can-tilt"], GREY = SPRITES["can-grey"];   // can-grey: baked desaturated at 45 percent (ruling d)
-/** The rose from the body's centre at `tilt` degrees, on screen at sprite scale `s` (gen11_motion.py:123-124). */
-export const roseAt = (tilt: number, s: number) => {
-  "worklet";
-  const a = (tilt * Math.PI) / 180;
-  return { x: (ROSE.x * Math.cos(a) - ROSE.y * Math.sin(a)) * s, y: (ROSE.x * Math.sin(a) + ROSE.y * Math.cos(a)) * s };
-};
+const SHADOW = SPRITES["can-shadow"];   // R184: the contact shadow, centred under the body's base (can11.py: the base at y +17)
+const SHADOW_AT = { x: -1, y: 18.5 };   // sprite units from the body's centre
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 /** One sprite with its anchor at the centre of an L by L box, at scale s. */
@@ -53,14 +47,18 @@ type Props = {
  * elsewhere it glides back. A tap waters every bud: the can goes to the first plant with a bud, pours and comes back (G11's sequence).
  * A failed watering sends it straight back (Home's line says why). The can keeps its colour until its sequence ends, and no second
  * pick-up starts while one runs. Reduced motion: no wobble, lift, tilt, slide or drops; the pour is a 300 ms fade home.
+ * R184: 2.2x the first can, a soft contact shadow under it in both states (lighter while it is held), and while a bud waits one drop
+ * forming at the rose every 4 s (none when greyed, held or pouring, none under reduced motion). The touch box lies wholly inside the
+ * garden's wrapper (canHit, canBelow).
  */
 export function Can({ ready, reduced, tempo, width, viewH, viewHNow, s, targetAt, spotOf, tapTarget, onPour, onPourEnd, onNudge }: Props) {
   const dx = useSharedValue(0), dy = useSharedValue(0), tilt = useSharedValue(0), lift = useSharedValue(1), wobble = useSharedValue(0), tilted = useSharedValue(false), seen = useSharedValue(1);
   const busy = useSharedValue(false);   // one pour at a time (a shared value, so the gesture's callbacks may read it)
+  const held = useSharedValue(false);   // in the hand or pouring: the shadow lightens and the drip stops at once
   const [pouring, setPouring] = useState(false);
   const inColour = ready || pouring;    // the minor: the can does not grey mid-pour (the read that empties the buds lands while it pours)
   const [drops, setDrops] = useState<{ x: number; y: number; groundY: number } | null>(null);
-  const L = canTouch(s);   // R180: the square touch box, at least 48 dp
+  const hit = canHit(s), L = canArt(s);   // the touch box (R184 item 5) and the drawing layers' square about the body's centre
 
   // One wobble when a bud arrives (and when Home opens on a waiting bud): a few degrees over 600 ms, then still.
   useEffect(() => {
@@ -74,20 +72,20 @@ export function Can({ ready, reduced, tempo, width, viewH, viewHNow, s, targetAt
     if (reduced) {   // R175: a 300 ms fade, not a jump
       seen.value = withSequence(withTiming(0, { duration: REDUCED_MS / 2 }), withTiming(1, { duration: REDUCED_MS / 2 }));
       for (const v of [dx, dy, tilt]) v.value = withDelay(REDUCED_MS / 2, withTiming(0, { duration: 0 }));
-      lift.value = 1; tilted.value = false;
+      lift.value = 1; tilted.value = false; held.value = false;
       return;
     }
     tilt.value = withTiming(0, { duration: t(0.12) });
     dx.value = withTiming(0, { duration: t(0.18), easing: Easing.inOut(Easing.cubic) });
     dy.value = withTiming(0, { duration: t(0.18), easing: Easing.inOut(Easing.cubic) });
     lift.value = withTiming(1, { duration: t(0.18) });
-    tilted.value = false;
+    tilted.value = false; held.value = false;
   };
   /** The pour, for both paths: the request starts at once; the can (moved to `to` for a tap) tilts and pours, and holds the pose while
    * the request runs, at least the pour's share of the sequence; then level and home. A failed request cuts every step short. */
   async function pour(target: PlantId | null, to: PlantId | null) {
     if (busy.value) return;
-    busy.value = true; setPouring(true);
+    busy.value = true; held.value = true; setPouring(true);
     let failed = false;
     const req = onPour(target).catch(() => false).then((ok) => { failed = !ok; });
     const home = canHome(width, viewHNow, s), r = roseAt(TILT, s);
@@ -125,14 +123,14 @@ export function Can({ ready, reduced, tempo, width, viewH, viewHNow, s, targetAt
     .hitSlop(8)
     // at once, so the screen's scroll never takes a drag that began on the can; refused while a pour runs, so a grab never strands it
     .onTouchesDown((_e, manager) => { if (busy.value) manager.fail(); else manager.activate(); })
-    .onStart(() => { if (!reduced) lift.value = withTiming(LIFT, { duration: 120 }); })
+    .onStart(() => { held.value = true; if (!reduced) lift.value = withTiming(LIFT, { duration: 120 }); })
     .onUpdate((e) => {
       dx.value = e.translationX; dy.value = e.translationY;
       if (!reduced && !tilted.value && Math.hypot(e.translationX, e.translationY) > MOVED) { tilted.value = true; tilt.value = withTiming(TILT, { duration: 300 }); }
     })
     .onEnd((e, success) => {
       if (!success) { runOnJS(goHome)(); return; }
-      if (Math.hypot(e.translationX, e.translationY) <= MOVED) { lift.value = 1; dx.value = 0; dy.value = 0; runOnJS(tap)(); return; }
+      if (Math.hypot(e.translationX, e.translationY) <= MOVED) { lift.value = 1; dx.value = 0; dy.value = 0; held.value = false; runOnJS(tap)(); return; }
       const home = canHome(width, viewH.value, s), r = roseAt(tilt.value, s);
       runOnJS(release)(home.x + dx.value + r.x, home.y + dy.value + r.y);
     })
@@ -142,26 +140,31 @@ export function Can({ ready, reduced, tempo, width, viewH, viewHNow, s, targetAt
 
   const place = useAnimatedStyle(() => {
     const home = canHome(width, viewH.value, s);
-    return { opacity: seen.value, transform: [{ translateX: home.x + dx.value - L / 2 }, { translateY: home.y + dy.value - L / 2 }, { rotate: `${wobble.value}deg` }, { scale: lift.value }] };
+    return { opacity: seen.value, transform: [{ translateX: home.x + dx.value - hit.ox }, { translateY: home.y + dy.value - hit.oy }, { rotate: `${wobble.value}deg` }, { scale: lift.value }] };
   });
+  const shadowStyle = useAnimatedStyle(() => ({ opacity: held.value ? 0.45 : 1 }));
   // the rest sprite turns with the tilt; past halfway the tilted sprite (no shadow, baked at -40) takes over (gen11: the swap at 25 percent)
   const restStyle = useAnimatedStyle(() => ({ opacity: tilt.value > TILT / 2 ? 1 : 0, transform: [{ rotate: `${tilt.value}deg` }] }));
   const tiltStyle = useAnimatedStyle(() => ({ opacity: tilt.value > TILT / 2 ? 0 : 1, transform: [{ rotate: `${tilt.value - TILT}deg` }] }));
-  if (!REST || !TILTED || !GREY) return null;
+  if (!REST || !TILTED || !GREY || !SHADOW) return null;
+  const art = { position: "absolute", left: hit.ox - L / 2, top: hit.oy - L / 2, width: L, height: L } as const;
+  const rose = roseAt(0, s);
   return (
     <>
       {drops ? <Drops x={drops.x} y={drops.y} groundY={drops.groundY} size={dropSize(s)} tempo={tempo} /> : null}
       <GestureDetector gesture={gesture}>
         <Animated.View
-          style={[{ position: "absolute", left: 0, top: 0, width: L, height: L }, place]}
+          style={[{ position: "absolute", left: 0, top: 0, width: hit.w, height: hit.h }, place]}
           accessible
           accessibilityRole="button"
           accessibilityLabel={inColour ? "Water the garden" : "Nothing to water yet"}
           accessibilityActions={[{ name: "activate" }]}
           onAccessibilityAction={() => (inColour ? tap() : onNudge())}
         >
-          <Animated.View style={[{ position: "absolute", width: L, height: L }, restStyle]}><CanSprite m={inColour ? REST : GREY} L={L} s={s} /></Animated.View>
-          <Animated.View style={[{ position: "absolute", width: L, height: L }, tiltStyle]}><CanSprite m={TILTED} L={L} s={s} /></Animated.View>
+          <Animated.View style={[{ position: "absolute", left: hit.ox + SHADOW_AT.x * s - L / 2, top: hit.oy + SHADOW_AT.y * s - L / 2, width: L, height: L }, shadowStyle]}><CanSprite m={SHADOW} L={L} s={s} /></Animated.View>
+          <Animated.View style={[art, restStyle]}><CanSprite m={inColour ? REST : GREY} L={L} s={s} /></Animated.View>
+          <Animated.View style={[art, tiltStyle]}><CanSprite m={TILTED} L={L} s={s} /></Animated.View>
+          {ready && !pouring && !reduced ? <Drip x={hit.ox + rose.x} y={hit.oy + rose.y} size={dropSize(s)} held={held} /> : null}
         </Animated.View>
       </GestureDetector>
     </>
@@ -182,4 +185,22 @@ function Drop({ i, x, y, groundY, size, ms }: { i: number; x: number; y: number;
   const fall = Math.max(0, groundY - y);
   const style = useAnimatedStyle(() => ({ opacity: q.value > 0.85 ? (1 - q.value) / 0.15 : 0.9, transform: [{ translateY: q.value * fall }] }));
   return <Animated.View style={[{ position: "absolute", left: x - 1.2 * size, top: y - 2 * size, width: 2.4 * size, height: 4 * size, borderRadius: 2 * size, backgroundColor: WATER }, style]} />;
+}
+
+/** R184 item 3: while a bud waits, one drop forms at the rose (it swells in), falls DRIP.fallPx and fades, once every 4 s; the same
+ * drop drawing as the pour's, moved by an Animated.View's transform and opacity (the proven path). Gone at once when the can is held. */
+function Drip({ x, y, size, held }: { x: number; y: number; size: number; held: SharedValue<boolean> }) {
+  const q = useSharedValue(0);
+  useEffect(() => {
+    const rest = DRIP.everyMs - DRIP.formMs - DRIP.fallMs;
+    q.value = withRepeat(withSequence(withTiming(0, { duration: 0 }), withTiming(1, { duration: DRIP.formMs, easing: Easing.out(Easing.quad) }), withTiming(2, { duration: DRIP.fallMs, easing: Easing.in(Easing.quad) }), withTiming(3, { duration: rest })), -1, false);
+    return () => cancelAnimation(q);
+  }, [q]);
+  const style = useAnimatedStyle(() => {
+    const v = q.value, on = held.value ? 0 : 1;
+    if (v < 1) return { opacity: 0.85 * v * on, transform: [{ translateY: 0 }, { scale: Math.max(0.01, v) }] };
+    if (v < 2) return { opacity: 0.85 * (2 - v) * on, transform: [{ translateY: (v - 1) * DRIP.fallPx }, { scale: 1 }] };
+    return { opacity: 0, transform: [{ translateY: DRIP.fallPx }, { scale: 1 }] };
+  });
+  return <Animated.View pointerEvents="none" style={[{ position: "absolute", left: x - 1.2 * size, top: y, width: 2.4 * size, height: 4 * size, borderRadius: 2 * size, backgroundColor: WATER }, style]} />;
 }

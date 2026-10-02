@@ -46,6 +46,7 @@ export const SPRITE_META: Record<string, SpriteMeta> = {
   "ring": { w: 54.0, h: 20.0, ax: 27.33, ay: 10.0 },
   "can": { w: 73.67, h: 57.33, ax: 47.67, ay: 31.33 },
   "can-tilt": { w: 75.33, h: 49.0, ax: 50.67, ay: 24.67 },
+  "can-shadow": { w: 41.0, h: 13.67, ax: 20.67, ay: 7.0 },
   "grain": { w: 320.0, h: 260.0, ax: 0.0, ay: 0.0 },
   "bar-track": { w: 308.0, h: 11.33, ax: 4.0, ay: 5.67 },
   "bar-fill": { w: 308.0, h: 11.33, ax: 4.0, ay: 5.67 },
