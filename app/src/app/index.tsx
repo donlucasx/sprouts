@@ -33,6 +33,8 @@ export default function Welcome() {
           try {
             await setSession(await signInWithSeeker(signIn));
           } catch (e) {
+            // Dev builds only: the raw error for Metro's terminal (10-01: the Saga showed the generic line and nothing else).
+            if (typeof __DEV__ !== "undefined" && __DEV__) console.warn(`[signin] failed: ${e instanceof Error ? `${e.name}: ${e.message}` : JSON.stringify(e)}`, e);
             // A wallet that declines (a scam-screen block reports as a cancel) gets its own line instead of silence (10-01 device check).
             setError(isCanceled(e) ? "Your wallet did not sign. Try again, or sign in with another wallet app that holds your Seeker's seed." : e instanceof ApiError ? e.message : "Sign-in did not go through. Try again.");
           } finally {
