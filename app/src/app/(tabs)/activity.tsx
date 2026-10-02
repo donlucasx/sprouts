@@ -5,7 +5,7 @@ import { Screen } from "@/components/Screen";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
 import { api, ApiError, type ActivityResponse, type Asset } from "@/lib/api";
-import { useMe, useInvalidateMe } from "@/lib/me";
+import { useMe, useInvalidateMe, useApplyRules } from "@/lib/me";
 import { splitRowLine, SPLIT_SECTION } from "@/model/manager";
 import { undoSplit } from "@/lib/manager-api";
 import { formatSkr, formatUsd, formatAmount, feeClause } from "@/lib/format";
@@ -29,6 +29,7 @@ export default function Activity() {
   const q = useQuery({ queryKey: ["activity"], queryFn: () => api<ActivityResponse>("/api/activity") });
   const a = q.data;
   const invalidate = useInvalidateMe();
+  const applyRules = useApplyRules();
   const [busy, setBusy] = useState(false);
   const [undoError, setUndoError] = useState<string | null>(null);
   const usdFor = (x: Asset) => (x === "SKR" ? me?.pot.skrUsd ?? null : x === "stORE" ? me?.pot.storeUsd ?? null : null);
@@ -36,8 +37,10 @@ export default function Activity() {
   async function undo() {
     setBusy(true); setUndoError(null);
     try {
-      await undoSplit();
-      await invalidate();
+      const answer = await undoSplit();
+      // The answer lands on the cached read at once; the rows refresh before the button settles.
+      applyRules(answer, { managed: false, undoAvailable: false, changedDay: null });
+      void invalidate();
       await q.refetch();
     } catch (e) {
       setUndoError(e instanceof ApiError ? e.message : "Could not undo. Try again.");

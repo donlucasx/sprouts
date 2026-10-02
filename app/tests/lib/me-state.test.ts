@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { usableMe, pickMeState, noPlantingLine, withdrawMode } from "@/lib/me-state";
+import { usableMe, pickMeState, noPlantingLine, withdrawMode, applyRulesTo } from "@/lib/me-state";
 import type { MeResponse } from "@/lib/api";
 const cached = { pot: { asOf: "2026-09-28T16:00:00Z" }, holdings: [], manager: { why: null } } as never;
 const live = { pot: { asOf: "2026-09-28T17:00:00Z" } } as never;
@@ -48,4 +48,34 @@ describe("withdrawMode", () => {
     expect(withdrawMode(0n, "earned")).toBe("earned");
     expect(withdrawMode(5_000_000n, "amount")).toBe("amount");
   });
+});
+
+// The 10-01 device check: Save and Undo moved the screen twice (the draft cleared, then the fresh read landed); the answer is applied at once.
+describe("applyRulesTo", () => {
+  const oldRules = { roundupOn: true, roundupToCents: 100, pctOn: false, pctBps: 100, pctThresholdCents: 5000, plantThresholdCents: 200, plantMaxDays: 7, dailyCapCents: 300, managed: false, stop: "balanced", pins: {}, allocation: { SKR: 100 } };
+  const me = {
+    user: { pubkey: "U" }, pot: { asOf: "2026-10-01T16:00:00Z" }, holdings: [], history: { plantings: [], picks: [] },
+    nextPlanting: { pendingCents: 0, thresholdCents: 200, capLeftCents: 300, asset: "SKR" }, lastReceipt: null, basket: null, wallets: [],
+    rules: oldRules,
+    manager: { managed: false, stop: "balanced", pins: {}, changedDay: "2026-10-01", undoAvailable: true, why: "Kept steady.", fallback: null, stopSplit: { SKR: 100 } },
+  } as unknown as MeResponse;
+  const rules = { ...oldRules, managed: true, stop: "bold", pins: { hSOL: 10 } } as unknown as MeResponse["rules"];
+  it("replaces the rules, merges the manager's fields from them and the extras, and leaves everything else untouched", () => {
+    const out = applyRulesTo(me, rules, { undoAvailable: false, changedDay: null })!;
+    expect(out.rules).toBe(rules);
+    expect(out.manager.managed).toBe(true);
+    expect(out.manager.stop).toBe("bold");
+    expect(out.manager.pins).toBe(rules.pins);
+    expect(out.manager.undoAvailable).toBe(false);
+    expect(out.manager.changedDay).toBeNull();
+    expect(out.manager.why).toBe("Kept steady.");
+    expect(out.manager.stopSplit).toBe(me.manager.stopSplit);
+    for (const k of ["user", "pot", "holdings", "history", "nextPlanting", "lastReceipt", "basket", "wallets"] as const) expect(out[k]).toBe(me[k]);
+    expect(me.rules).toBe(oldRules);
+    expect(me.manager.managed).toBe(false);
+  });
+  it("an extra wins over the field derived from the rules", () => {
+    expect(applyRulesTo(me, rules, { managed: false })!.manager.managed).toBe(false);
+  });
+  it("leaves an empty cache empty", () => { expect(applyRulesTo(undefined, rules, {})).toBeUndefined(); });
 });

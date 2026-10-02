@@ -33,7 +33,8 @@ export default function Welcome() {
           try {
             await setSession(await signInWithSeeker(signIn));
           } catch (e) {
-            if (!isCanceled(e)) setError(e instanceof ApiError ? e.message : "Sign-in did not go through. Try again.");
+            // A wallet that declines (a scam-screen block reports as a cancel) gets its own line instead of silence (10-01 device check).
+            setError(isCanceled(e) ? "Your wallet did not sign. Try again, or sign in with another wallet app that holds your Seeker's seed." : e instanceof ApiError ? e.message : "Sign-in did not go through. Try again.");
           } finally {
             setBusy(false);
           }

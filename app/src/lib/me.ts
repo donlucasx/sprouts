@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createMMKV } from "react-native-mmkv"; // v4: a factory, and MMKV is a type only [A5]
 import { api, ApiError, type MeResponse } from "./api";
-import { pickMeState, usableMe } from "./me-state";
+import { applyRulesTo, pickMeState, usableMe, type ManagerExtra } from "./me-state";
 import { refreshWidget } from "./widget-refresh";
 export { toGardenInput } from "./garden-input";
 
@@ -43,4 +43,12 @@ export function useMe() {
 export function useInvalidateMe() {
   const qc = useQueryClient();
   return () => qc.invalidateQueries({ queryKey: ["me"] });
+}
+
+/** Puts a save's or an undo's answer straight into the cached read, so the screen moves once; the invalidate after it reconciles in the background. */
+export function useApplyRules() {
+  const qc = useQueryClient();
+  return (rules: MeResponse["rules"], extra?: ManagerExtra) => {
+    qc.setQueryData<MeResponse>(["me"], (old) => applyRulesTo(old, rules, extra));
+  };
 }
