@@ -8,7 +8,7 @@ vi.mock('@/lib/me', () => ({
     set: (k: string, v: string | boolean) => void mem.set(k, v),
   },
 }))
-import { readAppearance, writeAppearance, readNotifyPlantings, writeNotifyPlantings } from '@/lib/prefs'
+import { readAppearance, writeAppearance, readNotify, writeNotify } from '@/lib/prefs'
 
 describe('prefs (R153)', () => {
   beforeEach(() => mem.clear())
@@ -17,9 +17,14 @@ describe('prefs (R153)', () => {
     writeAppearance('dark')
     expect(readAppearance()).toBe('dark')
   })
-  it('planting notifications default to on and round-trip', () => {
-    expect(readNotifyPlantings()).toBe(true)
-    writeNotifyPlantings(false)
-    expect(readNotifyPlantings()).toBe(false)
+  it('every notice defaults to on and round-trips on its own (R161)', () => {
+    for (const k of ['plantings', 'withdrawals', 'manager', 'limit'] as const) expect(readNotify(k)).toBe(true)
+    writeNotify('manager', false)
+    expect(readNotify('manager')).toBe(false)
+    expect(readNotify('limit')).toBe(true)
+  })
+  it('the planting switch keeps the key R153 shipped, so an earlier off stays off', () => {
+    mem.set('prefs.notifyPlantings', false)
+    expect(readNotify('plantings')).toBe(false)
   })
 })
