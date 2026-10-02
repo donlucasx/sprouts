@@ -22,12 +22,15 @@ describe("GET /api/activity splits (spec 3.2)", () => {
     await repo.addEvent({ userPubkey: U, walletPubkey: null, kind: "split_changed", detail: { by: "manager", from: to, to: { ...to, hSOL: 25, cbBTC: 5 }, stop: "balanced", why: "hSOL grew the most.", fallback: null, day: "2026-10-03" } });
     await repo.addEvent({ userPubkey: U, walletPubkey: null, kind: "split_undone", detail: { from: { ...to, hSOL: 25, cbBTC: 5 }, to, day: "2026-10-03" } });
     await repo.addEvent({ userPubkey: U, walletPubkey: "W", kind: "pull_failed", detail: null });
+    await repo.addEvent({ userPubkey: U, walletPubkey: null, kind: "split_changed", detail: { by: "you", from: to, to, stop: "balanced", managed: true, managedWas: false, day: "2026-10-04" } });
     const res = await activity(new Request("http://x/api/activity", { headers: { authorization: `Bearer ${await issueSession(U, "M")}` } }));
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { splits: { by: string; why: string | null; to: { hSOL: number } }[] };
-    expect(body.splits.map((s) => s.by)).toEqual(["undo", "manager", "you"]);
-    expect(body.splits[1].why).toBe("hSOL grew the most.");
-    expect(body.splits[0].to.hSOL).toBe(20);
+    const body = (await res.json()) as { splits: { by: string; why: string | null; to: { hSOL: number }; managed: boolean | null; turnedOn: boolean }[] };
+    expect(body.splits.map((s) => s.by)).toEqual(["you", "undo", "manager", "you"]);
+    expect(body.splits[2].why).toBe("hSOL grew the most.");
+    expect(body.splits[1].to.hSOL).toBe(20);
+    // The split event carries the switch (spec 3.2 "you: Balanced, on."): turnedOn only when that save moved it off to on.
+    expect(body.splits.map((s) => [s.managed, s.turnedOn])).toEqual([[true, true], [null, false], [null, false], [true, false]]);
   });
 
   it("serves each planting leg's dollar price: SKR from the SKR price, the others from that day's coin row, null without one (R140)", async () => {

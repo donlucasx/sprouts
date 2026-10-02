@@ -136,6 +136,9 @@ describe("the sentence, the undo line, Activity's rows", () => {
     expect(splitRowLine({ ts, by: "manager", from, to, stop: "balanced", why: "x", fallback: "model" })).toBe("Oct 3, chosen by rule today: hSOL 15 to 20, cbBTC 10 to 5.");
     expect(splitRowLine({ ts, by: "you", from, to, stop: "balanced", why: null, fallback: null })).toBe("Oct 3, you: hSOL 15 to 20, cbBTC 10 to 5.");
     expect(splitRowLine({ ts, by: "you", from, to: from, stop: "bold", why: null, fallback: null })).toBe("Oct 3, you: Bold.");
+    // The API says when a save moved the switch off to on: "you: Balanced, on." (spec 3.2); a pin change while on keeps the summary.
+    expect(splitRowLine({ ts, by: "you", from, to, stop: "balanced", why: null, fallback: null, managed: true, turnedOn: true })).toBe("Oct 3, you: Balanced, on.");
+    expect(splitRowLine({ ts, by: "you", from, to, stop: "balanced", why: null, fallback: null, managed: true, turnedOn: false })).toBe("Oct 3, you: hSOL 15 to 20, cbBTC 10 to 5.");
     // Review Focus 3.
     expect(splitRowLine({ ts, by: "undo", from: to, to: from, stop: null, why: null, fallback: null })).toBe("Oct 3, undone. Yesterday's split is back; the Yield Manager is off.");
     // Audit fix F6: the API's UTC day, so 19:00 PDT on Oct 2 reads Oct 3, as the Rules card's "Changed Oct 3." does.

@@ -35,10 +35,11 @@ export async function GET(request: Request) {
     }
   }
   const events = await repo.listEvents(session.pubkey, ["split_changed", "split_undone"], LIMIT);
-  type Detail = { by?: "manager" | "you"; from: Split; to: Split; stop?: string; why?: string | null; fallback?: string | null };
+  type Detail = { by?: "manager" | "you"; from: Split; to: Split; stop?: string; why?: string | null; fallback?: string | null; managed?: boolean; managedWas?: boolean };
   const splits = events.map((e) => {
     const d = e.detail as Detail;
-    return { ts: e.ts, by: e.kind === "split_undone" ? "undo" : (d.by ?? "manager"), from: d.from, to: d.to, stop: d.stop ?? null, why: d.why ?? null, fallback: d.fallback ?? null };
+    // `managed` is the switch after a save by you; `turnedOn` only when that save moved it off to on ("you: Balanced, on.", spec 3.2).
+    return { ts: e.ts, by: e.kind === "split_undone" ? "undo" : (d.by ?? "manager"), from: d.from, to: d.to, stop: d.stop ?? null, why: d.why ?? null, fallback: d.fallback ?? null, managed: d.managed ?? null, turnedOn: d.managed === true && d.managedWas === false };
   });
   return NextResponse.json(str({
     splits,

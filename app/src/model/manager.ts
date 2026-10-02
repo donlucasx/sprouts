@@ -105,6 +105,7 @@ export function splitRowLine(s: SplitRow): string {
   const day = dayLabel(s.ts.slice(0, 10));
   const summary = changeSummary(s.from, s.to);
   if (s.by === "undo") return `${day}, undone. Yesterday's split is back; the Yield Manager is off.`;
+  if (s.by === "you" && s.turnedOn) return `${day}, you: ${s.stop ? `${STOP_LABEL[s.stop as Stop] ?? s.stop}, ` : ""}on.`;
   if (s.by === "you") return summary ? `${day}, you: ${summary}.` : `${day}, you: ${s.stop ? STOP_LABEL[s.stop as Stop] ?? s.stop : "saved"}.`;
   if (s.fallback) return `${day}, chosen by rule today: ${summary}.`;
   return `${day}, ${summary}.${s.why ? ` ${s.why}` : ""}`;

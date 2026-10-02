@@ -39,7 +39,13 @@ export async function PUT(request: Request) {
   const session = await requireSession(request);
   if (session instanceof NextResponse) return session;
   const parsed = Body.safeParse(await request.json().catch(() => null));
-  if (!parsed.success) return NextResponse.json({ error: "Bad request." }, { status: 400 });
+  if (!parsed.success) {
+    // The field the body failed on, so the app's sentence says which (the audit's note); the zod detail goes to the log only.
+    const issue = parsed.error.issues[0];
+    const field = issue === undefined ? undefined : issue.code === "unrecognized_keys" ? issue.keys[0] : issue.path[0];
+    console.error(`rules: bad request${field === undefined ? "" : ` at ${String(field)}`}: ${issue?.message ?? "no body"}`);
+    return NextResponse.json({ error: field === undefined ? "Bad request." : `Bad request: ${String(field)}.` }, { status: 400 });
+  }
   const { reauth, managed, stop, pins: rawPins, ...rest } = parsed.data;
   const repo = await getRepo();
   const current = await repo.getRules(session.pubkey);
@@ -56,7 +62,7 @@ export async function PUT(request: Request) {
     if (rawPins !== undefined) {
       pins = {};
       for (const [k, v] of Object.entries(rawPins)) {
-        if (!isAsset(k)) return NextResponse.json({ error: "Bad request." }, { status: 400 });
+        if (!isAsset(k)) return NextResponse.json({ error: "Bad request: pins." }, { status: 400 });
         if (v !== 0) pins[k as Asset] = v; // a 0 pin is no pin: the app drops zeros on its side and the API does the same (the audit's P5 note)
       }
       pinsByUndo = false; // pins you send are yours
@@ -79,7 +85,7 @@ export async function PUT(request: Request) {
   const saved = await repo.saveRules(session.pubkey, patch);
   // The event follows the save, so a failed save never leaves a change in Activity that did not happen.
   if (patch.allocation && (!sameSplit(patch.allocation, current.allocation) || patch.managed !== current.managed || patch.stop !== current.stop)) {
-    await repo.addEvent({ userPubkey: session.pubkey, walletPubkey: null, kind: "split_changed", detail: { by: "you", from: current.allocation, to: patch.allocation, stop: patch.stop, managed: patch.managed, day: dayOf(new Date()) } });
+    await repo.addEvent({ userPubkey: session.pubkey, walletPubkey: null, kind: "split_changed", detail: { by: "you", from: current.allocation, to: patch.allocation, stop: patch.stop, managed: patch.managed, managedWas: current.managed, day: dayOf(new Date()) } });
   }
   return NextResponse.json(rulesRowToRules(saved));
 }
