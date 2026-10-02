@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Text } from "react-native";
 import { Redirect } from "expo-router";
-import { useMobileWallet } from "@wallet-ui/react-native-kit";
+import { freshWalletSignIn } from "@/lib/reauth";
+import { identity } from "@/lib/identity";
 import { Screen } from "@/components/Screen";
 import { Button } from "@/components/Button";
 import { useSession } from "@/lib/session";
@@ -17,7 +18,6 @@ function isCanceled(e: unknown) {
 
 export default function Welcome() {
   const { session, setSession } = useSession();
-  const { signIn } = useMobileWallet();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   if (session) return <Redirect href="/home" />;
@@ -32,7 +32,8 @@ export default function Welcome() {
           setBusy(true);
           setError(null);
           try {
-            await setSession(await signInWithSeeker(signIn));
+            // The token-free authorize (reauth.ts): the kit's own signIn sends its saved token, which Solflare declines once it is stale (-1; the Saga, 10-01 after a sign-out).
+            await setSession(await signInWithSeeker(freshWalletSignIn(identity)));
           } catch (e) {
             // Dev builds only: the raw error for Metro's terminal (10-01: the Saga showed the generic line and nothing else).
             if (typeof __DEV__ !== "undefined" && __DEV__) console.warn(`[signin] failed: ${e instanceof Error ? `${e.name}: ${e.message}` : JSON.stringify(e)}`, e);
