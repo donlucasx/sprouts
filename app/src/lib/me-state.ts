@@ -25,3 +25,10 @@ export function noPlantingLine(me: Pick<MeResponse, "nextPlanting" | "wallets">)
 export function withdrawMode(earnedRaw: bigint, chosen: "earned" | "amount" | null): "earned" | "amount" {
   return chosen ?? (earnedRaw >= 1_000_000n ? "earned" : "amount");
 }
+
+export type ManagerExtra = Partial<Pick<MeResponse["manager"], "managed" | "undoAvailable" | "changedDay" | "why">>;
+
+/** A save's or an undo's answer applied to the cached read (10-01 device check: the screen moved twice): the rules replaced, the manager's managed/stop/pins from them, then the extras; nothing else touched. */
+export function applyRulesTo(me: MeResponse | undefined, rules: MeResponse["rules"], extra?: ManagerExtra): MeResponse | undefined {
+  return me ? { ...me, rules, manager: { ...me.manager, managed: rules.managed, stop: rules.stop, pins: rules.pins, ...extra } } : me;
+}

@@ -5,7 +5,7 @@ import { Screen } from "@/components/Screen";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
 import { api, ApiError, type MeResponse } from "@/lib/api";
-import { useMe, useInvalidateMe } from "@/lib/me";
+import { useMe, useInvalidateMe, useApplyRules } from "@/lib/me";
 import { makeSigner } from "@/lib/sign";
 import { freshSignIn } from "@/lib/signin";
 import { freshWalletSignIn } from "@/lib/reauth";
@@ -28,20 +28,21 @@ const MUTED = "#6B6558";
 const muted: TextStyle = { fontSize: 13, color: MUTED };
 const sectionLabel: TextStyle = { fontSize: 16, color: INK, marginTop: 4 };
 const splitRow: ViewStyle = { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 6 };
-const coin: TextStyle = { flex: 1, fontSize: 15, color: INK };
+const coinCol: ViewStyle = { flex: 1 };
+const coinName: TextStyle = { fontSize: 15, color: INK };
 const pct: TextStyle = { width: 48, textAlign: "right", fontSize: 15, color: INK, fontVariant: ["tabular-nums"] };
 const stepper: ViewStyle = { flexDirection: "row", gap: 4 };
 const why: TextStyle = { fontSize: 15, lineHeight: 22, color: INK, marginTop: 8 };
 const undoRow: ViewStyle = { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 8 };
 
-function Stepper({ label, value, step, min, max, format, onChange, disabled }: { label: string; value: number; step: number; min: number; max: number; format: (v: number) => string; onChange: (v: number) => void; disabled: boolean }) {
+function Stepper({ label, value, step, min, max, format, onChange }: { label: string; value: number; step: number; min: number; max: number; format: (v: number) => string; onChange: (v: number) => void }) {
   return (
     <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
       <Text style={{ fontSize: 16, color: "#2B2B2B" }}>{label}</Text>
       <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}>
-        <Button title="-" kind="quiet" disabled={disabled} onPress={() => onChange(Math.max(min, value - step))} />
+        <Button title="-" kind="quiet" onPress={() => onChange(Math.max(min, value - step))} />
         <Text style={{ fontSize: 16, minWidth: 64, textAlign: "center", color: "#2B2B2B" }}>{format(value)}</Text>
-        <Button title="+" kind="quiet" disabled={disabled} onPress={() => onChange(Math.min(max, value + step))} />
+        <Button title="+" kind="quiet" onPress={() => onChange(Math.min(max, value + step))} />
       </View>
     </View>
   );
@@ -59,6 +60,7 @@ export default function Rules() {
   const { session } = useSession();
   const { signTransaction } = useMobileWallet();
   const invalidate = useInvalidateMe();
+  const applyRules = useApplyRules();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [undone, setUndone] = useState(false);
@@ -73,7 +75,9 @@ export default function Rules() {
   const r = { ...saved, ...draft };
   const { patch, raises } = rulesChanges(saved, draft);
   const dirty = Object.keys(patch).length > 0;
+  // While a request runs the controls stay live but a tap does nothing (10-01 device check: the whole screen greyed for each request).
   const edit = (p: Partial<RulesShape>) => {
+    if (busy) return;
     setUndone(false);
     setDraft((d) => ({ ...d, ...p }));
   };
@@ -89,9 +93,11 @@ export default function Rules() {
     setError(null);
     try {
       const reauth = raises ? await freshSignIn(freshWalletSignIn(identity)) : undefined;
-      await api("/api/rules", { method: "PUT", body: { ...patch, ...(reauth ? { reauth } : {}) } });
-      await invalidate();
+      const answer = await api<MeResponse["rules"]>("/api/rules", { method: "PUT", body: { ...patch, ...(reauth ? { reauth } : {}) } });
+      // The answer and the draft clear land together, so the screen moves once; the fresh read reconciles in the background.
+      applyRules(answer, { undoAvailable: false, changedDay: null });
       setDraft({});
+      void invalidate();
     } catch (e) {
       // Dev builds only: the real error for Metro's terminal (09-29: a save after the sign-in failed with only the generic line).
       if (typeof __DEV__ !== "undefined" && __DEV__) console.warn(`[rules] save failed: ${e instanceof Error ? `${e.name}: ${e.message}` : String(e)}`);
@@ -106,10 +112,11 @@ export default function Rules() {
     setBusy(true);
     setError(null);
     try {
-      await undoSplit();
-      await invalidate();
+      const answer = await undoSplit();
+      applyRules(answer, { managed: false, undoAvailable: false, changedDay: null });
       setDraft({});
       setUndone(true);
+      void invalidate();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Could not undo. Try again.");
     } finally {
@@ -194,14 +201,14 @@ export default function Rules() {
         </Card>
       )}
       <Card>
-        <Row label="Round up to the next dollar"><Switch value={r.roundupOn} disabled={busy} onValueChange={(v) => edit({ roundupOn: v })} /></Row>
-        <Row label={`1% on swaps of ${formatUsd(r.pctThresholdCents)} or more`}><Switch value={r.pctOn} disabled={busy} onValueChange={(v) => edit({ pctOn: v })} /></Row>
-        <Stepper label="Daily limit" value={r.dailyCapCents} step={100} min={100} max={500} format={formatUsd} disabled={busy} onChange={(v) => edit({ dailyCapCents: v })} />
-        <Stepper label="Plant at" value={r.plantThresholdCents} step={50} min={50} max={2000} format={formatUsd} disabled={busy} onChange={(v) => edit({ plantThresholdCents: v })} />
+        <Row label="Round up to the next dollar"><Switch value={r.roundupOn} onValueChange={(v) => edit({ roundupOn: v })} /></Row>
+        <Row label={`1% on swaps of ${formatUsd(r.pctThresholdCents)} or more`}><Switch value={r.pctOn} onValueChange={(v) => edit({ pctOn: v })} /></Row>
+        <Stepper label="Daily limit" value={r.dailyCapCents} step={100} min={100} max={500} format={formatUsd} onChange={(v) => edit({ dailyCapCents: v })} />
+        <Stepper label="Plant at" value={r.plantThresholdCents} step={50} min={50} max={2000} format={formatUsd} onChange={(v) => edit({ plantThresholdCents: v })} />
       </Card>
       <Card>
         <Row label={SWITCH_LABEL}>
-          <Switch value={r.managed} onValueChange={(v) => edit(v ? { managed: true, pins: pinsForOn(r.pins) } : { managed: false })} disabled={busy} />
+          <Switch value={r.managed} onValueChange={(v) => edit(v ? { managed: true, pins: pinsForOn(r.pins) } : { managed: false })} />
         </Row>
         <Text style={muted}>{r.managed ? ON_TEXT : OFF_TEXT}</Text>
         {r.managed && (
@@ -217,7 +224,11 @@ export default function Rules() {
         <Text style={sectionLabel}>{saved.managed ? "Today's split" : r.managed ? "The split after you save" : "Your split"}</Text>
         {splitRows(r, unsavedOn ? me.manager.stopSplit : undefined).map((row) => (
           <View key={row.asset} style={splitRow}>
-            <Text style={coin}>{COIN_NAME[row.asset]}{row.asset === "stORE" ? `, ${STORE_ROW_NOTE}` : ""}</Text>
+            {/* The coin on one line; stORE's note on its own line under it (10-01 device check: it wrapped to three lines). */}
+            <View style={coinCol}>
+              <Text style={coinName}>{COIN_NAME[row.asset]}</Text>
+              {row.asset === "stORE" ? <Text style={muted}>{STORE_ROW_NOTE}</Text> : null}
+            </View>
             <Text style={pct}>{row.pct}%</Text>
             <Text style={muted}>{row.mode}{row.bound ? ` (${row.bound})` : ""}</Text>
             {r.managed && (
@@ -225,7 +236,6 @@ export default function Rules() {
                 accessibilityLabel={`Pin ${COIN_NAME[row.asset]}`}
                 value={row.mode === "pinned"}
                 onValueChange={(on) => edit({ pins: togglePin(r.pins, row.asset, on, row.pct) })}
-                disabled={busy}
               />
             )}
             {row.mode === "pinned" && (
