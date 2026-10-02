@@ -4,21 +4,18 @@ import { api, type MeResponse } from "./api";
 import { readLastMe, writeLastMe } from "./me";
 import { notify } from "./notify";
 import { refreshWidget } from "./widget-refresh";
-import { formatSkr } from "./format";
-import { plantingNotice } from "./notices";
-import { readNotifyPlantings } from "./prefs";
+import { noticesFor } from "./notices";
+import { readNotify } from "./prefs";
 
 const TASK = "sprouts-refresh";
 
-/** Every 15 minutes or so (Android decides): read the pot; if a planting landed since the last read, say so and refresh the widget. */
+/** Every 15 minutes or so (Android decides): read the pot; say what changed since the last read (R161: plantings, a delivered withdrawal, the manager's move, the daily limit) and refresh the widget. */
 TaskManager.defineTask(TASK, async () => {
   try {
     const before = readLastMe();
     const me = await api<MeResponse>("/api/me");
     writeLastMe(me);
-    const newPlantings = me.history.plantings.filter((p) => !before?.history.plantings.some((q) => q.id === p.id));
-    if (readNotifyPlantings()) for (const p of newPlantings) await notify("Planting landed", plantingNotice(p, me.pot));
-    if (before?.basket && !me.basket) await notify("Withdrawal delivered", `${formatSkr(BigInt(before.basket.amountRaw), me.pot.skrUsd)} is in your Seeker's wallet.`);
+    for (const n of noticesFor(before, me, readNotify)) await notify(n.title, n.body);
     await refreshWidget(me);
     return BackgroundTask.BackgroundTaskResult.Success;
   } catch {

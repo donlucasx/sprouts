@@ -19,12 +19,21 @@ import { makeSigner } from '@/lib/sign'
 import { freshSignIn } from '@/lib/signin'
 import { freshWalletSignIn } from '@/lib/reauth'
 import { identity } from '@/lib/identity'
-import { readAppearance, writeAppearance, readNotifyPlantings, writeNotifyPlantings } from '@/lib/prefs'
+import { readAppearance, writeAppearance, readNotify, writeNotify } from '@/lib/prefs'
+import type { NoticeKind } from '@/lib/notices'
 import { ORE_DISCLOSURE } from '@/lib/ore-copy'
 import { spacing, switchColors, useTheme } from '@/theme'
 import { schemeFor, type Appearance as AppearanceChoice } from '@/theme/appearance'
 
 /** The disclosures, verbatim (spec 3.5 and 9; R60; RECONCILED rules 10 to 12; R81 the remainder; R84 the sessions): the safety story the judges read. */
+/** R161: each notice and its switch's words, in the order they show. */
+const NOTICES: [NoticeKind, string][] = [
+  ['plantings', 'Tell me when a planting lands'],
+  ['withdrawals', 'Tell me when a withdrawal arrives'],
+  ['manager', 'Tell me when the manager moves my split'],
+  ['limit', 'Tell me when the daily limit is reached'],
+]
+
 const DISCLOSURES: [string, string][] = [
   [
     'How Sprouts holds your money',
@@ -64,7 +73,7 @@ export default function Settings() {
   const { colors } = useTheme()
   const toggle = switchColors(colors)
   const [appearance, setAppearanceState] = useState<AppearanceChoice>(() => readAppearance())
-  const [notify, setNotify] = useState(() => readNotifyPlantings())
+  const [notifyOn, setNotifyOn] = useState(() => Object.fromEntries(NOTICES.map(([k]) => [k, readNotify(k)])) as Record<NoticeKind, boolean>)
   const { signTransaction } = useMobileWallet()
   const invalidate = useInvalidateMe()
   const [walletBusy, setWalletBusy] = useState(false)
@@ -192,18 +201,22 @@ export default function Settings() {
         />
       </Card>
       <Card>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
-          <ThemedText style={{ flex: 1 }}>Tell me when a planting lands</ThemedText>
-          <Switch
-            {...toggle}
-            value={notify}
-            onValueChange={(on) => {
-              writeNotifyPlantings(on)
-              setNotify(on)
-            }}
-            accessibilityLabel="Tell me when a planting lands"
-          />
-        </View>
+        {/* R160 and R161: the notices grouped under their own heading, one switch each. */}
+        <ThemedText variant="heading">Notifications</ThemedText>
+        {NOTICES.map(([kind, label]) => (
+          <View key={kind} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
+            <ThemedText style={{ flex: 1 }}>{label}</ThemedText>
+            <Switch
+              {...toggle}
+              value={notifyOn[kind]}
+              onValueChange={(on) => {
+                writeNotify(kind, on)
+                setNotifyOn((s) => ({ ...s, [kind]: on }))
+              }}
+              accessibilityLabel={label}
+            />
+          </View>
+        ))}
       </Card>
       <Card>
         <ThemedText variant="heading">Export for taxes</ThemedText>
