@@ -9,7 +9,7 @@ export async function askNotificationPermissionOnce() {
   if (status !== "granted") await Notifications.requestPermissionsAsync();
 }
 
-/** "Planting landed: $0.23 of change became 12.48 SKR ($0.23), locked to your Seeker." Local, no push service, no FCM. */
+/** "Planted: Your change was planted: $0.23 became 12.48 SKR ($0.23)." Local, no push service, no FCM. */
 export async function notify(title: string, body: string) {
   await Notifications.scheduleNotificationAsync({ content: { title, body }, trigger: null });
 }

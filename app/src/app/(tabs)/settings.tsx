@@ -28,7 +28,7 @@ import { schemeFor, type Appearance as AppearanceChoice } from '@/theme/appearan
 /** The disclosures, verbatim (spec 3.5 and 9; R60; RECONCILED rules 10 to 12; R81 the remainder; R84 the sessions): the safety story the judges read. */
 /** R161: each notice and its switch's words, in the order they show. */
 const NOTICES: [NoticeKind, string][] = [
-  ['plantings', 'Tell me when a planting lands'],
+  ['plantings', 'Tell me when my change is planted'],
   ['withdrawals', 'Tell me when a withdrawal arrives'],
   ['manager', 'Tell me when the manager moves my split'],
   ['limit', 'Tell me when the daily limit is reached'],
