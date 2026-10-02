@@ -59,14 +59,6 @@ export function shareLine(asset: Asset, pct: number): string {
   return `About ${pct} cents of every dollar grows ${COIN_NAME[asset]}.`;
 }
 
-/** Home's line per held coin (spec 3.3): the amount with its value, earned when the coin has a measured rate. Where they sit is HOLDINGS_NOTE, once under the list. */
-export function formatHolding(h: Holding): string {
-  const raw = BigInt(h.heldRaw);
-  const amount = Number(raw) / 10 ** DECIMALS[h.asset];
-  const value = h.valueUsd === null ? "" : ` (${formatUsd(Math.round(h.valueUsd * 100))})`;
-  const earned = h.earnedUsd === null ? "" : `, earned ${formatUsd(Math.round(h.earnedUsd * 100))}`;
-  return `${amount.toFixed(SHOWN[h.asset])} ${COIN_NAME[h.asset]}${value}${earned}`;
-}
 /** Home's coin row (R150): the amount with its value, nothing else; earned lives in the Earned tile. */
 export function holdingAmount(h: Holding): string {
   const raw = BigInt(h.heldRaw);

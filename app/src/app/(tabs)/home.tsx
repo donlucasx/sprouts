@@ -128,6 +128,8 @@ export default function Home() {
     failed,
   })
   const wallets = me.wallets.filter((w) => w.status !== 'revoked')
+  const receiptLine = lastPlantingLine(me.lastReceipt)
+  const walletsRow = walletsLine(wallets)
 
   return (
     <Screen
@@ -158,16 +160,16 @@ export default function Home() {
           ) : null}
         </View>
       ) : null}
-      {lastPlantingLine(me.lastReceipt) ? (
+      {receiptLine ? (
         <Pressable
           onPress={() => router.push('/activity')}
           accessibilityRole="button"
-          accessibilityLabel="Open Activity"
+          accessibilityLabel={`${receiptLine}. Opens Activity.`}
           hitSlop={8}
           style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: spacing.xs, minHeight: TARGET, opacity: pressed ? 0.6 : 1 })}
         >
           <ThemedText variant="caption" tone="secondary" style={{ flex: 1 }}>
-            {lastPlantingLine(me.lastReceipt)}
+            {receiptLine}
           </ThemedText>
           <MaterialCommunityIcons name="chevron-right" size={18} color={colors.textSecondary} />
         </Pressable>
@@ -218,11 +220,11 @@ export default function Home() {
           <Button title="Take out" kind="quiet" onPress={() => {}} />
         </Link>
       </Card>
-      {walletsLine(wallets) ? (
+      {walletsRow ? (
         <Pressable
           onPress={() => router.push('/settings')}
           accessibilityRole="button"
-          accessibilityLabel="Linked wallets, in Settings"
+          accessibilityLabel={`${walletsRow}. Opens Settings.`}
           style={({ pressed }) => ({
             flexDirection: 'row',
             alignItems: 'center',
@@ -235,7 +237,7 @@ export default function Home() {
             opacity: pressed ? 0.7 : 1,
           })}
         >
-          <ThemedText style={{ flex: 1 }}>{walletsLine(wallets)}</ThemedText>
+          <ThemedText style={{ flex: 1 }}>{walletsRow}</ThemedText>
           <MaterialCommunityIcons name="chevron-right" size={22} color={colors.accentText} />
         </Pressable>
       ) : (

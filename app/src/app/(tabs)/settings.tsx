@@ -160,8 +160,8 @@ export default function Settings() {
             <ThemedText numeric>{formatWallet(w)}</ThemedText>
             {w.status !== 'revoked' ? (
               <View style={{ flexDirection: 'row', gap: spacing.sm }}>
-                <Button title={w.status === 'paused' ? 'Resume' : 'Pause'} kind="quiet" loading={walletBusy} onPress={() => pauseOrResume(w)} />
-                <Button title="Revoke" kind="danger" loading={walletBusy} onPress={() => revoke(w.pubkey)} />
+                <Button title={w.status === 'paused' ? 'Resume' : 'Pause'} accessibilityLabel={`${w.status === 'paused' ? 'Resume' : 'Pause'} wallet ${w.pubkey.slice(0, 4)}...${w.pubkey.slice(-4)}`} kind="quiet" loading={walletBusy} onPress={() => pauseOrResume(w)} />
+                <Button title="Revoke" accessibilityLabel={`Revoke wallet ${w.pubkey.slice(0, 4)}...${w.pubkey.slice(-4)}`} kind="danger" loading={walletBusy} onPress={() => revoke(w.pubkey)} />
               </View>
             ) : null}
           </View>

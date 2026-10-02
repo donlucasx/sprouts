@@ -149,7 +149,7 @@ export default function Activity() {
             rows={a.withdrawals}
             empty="No withdrawal yet."
             render={(w) => (
-              <Line key={w.id} text={withdrawalRowLine(day(w.ts), w, skrUsd)} signature={w.withdrawSignature ?? w.unstakeSignature} />
+              <Line key={w.id} text={withdrawalRowLine(day(w.ts), w, skrUsd, me?.basket?.id === w.id ? me.basket.readyAt : undefined)} signature={w.withdrawSignature ?? w.unstakeSignature} />
             )}
           />
         </>

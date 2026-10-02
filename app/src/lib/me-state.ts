@@ -19,13 +19,6 @@ export function pickMeState(
   return { data: undefined, stale: failed }
 }
 
-/** Home's line before the first planting: what the user still has to do, from where they actually are. */
-export function noPlantingLine(me: Pick<MeResponse, 'nextPlanting' | 'wallets'>): string {
-  if (!me.wallets.some((w) => w.status === 'active')) return 'No planting yet. Link a wallet and swap.'
-  if (me.nextPlanting.pendingCents === 0) return 'No planting yet. Your next swap starts it.'
-  return `No planting yet. It plants when the change reaches ${formatUsd(me.nextPlanting.thresholdCents)}.`
-}
-
 /** Withdraw's choice: the user's own once they tap; before that, "earned" only when there is 1 SKR of it to take (09-29). */
 export function withdrawMode(earnedRaw: bigint, chosen: 'earned' | 'amount' | null): 'earned' | 'amount' {
   return chosen ?? (earnedRaw >= 1_000_000n ? 'earned' : 'amount')
@@ -47,8 +40,13 @@ export function applyRulesTo(
 /** The whole garden in dollars (R146): the SKR pot at its price plus every wallet coin; earned is the staking and pool growth; put in is the dollars planted. Unknown without an SKR price. */
 export type GardenTotals = { valueUsd: number | null; earnedUsd: number | null; putInCents: number }
 export function gardenTotals(me: Pick<MeResponse, 'pot' | 'holdings' | 'history'>): GardenTotals {
-  // R159 (audit finding 7): put in is what is still held; the SKR plantings in dollars plus each coin's pro-rated put in.
-  const putInCents = me.history.plantings.filter((p) => p.asset === 'SKR').reduce((s, p) => s + p.usdcInCents, 0) + me.holdings.reduce((s, h) => s + h.putInCents, 0)
+  // R159: put in is what is still held. SKR: the plantings' dollars scaled by the principal still staked (the API subtracts
+  // principal taken out from skrPutInRaw); the wallet coins: the API's pro-rated putInCents.
+  const skrPut = BigInt(me.pot.skrPutInRaw)
+  const skrTaken = BigInt(me.pot.skrPrincipalPickedRaw)
+  const skrKept = skrPut + skrTaken > 0n ? Number(skrPut) / Number(skrPut + skrTaken) : 1
+  const skrCents = me.history.plantings.filter((p) => p.asset === 'SKR').reduce((s, p) => s + p.usdcInCents, 0)
+  const putInCents = Math.round(skrCents * skrKept) + me.holdings.reduce((s, h) => s + h.putInCents, 0)
   const skrUsd = me.pot.skrUsd
   if (skrUsd === null) return { valueUsd: null, earnedUsd: null, putInCents }
   const skr = (raw: string) => (Number(raw) / 10 ** DECIMALS.SKR) * skrUsd
@@ -58,12 +56,6 @@ export function gardenTotals(me: Pick<MeResponse, 'pot' | 'holdings' | 'history'
     putInCents,
   }
 }
-/** The growth line under the big number: "Put in $X. Earned $Y." */
-export function gardenLine(t: GardenTotals): string {
-  const put = `Put in ${formatUsd(t.putInCents)}.`
-  return t.earnedUsd === null ? put : `${put} Earned ${formatUsd(Math.round(t.earnedUsd * 100))}.`
-}
-
 /** Sprouts' switch on Home (R147), decided from the wallets' statuses: on while any wallet is active, off when every linked wallet is paused, hidden with nothing linked. */
 export function pauseState(wallets: { status: string }[]): { shown: boolean; on: boolean; line: string } {
   const linked = wallets.filter((w) => w.status !== 'revoked')

@@ -1,6 +1,6 @@
 import { ASSETS, type Asset, type Pins, type Split, type Stop } from "@/lib/coins";
 import type { SplitRow } from "@/lib/api";
-import { dayLabel, shareLine } from "@/lib/format";
+import { dayLabel } from "@/lib/format";
 
 /**
  * The Yield Manager as the app shows it (spec 3.1, 3.2). Pure. The tables mirror spec 4.1 for labels and stepper bounds only:
@@ -87,14 +87,6 @@ export function pinsForOn(pins: Pins): Pins {
   const next: Pins = {};
   for (const [a, v] of Object.entries(pins) as [Asset, number][]) if (v > 0) next[a] = v;
   return next;
-}
-
-/** The clauses the plain sentence on Rules gains (spec 3.1): the manager when on, then one share line per non-SKR pin. */
-export function managerSentence(r: RulesView): string {
-  const parts: string[] = [];
-  if (r.managed) parts.push(`The Yield Manager splits new change across six coins, ${STOP_LABEL[r.stop]}.`);
-  for (const c of NON_SKR) if ((r.pins[c] ?? 0) > 0) parts.push(shareLine(c, r.pins[c] as number));
-  return parts.length ? ` ${parts.join(" ")}` : "";
 }
 
 /** "Changed {Mon D}." (F4: labelled by the day the manager changed the split, gated by undoAvailable). */
