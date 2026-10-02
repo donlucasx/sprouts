@@ -22,7 +22,8 @@ export function WaterButton({
   const { colors } = useTheme()
   const tilt = useSharedValue(0)
   useEffect(() => {
-    tilt.value = withTiming(busy ? 24 : 0, { duration: 350, easing: Easing.out(Easing.cubic) })
+    // The can sprite's spout faces LEFT (toward the garden above), so pouring tips it counter-clockwise
+    tilt.value = withTiming(busy ? -24 : 0, { duration: 350, easing: Easing.out(Easing.cubic) })
   }, [busy, tilt])
   const style = useAnimatedStyle(() => ({ transform: [{ rotate: `${tilt.value}deg` }] }))
   return (
