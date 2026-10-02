@@ -42,3 +42,6 @@ export function pupOffset(index: number, r = PUP_R): number {
   const edge = ORE_STEM_HALF + 2 * PUP_R * Math.floor(index / 2);   // how far out that side already reaches
   return (index % 2 === 0 ? -1 : 1) * (edge + r);
 }
+
+// Task 0.5 (garden build): the new helpers beside today's names; Track B rewrites this file in B6.
+export { branchFlags, stageOf, pupsByCount } from "./geometry/common";
