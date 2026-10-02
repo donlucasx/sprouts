@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Appearance } from 'react-native'
 import { Stack } from 'expo-router'
+import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { StatusBar } from 'expo-status-bar'
 import * as SplashScreen from 'expo-splash-screen'
 import { useFonts } from 'expo-font'
@@ -62,14 +63,17 @@ export default function Layout() {
     setSessionState(s)
   }
   if (!ready || !fontsSettled) return null
+  // The garden's gestures (drag the can, pinch to zoom) need the gesture handler's root above every screen (the spike, A-DRAG).
   return (
-    <QueryClientProvider client={queryClient}>
-      <MobileWalletProvider cluster={cluster} identity={identity}>
-        <SessionContext.Provider value={{ session, setSession }}>
-          <StatusBar style={dark ? 'light' : 'dark'} />
-          <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }} />
-        </SessionContext.Provider>
-      </MobileWalletProvider>
-    </QueryClientProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <QueryClientProvider client={queryClient}>
+        <MobileWalletProvider cluster={cluster} identity={identity}>
+          <SessionContext.Provider value={{ session, setSession }}>
+            <StatusBar style={dark ? 'light' : 'dark'} />
+            <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }} />
+          </SessionContext.Provider>
+        </MobileWalletProvider>
+      </QueryClientProvider>
+    </GestureHandlerRootView>
   )
 }
