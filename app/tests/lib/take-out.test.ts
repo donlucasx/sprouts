@@ -15,10 +15,15 @@ describe('takeOutRows (R159: every coin listed; only SKR leaves through Sprouts)
   })
   it('the SKR row says in the basket while one ripens, and still opens', () => {
     const basket = { id: 'b', asset: 'SKR', amountRaw: '1000000', unstakeTs: '2026-10-02T12:00:00Z', readyAt: '2026-10-04T12:00:00Z', delivered: false, deliveredSignature: null } as const
-    const [skr] = takeOutRows({ pot: { ...pot, skrStakedRaw: '0' }, basket, holdings: [] })
+    const [skr] = takeOutRows({ pot: { ...pot, skrStakedRaw: '0' }, basket, holdings: [] }, new Date('2026-10-03T00:00:00Z'))
     expect(skr.asset).toBe('SKR')
     expect(skr.opens).toBe(true)
     expect(skr.note).toMatch(/^in the basket, arrives Oct [45], \d{1,2} [AP]M$/)
+  })
+  it('R165: the basket note says arriving today once readyAt has passed', () => {
+    const basket = { id: 'b', asset: 'SKR', amountRaw: '1000000', unstakeTs: '2026-10-02T12:00:00Z', readyAt: '2026-10-04T12:00:00Z', delivered: false, deliveredSignature: null } as const
+    const [skr] = takeOutRows({ pot: { ...pot, skrStakedRaw: '0' }, basket, holdings: [] }, new Date('2026-10-04T13:00:00Z'))
+    expect(skr.note).toBe('in the basket, arriving today')
   })
   it('nothing staked, no basket, no holdings: no rows', () => {
     expect(takeOutRows({ pot: { ...pot, skrStakedRaw: '0' }, basket: null, holdings: [] })).toEqual([])

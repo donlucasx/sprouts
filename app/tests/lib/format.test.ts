@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatUsd, formatSkr, formatAsOf, roundUpTo, formatWallet, formatStore, formatAmount, DECIMALS, HOLDINGS_NOTE, shareLine, dayLabel, COIN_NAME, feeClause, plantedLine, potHeadline, holdingAmount } from "@/lib/format";
+import { formatUsd, formatSkr, formatAsOf, roundUpTo, formatWallet, formatStore, formatAmount, DECIMALS, HOLDINGS_NOTE, shareLine, dayLabel, COIN_NAME, feeClause, plantedLine, potHeadline, holdingAmount, arrivalLine } from "@/lib/format";
 
 describe("format", () => {
   it("dollars first, two decimals, whole cents", () => {
@@ -107,3 +107,18 @@ describe('holdingAmount (R150: the row is the amount and its value, nothing else
     expect(holdingAmount({ asset: 'cbBTC', heldRaw: '2389', putInCents: 200, valueUsd: null, earnedUsd: null, earnedUnderlyingRaw: null })).toBe('0.00002389 cbBTC')
   })
 })
+
+describe("arrivalLine (R165)", () => {
+  const ready = "2026-10-04T12:00:00Z";
+  it("a future readyAt says when it arrives", () => {
+    expect(arrivalLine(ready, new Date("2026-10-03T12:00:00Z"))).toMatch(/^arrives Oct [34], \d{1,2} [AP]M$/);
+    expect(arrivalLine(new Date(ready), new Date("2026-10-03T12:00:00Z"), true)).toMatch(/^Arrives Oct [34], \d{1,2} [AP]M$/);
+  });
+  it("readyAt equal to now has arrived", () => {
+    expect(arrivalLine(ready, new Date(ready))).toBe("arriving today");
+  });
+  it("a past readyAt says arriving today, capitalised on request", () => {
+    expect(arrivalLine(ready, new Date("2026-10-06T00:00:00Z"))).toBe("arriving today");
+    expect(arrivalLine(ready, new Date("2026-10-06T00:00:00Z"), true)).toBe("Arriving today");
+  });
+});

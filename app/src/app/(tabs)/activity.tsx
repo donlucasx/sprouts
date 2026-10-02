@@ -15,18 +15,24 @@ import { spacing, TARGET, useTheme } from '@/theme'
 
 const day = (iso: string) => new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 const solscan = (sig: string) => Linking.openURL(`https://solscan.io/tx/${sig}`)
+const solscanAccount = (pubkey: string) => Linking.openURL(`https://solscan.io/account/${pubkey}`)
 
-/** One row: its text, and the transaction on Solscan as a real target. */
-function Line({ text, signature }: { text: string; signature?: string | null }) {
+/** One row: its text, and the transaction on Solscan as a real target. A row with no signature (a wallet-started withdrawal not yet delivered) links the user's wallet account instead (R165). */
+function Line({ text, signature, accountPubkey }: { text: string; signature?: string | null; accountPubkey?: string | null }) {
   const { colors } = useTheme()
+  const link = signature
+    ? { open: () => solscan(signature), label: 'Open on Solscan' }
+    : accountPubkey
+      ? { open: () => solscanAccount(accountPubkey), label: 'Open your wallet on Solscan' }
+      : null
   return (
     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: spacing.sm }}>
       <ThemedText style={{ flex: 1 }}>{text}</ThemedText>
-      {signature ? (
+      {link ? (
         <Pressable
-          onPress={() => solscan(signature)}
+          onPress={link.open}
           accessibilityRole="link"
-          accessibilityLabel="Open on Solscan"
+          accessibilityLabel={link.label}
           hitSlop={8}
           style={({ pressed }) => ({
             minHeight: TARGET - spacing.xs,
@@ -149,7 +155,7 @@ export default function Activity() {
             rows={a.withdrawals}
             empty="No withdrawal yet."
             render={(w) => (
-              <Line key={w.id} text={withdrawalRowLine(day(w.ts), w, skrUsd, me?.basket?.id === w.id ? me.basket.readyAt : undefined)} signature={w.withdrawSignature ?? w.unstakeSignature} />
+              <Line key={w.id} text={withdrawalRowLine(day(w.ts), w, skrUsd, me?.basket?.id === w.id ? me.basket.readyAt : undefined)} signature={w.withdrawSignature ?? w.unstakeSignature} accountPubkey={me?.user.pubkey} />
             )}
           />
         </>
