@@ -14,6 +14,8 @@ import { Button } from '@/components/Button'
 import { ThemedText } from '@/components/ThemedText'
 import { MarkedTitle } from '@/components/Lockup'
 import { WatcherLine } from '@/components/WatcherLine'
+import { NextPlanting } from '@/components/NextPlanting'
+import { nextPlantingRow } from '@/lib/next-planting'
 import { WaterButton } from '@/components/WaterButton'
 import { PauseRow } from '@/components/PauseRow'
 import { formatUsd, formatSkr, formatAsOf } from '@/lib/format'
@@ -119,13 +121,16 @@ export default function Home() {
   // R96: the line and the can decided together, so they always agree; the can is there only while a bud waits.
   const watcher = watcherLine({
     unrevealed: scene.unrevealed,
-    hasPlant: scene.parts.some((p) => p.kind === 'plant'),
     neverWatered: me.user.wateredAt === null,
-    pendingCents: me.nextPlanting.pendingCents,
-    thresholdCents: me.nextPlanting.thresholdCents,
     watering,
     opened: justOpened.size,
     failed,
+  })
+  const nextRow = nextPlantingRow({
+    pendingCents: me.nextPlanting.pendingCents,
+    thresholdCents: me.nextPlanting.thresholdCents,
+    hasPlant: scene.parts.some((p) => p.kind === 'plant'),
+    now,
   })
   const wallets = me.wallets.filter((w) => w.status !== 'revoked')
   const receiptLine = lastPlantingLine(me.lastReceipt)
@@ -149,7 +154,7 @@ export default function Home() {
         <PauseRow on={pause.on} line={pause.line} busy={pausing} error={pauseError} onChange={togglePaused} />
       ) : null}
       <Garden scene={scene} justOpened={justOpened} />
-      <WatcherLine text={watcher.line} />
+      {watcher.line ? <WatcherLine text={watcher.line} /> : null}
       {watcher.button ? (
         <View style={{ gap: spacing.sm }}>
           <WaterButton label={watcher.button} busy={watering} onPress={water} />
@@ -160,6 +165,7 @@ export default function Home() {
           ) : null}
         </View>
       ) : null}
+      <NextPlanting row={nextRow} pendingCents={me.nextPlanting.pendingCents} thresholdCents={me.nextPlanting.thresholdCents} />
       {receiptLine ? (
         <Pressable
           onPress={() => router.push('/activity')}
