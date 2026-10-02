@@ -2,6 +2,7 @@ import { BAKED_L, type Placed, type PlantId } from "./species";
 import type { Scene } from "./garden";
 import type { PlantOnStage } from "./scene-to-layout";   // a type only: no require cycle
 import { SPRITE_META } from "@/garden/sprite-meta";   // boxes only, no require(): safe in node
+import { appGround, soilBottomAt } from "./soil-clip";
 
 /** Spec 5: the canvas is the screen width minus 40 by 260; the soil line at 200; the back row's feet at 214 and the front's at 244. */
 export const CANVAS = { height: 260, soilLine: 200, backFeet: 214, frontFeet: 244, backScale: 0.8 } as const;
@@ -33,6 +34,21 @@ export const signScale = (row: "front" | "back") => SIGN_SCALE * (row === "front
 export function signX(x: number, side: -1 | 1, width: number, scale: number): number {
   const half = 15 * scale;
   return Math.min(Math.max(x + side * (14 + half * 0.2), half + 1), width - half - 1);
+}
+/** R181 (RG32): the post's foot from the sign's anchor, in the board's 1x units before its scale (bake.py: the contact mark reaches 9.4
+ * below the generator's origin; the lowest painted pixel of the bake sits at x +1), and the room kept above the soil's bottom edge. */
+export const SIGN_FOOT = { x: 1, y: 9.4 } as const;
+export const SIGN_SOIL_MARGIN = 3;
+/** Where a stake stands: x by signX, the anchor 4 px under its row's feet (gen06), raised when needed so the post's foot stays
+ * SIGN_SOIL_MARGIN above the painted soil's bottom edge at its x (R181: since the 1.35x signs and the irregular ground the front posts
+ * reached bare paper). `soilBottom` reads the edge for the garden's own ground placement. */
+export function signStand(x: number, want: number, scale: number, soilBottom: (x: number) => number): number {
+  return Math.min(want, soilBottom(x + SIGN_FOOT.x * scale) - SIGN_SOIL_MARGIN - SIGN_FOOT.y * scale);
+}
+/** The app's stake for a sign part, at the garden's width: its anchor and its drawn scale. */
+export function signPlacement(s: { x: number; side: -1 | 1; row: "front" | "back" }, width: number) {
+  const scale = signScale(s.row), x = signX(s.x * width, s.side, width, scale), g = appGround(width);
+  return { x, y: signStand(x, FOOT_Y(s.row) + 4, scale, (px) => soilBottomAt(px, g)), scale };
 }
 /** R168 (10-02): the word on a stake, drawn as crisp type over the one blank baked board (`sign`), in the board's own frame: the anchor
  * at (0, 0) before the sign's scale (signScale: 1.35 front, 1.08 back), the board 30 by 11 from y -12 to -1, leaning -4 degrees (gen01_garden.py

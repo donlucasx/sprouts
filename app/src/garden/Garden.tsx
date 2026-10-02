@@ -4,7 +4,7 @@ import Animated, { Easing, cancelAnimation, useAnimatedProps, useAnimatedStyle, 
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Svg, { G } from "react-native-svg";
 import { PLANT_ORDER, type Scene, type Part, type PlantId } from "@/model/garden";
-import { CANVAS, FOOT_Y, FRAME, frameFor, plantUnder, signScale, signX, toCanvas } from "@/model/layout";
+import { CANVAS, FOOT_Y, FRAME, frameFor, plantUnder, signPlacement, toCanvas } from "@/model/layout";
 import { plantLayouts } from "@/model/scene-to-layout";
 import { SOIL_CLIP_ID } from "@/model/soil-clip";
 import { diffScenes, gateDiff, sceneKey, NO_CHANGE, type Diff } from "@/lib/scene-diff";
@@ -158,7 +158,7 @@ export function Garden({ scene: incoming, live, canReady, onWater, onNudge, temp
           const a = arrivingSeeds.get(s.id);
           return a ? <Appear key={s.id} delay={a.delay} ms={a.ms}>{seed}</Appear> : seed;
         })}
-        {of("sign").map((s) => { const scale = signScale(s.row); return <G key={`s${s.plant}`} x={signX(s.x * w, s.side, w, scale)} y={FOOT_Y(s.row) + 4}><Sign plant={s.plant} scale={scale} /></G>; })}
+        {of("sign").map((s) => { const at = signPlacement(s, w); return <G key={`s${s.plant}`} x={at.x} y={at.y}><Sign plant={s.plant} scale={at.scale} /></G>; })}
         {of("basket").length ? <G x={w - 40} y={CANVAS.soilLine + 30}><Basket /></G> : null}
         {/* Spec 3: the paper grain once over the whole garden, the static Svg's last child (app only). */}
         <G opacity={0.5}><SpriteAt name="grain" x={0} y={0} scale={CANVAS.height / 260} xScale={w / 320} /></G>
