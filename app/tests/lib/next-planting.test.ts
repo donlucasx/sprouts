@@ -4,20 +4,20 @@ import { nextPlantingRow, nextRunLabel } from "@/lib/next-planting";
 // The job runs at 14:00 UTC; the label is read in the phone's zone. The zone is pinned per test so the branches are certain.
 const base = { thresholdCents: 200, hasPlant: true, now: new Date("2026-10-02T12:00:00Z") };
 
-describe("nextPlantingRow (R164)", () => {
-  it("usual: Next planting, dollars of dollars, the bar fills", () => {
-    expect(nextPlantingRow({ ...base, pendingCents: 40 })).toEqual({ state: "usual", label: "Next planting", value: "$0.40 of $2.00", fraction: 0.2 });
-  });
-  it("before the first planting: First planting", () => {
-    expect(nextPlantingRow({ ...base, hasPlant: false, pendingCents: 40 })).toEqual({ state: "first", label: "First planting", value: "$0.40 of $2.00", fraction: 0.2 });
-  });
-  it("nothing saved: $0.00 of $2.00, empty", () => {
-    expect(nextPlantingRow({ ...base, pendingCents: 0 })).toEqual({ state: "empty", label: "Next planting", value: "$0.00 of $2.00", fraction: 0 });
-  });
-  it("threshold reached or passed: the run time, full", () => {
+describe("nextPlantingRow (R164): label by whether a planting exists, value and bar by the amount", () => {
+  const cases: Array<[boolean, number, string, string, number, string]> = [
+    [true, 0, "Next planting", "$0.00 of $2.00", 0, "empty"],
+    [true, 40, "Next planting", "$0.40 of $2.00", 0.2, "saving"],
+    [true, 200, "Next planting", "Today, 2 PM", 1, "reached"],
+    [false, 0, "First planting", "$0.00 of $2.00", 0, "empty"],
+    [false, 40, "First planting", "$0.40 of $2.00", 0.2, "saving"],
+    [false, 200, "First planting", "Today, 2 PM", 1, "reached"],
+  ];
+  it.each(cases)("hasPlant %s, pending %s", (hasPlant, pendingCents, label, value, fraction, state) => {
     process.env.TZ = "UTC";
-    const r = nextPlantingRow({ ...base, pendingCents: 200 });
-    expect(r).toEqual({ state: "reached", label: "Next planting", value: "Today, 2 PM", fraction: 1 });
+    expect(nextPlantingRow({ ...base, hasPlant, pendingCents })).toEqual({ state, label, value, fraction });
+  });
+  it("past the threshold the bar stays full", () => {
     expect(nextPlantingRow({ ...base, pendingCents: 350 }).fraction).toBe(1);
   });
 });

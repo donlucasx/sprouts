@@ -4,7 +4,8 @@ import { formatUsd } from "./format";
 const RUN_HOUR_UTC = 14;
 
 export type NextPlantingRow = {
-  state: "first" | "usual" | "reached" | "empty";
+  /** The amount axis: nothing saved, saving toward the threshold, or threshold reached. */
+  state: "empty" | "saving" | "reached";
   label: "First planting" | "Next planting";
   value: string;
   /** 0 to 1, how far the saved change is toward the threshold. */
@@ -26,13 +27,12 @@ export function nextRunLabel(now: Date): string {
   return `${sameDay ? "Today" : "Tomorrow"}, ${clock(run)}`;
 }
 
-/** Home's progress row (R164). Precedence: threshold reached, then nothing saved, then before the first planting, then usual. */
+/** Home's progress row (R164). Two independent axes: the label follows whether any planting exists; the value and bar follow the amount saved. */
 export function nextPlantingRow(p: { pendingCents: number; thresholdCents: number; hasPlant: boolean; now: Date }): NextPlantingRow {
   const { pendingCents: pending, thresholdCents: threshold } = p;
-  const fraction = threshold > 0 ? Math.min(1, Math.max(0, pending / threshold)) : 0;
-  const of = `${formatUsd(pending)} of ${formatUsd(threshold)}`;
-  if (pending >= threshold) return { state: "reached", label: "Next planting", value: nextRunLabel(p.now), fraction: 1 };
-  if (pending <= 0) return { state: "empty", label: "Next planting", value: of, fraction: 0 };
-  if (!p.hasPlant) return { state: "first", label: "First planting", value: of, fraction };
-  return { state: "usual", label: "Next planting", value: of, fraction };
+  const label = p.hasPlant ? "Next planting" : "First planting";
+  if (pending >= threshold) return { state: "reached", label, value: nextRunLabel(p.now), fraction: 1 };
+  const of = `${formatUsd(Math.max(0, pending))} of ${formatUsd(threshold)}`;
+  if (pending <= 0) return { state: "empty", label, value: of, fraction: 0 };
+  return { state: "saving", label, value: of, fraction: pending / threshold };
 }
