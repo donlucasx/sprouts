@@ -36,7 +36,8 @@ export async function GET(request: Request) {
   const pot = potFromInputs(user, inputs, { position, sharePrice: price });
   const { plantings, legs, withdrawals } = inputs;
   const holdings = holdingsFrom({ held, legs, days });
-  const storePutInRaw = legs.filter((l) => l.asset === "stORE").reduce((s, l) => s + l.amountOutRaw, 0n);
+  const storePlantedRaw = legs.filter((l) => l.asset === "stORE").reduce((s, l) => s + l.amountOutRaw, 0n);
+  const storePutInRaw = storeRaw < storePlantedRaw ? storeRaw : storePlantedRaw;   // R159: what left takes its share of the basis
   const storeEarnedRaw = holdings.find((h) => h.asset === "stORE")?.earnedUnderlyingRaw ?? 0n;
 
   const wallets = await repo.listWalletsOf(user.seedVaultPubkey); // every status, so a revoked wallet stays visible [A20]
