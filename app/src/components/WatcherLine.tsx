@@ -1,6 +1,6 @@
-import { Text } from "react-native";
+import { ThemedText } from './ThemedText'
 
-/** The watcher's one line (spec 6): italic serif, under 25 words. A fixed line in this plan; Plan 3 writes it. */
+/** The one line beside the garden (spec 6): Body text, under 25 words, spoken as Sprouts (manual 5: the AI lines are running text). */
 export function WatcherLine({ text }: { text: string }) {
-  return <Text style={{ flex: 1, fontSize: 16, fontStyle: "italic", fontFamily: "serif", color: "#2B2B2B" }}>{text}</Text>;
+  return <ThemedText style={{ flex: 1 }}>{text}</ThemedText>
 }
