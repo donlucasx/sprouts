@@ -1,230 +1,94 @@
 import { describe, it, expect } from "vitest";
-import { buildScene, PLANT_OF, type GardenInput } from "@/model/garden";
+import { buildScene, PLANT_OF, fruitLadder, type GardenInput, type Part } from "@/model/garden";
 import type { Asset } from "@/lib/coins";
 
-const NOW = new Date("2026-10-04T12:00:00-07:00");
+const NOW = new Date("2026-10-08T12:00:00-07:00");
+const SPLIT = { SKR: 100, stORE: 0, hSOL: 0, JitoSOL: 0, JupSOL: 0, cbBTC: 0 };
+const BALANCED = { SKR: 45, stORE: 0, hSOL: 20, JitoSOL: 15, JupSOL: 10, cbBTC: 10 };
 const base: GardenInput = {
-  now: NOW, wateredAt: null, plantings: [], picks: [], skrPutInRaw: 0n, skrEarnedRaw: 0n,
-  skrPickedRaw: 0n, skrPrincipalPickedRaw: 0n, pendingCents: 0, thresholdCents: 200,
-  allocation: { SKR: 100, stORE: 0, hSOL: 0, JitoSOL: 0, JupSOL: 0, cbBTC: 0 }, earned: {},
-  storePutInRaw: 0n, joinedValueRaw: 0n, basket: null,
+  now: NOW, wateredAt: null, plantings: [], picks: [], skrPutInRaw: 0n, skrEarnedRaw: 0n, skrPickedRaw: 0n, skrPrincipalPickedRaw: 0n,
+  pendingCents: 0, thresholdCents: 200, allocation: SPLIT, earned: {}, storePutInRaw: 0n, joinedValueRaw: 0n, basket: null,
 };
-const planting = (id: string, daysAgo: number, raw: bigint, asset: Asset = "SKR") => ({ id, ts: new Date(NOW.getTime() - daysAgo * 86_400_000), asset, amountOutRaw: raw, usdcInCents: 200 });
-const kinds = (s: ReturnType<typeof buildScene>) => s.parts.map((p) => p.kind);
+const planting = (id: string, daysAgo: number, asset: Asset = "SKR", cents = 200) => ({ id, ts: new Date(NOW.getTime() - daysAgo * 86_400_000), asset, amountOutRaw: 1n, usdcInCents: cents });
+const of = <K extends Part["kind"]>(s: { parts: Part[] }, kind: K) => s.parts.filter((p): p is Extract<Part, { kind: K }> => p.kind === kind);
 
-describe("buildScene", () => {
-  it("zero is soil (R54)", () => {
-    expect(kinds(buildScene(base))).toEqual(["soil"]);
+describe("buildScene: plants, rows and signs (RG6, RG7, RG22)", () => {
+  it("bare soil for a user with no plantings and no share: soil alone, the can resting (R54)", () => {
+    const s = buildScene({ ...base, allocation: { ...SPLIT, SKR: 0 } });
+    expect(s.parts.map((p) => p.kind)).toEqual(["soil"]); expect(s.canReady).toBe(false);
   });
-
-  it("one growth event per planting: three plantings are three sprouts, oldest largest (R55)", () => {
-    const s = buildScene({ ...base, plantings: [planting("a", 30, 266_000_000n), planting("b", 8, 12_000_000n), planting("c", 1, 266_000_000n)], wateredAt: NOW });
-    const sprouts = s.parts.filter((p) => p.kind === "sprout");
-    expect(sprouts.length).toBe(3);
-    expect(sprouts.map((p) => (p as { stage: number }).stage)).toEqual([3, 1, 0]);
+  it("one plant per coin with a kept shoot, on its row at its slot, with a sign on the roomier side", () => {
+    const s = buildScene({ ...base, wateredAt: NOW, allocation: BALANCED, plantings: [planting("a", 5), planting("b", 4, "stORE"), planting("c", 3, "hSOL"), planting("d", 2, "JitoSOL"), planting("e", 1, "JupSOL"), planting("f", 1, "cbBTC")] });
+    expect(of(s, "plant").map((p) => [p.plant, p.row, p.x, p.species])).toEqual([["skr", "front", 0.3, "mandarin"], ["ore", "front", 0.8, "succulent"], ["hsol", "back", 0.09, "sunflower"], ["jitosol", "back", 0.5, "snake"], ["jupsol", "back", 0.67, "blueberry"], ["cbbtc", "back", 0.92, "spruce"]]);
+    expect(of(s, "sign")).toHaveLength(6);
+    expect(of(s, "sign").find((p) => p.plant === "hsol")?.side).toBe(1);     // the edge counts double: more room on the right
   });
-
-  // Review Focus 5: growth since the last watering is buds until watered.
-  it("unwatered plantings are buds; watering today opens them", () => {
-    const watered = new Date(NOW.getTime() - 5 * 86_400_000);
-    const before = buildScene({ ...base, wateredAt: watered, plantings: [planting("a", 8, 1n), planting("b", 2, 1n), planting("c", 1, 1n)] });
-    expect(before.unrevealed).toBe(2);
-    expect(before.parts.filter((p) => p.kind === "sprout" && (p as { bud: boolean }).bud).length).toBe(2);
-    const after = buildScene({ ...base, wateredAt: NOW, plantings: [planting("a", 8, 1n), planting("b", 2, 1n), planting("c", 1, 1n)] });
-    expect(after.unrevealed).toBe(0);
-    expect(after.canReady).toBe(false);
-    expect(kinds(after)).toContain("wetSpot");
+  it("signs for every coin with a share; seeds beside nextAsset's sign only, while it has no plant (Review Focus 1)", () => {
+    const s = buildScene({ ...base, wateredAt: NOW, allocation: BALANCED, plantings: [planting("a", 5), planting("b", 4)], pendingCents: 150, nextAsset: "hSOL" });
+    expect(of(s, "plant").map((p) => p.plant)).toEqual(["skr"]);
+    expect(of(s, "sign").map((p) => p.plant)).toEqual(["skr", "hsol", "jitosol", "jupsol", "cbbtc"]);
+    expect(of(s, "seed").map((p) => p.plant)).toEqual(["hsol", "hsol", "hsol", "hsol", "hsol", "hsol"]);
+    expect(of(s, "swelling")).toHaveLength(0);
   });
-
-  it("fruit are drawn from the count, the next one ripens, and a bud hides a fruit that appeared since watering", () => {
-    const s = buildScene({ ...base, wateredAt: new Date(NOW.getTime() - 3 * 86_400_000), plantings: [planting("a", 8, 1n)], skrPutInRaw: 100n, skrEarnedRaw: 2n, skrFruit: 2, skrNextFruitProgress: 0.4 });
-    expect(s.parts.filter((p) => p.kind === "fruit").length).toBe(2);
-    expect((s.parts.find((p) => p.kind === "ripening") as { progress: number }).progress).toBe(0.4);
-  });
-
-  // 09-29 Saga: the ripening bud was drawn at a fixed spot mid-air over a garden whose only sprout was still a closed bud.
-  // Fruit and the ripening bud hang on an open plant, the largest first; with no open plant they wait for the watering.
-  it("fruit and the ripening bud hang on the largest open sprout", () => {
-    const s = buildScene({ ...base, wateredAt: new Date(NOW.getTime() - 3 * 86_400_000), plantings: [planting("small", 4, 1n), planting("big", 20, 1n)], skrPutInRaw: 100n, skrFruit: 1, skrNextFruitProgress: 0.3 });
-    expect((s.parts.find((p) => p.kind === "ripening") as { on: string }).on).toBe("big");
-    expect((s.parts.find((p) => p.kind === "fruit") as { on: string }).on).toBe("big");
-  });
-
-  it("a garden of closed buds shows no fruit and no ripening bud until it is watered", () => {
-    const s = buildScene({ ...base, wateredAt: null, plantings: [planting("a", 0, 1n)], skrPutInRaw: 100n, skrFruit: 1, skrNextFruitProgress: 0 });
-    expect(kinds(s)).not.toContain("ripening");
-    expect(kinds(s)).not.toContain("fruit");
-  });
-
-  it("a transplanted plant never holds the fruit (R82): with no open sprout the ripening bud waits", () => {
-    const s = buildScene({ ...base, wateredAt: NOW, joinedValueRaw: 5n, skrPutInRaw: 100n, skrFruit: 0, skrNextFruitProgress: 0.5 });
-    expect(kinds(s)).not.toContain("ripening");
-  });
-
-  // 09-29 Saga: the soil was watered at the centre while the sprout that opened stood at the side.
-  it("the wet spot lands under the newest sprout, the one the watering just opened", () => {
-    const s = buildScene({ ...base, wateredAt: NOW, plantings: [planting("old", 20, 1n), planting("new", 0.1, 1n)] });
-    const newest = s.parts.find((p) => p.kind === "sprout" && p.id === "new") as { x: number };
-    expect((s.parts.find((p) => p.kind === "wetSpot") as { x: number }).x).toBe(newest.x);
-  });
-
-  it("with no sprout the wet spot stays at the centre", () => {
-    const s = buildScene({ ...base, wateredAt: NOW });
-    expect((s.parts.find((p) => p.kind === "wetSpot") as { x: number }).x).toBe(0.5);
-  });
-
-  // R89 (09-29): one plant per coin; every planting is a new shoot on it, oldest lowest.
-  it("every SKR planting is a shoot on the one SKR plant, oldest lowest (R89)", () => {
-    const s = buildScene({ ...base, wateredAt: NOW, plantings: [planting("c", 1, 1n), planting("a", 30, 1n), planting("b", 8, 1n)] });
-    const plants = s.parts.filter((p) => p.kind === "plant") as { plant: string; x: number; shoots: number }[];
-    expect(plants).toEqual([{ kind: "plant", plant: "skr", x: 0.4, shoots: 3 }]);
-    const shoots = s.parts.filter((p) => p.kind === "sprout") as { id: string; x: number; y: number }[];
-    expect(shoots.every((p) => p.x === 0.4)).toBe(true);
-    expect(shoots.sort((p, q) => p.y - q.y).map((p) => p.id)).toEqual(["a", "b", "c"]);
-  });
-
-  it("ORE grows its own plant beside the SKR one (R89)", () => {
-    const s = buildScene({ ...base, wateredAt: NOW, plantings: [planting("s", 3, 1n), planting("o", 2, 1n, "stORE")] });
-    expect((s.parts.filter((p) => p.kind === "plant") as { plant: string; x: number }[]).map((p) => [p.plant, p.x])).toEqual([["skr", 0.4], ["ore", 0.64]]);
-  });
-
-  it("after the first planting, waiting change is one bud forming on the plant, not seeds (R89)", () => {
-    const s = buildScene({ ...base, wateredAt: NOW, plantings: [planting("a", 3, 1n)], pendingCents: 57, thresholdCents: 200 });
-    expect(kinds(s)).not.toContain("seed");
-    expect(s.parts.find((p) => p.kind === "forming")).toEqual({ kind: "forming", plant: "skr", progress: 0.285 });
-  });
-
-  it("before the first planting the seeds gather at the plant's base", () => {
-    const seeds = buildScene({ ...base, pendingCents: 62 }).parts.filter((p) => p.kind === "seed") as { x: number }[];
-    expect(seeds.length).toBe(2);
-    expect(seeds.every((p) => Math.abs(p.x - 0.4) <= 0.06)).toBe(true);
-  });
-
-  it("a pre-existing position is a transplanted plant with no fruit (R61)", () => {
-    const s = buildScene({ ...base, joinedValueRaw: 10_000_000_000n, wateredAt: NOW });
-    expect(kinds(s)).toEqual(["soil", "transplant", "plant", "wetSpot"]);   // R89: the transplant is the SKR plant's base
-    expect(kinds(s)).not.toContain("fruit");
-  });
-
-  it("a principal pick prunes sprouts in proportion, oldest last; a fruit-only pick prunes nothing (rule 6)", () => {
-    const plantings = [planting("a", 30, 100n), planting("b", 20, 100n), planting("c", 10, 100n), planting("d", 5, 100n)];
-    const fruitOnly = buildScene({ ...base, wateredAt: NOW, plantings, skrPutInRaw: 400n, skrEarnedRaw: 0n, skrPickedRaw: 4n, picks: [{ ts: NOW, asset: "SKR", amountRaw: 4n }] });
-    expect(fruitOnly.parts.filter((p) => p.kind === "sprout").length).toBe(4);
-    // 200 of the 400 that was put in: put in is now 200, principal picked 200, half the sprouts go, the newest first
-    const principal = buildScene({ ...base, wateredAt: NOW, plantings, skrPutInRaw: 200n, skrEarnedRaw: 0n, skrPickedRaw: 200n, skrPrincipalPickedRaw: 200n, picks: [{ ts: NOW, asset: "SKR", amountRaw: 200n }] });
-    expect(principal.parts.filter((p) => p.kind === "sprout").map((p) => (p as { id: string }).id)).toEqual(["a", "b"]);
-    expect((principal.parts.find((p) => p.kind === "pruned") as { count: number }).count).toBe(2);
-    // a small principal pick still removes one sprout, and the last sprout is never removed
-    const small = buildScene({ ...base, wateredAt: NOW, plantings, skrPutInRaw: 380n, skrPrincipalPickedRaw: 20n, skrPickedRaw: 20n });
-    expect(small.parts.filter((p) => p.kind === "sprout").length).toBe(3);
-    const almostAll = buildScene({ ...base, wateredAt: NOW, plantings, skrPutInRaw: 10n, skrPrincipalPickedRaw: 390n, skrPickedRaw: 390n });
-    expect(almostAll.parts.filter((p) => p.kind === "sprout").length).toBe(1);
-  });
-
-  it("change waiting to be planted shows as seeds on the soil, one per 25 cents, at most eight (R54)", () => {
-    expect(buildScene({ ...base, pendingCents: 20 }).parts.filter((p) => p.kind === "seed").length).toBe(0);
-    expect(buildScene({ ...base, pendingCents: 140 }).parts.filter((p) => p.kind === "seed").length).toBe(5);
-    expect(buildScene({ ...base, pendingCents: 900 }).parts.filter((p) => p.kind === "seed").length).toBe(8);
-  });
-
-  it("the basket is drawn while a pick ripens; the succulent grows pups by the same rule", () => {
-    const s = buildScene({ ...base, wateredAt: NOW, plantings: [planting("o", 3, 1n, "stORE")], storePutInRaw: 100n, storePups: 1, storeNextPupProgress: 0.1, basket: { amountRaw: 5n, readyAt: new Date(NOW.getTime() + 86_400_000) } });
-    expect(kinds(s)).toContain("basket");
-    expect(s.parts.filter((p) => p.kind === "sprout" && (p as { plant: string }).plant === "ore").length).toBe(1);
-    expect(s.parts.filter((p) => p.kind === "fruit" && (p as { plant: string }).plant === "ore").length).toBe(1);
+  it("a lone front plant centres at 0.40 and a bare sign occupies its slot (RG22)", () => {
+    expect(of(buildScene({ ...base, plantings: [planting("a", 2)] }), "plant")[0].x).toBe(0.4);
+    expect(of(buildScene({ ...base, plantings: [planting("a", 2)], allocation: { ...SPLIT, SKR: 60, stORE: 40 } }), "plant")[0].x).toBe(0.3);
   });
 });
 
-// Plan v2: the ORE succulent from a stORE leg, and the forming bud on the coin the next planting buys (audits/ore-plan, finding 14).
-describe("the ORE plant", () => {
-  const ore = planting("o", 2, 2_150_000_000n, "stORE");
-  it("a stORE planting grows the ORE succulent with one shoot", () => {
-    const s = buildScene({ ...base, plantings: [ore], wateredAt: NOW });
-    expect(s.parts.filter((p) => p.kind === "plant")).toEqual([{ kind: "plant", plant: "ore", x: expect.any(Number), shoots: 1 }]);
-    expect(s.parts.filter((p) => p.kind === "sprout" && p.plant === "ore").length).toBe(1);
+describe("buildScene: shoots, bands, the branch flag, the swelling (RG3, RG4, RG9, RG19)", () => {
+  it("every kept planting is a shoot with its slot, stage, band and age; unwatered ones are buds and the can is ready", () => {
+    const s = buildScene({ ...base, wateredAt: new Date(NOW.getTime() - 2 * 86_400_000), plantings: [planting("a", 30, "SKR", 50), planting("b", 8, "SKR", 200), planting("c", 1, "SKR", 900)] });
+    expect(of(s, "sprout").map((p) => [p.id, p.slot, p.stage, p.band, p.bud])).toEqual([["a", 0, 3, 0, false], ["b", 1, 1, 1, false], ["c", 2, 0, 2, true]]);
+    expect(s.unrevealed).toBe(1); expect(s.canReady).toBe(true);
   });
-  // 09-30, the Saga after watering: the ORE plant's ripening pup hung 8 px off its leaf as a floating green dot. Pups live on the
-  // soil beside the succulent (on: null, like the pups themselves), so the next one forms there; it still waits for the watering.
-  it("the next pup ripens at the soil beside the succulent, never on a leaf", () => {
-    const open = buildScene({ ...base, plantings: [ore], wateredAt: NOW, storePutInRaw: 100n, storeNextPupProgress: 0.1 });
-    expect(open.parts.find((p) => p.kind === "ripening")).toEqual({ kind: "ripening", plant: "ore", progress: 0.1, on: null });
-    const closed = buildScene({ ...base, plantings: [ore], wateredAt: null, storePutInRaw: 100n, storeNextPupProgress: 0.1 });
-    expect(kinds(closed)).not.toContain("ripening");
+  it("the branch flag follows RG19 over the full history: the lowest opened node with three newer plantings above it", () => {
+    const s = buildScene({ ...base, wateredAt: NOW, plantings: [10.8, 8.4, 6, 3.6, 1.2].map((d, i) => planting(`s${i}`, d)) });
+    expect(of(s, "sprout").map((p) => p.branch)).toEqual([true, true, false, false, false]);
   });
-  it("the forming bud sits on the plant the next planting will grow", () => {
-    const both = { ...base, plantings: [planting("a", 30, 266_000_000n), ore], wateredAt: NOW, pendingCents: 100 };
-    const forming = (s: ReturnType<typeof buildScene>) => s.parts.find((p) => p.kind === "forming") as { plant: string } | undefined;
-    expect(forming(buildScene({ ...both, nextAsset: "stORE" }))?.plant).toBe("ore");
-    expect(forming(buildScene({ ...both, nextAsset: "SKR" }))?.plant).toBe("skr");
-    expect(forming(buildScene(both))?.plant).toBe("skr");
+  it("pruning never un-branches (Review Focus 3): flags come from the full history, leaves from the kept set", () => {
+    const g = { ...base, wateredAt: NOW, plantings: [40, 30, 20, 10, 5].map((d, i) => planting(`s${i}`, d)), skrPutInRaw: 400n, skrPrincipalPickedRaw: 300n };
+    const s = buildScene(g);
+    expect(of(s, "pruned")[0].count).toBe(3);   // ceil(300 / 700 · 5)
+    expect(of(s, "sprout").map((p) => p.id)).toEqual(["s0", "s1"]);
+    expect(of(s, "sprout")[0]).toMatchObject({ id: "s0", branch: true });
   });
-});
-
-// R96 (09-30): the can is ready when a bud waits and resting otherwise; there is no clock (the once-a-day lock was the build's, never
-// a ruling, and it collided with the 14:00 UTC cron: watered before 7 AM PT, then that morning's planting, stuck all day).
-describe("the watering can (R96)", () => {
-  it("is ready when a bud waits, whatever the time of day", () => {
-    // watered at 07:00, the cron planted at 07:40: under the old rule the can stayed dead until tomorrow
-    const watered = new Date(NOW.getTime() - 5 * 3_600_000);
-    const s = buildScene({ ...base, wateredAt: watered, plantings: [planting("a", 8, 1n), planting("b", 0.18, 1n)] });
-    expect(s.unrevealed).toBe(1);
-    expect(s.canReady).toBe(true);
+  it("a principal pick prunes in proportion, at least one, never the last; a fruit-only pick prunes nothing (RECONCILED rule 6, carried from HEAD)", () => {
+    const five = [40, 30, 20, 10, 5].map((d, i) => planting(`s${i}`, d));
+    expect(of(buildScene({ ...base, wateredAt: NOW, plantings: five, skrPutInRaw: 1000n, skrPrincipalPickedRaw: 1n }), "pruned")[0].count).toBe(1);
+    expect(of(buildScene({ ...base, wateredAt: NOW, plantings: five, skrPutInRaw: 1n, skrPrincipalPickedRaw: 1000n }), "sprout")).toHaveLength(1);
+    expect(of(buildScene({ ...base, wateredAt: NOW, plantings: five, skrPutInRaw: 400n, skrPickedRaw: 300n }), "pruned")).toHaveLength(0);
   });
-  it("rests when nothing waits, even if it has not been used today", () => {
-    const s = buildScene({ ...base, wateredAt: new Date(NOW.getTime() - 3 * 86_400_000), plantings: [planting("a", 8, 1n)] });
-    expect(s.canReady).toBe(false);
-  });
-  it("is ready before the first watering, as soon as the first planting lands", () => {
-    expect(buildScene({ ...base, wateredAt: null, plantings: [planting("a", 0.1, 1n)] }).canReady).toBe(true);
-  });
-  it("rests on bare soil", () => {
-    expect(buildScene(base).canReady).toBe(false);
-  });
-  // 09-30, the Saga photo: watered at 10:10, the stORE planting landed at 11:40, and the wet spot sat under the closed ORE bud.
-  it("the wet spot lands under the newest OPENED sprout, never under a bud that landed after the watering", () => {
-    const watered = new Date(NOW.getTime() - 3_600_000);
-    const s = buildScene({ ...base, wateredAt: watered, plantings: [planting("old", 20, 1n), planting("o", 0.01, 1n, "stORE")] });
-    expect((s.parts.find((p) => p.kind === "wetSpot") as { x: number }).x).toBe(0.4);
-  });
-  it("with only buds and a transplant the wet spot sits at the SKR plant's foot", () => {
-    const watered = new Date(NOW.getTime() - 3_600_000);
-    const s = buildScene({ ...base, wateredAt: watered, joinedValueRaw: 5n, plantings: [planting("o", 0.01, 1n, "stORE")] });
-    expect((s.parts.find((p) => p.kind === "wetSpot") as { x: number }).x).toBe(0.4);
+  it("after the next coin's first planting its change is a swelling on that plant; with a fresh bud at the growth point the swelling still shows (the renderer seats it above)", () => {
+    const s = buildScene({ ...base, wateredAt: NOW, plantings: [planting("a", 3)], pendingCents: 57, nextAsset: "SKR" });
+    expect(of(s, "seed")).toHaveLength(0);
+    expect(of(s, "swelling")[0]).toEqual({ kind: "swelling", plant: "skr", progress: 0.285 });
   });
 });
 
-describe("six plants in the scene", () => {
-  it("a planting of each coin grows its own plant, in order, and the forming bud sits on nextAsset's plant", () => {
-    const s = buildScene({
-      ...base, wateredAt: NOW, pendingCents: 100, thresholdCents: 200, nextAsset: "cbBTC",
-      plantings: [planting("a", 5, 1n, "SKR"), planting("b", 4, 1n, "hSOL"), planting("c", 3, 1n, "JitoSOL"), planting("d", 2, 1n, "JupSOL"), planting("e", 1, 1n, "cbBTC"), planting("f", 1, 1n, "stORE")],
-    });
-    const plants = s.parts.filter((p) => p.kind === "plant") as { plant: string; x: number }[];
-    expect(plants.map((p) => p.plant)).toEqual(["skr", "ore", "hsol", "jitosol", "jupsol", "cbbtc"]);
-    expect(plants.map((p) => Math.round(p.x * 1000) / 1000)).toEqual([0.16, 0.304, 0.448, 0.592, 0.736, 0.88]);
-    expect((s.parts.find((p) => p.kind === "forming") as { plant: string }).plant).toBe("cbbtc");
+describe("buildScene: earned, pups, rings, the basket (RG16, RG20, RG11)", () => {
+  it("token fruit per coin from its ladder, only once the plant has an open shoot; the next one ripens", () => {
+    const s = buildScene({ ...base, wateredAt: NOW, plantings: [planting("a", 9), planting("b", 8, "cbBTC")], earned: { SKR: { count: 2, progress: 0.3 }, cbBTC: fruitLadder(0.03, 200) } });
+    expect(of(s, "fruit").map((f) => [f.plant, f.index])).toEqual([["skr", 0], ["skr", 1], ["cbbtc", 0], ["cbbtc", 1]]);   // 1.5 percent is two steps
+    expect(of(s, "ripening").map((r) => r.plant)).toEqual(["skr", "cbbtc"]);
   });
-
-  // Review Focus 4: the new plants carry no fruit in this build.
-  it("fruit stays on SKR; a cbBTC plant with earned has none", () => {
-    const s = buildScene({ ...base, wateredAt: NOW, plantings: [planting("a", 5, 1n, "cbBTC")], skrPutInRaw: 0n, skrFruit: 0 });
-    expect(s.parts.filter((p) => p.kind === "fruit" || p.kind === "ripening").length).toBe(0);
+  it("a garden of closed buds shows no fruit until it is watered; a transplant alone holds none (R82)", () => {
+    expect(of(buildScene({ ...base, plantings: [planting("a", 1)], earned: { SKR: { count: 1, progress: 0 } } }), "fruit")).toHaveLength(0);
+    expect(of(buildScene({ ...base, joinedValueRaw: 5n, earned: { SKR: { count: 1, progress: 0 } } }), "fruit")).toHaveLength(0);
   });
-
-  it("PLANT_OF maps every asset", () => {
-    expect(PLANT_OF).toEqual({ SKR: "skr", stORE: "ore", hSOL: "hsol", JitoSOL: "jitosol", JupSOL: "jupsol", cbBTC: "cbbtc" });
+  it("stORE's pups come by count (RG20): one per six plantings past seven, at most four", () => {
+    const many = Array.from({ length: 20 }, (_, i) => planting(`o${i}`, 300 - i * 10, "stORE"));
+    expect(of(buildScene({ ...base, wateredAt: NOW, plantings: many }), "pup").map((p) => p.index)).toEqual([0, 1]);
+    expect(of(buildScene({ ...base, wateredAt: NOW, plantings: many.slice(0, 7) }), "pup")).toHaveLength(0);
   });
-});
-
-// Review fix: ORE pups wait for the watering like the fruit; no open ORE shoot, no pups and no ripening pup.
-describe("ORE pups wait for an open ORE shoot", () => {
-  const ore = (s: ReturnType<typeof buildScene>) => s.parts.filter((p) => (p.kind === "fruit" || p.kind === "ripening") && p.plant === "ore");
-  it("a closed ORE bud hides the pups; once watered they show", () => {
-    const watered = new Date(NOW.getTime() - 3 * 86_400_000);
-    const closed = buildScene({ ...base, wateredAt: watered, plantings: [planting("o", 1, 1n, "stORE")], storePups: 2, storePutInRaw: 1n });
-    expect(ore(closed).length).toBe(0);
-    const open = buildScene({ ...base, wateredAt: NOW, plantings: [planting("o", 1, 1n, "stORE")], storePups: 2, storePutInRaw: 1n });
-    expect(open.parts.filter((p) => p.kind === "fruit" && p.plant === "ore").length).toBe(2);
-    expect(open.parts.filter((p) => p.kind === "ripening" && p.plant === "ore").length).toBe(1);
+  it("one ring per present plant after a watering, fading over the day (Review Focus 5)", () => {
+    const s = buildScene({ ...base, wateredAt: new Date(NOW.getTime() - 6 * 3_600_000), plantings: [planting("a", 2), planting("b", 2, "hSOL")], allocation: BALANCED });
+    expect(of(s, "ring").map((r) => [r.plant, r.age])).toEqual([["skr", 0.25], ["hsol", 0.25]]);
+    expect(of(buildScene({ ...base, wateredAt: new Date(NOW.getTime() - 2 * 86_400_000), plantings: [planting("a", 3)] }), "ring")).toHaveLength(0);
   });
+  it("the basket and the transplant are drawn as today", () => {
+    const s = buildScene({ ...base, joinedValueRaw: 7n, basket: { amountRaw: 3n, readyAt: NOW } });
+    expect(of(s, "transplant")).toHaveLength(1); expect(of(s, "basket")).toHaveLength(1); expect(of(s, "plant")[0]).toMatchObject({ plant: "skr", x: 0.4 });
+  });
+  it("PLANT_OF maps every asset", () => expect(Object.values(PLANT_OF)).toEqual(["skr", "ore", "hsol", "jitosol", "jupsol", "cbbtc"]));
 });

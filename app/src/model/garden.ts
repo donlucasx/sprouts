@@ -1,4 +1,6 @@
 import type { Asset, Split } from "@/lib/coins";
+import { ROW_OF, signSide, slotsFor } from "./layout";
+import { branchFlags, pupsByCount, stageOf } from "./plant-geometry";
 import { PLANT_SPECIES, type Band, type PlantId, type Species, type Stage } from "./species";
 export type { PlantId } from "./species";
 
@@ -52,8 +54,74 @@ export type Part =
 /** R96: `canReady` is the can. It is ready when a bud waits and resting otherwise; there is no clock. */
 export type Scene = { parts: Part[]; unrevealed: number; canReady: boolean };
 
-/** Task C2 rewrites this against the new input and Part union; until then it returns the bare soil. */
-export function buildScene(_g: GardenInput): Scene {
-  void PLANT_SPECIES;   // kept imported for Task C2
-  return { parts: [{ kind: "soil" }], unrevealed: 0, canReady: false };
+const DAY = 86_400_000;
+
+/**
+ * The scene from the user's own history (R55: parts assembled from history, never a fixed set of paintings). Two rows with the
+ * locked slots (RG6, RG17, RG22), a sign per coin with a planting or a share (RG7), seeds beside the next coin's sign before its
+ * first planting and then a swelling on its plant (RG9), every kept planting a shoot with its band (RG4) and its branch flag from the
+ * FULL history (RG19, never un-branched by a prune), token fruit per coin (RG16), stORE's pups by count (RG20), one ring per present
+ * plant after a watering (RG11). Nothing falls or rots; a price drop changes dollar numbers, never the plant.
+ */
+export function buildScene(g: GardenInput): Scene {
+  const parts: Part[] = [{ kind: "soil" }];
+  const wateredAt = g.wateredAt;
+  const isUnrevealed = (ts: Date) => wateredAt === null || ts.getTime() > wateredAt.getTime();
+  let unrevealed = 0;
+  if (g.joinedValueRaw > 0n) parts.push({ kind: "transplant", plant: "skr", sizeRaw: g.joinedValueRaw });
+
+  // Pruning [A13]: a principal withdrawal removes SKR sprouts in proportion to the share of what was put in, at least one, never the
+  // last one, oldest last (RECONCILED rule 6). Fruit picked prunes nothing.
+  const sorted = [...g.plantings].sort((a, b) => a.ts.getTime() - b.ts.getTime());
+  const skrPlantings = sorted.filter((p) => p.asset === "SKR");
+  let prune = 0;
+  if (g.skrPrincipalPickedRaw > 0n && g.skrPutInRaw + g.skrPrincipalPickedRaw > 0n && skrPlantings.length > 1) {
+    const share = Number((g.skrPrincipalPickedRaw * 10_000n) / (g.skrPutInRaw + g.skrPrincipalPickedRaw)) / 10_000;
+    prune = Math.min(skrPlantings.length - 1, Math.max(1, Math.ceil(share * skrPlantings.length)));
+  }
+  const kept = new Set(skrPlantings.slice(0, skrPlantings.length - prune).map((p) => p.id));
+  if (prune > 0) parts.push({ kind: "pruned", count: prune });
+
+  const coin = (a: Asset): PlantId => PLANT_OF[a];
+  const fullOf = (c: PlantId) => sorted.filter((p) => coin(p.asset) === c);                       // the full history (RG19's flags)
+  const keptOf = (c: PlantId) => fullOf(c).filter((p) => p.asset !== "SKR" || kept.has(p.id));     // what is drawn
+  const present = PLANT_ORDER.filter((c) => keptOf(c).length > 0 || (c === "skr" && g.joinedValueRaw > 0n));
+  const withSign = PLANT_ORDER.filter((c) => present.includes(c) || (g.allocation[ASSET_OF[c]] ?? 0) > 0);
+  const xs = slotsFor([...withSign]);
+  const allX = withSign.map((c) => xs[c]!);
+  for (const c of present) parts.push({ kind: "plant", plant: c, species: PLANT_SPECIES[c], row: ROW_OF[c], x: xs[c]!, shoots: keptOf(c).length });
+  for (const c of withSign) parts.push({ kind: "sign", plant: c, row: ROW_OF[c], x: xs[c]!, side: signSide(xs[c]!, allX, 1) });
+
+  // RG9, R89: change waiting is seeds beside the NEXT coin's sign while that coin has no plant, else a swelling on its plant. The
+  // API always serves nextPlanting.asset (me/route.ts:83); with it absent (a fixture) pending change draws nothing.
+  const next = g.nextAsset ? coin(g.nextAsset) : null;
+  if (g.pendingCents > 0 && next) {
+    if (present.includes(next)) parts.push({ kind: "swelling", plant: next, progress: Math.min(1, g.pendingCents / Math.max(1, g.thresholdCents)) });
+    else if (withSign.includes(next)) { const seeds = Math.min(8, Math.floor(g.pendingCents / 25)); for (let i = 0; i < seeds; i++) parts.push({ kind: "seed", id: `seed${i}`, plant: next, index: i }); }
+  }
+
+  const hostsOf = new Map<PlantId, number>();   // open shoots per plant (fruit waits for the watering, R82)
+  for (const c of present) {
+    const full = fullOf(c), flags = branchFlags(full.map((p) => ({ opened: !isUnrevealed(p.ts) })));
+    let slot = 0;
+    full.forEach((p, i) => {
+      if (p.asset === "SKR" && !kept.has(p.id)) return;
+      const bud = isUnrevealed(p.ts); if (bud) unrevealed++; else hostsOf.set(c, (hostsOf.get(c) ?? 0) + 1);
+      const ageDays = (g.now.getTime() - p.ts.getTime()) / DAY;
+      parts.push({ kind: "sprout", id: p.id, plant: c, slot: slot++, stage: stageOf(ageDays), bud, band: bandOf(p.usdcInCents), branch: flags[i], ageDays });
+    });
+  }
+  // RG16: token fruit per coin from its ladder, on a plant with an open shoot; the next one ripens. RG20: stORE's pups by count.
+  for (const c of present) {
+    const e = g.earned[ASSET_OF[c]];
+    if (!e || (hostsOf.get(c) ?? 0) === 0) continue;
+    for (let i = 0; i < e.count; i++) parts.push({ kind: "fruit", plant: c, index: i });
+    if (e.progress > 0) parts.push({ kind: "ripening", plant: c, progress: e.progress });
+  }
+  if (present.includes("ore")) for (let i = 0; i < pupsByCount(keptOf("ore").length); i++) parts.push({ kind: "pup", plant: "ore", index: i });
+  if (g.basket) parts.push({ kind: "basket", amountRaw: g.basket.amountRaw, readyAt: g.basket.readyAt });
+  // RG11: one ring under every present plant after a watering, fading over the day.
+  if (wateredAt !== null) { const age = (g.now.getTime() - wateredAt.getTime()) / DAY; if (age < 1) for (const c of present) parts.push({ kind: "ring", plant: c, age }); }
+  // R96: the can is ready when a bud waits, resting otherwise; there is no clock.
+  return { parts, unrevealed, canReady: unrevealed > 0 };
 }
