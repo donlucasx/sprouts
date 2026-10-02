@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { Switch, TextInput, View } from 'react-native'
-import { useMobileWallet } from '@wallet-ui/react-native-kit'
 import { Screen } from '@/components/Screen'
 import { Card } from '@/components/Card'
 import { Button } from '@/components/Button'
@@ -9,18 +8,17 @@ import { Stepper, StepButtons } from '@/components/Stepper'
 import { TwoWay } from '@/components/TwoWay'
 import { api, ApiError, type MeResponse } from '@/lib/api'
 import { useMe, useInvalidateMe, useApplyRules } from '@/lib/me'
-import { makeSigner } from '@/lib/sign'
 import { freshSignIn } from '@/lib/signin'
 import { freshWalletSignIn } from '@/lib/reauth'
 import { identity } from '@/lib/identity'
-import { formatUsd, formatWallet, COIN_NAME } from '@/lib/format'
+import { formatUsd, COIN_NAME } from '@/lib/format'
 import { undoSplit } from '@/lib/manager-api'
 import {
   splitRows,
+  modeWord,
   togglePin,
   stepPin,
   pinsForOn,
-  managerSentence,
   undoLine,
   SWITCH_LABEL,
   OFF_TEXT,
@@ -32,7 +30,6 @@ import {
 } from '@/model/manager'
 import { ORE_DISCLOSURE } from '@/lib/ore-copy'
 import { rulesChanges } from '@/lib/forms'
-import { useSession } from '@/lib/session'
 import { spacing, switchColors, useTheme } from '@/theme'
 
 type RulesShape = MeResponse['rules']
@@ -51,8 +48,6 @@ export default function Rules() {
   const { data: me } = useMe()
   const { colors } = useTheme()
   const toggle = switchColors(colors)
-  const { session } = useSession()
-  const { signTransaction } = useMobileWallet()
   const invalidate = useInvalidateMe()
   const applyRules = useApplyRules()
   const [busy, setBusy] = useState(false)
@@ -150,49 +145,6 @@ export default function Rules() {
       setAsking(false)
     }
   }
-
-  /** Pause needs nothing; resume asks the Seeker for one fingerprint (R84). */
-  async function pauseOrResume(w: MeResponse['wallets'][number]) {
-    setBusy(true)
-    setError(null)
-    try {
-      const action = w.status === 'paused' ? 'resume' : 'pause'
-      setSigning(action === 'resume')
-      const reauth = action === 'resume' ? await freshSignIn(freshWalletSignIn(identity)) : undefined
-      await api(`/api/wallets/${w.pubkey}`, { method: 'POST', body: { action, ...(reauth ? { reauth } : {}) } })
-      await invalidate()
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Could not change the wallet. Try again.')
-    } finally {
-      setBusy(false)
-      setSigning(false)
-    }
-  }
-
-  async function revoke(wallet: string) {
-    if (!session) return
-    setError(null)
-    if (wallet !== session.pubkey) {
-      setError('Revoke this wallet on sprouts.money/revoke with the wallet that approved it.')
-      return
-    }
-    setBusy(true)
-    setSigning(true)
-    try {
-      const t = await api<{ transaction: string | null }>(`/api/revoke/${wallet}`)
-      if (!t.transaction) throw new ApiError(409, 'Nothing to revoke.')
-      const signed = await makeSigner(signTransaction)(t.transaction)
-      await api(`/api/revoke/${wallet}`, { method: 'POST', body: { signedTransaction: signed } })
-      await invalidate()
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'The revoke did not go through. Try again.')
-    } finally {
-      setBusy(false)
-      setSigning(false)
-    }
-  }
-
-  const sentence = `${r.roundupOn ? 'Round up every swap to the next dollar' : 'No round-up'}${r.pctOn ? `, plus ${r.pctBps / 100}% on swaps of ${formatUsd(r.pctThresholdCents)} or more` : ''}. Plant when the change reaches ${formatUsd(r.plantThresholdCents)} or after ${r.plantMaxDays} days, at most ${formatUsd(r.dailyCapCents)} a day.${managerSentence(r)}`
 
   return (
     <Screen inset="top" title="Rules">
@@ -320,10 +272,11 @@ export default function Rules() {
             <ThemedText numeric style={{ width: 48, textAlign: 'right' }}>
               {row.pct}%
             </ThemedText>
-            <ThemedText variant="caption" tone="secondary">
-              {row.mode}
-              {row.bound ? ` (${row.bound})` : ''}
-            </ThemedText>
+            {modeWord(row, r.managed) !== '' && (
+              <ThemedText variant="caption" tone="secondary">
+                {modeWord(row, r.managed)}
+              </ThemedText>
+            )}
             {r.managed && (
               <Switch
                 {...toggle}
@@ -397,37 +350,6 @@ export default function Rules() {
         )}
         {error ? <ThemedText tone="error">{error}</ThemedText> : null}
       </View>
-      <Card>
-        <ThemedText>{sentence}</ThemedText>
-      </Card>
-      <Card>
-        <ThemedText variant="heading">Linked wallets</ThemedText>
-        {me.wallets.length === 0 ? <ThemedText tone="secondary">No wallet linked yet.</ThemedText> : null}
-        {me.wallets.map((w) => (
-          <View key={w.pubkey} style={{ gap: spacing.sm, paddingVertical: spacing.xs }}>
-            <ThemedText numeric>{formatWallet(w)}</ThemedText>
-            {w.status !== 'revoked' ? (
-              <View style={{ flexDirection: 'row', gap: spacing.sm }}>
-                <Button
-                  title={w.status === 'paused' ? 'Resume' : 'Pause'}
-                  kind="quiet"
-                  loading={busy}
-                  onPress={() => pauseOrResume(w)}
-                />
-                <Button title="Revoke" kind="danger" loading={busy} onPress={() => revoke(w.pubkey)} />
-              </View>
-            ) : null}
-          </View>
-        ))}
-        <ThemedText variant="caption" tone="secondary">
-          {"Revoke ends Sprouts' approval on chain. Nothing in your garden moves."}
-        </ThemedText>
-        {signing ? (
-          <ThemedText variant="caption" tone="secondary">
-            Waiting for your Seeker.
-          </ThemedText>
-        ) : null}
-      </Card>
     </Screen>
   )
 }
