@@ -1,12 +1,11 @@
 import { ASSETS, type Asset } from './coins'
-import type { Holding, MeResponse } from './api'
-import { DECIMALS, formatAmount, formatSkr } from './format'
+import type { MeResponse } from './api'
+import { formatSkr, holdingAmount } from './format'
 
 export type TakeOutRow = { asset: Asset; amount: string; note: string; opens: boolean }
 
 const when = (iso: string) => new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric' })
 /** A holding's amount with its value: the unit price is the value over the amount. */
-const heldAmount = (h: Holding) => formatAmount(h.asset, BigInt(h.heldRaw), h.valueUsd === null ? null : h.valueUsd / (Number(h.heldRaw) / 10 ** DECIMALS[h.asset]))
 
 /**
  * Take out's list (R159): SKR first, the only coin that leaves through Sprouts (staked under the Seeker's key, the program's
@@ -19,7 +18,7 @@ export function takeOutRows(me: Pick<MeResponse, 'pot' | 'basket' | 'holdings'>)
   else if (staked > 0n) rows.push({ asset: 'SKR', amount: formatSkr(staked, me.pot.skrUsd), note: 'locked to your Seeker, 48 hours to leave', opens: true })
   for (const asset of ASSETS) {
     const h = me.holdings.find((x) => x.asset === asset)
-    if (h) rows.push({ asset, amount: heldAmount(h), note: 'in your Seeker wallet. Trade or send it from your wallet app.', opens: false })
+    if (h) rows.push({ asset, amount: holdingAmount(h), note: 'in your Seeker wallet. Trade or send it from your wallet app.', opens: false })
   }
   return rows
 }

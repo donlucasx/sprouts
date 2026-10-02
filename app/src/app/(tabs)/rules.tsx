@@ -53,7 +53,7 @@ export default function Rules() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [undone, setUndone] = useState(false)
-  // True only while the Seeker is asked to sign (a save that raises the limit, resume, revoke): the caption under the button.
+  // True only while the Seeker is asked to sign (a save that raises the limit): the caption under the button.
   const [signing, setSigning] = useState(false)
   // Changes are a draft until Save (09-29: each "+" asked for its own approval, and the first tap looked like nothing happened).
   const [draft, setDraft] = useState<Partial<RulesShape>>({})

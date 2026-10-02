@@ -142,7 +142,7 @@ export default function Withdraw() {
           <Button title="Put it back" kind="quiet" loading={busy} onPress={putBack} />
           {busy ? <Waiting /> : null}
         </Card>
-        <Button title="Back to the list" kind="quiet" disabled={busy} onPress={() => setPicked(null)} />
+        <Button title="Back to the list" kind="quiet" disabled={busy} onPress={() => { setPicked(null); setPlan(null); setMode(null); setAmount(''); setError(null) }} />
         {error ? <ThemedText tone="error">{error}</ThemedText> : null}
       </Screen>
     )
@@ -226,7 +226,7 @@ export default function Withdraw() {
           <Button title="Change amount" kind="quiet" disabled={busy} onPress={() => setPlan(null)} />
         </Card>
       )}
-      <Button title="Back to the list" kind="quiet" disabled={busy} onPress={() => setPicked(null)} />
+      <Button title="Back to the list" kind="quiet" disabled={busy} onPress={() => { setPicked(null); setPlan(null); setMode(null); setAmount(''); setError(null) }} />
       {error ? <ThemedText tone="error">{error}</ThemedText> : null}
     </Screen>
   )
