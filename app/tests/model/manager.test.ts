@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { ASSETS, type Split, type Pins, type Stop } from "@/lib/coins";
 import {
-  STOP_FLOOR, STOP_MAX, PIN_MAX, PIN_STEP, STOP_LINE, OFF_TEXT, ON_TEXT, UNDONE_TEXT,
+  STOP_FLOOR, STOP_MAX, PIN_MAX, PIN_STEP, MANAGER_LINE, STOP_LINE, OFF_TEXT, ON_TEXT, UNDONE_TEXT,
   splitRows, modeWord, togglePin, stepPin, canStepUp, undoLine, changeSummary, splitRowLine, pinsForOn,
 } from "@/model/manager";
 
@@ -16,6 +16,7 @@ describe("the tables", () => {
     expect(STOP_MAX.bold.cbBTC).toBe(20);
     expect(PIN_MAX).toEqual({ SKR: 100, stORE: 50, hSOL: 75, JitoSOL: 75, JupSOL: 75, cbBTC: 75 });
     expect(PIN_STEP).toBe(5);
+    expect(MANAGER_LINE).toBe("Moves your split toward the coins paying more. Undo any move.");
     expect(STOP_LINE).toBe("Careful keeps at least 50% in SKR, Balanced 35%, Bold 25%.");
     expect(OFF_TEXT).toBe("Sprouts can choose how new change is split across six coins, inside limits you set. Nothing you hold is ever sold.");
     expect(ON_TEXT).toBe("Sprouts chooses the split each day inside these limits. Pin a coin to fix its share. Nothing you hold is ever sold.");

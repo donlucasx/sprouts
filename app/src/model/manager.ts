@@ -23,6 +23,8 @@ export const PIN_STEP = 5;
 export const SWITCH_LABEL = "Yield Manager";
 export const OFF_TEXT = "Sprouts can choose how new change is split across six coins, inside limits you set. Nothing you hold is ever sold.";
 export const ON_TEXT = "Sprouts chooses the split each day inside these limits. Pin a coin to fix its share. Nothing you hold is ever sold.";
+/** R178: the one line under the Yield Manager heading on Rules. */
+export const MANAGER_LINE = "Moves your split toward the coins paying more. Undo any move.";
 export const STOP_LINE = "Careful keeps at least 50% in SKR, Balanced 35%, Bold 25%.";
 export const UNDONE_TEXT = "Yesterday's split is back. The Yield Manager is off until you turn it on.";
 export const SPLIT_SECTION = { title: "Your split", sub: "Each time the split changed, by the Yield Manager or by you.", empty: "No change yet." } as const;
