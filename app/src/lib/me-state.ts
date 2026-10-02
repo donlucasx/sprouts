@@ -2,9 +2,9 @@ import type { MeResponse } from './api'
 import { DECIMALS, formatUsd, formatSkr, formatAmount, holdingAmount } from './format'
 import { ASSETS, type Asset } from './coins'
 
-/** A cached read from before the Yield Manager build has no holdings or manager and would crash every screen that reads them: it counts as no cache (10-01 whole-branch review, I2). */
+/** A cached read from before the Yield Manager build has no holdings, manager or rules.allocation and would crash every screen that reads them: it counts as no cache (10-01 whole-branch review, I2). */
 export function usableMe(cached: MeResponse | null | undefined): MeResponse | null {
-  return cached && 'holdings' in cached && 'manager' in cached ? cached : null
+  return cached && 'holdings' in cached && 'manager' in cached && typeof cached.rules?.allocation === 'object' && cached.rules.allocation !== null ? cached : null
 }
 
 /** Review Focus 2, as a pure decision: a failed read keeps the last verified state and says so; never a zero garden. */

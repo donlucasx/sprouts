@@ -22,10 +22,11 @@ export function SproutsWidget({ me, width, height, wide }: { me: MeResponse | nu
   const showLast = wide && me.lastReceipt !== null;
   const gardenW = width - 2 * PAD;
   const gardenH = Math.max(60, height - 2 * PAD - (showLast ? WIDE_TEXT_H : TEXT_H));
-  const scene = buildScene(toGardenInput(me, new Date()));
+  let garden: string | null = null;
+  try { garden = widgetGardenSvg(buildScene(toGardenInput(me, new Date())), gardenW, gardenH, wide); } catch { garden = null; }  // a cached read missing a newer field must not blank the widget: fall back to the text
   return (
     <FlexWidget clickAction="OPEN_APP" style={{ height: "match_parent", width: "match_parent", backgroundColor: "#F4EEDF", borderRadius: 16, padding: PAD, flexDirection: "column", justifyContent: "flex-end" }}>
-      <SvgWidget svg={widgetGardenSvg(scene, gardenW, gardenH, wide)} style={{ width: gardenW, height: gardenH }} />
+      {garden !== null ? <SvgWidget svg={garden} style={{ width: gardenW, height: gardenH }} /> : null}
       <TextWidget text={formatSkr(BigInt(me.pot.skrStakedRaw), me.pot.skrUsd)} style={{ fontSize: 16, color: "#2B2B2B", fontWeight: "600" }} />
       <TextWidget text={`Next planting ${formatUsd(me.nextPlanting.pendingCents)} of ${formatUsd(me.nextPlanting.thresholdCents)}`} style={{ fontSize: 12, color: "#6B6558" }} />
       {showLast && me.lastReceipt ? (
