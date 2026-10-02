@@ -1,7 +1,7 @@
 import type { Scene } from "./garden";
-import { signX } from "./layout";
+import { SIGN_LABEL, SIGN_TEXT, signX } from "./layout";
 import { stemPaths, spriteTransform, soilPaths, leafPath } from "./paint";
-import { COLORS } from "./species";
+import { COLORS, SOIL } from "./species";
 import { plantLayouts } from "./scene-to-layout";
 import { SPRITE_META } from "@/garden/sprite-meta";
 import { SPRITES_B64 } from "@/garden/sprites-b64";
@@ -72,7 +72,12 @@ export function widgetGardenSvg(scene: Scene, width: number, height: number, wid
       else place(q.name, fx + q.x * k, fy + q.y * k, q.rot, q.scale * k, (q.xScale ?? q.scale) * k);
     }
   }
-  if (wide) for (const s of of("sign")) place(`sign-${s.plant}`, signX(s.x * width, s.side, width, 0.8), foot(s.row) + 3, 0, 0.8);
+  // R168: the one blank board, the word as vector text over it (AndroidSVG cannot load the app's font: a plain sans-serif, same ink and place)
+  if (wide) for (const s of of("sign")) {
+    const x = signX(s.x * width, s.side, width, 0.8), y = foot(s.row) + 3;
+    place("sign", x, y, 0, 0.8);
+    body.push(`<g transform="translate(${Number(x.toFixed(2))} ${Number(y.toFixed(2))}) scale(0.8) rotate(${SIGN_TEXT.rot})"><text x="0" y="${SIGN_TEXT.y}" text-anchor="middle" font-family="sans-serif" font-size="${SIGN_TEXT.size}" font-weight="500" fill="${SOIL.ink}">${SIGN_LABEL[s.plant]}</text></g>`);
+  }
   const defs = [...used].map((n) => `<image id="s-${n}" width="${SPRITE_META[n].w}" height="${SPRITE_META[n].h}" xlink:href="data:image/png;base64,${SPRITES_B64[n]}"/>`).join("");
   return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><defs>${defs}</defs>${body.join("")}</svg>`;
 }

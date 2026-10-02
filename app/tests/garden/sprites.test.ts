@@ -10,8 +10,8 @@ const EXPECTED = [
   ...["mandarin", "sunflower", "blueberry"].flatMap((s) => [0, 1, 2, 3].map((i) => `leaf-${s}-s${i}`)),
   ...[0, 1, 2, 3].map((i) => `blade-snake-s${i}`), ...[0, 1, 2, 3].map((i) => `tier-spruce-s${i}`), ...[0, 1, 2].map((i) => `blade-succulent-${i}`),
   ...["mandarin", "succulent", "sunflower", "snake", "blueberry", "spruce"].map((s) => `bud-${s}`),
-  ...["skr", "ore", "hsol", "jitosol", "jupsol", "cbbtc"].flatMap((p) => [`token-${p}`, `sign-${p}`]),
-  "blossom-mandarin", "bell-blueberry", "head-sunflower", "tip-spruce", "pup-succulent", "seed", "ring", "can", "can-tilt", "ground", "grain",
+  ...["skr", "ore", "hsol", "jitosol", "jupsol", "cbbtc"].map((p) => `token-${p}`),
+  "sign", "blossom-mandarin", "bell-blueberry", "head-sunflower", "tip-spruce", "pup-succulent", "seed", "ring", "can", "can-tilt", "ground", "grain",
 ];
 
 describe("the baked sprite set", () => {
@@ -28,7 +28,8 @@ describe("the baked sprite set", () => {
   it("bakes each part at its drawn size (each box is the drawn part plus the trim's 2 px pad a side and the paint filter): a bud, a sign with its post, a token, a succulent blade", () => {
     const m = meta as unknown as Record<string, { w: number; h: number; ax: number; ay: number }>;   // sprites.json also carries _strips and _bakedL
     expect(m["bud-mandarin"].h).toBeGreaterThan(12); expect(m["bud-mandarin"].h).toBeLessThan(16);   // measured 14.33 (10-02 pre-flight bake)
-    expect(m["sign-ore"].h).toBeGreaterThan(24); expect(m["sign-ore"].ay).toBeGreaterThan(m["sign-ore"].h / 2);   // measured h 25.67, ay 14: the board sits 12 to 13.5 px above the origin, the post and its mark about 9.5 below
+    expect(m["sign"].h).toBeGreaterThan(24); expect(m["sign"].ay).toBeGreaterThan(m["sign"].h / 2);   // measured h 25.67, ay 14 (10-02, the blank board of R168): the board sits 12 to 13.5 px above the origin, the post and its mark about 9.5 below
+    for (const p of ["skr", "ore", "hsol", "jitosol", "jupsol", "cbbtc"]) expect(m[`sign-${p}`], `sign-${p}`).toBeUndefined();   // R168: one blank board, the word is type
     expect(m["token-skr"].w).toBeGreaterThan(10); expect(m["token-skr"].w).toBeLessThan(16);   // measured 14.33
     expect(m["blade-succulent-0"].h).toBeGreaterThan(40); expect(m["blade-succulent-0"].h).toBeLessThan(50);   // measured 47.33
     expect(m["grain"].w).toBe(320);
@@ -52,7 +53,7 @@ describe("the baked sprite set", () => {
     expect(SPRITES_B64["ground"].length).toBeLessThan(100_000);   // measured 10-02 on the current ground12.py: the 1x literal is 60,104 chars (the 3x bake downsampled keeps its grain)
   });
   it("the three generated modules agree on the names, and the bake's length tables are species.ts's BAKED_L", () => {
-    expect(readFileSync("src/garden/sprites.ts", "utf8")).toContain('"sign-ore": { src: require("@/assets/garden/sign-ore.png")');   // no @3x in a require: Metro cannot resolve an explicit scale (the spike, 10-02); it picks sign-ore@3x.png itself
+    expect(readFileSync("src/garden/sprites.ts", "utf8")).toContain('"sign": { src: require("@/assets/garden/sign.png")');   // no @3x in a require: Metro cannot resolve an explicit scale (the spike, 10-02); it picks sign@3x.png itself
     const { _bakedL, _strips, ...rest } = meta as Record<string, unknown> & { _bakedL: Record<string, number[]>; _strips: Record<string, unknown> };
     expect(Object.keys(_strips).sort()).toEqual(["blade", "broad", "heart", "small"]);
     expect(Object.keys(SPRITE_META).sort()).toEqual(Object.keys(rest).sort());
