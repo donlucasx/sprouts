@@ -8,9 +8,10 @@ export { toGardenInput } from "./garden-input";
 export const store = createMMKV({ id: "sprouts" });
 const KEY = "me.last";
 
+/** The last verified read, or null when there is none or it predates the Yield Manager build: every reader (Home, the widget task, the background fetch) goes through here. */
 export function readLastMe(): MeResponse | null {
   const raw = store.getString(KEY);
-  return raw ? (JSON.parse(raw) as MeResponse) : null;
+  return raw ? usableMe(JSON.parse(raw) as MeResponse) : null;
 }
 
 export function writeLastMe(me: MeResponse) {
@@ -27,7 +28,7 @@ export function useMe() {
       void refreshWidget(me).catch(() => {}); // the home-screen widget follows every good read
       return me;
     },
-    placeholderData: () => usableMe(readLastMe()) ?? undefined,
+    placeholderData: () => readLastMe() ?? undefined,
     retry: 1,
   });
   const { data, stale } = pickMeState(q.isPlaceholderData ? undefined : q.data, readLastMe(), q.isError);

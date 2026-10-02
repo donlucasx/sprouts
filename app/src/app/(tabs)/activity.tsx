@@ -8,7 +8,7 @@ import { api, ApiError, type ActivityResponse, type Asset } from "@/lib/api";
 import { useMe, useInvalidateMe } from "@/lib/me";
 import { splitRowLine, SPLIT_SECTION } from "@/model/manager";
 import { undoSplit } from "@/lib/manager-api";
-import { formatSkr, formatUsd, formatAmount } from "@/lib/format";
+import { formatSkr, formatUsd, formatAmount, feeClause } from "@/lib/format";
 
 const day = (iso: string) => new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 const solscan = (sig: string) => Linking.openURL(`https://solscan.io/tx/${sig}`);
@@ -57,7 +57,7 @@ export default function Activity() {
             {a.plantings.length === 0 ? <Text style={{ color: "#6B6558" }}>No planting yet.</Text> : null}
             {a.plantings.map((p) => {
               const leg = p.legs[0];
-              const what = p.status === "confirmed" && leg ? `${formatUsd(p.usdcPulledCents)} pulled, ${formatAmount(leg.asset, BigInt(leg.amountOutRaw), usdFor(leg.asset))} planted, fee ${formatUsd(leg.feeCents)}` : p.status === "failed" ? "did not land, nothing pulled" : "in flight";
+              const what = p.status === "confirmed" && leg ? `${formatUsd(p.usdcPulledCents)} pulled, ${formatAmount(leg.asset, BigInt(leg.amountOutRaw), usdFor(leg.asset))} planted${feeClause(leg.feeCents)}` : p.status === "failed" ? "did not land, nothing pulled" : "in flight";
               return <Line key={p.id} text={`${day(p.ts)}, ${what}`} signature={p.signature} />;
             })}
           </Card>

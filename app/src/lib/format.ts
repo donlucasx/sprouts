@@ -5,7 +5,7 @@ import type { Holding } from "./api";
 export const DECIMALS: Record<Asset, number> = { SKR: 6, stORE: 11, hSOL: 9, JitoSOL: 9, JupSOL: 9, cbBTC: 8 };
 export const COIN_NAME: Record<Asset, string> = { SKR: "SKR", stORE: "stORE", hSOL: "hSOL", JitoSOL: "JitoSOL", JupSOL: "JupSOL", cbBTC: "cbBTC" };
 /** Places shown per coin. */
-const SHOWN: Record<Asset, number> = { SKR: 2, stORE: 4, hSOL: 4, JitoSOL: 4, JupSOL: 4, cbBTC: 6 };
+const SHOWN: Record<Asset, number> = { SKR: 2, stORE: 4, hSOL: 4, JitoSOL: 4, JupSOL: 4, cbBTC: 8 };
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const SKR_DECIMALS = DECIMALS.SKR;
 
@@ -44,6 +44,11 @@ export function formatAmount(asset: Asset, raw: bigint, usd: number | null): str
   const amount = Number(raw) / 10 ** DECIMALS[asset];
   const text = `${amount.toFixed(SHOWN[asset])} ${COIN_NAME[asset]}`;
   return usd === null ? text : `${text} (${formatUsd(Math.round(amount * usd * 100))})`;
+}
+
+/** The receipt's fee clause: none for a legacy planting with no recorded fee (migration 0005 left those at 0; their fee was taken in the coin). */
+export function feeClause(feeCents: number): string {
+  return feeCents > 0 ? `, fee ${formatUsd(feeCents)}` : "";
 }
 
 /** The line under a pin (the ORE plan's finding 9, generalised): what a share of each dollar grows. */

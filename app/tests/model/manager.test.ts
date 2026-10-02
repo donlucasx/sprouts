@@ -55,17 +55,38 @@ describe("splitRows (spec 3.1)", () => {
     const rows = splitRows(rules({ managed: true, stop: "careful", pins: { SKR: 70 }, allocation: split({ SKR: 70, hSOL: 10, JitoSOL: 10, JupSOL: 10 }) }));
     expect(rows[0]).toEqual({ asset: "SKR", pct: 70, mode: "pinned", bound: null });
   });
+
+  // Audit fix F1: the unsaved ON draft reads the stop's split, not the saved OFF allocation.
+  const preview = split({ SKR: 45, stORE: 5, hSOL: 20, JitoSOL: 10, JupSOL: 10, cbBTC: 10 });
+  it("on with a preview and no pins: every row reads the preview, with the bounds", () => {
+    const rows = splitRows(rules({ managed: true, stop: "balanced" }), preview);
+    expect(rows.map((r) => r.pct)).toEqual([45, 5, 20, 10, 10, 10]);
+    expect(rows[0]).toEqual({ asset: "SKR", pct: 45, mode: "auto", bound: "at least 35%" });
+    expect(rows[2]).toEqual({ asset: "hSOL", pct: 20, mode: "auto", bound: "at most 25%" });
+  });
+  it("on with a preview: a pinned row keeps its pin", () => {
+    const rows = splitRows(rules({ managed: true, stop: "balanced", pins: { stORE: 50 } }), preview);
+    expect(rows[1]).toEqual({ asset: "stORE", pct: 50, mode: "pinned", bound: null });
+    expect(rows[2].pct).toBe(20);
+  });
+  it("off ignores the preview", () => {
+    expect(splitRows(rules({}), preview)[0]).toEqual({ asset: "SKR", pct: 100, mode: "the rest", bound: null });
+    expect(splitRows(rules({}), preview)[2].pct).toBe(0);
+  });
 });
 
 describe("pins", () => {
-  it("canStepUp: off, the non-SKR pins stop where SKR would fall under the manual floor of 25; on, only the coin's pin max applies", () => {
+  it("canStepUp mirrors the API's validatePins: off, the manual floor of 25; on, the stop's floor, or 100 when SKR is pinned", () => {
     const off = (pins: Pins) => ({ managed: false, stop: "balanced" as Stop, pins, allocation: split({ SKR: 100 }) });
     expect(canStepUp(off({ stORE: 50, hSOL: 20 }), "hSOL")).toBe(true);    // 70 pinned, +5 leaves SKR 25
     expect(canStepUp(off({ stORE: 50, hSOL: 25 }), "hSOL")).toBe(false);   // 75 pinned, +5 leaves SKR 20
     expect(canStepUp(off({ stORE: 50, hSOL: 25 }), "cbBTC")).toBe(false);  // the floor binds every coin, not only the stepped one
     expect(canStepUp(off({ stORE: 50 }), "stORE")).toBe(false);            // stORE's own max is 50
     const on = (pins: Pins) => ({ managed: true, stop: "careful" as Stop, pins, allocation: split({ SKR: 50, hSOL: 50 }) });
-    expect(canStepUp(on({ stORE: 50, hSOL: 70 }), "hSOL")).toBe(true);     // on: the API decides the floor; +5 stays under hSOL's max 75
+    expect(canStepUp(on({ stORE: 5, hSOL: 40 }), "hSOL")).toBe(true);      // Careful: 50 pinned = 100 - the floor of 50
+    expect(canStepUp(on({ stORE: 5, hSOL: 45 }), "hSOL")).toBe(false);     // 55 would leave SKR under 50
+    expect(canStepUp(on({ SKR: 60, hSOL: 35 }), "hSOL")).toBe(true);       // SKR pinned: the total may reach 100
+    expect(canStepUp(on({ SKR: 60, hSOL: 40 }), "hSOL")).toBe(false);      // 105
     expect(canStepUp(on({ hSOL: 75 }), "hSOL")).toBe(false);
   });
   it("togglePin pins a coin at its current percent and unpins it", () => {
@@ -117,5 +138,7 @@ describe("the sentence, the undo line, Activity's rows", () => {
     expect(splitRowLine({ ts, by: "you", from, to: from, stop: "bold", why: null, fallback: null })).toBe("Oct 3, you: Bold.");
     // Review Focus 3.
     expect(splitRowLine({ ts, by: "undo", from: to, to: from, stop: null, why: null, fallback: null })).toBe("Oct 3, undone. Yesterday's split is back; the Yield Manager is off.");
+    // Audit fix F6: the API's UTC day, so 19:00 PDT on Oct 2 reads Oct 3, as the Rules card's "Changed Oct 3." does.
+    expect(splitRowLine({ ts: "2026-10-03T02:00:00.000Z", by: "you", from, to, stop: "balanced", why: null, fallback: null })).toBe("Oct 3, you: hSOL 15 to 20, cbBTC 10 to 5.");
   });
 });

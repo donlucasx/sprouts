@@ -13,6 +13,6 @@ describe("plantingNotice", () => {
   });
   it("a cbBTC planting says it sits in the Seeker wallet, with the coin's own decimals", () => {
     expect(plantingNotice({ asset: "cbBTC", usdcInCents: 200, amountOutRaw: "2352" }, { skrUsd: null, storeUsd: null }))
-      .toBe("$2.00 of change became 0.000024 cbBTC, in your Seeker wallet. A new sprout is waiting in your garden.");
+      .toBe("$2.00 of change became 0.00002352 cbBTC, in your Seeker wallet. A new sprout is waiting in your garden.");
   });
 });

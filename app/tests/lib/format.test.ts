@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatUsd, formatSkr, formatAsOf, roundUpTo, formatWallet, formatStore, formatAmount, DECIMALS, formatHolding, shareLine, dayLabel, COIN_NAME } from "@/lib/format";
+import { formatUsd, formatSkr, formatAsOf, roundUpTo, formatWallet, formatStore, formatAmount, DECIMALS, formatHolding, shareLine, dayLabel, COIN_NAME, feeClause } from "@/lib/format";
 
 describe("format", () => {
   it("dollars first, two decimals, whole cents", () => {
@@ -43,7 +43,7 @@ describe("stORE amounts", () => {
   });
 });
 
-// Spec 3.3, 3.5: six coins format with their own decimals; the SOL coins and stORE show 4 places, cbBTC 6, SKR keeps 2.
+// Spec 3.3, 3.5: six coins format with their own decimals; the SOL coins and stORE show 4 places, cbBTC 8 (spec 5.1), SKR keeps 2.
 describe("six coins", () => {
   it("names and decimals in the registry's order", () => {
     expect(Object.keys(DECIMALS)).toEqual(["SKR", "stORE", "hSOL", "JitoSOL", "JupSOL", "cbBTC"]);
@@ -54,7 +54,7 @@ describe("six coins", () => {
   it("formatAmount keeps SKR and stORE as before and formats the four new coins with a dollar beside", () => {
     expect(formatAmount("hSOL", 14_181_944n, 168)).toBe("0.0142 hSOL ($2.38)");
     expect(formatAmount("JitoSOL", 12_939_970n, null)).toBe("0.0129 JitoSOL");
-    expect(formatAmount("cbBTC", 2_352n, 83_600)).toBe("0.000024 cbBTC ($1.97)");
+    expect(formatAmount("cbBTC", 2_352n, 83_600)).toBe("0.00002352 cbBTC ($1.97)");
     expect(formatAmount("SKR", 5_256_186n, null)).toBe(formatSkr(5_256_186n, null));
     expect(formatAmount("stORE", 122_495_137n, null)).toBe(formatStore(122_495_137n, null));
   });
@@ -69,10 +69,15 @@ describe("six coins", () => {
     expect(formatHolding({ asset: "hSOL", heldRaw: "2000000000", putInCents: 400, valueUsd: 336, earnedUsd: 2.8, earnedUnderlyingRaw: "20000000" }))
       .toBe("2.0000 hSOL ($336.00), earned $2.80, in your Seeker wallet, not locked. Sprouts cannot sell it for you.");
     expect(formatHolding({ asset: "cbBTC", heldRaw: "2389", putInCents: 200, valueUsd: 1.997, earnedUsd: null, earnedUnderlyingRaw: null }))
-      .toBe("0.000024 cbBTC ($2.00), in your Seeker wallet, not locked. Sprouts cannot sell it for you.");
+      .toBe("0.00002389 cbBTC ($2.00), in your Seeker wallet, not locked. Sprouts cannot sell it for you.");
     // Review Focus 4: no price yet (no snapshot row), no earned: the amount alone.
     expect(formatHolding({ asset: "cbBTC", heldRaw: "2389", putInCents: 200, valueUsd: null, earnedUsd: null, earnedUnderlyingRaw: null }))
-      .toBe("0.000024 cbBTC, in your Seeker wallet, not locked. Sprouts cannot sell it for you.");
+      .toBe("0.00002389 cbBTC, in your Seeker wallet, not locked. Sprouts cannot sell it for you.");
+  });
+
+  it("feeClause: no clause for a legacy row with no recorded fee (audit fix F4), else the fee in dollars", () => {
+    expect(feeClause(0)).toBe("");
+    expect(feeClause(1)).toBe(", fee $0.01");
   });
 
   it("dayLabel renders a UTC YYYY-MM-DD as given (Review Focus 5: no timezone shift)", () => {
