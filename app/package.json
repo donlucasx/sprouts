@@ -32,6 +32,8 @@
   "main": "./index.js",
   "version": "0.0.0",
   "dependencies": {
+    "@expo-google-fonts/albert-sans": "^0.4.2",
+    "@expo-google-fonts/outfit": "^0.4.3",
     "@expo/metro-runtime": "~57.0.5",
     "@expo/vector-icons": "^15.0.2",
     "@nanostores/react": "^1.1.0",
@@ -44,6 +46,7 @@
     "expo-background-task": "~57.0.20",
     "expo-constants": "~57.0.5",
     "expo-dev-client": "~57.0.6",
+    "expo-font": "~57.0.4",
     "expo-linking": "~57.0.3",
     "expo-notifications": "~57.0.21",
     "expo-router": "~57.0.6",

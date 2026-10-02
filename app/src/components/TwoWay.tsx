@@ -1,18 +1,54 @@
-import { Pressable, Text, View } from "react-native";
+import { Pressable, View } from 'react-native'
+import { radius, spacing, TARGET, useTheme } from '@/theme'
+import { ThemedText } from './ThemedText'
 
-/** Two options in one outlined bar, the chosen one filled, so both read as choices (09-29: a filled button beside plain text did not). */
-export function TwoWay<T extends string>({ options, value, onChange }: { options: { value: T; label: string }[]; value: T; onChange: (v: T) => void }) {
+/** Two or three options in one outlined bar, the chosen one filled, so each reads as a choice (09-29: a filled button beside plain text did not). */
+export function TwoWay<T extends string>({
+  options,
+  value,
+  onChange,
+}: {
+  options: { value: T; label: string }[]
+  value: T
+  onChange: (v: T) => void
+}) {
+  const { colors } = useTheme()
   return (
-    <View style={{ flexDirection: "row", borderWidth: 1.5, borderColor: "#2F5D3A", borderRadius: 12, overflow: "hidden" }}>
+    <View
+      style={{
+        flexDirection: 'row',
+        borderWidth: 1.5,
+        borderColor: colors.accent,
+        borderRadius: radius.md,
+        borderCurve: 'continuous',
+        overflow: 'hidden',
+      }}
+    >
       {options.map((o) => {
-        const on = o.value === value;
+        const on = o.value === value
         return (
-          <Pressable key={o.value} onPress={() => onChange(o.value)} accessibilityRole="button" accessibilityState={{ selected: on }}
-            style={{ flex: 1, paddingVertical: 12, alignItems: "center", backgroundColor: on ? "#2F5D3A" : "transparent" }}>
-            <Text style={{ color: on ? "#F4EEDF" : "#2F5D3A", fontSize: 16, fontWeight: "600" }}>{o.label}</Text>
+          <Pressable
+            key={o.value}
+            onPress={() => onChange(o.value)}
+            accessibilityRole="button"
+            accessibilityLabel={o.label}
+            accessibilityState={{ selected: on }}
+            style={({ pressed }) => ({
+              flex: 1,
+              minHeight: TARGET - spacing.xs,
+              paddingVertical: spacing.md,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: on ? colors.accent : 'transparent',
+              opacity: pressed && !on ? 0.7 : 1,
+            })}
+          >
+            <ThemedText variant="label" style={{ color: on ? colors.onAccent : colors.accentText }}>
+              {o.label}
+            </ThemedText>
           </Pressable>
-        );
+        )
       })}
     </View>
-  );
+  )
 }

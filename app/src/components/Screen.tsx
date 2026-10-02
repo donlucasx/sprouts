@@ -1,19 +1,78 @@
-import { Pressable, SafeAreaView, ScrollView, Text, View } from "react-native";
-import { router } from "expo-router";
-import type { PropsWithChildren } from "react";
+import { Pressable, ScrollView, View, type RefreshControlProps } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { MaterialCommunityIcons } from '@expo/vector-icons'
+import { router } from 'expo-router'
+import type { PropsWithChildren, ReactElement } from 'react'
+import { spacing, TARGET, useTheme } from '@/theme'
+import { ThemedText } from './ThemedText'
 
-/** Paper ground, one column, comfortable padding: every screen sits on this. `back` adds the way home (the navigator has no header). */
-export function Screen({ children, scroll = true, back = false }: PropsWithChildren<{ scroll?: boolean; back?: boolean }>) {
-  const goBack = () => (router.canGoBack() ? router.back() : router.replace("/home"));
+/**
+ * Paper ground, one column, the screen edge, and the phone's insets (the status bar on an edge-to-edge Android; the bottom only
+ * on a stack screen, since a tab screen ends at the tab bar). `back` adds the way home (the navigator has no header); `title`
+ * sets the screen's title in the Title step.
+ */
+export function Screen({
+  children,
+  scroll = true,
+  back = false,
+  title,
+  inset = 'both',
+  refreshControl,
+}: PropsWithChildren<{
+  scroll?: boolean
+  back?: boolean
+  title?: string
+  inset?: 'both' | 'top'
+  refreshControl?: ReactElement<RefreshControlProps>
+}>) {
+  const insets = useSafeAreaInsets()
+  const { colors } = useTheme()
+  const goBack = () => (router.canGoBack() ? router.back() : router.replace('/home'))
   const body = (
-    <View style={{ padding: 20, gap: 16 }}>
+    <View
+      style={{
+        flex: scroll ? undefined : 1,
+        paddingHorizontal: spacing.edge,
+        paddingTop: insets.top + spacing.lg,
+        paddingBottom: (inset === 'both' ? insets.bottom : 0) + spacing.edge,
+        gap: spacing.lg,
+      }}
+    >
       {back ? (
-        <Pressable onPress={goBack} accessibilityRole="button" accessibilityLabel="Back" hitSlop={12} style={{ alignSelf: "flex-start", paddingVertical: 4 }}>
-          <Text style={{ fontSize: 16, color: "#2F5D3A" }}>{"‹ Back"}</Text>
+        <Pressable
+          onPress={goBack}
+          accessibilityRole="button"
+          accessibilityLabel="Back"
+          hitSlop={8}
+          style={({ pressed }) => ({
+            alignSelf: 'flex-start',
+            minHeight: TARGET - spacing.xs,
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: spacing.xs,
+            marginLeft: -spacing.xs,
+            opacity: pressed ? 0.6 : 1,
+          })}
+        >
+          <MaterialCommunityIcons name="arrow-left" size={22} color={colors.accentText} />
+          <ThemedText variant="label" tone="accentText">
+            Back
+          </ThemedText>
         </Pressable>
       ) : null}
+      {title ? <ThemedText variant="title">{title}</ThemedText> : null}
       {children}
     </View>
-  );
-  return <SafeAreaView style={{ flex: 1, backgroundColor: "#F4EEDF" }}>{scroll ? <ScrollView>{body}</ScrollView> : body}</SafeAreaView>;
+  )
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
+      {scroll ? (
+        <ScrollView keyboardShouldPersistTaps="handled" refreshControl={refreshControl}>
+          {body}
+        </ScrollView>
+      ) : (
+        body
+      )}
+    </View>
+  )
 }
