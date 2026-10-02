@@ -3,6 +3,8 @@ import { sunflower } from "@/model/geometry/sunflower";
 import { spruce } from "@/model/geometry/spruce";
 import { branchFlags } from "@/model/geometry/common";
 import type { ShootIn, LayoutOpts } from "@/model/species";
+import { snake } from "@/model/geometry/snake";
+import { blueberry } from "@/model/geometry/blueberry";
 
 const O: LayoutOpts = { pending: 0, fruit: 0, ripening: 0, blossom: false, pups: 0, head: false };
 const sh = (ages: number[], buds = 0): ShootIn[] => { const raw = ages.map((age, i) => ({ id: `h${i}`, ageDays: age, band: 1 as const, opened: i < ages.length - buds })); const br = branchFlags(raw); return raw.map((s, i) => ({ ...s, branch: br[i] })); };
@@ -78,5 +80,53 @@ describe("the spruce (gen03 plant_cbbtc3, cap 200)", () => {
     expect(toks.map((t) => t.x)).toEqual([-5, 5]);
     expect(toks[0].y).toBeCloseTo(-rise * 0.35, 10); expect(toks[1].y).toBeCloseTo(-rise * 0.45, 10);
     expect(sprites(spruce(sh([30]), O, 1)).some((s) => s.part === "tip")).toBe(true);
+  });
+});
+
+describe("the snake plant (gen04:143-159)", () => {
+  it("fans of five from the centre out, blades 14 / 30 / 48 / 64 by stage times band, angles 5 + 5 per pair; at most four fans, later shoots join them", () => {
+    const l = snake(sh(Array.from({ length: 7 }, (_, i) => 40 - i * 5)), O, 1);
+    const blades = sprites(l).filter((s) => s.part === "blade");
+    expect(blades[0]).toMatchObject({ name: "blade-snake-s3", x: -2.4, rot: -5, scale: 1 });
+    expect(blades[2]).toMatchObject({ x: -(2.4 + 1.8), rot: -10 });
+    expect(blades[5]).toMatchObject({ x: 19 - 2.4 });   // the second fan at +(12 + 7)
+    const many = snake(sh(Array.from({ length: 30 }, (_, i) => 300 - i * 9)), O, 1);
+    const xs = sprites(many).filter((s) => s.part === "blade").map((b) => Math.round(b.x));
+    expect(Math.max(...xs.map(Math.abs))).toBeLessThanOrEqual(26 + 6);
+    expect(sprites(many).filter((s) => s.part === "blade")).toHaveLength(30);
+  });
+  it("tokens at the foot, the swelling 4 px up and right", () => {
+    const l = snake(sh([20]), { ...O, fruit: 2, pending: 0.25 }, 1);
+    expect(sprites(l).filter((s) => s.name === "token-jitosol").map((t) => [t.x, t.y])).toEqual([[-4, -4], [4, -4]]);
+    expect(sprites(l).find((s) => s.part === "swelling")).toMatchObject({ x: 4, y: -4, scale: 3 });
+  });
+  it("band 2 at k 0.8: the blade's scale is band times k and carries no xScale, so the drawn length is 1.28 · 0.8 · 64", () => {
+    const l = snake([{ id: "a", ageDays: 40, band: 2, opened: true, branch: false }], O, 0.8);
+    const b = sprites(l).find((s) => s.part === "blade")!;
+    expect(b.scale).toBeCloseTo(1.28 * 0.8, 10); expect(b.xScale).toBeUndefined();
+    expect(b.scale * 64).toBeCloseTo(65.536, 10);
+  });
+});
+
+describe("the blueberry bush (gen04:161-180)", () => {
+  it("canes of eight: the first upright to min(161.5, 18 + 15 m), later canes lean 14 + 6 per pair and rise 0.85; at most four canes", () => {
+    const l = blueberry(sh(Array.from({ length: 10 }, (_, i) => 100 - i * 9)), O, 1);
+    const canes = stems(l).filter((s) => s.part === "cane");
+    expect(canes[0]).toMatchObject({ x1: 0, y1: -(18 + 15 * 8) });
+    expect(canes[1]).toMatchObject({ x1: 20, y1: -((18 + 15 * 2) * 0.85), bend: 6 });
+    expect(stems(blueberry(sh(Array.from({ length: 40 }, (_, i) => 400 - i * 9)), O, 1)).filter((s) => s.part === "cane")).toHaveLength(4);
+  });
+  it("twigs of two then three small ovals at 62 minus 6 per node mod 3; token clusters of three at the newest tips; the bell last", () => {
+    const l = blueberry(sh([40, 30, 5]), { ...O, fruit: 1, ripening: 0.5 }, 1);
+    const leaves = sprites(l).filter((s) => s.part === "leaf");
+    expect(leaves.filter((f) => f.shoot === "h0")).toHaveLength(3); expect(leaves.filter((f) => f.shoot === "h2")).toHaveLength(2);
+    expect(sprites(l).filter((s) => s.name === "token-jupsol")).toHaveLength(3);
+    expect(sprites(l).find((s) => s.name === "bell-blueberry")?.scale).toBeCloseTo(0.8, 5);
+  });
+  it("band 2 at k 0.8: a leaf's scale is band times k (0.85 off the centre) and carries no xScale", () => {
+    const l = blueberry([{ id: "a", ageDays: 40, band: 2, opened: true, branch: false }], O, 0.8);
+    const leaves = sprites(l).filter((s) => s.part === "leaf");
+    expect(leaves.map((s) => s.scale).sort()).toEqual([1.28 * 0.8 * 0.85, 1.28 * 0.8 * 0.85, 1.28 * 0.8].sort());
+    expect(leaves.every((s) => s.xScale === undefined)).toBe(true);
   });
 });
