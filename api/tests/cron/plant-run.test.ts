@@ -335,6 +335,32 @@ describe("runPlanting", () => {
     expect(leg.amountOutRaw).toBe(286_500_000n);                                 // 250_000_000 shares at 1.146 SKR a share
   });
 
+  it("a sent planting booked late by the reconciliation recomputes its SKR leg from the stored before-read (R141, review M6)", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await runPlanting({ repo, now: NOW, chain: fakeChain({ sendPlanting: async () => { throw new Error("timeout"); } }) });
+    const later = new Date(NOW.getTime() + 10 * 60_000);
+    await runPlanting({ repo, now: later, chain: fakeChain({ signatureStatus: async () => "confirmed", readShares: async () => 1_250_000_000n }) });
+    const p = (await repo.listPlantings("U", 1))[0];
+    expect(p.status).toBe("confirmed");
+    expect(p.sharesMinted).toBe(250_000_000n);
+    expect((await repo.plantingLegs(p.id))[0].amountOutRaw).toBe(286_500_000n);     // not the quote's 102_460_000
+  });
+
+  it("a landed change that is not above zero keeps the quote and says so (R141, review M6)", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await repo.saveRules("U", { allocation: { ...SKR_ONLY, SKR: 0, hSOL: 100 } });
+    const errors: string[] = [];
+    const spy = vi.spyOn(console, "error").mockImplementation((m: unknown) => { errors.push(String(m)); });
+    try {
+      await runPlanting({ repo, now: NOW, chain: fakeChain({ assetBalanceRaw: async () => 5_000_000n }) }); // the same balance before and after
+      const [leg] = await repo.plantingLegs((await repo.listPlantings("U", 1))[0].id);
+      expect(leg.amountOutRaw).toBe(102_460_000n);
+      expect(errors.some((e) => /not above zero; the quote stands/.test(e))).toBe(true);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it("when the balance read fails the quote stands and the log says so (R141)", async () => {
     const repo = await seeded([83, 62, 70]);
     await repo.saveRules("U", { allocation: { ...SKR_ONLY, SKR: 0, hSOL: 100 } });
