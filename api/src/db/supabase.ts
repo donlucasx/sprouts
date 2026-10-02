@@ -196,6 +196,11 @@ export class SupabaseRepo implements Repo {
     if (error) throw new Error(error.message);
   }
 
+  async setLegAmountOut(plantingId: string, asset: Asset, amountOutRaw: bigint) {
+    const { error } = await this.db.from("planting_legs").update({ amount_out_raw: amountOutRaw.toString() }).eq("planting_id", plantingId).eq("asset", asset);
+    if (error) throw new Error(error.message);
+  }
+
   async setPlantingShares(plantingId: string, s: { before: bigint | null; after: bigint; minted: bigint }) {
     const { error } = await this.db.from("plantings").update({ shares_before: s.before === null ? null : s.before.toString(), shares_after: s.after.toString(), shares_minted: s.minted.toString() }).eq("id", plantingId);
     if (error) throw new Error(error.message);

@@ -1,5 +1,5 @@
 import type { Repo } from "@/db/repo";
-import type { PlantingRow, WalletRow } from "@/db/types";
+import type { PlantingLegRow, PlantingRow, WalletRow } from "@/db/types";
 import { rulesRowToRules } from "@/db/types";
 import { pickAsset, type Asset } from "@/domain/allocation";
 import { dayOf } from "@/domain/day";
@@ -35,8 +35,10 @@ export type Chain = {
   signatureStatus(signature: string): Promise<SignatureStatus>;
   /** The user's position share count, read before a send and again after confirmation: what the planting minted [A16]. */
   readShares(user: string): Promise<bigint>;
-  /** StakeConfig.share_price at 1e9 scale, for a planting booked late without a before-read. */
+  /** StakeConfig.share_price at 1e9 scale, for a planting booked late without a before-read, and for what an SKR leg landed [R141]. */
   sharePrice(): Promise<bigint>;
+  /** The Seed Vault wallet's balance of a wallet coin (every coin but SKR), 0n with no account; throws on an RPC error. Read before a send and after confirmation: what the planting delivered [R141]. */
+  assetBalanceRaw(owner: string, asset: Asset): Promise<bigint>;
 };
 
 export type Planted = { wallet: string; asset: Asset; pullCents: number; signature: string };
@@ -99,14 +101,44 @@ async function reconcileSentPlantings(a: { repo: Repo; now: Date; chain: Chain }
   }
 }
 
-/** The one place a planting becomes confirmed: status, the ledger from the recorded legs, then the shares it minted [A16]. */
-async function bookConfirmed(repo: Repo, chain: Chain, p: PlantingRow) {
+/** The one place a planting becomes confirmed: status, the ledger from the recorded legs, the shares it minted [A16], then what each leg landed [R141]. */
+async function bookConfirmed(repo: Repo, chain: Chain, p: PlantingRow, outBefore: bigint | null = null) {
   await repo.setPlantingStatus(p.id, "confirmed");
   const legs = await repo.plantingLegs(p.id);
   for (const leg of legs) await repo.bumpLedger(p.walletPubkey, leg.asset, leg.usdcInCents);
   const after = await chain.readShares(p.userPubkey);
   const minted = p.sharesBefore === null ? await estimateMinted(chain, legs) : after - p.sharesBefore;
   await repo.setPlantingShares(p.id, { before: p.sharesBefore, after, minted });
+  await recordLanded(repo, chain, p, legs, minted, outBefore);
+}
+
+/**
+ * R141: each leg's amount becomes what landed, not the quote's minimum. The SKR leg from its minted shares at the share price (the
+ * stake is its destination); a wallet coin from its balance read before the send and again now. A missing or failed read, or a
+ * change that is not above zero, leaves the quote and says so in the log; nothing here can interrupt the booking.
+ */
+async function recordLanded(repo: Repo, chain: Chain, p: PlantingRow, legs: PlantingLegRow[], minted: bigint, outBefore: bigint | null) {
+  for (const leg of legs) {
+    try {
+      let landed: bigint;
+      if (leg.asset === "SKR") {
+        if (p.sharesBefore === null) continue; // minted was itself estimated from the quote (a row from before the share columns)
+        landed = (minted * (await chain.sharePrice())) / 1_000_000_000n;
+      } else if (outBefore === null) {
+        console.error(`planting ${p.id}: no ${leg.asset} balance from before the send; the quote stands`);
+        continue;
+      } else {
+        landed = (await chain.assetBalanceRaw(p.userPubkey, leg.asset)) - outBefore;
+      }
+      if (landed <= 0n) {
+        console.error(`planting ${p.id}: ${leg.asset} landed ${landed}, not above zero; the quote stands`);
+        continue;
+      }
+      await repo.setLegAmountOut(p.id, leg.asset, landed);
+    } catch (e) {
+      console.error(`planting ${p.id}: what ${leg.asset} landed could not be read (${message(e)}); the quote stands`);
+    }
+  }
 }
 
 /** A planting booked late, with no before-read (a row from before the share columns existed): the SKR leg at today's share price. */
@@ -198,6 +230,15 @@ async function plantOneOrThrow(a: { repo: Repo; now: Date; chain: Chain }, w: Wa
   // Record the signed transaction before it goes anywhere, then claim the round-ups in one conditional statement (review C1).
   // The share count right before the send: after confirmation the difference is what this planting minted [A16].
   const sharesBefore = await a.chain.readShares(w.userPubkey);
+  // R141: a wallet coin's destination balance right before the send; after confirmation the difference is what landed.
+  let outBefore: bigint | null = null;
+  if (asset !== "SKR") {
+    try {
+      outBefore = await a.chain.assetBalanceRaw(w.userPubkey, asset);
+    } catch (e) {
+      console.error(`planting for ${w.pubkey}: the ${asset} balance before the send could not be read (${message(e)}); the quote stands`);
+    }
+  }
   // The coin's rate on the day it was planted, for "earned" per coin (spec 7.6); null before the first snapshot.
   const rateAtPlanting = (await a.repo.getCoinDay(dayOf(a.now), asset))?.rate ?? null;
   const planting = await a.repo.insertPlanting(
@@ -234,7 +275,7 @@ async function plantOneOrThrow(a: { repo: Repo; now: Date; chain: Chain }, w: Wa
         return { wallet: w.pubkey, reason: "send unknown" };
       }
     }
-    await bookConfirmed(a.repo, a.chain, planting);
+    await bookConfirmed(a.repo, a.chain, planting, outBefore);
     return { wallet: w.pubkey, asset, pullCents: amount.pullCents, signature: built.signature };
   } catch (e) {
     console.error(`planting for ${w.pubkey} sent (${built.signature}), booking interrupted: ${message(e)}; reconciled next run`);

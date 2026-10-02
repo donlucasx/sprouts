@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { MemoryRepo } from "@/db/memory";
 import { SKR_ONLY } from "@/domain/coins";
 import { runPlanting, type Chain } from "@/lib/plant-run";
@@ -18,6 +18,7 @@ function fakeChain(over: Partial<Chain> = {}): Chain {
     signatureStatus: async () => "pending",
     readShares: async () => 1_000_000_000n,
     sharePrice: async () => 1_146_000_000n,
+    assetBalanceRaw: async () => 0n,
     ...over,
   };
 }
@@ -296,6 +297,45 @@ describe("runPlanting", () => {
     expect(p.sharesBefore).toBe(1_000_000_000n);
     expect(p.sharesAfter).toBe(1_250_000_000n);
     expect(p.sharesMinted).toBe(250_000_000n);
+  });
+
+  // R141: the leg records what landed, not the quote. A wallet coin from its balance read before the send and again after
+  // confirmation; SKR from its minted shares at the share price. When a read is missing or fails the quote stands and the log says so.
+  it("a confirmed wallet-coin leg records what landed: the balance before the send and again after confirmation (R141)", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await repo.saveRules("U", { allocation: { ...SKR_ONLY, SKR: 0, hSOL: 100 } });
+    let bal = 5_000_000n;
+    const reads: string[] = [];
+    const chain = fakeChain({ assetBalanceRaw: async (owner, asset) => { reads.push(`${owner}:${asset}`); return bal; }, sendPlanting: async () => { bal += 103_000_000n; } });
+    const r = await runPlanting({ repo, now: NOW, chain });
+    expect(r.planted[0].asset).toBe("hSOL");
+    expect(reads).toEqual(["U:hSOL", "U:hSOL"]);                                 // the Seed Vault wallet, before and after
+    const [leg] = await repo.plantingLegs((await repo.listPlantings("U", 1))[0].id);
+    expect(leg.amountOutRaw).toBe(103_000_000n);                                 // the quote was 2_180_000 * 47 = 102_460_000
+  });
+
+  it("the SKR leg records the SKR its minted shares are worth at the share price, not the quote (R141)", async () => {
+    const repo = await seeded([83, 62, 70]);
+    let shares = 1_000_000_000n;
+    await runPlanting({ repo, now: NOW, chain: fakeChain({ readShares: async () => shares, sendPlanting: async () => { shares += 250_000_000n; } }) });
+    const [leg] = await repo.plantingLegs((await repo.listPlantings("U", 1))[0].id);
+    expect(leg.amountOutRaw).toBe(286_500_000n);                                 // 250_000_000 shares at 1.146 SKR a share
+  });
+
+  it("when the balance read fails the quote stands and the log says so (R141)", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await repo.saveRules("U", { allocation: { ...SKR_ONLY, SKR: 0, hSOL: 100 } });
+    const errors: string[] = [];
+    const spy = vi.spyOn(console, "error").mockImplementation((m: unknown) => { errors.push(String(m)); });
+    try {
+      const r = await runPlanting({ repo, now: NOW, chain: fakeChain({ assetBalanceRaw: async () => { throw new Error("rpc: 503"); } }) });
+      expect(r.planted[0].asset).toBe("hSOL");
+      const [leg] = await repo.plantingLegs((await repo.listPlantings("U", 1))[0].id);
+      expect(leg.amountOutRaw).toBe(102_460_000n);
+      expect(errors.some((e) => /quote stands/.test(e))).toBe(true);
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it("a sent planting booked late without a before-read estimates its minted shares from the leg and the share price", async () => {

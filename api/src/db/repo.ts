@@ -45,6 +45,8 @@ export interface Repo {
   insertPlanting(p: NewPlanting, legs: Omit<T.PlantingLegRow, "plantingId">[]): Promise<T.PlantingRow>;
   setPlantingStatus(id: string, status: T.PlantingStatus, signature?: string): Promise<void>;
   setPlantingShares(plantingId: string, p: { before: bigint | null; after: bigint; minted: bigint }): Promise<void>;
+  /** R141: the leg's amount becomes what landed, once read after confirmation. */
+  setLegAmountOut(plantingId: string, asset: Asset, amountOutRaw: bigint): Promise<void>;
   /** Plantings still `sent` (their send threw before confirmation) that started before `olderThan`. */
   listSentPlantings(olderThan: Date): Promise<T.PlantingRow[]>;
   /** Newest first, any status. */

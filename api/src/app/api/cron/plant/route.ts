@@ -15,6 +15,7 @@ import { decideSplits, applyToUsers } from "@/lib/split-run";
 import { callTool } from "@/lib/anthropic";
 import { getQuote, pricesUsd } from "@/lib/jupiter";
 import { storeRedeemRate } from "@/lib/store";
+import { assetBalanceRaw } from "@/lib/holdings";
 import { COINS, type Asset } from "@/domain/coins";
 import { USDC_MINT } from "@/lib/constants";
 
@@ -45,6 +46,7 @@ function realChain(): Chain {
     signatureStatus,
     readShares: async (u) => (await readPosition(address(u))).shares,
     sharePrice,
+    assetBalanceRaw: (owner, asset) => assetBalanceRaw(address(owner), asset),
   };
 }
 
