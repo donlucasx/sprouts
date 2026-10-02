@@ -4,7 +4,7 @@ import Animated, { Easing, cancelAnimation, useAnimatedProps, useAnimatedStyle, 
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Svg, { G } from "react-native-svg";
 import { PLANT_ORDER, type Scene, type Part, type PlantId } from "@/model/garden";
-import { CANVAS, FOOT_Y, FRAME, frameFor, plantUnder, signPlacement, toCanvas } from "@/model/layout";
+import { CANVAS, FOOT_Y, FRAME, frameFor, plantUnder, SIDE_GUTTER, signPlacement, toCanvas } from "@/model/layout";
 import { plantLayouts } from "@/model/scene-to-layout";
 import { SOIL_CLIP_ID } from "@/model/soil-clip";
 import { diffScenes, gateDiff, sceneKey, NO_CHANGE, type Diff } from "@/lib/scene-diff";
@@ -71,6 +71,7 @@ export function Garden({ scene: incoming, live, canReady, onWater, onNudge, temp
     fx.value = withTiming(target.x, t); fy.value = withTiming(target.y, t); z.value = withTiming(target.zoom, t); vh.value = withTiming(target.viewH, t);
   }, [target.x, target.y, target.zoom, target.viewH, reduced, fx, fy, z, vh]);
   const framed = useAnimatedStyle(() => ({ transform: [{ translateX: -fx.value * z.value }, { translateY: -fy.value * z.value }, { scale: z.value }] }));
+  const framedPlants = useAnimatedStyle(() => ({ transform: [{ translateX: -fx.value * z.value }, { translateY: -fy.value * z.value }, { scale: z.value }] }));   // the plant layer's own copy (one animated style per view)
   // Spec 8's first frame: react-native-svg loads bundled PNGs through Fresco asynchronously on Android, so the garden fades in over
   // 300 ms on mount and no sprite pops in on its own. The same outer view carries the eased height (R167), with the can's room below.
   const canS = canScale(target.zoom);   // R180: 1.6x G11's proportion (can11 at 1/3 against the plants, never under 32 px wide)
@@ -78,7 +79,9 @@ export function Garden({ scene: incoming, live, canReady, onWater, onNudge, temp
   const shown = useSharedValue(0);
   useEffect(() => { shown.value = withTiming(1, { duration: MOUNT_FADE_MS }); }, [shown]);
   const outer = useAnimatedStyle(() => ({ opacity: shown.value, height: vh.value + below }));
-  const clip = useAnimatedStyle(() => ({ height: vh.value }));
+  const clip = useAnimatedStyle(() => ({ height: vh.value }));        // the box the zoom's gesture covers
+  const clipGround = useAnimatedStyle(() => ({ height: vh.value }));  // one animated style per view
+  const clipPlants = useAnimatedStyle(() => ({ height: vh.value }));
 
   const beforePlants = useMemo(() => (change.before ? plantLayouts(change.before) : null), [change.before]);
   const plan = useMemo(() => openingPlan({ scene: change.scene, plants: plantLayouts(change.scene), before: beforePlants, diff: change.diff, first: change.first, reduced, tempo }), [change, beforePlants, reduced, tempo]);
@@ -130,6 +133,7 @@ export function Garden({ scene: incoming, live, canReady, onWater, onNudge, temp
     .onEnd(snap);
   const zoomGesture = Gesture.Race(pinch, Gesture.Tap().numberOfTaps(2).onEnd(snap));
   const zoomed = useAnimatedStyle(() => ({ transform: [{ translateX: px.value }, { translateY: py.value }, { scale: ps.value }] }));
+  const zoomedPlants = useAnimatedStyle(() => ({ transform: [{ translateX: px.value }, { translateY: py.value }, { scale: ps.value }] }));
 
   // The can's targets (RG25): the plants with a closed bud, hit by the rose's point carried back onto the canvas.
   const budPlants = PLANT_ORDER.filter((c) => of("sprout").some((s) => s.plant === c && s.bud));
@@ -146,7 +150,9 @@ export function Garden({ scene: incoming, live, canReady, onWater, onNudge, temp
   return (
     <Animated.View style={[{ width: w }, outer]}>
      <GestureDetector gesture={zoomGesture}>
-     <Animated.View style={[{ width: w, overflow: "hidden" }, clip]}>
+     <Animated.View style={[{ width: w }, clip]}>
+     {/* the ground layer: soil, rings, seeds, signs, grain, clipped to the garden's own box */}
+     <Animated.View style={[{ position: "absolute", left: 0, top: 0, width: w, overflow: "hidden" }, clipGround]}>
      <Animated.View style={[{ width: w, height: CANVAS.height, transformOrigin: [0, 0, 0] }, zoomed]}>
      <Animated.View style={[{ width: w, height: CANVAS.height, transformOrigin: "0 0" }, framed]}>
       <Svg width={w} height={CANVAS.height} style={{ position: "absolute" }}>
@@ -163,7 +169,16 @@ export function Garden({ scene: incoming, live, canReady, onWater, onNudge, temp
         {/* Spec 3: the paper grain once over the whole garden, the static Svg's last child (app only). */}
         <G opacity={0.5}><SpriteAt name="grain" x={0} y={0} scale={CANVAS.height / 260} xScale={w / 320} /></G>
       </Svg>
+     </Animated.View>
+     </Animated.View>
+     </Animated.View>
+     {/* the plant layer (I4 fix round 3): the same zoom and frame, clipped at the top and bottom only, with the screen's side gutters as
+         room, so a swaying sunflower or the spruce may draw into the margins; the page cannot scroll sideways (its scroll is vertical) */}
+     <Animated.View style={[{ position: "absolute", left: -SIDE_GUTTER, top: 0, width: w + 2 * SIDE_GUTTER, overflow: "hidden" }, clipPlants]} pointerEvents="none">
+     <Animated.View style={[{ position: "absolute", left: SIDE_GUTTER, top: 0, width: w, height: CANVAS.height, transformOrigin: [0, 0, 0] }, zoomedPlants]}>
+     <Animated.View style={[{ width: w, height: CANVAS.height, transformOrigin: "0 0" }, framedPlants]}>
       {[...back, ...front].map((p) => <Plant key={p.plant} p={p} footX={p.x * w} footY={FOOT_Y(p.row)} sway={sway} reduced={reduced} items={itemsOf(p.plant)} settled={!active} before={beforePlants?.find((b) => b.plant === p.plant)?.layout ?? null} />)}
+     </Animated.View>
      </Animated.View>
      </Animated.View>
      </Animated.View>
