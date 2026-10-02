@@ -1,10 +1,10 @@
 import { useState } from 'react'
-import { View } from 'react-native'
 import { Link, router } from 'expo-router'
 import { Screen } from '@/components/Screen'
 import { Card } from '@/components/Card'
 import { Button } from '@/components/Button'
 import { ThemedText } from '@/components/ThemedText'
+import { Disclosure } from '@/components/Disclosure'
 import { useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { useMe, store } from '@/lib/me'
@@ -45,17 +45,6 @@ const DISCLOSURES: [string, string][] = [
     'Sprouts is not tax advice and not investment advice. The Yield Manager, if you turn it on, chooses how new round-ups are split across six coins inside limits you set and limits in code. It never sets the amount, never sells anything you hold, and every change it makes shows in Activity with an undo. The tax export is a record, not a filing.',
   ],
 ]
-
-/** A small label above a group (manual 5: no all caps except small labels with a little tracking). */
-const GroupLabel = ({ children }: { children: string }) => (
-  <ThemedText
-    variant="label"
-    tone="secondary"
-    style={{ textTransform: 'uppercase', letterSpacing: 0.8, marginTop: spacing.sm }}
-  >
-    {children}
-  </ThemedText>
-)
 
 export default function Settings() {
   const { data: me } = useMe()
@@ -110,12 +99,15 @@ export default function Settings() {
         <ThemedText variant="heading">Export for taxes</ThemedText>
         <ThemedText tone="secondary">Coming soon.</ThemedText>
       </Card>
-      <Card>
-        {DISCLOSURES.map(([h, p]) => (
-          <View key={h} style={{ gap: spacing.xs }}>
-            <GroupLabel>{h}</GroupLabel>
-            <ThemedText>{p}</ThemedText>
-          </View>
+      <Card style={{ gap: 0 }}>
+        {/* R145: each disclosure opens in place; the titles read as a list, the story is one tap away. */}
+        <ThemedText variant="heading" style={{ marginBottom: spacing.sm }}>
+          What you should know
+        </ThemedText>
+        {DISCLOSURES.map(([h, p], i) => (
+          <Disclosure key={h} title={h} first={i === 0}>
+            {p}
+          </Disclosure>
         ))}
       </Card>
       <Button title="Sign out" kind="quiet" disabled={busy} onPress={() => signOut(false)} />

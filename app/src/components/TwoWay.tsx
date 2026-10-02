@@ -43,7 +43,7 @@ export function TwoWay<T extends string>({
               opacity: pressed && !on ? 0.7 : 1,
             })}
           >
-            <ThemedText variant="label" style={{ color: on ? colors.onAccent : colors.accentText }}>
+            <ThemedText variant="button" style={{ color: on ? colors.onAccent : colors.accentText }}>
               {o.label}
             </ThemedText>
           </Pressable>

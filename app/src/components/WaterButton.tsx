@@ -51,7 +51,7 @@ export function WaterButton({
           <WateringCan />
         </Svg>
       </Animated.View>
-      <ThemedText variant="label" tone="accentText">
+      <ThemedText variant="button" tone="accentText">
         {label}
       </ThemedText>
     </Pressable>

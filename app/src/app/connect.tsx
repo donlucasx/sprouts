@@ -38,7 +38,8 @@ export default function Connect() {
   const { signTransaction } = useMobileWallet()
   const invalidate = useInvalidateMe()
   const [code, setCode] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
+  const [approving, setApproving] = useState(false)
+  const [coding, setCoding] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const { data: me, refetch } = useMe()
   const [before, setBefore] = useState<string[]>([])
@@ -55,7 +56,7 @@ export default function Connect() {
   /** This phone's wallet is the trading wallet: the Seed Vault key approves the delegation for itself. */
   async function linkThisPhone() {
     if (!session) return
-    setBusy(true)
+    setApproving(true)
     setError(null)
     try {
       const { code } = await api<{ code: string }>('/api/link/new', { method: 'POST', body: {} })
@@ -67,12 +68,12 @@ export default function Connect() {
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'The approval did not go through. Try again.')
     } finally {
-      setBusy(false)
+      setApproving(false)
     }
   }
 
   async function codeForAnotherWallet() {
-    setBusy(true)
+    setCoding(true)
     setError(null)
     try {
       setBefore((me?.wallets ?? []).filter((w) => w.status !== 'revoked').map((w) => w.pubkey))
@@ -80,7 +81,7 @@ export default function Connect() {
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Could not make a code. Try again.')
     } finally {
-      setBusy(false)
+      setCoding(false)
     }
   }
 
@@ -97,8 +98,8 @@ export default function Connect() {
       <Card>
         <ThemedText variant="heading">{"This phone's wallet"}</ThemedText>
         <ThemedText tone="secondary">One fingerprint. Daily limit $5.</ThemedText>
-        <Button title="Approve" loading={busy} onPress={linkThisPhone} />
-        {busy ? (
+        <Button title="Approve" loading={approving} onPress={linkThisPhone} />
+        {approving ? (
           <ThemedText variant="caption" tone="secondary">
             Waiting for your Seeker.
           </ThemedText>
@@ -121,10 +122,10 @@ export default function Connect() {
               On the computer with that wallet, open sprouts.money/link, enter this code and approve. It lasts 15
               minutes, one wallet.
             </ThemedText>
-            <Button title="Get a new code" kind="quiet" disabled={busy} onPress={codeForAnotherWallet} />
+            <Button title="Get a new code" kind="quiet" loading={coding} onPress={codeForAnotherWallet} />
           </View>
         ) : (
-          <Button title="Get a code" kind="quiet" disabled={busy} onPress={codeForAnotherWallet} />
+          <Button title="Get a code" kind="quiet" loading={coding} onPress={codeForAnotherWallet} />
         )}
       </Card>
       {error ? <ThemedText tone="error">{error}</ThemedText> : null}

@@ -61,7 +61,7 @@ export function Button({
       ]}
     >
       {loading ? <ActivityIndicator size="small" color={foreground} /> : null}
-      <ThemedText variant="label" style={{ color: foreground }}>
+      <ThemedText variant="button" style={{ color: foreground }}>
         {title}
       </ThemedText>
     </Pressable>

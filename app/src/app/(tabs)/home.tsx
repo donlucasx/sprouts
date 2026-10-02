@@ -1,8 +1,9 @@
 import { useCallback, useMemo, useState } from 'react'
 import { View, RefreshControl } from 'react-native'
 import { Link, Redirect, useFocusEffect } from 'expo-router'
+import { useQueryClient } from '@tanstack/react-query'
 import { useMe, useInvalidateMe, toGardenInput } from '@/lib/me'
-import { api } from '@/lib/api'
+import { api, ApiError, type MeResponse } from '@/lib/api'
 import { buildScene } from '@/model/garden'
 import { watcherLine } from '@/model/watcher'
 import { Garden } from '@/garden/Garden'
@@ -13,6 +14,7 @@ import { ThemedText } from '@/components/ThemedText'
 import { MarkedTitle } from '@/components/Lockup'
 import { WatcherLine } from '@/components/WatcherLine'
 import { WaterButton } from '@/components/WaterButton'
+import { PauseRow } from '@/components/PauseRow'
 import {
   formatUsd,
   formatSkr,
@@ -22,10 +24,12 @@ import {
   formatWallet,
   COIN_NAME,
   plantedLine,
-  potHeadline,
 } from '@/lib/format'
 import { useSession } from '@/lib/session'
-import { noPlantingLine } from '@/lib/me-state'
+import { noPlantingLine, gardenTotals, gardenLine, pauseState } from '@/lib/me-state'
+import { setPaused } from '@/lib/pause-api'
+import { freshWalletSignIn } from '@/lib/reauth'
+import { identity } from '@/lib/identity'
 import { spacing, useTheme } from '@/theme'
 
 const shortDate = (iso: string) => new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
@@ -35,9 +39,12 @@ export default function Home() {
   const { colors } = useTheme()
   const { data: me, stale, refetch, asOf, loading, unauthorized } = useMe()
   const invalidate = useInvalidateMe()
+  const queryClient = useQueryClient()
   const [justOpened, setJustOpened] = useState<Set<string>>(new Set())
   const [watering, setWatering] = useState(false)
   const [failed, setFailed] = useState(false)
+  const [pausing, setPausing] = useState(false)
+  const [pauseError, setPauseError] = useState<string | null>(null)
   const now = new Date()
   const today = now.toDateString()
   // eslint-disable-next-line react-hooks/exhaustive-deps -- `now` is taken once per render on purpose; the scene follows the local date
@@ -76,6 +83,37 @@ export default function Home() {
     }
   }
 
+  /** The switch (R147): the answer's statuses land on the cached read at once, so the row settles with the switch; the fresh read reconciles after. */
+  async function togglePaused(on: boolean) {
+    setPausing(true)
+    setPauseError(null)
+    try {
+      const answer = await setPaused(!on, freshWalletSignIn(identity))
+      queryClient.setQueryData<MeResponse>(['me'], (old) =>
+        old
+          ? {
+              ...old,
+              wallets: old.wallets.map((w) => ({
+                ...w,
+                status: answer.wallets.find((a) => a.pubkey === w.pubkey)?.status ?? w.status,
+              })),
+            }
+          : old,
+      )
+      void invalidate()
+    } catch (e) {
+      setPauseError(
+        e instanceof ApiError
+          ? e.message
+          : on
+            ? 'Could not turn Sprouts back on. Try again.'
+            : 'Could not pause. Try again.',
+      )
+    } finally {
+      setPausing(false)
+    }
+  }
+
   if (unauthorized) {
     // The token expired or was revoked (R84): back to Welcome.
     void setSession(null)
@@ -85,7 +123,9 @@ export default function Home() {
   if (loading || !me || !scene) return <View style={{ flex: 1, backgroundColor: colors.background }} />
   const skrUsd = me.pot.skrUsd
   const name = me.user.skrName
-  const head = potHeadline(BigInt(me.pot.skrStakedRaw), skrUsd)
+  const staked = BigInt(me.pot.skrStakedRaw)
+  const totals = gardenTotals(me)
+  const pause = pauseState(me.wallets)
   // R96: the line and the can decided together, so they always agree; the can is there only while a bud waits.
   const watcher = watcherLine({
     unrevealed: scene.unrevealed,
@@ -97,7 +137,6 @@ export default function Home() {
     opened: justOpened.size,
     failed,
   })
-  const allStopped = me.wallets.length > 0 && me.wallets.every((w) => w.status !== 'active')
   const wallets = me.wallets.filter((w) => w.status !== 'revoked')
 
   return (
@@ -114,10 +153,10 @@ export default function Home() {
       }
     >
       <MarkedTitle>{name ? `${name}'s garden` : 'Your garden'}</MarkedTitle>
-      <Garden scene={scene} justOpened={justOpened} />
-      {allStopped ? (
-        <ThemedText tone="secondary">Planting is paused. Your plant keeps its fruit and keeps earning.</ThemedText>
+      {pause.shown ? (
+        <PauseRow on={pause.on} line={pause.line} busy={pausing} error={pauseError} onChange={togglePaused} />
       ) : null}
+      <Garden scene={scene} justOpened={justOpened} />
       <WatcherLine text={watcher.line} />
       {watcher.button ? (
         <View style={{ gap: spacing.sm }}>
@@ -130,31 +169,34 @@ export default function Home() {
         </View>
       ) : null}
       <Card>
+        {/* R146: the whole garden first, in dollars; then what went in and what it earned; then each coin. */}
         <ThemedText variant="label" tone="secondary">
           In your garden
         </ThemedText>
         <ThemedText variant="display" numeric>
-          {head.big}
+          {totals.valueUsd === null ? formatSkr(staked, null) : formatUsd(Math.round(totals.valueUsd * 100))}
         </ThemedText>
-        {head.small ? (
-          <ThemedText variant="heading" numeric tone="secondary">
-            {head.small}
+        <ThemedText>{gardenLine(totals)}</ThemedText>
+        <View style={{ gap: spacing.xs, marginTop: spacing.sm }}>
+          <ThemedText variant="heading" numeric>
+            {formatSkr(staked, skrUsd)}
           </ThemedText>
-        ) : null}
-        <ThemedText>
-          Put in {formatSkr(BigInt(me.pot.skrPutInRaw), skrUsd)}. Earned{' '}
-          {formatSkr(BigInt(me.pot.skrEarnedRaw), skrUsd)}. Locked to your Seeker.
-        </ThemedText>
-        {me.holdings.map((h) => (
-          <ThemedText key={h.asset} numeric>
-            {formatHolding(h)}
+          {/* R134: the SKR block's own line carries the lock. */}
+          <ThemedText tone="secondary">
+            Put in {formatSkr(BigInt(me.pot.skrPutInRaw), skrUsd)}. Earned{' '}
+            {formatSkr(BigInt(me.pot.skrEarnedRaw), skrUsd)}. Locked to your Seeker.
           </ThemedText>
-        ))}
-        {me.holdings.length > 0 ? (
-          <ThemedText variant="caption" tone="secondary">
-            {HOLDINGS_NOTE}
-          </ThemedText>
-        ) : null}
+          {me.holdings.map((h) => (
+            <ThemedText key={h.asset} numeric>
+              {formatHolding(h)}
+            </ThemedText>
+          ))}
+          {me.holdings.length > 0 ? (
+            <ThemedText variant="caption" tone="secondary">
+              {HOLDINGS_NOTE}
+            </ThemedText>
+          ) : null}
+        </View>
         {stale && asOf ? (
           <ThemedText variant="caption" tone="error">
             {formatAsOf(asOf, now)}, the chain could not be read just now.

@@ -58,6 +58,8 @@ export default function Rules() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [undone, setUndone] = useState(false)
+  // True only while the Seeker is asked to sign (a save that raises the limit, resume, revoke): the caption under the button.
+  const [signing, setSigning] = useState(false)
   // Changes are a draft until Save (09-29: each "+" asked for its own approval, and the first tap looked like nothing happened).
   const [draft, setDraft] = useState<Partial<RulesShape>>({})
   // The watcher (spec 6): a rule in plain English becomes a proposal, set on the controls as the draft; Save is the confirmation.
@@ -90,6 +92,7 @@ export default function Rules() {
   async function saveAll() {
     setUndone(false)
     setBusy(true)
+    setSigning(raises)
     setError(null)
     try {
       const reauth = raises ? await freshSignIn(freshWalletSignIn(identity)) : undefined
@@ -108,6 +111,7 @@ export default function Rules() {
       setError(e instanceof ApiError ? e.message : 'Could not save. Try again.')
     } finally {
       setBusy(false)
+      setSigning(false)
     }
   }
 
@@ -125,6 +129,7 @@ export default function Rules() {
       setError(e instanceof ApiError ? e.message : 'Could not undo. Try again.')
     } finally {
       setBusy(false)
+      setSigning(false)
     }
   }
 
@@ -152,6 +157,7 @@ export default function Rules() {
     setError(null)
     try {
       const action = w.status === 'paused' ? 'resume' : 'pause'
+      setSigning(action === 'resume')
       const reauth = action === 'resume' ? await freshSignIn(freshWalletSignIn(identity)) : undefined
       await api(`/api/wallets/${w.pubkey}`, { method: 'POST', body: { action, ...(reauth ? { reauth } : {}) } })
       await invalidate()
@@ -159,6 +165,7 @@ export default function Rules() {
       setError(e instanceof ApiError ? e.message : 'Could not change the wallet. Try again.')
     } finally {
       setBusy(false)
+      setSigning(false)
     }
   }
 
@@ -170,6 +177,7 @@ export default function Rules() {
       return
     }
     setBusy(true)
+    setSigning(true)
     try {
       const t = await api<{ transaction: string | null }>(`/api/revoke/${wallet}`)
       if (!t.transaction) throw new ApiError(409, 'Nothing to revoke.')
@@ -180,6 +188,7 @@ export default function Rules() {
       setError(e instanceof ApiError ? e.message : 'The revoke did not go through. Try again.')
     } finally {
       setBusy(false)
+      setSigning(false)
     }
   }
 
@@ -374,6 +383,11 @@ export default function Rules() {
               </ThemedText>
             ) : null}
             <Button title="Save changes" loading={busy} onPress={saveAll} />
+            {signing ? (
+              <ThemedText variant="caption" tone="secondary">
+                Waiting for your Seeker.
+              </ThemedText>
+            ) : null}
             <Button title="Discard" kind="quiet" disabled={busy} onPress={() => setDraft({})} />
           </>
         ) : (
@@ -397,10 +411,10 @@ export default function Rules() {
                 <Button
                   title={w.status === 'paused' ? 'Resume' : 'Pause'}
                   kind="quiet"
-                  disabled={busy}
+                  loading={busy}
                   onPress={() => pauseOrResume(w)}
                 />
-                <Button title="Revoke" kind="danger" disabled={busy} onPress={() => revoke(w.pubkey)} />
+                <Button title="Revoke" kind="danger" loading={busy} onPress={() => revoke(w.pubkey)} />
               </View>
             ) : null}
           </View>
@@ -408,6 +422,11 @@ export default function Rules() {
         <ThemedText variant="caption" tone="secondary">
           {"Revoke ends Sprouts' approval on chain. Nothing in your garden moves."}
         </ThemedText>
+        {signing ? (
+          <ThemedText variant="caption" tone="secondary">
+            Waiting for your Seeker.
+          </ThemedText>
+        ) : null}
       </Card>
     </Screen>
   )
