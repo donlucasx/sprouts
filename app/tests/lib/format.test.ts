@@ -78,6 +78,10 @@ describe("six coins", () => {
   it("feeClause: no clause for a legacy row with no recorded fee (audit fix F4), else the fee in dollars", () => {
     expect(feeClause(0)).toBe("");
     expect(feeClause(1)).toBe(", fee $0.01");
+    expect(feeClause(1, "0")).toBe(", fee $0.01");
+    expect(feeClause(0, "0")).toBe(", fee under 1 cent");
+    expect(feeClause(0, "12345")).toBe("");
+    expect(feeClause(0, undefined)).toBe("");
   });
 
   it("dayLabel renders a UTC YYYY-MM-DD as given (Review Focus 5: no timezone shift)", () => {

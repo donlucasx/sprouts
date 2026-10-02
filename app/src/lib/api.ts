@@ -49,7 +49,7 @@ export type MeResponse = {
     picks: { ts: string; asset: Asset; amountRaw: string }[];
   };
   nextPlanting: { pendingCents: number; thresholdCents: number; capLeftCents: number; asset: Asset };
-  lastReceipt: { ts: string; usdcPulledCents: number; networkFeeCents: number; asset: Asset; amountOutRaw: string; feeCents: number; usdPrice: number | null; signature: string | null } | null;
+  lastReceipt: { ts: string; usdcPulledCents: number; networkFeeCents: number; asset: Asset; amountOutRaw: string; feeCents: number; feeAmountRaw?: string; usdPrice: number | null; signature: string | null } | null;
   basket: { id: string; asset: "SKR"; amountRaw: string; unstakeTs: string; readyAt: string; delivered: boolean; deliveredSignature: string | null } | null;
   wallets: { pubkey: string; status: "active" | "paused" | "revoked"; dailyCapCents: number }[];
   rules: {

@@ -60,7 +60,7 @@ export default function Activity() {
             {a.plantings.length === 0 ? <Text style={{ color: "#6B6558" }}>No planting yet.</Text> : null}
             {a.plantings.map((p) => {
               const leg = p.legs[0];
-              const what = p.status === "confirmed" && leg ? `${formatUsd(p.usdcPulledCents)} pulled, ${formatAmount(leg.asset, BigInt(leg.amountOutRaw), usdFor(leg.asset))} planted${feeClause(leg.feeCents)}` : p.status === "failed" ? "did not land, nothing pulled" : "in flight";
+              const what = p.status === "confirmed" && leg ? `${formatUsd(p.usdcPulledCents)} pulled, ${formatAmount(leg.asset, BigInt(leg.amountOutRaw), usdFor(leg.asset))} planted${feeClause(leg.feeCents, leg.feeAmountRaw)}` : p.status === "failed" ? "did not land, nothing pulled" : "in flight";
               return <Line key={p.id} text={`${day(p.ts)}, ${what}`} signature={p.signature} />;
             })}
           </Card>
