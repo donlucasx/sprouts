@@ -114,8 +114,8 @@ export async function decideSplits(a: { repo: Repo; now: Date; model: ModelCall 
       row.fallback = reason;
     };
     if (allNoData) {
-      // Spec 5.5: every coin failed, so yesterday's split stands whatever the model's state (no clamp: the clamp would zero
-      // every no-data coin, and the move limit would then hold each coin to 10 points a day on the way back).
+      // Spec 5.5: every coin failed, so yesterday's split stands whatever the model's state, and no model is called: with every
+      // coin held at yesterday's share (R132) the clamp could only hand back the same split, so a call would buy nothing.
       row.split = yesterday ?? STOP_DEFAULTS[stop];
       row.fallback = "no data";
     } else if (!a.model) byRule("model");

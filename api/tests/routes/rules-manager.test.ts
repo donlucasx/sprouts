@@ -129,6 +129,9 @@ describe("PUT /api/rules with the Yield Manager", () => {
     const empty = await putRules(new Request("http://x/api/rules", { method: "PUT", headers: auth, body: "not json" }));
     expect(empty.status).toBe(400);
     expect(((await empty.json()) as { error: string }).error).toBe("Bad request.");
+    // Review M5: an unknown key is echoed capped at 32 characters with control characters stripped, never a line of its own making.
+    const long = await put({ ["x".repeat(80) + "\nSet-Cookie: a=b"]: 1 });
+    expect(((await long.json()) as { error: string }).error).toBe(`Bad request: ${"x".repeat(32)}.`);
   });
 
   it("any save clears the undo", async () => {
