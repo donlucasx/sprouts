@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Pressable, TextInput, View } from 'react-native'
+import { useEffect, useState } from 'react'
+import { BackHandler, Pressable, TextInput, View } from 'react-native'
 import { router } from 'expo-router'
 import { MaterialCommunityIcons } from '@expo/vector-icons'
 import { useMobileWallet } from '@wallet-ui/react-native-kit'
@@ -13,7 +13,7 @@ import { amountProblem, maxAmountText, parseSkr } from '@/lib/forms'
 import { api, ApiError } from '@/lib/api'
 import { useMe, useInvalidateMe } from '@/lib/me'
 import { makeSigner } from '@/lib/sign'
-import { formatSkr } from '@/lib/format'
+import { arrivalLine, formatSkr } from '@/lib/format'
 import { takeOutRows } from '@/lib/take-out'
 import { spacing, TARGET, type as ramp, useTheme } from '@/theme'
 
@@ -36,6 +36,23 @@ export default function Withdraw() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [picked, setPicked] = useState<'SKR' | null>(null)
+  // The one way back to the coin list: "Back to the list", the top Back and Android's back all call it (R165).
+  function backToList() {
+    setPicked(null)
+    setPlan(null)
+    setMode(null)
+    setAmount('')
+    setError(null)
+  }
+  // While a coin is picked, the hardware back steps to the list like the buttons do (and waits while a request is out, as they do).
+  useEffect(() => {
+    if (picked === null) return
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (!busy) backToList()
+      return true
+    })
+    return () => sub.remove()
+  }, [picked, busy])
   if (!me)
     return (
       <Screen back title="Take out">
@@ -129,27 +146,25 @@ export default function Withdraw() {
 
   if (me.basket) {
     return (
-      <Screen back title="In the basket">
+      <Screen back onBack={busy ? () => {} : backToList} title="In the basket">
         <Card>
           <ThemedText variant="heading" numeric>
             {formatSkr(BigInt(me.basket.amountRaw), skrUsd)}
           </ThemedText>
           <ThemedText tone="secondary">
-            Arrives{' '}
-            {new Date(me.basket.readyAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric' })}.
-            It stopped earning when you signed. One withdrawal at a time until it arrives.
+            {arrivalLine(me.basket.readyAt, new Date(), true)}. It stopped earning when you signed. One withdrawal at a time until it arrives.
           </ThemedText>
           <Button title="Put it back" kind="quiet" loading={busy} onPress={putBack} />
           {busy ? <Waiting /> : null}
         </Card>
-        <Button title="Back to the list" kind="quiet" disabled={busy} onPress={() => { setPicked(null); setPlan(null); setMode(null); setAmount(''); setError(null) }} />
+        <Button title="Back to the list" kind="quiet" disabled={busy} onPress={backToList} />
         {error ? <ThemedText tone="error">{error}</ThemedText> : null}
       </Screen>
     )
   }
 
   return (
-    <Screen back title="Withdraw SKR">
+    <Screen back onBack={busy ? () => {} : backToList} title="Withdraw SKR">
       {!plan ? (
         <Card>
           <ThemedText>What do you want to take out?</ThemedText>
@@ -226,7 +241,7 @@ export default function Withdraw() {
           <Button title="Change amount" kind="quiet" disabled={busy} onPress={() => setPlan(null)} />
         </Card>
       )}
-      <Button title="Back to the list" kind="quiet" disabled={busy} onPress={() => { setPicked(null); setPlan(null); setMode(null); setAmount(''); setError(null) }} />
+      <Button title="Back to the list" kind="quiet" disabled={busy} onPress={backToList} />
       {error ? <ThemedText tone="error">{error}</ThemedText> : null}
     </Screen>
   )
