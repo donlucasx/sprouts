@@ -34,6 +34,8 @@ export function useMe() {
   const { data, stale } = pickMeState(q.isPlaceholderData ? undefined : q.data, readLastMe(), q.isError);
   return {
     data, stale, refetch: q.refetch,
+    /** The data is a read made since this screen opened, not the saved last read (the garden plays nothing for the latter, I4 ruling b). */
+    fresh: !q.isPlaceholderData && q.isFetchedAfterMount && q.data !== undefined,
     asOf: data ? new Date(data.pot.asOf) : null,
     loading: q.isLoading && !data,
     unauthorized: q.error instanceof ApiError && q.error.status === 401,

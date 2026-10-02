@@ -13,3 +13,16 @@ export function diffScenes(prev: Scene | null, next: Scene): Diff {
   const tokens = next.parts.flatMap((p) => (p.kind === "fruit" && !prev.parts.some((q) => q.kind === "fruit" && q.plant === p.plant && q.index === p.index) ? [{ plant: p.plant, index: p.index }] : []));
   return { seeds, buds, opened, branches, tokens };
 }
+/** The scene's content as a string (bigints as text): two reads that draw the same garden share a key, whatever their object identity
+ * (the cached read is parsed again on every render), so only a real change is ever diffed. */
+export const sceneKey = (s: Scene) => JSON.stringify(s, (_k, v) => (typeof v === "bigint" ? v.toString() : v));
+/** I4 fix round 1, ruling b: what of a change may move. Opens and new branches only for a watering made on this screen (`watered`);
+ * new buds and seeds only for a change between two live reads while Home is open (`arrivals`); tokens for either (fruit waits for a
+ * watering, R82). Anything else (the app opening, the cached read giving way to the first live one) moves nothing: it is drawn final. */
+export function gateDiff(d: Diff, g: { watered: boolean; arrivals: boolean }): Diff {
+  return {
+    seeds: g.arrivals ? d.seeds : [], buds: g.arrivals ? d.buds : [],
+    opened: g.watered ? d.opened : [], branches: g.watered ? d.branches : [],
+    tokens: g.watered || g.arrivals ? d.tokens : [],
+  };
+}

@@ -1,6 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { openingPlan, stripShapeOf, LEAF_MS, PART_GAP_MS, STEM_MS, BUD_FADE_MS, BUD_FADE_AFTER_MS, BUD_ARRIVE_MS, TOKEN_ARRIVE_MS, SEED_MS, SEED_GAP_MS, REDUCED_MS } from "@/model/opening";
-import type { Scene } from "@/model/garden";
+import { readFileSync } from "node:fs";
+import { openingPlan, stripOf, STRIP_FOR, endOf, drawnBy, type PlantItem, LEAF_MS, PART_GAP_MS, STEM_MS, BUD_FADE_MS, BUD_FADE_AFTER_MS, BUD_ARRIVE_MS, TOKEN_ARRIVE_MS, SEED_MS, SEED_GAP_MS, REDUCED_MS } from "@/model/opening";
+import { buildScene, type Scene } from "@/model/garden";
+import { plantLayouts } from "@/model/scene-to-layout";
+import { previewInputAt } from "@/model/fixtures/median-year";
+import { diffScenes, gateDiff } from "@/lib/scene-diff";
+import { frameAt } from "@/model/motion";
 import type { Placed, PlantLayout } from "@/model/species";
 
 const stem = (part: "trunk" | "twig" | "stalk", shoot?: string): Placed => ({ kind: "stem", part, x0: 0, y0: 0, x1: 0, y1: -10, w0: 2, w1: 1, bend: 0, color: "#000", z: 1, shoot });
@@ -26,11 +31,11 @@ describe("the order the garden opens in (spec 6, gen11_motion.py:32-35, :153-178
   it("the target plant first; a twig's stem, then its leaves 0.8 s apart; the bud fades from 0.25 s after its first leaf; tokens after", () => {
     const { items, endMs } = openingPlan({ scene, plants, before, diff, first: "hsol", reduced: false, tempo: 1 });
     const at = (plant: string, part: number, kind?: string) => items.find((i) => i.kind !== "seed" && i.plant === plant && i.part === part && (!kind || i.kind === kind));
-    expect(at("hsol", 1)).toEqual({ kind: "strip", plant: "hsol", shoot: "c", part: 1, leaf: 0, shape: "broad", delay: 0, ms: LEAF_MS });
+    expect(at("hsol", 1)).toEqual({ kind: "strip", plant: "hsol", shoot: "c", part: 1, leaf: 0, strip: "hsol-broad", delay: 0, ms: LEAF_MS });
     expect(at("hsol", 1, "bud")).toEqual({ kind: "bud", plant: "hsol", shoot: "c", part: 1, delay: 250, ms: BUD_FADE_MS });
     expect(at("skr", 1)).toEqual({ kind: "stem", plant: "skr", shoot: "a", part: 1, delay: 800, ms: STEM_MS });
-    expect(at("skr", 2)).toEqual({ kind: "strip", plant: "skr", shoot: "a", part: 2, leaf: 0, shape: "blade", delay: 1400, ms: LEAF_MS });
-    expect(at("skr", 3)).toEqual({ kind: "strip", plant: "skr", shoot: "a", part: 3, leaf: 1, shape: "blade", delay: 2200, ms: LEAF_MS });
+    expect(at("skr", 2)).toEqual({ kind: "strip", plant: "skr", shoot: "a", part: 2, leaf: 0, strip: "skr-blade", delay: 1400, ms: LEAF_MS });
+    expect(at("skr", 3)).toEqual({ kind: "strip", plant: "skr", shoot: "a", part: 3, leaf: 1, strip: "skr-blade", delay: 2200, ms: LEAF_MS });
     expect(at("skr", 1, "bud")).toEqual({ kind: "bud", plant: "skr", shoot: "a", part: 1, delay: 1650, ms: BUD_FADE_MS });
     expect(at("skr", 6)).toEqual({ kind: "fade", plant: "skr", shoot: null, part: 6, delay: 5200, ms: TOKEN_ARRIVE_MS });   // the last leaf ends at 5.2 s
     expect(items.find((i) => i.kind === "seed")).toEqual({ kind: "seed", id: "seed1", delay: 0, ms: SEED_MS });
@@ -58,16 +63,47 @@ describe("the order the garden opens in (spec 6, gen11_motion.py:32-35, :153-178
     const br = openingPlan({ scene, plants, before, diff: { seeds: [], buds: [], opened: [], branches: ["b"], tokens: [] }, first: null, reduced: false, tempo: 1 });
     expect(br.items).toEqual([
       { kind: "stem", plant: "skr", shoot: "b", part: 4, delay: 0, ms: STEM_MS },
-      { kind: "strip", plant: "skr", shoot: "b", part: 5, leaf: 0, shape: "blade", delay: 600, ms: LEAF_MS },
+      { kind: "strip", plant: "skr", shoot: "b", part: 5, leaf: 0, strip: "skr-blade", delay: 600, ms: LEAF_MS },
     ]);
     expect(openingPlan({ scene, plants, before, diff: { seeds: [], buds: [], opened: [], branches: [], tokens: [] }, first: null, reduced: false, tempo: 1 })).toEqual({ items: [], endMs: 0 });
   });
-  it("which strip a leaf opens with (gen03's shapes); tiers and the rest fade", () => {
-    expect(stripShapeOf("leaf-mandarin-s2")).toBe("blade");
-    expect(stripShapeOf("leaf-sunflower-s0")).toBe("broad");
-    expect(stripShapeOf("leaf-blueberry-s3")).toBe("small");
-    expect(stripShapeOf("blade-snake-s1")).toBe("blade");
-    expect(stripShapeOf("blade-succulent-2")).toBe("blade");
-    expect(stripShapeOf("tier-spruce-s1")).toBeUndefined();
+  it("which baked strip a leaf opens with (coloured per species and shape, ruling a); tiers and the rest fade", () => {
+    expect(stripOf("leaf-mandarin-s2")).toBe("skr-blade");
+    expect(stripOf("leaf-sunflower-s0")).toBe("hsol-broad");
+    expect(stripOf("leaf-blueberry-s3")).toBe("jupsol-small");
+    expect(stripOf("blade-snake-s1")).toBe("jitosol-blade");
+    expect(stripOf("blade-succulent-2")).toBe("ore-blade");
+    expect(stripOf("tier-spruce-s1")).toBeUndefined();
   });
+  it("every strip the plan can name is one the bake wrote (strips.ts)", () => {
+    const keys = [...readFileSync("src/garden/strips.ts", "utf8").matchAll(/^\s+"([a-z-]+)": \{ src:/gm)].map((m) => m[1]).sort();
+    expect([...new Set(Object.values(STRIP_FOR))].sort()).toEqual(keys);
+  });
+});
+
+describe("every animation ends visible (I4 fix round 1, ruling c)", () => {
+  // a real garden: the median year on day 240 with every planting still a bud, then the same day just watered
+  const input = previewInputAt(240);
+  const closed = buildScene({ ...input, wateredAt: null });
+  const watered = buildScene({ ...input, wateredAt: input.now });
+  const plants = plantLayouts(watered), before = plantLayouts(closed);
+  const diff = gateDiff(diffScenes(closed, watered), { watered: true, arrivals: true });
+  for (const reduced of [false, true]) {
+    const { items } = openingPlan({ scene: watered, plants, before, diff, first: "skr", reduced, tempo: 1 });
+    it(`${reduced ? "reduced motion: " : ""}every part present is drawn static or by an item that ends it fully shown; once settled, all static`, () => {
+      expect(diff.opened.length).toBeGreaterThan(10);
+      expect(items.filter((i) => i.kind === "strip").length).toBeGreaterThan(5);
+      for (const pl of plants) {
+        const mine = items.filter((i): i is PlantItem => i.kind !== "seed" && i.plant === pl.plant);
+        const during = drawnBy(pl.layout.parts.length, mine, false);
+        expect(during.length).toBe(pl.layout.parts.length);
+        for (const d of during) if (d !== "static") expect(endOf(d).opacity).toBe(1);
+        expect(drawnBy(pl.layout.parts.length, mine, true).every((d) => d === "static")).toBe(true);
+        for (const it of mine) if (it.kind === "bud") expect(before.find((b) => b.plant === pl.plant)!.layout.parts[it.part]).toMatchObject({ part: "bud" });
+        else expect(pl.layout.parts[it.part]).toBeDefined();
+      }
+      for (const it of items) expect(Number.isFinite(it.delay + it.ms)).toBe(true);
+    });
+  }
+  it("a strip's last frame is its end picture", () => { expect(frameAt(1, 16)).toBe(15); expect(endOf({ kind: "strip", plant: "skr", shoot: "a", part: 0, leaf: 0, strip: "skr-blade", delay: 0, ms: 1 })).toEqual({ opacity: 1, frame: "last" }); });
 });

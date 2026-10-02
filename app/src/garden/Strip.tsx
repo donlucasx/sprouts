@@ -1,6 +1,6 @@
 import { useEffect, type ReactNode } from "react";
 import { View } from "react-native";
-import Svg, { Defs, ClipPath, Mask, Rect, G, Image as SvgImage } from "react-native-svg";
+import Svg, { Defs, ClipPath, Rect, G, Image as SvgImage } from "react-native-svg";
 import Animated, { useSharedValue, useAnimatedProps, useAnimatedStyle, withDelay, withTiming, Easing } from "react-native-reanimated";
 import type { Placed } from "@/model/species";
 import { leafLen } from "@/model/plant-geometry";
@@ -13,27 +13,23 @@ const AnimatedG = Animated.createAnimatedComponent(G);
 const FLOW = Easing.bezier(0.18, 0.72, 0.3, 1);   // gen11_motion.py:31 FLOW
 const EASE_IN = Easing.bezier(0.42, 0, 1, 1);     // CSS ease-in (gen11_motion.py:156 budout)
 
-/** One opening leaf (RG24 part two, the ledger's A-STRIP): the species' own dry sprite revealed through its shape's baked wash11 strip
- * (16 frames, a density mask), the strip under a STATIC one-frame clip and stepped by whole frames through ONE animated prop, the mask
- * Image's x. The frame box sits with its base row (0.93 of the frame, wash11.py:49) on the leaf's anchor and its axis along the leaf's
- * rotation; the strip's 26.88 px leaf is scaled to the placed leaf's length. Reduced motion: the last frame under a 300 ms fade
- * (`ms` is then 300). Drawn as a child of the plant's Svg, over its static parts. */
-export function Strip({ p, id, shape, delay, ms, reduced }: { p: Extract<Placed, { kind: "sprite" }>; id: string; shape: keyof typeof STRIPS; delay: number; ms: number; reduced: boolean }) {
-  const st = STRIPS[shape];
-  const s = leafLen(p) / st.L, fw = st.w * s, fh = st.h * s;
+/** One opening leaf (RG24 part two; I4 fix round 1, ruling a, the spike's A-STRIP taken literally): the species' own baked wash strip
+ * (16 frames, coloured per species and shape by bake.py) as a plain Image under a STATIC one-frame clip, stepped by whole frames through
+ * ONE animated prop, the Image's x. The frame box sits with its base row (0.93 of the frame, wash11.py:49) on the leaf's anchor and its
+ * axis along the leaf's rotation; the strip's 26.88 px leaf is scaled to the placed leaf's length (and the succulent's x stretch). The
+ * last frame is the dried wash; when the garden settles the dry sprite takes its place. Reduced motion: the last frame under a 300 ms
+ * fade (`ms` is then 300). Drawn as a child of the plant's Svg, over its static parts. */
+export function Strip({ p, id, strip, delay, ms, reduced }: { p: Extract<Placed, { kind: "sprite" }>; id: string; strip: string; delay: number; ms: number; reduced: boolean }) {
+  const st = STRIPS[strip];
+  const s = st ? leafLen(p) / st.L : 1, sx = s * ((p.xScale ?? p.scale) / p.scale), fw = (st?.w ?? 0) * sx, fh = (st?.h ?? 0) * s, frames = st?.frames ?? 1;
   const t = useSharedValue(0);
   useEffect(() => { t.value = 0; t.value = withDelay(delay, withTiming(1, { duration: ms, easing: Easing.linear })); }, [t, delay, ms]);
-  const maskProps = useAnimatedProps(() => ({ x: -(reduced ? st.frames - 1 : frameAt(t.value, st.frames)) * fw }));
-  const fadeProps = useAnimatedProps(() => ({ opacity: reduced ? t.value : 1 }));
+  const imageProps = useAnimatedProps(() => (reduced ? { x: -(frames - 1) * fw, opacity: t.value } : { x: -frameAt(t.value, frames) * fw }));   // one animated prop while it plays
+  if (!st) return <SpriteAt name={p.name} x={p.x} y={p.y} rot={p.rot} scale={p.scale} xScale={p.xScale} />;   // no strip baked: the leaf as it ends
   return (
     <G transform={`translate(${p.x} ${p.y}) rotate(${p.rot}) translate(${-fw / 2} ${-st.ay * s})`}>
-      <Defs>
-        <ClipPath id={`${id}-clip`}><Rect x={0} y={0} width={fw} height={fh} /></ClipPath>
-        <Mask id={id} x={0} y={0} width={fw} height={fh} maskUnits="userSpaceOnUse">
-          <G clipPath={`url(#${id}-clip)`}><AnimatedImage href={st.src} y={0} width={fw * st.frames} height={fh} animatedProps={maskProps} /></G>
-        </Mask>
-      </Defs>
-      <AnimatedG mask={`url(#${id})`} animatedProps={fadeProps}><SpriteAt name={p.name} x={fw / 2} y={st.ay * s} rot={0} scale={p.scale} xScale={p.xScale} /></AnimatedG>
+      <Defs><ClipPath id={`${id}-clip`}><Rect x={0} y={0} width={fw} height={fh} /></ClipPath></Defs>
+      <G clipPath={`url(#${id}-clip)`}><AnimatedImage href={st.src} y={0} width={fw * frames} height={fh} preserveAspectRatio="none" animatedProps={imageProps} /></G>
     </G>
   );
 }

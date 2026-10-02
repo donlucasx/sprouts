@@ -28,7 +28,7 @@ import { radius, spacing, TARGET, useTheme } from '@/theme'
 export default function Home() {
   const { setSession } = useSession()
   const { colors } = useTheme()
-  const { data: me, stale, refetch, asOf, loading, unauthorized } = useMe()
+  const { data: me, stale, fresh, refetch, asOf, loading, unauthorized } = useMe()
   const invalidate = useInvalidateMe()
   const queryClient = useQueryClient()
   const [opened, setOpened] = useState(0)
@@ -152,7 +152,13 @@ export default function Home() {
       {pause.shown ? (
         <PauseRow on={pause.on} line={pause.line} busy={pausing} error={pauseError} onChange={togglePaused} />
       ) : null}
-      <Garden scene={scene} canReady={watcher.can === 'ready'} onWater={water} onNudge={() => setNudged(true)} />
+      <Garden
+        scene={scene}
+        live={fresh}
+        canReady={watcher.can === 'ready'}
+        onWater={water}
+        onNudge={() => setNudged(true)}
+      />
       {watcher.line ? <WatcherLine text={watcher.line} /> : null}
       {watcher.note ? (
         <ThemedText variant="caption" tone="secondary">
