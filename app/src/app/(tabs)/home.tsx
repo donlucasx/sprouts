@@ -117,10 +117,9 @@ export default function Home() {
   const staked = BigInt(me.pot.skrStakedRaw)
   const totals = gardenTotals(me)
   const pause = pauseState(me.wallets)
-  // R96 and R175: the line and the can decided together, so they always agree; the can is in colour only while a bud waits.
+  // R96, R175 and R184: the one line and the can decided together, so they always agree; the can is in colour only while a bud waits.
   const watcher = watcherLine({
     unrevealed: scene.unrevealed,
-    neverWatered: me.user.wateredAt === null,
     opened,
     failed,
     nudged,
@@ -160,11 +159,6 @@ export default function Home() {
         onNudge={() => setNudged(true)}
       />
       {watcher.line ? <WatcherLine text={watcher.line} /> : null}
-      {watcher.note ? (
-        <ThemedText variant="caption" tone="secondary">
-          {watcher.note}
-        </ThemedText>
-      ) : null}
       <NextPlanting
         row={nextRow}
         pendingCents={me.nextPlanting.pendingCents}
