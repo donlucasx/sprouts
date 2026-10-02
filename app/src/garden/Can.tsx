@@ -56,6 +56,7 @@ export function Can({ ready, reduced, tempo, width, viewH, viewHNow, s, targetAt
   const busy = useSharedValue(false);   // one pour at a time (a shared value, so the gesture's callbacks may read it)
   const held = useSharedValue(false);   // in the hand or pouring: the shadow lightens and the drip stops at once
   const [pouring, setPouring] = useState(false);
+  const [holding, setHolding] = useState(false);   // in the hand: the drip's loop is unmounted (stopped), not hidden (round 5)
   const inColour = ready || pouring;    // the minor: the can does not grey mid-pour (the read that empties the buds lands while it pours)
   const [drops, setDrops] = useState<{ x: number; y: number; groundY: number } | null>(null);
   const hit = canHit(s), L = canArt(s);   // the touch box (R184 item 5) and the drawing layers' square about the body's centre
@@ -72,14 +73,14 @@ export function Can({ ready, reduced, tempo, width, viewH, viewHNow, s, targetAt
     if (reduced) {   // R175: a 300 ms fade, not a jump
       seen.value = withSequence(withTiming(0, { duration: REDUCED_MS / 2 }), withTiming(1, { duration: REDUCED_MS / 2 }));
       for (const v of [dx, dy, tilt]) v.value = withDelay(REDUCED_MS / 2, withTiming(0, { duration: 0 }));
-      lift.value = 1; tilted.value = false; held.value = false;
+      lift.value = 1; tilted.value = false; held.value = false; setHolding(false);
       return;
     }
     tilt.value = withTiming(0, { duration: t(0.12) });
     dx.value = withTiming(0, { duration: t(0.18), easing: Easing.inOut(Easing.cubic) });
     dy.value = withTiming(0, { duration: t(0.18), easing: Easing.inOut(Easing.cubic) });
     lift.value = withTiming(1, { duration: t(0.18) });
-    tilted.value = false; held.value = false;
+    tilted.value = false; held.value = false; setHolding(false);
   };
   /** The pour, for both paths: the request starts at once; the can (moved to `to` for a tap) tilts and pours, and holds the pose while
    * the request runs, at least the pour's share of the sequence; then level and home. A failed request cuts every step short. */
@@ -123,14 +124,14 @@ export function Can({ ready, reduced, tempo, width, viewH, viewHNow, s, targetAt
     .hitSlop(8)
     // at once, so the screen's scroll never takes a drag that began on the can; refused while a pour runs, so a grab never strands it
     .onTouchesDown((_e, manager) => { if (busy.value) manager.fail(); else manager.activate(); })
-    .onStart(() => { held.value = true; if (!reduced) lift.value = withTiming(LIFT, { duration: 120 }); })
+    .onStart(() => { held.value = true; runOnJS(setHolding)(true); if (!reduced) lift.value = withTiming(LIFT, { duration: 120 }); })
     .onUpdate((e) => {
       dx.value = e.translationX; dy.value = e.translationY;
       if (!reduced && !tilted.value && Math.hypot(e.translationX, e.translationY) > MOVED) { tilted.value = true; tilt.value = withTiming(TILT, { duration: 300 }); }
     })
     .onEnd((e, success) => {
       if (!success) { runOnJS(goHome)(); return; }
-      if (Math.hypot(e.translationX, e.translationY) <= MOVED) { lift.value = 1; dx.value = 0; dy.value = 0; held.value = false; runOnJS(tap)(); return; }
+      if (Math.hypot(e.translationX, e.translationY) <= MOVED) { lift.value = 1; dx.value = 0; dy.value = 0; held.value = false; runOnJS(setHolding)(false); runOnJS(tap)(); return; }
       const home = canHome(width, viewH.value, s), r = roseAt(tilt.value, s);
       runOnJS(release)(home.x + dx.value + r.x, home.y + dy.value + r.y);
     })
@@ -164,7 +165,7 @@ export function Can({ ready, reduced, tempo, width, viewH, viewHNow, s, targetAt
           <Animated.View style={[{ position: "absolute", left: hit.ox + SHADOW_AT.x * s - L / 2, top: hit.oy + SHADOW_AT.y * s - L / 2, width: L, height: L }, shadowStyle]}><CanSprite m={SHADOW} L={L} s={s} /></Animated.View>
           <Animated.View style={[art, restStyle]}><CanSprite m={inColour ? REST : GREY} L={L} s={s} /></Animated.View>
           <Animated.View style={[art, tiltStyle]}><CanSprite m={TILTED} L={L} s={s} /></Animated.View>
-          {ready && !pouring && !reduced ? <Drip x={hit.ox + rose.x} y={hit.oy + rose.y} size={dropSize(s)} held={held} /> : null}
+          {ready && !pouring && !holding && !reduced ? <Drip x={hit.ox + rose.x} y={hit.oy + rose.y} size={dropSize(s)} held={held} /> : null}
         </Animated.View>
       </GestureDetector>
     </>
@@ -188,7 +189,8 @@ function Drop({ i, x, y, groundY, size, ms }: { i: number; x: number; y: number;
 }
 
 /** R184 item 3: while a bud waits, one drop forms at the rose (it swells in), falls DRIP.fallPx and fades, once every 4 s; the same
- * drop drawing as the pour's, moved by an Animated.View's transform and opacity (the proven path). Gone at once when the can is held. */
+ * drop drawing as the pour's, moved by an Animated.View's transform and opacity (the proven path). Hidden on the UI thread the instant
+ * the can is held (`held`), and unmounted with it, so its loop stops (cancelled on unmount) and restarts from the start on release. */
 function Drip({ x, y, size, held }: { x: number; y: number; size: number; held: SharedValue<boolean> }) {
   const q = useSharedValue(0);
   useEffect(() => {
