@@ -14,10 +14,16 @@ describe("the brand tokens carry the manual's constants", () => {
       accentText: '#145A3C', // Deep green: small text on paper
       success: '#2E8B57', // Leaf green
       attention: '#7A6248', // Soil
+      trackOff: '#D9D2C6', // a switch's off track (R138: never reads as greyed out)
+      thumb: '#FFFCF6',
+      disabledText: '#6E6A64',
     })
   })
   it("palette, dark: the manual's dark theme, never a mechanical invert", () => {
     expect(palette.dark).toMatchObject({
+      trackOff: '#3A5546',
+      thumb: '#FFFCF6',
+      disabledText: '#7E9A86',
       background: '#0E1A14',
       text: '#FFFCF6',
       textSecondary: '#E3FBD9',

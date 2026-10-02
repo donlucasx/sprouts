@@ -242,6 +242,7 @@ export default function Rules() {
         </Row>
         <Stepper
           label="Daily limit"
+          what="daily limit"
           value={r.dailyCapCents}
           step={100}
           min={100}
@@ -252,6 +253,7 @@ export default function Rules() {
         />
         <Stepper
           label="Plant at"
+          what="planting amount"
           value={r.plantThresholdCents}
           step={50}
           min={50}

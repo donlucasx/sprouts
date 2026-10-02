@@ -12,8 +12,8 @@ export function useTheme(): { colors: Palette; dark: boolean } {
 /** A native Switch in the brand (R138: a light track when off, green when on, so an off switch never reads as greyed out). */
 export function switchColors(colors: Palette) {
   return {
-    trackColor: { false: colors.hairline, true: colors.accent },
-    thumbColor: colors.background,
-    ios_backgroundColor: colors.hairline,
+    trackColor: { false: colors.trackOff, true: colors.accent },
+    thumbColor: colors.thumb,
+    ios_backgroundColor: colors.trackOff,
   }
 }

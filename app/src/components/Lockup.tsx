@@ -1,8 +1,8 @@
 import { Text, View } from 'react-native'
-import { FONT, spacing, useTheme, wordmarkTracking } from '@/theme'
+import { FONT, useTheme, wordmarkTracking } from '@/theme'
 import { Mark } from './Mark'
 
-/** The wordmark alone: Outfit 600, lowercase, -0.02 em; 700 below 24 px (manual 3). */
+/** The wordmark alone: Outfit 600, lowercase, -0.02 em; 700 below 24 px (manual 3). The line box leaves room for the p's descender. */
 export function Wordmark({ size = 28 }: { size?: number }) {
   const { colors } = useTheme()
   return (
@@ -11,7 +11,7 @@ export function Wordmark({ size = 28 }: { size?: number }) {
       style={{
         fontFamily: size < 24 ? FONT.displayBold : FONT.display,
         fontSize: size,
-        lineHeight: Math.round(size * 1.15),
+        lineHeight: Math.round(size * 1.2),
         letterSpacing: wordmarkTracking(size),
         color: colors.text,
       }}
@@ -25,7 +25,7 @@ export function Wordmark({ size = 28 }: { size?: number }) {
 export function Lockup({ wordSize = 40 }: { wordSize?: number }) {
   return (
     <View style={{ alignItems: 'center', gap: Math.round(0.2 * wordSize) }}>
-      <Mark size={Math.round(2.3 * wordSize)} />
+      <Mark size={Math.round(2.3 * wordSize)} decorative />
       <Wordmark size={wordSize} />
     </View>
   )
@@ -36,7 +36,7 @@ export function MarkedTitle({ children, size = 28 }: { children: string; size?: 
   const { colors } = useTheme()
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: Math.round(0.26 * size) }}>
-      <Mark size={Math.round(1.18 * size)} />
+      <Mark size={Math.round(1.18 * size)} decorative />
       <Text
         accessibilityRole="header"
         style={{
@@ -45,7 +45,6 @@ export function MarkedTitle({ children, size = 28 }: { children: string; size?: 
           lineHeight: Math.round(size * 1.2),
           color: colors.text,
           flexShrink: 1,
-          marginLeft: spacing.xs,
         }}
       >
         {children}

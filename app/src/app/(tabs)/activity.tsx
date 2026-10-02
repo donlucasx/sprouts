@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Linking, Pressable, View } from 'react-native'
+import { Linking, Pressable, RefreshControl, View } from 'react-native'
 import { MaterialCommunityIcons } from '@expo/vector-icons'
 import { useQuery } from '@tanstack/react-query'
 import { Screen } from '@/components/Screen'
@@ -49,6 +49,7 @@ function Line({ text, signature }: { text: string; signature?: string | null }) 
 /** Every planting, split change, swap and withdrawal of the signed-in Seeker, newest first. */
 export default function Activity() {
   const { data: me } = useMe()
+  const { colors } = useTheme()
   const skrUsd = me?.pot.skrUsd ?? null
   const q = useQuery({ queryKey: ['activity'], queryFn: () => api<ActivityResponse>('/api/activity') })
   const a = q.data
@@ -73,7 +74,19 @@ export default function Activity() {
     }
   }
   return (
-    <Screen inset="top" title="Activity">
+    <Screen
+      inset="top"
+      title="Activity"
+      refreshControl={
+        <RefreshControl
+          refreshing={q.isRefetching}
+          onRefresh={() => q.refetch()}
+          colors={[colors.accent]}
+          progressBackgroundColor={colors.surface}
+          tintColor={colors.accent}
+        />
+      }
+    >
       {!a ? (
         <ThemedText tone="secondary">
           {q.isError ? 'Could not load your activity just now. Pull down to try again.' : 'Loading your activity.'}
@@ -83,6 +96,10 @@ export default function Activity() {
         <>
           <Card>
             <ThemedText variant="heading">Plantings</ThemedText>
+            {/* R94: one plain line under each section title saying what it lists. */}
+            <ThemedText variant="caption" tone="secondary">
+              Each time your change became a coin in your garden.
+            </ThemedText>
             {a.plantings.length === 0 ? <ThemedText tone="secondary">No planting yet.</ThemedText> : null}
             {a.plantings.map((p) => (
               <Line key={p.id} text={plantingRowLine(day(p.ts), p)} signature={p.signature} />
@@ -119,6 +136,9 @@ export default function Activity() {
           </Card>
           <Card>
             <ThemedText variant="heading">Withdrawals</ThemedText>
+            <ThemedText variant="caption" tone="secondary">
+              SKR you took out, on its way or delivered.
+            </ThemedText>
             {a.withdrawals.length === 0 ? <ThemedText tone="secondary">No withdrawal yet.</ThemedText> : null}
             {a.withdrawals.map((w) => (
               <Line

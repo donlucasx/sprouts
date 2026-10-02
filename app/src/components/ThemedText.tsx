@@ -15,6 +15,9 @@ const toneKey: Record<Tone, keyof Palette> = {
   error: 'error',
 }
 
+/** The three Outfit steps are headings to a screen reader unless the caller says otherwise. */
+const HEADER: Partial<Record<Variant, true>> = { display: true, title: true, heading: true }
+
 /** Every piece of text: one of the manual's six steps, in one of the palette's tones. `numeric` sets tabular figures for amounts. */
 export function ThemedText({
   variant = 'body',
@@ -26,6 +29,7 @@ export function ThemedText({
   const { colors } = useTheme()
   return (
     <Text
+      accessibilityRole={HEADER[variant] ? 'header' : undefined}
       style={[
         ramp[variant],
         { color: colors[toneKey[tone]] },
