@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { TextInput, View } from 'react-native'
+import { Pressable, TextInput, View } from 'react-native'
 import { router } from 'expo-router'
+import { MaterialCommunityIcons } from '@expo/vector-icons'
 import { useMobileWallet } from '@wallet-ui/react-native-kit'
 import { TwoWay } from '@/components/TwoWay'
 import { Screen } from '@/components/Screen'
@@ -13,7 +14,8 @@ import { api, ApiError } from '@/lib/api'
 import { useMe, useInvalidateMe } from '@/lib/me'
 import { makeSigner } from '@/lib/sign'
 import { formatSkr } from '@/lib/format'
-import { spacing, type as ramp, useTheme } from '@/theme'
+import { takeOutRows } from '@/lib/take-out'
+import { spacing, TARGET, type as ramp, useTheme } from '@/theme'
 
 type Plan = { transaction: string; shares: string; amountRaw: string; prunes: boolean; brief: string[] }
 
@@ -33,9 +35,10 @@ export default function Withdraw() {
   const [plan, setPlan] = useState<Plan | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [picked, setPicked] = useState<'SKR' | null>(null)
   if (!me)
     return (
-      <Screen back title="Withdraw">
+      <Screen back title="Take out">
         <ThemedText tone="secondary">Loading your garden.</ThemedText>
       </Screen>
     )
@@ -89,6 +92,41 @@ export default function Withdraw() {
     }
   }
 
+  if (picked === null) {
+    const rows = takeOutRows(me)
+    return (
+      <Screen back title="Take out">
+        <Card style={{ gap: 0 }}>
+          <ThemedText style={{ marginBottom: spacing.sm }}>What do you want to take out?</ThemedText>
+          {rows.length === 0 ? <ThemedText tone="secondary">Nothing in your garden yet.</ThemedText> : null}
+          {rows.map((r, i) => {
+            const inner = (
+              <>
+                <View style={{ flex: 1, gap: 2 }}>
+                  <ThemedText numeric>{r.amount}</ThemedText>
+                  <ThemedText variant="caption" tone="secondary">
+                    {r.note}
+                  </ThemedText>
+                </View>
+                {r.opens ? <MaterialCommunityIcons name="chevron-right" size={22} color={colors.accentText} /> : null}
+              </>
+            )
+            const rowStyle = { minHeight: TARGET, flexDirection: 'row' as const, alignItems: 'center' as const, gap: spacing.sm, paddingVertical: spacing.sm, borderTopWidth: i === 0 ? 0 : 1, borderTopColor: colors.hairline }
+            return r.opens ? (
+              <Pressable key={r.asset} onPress={() => setPicked('SKR')} accessibilityRole="button" accessibilityLabel="Take out SKR" style={({ pressed }) => ({ ...rowStyle, opacity: pressed ? 0.7 : 1 })}>
+                {inner}
+              </Pressable>
+            ) : (
+              <View key={r.asset} style={rowStyle}>
+                {inner}
+              </View>
+            )
+          })}
+        </Card>
+      </Screen>
+    )
+  }
+
   if (me.basket) {
     return (
       <Screen back title="In the basket">
@@ -104,13 +142,14 @@ export default function Withdraw() {
           <Button title="Put it back" kind="quiet" loading={busy} onPress={putBack} />
           {busy ? <Waiting /> : null}
         </Card>
+        <Button title="Back to the list" kind="quiet" disabled={busy} onPress={() => setPicked(null)} />
         {error ? <ThemedText tone="error">{error}</ThemedText> : null}
       </Screen>
     )
   }
 
   return (
-    <Screen back title="Withdraw">
+    <Screen back title="Withdraw SKR">
       {!plan ? (
         <Card>
           <ThemedText>What do you want to take out?</ThemedText>
@@ -187,6 +226,7 @@ export default function Withdraw() {
           <Button title="Change amount" kind="quiet" disabled={busy} onPress={() => setPlan(null)} />
         </Card>
       )}
+      <Button title="Back to the list" kind="quiet" disabled={busy} onPress={() => setPicked(null)} />
       {error ? <ThemedText tone="error">{error}</ThemedText> : null}
     </Screen>
   )
