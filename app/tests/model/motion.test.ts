@@ -2,11 +2,11 @@ import { describe, it, expect } from "vitest";
 import { SWAY, swayAngle, swayPhase, frameAt, clampZoom, panLimit, pinchOffset } from "@/model/motion";
 import { PLANT_ORDER } from "@/model/garden";
 
-describe("the sway (his note: swaying all the time with the wind; R179: 3 degrees either way, 3.2 s each way)", () => {
-  it("swings 3 degrees either way, 3.2 s each way (a 6.4 s period)", () => {
-    expect(SWAY).toEqual({ deg: 3, periodMs: 6400 });
-    expect(swayAngle(0.25, 0)).toBeCloseTo(3, 9);
-    expect(swayAngle(0.75, 0)).toBeCloseTo(-3, 9);
+describe("the sway (his note: swaying all the time with the wind; R179, R183: 5 degrees either way, 3.2 s each way)", () => {
+  it("swings 5 degrees either way, 3.2 s each way (a 6.4 s period)", () => {
+    expect(SWAY).toEqual({ deg: 5, periodMs: 6400 });
+    expect(swayAngle(0.25, 0)).toBeCloseTo(5, 9);
+    expect(swayAngle(0.75, 0)).toBeCloseTo(-5, 9);
     expect(swayAngle(0, 0)).toBeCloseTo(0, 9);
     expect(swayAngle(1, 0)).toBeCloseTo(swayAngle(0, 0), 9);   // the clock wraps without a jump
   });
