@@ -1,8 +1,8 @@
 import type { Scene } from "./garden";
-import { SIGN_LABEL, SIGN_SCALE, SIGN_TEXT, signX } from "./layout";
+import { SIGN_LABEL, SIGN_SCALE, SIGN_TEXT, signStand, signX } from "./layout";
 import { stemPaths, spriteTransform, soilPaths, leafPath } from "./paint";
 import { COLORS, SOIL } from "./species";
-import { SOIL_CLIP_ID, soilClipPath } from "./soil-clip";
+import { SOIL_CLIP_ID, soilBottomAt, soilClipPath } from "./soil-clip";
 import { plantLayouts } from "./scene-to-layout";
 import { SPRITE_META } from "@/garden/sprite-meta";
 import { SPRITES_B64 } from "@/garden/sprites-b64";
@@ -65,7 +65,7 @@ export function widgetGardenSvg(scene: Scene, width: number, height: number, wid
   const plants = plantLayouts(scene).filter((p) => wide || p.row === "front");
   const of = <K extends Scene["parts"][number]["kind"]>(kind: K) => scene.parts.filter((p): p is Extract<Scene["parts"][number], { kind: K }> => p.kind === kind);
   // R176 (no soil, no water): every ring sits in a group clipped to the soil's outline, placed as the ground sprite is (AndroidSVG: a <clipPath> of a path)
-  const gk = band / 60, clip = `<clipPath id="${SOIL_CLIP_ID}"><path d="${soilClipPath(0, height - SPRITE_META["ground"].h * gk, width / 320, gk)}"/></clipPath>`;
+  const gk = band / 60, ground = { x0: 0, y0: height - SPRITE_META["ground"].h * gk, sx: width / 320, sy: gk }, clip = `<clipPath id="${SOIL_CLIP_ID}"><path d="${soilClipPath(0, height - SPRITE_META["ground"].h * gk, width / 320, gk)}"/></clipPath>`;
   let rings = false;
   for (const r of of("ring")) { const pl = plants.find((p) => p.plant === r.plant); if (pl) { rings = true; body.push(`<g clip-path="url(#${SOIL_CLIP_ID})"><g opacity="${f(1 - r.age)}">${placeStr("ring", pl.x * width, foot(pl.row) + 1, 0, k * (pl.row === "front" ? 1 : 2 / 3))}</g></g>`); } }
   for (const s of of("seed")) { const sg = of("sign").find((q) => q.plant === s.plant); if (sg && (wide || sg.row === "front")) place("seed", sg.x * width + (s.index % 2 ? 1 : -1) * (3 + 2.4 * Math.floor(s.index / 2)) * k, foot(sg.row), ((s.index * 37) % 60) - 30, k); }   // on the small widget they sit at the plant's foot (no sign)
@@ -80,7 +80,7 @@ export function widgetGardenSvg(scene: Scene, width: number, height: number, wid
   }
   // R168: the one blank board, the word as vector text over it (AndroidSVG cannot load the app's font: a plain sans-serif, same ink and place)
   if (wide) for (const s of of("sign")) {
-    const x = signX(s.x * width, s.side, width, WIDGET_SIGN_SCALE), y = foot(s.row) + 3;
+    const x = signX(s.x * width, s.side, width, WIDGET_SIGN_SCALE), y = signStand(x, foot(s.row) + 3, WIDGET_SIGN_SCALE, (px) => soilBottomAt(px, ground));   // R181: the post in the soil
     place("sign", x, y, 0, WIDGET_SIGN_SCALE);
     body.push(`<g transform="translate(${Number(x.toFixed(2))} ${Number(y.toFixed(2))}) scale(${WIDGET_SIGN_SCALE}) rotate(${SIGN_TEXT.rot})"><text x="0" y="${SIGN_TEXT.y}" text-anchor="middle" font-family="sans-serif" font-size="${SIGN_TEXT.size}" font-weight="500" fill="${SOIL.ink}">${SIGN_LABEL[s.plant]}</text></g>`);
   }
