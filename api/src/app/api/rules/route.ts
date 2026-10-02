@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getRepo } from "@/db/repo";
 import { rulesRowToRules, type RulesRow } from "@/db/types";
 import { requireSession } from "@/lib/auth-guard";
+import { badRequest } from "@/lib/bad-request";
 import { ReauthSchema, verifyReauth } from "@/lib/reauth";
 import { isAsset, sameSplit, type Asset } from "@/domain/coins";
 import type { Pins } from "@/domain/roundup";
@@ -39,15 +40,7 @@ export async function PUT(request: Request) {
   const session = await requireSession(request);
   if (session instanceof NextResponse) return session;
   const parsed = Body.safeParse(await request.json().catch(() => null));
-  if (!parsed.success) {
-    // The field the body failed on, so the app's sentence says which (the audit's note); the zod detail goes to the log only.
-    const issue = parsed.error.issues[0];
-    const raw = issue === undefined ? undefined : issue.code === "unrecognized_keys" ? issue.keys[0] : issue.path[0];
-    // A key name is the client's own text: capped and stripped of control characters before it reaches the log or the answer.
-    const field = raw === undefined ? undefined : String(raw).replace(/\p{C}/gu, "").slice(0, 32);
-    console.error(`rules: bad request${field === undefined ? "" : ` at ${field}`}: ${issue?.message ?? "no body"}`);
-    return NextResponse.json({ error: field === undefined ? "Bad request." : `Bad request: ${field}.` }, { status: 400 });
-  }
+  if (!parsed.success) return badRequest("rules", parsed.error);
   const { reauth, managed, stop, pins: rawPins, ...rest } = parsed.data;
   const repo = await getRepo();
   const current = await repo.getRules(session.pubkey);
