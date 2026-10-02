@@ -63,7 +63,7 @@ export async function POST(request: Request, ctx: { params: Promise<{ wallet: st
     status = await waitConfirmed(posted.signature, 3); // review I3
   }
   const settled = status === "pending" ? await settleUnconfirmed(posted) : status;   // item 8
-  if (settled !== "confirmed") return NextResponse.json({ error: settled === "failed" ? "The revoke failed on chain." : settled === "expired" ? "It did not go through. Nothing changed. Try again." : STILL_WAITING }, { status: 409 });
+  if (settled !== "confirmed") return NextResponse.json({ error: settled === "failed" ? "The revoke failed on chain." : settled === "expired" ? "It did not go through. Nothing changed. Try again." : STILL_WAITING.revoke }, { status: 409 });
   let d = await readDelegation(pda);
   for (let i = 0; i < 3 && d.exists; i++) {
     await new Promise((r) => setTimeout(r, 1_000));
