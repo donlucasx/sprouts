@@ -5,7 +5,7 @@ import { requireSession } from "@/lib/auth-guard";
 import { readPosition, userStakePda } from "@/lib/staking";
 import { CANCEL_UNSTAKE_DISCRIMINATOR } from "@/generated/staking";
 import { verifyPostedTransaction } from "@/lib/verify-tx";
-import { sendPosted, waitConfirmed, userAddress } from "@/lib/user-tx";
+import { sendPosted, waitConfirmed, settleUnconfirmed, STILL_WAITING, userAddress } from "@/lib/user-tx";
 import { SKR_STAKING_PROGRAM } from "@/lib/constants";
 
 export const runtime = "nodejs";
@@ -42,7 +42,8 @@ export async function POST(request: Request) {
   } catch {
     status = await waitConfirmed(posted.signature, 3); // review I3: the send's answer was lost, the chain decides
   }
-  if (status !== "confirmed") return NextResponse.json({ error: status === "failed" ? "The cancel failed on chain. The basket stands." : "The chain has not confirmed the cancel yet. Check again in a minute." }, { status: 409 });
+  const settled = status === "pending" ? await settleUnconfirmed(posted) : status;   // item 8
+  if (settled !== "confirmed") return NextResponse.json({ error: settled === "failed" ? "The cancel failed on chain. The basket stands." : settled === "expired" ? "It did not go through. Your SKR is still in the basket. Try again." : STILL_WAITING }, { status: 409 });
   let after = await readPosition(owner);
   for (let i = 0; i < 3 && after.unstakingRaw !== 0n; i++) {
     await new Promise((r) => setTimeout(r, 1_000));

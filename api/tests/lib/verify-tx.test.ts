@@ -38,6 +38,7 @@ describe("verifyPostedTransaction [A3]", () => {
     expect(posted.instructions[0].data).toEqual(new Uint8Array([1, 2, 3]));
     expect(posted.signature.length).toBeGreaterThan(80);
     expect(posted.wire).toBe(b64(signed));
+    expect(posted.blockhash).toBe(LIFETIME.blockhash);   // round 3, item 8: the confirm routes ask whether it is still valid
   });
 
   it("garbage is not a transaction", () => {

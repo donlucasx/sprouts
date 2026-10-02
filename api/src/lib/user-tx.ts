@@ -1,6 +1,6 @@
 import {
   address, createNoopSigner, pipe, createTransactionMessage, setTransactionMessageFeePayerSigner, setTransactionMessageLifetimeUsingBlockhash,
-  appendTransactionMessageInstructions, compileTransaction, getBase64EncodedWireTransaction, type Address, type Instruction, type Base64EncodedWireTransaction,
+  appendTransactionMessageInstructions, compileTransaction, getBase64EncodedWireTransaction, type Address, type Blockhash, type Instruction, type Base64EncodedWireTransaction,
 } from "@solana/kit";
 import { rpc } from "./rpc";
 import { signatureStatus } from "./planting";
@@ -31,5 +31,20 @@ export async function waitConfirmed(signature: string, tries = 20, everyMs = 1_5
   }
   return "pending";
 }
+
+/**
+ * Device round 3, item 8 (10-02): what a confirm poll that ended "pending" means. While the transaction's blockhash is still valid
+ * it may yet land ("pending"). Once the finalized chain is past its lastValidBlockHeight (isBlockhashValid false) it can never land;
+ * the signature is asked once more, so a late landing still counts, and otherwise it is "expired": it did not go through, nothing moved.
+ */
+export async function settleUnconfirmed(posted: { signature: string; blockhash: string }): Promise<"confirmed" | "failed" | "pending" | "expired"> {
+  const { value: valid } = await rpc().isBlockhashValid(posted.blockhash as Blockhash, { commitment: "finalized" }).send();
+  if (valid) return "pending";
+  const s = await signatureStatus(posted.signature);
+  return s === "pending" ? "expired" : s;
+}
+
+/** The plain answer while a send has not confirmed and its blockhash is still valid (his device round 3, item 7). */
+export const STILL_WAITING = "Still waiting for the chain. Try again in a minute.";
 
 export const userAddress = (pubkey: string) => address(pubkey);

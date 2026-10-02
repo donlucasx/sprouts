@@ -6,7 +6,7 @@ import { readPosition, sharePrice, userStakePda } from "@/lib/staking";
 import { getUnstakeInstructionDataDecoder, UNSTAKE_DISCRIMINATOR } from "@/generated/staking";
 import { potForUser, sharesToRaw } from "@/lib/pot";
 import { verifyPostedTransaction } from "@/lib/verify-tx";
-import { sendPosted, waitConfirmed, userAddress } from "@/lib/user-tx";
+import { sendPosted, waitConfirmed, settleUnconfirmed, STILL_WAITING, userAddress } from "@/lib/user-tx";
 import { json } from "@/lib/json";
 import { SKR_STAKING_PROGRAM } from "@/lib/constants";
 
@@ -54,7 +54,9 @@ export async function POST(request: Request) {
   } catch {
     status = await waitConfirmed(posted.signature, 3);
   }
-  if (status !== "confirmed") return NextResponse.json({ error: status === "failed" ? "The withdrawal failed on chain. Nothing moved." : "The chain has not confirmed the withdrawal yet. Check again in a minute." }, { status: 409 });
+  // Item 8: an expired blockhash that never landed did not go through (a wallet approval after the build's blockhash ran out).
+  const settled = status === "pending" ? await settleUnconfirmed(posted) : status;
+  if (settled !== "confirmed") return NextResponse.json({ error: settled === "failed" ? "The withdrawal failed on chain. Nothing moved." : settled === "expired" ? "It did not go through. Nothing moved. Try again." : STILL_WAITING }, { status: 409 });
   let after = await readPosition(owner);
   for (let i = 0; i < 3 && after.unstakingRaw === 0n; i++) {
     await new Promise((r) => setTimeout(r, 1_000));

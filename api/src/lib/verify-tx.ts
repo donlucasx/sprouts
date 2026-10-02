@@ -2,7 +2,8 @@ import { address, getBase64Encoder, getTransactionDecoder, getCompiledTransactio
 
 type CompiledIx = { programAddressIndex: number; accountIndices?: readonly number[]; data?: Uint8Array };
 
-export type PostedTx = { signature: string; feePayer: Address; programs: Address[]; instructions: { program: Address; data: Uint8Array; accounts: Address[] }[]; walletAdded: Address[]; wire: string };
+/** `blockhash`: the lifetime the transaction carries (the API builds every one with a blockhash, never a durable nonce). */
+export type PostedTx = { signature: string; blockhash: string; feePayer: Address; programs: Address[]; instructions: { program: Address; data: Uint8Array; accounts: Address[] }[]; walletAdded: Address[]; wire: string };
 
 /**
  * Programs a wallet may add to a transaction before it signs, set aside rather than refused (Phantom, 2026-09-29): its own priority
@@ -46,5 +47,5 @@ export function verifyPostedTransaction(a: { base64: string; feePayer: Address; 
   // The routes read only what the API built; what the wallet added is listed apart.
   const instructions = all.filter((ix) => a.programs.includes(ix.program));
   const walletAdded = all.filter((ix) => !a.programs.includes(ix.program)).map((ix) => ix.program);
-  return { signature: getSignatureFromTransaction(tx), feePayer, programs: instructions.map((i) => i.program), instructions, walletAdded, wire: a.base64 };
+  return { signature: getSignatureFromTransaction(tx), blockhash: String(message.lifetimeToken), feePayer, programs: instructions.map((i) => i.program), instructions, walletAdded, wire: a.base64 };
 }

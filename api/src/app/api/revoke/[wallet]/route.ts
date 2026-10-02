@@ -5,7 +5,7 @@ import { getRepo } from "@/db/repo";
 import { rateLimited } from "@/lib/auth-guard";
 import { buildRevokeIxs, readDelegation } from "@/lib/subscriptions";
 import { verifyPostedTransaction } from "@/lib/verify-tx";
-import { buildUserTransaction, sendPosted, waitConfirmed } from "@/lib/user-tx";
+import { buildUserTransaction, sendPosted, waitConfirmed, settleUnconfirmed, STILL_WAITING } from "@/lib/user-tx";
 import { SUBSCRIPTIONS_PROGRAM } from "@/lib/constants";
 
 export const runtime = "nodejs";
@@ -62,7 +62,8 @@ export async function POST(request: Request, ctx: { params: Promise<{ wallet: st
   } catch {
     status = await waitConfirmed(posted.signature, 3); // review I3
   }
-  if (status !== "confirmed") return NextResponse.json({ error: status === "failed" ? "The revoke failed on chain." : "The chain has not confirmed the revoke yet. Check again in a minute." }, { status: 409 });
+  const settled = status === "pending" ? await settleUnconfirmed(posted) : status;   // item 8
+  if (settled !== "confirmed") return NextResponse.json({ error: settled === "failed" ? "The revoke failed on chain." : settled === "expired" ? "It did not go through. Nothing changed. Try again." : STILL_WAITING }, { status: 409 });
   let d = await readDelegation(pda);
   for (let i = 0; i < 3 && d.exists; i++) {
     await new Promise((r) => setTimeout(r, 1_000));
