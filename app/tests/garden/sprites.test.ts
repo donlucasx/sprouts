@@ -11,8 +11,9 @@ const EXPECTED = [
   ...[0, 1, 2, 3].map((i) => `blade-snake-s${i}`), ...[0, 1, 2, 3].map((i) => `tier-spruce-s${i}`), ...[0, 1, 2].map((i) => `blade-succulent-${i}`),
   ...["mandarin", "succulent", "sunflower", "snake", "blueberry", "spruce"].map((s) => `bud-${s}`),
   ...["skr", "ore", "hsol", "jitosol", "jupsol", "cbbtc"].map((p) => `token-${p}`),
-  "sign", "blossom-mandarin", "bell-blueberry", "head-sunflower", "tip-spruce", "pup-succulent", "seed", "ring", "can", "can-tilt", "ground", "grain",
+  "sign", "blossom-mandarin", "bell-blueberry", "head-sunflower", "tip-spruce", "pup-succulent", "seed", "ring", "can", "can-tilt", "ground", "grain", "bar-track", "bar-fill",
 ];
+const APP_ONLY = ["grain", "bar-track", "bar-fill"];
 
 describe("the baked sprite set", () => {
   it("has every part the geometry places, with a box and an anchor inside it", () => {
@@ -41,9 +42,10 @@ describe("the baked sprite set", () => {
     expect(png.width).toBe(960); expect(png.height).toBe(Math.round(m.h * 3));
     expect(png.data[3]).toBe(0);   // RGBA: the first pixel's alpha; the vignette does not fill the canvas
   });
-  it("carries every sprite but the grain as a PNG literal for the widget, under 220 KB in all without the ground, the ground under 100 KB", () => {
+  it("carries every sprite but the grain and the bars as a PNG literal for the widget, under 220 KB in all without the ground, the ground under 100 KB", () => {
     let total = 0;
-    for (const name of EXPECTED.filter((n) => n !== "grain")) {
+    for (const name of APP_ONLY) expect(SPRITES_B64[name], name).toBeUndefined();
+    for (const name of EXPECTED.filter((n) => !APP_ONLY.includes(n))) {
       const b = Buffer.from(SPRITES_B64[name], "base64");
       expect(b.subarray(1, 4).toString("ascii"), name).toBe("PNG");
       if (name !== "ground") total += SPRITES_B64[name].length;
@@ -58,6 +60,21 @@ describe("the baked sprite set", () => {
     expect(Object.keys(_strips).sort()).toEqual(["blade", "broad", "heart", "small"]);
     expect(Object.keys(SPRITE_META).sort()).toEqual(Object.keys(rest).sort());
     expect(_bakedL).toEqual(BAKED_L);
+  });
+});
+
+describe("the next-planting bar (R169): two painted strokes, 300 long at 1x plus their round ends, stretched to the row", () => {
+  it.each(["bar-track", "bar-fill"])("%s: 308 by about 11 at 1x, anchored at its left end's centre, painted along its length", (name) => {
+    const m = (meta as unknown as Record<string, { w: number; h: number; ax: number; ay: number }>)[name];
+    expect(m.w).toBe(308); expect(m.h).toBeGreaterThan(8); expect(m.h).toBeLessThan(14);   // measured 11.33: the 5.5 stroke, the filter's spread, the 2 px trim
+    expect(m.ax).toBe(4); expect(m.ay).toBeCloseTo(m.h / 2, 0);
+    const png = PNG.sync.read(readFileSync(`assets/garden/${name}@3x.png`)), mid = Math.round(png.height / 2);
+    for (const x of [0.1, 0.5, 0.9].map((t) => Math.round(t * png.width))) expect(png.data[(mid * png.width + x) * 4 + 3], `${name} alpha at x ${x}`).toBeGreaterThan(40);
+  });
+  it("the fill pools darker at its leading (right) end than along its body", () => {
+    const png = PNG.sync.read(readFileSync("assets/garden/bar-fill@3x.png")), mid = Math.round(png.height / 2);
+    const lum = (x: number) => { const i = (mid * png.width + x) * 4; return png.data[i] + png.data[i + 1] + png.data[i + 2]; };
+    expect(lum(png.width - 4 * 3 - 6)).toBeLessThan(lum(Math.round(png.width / 2)));   // a few px inside the right end vs the middle
   });
 });
 
