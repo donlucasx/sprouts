@@ -33,7 +33,7 @@ export function Screen({
       style={{
         flex: scroll ? undefined : 1,
         paddingHorizontal: spacing.edge,
-        paddingTop: insets.top + spacing.lg,
+        paddingTop: spacing.lg,
         paddingBottom: (inset === 'both' ? insets.bottom : 0) + spacing.edge,
         gap: spacing.lg,
       }}
@@ -65,7 +65,8 @@ export function Screen({
     </View>
   )
   return (
-    <View style={{ flex: 1, backgroundColor: colors.background }}>
+    // The status bar's band is part of the frame, in the ground colour, so scrolling content passes under it never over it (his device note, 10-02).
+    <View style={{ flex: 1, backgroundColor: colors.background, paddingTop: insets.top }}>
       {scroll ? (
         <ScrollView keyboardShouldPersistTaps="handled" refreshControl={refreshControl}>
           {body}
