@@ -28,16 +28,22 @@ function splitLine(s: Split): string {
 export function noticesFor(before: MeResponse | null, me: MeResponse, on: (k: NoticeKind) => boolean): Notice[] {
   if (!before) return [];
   const out: Notice[] = [];
-  for (const p of me.history.plantings.filter((p) => !before.history.plantings.some((q) => q.id === p.id)))
+  const landed = me.history.plantings.filter((p) => !before.history.plantings.some((q) => q.id === p.id));
+  for (const p of landed)
     out.push({ kind: "plantings", title: "Planting landed", body: plantingNotice(p, me.pot) });
-  if (before.basket && !me.basket)
-    out.push({ kind: "withdrawals", title: "Withdrawal delivered", body: `${formatSkr(BigInt(before.basket.amountRaw), me.pot.skrUsd)} is in your Seeker's wallet.` });
+  // A basket also leaves on a cancel, which drops its pick (cancelSignature set); only a basket whose pick stays was delivered.
+  const b = before.basket;
+  if (b && !me.basket && me.history.picks.some((p) => p.ts === b.unstakeTs))
+    out.push({ kind: "withdrawals", title: "Withdrawal delivered", body: `${formatSkr(BigInt(b.amountRaw), me.pot.skrUsd)} is in your Seeker's wallet.` });
   // Only the daily run sets changedDay; any save of yours clears it to null, so a new non-null day is the manager's move.
   if (me.manager.changedDay && me.manager.changedDay !== before.manager.changedDay) {
     const why = me.manager.why ? ` ${me.manager.why}` : "";
     out.push({ kind: "manager", title: "Your split moved", body: `Your yield manager moved your split to ${splitLine(me.rules.allocation)}.${why} You can undo it in Rules.` });
   }
-  if (me.rules.dailyCapCents > 0 && me.nextPlanting.capLeftCents === 0 && before.nextPlanting.capLeftCents > 0)
-    out.push({ kind: "limit", title: "Daily limit reached", body: `Today's ${formatUsd(me.rules.dailyCapCents)} is used up. Your change keeps adding up and plants tomorrow.` });
+  // Only a planting uses up the limit: one landed since the last read and what is left no longer covers a network fee. A cap you
+  // lowered, or the API's fallback when the chain read fails, lands no planting, so neither can fire it (review, findings 1, 3, 7).
+  const feeCents = me.lastReceipt?.networkFeeCents ?? 0;
+  if (landed.length > 0 && me.rules.dailyCapCents > 0 && me.nextPlanting.capLeftCents <= feeCents)
+    out.push({ kind: "limit", title: "Daily limit reached", body: "Today's limit is used up. Your change keeps adding up and plants tomorrow." });
   return out.filter((n) => on(n.kind));
 }

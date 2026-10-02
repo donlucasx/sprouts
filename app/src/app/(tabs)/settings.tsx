@@ -204,8 +204,11 @@ export default function Settings() {
         {/* R160 and R161: the notices grouped under their own heading, one switch each. */}
         <ThemedText variant="heading">Notifications</ThemedText>
         {NOTICES.map(([kind, label]) => (
-          <View key={kind} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
-            <ThemedText style={{ flex: 1 }}>{label}</ThemedText>
+          <View key={kind} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.xs }}>
+            {/* The switch carries the label; the text is hidden from the screen reader so it is not read twice. */}
+            <ThemedText style={{ flex: 1 }} importantForAccessibility="no" accessibilityElementsHidden>
+              {label}
+            </ThemedText>
             <Switch
               {...toggle}
               value={notifyOn[kind]}
