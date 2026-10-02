@@ -63,9 +63,9 @@ export const SIGN_LABEL: Record<PlantId, string> = { skr: "SKR", ore: "stORE", h
 /** RG30 (10-02): the garden frames what is planted; 2x is the cap the 3x bakes hold; Garden.tsx eases each change over easeMs.
  * R167 (10-02): the view's HEIGHT follows the content, never shorter than the ground band plus `aboveGround`. */
 export const FRAME = { maxZoom: 2, pad: 16, easeMs: 1200, aboveGround: 40 } as const;
-/** Device round 3, item 1 (10-02): room to grow above the tallest part, a quarter of the content's height (the tallest part down to
- * the bed's bottom), never under 40 px on screen; it replaces the 16 px margin on top only. */
-export const HEADROOM = { share: 0.25, minPx: 40 } as const;
+/** Room to grow above the tallest part: 60 percent of the content's height (the tallest part down to the bed's bottom), never under
+ * 72 px on screen (R185; device round 3 item 1 had a quarter and 40 px); it replaces the 16 px margin on top only. */
+export const HEADROOM = { share: 0.6, minPx: 72 } as const;   // R185 (10-02, "waiting for more headroom"): from round 3's 25 percent and 40 px
 /** `x`, `y`, `w`, `h` in canvas px; `viewH` the view's height on screen (h times zoom). */
 export type Frame = { x: number; y: number; w: number; h: number; zoom: number; viewH: number };
 /** How far a part reaches sideways from its plant's foot, a safe bound as `topOf` takes it: a leaf-like sprite its baked length times
@@ -82,7 +82,7 @@ export const MIN_VIEW_H = CANVAS.height - CANVAS.soilLine + FRAME.aboveGround;
  * painted from about 13 px under its top and a crop there would show as a hard line. */
 const groundH = () => SPRITE_META["ground"]?.h ?? CANVAS.height - CANVAS.soilLine;
 /** RG30: the box (canvas px) around the present plants: each foot, its sideways reach and its height above the foot, and its own
- * sign; padded 16 at the sides; the top the tallest part less HEADROOM (a quarter of the content's height, at least 40 px on screen at
+ * sign; padded 16 at the sides; the top the tallest part less HEADROOM (60 percent of the content's height, at least 72 px on screen at
  * the breadth's zoom); the bottom the bed's. The zoom fits that box's breadth, capped at 2 (and at the bed's height, so the view is never
  * taller than 260); the frame is centred on the box's breadth and clamped inside the bed. R167: the view's height is the box's
  * (from its padded top down to the bed's bottom) times the zoom, floored at `minViewH`; only the empty top is cropped, so the ground
