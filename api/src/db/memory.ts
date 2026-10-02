@@ -66,7 +66,7 @@ export class MemoryRepo implements Repo {
     if (!this.users.has(userPubkey) && !this.rules.has(userPubkey)) throw new Error(`insert or update on table "rules" violates foreign key constraint "rules_user_pubkey_fkey" (${userPubkey})`);
     let r = this.rules.get(userPubkey);
     if (!r) {
-      r = { ...DEFAULT_RULES, pins: {}, allocation: { ...DEFAULT_RULES.allocation }, prevAllocation: null, allocationDay: null, userPubkey, updatedAt: new Date() };
+      r = { ...DEFAULT_RULES, pins: {}, allocation: { ...DEFAULT_RULES.allocation }, prevAllocation: null, allocationDay: null, pinsByUndo: false, userPubkey, updatedAt: new Date() };
       this.rules.set(userPubkey, r);
     }
     return r;

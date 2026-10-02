@@ -28,8 +28,11 @@ export type WalletRow = {
   createdAt: Date;
 };
 
-/** `prevAllocation` and `allocationDay` are set only by the daily run (the undo, spec 4.5); any save by the user clears them. */
-export type RulesRow = Rules & { userPubkey: string; updatedAt: Date; prevAllocation: Split | null; allocationDay: string | null };
+/**
+ * `prevAllocation` and `allocationDay` are set only by the daily run (the undo, spec 4.5); any save by the user clears them.
+ * `pinsByUndo` (R137, 0006): the pins were written by an undo; a save that turns the manager back on drops them, a save that carries pins clears the mark.
+ */
+export type RulesRow = Rules & { userPubkey: string; updatedAt: Date; prevAllocation: Split | null; allocationDay: string | null; pinsByUndo: boolean };
 
 export type SwapRow = {
   signature: string;

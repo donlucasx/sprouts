@@ -11,11 +11,13 @@ describe("supabase row mappers", () => {
     expect(r.pins).toEqual({ stORE: 20 });
     expect(r.managed).toBe(false);
     expect(r.allocationDay).toBeNull();
+    expect(r.pinsByUndo).toBe(false);                                 // a row from before 0006 reads as the default
   });
 
   it("rulesRow reads a six-key allocation, a previous one and the day", () => {
-    const r = rulesRow({ ...base, allocation: { SKR: 45, stORE: 0, hSOL: 20, JitoSOL: 15, JupSOL: 10, cbBTC: 10 }, managed: true, stop: "bold", pins: {}, prev_allocation: { SKR: 100 }, allocation_day: "2026-10-02" });
+    const r = rulesRow({ ...base, allocation: { SKR: 45, stORE: 0, hSOL: 20, JitoSOL: 15, JupSOL: 10, cbBTC: 10 }, managed: true, stop: "bold", pins: {}, prev_allocation: { SKR: 100 }, allocation_day: "2026-10-02", pins_by_undo: true });
     expect(r.allocation.hSOL).toBe(20);
+    expect(r.pinsByUndo).toBe(true);
     expect(r.prevAllocation).toEqual({ SKR: 100, stORE: 0, hSOL: 0, JitoSOL: 0, JupSOL: 0, cbBTC: 0 });
     expect(r.allocationDay).toBe("2026-10-02");
   });
