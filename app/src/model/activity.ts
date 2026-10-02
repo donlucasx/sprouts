@@ -28,8 +28,8 @@ export function withdrawalRowLine(day: string, w: Withdrawal, skrUsd: number | n
   return `${day}, ${amount}, ${state}${w.source === 'wallet' ? ', from your wallet' : ''}`
 }
 
-/** R156 (supersedes R94's third line): the one-line explainer under the withdrawals. */
-export const TAKEN_OUT_LINE = 'What you took out.'
+/** R156 (supersedes R94's third line): the one-line explainer under the withdrawals; R171 names it Withdraw. */
+export const WITHDRAWN_LINE = 'What you withdrew.'
 
 /** A section shows its latest five rows (the API serves fifty, newest first); "Show N more" opens the rest in place (his note 6). */
 export function visibleRows<T>(rows: T[], open: boolean, limit = 5): { shown: T[]; hidden: number } {
