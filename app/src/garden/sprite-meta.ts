@@ -51,3 +51,5 @@ export const SPRITE_META: Record<string, SpriteMeta> = {
   "bar-fill": { w: 308.0, h: 11.33, ax: 4.0, ay: 5.67 },
   "ground": { w: 320, h: 86.0, ax: 0, ay: 0 },
 };
+/** R176: the painted soil as a polygon in the ground sprite's 1x units (bake.py ground_outline); rings clip to it. */
+export const GROUND_OUTLINE: [number, number][] = [[195, 14], [101, 16], [68, 22], [65, 24], [51, 26], [14, 28], [2, 32], [2, 44], [5, 62], [0, 64], [6, 66], [7, 76], [30, 78], [139, 82], [140, 82], [318, 78], [318, 70], [312, 30], [261, 26], [257, 24], [230, 20], [218, 16], [206, 14]];
