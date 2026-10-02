@@ -50,4 +50,5 @@ export const SPRITES: Record<string, SpriteMeta & { src: number }> = {
   "bar-track": { src: require("@/assets/garden/bar-track.png"), w: 308.0, h: 11.33, ax: 4.0, ay: 5.67 },
   "bar-fill": { src: require("@/assets/garden/bar-fill.png"), w: 308.0, h: 11.33, ax: 4.0, ay: 5.67 },
   "ground": { src: require("@/assets/garden/ground.png"), w: 320, h: 86.0, ax: 0, ay: 0 },
+  "can-grey": { src: require("@/assets/garden/can-grey.png"), w: 73.67, h: 57.33, ax: 47.67, ay: 31.33 },
 };
