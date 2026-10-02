@@ -23,6 +23,8 @@ type RulesShape = MeResponse["rules"];
 // D5: the text-to-controls box is hidden; it still compiles and its compile route still answers.
 const SHOW_BOX = false as boolean;
 
+const SWITCH_TRACK = { false: "#D9D2C2", true: "#2F5D3A" } as const;
+const SWITCH_THUMB = "#F4EEDF";
 const INK = "#2B2B2B";
 const MUTED = "#6B6558";
 const muted: TextStyle = { fontSize: 13, color: MUTED };
@@ -201,14 +203,14 @@ export default function Rules() {
         </Card>
       )}
       <Card>
-        <Row label="Round up to the next dollar"><Switch value={r.roundupOn} onValueChange={(v) => edit({ roundupOn: v })} /></Row>
-        <Row label={`1% on swaps of ${formatUsd(r.pctThresholdCents)} or more`}><Switch value={r.pctOn} onValueChange={(v) => edit({ pctOn: v })} /></Row>
+        <Row label="Round up to the next dollar"><Switch trackColor={SWITCH_TRACK} thumbColor={SWITCH_THUMB} value={r.roundupOn} onValueChange={(v) => edit({ roundupOn: v })} /></Row>
+        <Row label={`1% on swaps of ${formatUsd(r.pctThresholdCents)} or more`}><Switch trackColor={SWITCH_TRACK} thumbColor={SWITCH_THUMB} value={r.pctOn} onValueChange={(v) => edit({ pctOn: v })} /></Row>
         <Stepper label="Daily limit" value={r.dailyCapCents} step={100} min={100} max={500} format={formatUsd} onChange={(v) => edit({ dailyCapCents: v })} />
         <Stepper label="Plant at" value={r.plantThresholdCents} step={50} min={50} max={2000} format={formatUsd} onChange={(v) => edit({ plantThresholdCents: v })} />
       </Card>
       <Card>
         <Row label={SWITCH_LABEL}>
-          <Switch value={r.managed} onValueChange={(v) => edit(v ? { managed: true, pins: pinsForOn(r.pins) } : { managed: false })} />
+          <Switch trackColor={SWITCH_TRACK} thumbColor={SWITCH_THUMB} value={r.managed} onValueChange={(v) => edit(v ? { managed: true, pins: pinsForOn(r.pins) } : { managed: false })} />
         </Row>
         <Text style={muted}>{r.managed ? ON_TEXT : OFF_TEXT}</Text>
         {r.managed && (
@@ -233,6 +235,8 @@ export default function Rules() {
             <Text style={muted}>{row.mode}{row.bound ? ` (${row.bound})` : ""}</Text>
             {r.managed && (
               <Switch
+                trackColor={SWITCH_TRACK}
+                thumbColor={SWITCH_THUMB}
                 accessibilityLabel={`Pin ${COIN_NAME[row.asset]}`}
                 value={row.mode === "pinned"}
                 onValueChange={(on) => edit({ pins: togglePin(r.pins, row.asset, on, row.pct) })}

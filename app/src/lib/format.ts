@@ -46,9 +46,11 @@ export function formatAmount(asset: Asset, raw: bigint, usd: number | null): str
   return usd === null ? text : `${text} (${formatUsd(Math.round(amount * usd * 100))})`;
 }
 
-/** The receipt's fee clause: none for a legacy planting with no recorded fee (migration 0005 left those at 0; their fee was taken in the coin). */
-export function feeClause(feeCents: number): string {
-  return feeCents > 0 ? `, fee ${formatUsd(feeCents)}` : "";
+/** The receipt's fee clause: the fee in dollars; "under 1 cent" for a USDC fee that rounds to zero (feeAmountRaw "0"); none for a legacy planting (its fee was taken in the coin) or when feeAmountRaw is absent. */
+export function feeClause(feeCents: number, feeAmountRaw?: string): string {
+  if (feeCents > 0) return `, fee ${formatUsd(feeCents)}`;
+  if (feeCents === 0 && feeAmountRaw === "0") return ", fee under 1 cent";
+  return "";
 }
 
 /** The line under a pin (the ORE plan's finding 9, generalised): what a share of each dollar grows. */

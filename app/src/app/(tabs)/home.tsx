@@ -95,9 +95,9 @@ export default function Home() {
         </View>
       ) : null}
       <Card>
-        <Text style={{ fontSize: 15, color: "#6B6558" }}>In your garden, locked to your Seeker</Text>
+        <Text style={{ fontSize: 15, color: "#6B6558" }}>In your garden</Text>
         <Text style={{ fontSize: 28, fontWeight: "600", color: "#2B2B2B" }}>{formatSkr(BigInt(me.pot.skrStakedRaw), skrUsd)}</Text>
-        <Text style={{ fontSize: 16, color: "#2B2B2B" }}>Put in {formatSkr(BigInt(me.pot.skrPutInRaw), skrUsd)}. Earned {formatSkr(BigInt(me.pot.skrEarnedRaw), skrUsd)}.</Text>
+        <Text style={{ fontSize: 16, color: "#2B2B2B" }}>Put in {formatSkr(BigInt(me.pot.skrPutInRaw), skrUsd)}. Earned {formatSkr(BigInt(me.pot.skrEarnedRaw), skrUsd)}. Locked to your Seeker.</Text>
         {me.holdings.map((h) => (
           <Text key={h.asset} style={{ fontSize: 14, color: "#2B2B2B" }}>{formatHolding(h)}</Text>
         ))}
@@ -112,7 +112,7 @@ export default function Home() {
         <Text style={{ fontSize: 16, color: "#2B2B2B" }}>Next planting: {formatUsd(me.nextPlanting.pendingCents)} of {formatUsd(me.nextPlanting.thresholdCents)}{me.nextPlanting.asset !== "SKR" ? `, grows ${COIN_NAME[me.nextPlanting.asset]}` : ""}</Text>
         {me.lastReceipt ? (
           <Text style={{ fontSize: 14, color: "#6B6558" }}>
-            Last planting {shortDate(me.lastReceipt.ts)}: {formatUsd(me.lastReceipt.usdcPulledCents)} pulled, {formatAmount(me.lastReceipt.asset, BigInt(me.lastReceipt.amountOutRaw), me.lastReceipt.usdPrice)} planted{feeClause(me.lastReceipt.feeCents)}, network fee {formatUsd(me.lastReceipt.networkFeeCents)}
+            Last planting {shortDate(me.lastReceipt.ts)}: {formatUsd(me.lastReceipt.usdcPulledCents)} pulled, {formatAmount(me.lastReceipt.asset, BigInt(me.lastReceipt.amountOutRaw), me.lastReceipt.usdPrice)} planted{feeClause(me.lastReceipt.feeCents, me.lastReceipt.feeAmountRaw)}, network fee {formatUsd(me.lastReceipt.networkFeeCents)}
           </Text>
         ) : (
           <Text style={{ fontSize: 14, color: "#6B6558" }}>{noPlantingLine(me)}</Text>
