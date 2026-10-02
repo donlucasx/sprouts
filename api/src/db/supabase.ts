@@ -86,6 +86,7 @@ export class SupabaseRepo implements Repo {
     if (patch.pins !== undefined) update.pins = patch.pins;
     if (patch.prevAllocation !== undefined) update.prev_allocation = patch.prevAllocation;
     if (patch.allocationDay !== undefined) update.allocation_day = patch.allocationDay;
+    if (patch.pinsByUndo !== undefined) update.pins_by_undo = patch.pinsByUndo;
     return this.one(this.db.from("rules").update(update).eq("user_pubkey", userPubkey).select().single(), rulesRow);
   }
 
@@ -410,6 +411,7 @@ export function rulesRow(r: Row): T.RulesRow {
     allocation: toSplit(r.allocation as Record<string, number> | null),
     prevAllocation: r.prev_allocation ? toSplit(r.prev_allocation as Record<string, number>) : null,
     allocationDay: r.allocation_day ? String(r.allocation_day) : null,
+    pinsByUndo: Boolean(r.pins_by_undo),
     updatedAt: date(r.updated_at),
   };
 }

@@ -52,22 +52,29 @@ export async function PUT(request: Request) {
 
   if (managed !== undefined || stop !== undefined || rawPins !== undefined) {
     let pins: Pins = { ...current.pins };
+    let pinsByUndo = current.pinsByUndo;
     if (rawPins !== undefined) {
       pins = {};
       for (const [k, v] of Object.entries(rawPins)) {
         if (!isAsset(k)) return NextResponse.json({ error: "Bad request." }, { status: 400 });
-        pins[k as Asset] = v;
+        if (v !== 0) pins[k as Asset] = v; // a 0 pin is no pin: the app drops zeros on its side and the API does the same (the audit's P5 note)
       }
+      pinsByUndo = false; // pins you send are yours
     }
     const nextManaged = managed ?? current.managed;
     const nextStop = stop ?? current.stop;
+    if (nextManaged && !current.managed && pinsByUndo) {
+      // R137: the pins an undo made held the manager's old split still; turning it back on frees it. Pins set by hand stay.
+      pins = {};
+      pinsByUndo = false;
+    }
     if (!nextManaged) delete pins.SKR; // spec 4.2: off, SKR is always the rest, so an SKR pin from the manager's time is dropped
     const floor = floorFor(nextManaged, nextStop);
     const problem = validatePins(pins, floor);
     if (problem) return NextResponse.json({ error: PIN_COPY(floor, STOP_LABEL[nextStop])[problem] }, { status: 400 });
     const stopSplit = nextManaged ? ((await repo.latestSplitDay(nextStop))?.split ?? STOP_DEFAULTS[nextStop]) : STOP_DEFAULTS[nextStop];
     const allocation = effectiveSplit({ managed: nextManaged, stop: nextStop, pins, stopSplit });
-    Object.assign(patch, { managed: nextManaged, stop: nextStop, pins, allocation });
+    Object.assign(patch, { managed: nextManaged, stop: nextStop, pins, pinsByUndo, allocation });
   }
   const saved = await repo.saveRules(session.pubkey, patch);
   // The event follows the save, so a failed save never leaves a change in Activity that did not happen.

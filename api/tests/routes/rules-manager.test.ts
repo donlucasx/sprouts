@@ -87,6 +87,36 @@ describe("PUT /api/rules with the Yield Manager", () => {
     expect((await put({ dailyCapCents: 2000 })).status).toBe(400);
   });
 
+  it("after an undo, turning the manager back on drops the pins the undo made (R137)", async () => {
+    const prior = split({ SKR: 60, hSOL: 20, cbBTC: 20 });
+    await repo.saveRules(U, { managed: true, stop: "balanced", allocation: split({ SKR: 45, hSOL: 25, JitoSOL: 15, JupSOL: 10, cbBTC: 5 }), prevAllocation: prior, allocationDay: "2026-10-02" });
+    const undone = (await (await undoNow()).json()) as { pins: Record<string, number>; managed: boolean };
+    expect(undone.pins).toEqual({ hSOL: 20, cbBTC: 20 });
+    expect((await repo.getRules(U)).pinsByUndo).toBe(true);
+    const on = (await (await put({ managed: true })).json()) as { pins: Record<string, number>; managed: boolean; allocation: Split };
+    expect(on.managed).toBe(true);
+    expect(on.pins).toEqual({});
+    expect(on.allocation).toEqual(STOP_DEFAULTS.balanced);          // no split row yet: the stop default, free of the undo's pins
+    expect((await repo.getRules(U)).pinsByUndo).toBe(false);
+  });
+
+  it("a pin set by hand after the undo survives the flip back on (R137)", async () => {
+    await repo.saveRules(U, { managed: true, stop: "balanced", allocation: split({ SKR: 45, hSOL: 25, JitoSOL: 15, JupSOL: 10, cbBTC: 5 }), prevAllocation: split({ SKR: 60, hSOL: 20, cbBTC: 20 }), allocationDay: "2026-10-02" });
+    await undoNow();
+    const mine = (await (await put({ pins: { cbBTC: 10 } })).json()) as { pins: Record<string, number> };
+    expect(mine.pins).toEqual({ cbBTC: 10 });
+    expect((await repo.getRules(U)).pinsByUndo).toBe(false);
+    const on = (await (await put({ managed: true })).json()) as { pins: Record<string, number>; allocation: Split };
+    expect(on.pins).toEqual({ cbBTC: 10 });
+    expect(on.allocation.cbBTC).toBe(10);
+  });
+
+  it("a 0 pin from a bare PUT is dropped, as the app drops zeros on its side", async () => {
+    await put({ managed: true, stop: "balanced" });
+    const res = (await (await put({ pins: { hSOL: 0, cbBTC: 10 } })).json()) as { pins: Record<string, number> };
+    expect(res.pins).toEqual({ cbBTC: 10 });
+  });
+
   it("any save clears the undo", async () => {
     await repo.saveRules(U, { managed: true, stop: "balanced", allocation: STOP_DEFAULTS.balanced, prevAllocation: SKR_ONLY, allocationDay: "2026-10-02" });
     await put({ plantThresholdCents: 300 });
