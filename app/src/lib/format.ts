@@ -59,13 +59,27 @@ export function shareLine(asset: Asset, pct: number): string {
   return `About ${pct} cents of every dollar grows ${COIN_NAME[asset]}.`;
 }
 
-/** Home's line per held coin (spec 3.3): the amount with its value, earned when the coin has a measured rate, and where it sits. */
+/** Home's line per held coin (spec 3.3): the amount with its value, earned when the coin has a measured rate. Where they sit is HOLDINGS_NOTE, once under the list. */
 export function formatHolding(h: Holding): string {
   const raw = BigInt(h.heldRaw);
   const amount = Number(raw) / 10 ** DECIMALS[h.asset];
   const value = h.valueUsd === null ? "" : ` (${formatUsd(Math.round(h.valueUsd * 100))})`;
   const earned = h.earnedUsd === null ? "" : `, earned ${formatUsd(Math.round(h.earnedUsd * 100))}`;
-  return `${amount.toFixed(SHOWN[h.asset])} ${COIN_NAME[h.asset]}${value}${earned}, in your Seeker wallet, not locked. Sprouts cannot sell it for you.`;
+  return `${amount.toFixed(SHOWN[h.asset])} ${COIN_NAME[h.asset]}${value}${earned}`;
+}
+/** Under Home's holdings (spec 3.3, said once): the wallet coins are not locked and Sprouts cannot sell them. */
+export const HOLDINGS_NOTE = "These sit in your Seeker wallet, not locked. Sprouts cannot sell them for you.";
+
+/** A planting in one clause, dollars first (manual 5 and 6): what the change became, with the fee clause as ruled (R139). */
+export function plantedLine(p: { usdcInCents: number; asset: Asset; amountOutRaw: string; usdPrice: number | null; feeCents: number; feeAmountRaw?: string }): string {
+  return `${formatUsd(p.usdcInCents)} became ${formatAmount(p.asset, BigInt(p.amountOutRaw), p.usdPrice)}${feeClause(p.feeCents, p.feeAmountRaw)}`;
+}
+
+/** The pot's headline on Home (manual 5: the big number is dollars first): the dollar value big, the SKR under it; the SKR alone when no price is known. */
+export function potHeadline(raw: bigint, skrUsd: number | null): { big: string; small: string | null } {
+  const skr = formatSkr(raw, null);
+  if (skrUsd === null) return { big: skr, small: null };
+  return { big: formatUsd(Math.round((Number(raw) / 10 ** SKR_DECIMALS) * skrUsd * 100)), small: skr };
 }
 
 /** A UTC `YYYY-MM-DD` as "Mon D", read as given: the API's day is the day, whatever the phone's zone. */
@@ -98,5 +112,5 @@ export function roundUpTo(cents: number, toCents: number): number {
 
 /** One linked wallet in a line: the short address, its status, its daily limit. Home and Settings say it the same way. */
 export function formatWallet(w: { pubkey: string; status: string; dailyCapCents: number }): string {
-  return `${w.pubkey.slice(0, 4)}...${w.pubkey.slice(-4)}, ${w.status}, limit ${formatUsd(w.dailyCapCents)} a day`;
+  return `${w.pubkey.slice(0, 4)}...${w.pubkey.slice(-4)}, ${w.status}, up to ${formatUsd(w.dailyCapCents)} a day`;
 }

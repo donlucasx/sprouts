@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatUsd, formatSkr, formatAsOf, roundUpTo, formatWallet, formatStore, formatAmount, DECIMALS, formatHolding, shareLine, dayLabel, COIN_NAME, feeClause } from "@/lib/format";
+import { formatUsd, formatSkr, formatAsOf, roundUpTo, formatWallet, formatStore, formatAmount, DECIMALS, formatHolding, HOLDINGS_NOTE, shareLine, dayLabel, COIN_NAME, feeClause, plantedLine, potHeadline } from "@/lib/format";
 
 describe("format", () => {
   it("dollars first, two decimals, whole cents", () => {
@@ -27,8 +27,8 @@ describe("format", () => {
 // Home lists the linked wallets (Lucas, 2026-09-29: "Would be great to have info on existing wallets connected on the sprouts dashboard").
 describe("formatWallet", () => {
   it("short address, status, daily limit", () => {
-    expect(formatWallet({ pubkey: "887dEPR85vfSZ45zFrxttJ6cLomwvnYbh5HnyGbTAXVu", status: "active", dailyCapCents: 500 })).toBe("887d...AXVu, active, limit $5.00 a day");
-    expect(formatWallet({ pubkey: "9ZKiQdmEvTKxt9e5yWRT1XbZW1b1D7n2AySLU5HyUZtZ", status: "paused", dailyCapCents: 250 })).toBe("9ZKi...UZtZ, paused, limit $2.50 a day");
+    expect(formatWallet({ pubkey: "887dEPR85vfSZ45zFrxttJ6cLomwvnYbh5HnyGbTAXVu", status: "active", dailyCapCents: 500 })).toBe("887d...AXVu, active, up to $5.00 a day");
+    expect(formatWallet({ pubkey: "9ZKiQdmEvTKxt9e5yWRT1XbZW1b1D7n2AySLU5HyUZtZ", status: "paused", dailyCapCents: 250 })).toBe("9ZKi...UZtZ, paused, up to $2.50 a day");
   });
 });
 
@@ -65,14 +65,23 @@ describe("six coins", () => {
     expect(shareLine("cbBTC", 10)).toBe("About 10 cents of every dollar grows cbBTC.");
   });
 
-  it("formatHolding is the Home line per held coin: value, earned when measured, where it sits", () => {
-    expect(formatHolding({ asset: "hSOL", heldRaw: "2000000000", putInCents: 400, valueUsd: 336, earnedUsd: 2.8, earnedUnderlyingRaw: "20000000" }))
-      .toBe("2.0000 hSOL ($336.00), earned $2.80, in your Seeker wallet, not locked. Sprouts cannot sell it for you.");
-    expect(formatHolding({ asset: "cbBTC", heldRaw: "2389", putInCents: 200, valueUsd: 1.997, earnedUsd: null, earnedUnderlyingRaw: null }))
-      .toBe("0.00002389 cbBTC ($2.00), in your Seeker wallet, not locked. Sprouts cannot sell it for you.");
+  it("formatHolding is the Home line per held coin: value, earned when measured; where they sit is said once under the list (UI pass 10-01)", () => {
+    expect(formatHolding({ asset: "hSOL", heldRaw: "2000000000", putInCents: 400, valueUsd: 336, earnedUsd: 2.8, earnedUnderlyingRaw: "20000000" })).toBe("2.0000 hSOL ($336.00), earned $2.80");
+    expect(formatHolding({ asset: "cbBTC", heldRaw: "2389", putInCents: 200, valueUsd: 1.997, earnedUsd: null, earnedUnderlyingRaw: null })).toBe("0.00002389 cbBTC ($2.00)");
     // Review Focus 4: no price yet (no snapshot row), no earned: the amount alone.
-    expect(formatHolding({ asset: "cbBTC", heldRaw: "2389", putInCents: 200, valueUsd: null, earnedUsd: null, earnedUnderlyingRaw: null }))
-      .toBe("0.00002389 cbBTC, in your Seeker wallet, not locked. Sprouts cannot sell it for you.");
+    expect(formatHolding({ asset: "cbBTC", heldRaw: "2389", putInCents: 200, valueUsd: null, earnedUsd: null, earnedUnderlyingRaw: null })).toBe("0.00002389 cbBTC");
+    expect(HOLDINGS_NOTE).toBe("These sit in your Seeker wallet, not locked. Sprouts cannot sell them for you.");
+  });
+
+  it("plantedLine: what the change became, dollars first, the fee clause as ruled (R139); never the word pulled (manual 6)", () => {
+    expect(plantedLine({ usdcInCents: 203, asset: "hSOL", amountOutRaw: "12300000", usdPrice: 168, feeCents: 0, feeAmountRaw: "0" })).toBe("$2.03 became 0.0123 hSOL ($2.07), fee under 1 cent");
+    expect(plantedLine({ usdcInCents: 23, asset: "SKR", amountOutRaw: "12480000", usdPrice: 0.01833, feeCents: 1, feeAmountRaw: "0" })).toBe("$0.23 became 12.48 SKR ($0.23), fee $0.01");
+    expect(plantedLine({ usdcInCents: 200, asset: "cbBTC", amountOutRaw: "2352", usdPrice: null, feeCents: 0, feeAmountRaw: undefined })).toBe("$2.00 became 0.00002352 cbBTC");
+  });
+
+  it("potHeadline: the big number is the dollar value, the SKR under it; without a price the SKR is the big number", () => {
+    expect(potHeadline(1_284_500_000n, 0.01833)).toEqual({ big: "$23.54", small: "1284.50 SKR" });
+    expect(potHeadline(1_284_500_000n, null)).toEqual({ big: "1284.50 SKR", small: null });
   });
 
   it("feeClause: no clause for a legacy row with no recorded fee (audit fix F4), else the fee in dollars", () => {
