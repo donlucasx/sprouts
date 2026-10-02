@@ -88,3 +88,14 @@ export function frameFor(scene: Scene, plants: PlantOnStage[], width: number): F
   const x = Math.min(Math.max((x0 + x1) / 2 - w / 2, 0), width - w);
   return { x, y: CANVAS.height - h, w, h, zoom, viewH };
 }
+/** RG25, drag to pour: the plant under the rose. `slots` holds the slots (fractions of the width) of the plants with a closed bud; the
+ * nearest by x within 40 px wins (the closest two slots, hSOL and SKR, are 67 px apart at 320 wide, so one always wins) while the rose is
+ * over the garden (y from 0 to the front feet plus 10); null otherwise. x and y are canvas px (`toCanvas`). */
+export function plantUnder(x: number, y: number, slots: Partial<Record<PlantId, number>>, width: number): PlantId | null {
+  if (y < 0 || y > CANVAS.frontFeet + 10) return null;
+  let best: PlantId | null = null, d = 40;
+  for (const [p, fx] of Object.entries(slots) as [PlantId, number][]) { const dd = Math.abs(fx * width - x); if (dd < d) { d = dd; best = p; } }
+  return best;
+}
+/** A point on the garden's view (px from its top-left) back on the canvas: RG30's frame puts canvas p at (p - frame) * zoom. */
+export const toCanvas = (pt: { x: number; y: number }, frame: { x: number; y: number; zoom: number }) => ({ x: frame.x + pt.x / frame.zoom, y: frame.y + pt.y / frame.zoom });
