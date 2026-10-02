@@ -25,7 +25,7 @@ describe("noticesFor (R161)", () => {
   });
   it("a new planting lands", () => {
     expect(noticesFor(me(), me({ plantings: ["p1"] }), all)).toEqual([
-      { kind: "plantings", title: "Planting landed", body: "$0.23 of change became 12.48 SKR ($0.25), locked to your Seeker. A new sprout is waiting in your garden." },
+      { kind: "plantings", title: "Planted", body: "Your change was planted: $0.23 became 12.48 SKR ($0.25)." },
     ]);
   });
   it("a withdrawal is delivered when the basket goes", () => {
@@ -63,7 +63,7 @@ describe("noticesFor (R161)", () => {
   it("each switch silences only its own notice", () => {
     const before = me({ basket: true, capLeft: 100 });
     const after = me({ plantings: ["p1"], changedDay: "2026-10-02", capLeft: 0 });
-    expect(titles(before, after)).toEqual(["Planting landed", "Withdrawal delivered", "Your split moved", "Daily limit reached"]);
+    expect(titles(before, after)).toEqual(["Planted", "Withdrawal delivered", "Your split moved", "Daily limit reached"]);
     for (const off of ["plantings", "withdrawals", "manager", "limit"] as NoticeKind[]) {
       expect(noticesFor(before, after, (k) => k !== off).map((n) => n.kind)).not.toContain(off);
       expect(noticesFor(before, after, (k) => k !== off)).toHaveLength(3);

@@ -2,14 +2,14 @@ import { formatUsd, formatAmount, formatSkr, COIN_NAME } from "./format";
 import { ASSETS, type Asset, type Split } from "./coins";
 import type { MeResponse } from "./api";
 
-/** The planting push: what landed, where it sits, and that a sprout waits to be opened (audits/watering-ux, finding 9). */
+/** The planting push (R172, 10-02): one line, the change and what it became, with the coin's value. The "where it sits" and "a new
+ * sprout is waiting" clauses are gone: they ran past one line, and he picked the plain line over "a new sprout grows". */
 export function plantingNotice(
   p: { asset: Asset; usdcInCents: number; amountOutRaw: string },
   pot: { skrUsd: number | null; storeUsd: number | null },
 ): string {
   const amount = formatAmount(p.asset, BigInt(p.amountOutRaw), p.asset === "SKR" ? pot.skrUsd : p.asset === "stORE" ? pot.storeUsd : null);
-  const where = p.asset === "SKR" ? "locked to your Seeker" : "in your Seeker wallet";
-  return `${formatUsd(p.usdcInCents)} of change became ${amount}, ${where}. A new sprout is waiting in your garden.`;
+  return `Your change was planted: ${formatUsd(p.usdcInCents)} became ${amount}.`;
 }
 
 /** R161: the four notices, each behind its own switch in Settings > Notifications. */
@@ -30,7 +30,7 @@ export function noticesFor(before: MeResponse | null, me: MeResponse, on: (k: No
   const out: Notice[] = [];
   const landed = me.history.plantings.filter((p) => !before.history.plantings.some((q) => q.id === p.id));
   for (const p of landed)
-    out.push({ kind: "plantings", title: "Planting landed", body: plantingNotice(p, me.pot) });
+    out.push({ kind: "plantings", title: "Planted", body: plantingNotice(p, me.pot) });
   // A basket also leaves on a cancel, which drops its pick (cancelSignature set); only a basket whose pick stays was delivered.
   const b = before.basket;
   if (b && !me.basket && me.history.picks.some((p) => p.ts === b.unstakeTs))
