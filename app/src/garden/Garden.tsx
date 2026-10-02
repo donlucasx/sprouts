@@ -102,7 +102,7 @@ export function Garden({ scene: incoming, live, canReady, onWater, onNudge, temp
   }, [change, reduced, tempo, ring]);
   const ringProps = useAnimatedProps(() => ({ opacity: ring.value }));
 
-  // His note (10-02): the wind, all the time. One clock for the garden (0 to 1 every 2.6 s); each plant adds its own phase.
+  // His note (10-02): the wind, all the time. One clock for the garden (0 to 1 every 6.4 s, R179); each plant adds its own phase.
   const sway = useSharedValue(0);
   useEffect(() => {
     if (reduced) { cancelAnimation(sway); sway.value = 0; return; }

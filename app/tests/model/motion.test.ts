@@ -2,11 +2,11 @@ import { describe, it, expect } from "vitest";
 import { SWAY, swayAngle, swayPhase, frameAt, clampZoom, panLimit, pinchOffset } from "@/model/motion";
 import { PLANT_ORDER } from "@/model/garden";
 
-describe("the sway (his note: swaying all the time with the wind; 1.4 degrees either way over 2.6 s)", () => {
-  it("swings 1.4 degrees either way over one 2.6 s period", () => {
-    expect(SWAY).toEqual({ deg: 1.4, periodMs: 2600 });
-    expect(swayAngle(0.25, 0)).toBeCloseTo(1.4, 9);
-    expect(swayAngle(0.75, 0)).toBeCloseTo(-1.4, 9);
+describe("the sway (his note: swaying all the time with the wind; R179: 3 degrees either way, 3.2 s each way)", () => {
+  it("swings 3 degrees either way, 3.2 s each way (a 6.4 s period)", () => {
+    expect(SWAY).toEqual({ deg: 3, periodMs: 6400 });
+    expect(swayAngle(0.25, 0)).toBeCloseTo(3, 9);
+    expect(swayAngle(0.75, 0)).toBeCloseTo(-3, 9);
     expect(swayAngle(0, 0)).toBeCloseTo(0, 9);
     expect(swayAngle(1, 0)).toBeCloseTo(swayAngle(0, 0), 9);   // the clock wraps without a jump
   });
@@ -14,7 +14,7 @@ describe("the sway (his note: swaying all the time with the wind; 1.4 degrees ei
     const phases = PLANT_ORDER.map(swayPhase);
     expect(new Set(phases.map((p) => p.toFixed(3))).size).toBe(6);
     for (const p of phases) { expect(p).toBeGreaterThanOrEqual(0); expect(p).toBeLessThan(1); }
-    // no two plants closer than a twentieth of a period (130 ms), at any clock
+    // no two plants closer than a twentieth of a period (320 ms), at any clock
     for (let i = 0; i < 6; i++) for (let j = i + 1; j < 6; j++) { const d = Math.abs(phases[i] - phases[j]); expect(Math.min(d, 1 - d)).toBeGreaterThan(0.05); }
   });
 });
