@@ -57,10 +57,3 @@ export function Sign({ plant, scale }: { plant: PlantId; scale: number }) {
   );
 }
 export function Basket() { return <G><Rect x={0} y={0} width={26} height={16} rx={3} fill={OCHRE} /><Path d="M3 0 Q 13 -12 23 0" stroke={OCHRE} strokeWidth={2} fill="none" /></G>; }
-/** The can sprite, 32 wide, drawn into WaterButton's existing viewBox (-1 -2 36 24) with its box centred on the viewBox's centre
- * (17, 10); the anchor (47.67, 31.33) sits right of and below the box's centre, so placing the anchor there clipped the spout's rose. */
-export function WateringCan() {
-  const m = SPRITES["can"]; if (!m) return null;
-  const s = 32 / m.w;
-  return <G transform={spriteTransform(m, 17 + (m.ax - m.w / 2) * s, 10 + (m.ay - m.h / 2) * s, 0, s)}><SvgImage href={m.src} width={m.w} height={m.h} /></G>;
-}

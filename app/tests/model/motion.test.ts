@@ -42,12 +42,15 @@ describe("two-finger zoom (R173: up to 3x with pan, snapping back to the automat
     expect(panLimit(-400, 2, 300)).toBe(-300);    // never past the right/bottom edge: 300 * (1 - 2)
     expect(panLimit(-100, 2, 300)).toBe(-100);
   });
-  it("the point under the fingers stays put while the zoom changes", () => {
+  it("the point under the fingers stays under them as the zoom changes and the fingers move (the two-finger pan)", () => {
     // at zoom 1 and no offset, pinching to 2 about x 100 puts the content's x 100 back under x 100: offset -100
-    expect(pinchOffset(0, 1, 2, 100, 300)).toBe(-100);
+    expect(pinchOffset(0, 1, 2, 100, 100, 300)).toBe(-100);
     // already at 2 with offset -100 (content x 100 at screen 100); to 3 about screen 100: content x 100 must stay at 100 => -200
-    expect(pinchOffset(-100, 2, 3, 100, 300)).toBe(-200);
+    expect(pinchOffset(-100, 2, 3, 100, 100, 300)).toBe(-200);
+    // the fingers slide 20 left while zooming to 2: the content's x 100 follows them to screen 80
+    expect(pinchOffset(0, 1, 2, 100, 80, 300)).toBe(-120);
     // clamped inside the view
-    expect(pinchOffset(0, 1, 2, 0, 300)).toBe(0);
+    expect(pinchOffset(0, 1, 2, 0, 0, 300)).toBe(0);
+    expect(pinchOffset(0, 1, 2, 290, 10, 300)).toBe(-300);
   });
 });
