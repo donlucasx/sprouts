@@ -136,14 +136,16 @@ export function effectiveSplit(a: { managed: boolean; stop: Stop; pins: Pins; st
 }
 
 /**
- * The stop's daily split from a model answer (spec 6.3): no-data coins to 0; each non-SKR coin inside its stop max and within
- * MOVE_LIMIT of yesterday both ways; SKR takes the difference and is raised to the floor from the largest coins if needed.
- * Null when the result still breaks a bound (the caller falls back).
+ * The stop's daily split from a model answer (spec 6.3): a no-data coin is held at yesterday's share for the stop, at most the
+ * stop max, 0 with no yesterday (R132: one bad pool read used to blank the coin for days through the move limit); each other
+ * non-SKR coin inside its stop max and within MOVE_LIMIT of yesterday both ways; SKR takes the difference and is raised to the
+ * floor from the largest coins if needed. Null when the result still breaks a bound (the caller falls back).
  */
 export function clampSplit(a: { stop: Stop; proposed: Split; noData: Asset[]; yesterday: Split | null }): Split | null {
   const floor = STOPS[a.stop].floor;
-  const upper = (c: Asset) => (a.noData.includes(c) ? 0 : Math.min(stopMax(a.stop, c), a.yesterday ? a.yesterday[c] + MOVE_LIMIT : 100));
-  const lower = (c: Asset) => (a.noData.includes(c) || !a.yesterday ? 0 : Math.max(0, a.yesterday[c] - MOVE_LIMIT));
+  const held = (c: Asset) => (a.yesterday ? Math.min(a.yesterday[c], stopMax(a.stop, c)) : 0);
+  const upper = (c: Asset) => (a.noData.includes(c) ? held(c) : Math.min(stopMax(a.stop, c), a.yesterday ? a.yesterday[c] + MOVE_LIMIT : 100));
+  const lower = (c: Asset) => (a.noData.includes(c) ? held(c) : !a.yesterday ? 0 : Math.max(0, a.yesterday[c] - MOVE_LIMIT));
   const x = { ...a.proposed } as Record<Asset, number>;
   for (const c of NON_SKR) x[c] = Math.min(upper(c), Math.max(lower(c), x[c]));
   // What the clamp removes goes to SKR by design, not water-filled into other coins with room: the plan's deliberate

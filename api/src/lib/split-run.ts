@@ -35,7 +35,7 @@ const TOOL = {
 
 const system = (stop: Stop) => [
   `You choose how Sprouts splits new round-ups across six coins for its ${STOP_LABEL[stop]} setting. Every number you are given was measured by code.`,
-  "Pick whole percents that sum to 100, inside each coin's max and at or above SKR's floor. Prefer measured growth; weigh short spans lightly; a coin marked no data or not tradeable gets 0; move gently from yesterday.",
+  "Pick whole percents that sum to 100, inside each coin's max and at or above SKR's floor. Prefer measured growth; weigh short spans lightly; a coin marked no data or not tradeable keeps yesterday's share (the code holds it there); move gently from yesterday.",
   "Then write one line, under 25 words, second person, plain words, no advice, no exclamation marks, quoting only numbers from the table, that says why today's split leans where it does.",
 ].join("\n");
 
