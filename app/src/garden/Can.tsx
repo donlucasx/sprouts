@@ -101,7 +101,7 @@ export function Can({ ready, reduced, tempo, width, viewH, viewHNow, s, targetAt
       dy.value = withTiming(spot.y - r.y - home.y, { duration: t(0.18), easing: Easing.inOut(Easing.cubic) });
       await sleep(t(0.18));
     }
-    if (!failed) {
+    if (!failed && Math.abs(tilt.value - TILT) > 1) {   // a drag arrives already tilted
       tilt.value = withTiming(TILT, { duration: t(0.14), easing: Easing.inOut(Easing.ease) });
       await sleep(t(0.14));
     }
