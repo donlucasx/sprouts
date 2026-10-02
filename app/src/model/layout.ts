@@ -29,6 +29,13 @@ export function signX(x: number, side: -1 | 1, width: number, scale: number): nu
   const half = 15 * scale;
   return Math.min(Math.max(x + side * (14 + half * 0.2), half + 1), width - half - 1);
 }
+/** R168 (10-02): the word on a stake, drawn as crisp type over the one blank baked board (`sign`), in the board's own frame: the anchor
+ * at (0, 0) before the sign's scale (1 front, 0.8 back), the board 30 by 11 from y -12 to -1, leaning -4 degrees (gen01_garden.py
+ * sign()). 6.8 px fits the longest label, "JitoSOL" (3.62 em in Albert Sans Medium, 24.6 px), with 2.7 px a side; the baseline at
+ * -4.1 centres the 0.70 em capitals on the face (its centre at -6.5). */
+export const SIGN_TEXT = { size: 6.8, y: -4.1, rot: -4 } as const;
+/** The words, as today: the ORE stake reads stORE (RG7). */
+export const SIGN_LABEL: Record<PlantId, string> = { skr: "SKR", ore: "stORE", hsol: "hSOL", jitosol: "JitoSOL", jupsol: "JupSOL", cbbtc: "cbBTC" };
 /** RG30 (10-02): the garden frames what is planted; 2x is the cap the 3x bakes hold; Garden.tsx eases each change over easeMs.
  * R167 (10-02): the view's HEIGHT follows the content, never shorter than the ground band plus `aboveGround`. */
 export const FRAME = { maxZoom: 2, pad: 16, easeMs: 1200, aboveGround: 40 } as const;

@@ -1,7 +1,9 @@
-import { G, Path, Circle, Image as SvgImage, Rect } from "react-native-svg";
+import { G, Path, Circle, Image as SvgImage, Rect, Text as SvgText } from "react-native-svg";
 import { SPRITES } from "./sprites";
 import { stemPaths, spriteTransform } from "@/model/paint";
 import { COLORS, SOIL, type Placed, type PlantId } from "@/model/species";
+import { SIGN_LABEL, SIGN_TEXT } from "@/model/layout";
+import { FONT } from "@/theme/tokens";
 
 export const INK = SOIL.ink; export const WATER = SOIL.water; export const OCHRE = SOIL.front;
 /** A baked sprite placed by its anchor; `xScale` (the succulent's slender blades, the spruce's arms) scales x apart from y. */
@@ -36,7 +38,17 @@ export function Seed({ index }: { index: number }) {   // gen01 seeds(): alterna
   const dx = (index % 2 ? 1 : -1) * (3 + 2.4 * Math.floor(index / 2)), dy = -1.2 * (index % 3);
   return <SpriteAt name="seed" x={dx} y={dy} rot={((index * 37) % 60) - 30} />;
 }
-export function Sign({ plant, scale }: { plant: PlantId; scale: number }) { return <SpriteAt name={`sign-${plant}`} x={0} y={0} rot={0} scale={scale} />; }
+/** R168: the painted board (one blank bake for all six) and the coin's word over it in Albert Sans, dark ink, crisp at any zoom. */
+export function Sign({ plant, scale }: { plant: PlantId; scale: number }) {
+  return (
+    <G>
+      <SpriteAt name="sign" x={0} y={0} rot={0} scale={scale} />
+      <G transform={`scale(${scale}) rotate(${SIGN_TEXT.rot})`}>
+        <SvgText x={0} y={SIGN_TEXT.y} fontSize={SIGN_TEXT.size} fontFamily={FONT.label} fill={INK} textAnchor="middle">{SIGN_LABEL[plant]}</SvgText>
+      </G>
+    </G>
+  );
+}
 export function Basket() { return <G><Rect x={0} y={0} width={26} height={16} rx={3} fill={OCHRE} /><Path d="M3 0 Q 13 -12 23 0" stroke={OCHRE} strokeWidth={2} fill="none" /></G>; }
 /** The can sprite, 32 wide, drawn into WaterButton's existing viewBox (-1 -2 36 24) with its box centred on the viewBox's centre
  * (17, 10); the anchor (47.67, 31.33) sits right of and below the box's centre, so placing the anchor there clipped the spout's rose. */
