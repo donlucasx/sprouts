@@ -42,9 +42,11 @@ export async function PUT(request: Request) {
   if (!parsed.success) {
     // The field the body failed on, so the app's sentence says which (the audit's note); the zod detail goes to the log only.
     const issue = parsed.error.issues[0];
-    const field = issue === undefined ? undefined : issue.code === "unrecognized_keys" ? issue.keys[0] : issue.path[0];
-    console.error(`rules: bad request${field === undefined ? "" : ` at ${String(field)}`}: ${issue?.message ?? "no body"}`);
-    return NextResponse.json({ error: field === undefined ? "Bad request." : `Bad request: ${String(field)}.` }, { status: 400 });
+    const raw = issue === undefined ? undefined : issue.code === "unrecognized_keys" ? issue.keys[0] : issue.path[0];
+    // A key name is the client's own text: capped and stripped of control characters before it reaches the log or the answer.
+    const field = raw === undefined ? undefined : String(raw).replace(/\p{C}/gu, "").slice(0, 32);
+    console.error(`rules: bad request${field === undefined ? "" : ` at ${field}`}: ${issue?.message ?? "no body"}`);
+    return NextResponse.json({ error: field === undefined ? "Bad request." : `Bad request: ${field}.` }, { status: 400 });
   }
   const { reauth, managed, stop, pins: rawPins, ...rest } = parsed.data;
   const repo = await getRepo();
