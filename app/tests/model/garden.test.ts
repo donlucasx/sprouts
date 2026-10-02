@@ -59,10 +59,20 @@ describe("buildScene: shoots, bands, the branch flag, the swelling (RG3, RG4, RG
     expect(of(buildScene({ ...base, wateredAt: NOW, plantings: five, skrPutInRaw: 1n, skrPrincipalPickedRaw: 1000n }), "sprout")).toHaveLength(1);
     expect(of(buildScene({ ...base, wateredAt: NOW, plantings: five, skrPutInRaw: 400n, skrPickedRaw: 300n }), "pruned")).toHaveLength(0);
   });
-  it("after the next coin's first planting its change is a swelling on that plant; with a fresh bud at the growth point the swelling still shows (the renderer seats it above)", () => {
+  it("after the next coin's first planting its change is a swelling on that plant, no seeds", () => {
     const s = buildScene({ ...base, wateredAt: NOW, plantings: [planting("a", 3)], pendingCents: 57, nextAsset: "SKR" });
     expect(of(s, "seed")).toHaveLength(0);
     expect(of(s, "swelling")[0]).toEqual({ kind: "swelling", plant: "skr", progress: 0.285 });
+  });
+  it("a bud at the growth point and a swelling show together; watering opens the bud, the swelling stays, and a ring appears per plant (Review Focus 5)", () => {
+    const g = { ...base, plantings: [planting("a", 5), planting("b", 3)], pendingCents: 57, nextAsset: "SKR" as const };
+    const before = buildScene({ ...g, wateredAt: new Date(NOW.getTime() - 4 * 86_400_000) });
+    expect(of(before, "sprout").at(-1)).toMatchObject({ id: "b", bud: true });
+    expect(of(before, "swelling")).toHaveLength(1); expect(before.unrevealed).toBe(1);
+    const after = buildScene({ ...g, wateredAt: NOW });
+    expect(of(after, "sprout").at(-1)).toMatchObject({ id: "b", bud: false });
+    expect(of(after, "swelling")).toHaveLength(1); expect(after.unrevealed).toBe(0);
+    expect(of(after, "ring").map((r) => [r.plant, r.age])).toEqual([["skr", 0]]);
   });
 });
 
