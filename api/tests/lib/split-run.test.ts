@@ -86,6 +86,32 @@ describe("decideSplits (spec 6.2 to 6.5)", () => {
     expect(c.why).toMatch(/grew at .* a year over the past week/);
   });
 
+  it("a bad sum gets one retry with the same prompt; the second answer is applied and both calls are counted (R133)", async () => {
+    const repo = await seededRepo();
+    const prompts: string[] = [];
+    let n = 0;
+    const rows = await decideSplits({ repo, now: NOW, model: async (req) => { prompts.push(req.system + req.user); return { input: n++ % 2 === 0 ? { ...good, SKR: 30 } : good, usage: { inputTokens: 1, outputTokens: 1 } }; } });
+    expect(n).toBe(6);                                                   // two calls per stop
+    expect(prompts[0]).toBe(prompts[1]);                                 // the same prompt, nothing added
+    expect(rows[1].fallback).toBeNull();
+    expect(rows[1].modelAnswer).toEqual(good);                            // the answer applied is the retry's
+    expect(rows[1].split).toEqual(split({ SKR: 40, stORE: 5, hSOL: 25, JitoSOL: 15, JupSOL: 10, cbBTC: 5 }));
+    expect((await repo.listWatcherCalls()).length).toBe(6);              // the retry counts against the budget
+  });
+
+  it("two bad sums fall back as schema after exactly two calls; a schema failure that is not the sum gets no retry (R133)", async () => {
+    const repo = await seededRepo();
+    let n = 0;
+    const rows = await decideSplits({ repo, now: NOW, model: async () => { n++; return { input: { ...good, SKR: 30 }, usage: { inputTokens: 1, outputTokens: 1 } }; } });
+    expect(n).toBe(6);
+    expect(rows.every((r) => r.fallback === "schema")).toBe(true);
+    const repo2 = await seededRepo();
+    let m = 0;
+    const rows2 = await decideSplits({ repo: repo2, now: NOW, model: async () => { m++; return { input: { ...good, why: "" }, usage: { inputTokens: 1, outputTokens: 1 } }; } });
+    expect(m).toBe(3);
+    expect(rows2.every((r) => r.fallback === "schema")).toBe(true);
+  });
+
   it("a why with a number not in the facts is replaced by the template; the split still stands", async () => {
     const repo = await seededRepo();
     const rows = await decideSplits({ repo, now: NOW, model: answers({ ...good, why: "hSOL grew at 99.9% a year, so it leads." }) });
@@ -111,6 +137,7 @@ describe("decideSplits (spec 6.2 to 6.5)", () => {
     const rows = await decideSplits({ repo, now: NOW, model: async (req) => { table = req.user; system = req.system; return { input: good, usage: { inputTokens: 1, outputTokens: 1 } }; } });
     expect(table).toMatch(/JupSOL.*no data/);
     expect(system).toMatch(/no data or not tradeable keeps yesterday's share/); // R132: the model is told what the clamp enforces
+    expect(system).toMatch(/"your coins"/);                                     // R133: the second-person nudge
     expect(rows.every((r) => r.split.JupSOL === 0)).toBe(true);
   });
 

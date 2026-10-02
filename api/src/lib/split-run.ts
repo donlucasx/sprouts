@@ -17,8 +17,10 @@ import type { ModelCall, Usage } from "./anthropic";
 export type CoinFacts = { asset: Asset; growthPct: number | null; days: number; pricePct: number | null; priceDays: number; tradeable: boolean; noData: boolean };
 
 const Int = z.number().int().min(0).max(100);
+const SUM_MESSAGE = "the six numbers must sum to 100";
 const Answer = z.object({ SKR: Int, stORE: Int, hSOL: Int, JitoSOL: Int, JupSOL: Int, cbBTC: Int, why: z.string().min(1).max(200) }).strict()
-  .refine((o) => ASSETS.reduce((s, a) => s + o[a], 0) === 100, { message: "the six numbers must sum to 100" });
+  .refine((o) => ASSETS.reduce((s, a) => s + o[a], 0) === 100, { message: SUM_MESSAGE });
+const badSum = (e: z.ZodError) => e.issues.some((i) => i.message === SUM_MESSAGE);
 
 const TOOL = {
   name: "set_split",
@@ -37,6 +39,7 @@ const system = (stop: Stop) => [
   `You choose how Sprouts splits new round-ups across six coins for its ${STOP_LABEL[stop]} setting. Every number you are given was measured by code.`,
   "Pick whole percents that sum to 100, inside each coin's max and at or above SKR's floor. Prefer measured growth; weigh short spans lightly; a coin marked no data or not tradeable keeps yesterday's share (the code holds it there); move gently from yesterday.",
   "Then write one line, under 25 words, second person, plain words, no advice, no exclamation marks, quoting only numbers from the table, that says why today's split leans where it does.",
+  'Say "your coins", "your split": the line speaks to the person whose round-ups these are.',
 ].join("\n");
 
 const r1 = (n: number) => Math.round(n * 10) / 10;
@@ -118,17 +121,30 @@ export async function decideSplits(a: { repo: Repo; now: Date; model: ModelCall 
     } else if (!a.model) byRule("model");
     else if (overBudget) byRule("budget");
     else {
-      let raw: { input: unknown; usage: Usage } | null = null;
-      try {
-        raw = await a.model({ system: system(stop), user: factsTable(facts, stop, yesterday), tool: TOOL, maxTokens: 200 });
-      } catch (e) {
-        console.error(`split ${stop}: the model could not be reached: ${msg(e)}`);
-      }
-      if (!raw) byRule("model");
-      else {
+      const model = a.model;
+      const prompt = { system: system(stop), user: factsTable(facts, stop, yesterday), tool: TOOL, maxTokens: 200 };
+      // One call: recorded against the budget and kept raw beside the row, whatever the answer; null when the model was not reached.
+      const ask = async () => {
+        let raw: { input: unknown; usage: Usage };
+        try {
+          raw = await model(prompt);
+        } catch (e) {
+          console.error(`split ${stop}: the model could not be reached: ${msg(e)}`);
+          return null;
+        }
         row.callId = await a.repo.addWatcherCall({ userPubkey: null, kind: "split", inputTokens: raw.usage.inputTokens, outputTokens: raw.usage.outputTokens, costMicrocents: costMicrocents(raw.usage) });
         row.modelAnswer = raw.input;
-        const parsed = Answer.safeParse(raw.input);
+        return Answer.safeParse(raw.input);
+      };
+      let parsed = await ask();
+      if (parsed && !parsed.success && badSum(parsed.error)) {
+        // R133: six numbers that do not sum to 100 get one more try with the same prompt before the fallback; the second call
+        // counts against the budget like the first, and the row keeps the answer that was judged last.
+        console.error(`split ${stop}: the six numbers did not sum to 100 (${JSON.stringify(row.modelAnswer)}); asking once more`);
+        parsed = (await ask()) ?? parsed;
+      }
+      if (!parsed) byRule("model");
+      else {
         if (!parsed.success) byRule("schema");
         else {
           const { why, ...numbers } = parsed.data;
