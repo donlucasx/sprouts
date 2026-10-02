@@ -18,7 +18,7 @@ import { NextPlanting } from '@/components/NextPlanting'
 import { nextPlantingRow } from '@/lib/next-planting'
 import { WaterButton } from '@/components/WaterButton'
 import { PauseRow } from '@/components/PauseRow'
-import { formatUsd, formatSkr, formatAsOf } from '@/lib/format'
+import { arrivalLine, formatUsd, formatSkr, formatAsOf } from '@/lib/format'
 import { useSession } from '@/lib/session'
 import { gardenTotals, pauseState, coinRows, statTiles, walletsLine, lastPlantingLine } from '@/lib/me-state'
 import { setPaused } from '@/lib/pause-api'
@@ -258,8 +258,7 @@ export default function Home() {
       {me.basket ? (
         <Card>
           <ThemedText>
-            In the basket: {formatSkr(BigInt(me.basket.amountRaw), skrUsd)}, arrives{' '}
-            {new Date(me.basket.readyAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric' })}
+            In the basket: {formatSkr(BigInt(me.basket.amountRaw), skrUsd)}, {arrivalLine(me.basket.readyAt, now)}
           </ThemedText>
         </Card>
       ) : null}

@@ -15,19 +15,22 @@ export function Screen({
   children,
   scroll = true,
   back = false,
+  onBack,
   title,
   inset = 'both',
   refreshControl,
 }: PropsWithChildren<{
   scroll?: boolean
   back?: boolean
+  /** What the top Back does instead of leaving (the Take out flow steps back to its list). */
+  onBack?: () => void
   title?: string
   inset?: 'both' | 'top'
   refreshControl?: ReactElement<RefreshControlProps>
 }>) {
   const insets = useSafeAreaInsets()
   const { colors } = useTheme()
-  const goBack = () => (router.canGoBack() ? router.back() : router.replace('/home'))
+  const goBack = () => (onBack ? onBack() : router.canGoBack() ? router.back() : router.replace('/home'))
   const body = (
     <View
       style={{
