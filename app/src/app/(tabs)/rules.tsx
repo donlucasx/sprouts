@@ -21,8 +21,7 @@ import {
   pinsForOn,
   undoLine,
   SWITCH_LABEL,
-  OFF_TEXT,
-  ON_TEXT,
+  MANAGER_LINE,
   STOP_LINE,
   UNDONE_TEXT,
   STORE_ROW_NOTE,
@@ -225,6 +224,7 @@ export default function Rules() {
         />
       </Card>
       <Card>
+        <ThemedText variant="heading">{SWITCH_LABEL}</ThemedText>
         <Row label={SWITCH_LABEL}>
           <Switch
             {...toggle}
@@ -234,7 +234,7 @@ export default function Rules() {
           />
         </Row>
         <ThemedText variant="caption" tone="secondary">
-          {r.managed ? ON_TEXT : OFF_TEXT}
+          {MANAGER_LINE}
         </ThemedText>
         {r.managed && (
           <>
