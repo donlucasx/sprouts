@@ -31,6 +31,18 @@ describe("holdingsFrom", () => {
     expect(jup.valueUsd).toBeNull();
     expect(jup.earnedUsd).toBeNull();
   });
+  it("a coin half sold keeps half its basis (R159): put in and earned follow the fraction still held; more than planted caps at 1", () => {
+    const legs = [leg("hSOL", 200, 1_000_000_000n, 1.18), leg("hSOL", 200, 1_000_000_000n, 1.18)];
+    const days = { hSOL: day("hSOL", 1.20, 168) };
+    const [whole] = holdingsFrom({ held: { hSOL: 2_000_000_000n }, legs, days });
+    const [half] = holdingsFrom({ held: { hSOL: 1_000_000_000n }, legs, days });
+    const [more] = holdingsFrom({ held: { hSOL: 3_000_000_000n }, legs, days });
+    expect(half.putInCents).toBe(200);
+    expect(half.earnedUsd).toBeCloseTo((whole.earnedUsd as number) / 2, 9);
+    expect(Number(half.earnedUnderlyingRaw)).toBeCloseTo(Number(whole.earnedUnderlyingRaw) / 2, -2);
+    expect(more.putInCents).toBe(400);
+    expect(more.earnedUsd).toBeCloseTo(whole.earnedUsd as number, 9);
+  });
 });
 
 describe("latestCoinDays", () => {
