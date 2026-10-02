@@ -11,7 +11,8 @@ import { ApiError } from "@/lib/api";
 function isCanceled(e: unknown) {
   const code = e !== null && typeof e === "object" && "code" in e ? String((e as { code: unknown }).code) : "";
   const m = e instanceof Error ? e.message : "";
-  return code === "ERROR_ASSOCIATION_CANCELLED" || m.includes("CancellationException") || m.includes("cancelled by user");
+  // -1 is the Mobile Wallet Adapter's ERROR_AUTHORIZATION_FAILED: the wallet declined the request (10-01: Solflare on the Saga answered it for sprouts.money).
+  return code === "ERROR_ASSOCIATION_CANCELLED" || code === "-1" || m.includes("authorization request failed") || m.includes("CancellationException") || m.includes("cancelled by user");
 }
 
 export default function Welcome() {
