@@ -34,17 +34,24 @@ export async function waitConfirmed(signature: string, tries = 20, everyMs = 1_5
 
 /**
  * Device round 3, item 8 (10-02): what a confirm poll that ended "pending" means. While the transaction's blockhash is still valid
- * it may yet land ("pending"). Once the finalized chain is past its lastValidBlockHeight (isBlockhashValid false) it can never land;
- * the signature is asked once more, so a late landing still counts, and otherwise it is "expired": it did not go through, nothing moved.
+ * it may yet land ("pending"). Once the chain is past its lastValidBlockHeight (isBlockhashValid false) it can never land; the
+ * signature is asked once more (signatureStatus searches the history), so a late landing still counts, and otherwise it is "expired":
+ * it did not go through, nothing moved. Validity is asked at CONFIRMED, the commitment buildUserTransaction's getLatestBlockhash used
+ * (kit's default): the finalized bank runs about 32 slots behind and does not know a young blockhash, so it would read as expired.
  */
 export async function settleUnconfirmed(posted: { signature: string; blockhash: string }): Promise<"confirmed" | "failed" | "pending" | "expired"> {
-  const { value: valid } = await rpc().isBlockhashValid(posted.blockhash as Blockhash, { commitment: "finalized" }).send();
+  const { value: valid } = await rpc().isBlockhashValid(posted.blockhash as Blockhash, { commitment: "confirmed" }).send();
   if (valid) return "pending";
   const s = await signatureStatus(posted.signature);
   return s === "pending" ? "expired" : s;
 }
 
-/** The plain answer while a send has not confirmed and its blockhash is still valid (his device round 3, item 7). */
-export const STILL_WAITING = "Still waiting for the chain. Try again in a minute.";
+/** The plain answer while a send has not confirmed and its blockhash is still valid (his device round 3, item 7): it may still land,
+ * so the user looks before signing a second one (review, round 3 fix 1). */
+export const STILL_WAITING = {
+  withdraw: "It may still go through. Check Activity in a minute before you try again.",
+  cancel: "It may still go through. Check the basket in a minute before you try again.",
+  revoke: "It may still go through. Check Settings in a minute before you try again.",
+} as const;
 
 export const userAddress = (pubkey: string) => address(pubkey);

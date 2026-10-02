@@ -16,7 +16,7 @@ const SP = 1_146_000_000n;
 const { positionMock, sendMock, statusMock, validMock } = vi.hoisted(() => ({
   positionMock: vi.fn(), sendMock: vi.fn(async () => "sig"),
   statusMock: vi.fn(async (_sig: string): Promise<"confirmed" | "failed" | "pending"> => "confirmed"),   // the chain's answer for a signature
-  validMock: vi.fn(async (_blockhash: string) => true),   // isBlockhashValid at finalized
+  validMock: vi.fn(async (_blockhash: string, _config?: unknown) => true),   // isBlockhashValid, with the config it was asked with
 }));
 vi.mock("@/lib/staking", async (orig) => ({ ...(await orig<object>()), readPosition: (...a: unknown[]) => positionMock(...a), sharePrice: vi.fn(async () => SP) }));
 vi.mock("@/lib/jupiter", () => ({ priceUsd: vi.fn(async () => 0.0183) }));
@@ -27,7 +27,7 @@ vi.mock("@/lib/rpc", () => ({
   rpc: () => ({
     getLatestBlockhash: () => ({ send: async () => ({ value: { blockhash: "GHtXQBsoZHVnNFa9YevAzFr17DJjgHXk3ycTKD5xD3Zi", lastValidBlockHeight: 1n } }) }),
     sendTransaction: () => ({ send: sendMock }),
-    isBlockhashValid: (blockhash: string) => ({ send: async () => ({ value: await validMock(blockhash) }) }),
+    isBlockhashValid: (blockhash: string, config?: unknown) => ({ send: async () => ({ value: await validMock(blockhash, config) }) }),
   }),
 }));
 
@@ -85,15 +85,26 @@ describe("withdraw routes", () => {
       const r = await confirmRoute(post("/api/withdraw/confirm", { signedTransaction: signed }));
       expect(r.status).toBe(409);
       expect((await r.json()).error).toBe("It did not go through. Nothing moved. Try again.");
-      expect(validMock).toHaveBeenCalledWith("GHtXQBsoZHVnNFa9YevAzFr17DJjgHXk3ycTKD5xD3Zi");   // the blockhash the transaction carries
+      // the blockhash the transaction carries, asked at CONFIRMED, the commitment it was fetched at (finalized does not know a young one)
+      expect(validMock).toHaveBeenCalledWith("GHtXQBsoZHVnNFa9YevAzFr17DJjgHXk3ycTKD5xD3Zi", { commitment: "confirmed" });
       expect(await repo.pendingWithdrawal(U)).toBeNull();
     });
-    it("a blockhash still valid: 409, still waiting for the chain, nothing recorded", async () => {
+    it("a blockhash still valid: 409, it may still go through, check Activity before trying again; nothing recorded", async () => {
       const signed = await signedEarned();
       statusMock.mockResolvedValue("pending");
       const r = await confirmRoute(post("/api/withdraw/confirm", { signedTransaction: signed }));
       expect(r.status).toBe(409);
-      expect((await r.json()).error).toBe("Still waiting for the chain. Try again in a minute.");
+      expect((await r.json()).error).toBe("It may still go through. Check Activity in a minute before you try again.");
+      expect(validMock).toHaveBeenCalledWith("GHtXQBsoZHVnNFa9YevAzFr17DJjgHXk3ycTKD5xD3Zi", { commitment: "confirmed" });
+      expect(await repo.pendingWithdrawal(U)).toBeNull();
+    });
+    it("expired and the second ask says failed: the failed-on-chain answer, nothing recorded", async () => {
+      const signed = await signedEarned();
+      statusMock.mockResolvedValueOnce("pending").mockResolvedValueOnce("failed");
+      validMock.mockResolvedValue(false);
+      const r = await confirmRoute(post("/api/withdraw/confirm", { signedTransaction: signed }));
+      expect(r.status).toBe(409);
+      expect((await r.json()).error).toBe("The withdrawal failed on chain. Nothing moved.");
       expect(await repo.pendingWithdrawal(U)).toBeNull();
     });
     it("expired but it landed after all (the second ask confirms): the basket is recorded", async () => {
@@ -105,7 +116,7 @@ describe("withdraw routes", () => {
       expect(r.status).toBe(200);
       expect((await repo.pendingWithdrawal(U))?.sharesUnstaked).toBe(80_279_232n);
     });
-    it("put it back: expired says the SKR is still in the basket; still valid says still waiting; the basket stands either way", async () => {
+    it("put it back: expired says the SKR is still in the basket; still valid says check the basket; the basket stands either way", async () => {
       await repo.insertWithdrawal({ userPubkey: U, asset: "SKR", source: "sprouts", unstakeSignature: "x", sharesUnstaked: 80_279_232n, amountRaw: 92_000_000n, principalRaw: 0n });
       const signed = await signAsUser((await (await cancelBuild(post("/api/withdraw/cancel/build", {}))).json()).transaction);
       statusMock.mockResolvedValue("pending");
@@ -115,8 +126,18 @@ describe("withdraw routes", () => {
       expect((await expired.json()).error).toBe("It did not go through. Your SKR is still in the basket. Try again.");
       const waiting = await cancelConfirm(post("/api/withdraw/cancel/confirm", { signedTransaction: signed }));
       expect(waiting.status).toBe(409);
-      expect((await waiting.json()).error).toBe("Still waiting for the chain. Try again in a minute.");
+      expect((await waiting.json()).error).toBe("It may still go through. Check the basket in a minute before you try again.");
       expect(await repo.pendingWithdrawal(U)).not.toBeNull();
+    });
+    it("put it back, expired but it landed late (the second ask confirms): the basket is closed as cancelled", async () => {
+      await repo.insertWithdrawal({ userPubkey: U, asset: "SKR", source: "sprouts", unstakeSignature: "x", sharesUnstaked: 80_279_232n, amountRaw: 92_000_000n, principalRaw: 0n });
+      const signed = await signAsUser((await (await cancelBuild(post("/api/withdraw/cancel/build", {}))).json()).transaction);
+      statusMock.mockResolvedValueOnce("pending").mockResolvedValueOnce("confirmed");
+      validMock.mockResolvedValue(false);
+      positionMock.mockResolvedValue(staked(2_000_000_000n));
+      const r = await cancelConfirm(post("/api/withdraw/cancel/confirm", { signedTransaction: signed }));
+      expect(r.status).toBe(200);
+      expect(await repo.pendingWithdrawal(U)).toBeNull();
     });
   });
 

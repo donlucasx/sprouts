@@ -56,7 +56,7 @@ export async function POST(request: Request) {
   }
   // Item 8: an expired blockhash that never landed did not go through (a wallet approval after the build's blockhash ran out).
   const settled = status === "pending" ? await settleUnconfirmed(posted) : status;
-  if (settled !== "confirmed") return NextResponse.json({ error: settled === "failed" ? "The withdrawal failed on chain. Nothing moved." : settled === "expired" ? "It did not go through. Nothing moved. Try again." : STILL_WAITING }, { status: 409 });
+  if (settled !== "confirmed") return NextResponse.json({ error: settled === "failed" ? "The withdrawal failed on chain. Nothing moved." : settled === "expired" ? "It did not go through. Nothing moved. Try again." : STILL_WAITING.withdraw }, { status: 409 });
   let after = await readPosition(owner);
   for (let i = 0; i < 3 && after.unstakingRaw === 0n; i++) {
     await new Promise((r) => setTimeout(r, 1_000));
