@@ -101,7 +101,18 @@ export default function Home() {
   const wallets = me.wallets.filter((w) => w.status !== 'revoked')
 
   return (
-    <Screen inset="top" refreshControl={<RefreshControl refreshing={false} onRefresh={() => refetch()} />}>
+    <Screen
+      inset="top"
+      refreshControl={
+        <RefreshControl
+          refreshing={false}
+          onRefresh={() => refetch()}
+          colors={[colors.accent]}
+          progressBackgroundColor={colors.surface}
+          tintColor={colors.accent}
+        />
+      }
+    >
       <MarkedTitle>{name ? `${name}'s garden` : 'Your garden'}</MarkedTitle>
       <Garden scene={scene} justOpened={justOpened} />
       {allStopped ? (

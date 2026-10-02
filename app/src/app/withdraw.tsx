@@ -150,6 +150,8 @@ export default function Withdraw() {
                 keyboardType="decimal-pad"
                 placeholder="Amount in SKR"
                 placeholderTextColor={colors.textSecondary}
+                cursorColor={colors.accent}
+                selectionColor={colors.accent}
                 accessibilityLabel="Amount in SKR"
                 style={{
                   fontFamily: FONT.display,
@@ -183,7 +185,7 @@ export default function Withdraw() {
           ))}
           <Button title="Withdraw" kind={plan.prunes ? 'danger' : 'primary'} loading={busy} onPress={sign} />
           {busy ? <Waiting /> : null}
-          <Button title="Back" kind="quiet" disabled={busy} onPress={() => setPlan(null)} />
+          <Button title="Change amount" kind="quiet" disabled={busy} onPress={() => setPlan(null)} />
         </Card>
       )}
       {error ? <ThemedText tone="error">{error}</ThemedText> : null}

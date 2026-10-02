@@ -21,7 +21,17 @@ const ART = (fill: string) =>
   `<path d="M0 0 C 11.0 -5.3, 9.6 -18.7, 0 -24.0 C -6.2 -16.8, -5.8 -6.2, 0 0 z" transform="translate(1 -17) rotate(54)"/>` +
   `</g></g></svg>`
 
-export function Mark({ size = 32 }: { size?: number }) {
+/** `decorative` inside a lockup, where the word beside it already says "sprouts"; alone, it is an image named Sprouts. */
+export function Mark({ size = 32, decorative = false }: { size?: number; decorative?: boolean }) {
   const { colors } = useTheme()
-  return <SvgXml xml={ART(colors.accent)} width={size} height={size} accessibilityLabel="Sprouts" />
+  return (
+    <SvgXml
+      xml={ART(colors.accent)}
+      width={size}
+      height={size}
+      accessibilityRole={decorative ? undefined : 'image'}
+      accessibilityLabel={decorative ? undefined : 'Sprouts'}
+      importantForAccessibility={decorative ? 'no-hide-descendants' : 'yes'}
+    />
+  )
 }

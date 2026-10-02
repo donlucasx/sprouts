@@ -3,6 +3,7 @@ import { Stack } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import * as SplashScreen from 'expo-splash-screen'
 import { useFonts } from 'expo-font'
+import { MaterialCommunityIcons } from '@expo/vector-icons'
 import { Outfit_600SemiBold, Outfit_700Bold } from '@expo-google-fonts/outfit'
 import { AlbertSans_400Regular, AlbertSans_500Medium } from '@expo-google-fonts/albert-sans'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -24,6 +25,7 @@ export default function Layout() {
   const [session, setSessionState] = useState<Session | null>(null)
   const [ready, setReady] = useState(false)
   const [fontsLoaded, fontError] = useFonts({
+    ...MaterialCommunityIcons.font, // the tab and control glyphs, in before the splash lifts
     Outfit_600SemiBold,
     Outfit_700Bold,
     AlbertSans_400Regular,
@@ -31,14 +33,16 @@ export default function Layout() {
   })
   const { colors, dark } = useTheme()
   useEffect(() => {
-    loadSession().then((s) => {
-      setSessionState(s)
-      setReady(true)
-      if (s) {
-        registerBackgroundRefresh().catch(() => {})
-        askNotificationPermissionOnce().catch(() => {})
-      }
-    })
+    loadSession()
+      .catch(() => null)
+      .then((s) => {
+        setSessionState(s)
+        setReady(true)
+        if (s) {
+          registerBackgroundRefresh().catch(() => {})
+          askNotificationPermissionOnce().catch(() => {})
+        }
+      })
   }, [])
   const fontsSettled = fontsLoaded || fontError !== null
   useEffect(() => {

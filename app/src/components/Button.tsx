@@ -34,7 +34,7 @@ export function Button({
       : kind === 'danger'
         ? colors.error
         : colors.accent
-  const foreground = !filled ? colors.accentText : disabled ? colors.textSecondary : colors.onAccent
+  const foreground = !filled ? colors.accentText : disabled ? colors.disabledText : colors.onAccent
   return (
     <Pressable
       accessibilityRole="button"

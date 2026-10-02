@@ -108,7 +108,7 @@ export default function Connect() {
         <ThemedText variant="heading">Another wallet</ThemedText>
         {linked ? (
           <View style={{ gap: spacing.sm }}>
-            <ThemedText tone="success">{`Linked ${formatWallet(linked)}.`}</ThemedText>
+            <ThemedText tone="accentText">{`Linked ${formatWallet(linked)}.`}</ThemedText>
             <ThemedText tone="secondary">Its swaps now round up into your garden.</ThemedText>
             <Button title="Done" onPress={() => router.replace('/home')} />
           </View>

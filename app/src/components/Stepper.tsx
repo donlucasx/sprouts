@@ -10,12 +10,17 @@ export function StepButtons({
   onMore,
   lessDisabled = false,
   moreDisabled = false,
+  lessLabel,
+  moreLabel,
 }: {
   what: string
   onLess: () => void
   onMore: () => void
   lessDisabled?: boolean
   moreDisabled?: boolean
+  /** TalkBack's names when "Less x" / "More x" do not read ("Lower daily limit"). */
+  lessLabel?: string
+  moreLabel?: string
 }) {
   const { colors } = useTheme()
   const one = (label: string, icon: 'minus' | 'plus', onPress: () => void, disabled: boolean) => (
@@ -31,19 +36,19 @@ export function StepButtons({
         height: TARGET - spacing.xs,
         borderRadius: radius.full,
         borderWidth: 1.5,
-        borderColor: disabled ? colors.hairline : colors.accent,
+        borderColor: disabled ? colors.textSecondary : colors.accent,
         alignItems: 'center',
         justifyContent: 'center',
-        opacity: pressed ? 0.6 : 1,
+        opacity: disabled ? 0.45 : pressed ? 0.6 : 1,
       })}
     >
-      <MaterialCommunityIcons name={icon} size={20} color={disabled ? colors.hairline : colors.accentText} />
+      <MaterialCommunityIcons name={icon} size={20} color={disabled ? colors.textSecondary : colors.accentText} />
     </Pressable>
   )
   return (
     <View style={{ flexDirection: 'row', gap: spacing.sm }}>
-      {one(`Less ${what}`, 'minus', onLess, lessDisabled)}
-      {one(`More ${what}`, 'plus', onMore, moreDisabled)}
+      {one(lessLabel ?? `Less ${what}`, 'minus', onLess, lessDisabled)}
+      {one(moreLabel ?? `More ${what}`, 'plus', onMore, moreDisabled)}
     </View>
   )
 }
@@ -58,6 +63,7 @@ export function Stepper({
   format,
   onChange,
   disabled = false,
+  what,
 }: {
   label: string
   value: number
@@ -67,6 +73,8 @@ export function Stepper({
   format: (v: number) => string
   onChange: (v: number) => void
   disabled?: boolean
+  /** The noun TalkBack names ("daily limit"); the label when absent. */
+  what?: string
 }) {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md }}>
@@ -75,7 +83,9 @@ export function Stepper({
         {format(value)}
       </ThemedText>
       <StepButtons
-        what={label}
+        what={what ?? label}
+        lessLabel={`Lower ${what ?? label}`}
+        moreLabel={`Raise ${what ?? label}`}
         onLess={() => onChange(Math.max(min, value - step))}
         onMore={() => onChange(Math.min(max, value + step))}
         lessDisabled={disabled || value <= min}

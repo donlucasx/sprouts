@@ -41,6 +41,12 @@ export type Palette = {
   hairline: string
   /** A disabled control's fill (derived). */
   disabled: string
+  /** A switch's off track: visible on the surface in both themes (R138; the review's dark finding). */
+  trackOff: string
+  /** A switch's thumb: paper in both themes. */
+  thumb: string
+  /** A disabled control's label (derived). */
+  disabledText: string
 }
 
 export const palette: { light: Palette; dark: Palette } = {
@@ -58,6 +64,9 @@ export const palette: { light: Palette; dark: Palette } = {
     error: '#9E4B3F',
     hairline: '#E6DFD2',
     disabled: '#D9D2C6',
+    trackOff: '#D9D2C6',
+    thumb: '#FFFCF6',
+    disabledText: '#6E6A64',
   },
   // Manual 4, dark theme: the greens lighten to the mints, the paper becomes dark, the ink becomes paper; never a mechanical invert.
   dark: {
@@ -74,13 +83,16 @@ export const palette: { light: Palette; dark: Palette } = {
     error: '#E8998C',
     hairline: '#243A2E',
     disabled: '#2A3F33',
+    trackOff: '#3A5546',
+    thumb: '#FFFCF6',
+    disabledText: '#7E9A86',
   },
 }
 
 /** The six steps (manual 5). Sizes are the manual's; line heights are the pass's, about 1.15 for display, 1.5 for body. */
 export const type = {
   /** Screen titles, the big number on Home and the widget. */
-  display: { fontFamily: FONT.display, fontSize: 40, lineHeight: 46 },
+  display: { fontFamily: FONT.display, fontSize: 40, lineHeight: 48 },
   /** Section titles. */
   title: { fontFamily: FONT.display, fontSize: 28, lineHeight: 34 },
   /** Card titles. */
