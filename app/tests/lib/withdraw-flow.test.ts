@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { withdrawAtTap, type WithdrawPlan } from '@/lib/withdraw-flow'
+import { withdrawAtTap, REPLANNED, type WithdrawPlan } from '@/lib/withdraw-flow'
 
 const plan = (transaction: string, prunes = false): WithdrawPlan => ({ transaction, shares: '1', amountRaw: '1000000', prunes, brief: [] })
 
@@ -19,6 +19,7 @@ describe('withdrawAtTap (round 3, item 7: build at the tap)', () => {
     expect(await withdrawAtTap({ request: { mode: 'amount', amountRaw: '5' }, shown: plan('stale'), build: async () => fresh, sign, confirm })).toEqual({ replanned: fresh })
     expect(sign).not.toHaveBeenCalled()
     expect(confirm).not.toHaveBeenCalled()
+    expect(REPLANNED).toBe('Your garden changed since you opened this. Check the amount and tap Withdraw again.')
   })
   it('a wallet cancel stops before the confirm and reaches the caller (which says nothing moved)', async () => {
     const confirm = vi.fn(async () => {})

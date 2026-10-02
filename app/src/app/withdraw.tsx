@@ -15,7 +15,7 @@ import { useMe, useInvalidateMe } from '@/lib/me'
 import { makeSigner } from '@/lib/sign'
 import { arrivalLine, formatSkr } from '@/lib/format'
 import { withdrawRows } from '@/lib/withdraw-list'
-import { withdrawAtTap, type WithdrawPlan, type WithdrawRequest } from '@/lib/withdraw-flow'
+import { withdrawAtTap, REPLANNED, type WithdrawPlan, type WithdrawRequest } from '@/lib/withdraw-flow'
 import { spacing, TARGET, type as ramp, useTheme } from '@/theme'
 
 const Waiting = () => (
@@ -93,6 +93,7 @@ export default function Withdraw() {
       })
       if ('replanned' in out) {
         setPlan({ ...out.replanned, request: plan.request })   // the garden moved since the amount was picked: show it, tap again
+        setError(REPLANNED)
         return
       }
       await invalidate()
