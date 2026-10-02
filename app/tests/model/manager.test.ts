@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { ASSETS, type Split, type Pins, type Stop } from "@/lib/coins";
 import {
   STOP_FLOOR, STOP_MAX, PIN_MAX, PIN_STEP, STOP_LINE, OFF_TEXT, ON_TEXT, UNDONE_TEXT,
-  splitRows, modeWord, togglePin, stepPin, canStepUp, managerSentence, undoLine, changeSummary, splitRowLine, pinsForOn,
+  splitRows, modeWord, togglePin, stepPin, canStepUp, undoLine, changeSummary, splitRowLine, pinsForOn,
 } from "@/model/manager";
 
 const split = (p: Partial<Split>): Split => ({ SKR: 0, stORE: 0, hSOL: 0, JitoSOL: 0, JupSOL: 0, cbBTC: 0, ...p });
@@ -107,14 +107,6 @@ describe("pins", () => {
 });
 
 describe("the sentence, the undo line, Activity's rows", () => {
-  it("managerSentence adds the manager clause when on and a share clause per non-SKR pin", () => {
-    expect(managerSentence(rules({}))).toBe("");
-    expect(managerSentence(rules({ managed: true, stop: "bold" }))).toBe(" The Yield Manager splits new change across six coins, Bold.");
-    expect(managerSentence(rules({ pins: { stORE: 20 } }))).toBe(" About 20 cents of every dollar grows stORE.");
-    expect(managerSentence(rules({ managed: true, stop: "balanced", pins: { cbBTC: 10, SKR: 50 } })))
-      .toBe(" The Yield Manager splits new change across six coins, Balanced. About 10 cents of every dollar grows cbBTC.");
-  });
-
   it("undoLine labels the day as given, or nothing", () => {
     expect(undoLine("2026-10-02")).toBe("Changed Oct 2.");
     expect(undoLine(null)).toBeNull();

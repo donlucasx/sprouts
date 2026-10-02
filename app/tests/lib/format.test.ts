@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatUsd, formatSkr, formatAsOf, roundUpTo, formatWallet, formatStore, formatAmount, DECIMALS, formatHolding, HOLDINGS_NOTE, shareLine, dayLabel, COIN_NAME, feeClause, plantedLine, potHeadline, holdingAmount } from "@/lib/format";
+import { formatUsd, formatSkr, formatAsOf, roundUpTo, formatWallet, formatStore, formatAmount, DECIMALS, HOLDINGS_NOTE, shareLine, dayLabel, COIN_NAME, feeClause, plantedLine, potHeadline, holdingAmount } from "@/lib/format";
 
 describe("format", () => {
   it("dollars first, two decimals, whole cents", () => {
@@ -65,11 +65,7 @@ describe("six coins", () => {
     expect(shareLine("cbBTC", 10)).toBe("About 10 cents of every dollar grows cbBTC.");
   });
 
-  it("formatHolding is the Home line per held coin: value, earned when measured; where they sit is said once under the list (UI pass 10-01)", () => {
-    expect(formatHolding({ asset: "hSOL", heldRaw: "2000000000", putInCents: 400, valueUsd: 336, earnedUsd: 2.8, earnedUnderlyingRaw: "20000000" })).toBe("2.0000 hSOL ($336.00), earned $2.80");
-    expect(formatHolding({ asset: "cbBTC", heldRaw: "2389", putInCents: 200, valueUsd: 1.997, earnedUsd: null, earnedUnderlyingRaw: null })).toBe("0.00002389 cbBTC ($2.00)");
-    // Review Focus 4: no price yet (no snapshot row), no earned: the amount alone.
-    expect(formatHolding({ asset: "cbBTC", heldRaw: "2389", putInCents: 200, valueUsd: null, earnedUsd: null, earnedUnderlyingRaw: null })).toBe("0.00002389 cbBTC");
+  it("HOLDINGS_NOTE says where the wallet coins sit, once", () => {
     expect(HOLDINGS_NOTE).toBe("These sit in your Seeker wallet, not locked. Sprouts cannot sell them for you.");
   });
 

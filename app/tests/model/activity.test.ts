@@ -65,6 +65,9 @@ describe('withdrawalRowLine (R156: when it arrives, not "on its way")', () => {
   it('a ripening withdrawal says when it arrives: 48 hours after the unstake', () => {
     expect(withdrawalRowLine('Oct 2', base, 0.0183)).toMatch(/^Oct 2, 1\.00 SKR \(\$0\.02\), arrives Oct [45], \d{1,2} [AP]M$/)
   })
+  it('a withdrawal the basket knows the chain time for says that time, not the row time plus 48 hours', () => {
+    expect(withdrawalRowLine('Oct 2', base, 0.0183, '2026-10-03T12:00:00Z')).toMatch(/^Oct 2, 1\.00 SKR \(\$0\.02\), arrives Oct [23], \d{1,2} [AP]M$/)
+  })
   it('delivered and put back read as before', () => {
     expect(withdrawalRowLine('Oct 2', { ...base, delivered: true }, 0.0183)).toBe('Oct 2, 1.00 SKR ($0.02), delivered')
     expect(withdrawalRowLine('Oct 2', { ...base, cancelled: true }, 0.0183)).toBe('Oct 2, 1.00 SKR ($0.02), put back')

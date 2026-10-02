@@ -15,6 +15,7 @@ export function Button({
   kind = 'primary',
   disabled = false,
   loading = false,
+  accessibilityLabel,
   style,
 }: {
   title: string
@@ -22,6 +23,7 @@ export function Button({
   kind?: ButtonKind
   disabled?: boolean
   loading?: boolean
+  accessibilityLabel?: string
   style?: StyleProp<ViewStyle>
 }) {
   const { colors } = useTheme()
@@ -38,7 +40,7 @@ export function Button({
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={title}
+      accessibilityLabel={accessibilityLabel ?? title}
       accessibilityState={{ disabled: off, busy: loading }}
       disabled={off}
       onPress={onPress}
