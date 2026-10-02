@@ -11,9 +11,9 @@ const EXPECTED = [
   ...[0, 1, 2, 3].map((i) => `blade-snake-s${i}`), ...[0, 1, 2, 3].map((i) => `tier-spruce-s${i}`), ...[0, 1, 2].map((i) => `blade-succulent-${i}`),
   ...["mandarin", "succulent", "sunflower", "snake", "blueberry", "spruce"].map((s) => `bud-${s}`),
   ...["skr", "ore", "hsol", "jitosol", "jupsol", "cbbtc"].map((p) => `token-${p}`),
-  "sign", "blossom-mandarin", "bell-blueberry", "head-sunflower", "tip-spruce", "pup-succulent", "seed", "ring", "can", "can-tilt", "ground", "grain", "bar-track", "bar-fill",
+  "sign", "blossom-mandarin", "bell-blueberry", "head-sunflower", "tip-spruce", "pup-succulent", "seed", "ring", "can", "can-tilt", "can-grey", "ground", "grain", "bar-track", "bar-fill",
 ];
-const APP_ONLY = ["grain", "bar-track", "bar-fill"];
+const APP_ONLY = ["grain", "bar-track", "bar-fill", "can-grey"];
 
 describe("the baked sprite set", () => {
   it("has every part the geometry places, with a box and an anchor inside it", () => {
@@ -58,7 +58,7 @@ describe("the baked sprite set", () => {
     expect(readFileSync("src/garden/sprites.ts", "utf8")).toContain('"sign": { src: require("@/assets/garden/sign.png")');   // no @3x in a require: Metro cannot resolve an explicit scale (the spike, 10-02); it picks sign@3x.png itself
     const { _bakedL, _strips, _groundOutline, ...rest } = meta as Record<string, unknown> & { _bakedL: Record<string, number[]>; _strips: Record<string, unknown>; _groundOutline: number[][] };
     expect(_groundOutline).toEqual(GROUND_OUTLINE);   // R176: the manifest and the module carry the one outline
-    expect(Object.keys(_strips).sort()).toEqual(["blade", "broad", "heart", "small"]);
+    expect(Object.keys(_strips).sort()).toEqual(STRIP_NAMES);
     expect(Object.keys(SPRITE_META).sort()).toEqual(Object.keys(rest).sort());
     expect(_bakedL).toEqual(BAKED_L);
   });
@@ -79,16 +79,35 @@ describe("the next-planting bar (R169): two painted strokes, 300 long at 1x plus
   });
 });
 
-describe("the opening strips (RG24 part two): one wash11 strip per leaf shape, 16 frames of 96 px at 3x", () => {
+const STRIP_NAMES = ["hsol-broad", "jitosol-blade", "jupsol-small", "ore-blade", "skr-blade"];
+describe("the opening strips (RG24 part two; I4 fix round 1, ruling a): one coloured wash11 strip per species and leaf shape, 16 frames of 96 px at 3x", () => {
   const strips = (meta as unknown as { _strips: Record<string, { frames: number; w: number; h: number; ay: number; L: number }> })._strips;
-  it.each(["blade", "heart", "broad", "small"])("%s: 16 frames side by side, the first empty, the last painted, the base row at 0.93 and the length at 0.84 of the frame", (shape) => {
-    expect(strips[shape]).toEqual({ frames: 16, w: 32, h: 32, ay: 29.76, L: 26.88 });   // 1x units: 96 / 3; 0.93 and 0.84 of 32 (wash11.py:47-49)
-    const png = PNG.sync.read(readFileSync(`assets/garden/strips/${shape}@3x.png`));
+  it.each(STRIP_NAMES)("%s: 16 whole frames side by side, the first empty, the last painted in colour, the base row at 0.93 and the length at 0.84 of the frame", (name) => {
+    expect(strips[name]).toEqual({ frames: 16, w: 32, h: 32, ay: 29.76, L: 26.88 });   // 1x units: 96 / 3 (a whole 1x width, no seam); 0.93 and 0.84 of 32 (wash11.py:47-49)
+    const png = PNG.sync.read(readFileSync(`assets/garden/strips/${name}@3x.png`));
     expect(png.width).toBe(16 * 96); expect(png.height).toBe(96);
-    const alphaSum = (frame: number) => { let s = 0; for (let y = 0; y < 96; y++) for (let x = frame * 96; x < frame * 96 + 96; x++) s += png.data[(y * png.width + x) * 4 + 3]; return s; };
-    expect(alphaSum(0)).toBe(0); expect(alphaSum(15)).toBeGreaterThan(0);
+    const sum = (frame: number, ch: number) => { let s = 0; for (let y = 0; y < 96; y++) for (let x = frame * 96; x < frame * 96 + 96; x++) s += png.data[(y * png.width + x) * 4 + ch]; return s; };
+    expect(sum(0, 3)).toBe(0); expect(sum(15, 3)).toBeGreaterThan(0);
+    // coloured, not a white mask: in the last frame the painted pixels are green-led (G above R and B on average, weighted by alpha)
+    let r = 0, g = 0, b = 0;
+    for (let y = 0; y < 96; y++) for (let x = 15 * 96; x < 16 * 96; x++) { const i = (y * png.width + x) * 4, a = png.data[i + 3]; r += png.data[i] * a; g += png.data[i + 1] * a; b += png.data[i + 2] * a; }
+    expect(g).toBeGreaterThan(r); expect(g).toBeGreaterThan(b);
   });
-  it("the strips module names the four shapes with their require()", () => {
-    expect(readFileSync("src/garden/strips.ts", "utf8")).toContain('blade: { src: require("@/assets/garden/strips/blade.png")');
+  it("the strips module names the five strips with their require()", () => {
+    const src = readFileSync("src/garden/strips.ts", "utf8");
+    for (const n of STRIP_NAMES) expect(src).toContain(`"${n}": { src: require("@/assets/garden/strips/${n}.png")`);
+  });
+});
+
+describe("the greyed can (R175; I4 fix round 1, ruling d): baked, desaturated, about 45 percent", () => {
+  it("has the rest can's box, no colour, and 45 percent of its alpha", () => {
+    const m = meta as unknown as Record<string, { w: number; h: number; ax: number; ay: number }>;
+    expect(m["can-grey"]).toEqual(m["can"]);
+    const can = PNG.sync.read(readFileSync("assets/garden/can@3x.png")), grey = PNG.sync.read(readFileSync("assets/garden/can-grey@3x.png"));
+    expect([grey.width, grey.height]).toEqual([can.width, can.height]);
+    let a0 = 0, a1 = 0, chroma = 0;
+    for (let i = 0; i < grey.data.length; i += 4) { a0 += can.data[i + 3]; a1 += grey.data[i + 3]; chroma = Math.max(chroma, Math.abs(grey.data[i] - grey.data[i + 1]), Math.abs(grey.data[i + 1] - grey.data[i + 2])); }
+    expect(chroma).toBe(0);
+    expect(a1 / a0).toBeGreaterThan(0.43); expect(a1 / a0).toBeLessThan(0.47);
   });
 });

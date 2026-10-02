@@ -388,34 +388,47 @@
   ]
  ],
  "_strips": {
-  "blade": {
+  "skr-blade": {
    "frames": 16,
    "w": 32,
    "h": 32,
    "ay": 29.76,
    "L": 26.88
   },
-  "heart": {
+  "ore-blade": {
    "frames": 16,
    "w": 32,
    "h": 32,
    "ay": 29.76,
    "L": 26.88
   },
-  "broad": {
+  "hsol-broad": {
    "frames": 16,
    "w": 32,
    "h": 32,
    "ay": 29.76,
    "L": 26.88
   },
-  "small": {
+  "jitosol-blade": {
+   "frames": 16,
+   "w": 32,
+   "h": 32,
+   "ay": 29.76,
+   "L": 26.88
+  },
+  "jupsol-small": {
    "frames": 16,
    "w": 32,
    "h": 32,
    "ay": 29.76,
    "L": 26.88
   }
+ },
+ "can-grey": {
+  "w": 73.67,
+  "h": 57.33,
+  "ax": 47.67,
+  "ay": 31.33
  },
  "_bakedL": {
   "leaf-mandarin": [
