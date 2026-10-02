@@ -67,6 +67,13 @@ export function formatHolding(h: Holding): string {
   const earned = h.earnedUsd === null ? "" : `, earned ${formatUsd(Math.round(h.earnedUsd * 100))}`;
   return `${amount.toFixed(SHOWN[h.asset])} ${COIN_NAME[h.asset]}${value}${earned}`;
 }
+/** Home's coin row (R150): the amount with its value, nothing else; earned lives in the Earned tile. */
+export function holdingAmount(h: Holding): string {
+  const raw = BigInt(h.heldRaw);
+  const amount = Number(raw) / 10 ** DECIMALS[h.asset];
+  const value = h.valueUsd === null ? "" : ` (${formatUsd(Math.round(h.valueUsd * 100))})`;
+  return `${amount.toFixed(SHOWN[h.asset])} ${COIN_NAME[h.asset]}${value}`;
+}
 /** Under Home's holdings (spec 3.3, said once): the wallet coins are not locked and Sprouts cannot sell them. */
 export const HOLDINGS_NOTE = "These sit in your Seeker wallet, not locked. Sprouts cannot sell them for you.";
 

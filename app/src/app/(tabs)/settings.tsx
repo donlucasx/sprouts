@@ -1,20 +1,28 @@
 import { useState } from 'react'
+import { Appearance, Switch, View } from 'react-native'
 import { Link, router } from 'expo-router'
 import { Screen } from '@/components/Screen'
 import { Card } from '@/components/Card'
 import { Button } from '@/components/Button'
 import { ThemedText } from '@/components/ThemedText'
 import { Disclosure } from '@/components/Disclosure'
+import { TwoWay } from '@/components/TwoWay'
 import { useQueryClient } from '@tanstack/react-query'
-import { api } from '@/lib/api'
-import { useMe, store } from '@/lib/me'
+import { api, ApiError, type MeResponse } from '@/lib/api'
+import { useMe, store, useInvalidateMe } from '@/lib/me'
 import { refreshWidget } from '@/lib/widget-refresh'
 import { unregisterBackgroundRefresh } from '@/lib/background'
 import { useSession } from '@/lib/session'
 import { useMobileWallet } from '@wallet-ui/react-native-kit'
-import { formatWallet } from '@/lib/format'
+import { formatWallet, HOLDINGS_NOTE } from '@/lib/format'
+import { makeSigner } from '@/lib/sign'
+import { freshSignIn } from '@/lib/signin'
+import { freshWalletSignIn } from '@/lib/reauth'
+import { identity } from '@/lib/identity'
+import { readAppearance, writeAppearance, readNotifyPlantings, writeNotifyPlantings } from '@/lib/prefs'
 import { ORE_DISCLOSURE } from '@/lib/ore-copy'
-import { spacing } from '@/theme'
+import { spacing, switchColors, useTheme } from '@/theme'
+import { schemeFor, type Appearance as AppearanceChoice } from '@/theme/appearance'
 
 /** The disclosures, verbatim (spec 3.5 and 9; R60; RECONCILED rules 10 to 12; R81 the remainder; R84 the sessions): the safety story the judges read. */
 const DISCLOSURES: [string, string][] = [
@@ -53,6 +61,63 @@ export default function Settings() {
   const { disconnect } = useMobileWallet()
   const queryClient = useQueryClient()
   const [busy, setBusy] = useState(false)
+  const { colors } = useTheme()
+  const toggle = switchColors(colors)
+  const [appearance, setAppearanceState] = useState<AppearanceChoice>(() => readAppearance())
+  const [notify, setNotify] = useState(() => readNotifyPlantings())
+  const { signTransaction } = useMobileWallet()
+  const invalidate = useInvalidateMe()
+  const [walletBusy, setWalletBusy] = useState(false)
+  const [signing, setSigning] = useState(false)
+  const [walletError, setWalletError] = useState<string | null>(null)
+
+  /** R153: the choice is saved, applied to the phone's scheme at once (the theme and the native controls follow), and shown. */
+  function setAppearance(a: AppearanceChoice) {
+    writeAppearance(a)
+    Appearance.setColorScheme(schemeFor(a))
+    setAppearanceState(a)
+  }
+
+  /** Pause needs nothing; resume asks the Seeker for one fingerprint (R84). Moved from Rules (his note 5). */
+  async function pauseOrResume(w: MeResponse['wallets'][number]) {
+    setWalletBusy(true)
+    setWalletError(null)
+    try {
+      const action = w.status === 'paused' ? 'resume' : 'pause'
+      setSigning(action === 'resume')
+      const reauth = action === 'resume' ? await freshSignIn(freshWalletSignIn(identity)) : undefined
+      await api(`/api/wallets/${w.pubkey}`, { method: 'POST', body: { action, ...(reauth ? { reauth } : {}) } })
+      await invalidate()
+    } catch (e) {
+      setWalletError(e instanceof ApiError ? e.message : 'Could not change the wallet. Try again.')
+    } finally {
+      setWalletBusy(false)
+      setSigning(false)
+    }
+  }
+
+  async function revoke(wallet: string) {
+    if (!session) return
+    setWalletError(null)
+    if (wallet !== session.pubkey) {
+      setWalletError('Revoke this wallet on sprouts.money/revoke with the wallet that approved it.')
+      return
+    }
+    setWalletBusy(true)
+    setSigning(true)
+    try {
+      const t = await api<{ transaction: string | null }>(`/api/revoke/${wallet}`)
+      if (!t.transaction) throw new ApiError(409, 'Nothing to revoke.')
+      const signed = await makeSigner(signTransaction)(t.transaction)
+      await api(`/api/revoke/${wallet}`, { method: 'POST', body: { signedTransaction: signed } })
+      await invalidate()
+    } catch (e) {
+      setWalletError(e instanceof ApiError ? e.message : 'The revoke did not go through. Try again.')
+    } finally {
+      setWalletBusy(false)
+      setSigning(false)
+    }
+  }
 
   /**
    * Ends this device's session on the server (best effort) and forgets everything here: the session, the last verified garden,
@@ -82,27 +147,72 @@ export default function Settings() {
         <ThemedText numeric>
           {me?.user.skrName ?? (session ? `${session.pubkey.slice(0, 4)}...${session.pubkey.slice(-4)}` : '')}
         </ThemedText>
-        <ThemedText variant="heading" style={{ marginTop: spacing.sm }}>
-          Linked wallets
+        {/* R150: the holdings note moved here from Home (both audits): where the wallet coins sit, said once. */}
+        <ThemedText variant="caption" tone="secondary">
+          {HOLDINGS_NOTE}
         </ThemedText>
+      </Card>
+      <Card>
+        <ThemedText variant="heading">Linked wallets</ThemedText>
         {me && me.wallets.length === 0 ? <ThemedText tone="secondary">No wallet linked yet.</ThemedText> : null}
         {me?.wallets.map((w) => (
-          <ThemedText key={w.pubkey} numeric>
-            {formatWallet(w)}
-          </ThemedText>
+          <View key={w.pubkey} style={{ gap: spacing.sm, paddingVertical: spacing.xs }}>
+            <ThemedText numeric>{formatWallet(w)}</ThemedText>
+            {w.status !== 'revoked' ? (
+              <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+                <Button title={w.status === 'paused' ? 'Resume' : 'Pause'} kind="quiet" loading={walletBusy} onPress={() => pauseOrResume(w)} />
+                <Button title="Revoke" kind="danger" loading={walletBusy} onPress={() => revoke(w.pubkey)} />
+              </View>
+            ) : null}
+          </View>
         ))}
+        <ThemedText variant="caption" tone="secondary">
+          {"Revoke ends Sprouts' approval on chain. Nothing in your garden moves."}
+        </ThemedText>
+        {signing ? (
+          <ThemedText variant="caption" tone="secondary">
+            Waiting for your Seeker.
+          </ThemedText>
+        ) : null}
+        {walletError ? <ThemedText tone="error">{walletError}</ThemedText> : null}
         <Link href="/connect" asChild>
           <Button title="Link a wallet" kind="quiet" onPress={() => {}} style={{ alignSelf: 'flex-start' }} />
         </Link>
+      </Card>
+      <Card>
+        <ThemedText variant="heading">Appearance</ThemedText>
+        <TwoWay
+          options={[
+            { value: 'system', label: 'System' },
+            { value: 'light', label: 'Light' },
+            { value: 'dark', label: 'Dark' },
+          ]}
+          value={appearance}
+          onChange={setAppearance}
+        />
+      </Card>
+      <Card>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
+          <ThemedText style={{ flex: 1 }}>Tell me when a planting lands</ThemedText>
+          <Switch
+            {...toggle}
+            value={notify}
+            onValueChange={(on) => {
+              writeNotifyPlantings(on)
+              setNotify(on)
+            }}
+            accessibilityLabel="Tell me when a planting lands"
+          />
+        </View>
       </Card>
       <Card>
         <ThemedText variant="heading">Export for taxes</ThemedText>
         <ThemedText tone="secondary">Coming soon.</ThemedText>
       </Card>
       <Card style={{ gap: 0 }}>
-        {/* R145: each disclosure opens in place; the titles read as a list, the story is one tap away. */}
+        {/* R145 and R153: the eight disclosures as rows that open in place, grouped as About at the end. */}
         <ThemedText variant="heading" style={{ marginBottom: spacing.sm }}>
-          What you should know
+          About Sprouts
         </ThemedText>
         {DISCLOSURES.map(([h, p], i) => (
           <Disclosure key={h} title={h} first={i === 0}>

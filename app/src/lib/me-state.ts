@@ -1,5 +1,6 @@
 import type { MeResponse } from './api'
-import { DECIMALS, formatUsd } from './format'
+import { DECIMALS, formatUsd, formatSkr, formatAmount, holdingAmount } from './format'
+import { ASSETS, type Asset } from './coins'
 
 /** A cached read from before the Yield Manager build has no holdings or manager and would crash every screen that reads them: it counts as no cache (10-01 whole-branch review, I2). */
 export function usableMe(cached: MeResponse | null | undefined): MeResponse | null {
@@ -46,7 +47,8 @@ export function applyRulesTo(
 /** The whole garden in dollars (R146): the SKR pot at its price plus every wallet coin; earned is the staking and pool growth; put in is the dollars planted. Unknown without an SKR price. */
 export type GardenTotals = { valueUsd: number | null; earnedUsd: number | null; putInCents: number }
 export function gardenTotals(me: Pick<MeResponse, 'pot' | 'holdings' | 'history'>): GardenTotals {
-  const putInCents = me.history.plantings.reduce((s, p) => s + p.usdcInCents, 0)
+  // R159 (audit finding 7): put in is what is still held; the SKR plantings in dollars plus each coin's pro-rated put in.
+  const putInCents = me.history.plantings.filter((p) => p.asset === 'SKR').reduce((s, p) => s + p.usdcInCents, 0) + me.holdings.reduce((s, h) => s + h.putInCents, 0)
   const skrUsd = me.pot.skrUsd
   if (skrUsd === null) return { valueUsd: null, earnedUsd: null, putInCents }
   const skr = (raw: string) => (Number(raw) / 10 ** DECIMALS.SKR) * skrUsd
@@ -72,4 +74,36 @@ export function pauseState(wallets: { status: string }[]): { shown: boolean; on:
     on,
     line: on ? 'On. Planting your change.' : 'Paused. Nothing moves; your garden keeps earning.',
   }
+}
+
+/** Home's coin rows (R150): SKR first, locked (R134's lock), then each held coin in the coins' order; amounts only. */
+export type CoinRow = { asset: Asset; amount: string; locked: boolean }
+export function coinRows(me: Pick<MeResponse, 'pot' | 'holdings'>): CoinRow[] {
+  const staked = BigInt(me.pot.skrStakedRaw)
+  const rows: CoinRow[] = staked > 0n ? [{ asset: 'SKR', amount: formatSkr(staked, me.pot.skrUsd), locked: true }] : []
+  for (const asset of ASSETS) {
+    const h = me.holdings.find((x) => x.asset === asset)
+    if (h) rows.push({ asset, amount: holdingAmount(h), locked: false })
+  }
+  return rows
+}
+
+/** The two stats under the big number (R150): Put in, and Earned when it is known. */
+export function statTiles(t: GardenTotals): { label: string; value: string }[] {
+  const tiles = [{ label: 'Put in', value: formatUsd(t.putInCents) }]
+  if (t.earnedUsd !== null) tiles.push({ label: 'Earned', value: formatUsd(Math.round(t.earnedUsd * 100)) })
+  return tiles
+}
+
+/** Home's one wallets row (R150, in his words): the count of linked wallets, revoked ones aside; null when none is linked. */
+export function walletsLine(wallets: { status: string }[]): string | null {
+  const n = wallets.filter((w) => w.status !== 'revoked').length
+  return n === 0 ? null : `${n} ${n === 1 ? 'wallet' : 'wallets'} linked`
+}
+
+/** The last planting as one row that opens Activity (R150): the date and what the change became; the fee clause lives in Activity. */
+export function lastPlantingLine(r: MeResponse['lastReceipt']): string | null {
+  if (!r) return null
+  const day = new Date(r.ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  return `Last planting ${day}: ${formatUsd(r.usdcPulledCents - r.networkFeeCents)} became ${formatAmount(r.asset, BigInt(r.amountOutRaw), r.usdPrice)}`
 }

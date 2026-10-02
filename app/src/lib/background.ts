@@ -6,6 +6,7 @@ import { notify } from "./notify";
 import { refreshWidget } from "./widget-refresh";
 import { formatSkr } from "./format";
 import { plantingNotice } from "./notices";
+import { readNotifyPlantings } from "./prefs";
 
 const TASK = "sprouts-refresh";
 
@@ -16,7 +17,7 @@ TaskManager.defineTask(TASK, async () => {
     const me = await api<MeResponse>("/api/me");
     writeLastMe(me);
     const newPlantings = me.history.plantings.filter((p) => !before?.history.plantings.some((q) => q.id === p.id));
-    for (const p of newPlantings) await notify("Planting landed", plantingNotice(p, me.pot));
+    if (readNotifyPlantings()) for (const p of newPlantings) await notify("Planting landed", plantingNotice(p, me.pot));
     if (before?.basket && !me.basket) await notify("Withdrawal delivered", `${formatSkr(BigInt(before.basket.amountRaw), me.pot.skrUsd)} is in your Seeker's wallet.`);
     await refreshWidget(me);
     return BackgroundTask.BackgroundTaskResult.Success;

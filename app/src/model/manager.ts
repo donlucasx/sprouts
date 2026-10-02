@@ -48,6 +48,13 @@ export function splitRows(r: RulesView, preview?: Split): Row[] {
   });
 }
 
+/** The caption beside a split row's percent (his note 5): nothing while the manager is off (every row is the user's own); on, "pinned", or the manager's bound, or nothing. */
+export function modeWord(row: { mode: string; bound: string | null }, managed: boolean): string {
+  if (!managed) return "";
+  if (row.mode === "pinned") return "pinned";
+  return row.bound ?? "";
+}
+
 /** Pin a coin at the percent its row shows, or release it. */
 export function togglePin(pins: Pins, asset: Asset, on: boolean, currentPct: number): Pins {
   const next: Pins = { ...pins };

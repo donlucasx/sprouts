@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Appearance } from 'react-native'
 import { Stack } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import * as SplashScreen from 'expo-splash-screen'
@@ -13,6 +14,8 @@ import { loadSession, saveSession, SessionContext, type Session } from '@/lib/se
 import { registerBackgroundRefresh } from '@/lib/background' // the task itself is defined from index.js (headless starts)
 import { askNotificationPermissionOnce } from '@/lib/notify'
 import { useTheme } from '@/theme'
+import { readAppearance } from '@/lib/prefs'
+import { schemeFor } from '@/theme/appearance'
 
 // Only Mobile Wallet Adapter's plumbing touches this endpoint; every read the app shows comes from the API.
 const cluster = createSolanaMainnet({ url: 'https://api.mainnet-beta.solana.com' })
@@ -20,6 +23,9 @@ const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1, sta
 
 // The splash stays up until the session and the brand's two faces are in (manual 5); a font that fails to load gives way to the system face.
 SplashScreen.preventAutoHideAsync().catch(() => {})
+
+// R153: the saved appearance is applied before the first frame; the theme hook reads useColorScheme, which follows it (and so do the native switches and the keyboard).
+Appearance.setColorScheme(schemeFor(readAppearance()))
 
 export default function Layout() {
   const [session, setSessionState] = useState<Session | null>(null)

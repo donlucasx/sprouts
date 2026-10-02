@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { plantingRowLine, swapRowLine, withdrawalRowLine } from '@/model/activity'
+import { plantingRowLine, swapRowLine, withdrawalRowLine, visibleRows, TAKEN_OUT_LINE } from '@/model/activity'
 
 // Activity's rows (spec 3.2 and 7.7), in the manual's words: planting, change, withdraw; dollars first; never pulled.
 describe('Activity rows', () => {
@@ -34,15 +34,43 @@ describe('Activity rows', () => {
     expect(
       withdrawalRowLine(
         'Oct 1',
-        { amountRaw: '12480000', cancelled: false, delivered: true, source: 'sprouts' },
+        { amountRaw: '12480000', cancelled: false, delivered: true, source: 'sprouts', ts: '2026-10-01T12:00:00Z' },
         0.01833,
       ),
-    ).toBe('Oct 1, 12.48 SKR ($0.23) delivered')
+    ).toBe('Oct 1, 12.48 SKR ($0.23), delivered')
     expect(
-      withdrawalRowLine('Oct 1', { amountRaw: '12480000', cancelled: false, delivered: false, source: 'wallet' }, null),
-    ).toBe('Oct 1, 12.48 SKR in the basket, from your wallet')
+      withdrawalRowLine('Oct 1', { amountRaw: '12480000', cancelled: false, delivered: false, source: 'wallet', ts: '2026-10-01T12:00:00Z' }, null),
+    ).toMatch(/^Oct 1, 12\.48 SKR, arrives Oct [34], \d{1,2} [AP]M, from your wallet$/)
     expect(
-      withdrawalRowLine('Oct 1', { amountRaw: null, cancelled: true, delivered: false, source: 'sprouts' }, null),
-    ).toBe('Oct 1, an amount put back')
+      withdrawalRowLine('Oct 1', { amountRaw: null, cancelled: true, delivered: false, source: 'sprouts', ts: '2026-10-01T12:00:00Z' }, null),
+    ).toBe('Oct 1, an amount, put back')
+  })
+})
+
+describe('visibleRows (his note 6: the latest five, the rest behind Show more)', () => {
+  const rows = Array.from({ length: 12 }, (_, i) => i)
+  it('closed: the first five and how many are hidden', () => {
+    expect(visibleRows(rows, false)).toEqual({ shown: [0, 1, 2, 3, 4], hidden: 7 })
+  })
+  it('open: everything, nothing hidden', () => {
+    expect(visibleRows(rows, true)).toEqual({ shown: rows, hidden: 0 })
+  })
+  it('five or fewer: everything, nothing hidden, closed or open', () => {
+    expect(visibleRows([1, 2, 3], false)).toEqual({ shown: [1, 2, 3], hidden: 0 })
+  })
+})
+
+describe('withdrawalRowLine (R156: when it arrives, not "on its way")', () => {
+  const base = { amountRaw: '1000000', cancelled: false, delivered: false, source: 'sprouts', ts: '2026-10-02T12:00:00Z' } as const
+  it('a ripening withdrawal says when it arrives: 48 hours after the unstake', () => {
+    expect(withdrawalRowLine('Oct 2', base, 0.0183)).toMatch(/^Oct 2, 1\.00 SKR \(\$0\.02\), arrives Oct [45], \d{1,2} [AP]M$/)
+  })
+  it('delivered and put back read as before', () => {
+    expect(withdrawalRowLine('Oct 2', { ...base, delivered: true }, 0.0183)).toBe('Oct 2, 1.00 SKR ($0.02), delivered')
+    expect(withdrawalRowLine('Oct 2', { ...base, cancelled: true }, 0.0183)).toBe('Oct 2, 1.00 SKR ($0.02), put back')
+    expect(withdrawalRowLine('Oct 2', { ...base, source: 'wallet', delivered: true }, 0.0183)).toBe('Oct 2, 1.00 SKR ($0.02), delivered, from your wallet')
+  })
+  it('the explainer is his simplified line', () => {
+    expect(TAKEN_OUT_LINE).toBe('What you took out.')
   })
 })
