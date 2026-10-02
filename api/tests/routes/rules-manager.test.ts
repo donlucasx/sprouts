@@ -34,6 +34,7 @@ describe("PUT /api/rules with the Yield Manager", () => {
     expect(body.allocation).toEqual(split({ SKR: 40, stORE: 5, hSOL: 25, JitoSOL: 15, JupSOL: 10, cbBTC: 5 }));
     const ev = repo.events.find((e) => e.kind === "split_changed")!;
     expect((ev.detail as { by: string }).by).toBe("you");
+    expect((ev.detail as { managed: boolean; managedWas: boolean }).managedWas).toBe(false); // the switch moved off to on by this save
     expect((await repo.getRules(U)).prevAllocation).toBeNull();
   });
 
@@ -115,6 +116,19 @@ describe("PUT /api/rules with the Yield Manager", () => {
     await put({ managed: true, stop: "balanced" });
     const res = (await (await put({ pins: { hSOL: 0, cbBTC: 10 } })).json()) as { pins: Record<string, number> };
     expect(res.pins).toEqual({ cbBTC: 10 });
+  });
+
+  it("a bad body names the field it failed on, in the API's own sentence (R44 holds)", async () => {
+    const field = await put({ pctBps: 9999 });
+    expect(field.status).toBe(400);
+    expect(((await field.json()) as { error: string }).error).toBe("Bad request: pctBps.");
+    const unknown = await put({ nope: 1 });
+    expect(((await unknown.json()) as { error: string }).error).toBe("Bad request: nope.");
+    const coin = await put({ pins: { DOGE: 10 } });
+    expect(((await coin.json()) as { error: string }).error).toBe("Bad request: pins.");
+    const empty = await putRules(new Request("http://x/api/rules", { method: "PUT", headers: auth, body: "not json" }));
+    expect(empty.status).toBe(400);
+    expect(((await empty.json()) as { error: string }).error).toBe("Bad request.");
   });
 
   it("any save clears the undo", async () => {

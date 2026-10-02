@@ -32,7 +32,8 @@ export type Holding = { asset: Asset; heldRaw: string; putInCents: number; value
 /** The Yield Manager block of /api/me. `changedDay` is a UTC date; `stopSplit` is today's split for the user's stop (the stop default before the first run). */
 export type Manager = { managed: boolean; stop: Stop; pins: Pins; changedDay: string | null; undoAvailable: boolean; why: string | null; fallback: string | null; stopSplit: Split };
 /** One split change as /api/activity serves it. */
-export type SplitRow = { ts: string; by: "manager" | "you" | "undo"; from: Split; to: Split; stop: string | null; why: string | null; fallback: string | null };
+/** `managed` is the switch after a save by you; `turnedOn` when that save moved it off to on (absent on rows from before 10-01). */
+export type SplitRow = { ts: string; by: "manager" | "you" | "undo"; from: Split; to: Split; stop: string | null; why: string | null; fallback: string | null; managed?: boolean | null; turnedOn?: boolean };
 
 export type MeResponse = {
   user: { pubkey: string; skrName: string | null; joinedAt: string; wateredAt: string | null };
