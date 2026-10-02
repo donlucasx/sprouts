@@ -31,8 +31,9 @@ export const STORE_ROW_NOTE = "ORE staked in ORE's program";
 export type Row = { asset: Asset; pct: number; mode: "auto" | "pinned" | "the rest"; bound: string | null };
 export type RulesView = { managed: boolean; stop: Stop; pins: Pins; allocation: Split };
 
-/** One row per coin. Off: pins are the split and SKR is the rest. On: pinned rows show the pin, free rows show the allocation with the stop's bound. */
-export function splitRows(r: RulesView): Row[] {
+/** One row per coin. Off: pins are the split and SKR is the rest. On: pinned rows show the pin, free rows show the allocation with the stop's bound,
+ * or `preview` (the stop's split, `me.manager.stopSplit`) when the switch is on in an unsaved draft and the saved allocation is still the OFF one. */
+export function splitRows(r: RulesView, preview?: Split): Row[] {
   if (!r.managed) {
     const pinned = NON_SKR.reduce((s, c) => s + (r.pins[c] ?? 0), 0);
     return ASSETS.map((asset) =>
@@ -43,7 +44,7 @@ export function splitRows(r: RulesView): Row[] {
     const pin = r.pins[asset];
     if (pin !== undefined) return { asset, pct: pin, mode: "pinned", bound: null };
     const bound = asset === "SKR" ? `at least ${STOP_FLOOR[r.stop]}%` : `at most ${STOP_MAX[r.stop][asset]}%`;
-    return { asset, pct: r.allocation[asset], mode: "auto", bound };
+    return { asset, pct: (preview ?? r.allocation)[asset], mode: "auto", bound };
   });
 }
 
@@ -62,13 +63,16 @@ export function stepPin(pins: Pins, asset: Asset, dir: 1 | -1): Pins {
   return { ...pins, [asset]: next };
 }
 
-/** Whether a pin's "+" may move it up by PIN_STEP. Off, SKR is the rest and must keep MANUAL_FLOOR (the API refuses less); on, the API is the authority and only the coin's own pin max applies here. */
+/** Whether a pin's "+" may move it up by PIN_STEP, mirroring the API's validatePins in both modes: the coin's pin max; with SKR pinned, a total of at most 100;
+ * else the pins must leave SKR its floor (the stop's when on, MANUAL_FLOOR when off). */
 export function canStepUp(r: RulesView, asset: Asset): boolean {
   const current = r.pins[asset] ?? 0;
   if (current + PIN_STEP > PIN_MAX[asset]) return false;
-  if (r.managed) return true;
-  const pinned = NON_SKR.reduce((s, c) => s + (r.pins[c] ?? 0), 0);
-  return 100 - (pinned + PIN_STEP) >= MANUAL_FLOOR;
+  const floor = r.managed ? STOP_FLOOR[r.stop] : MANUAL_FLOOR;
+  const total = (Object.values(r.pins) as number[]).reduce((s, v) => s + (v ?? 0), 0);
+  const next = total + PIN_STEP;
+  if (r.pins.SKR !== undefined || asset === "SKR") return next <= 100;
+  return next <= 100 - floor;
 }
 
 /** The pins to carry when the switch flips on: a 0 pin while off meant "nothing" (SKR was the rest), and carried into on-mode it would stop the manager from ever buying that coin. */
@@ -96,11 +100,9 @@ export function changeSummary(from: Split, to: Split): string {
   return ASSETS.filter((a) => from[a] !== to[a]).map((a) => `${a} ${from[a]} to ${to[a]}`).join(", ");
 }
 
-const rowDay = (ts: string) => new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-
-/** One Activity row (spec 3.2). */
+/** One Activity row (spec 3.2), dated by the API's UTC day so it agrees with the Rules card's "Changed {Mon D}." */
 export function splitRowLine(s: SplitRow): string {
-  const day = rowDay(s.ts);
+  const day = dayLabel(s.ts.slice(0, 10));
   const summary = changeSummary(s.from, s.to);
   if (s.by === "undo") return `${day}, undone. Yesterday's split is back; the Yield Manager is off.`;
   if (s.by === "you") return summary ? `${day}, you: ${summary}.` : `${day}, you: ${s.stop ? STOP_LABEL[s.stop as Stop] ?? s.stop : "saved"}.`;

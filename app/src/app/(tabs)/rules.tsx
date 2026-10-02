@@ -78,6 +78,8 @@ export default function Rules() {
     setDraft((d) => ({ ...d, ...p }));
   };
   // The ORE disclosure shows inline once: the first time the manager is switched on, or, off, the first time stORE's pin leaves zero (spec 3.1).
+  // F1: switched on but not yet saved, the saved allocation is still the OFF one; the rows preview the stop's split instead.
+  const unsavedOn = r.managed && !saved.managed;
   const showDisclosure = (r.managed && !saved.managed) || (!r.managed && (r.pins.stORE ?? 0) > 0 && (saved.pins.stORE ?? 0) === 0);
 
   /** Saves the whole draft at once; if it raises the daily limit, the Seeker signs in once for all of it (R84). */
@@ -196,15 +198,6 @@ export default function Rules() {
         <Row label={`1% on swaps of ${formatUsd(r.pctThresholdCents)} or more`}><Switch value={r.pctOn} disabled={busy} onValueChange={(v) => edit({ pctOn: v })} /></Row>
         <Stepper label="Daily limit" value={r.dailyCapCents} step={100} min={100} max={500} format={formatUsd} disabled={busy} onChange={(v) => edit({ dailyCapCents: v })} />
         <Stepper label="Plant at" value={r.plantThresholdCents} step={50} min={50} max={2000} format={formatUsd} disabled={busy} onChange={(v) => edit({ plantThresholdCents: v })} />
-        {dirty ? (
-          <>
-            <Text style={{ fontSize: 13, color: "#6B6558" }}>{raises ? "Saving asks your Seeker to sign in once, because it raises the daily limit." : "Nothing to sign for these changes."}</Text>
-            <Button title={busy ? "Saving..." : "Save changes"} disabled={busy} onPress={saveAll} />
-            <Button title="Discard" kind="quiet" disabled={busy} onPress={() => setDraft({})} />
-          </>
-        ) : (
-          <Text style={{ fontSize: 13, color: "#6B6558" }}>Change what you like, then save. Raising the daily limit asks your Seeker to sign in once.</Text>
-        )}
       </Card>
       <Card>
         <Row label={SWITCH_LABEL}>
@@ -221,8 +214,8 @@ export default function Rules() {
             <Text style={muted}>{STOP_LINE}</Text>
           </>
         )}
-        <Text style={sectionLabel}>{r.managed ? "Today's split" : "Your split"}</Text>
-        {splitRows(r).map((row) => (
+        <Text style={sectionLabel}>{saved.managed ? "Today's split" : r.managed ? "The split after you save" : "Your split"}</Text>
+        {splitRows(r, unsavedOn ? me.manager.stopSplit : undefined).map((row) => (
           <View key={row.asset} style={splitRow}>
             <Text style={coin}>{COIN_NAME[row.asset]}{row.asset === "stORE" ? `, ${STORE_ROW_NOTE}` : ""}</Text>
             <Text style={pct}>{row.pct}%</Text>
@@ -243,7 +236,7 @@ export default function Rules() {
             )}
           </View>
         ))}
-        {r.managed && me.manager.why ? <Text style={why}>{me.manager.why}</Text> : null}
+        {saved.managed && me.manager.why ? <Text style={why}>{me.manager.why}</Text> : null}
         {undone ? <Text style={muted}>{UNDONE_TEXT}</Text> : null}
         {!undone && me.manager.undoAvailable && undoLine(me.manager.changedDay) ? (
           <View style={undoRow}>
@@ -253,6 +246,19 @@ export default function Rules() {
         ) : null}
         {showDisclosure ? <Text style={{ ...muted, lineHeight: 19 }}>{ORE_DISCLOSURE}</Text> : null}
       </Card>
+      {/* The save and its reason sit under the last control (audit fix F5). */}
+      <View style={{ gap: 6 }}>
+        {dirty ? (
+          <>
+            <Text style={{ fontSize: 13, color: "#6B6558" }}>{raises ? "Saving asks your Seeker to sign in once, because it raises the daily limit." : "Nothing to sign for these changes."}</Text>
+            <Button title={busy ? "Saving..." : "Save changes"} disabled={busy} onPress={saveAll} />
+            <Button title="Discard" kind="quiet" disabled={busy} onPress={() => setDraft({})} />
+          </>
+        ) : (
+          <Text style={{ fontSize: 13, color: "#6B6558" }}>Change what you like, then save. Raising the daily limit asks your Seeker to sign in once.</Text>
+        )}
+        {error ? <Text style={{ color: "#8C2F2F" }}>{error}</Text> : null}
+      </View>
       <Card><Text style={{ fontSize: 15, lineHeight: 22, color: "#2B2B2B" }}>{sentence}</Text></Card>
       <Card>
         <Text style={{ fontSize: 17, fontWeight: "600", color: "#2B2B2B" }}>Linked wallets</Text>
@@ -268,7 +274,6 @@ export default function Rules() {
         ))}
         <Text style={{ fontSize: 13, color: "#6B6558" }}>{"Revoke removes Sprouts' authority on chain and leaves the wallet with no delegate. Nothing in your garden moves."}</Text>
       </Card>
-      {error ? <Text style={{ color: "#8C2F2F" }}>{error}</Text> : null}
     </Screen>
   );
 }

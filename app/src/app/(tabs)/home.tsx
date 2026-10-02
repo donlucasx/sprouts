@@ -10,7 +10,7 @@ import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
 import { WatcherLine } from "@/components/WatcherLine";
 import { WaterButton } from "@/components/WaterButton";
-import { formatUsd, formatSkr, formatHolding, formatAmount, formatAsOf, formatWallet, COIN_NAME } from "@/lib/format";
+import { formatUsd, formatSkr, formatHolding, formatAmount, formatAsOf, formatWallet, COIN_NAME, feeClause } from "@/lib/format";
 import { useSession } from "@/lib/session";
 import { noPlantingLine } from "@/lib/me-state";
 
@@ -112,7 +112,7 @@ export default function Home() {
         <Text style={{ fontSize: 16, color: "#2B2B2B" }}>Next planting: {formatUsd(me.nextPlanting.pendingCents)} of {formatUsd(me.nextPlanting.thresholdCents)}{me.nextPlanting.asset !== "SKR" ? `, grows ${COIN_NAME[me.nextPlanting.asset]}` : ""}</Text>
         {me.lastReceipt ? (
           <Text style={{ fontSize: 14, color: "#6B6558" }}>
-            Last planting {shortDate(me.lastReceipt.ts)}: {formatUsd(me.lastReceipt.usdcPulledCents)} pulled, {formatAmount(me.lastReceipt.asset, BigInt(me.lastReceipt.amountOutRaw), me.lastReceipt.usdPrice)} planted, fee {formatUsd(me.lastReceipt.feeCents)}, network fee {formatUsd(me.lastReceipt.networkFeeCents)}
+            Last planting {shortDate(me.lastReceipt.ts)}: {formatUsd(me.lastReceipt.usdcPulledCents)} pulled, {formatAmount(me.lastReceipt.asset, BigInt(me.lastReceipt.amountOutRaw), me.lastReceipt.usdPrice)} planted{feeClause(me.lastReceipt.feeCents)}, network fee {formatUsd(me.lastReceipt.networkFeeCents)}
           </Text>
         ) : (
           <Text style={{ fontSize: 14, color: "#6B6558" }}>{noPlantingLine(me)}</Text>
