@@ -47,7 +47,8 @@ export type Holding = { asset: Asset; heldRaw: bigint; putInCents: number; value
 /**
  * Spec 7.6: value = balance times today's price; earned = each leg's amount times the rate's rise since it was planted, in the
  * coin's underlying (SOL for an LST, ORE for stORE), priced at the underlying's price derived from the coin's own price over its
- * rate. A leg planted before the first snapshot (null rate) counts 0. cbBTC has no rate, so no earned.
+ * rate. A leg planted before the first snapshot (null rate) counts 0. cbBTC has no rate, so no earned. What left the wallet takes
+ * its share of the basis (R159): both are scaled by the fraction still held.
  */
 export function holdingsFrom(a: { held: Partial<Record<Asset, bigint>>; legs: PlantingLegRow[]; days: Partial<Record<Asset, CoinDayRow | null>> }): Holding[] {
   const out: Holding[] = [];
@@ -57,13 +58,17 @@ export function holdingsFrom(a: { held: Partial<Record<Asset, bigint>>; legs: Pl
     const coin = COINS[asset];
     const day = a.days[asset] ?? null;
     const legs = a.legs.filter((l) => l.asset === asset);
-    const putInCents = legs.reduce((s, l) => s + l.usdcInCents, 0);
+    // R159: what left the wallet (sold or sent from the wallet app) takes its share of the basis with it: the fraction still
+    // held over everything ever planted; more than planted (a coin received elsewhere) counts as the whole basis, never more.
+    const plantedRaw = legs.reduce((s, l) => s + l.amountOutRaw, 0n);
+    const kept = plantedRaw > 0n ? Math.min(1, Number(heldRaw) / Number(plantedRaw)) : 1;
+    const putInCents = Math.round(legs.reduce((s, l) => s + l.usdcInCents, 0) * kept);
     const scale = 10 ** coin.decimals;
     const valueUsd = day?.priceUsd != null ? (Number(heldRaw) / scale) * day.priceUsd : null;
     let earnedUnderlyingRaw: bigint | null = null;
     let earnedUsd: number | null = null;
     if (coin.kind !== "btc" && day?.rate != null && day.rate > 0) {
-      const underlying = legs.reduce((s, l) => (l.rateAtPlanting === null ? s : s + (Number(l.amountOutRaw) / scale) * Math.max(0, (day.rate as number) - l.rateAtPlanting)), 0);
+      const underlying = kept * legs.reduce((s, l) => (l.rateAtPlanting === null ? s : s + (Number(l.amountOutRaw) / scale) * Math.max(0, (day.rate as number) - l.rateAtPlanting)), 0);
       earnedUnderlyingRaw = BigInt(Math.round(underlying * scale));
       earnedUsd = day.priceUsd != null ? underlying * (day.priceUsd / day.rate) : null;
     }

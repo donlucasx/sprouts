@@ -16,7 +16,7 @@ vi.mock("@/lib/store", () => ({ storeBalanceRaw: vi.fn(async () => 0n), storeRed
 vi.mock("@/lib/holdings", async (orig) => ({ ...(await orig<object>()), readHoldings: vi.fn(async () => ({})) }));
 vi.mock("@/lib/subscriptions", () => ({ readDelegation: vi.fn(async () => ({ exists: false, amountPerPeriodRaw: 0n, pulledInPeriodRaw: 0n, periodStartTs: 0n, periodLengthS: 0n })) }));
 
-import { storeRedeemRate } from "@/lib/store";
+import { storeBalanceRaw, storeRedeemRate } from "@/lib/store";
 import { GET as me } from "@/app/api/me/route";
 import { GET as activity } from "@/app/api/activity/route";
 import { POST as water } from "@/app/api/water/route";
@@ -81,6 +81,19 @@ describe("GET /api/me", () => {
     const body = await (await me(new Request("http://x/api/me", bearer(await issueSession(U, "M"))))).json();
     expect(body.basket).not.toBeNull();
     expect(body.basket.amountRaw).toBe("46000000");
+  });
+
+  // R159: stORE sold from the wallet app takes its share of the basis; nothing in Sprouts moves it.
+  it("stORE's put in follows what is still held: half the planted amount when half is left, the planted amount when more is held", async () => {
+    await repo.insertPlanting({ userPubkey: U, walletPubkey: "W", signature: "sig-ore", usdcPulledCents: 203, networkFeeCents: 3, status: "confirmed", aiLine: null },
+      [{ asset: "stORE", usdcInCents: 200, amountOutRaw: 2_000_000_000n, staked: false, feeAmountRaw: 0n, feeCents: 1, rateAtPlanting: 1.0 }]);
+    vi.mocked(storeBalanceRaw).mockResolvedValueOnce(1_000_000_000n);
+    let body = await (await me(new Request("http://x/api/me", bearer(await issueSession(U, "M"))))).json();
+    expect(body.pot.storeRaw).toBe("1000000000");
+    expect(body.pot.storePutInRaw).toBe("1000000000");
+    vi.mocked(storeBalanceRaw).mockResolvedValueOnce(3_000_000_000n);
+    body = await (await me(new Request("http://x/api/me", bearer(await issueSession(U, "M"))))).json();
+    expect(body.pot.storePutInRaw).toBe("2000000000");
   });
 
   it("requires a session", async () => {
