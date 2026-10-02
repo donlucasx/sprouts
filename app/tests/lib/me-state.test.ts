@@ -12,9 +12,9 @@ import {
   lastPlantingLine,
 } from '@/lib/me-state'
 import type { MeResponse } from '@/lib/api'
-const cached = { pot: { asOf: '2026-09-28T16:00:00Z' }, holdings: [], manager: { why: null } } as never
+const cached = { pot: { asOf: '2026-09-28T16:00:00Z' }, holdings: [], manager: { why: null }, rules: { allocation: {} } } as never
 const live = { pot: { asOf: '2026-09-28T17:00:00Z' } } as never
-const full = { pot: { asOf: '2026-09-28T16:00:00Z' }, holdings: [], manager: { why: null } } as unknown as MeResponse
+const full = { pot: { asOf: '2026-09-28T16:00:00Z' }, holdings: [], manager: { why: null }, rules: { allocation: {} } } as unknown as MeResponse
 describe('pickMeState', () => {
   it('a cached me from before the Yield Manager build (no holdings or manager) counts as no cache (whole-branch review I2)', () => {
     const old = { ...full } as Record<string, unknown>
@@ -25,6 +25,13 @@ describe('pickMeState', () => {
     expect(pickMeState(undefined, old as unknown as MeResponse, false)).toEqual({ data: undefined, stale: false })
     expect(pickMeState(undefined, old as unknown as MeResponse, true)).toEqual({ data: undefined, stale: true })
     expect(pickMeState(undefined, full, false)).toEqual({ data: full, stale: false })
+  })
+  it('a cache from before the garden build (no rules.allocation) counts as no cache', () => {
+    const noRules = { ...full } as Record<string, unknown>
+    delete noRules.rules
+    expect(usableMe(noRules as unknown as MeResponse)).toBeNull()
+    expect(usableMe({ ...full, rules: {} } as unknown as MeResponse)).toBeNull()
+    expect(usableMe({ ...full, rules: { allocation: null } } as unknown as MeResponse)).toBeNull()
   })
   it('keeps the last verified read on failure and says it is stale', () => {
     expect(pickMeState(undefined, cached, true)).toEqual({ data: cached, stale: true })

@@ -29,7 +29,8 @@ export function Soil({ width, soilY }: { width: number; soilY: number }) {
 }
 /** The water ring (RG11): the front row's at 24, the back row's at 16 (gen06:77, :83: two thirds). */
 export function Ring({ age, k = 1 }: { age: number; k?: number }) {
-  const m = SPRITES["ring"]; return <G opacity={1 - age} transform={spriteTransform(m, 0, 0, 0, k)}><SvgImage href={m.src} width={m.w} height={m.h} /></G>;
+  const m = SPRITES["ring"]; if (!m) return null;
+  return <G opacity={1 - age} transform={spriteTransform(m, 0, 0, 0, k)}><SvgImage href={m.src} width={m.w} height={m.h} /></G>;
 }
 export function Seed({ index }: { index: number }) {   // gen01 seeds(): alternating sides, 3 + 2.4 per pair out, a little lift
   const dx = (index % 2 ? 1 : -1) * (3 + 2.4 * Math.floor(index / 2)), dy = -1.2 * (index % 3);
@@ -40,6 +41,7 @@ export function Basket() { return <G><Rect x={0} y={0} width={26} height={16} rx
 /** The can sprite, 32 wide, drawn into WaterButton's existing viewBox (-1 -2 36 24) with its box centred on the viewBox's centre
  * (17, 10); the anchor (47.67, 31.33) sits right of and below the box's centre, so placing the anchor there clipped the spout's rose. */
 export function WateringCan() {
-  const m = SPRITES["can"], s = 32 / m.w;
+  const m = SPRITES["can"]; if (!m) return null;
+  const s = 32 / m.w;
   return <G transform={spriteTransform(m, 17 + (m.ax - m.w / 2) * s, 10 + (m.ay - m.h / 2) * s, 0, s)}><SvgImage href={m.src} width={m.w} height={m.h} /></G>;
 }
