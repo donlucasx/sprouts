@@ -13,14 +13,21 @@ function withWalletPriorityFee(b64tx: string) {
 }
 
 const SP = 1_146_000_000n;
-const { positionMock, sendMock } = vi.hoisted(() => ({ positionMock: vi.fn(), sendMock: vi.fn(async () => "sig") }));
+const { positionMock, sendMock, statusMock, validMock } = vi.hoisted(() => ({
+  positionMock: vi.fn(), sendMock: vi.fn(async () => "sig"),
+  statusMock: vi.fn(async (_sig: string): Promise<"confirmed" | "failed" | "pending"> => "confirmed"),   // the chain's answer for a signature
+  validMock: vi.fn(async (_blockhash: string) => true),   // isBlockhashValid at finalized
+}));
 vi.mock("@/lib/staking", async (orig) => ({ ...(await orig<object>()), readPosition: (...a: unknown[]) => positionMock(...a), sharePrice: vi.fn(async () => SP) }));
 vi.mock("@/lib/jupiter", () => ({ priceUsd: vi.fn(async () => 0.0183) }));
-vi.mock("@/lib/planting", () => ({ signatureStatus: vi.fn(async () => "confirmed") }));
+vi.mock("@/lib/planting", () => ({ signatureStatus: (sig: string) => statusMock(sig) }));
+// The confirm poll (20 x 1.5 s) asks the chain once here; settleUnconfirmed is the real one, over the mocked rpc and status.
+vi.mock("@/lib/user-tx", async (orig) => ({ ...(await orig<object>()), waitConfirmed: (sig: string) => statusMock(sig) }));
 vi.mock("@/lib/rpc", () => ({
   rpc: () => ({
     getLatestBlockhash: () => ({ send: async () => ({ value: { blockhash: "GHtXQBsoZHVnNFa9YevAzFr17DJjgHXk3ycTKD5xD3Zi", lastValidBlockHeight: 1n } }) }),
     sendTransaction: () => ({ send: sendMock }),
+    isBlockhashValid: (blockhash: string) => ({ send: async () => ({ value: await validMock(blockhash) }) }),
   }),
 }));
 
@@ -60,6 +67,57 @@ describe("withdraw routes", () => {
     positionMock.mockResolvedValue(staked(2_000_000_000n));
     sendMock.mockReset();
     sendMock.mockResolvedValue("sig");
+    statusMock.mockReset();
+    statusMock.mockResolvedValue("confirmed");
+    validMock.mockReset();
+    validMock.mockResolvedValue(true);
+  });
+
+  // Device round 3, items 7 and 8 (10-02): he approved in Solflare after the build's blockhash ran out; the send was refused and the
+  // route said "check again in a minute" though nothing could ever land.
+  describe("a send that has not confirmed (item 8)", () => {
+    const signedEarned = async () => signAsUser((await (await build(post("/api/withdraw/build", { mode: "earned" }))).json()).transaction);
+    it("an expired blockhash that never landed: 409, it did not go through, nothing recorded", async () => {
+      const signed = await signedEarned();
+      sendMock.mockRejectedValueOnce(new Error("Blockhash not found"));
+      statusMock.mockResolvedValue("pending");
+      validMock.mockResolvedValue(false);
+      const r = await confirmRoute(post("/api/withdraw/confirm", { signedTransaction: signed }));
+      expect(r.status).toBe(409);
+      expect((await r.json()).error).toBe("It did not go through. Nothing moved. Try again.");
+      expect(validMock).toHaveBeenCalledWith("GHtXQBsoZHVnNFa9YevAzFr17DJjgHXk3ycTKD5xD3Zi");   // the blockhash the transaction carries
+      expect(await repo.pendingWithdrawal(U)).toBeNull();
+    });
+    it("a blockhash still valid: 409, still waiting for the chain, nothing recorded", async () => {
+      const signed = await signedEarned();
+      statusMock.mockResolvedValue("pending");
+      const r = await confirmRoute(post("/api/withdraw/confirm", { signedTransaction: signed }));
+      expect(r.status).toBe(409);
+      expect((await r.json()).error).toBe("Still waiting for the chain. Try again in a minute.");
+      expect(await repo.pendingWithdrawal(U)).toBeNull();
+    });
+    it("expired but it landed after all (the second ask confirms): the basket is recorded", async () => {
+      const signed = await signedEarned();
+      statusMock.mockResolvedValueOnce("pending").mockResolvedValueOnce("confirmed");
+      validMock.mockResolvedValue(false);
+      positionMock.mockResolvedValue(staked(1_919_720_768n, 92_000_000n, 1_790_000_000n));
+      const r = await confirmRoute(post("/api/withdraw/confirm", { signedTransaction: signed }));
+      expect(r.status).toBe(200);
+      expect((await repo.pendingWithdrawal(U))?.sharesUnstaked).toBe(80_279_232n);
+    });
+    it("put it back: expired says the SKR is still in the basket; still valid says still waiting; the basket stands either way", async () => {
+      await repo.insertWithdrawal({ userPubkey: U, asset: "SKR", source: "sprouts", unstakeSignature: "x", sharesUnstaked: 80_279_232n, amountRaw: 92_000_000n, principalRaw: 0n });
+      const signed = await signAsUser((await (await cancelBuild(post("/api/withdraw/cancel/build", {}))).json()).transaction);
+      statusMock.mockResolvedValue("pending");
+      validMock.mockResolvedValueOnce(false);
+      const expired = await cancelConfirm(post("/api/withdraw/cancel/confirm", { signedTransaction: signed }));
+      expect(expired.status).toBe(409);
+      expect((await expired.json()).error).toBe("It did not go through. Your SKR is still in the basket. Try again.");
+      const waiting = await cancelConfirm(post("/api/withdraw/cancel/confirm", { signedTransaction: signed }));
+      expect(waiting.status).toBe(409);
+      expect((await waiting.json()).error).toBe("Still waiting for the chain. Try again in a minute.");
+      expect(await repo.pendingWithdrawal(U)).not.toBeNull();
+    });
   });
 
   // Review I2: a cooldown the wallet started is one basket too; the program allows one, so no fingerprint is asked for a second.

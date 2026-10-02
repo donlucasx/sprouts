@@ -6,15 +6,21 @@ import { issueSession } from "@/lib/session";
 import { createSignInPayload, renderSignInMessage } from "@/lib/siws";
 import { generateKeyPairSigner, signBytes, getUtf8Encoder, signTransaction, getBase64EncodedWireTransaction, getBase64Encoder, getTransactionDecoder, type KeyPairSigner } from "@solana/kit";
 
-const { readDelegationMock } = vi.hoisted(() => ({ readDelegationMock: vi.fn(async () => ({ exists: false, amountPerPeriodRaw: 0n, pulledInPeriodRaw: 0n, periodStartTs: 0n, periodLengthS: 0n })) }));
+const { readDelegationMock, statusMock, validMock } = vi.hoisted(() => ({
+  readDelegationMock: vi.fn(async () => ({ exists: false, amountPerPeriodRaw: 0n, pulledInPeriodRaw: 0n, periodStartTs: 0n, periodLengthS: 0n })),
+  statusMock: vi.fn(async (_sig: string): Promise<"confirmed" | "failed" | "pending"> => "confirmed"),
+  validMock: vi.fn(async (_blockhash: string) => true),
+}));
 vi.mock("@/lib/subscriptions", async (orig) => ({ ...(await orig<object>()), readDelegation: readDelegationMock }));
 vi.mock("@/lib/rpc", () => ({
   rpc: () => ({
     getLatestBlockhash: () => ({ send: async () => ({ value: { blockhash: "GHtXQBsoZHVnNFa9YevAzFr17DJjgHXk3ycTKD5xD3Zi", lastValidBlockHeight: 1n } }) }),
     sendTransaction: () => ({ send: async () => "sig" }),
+    isBlockhashValid: (blockhash: string) => ({ send: async () => ({ value: await validMock(blockhash) }) }),
   }),
 }));
-vi.mock("@/lib/planting", () => ({ signatureStatus: vi.fn(async () => "confirmed") }));
+vi.mock("@/lib/planting", () => ({ signatureStatus: (sig: string) => statusMock(sig) }));
+vi.mock("@/lib/user-tx", async (orig) => ({ ...(await orig<object>()), waitConfirmed: (sig: string) => statusMock(sig) }));   // one ask, not the 30 s poll
 
 import { PUT as putRules } from "@/app/api/rules/route";
 import { POST as walletAction } from "@/app/api/wallets/[pubkey]/route";
@@ -127,5 +133,21 @@ describe("rules, wallets, revoke", () => {
     expect((await r.json()).revoked).toBe(true);
     expect((await repo.getWallet(W))?.status).toBe("revoked");
     expect(repo.events.some((e) => e.kind === "revoke_seen" && e.walletPubkey === W)).toBe(true);
+  });
+  it("revoke that has not confirmed (round 3, item 8): an expired blockhash did not go through; a valid one is still waiting; the wallet stays linked", async () => {
+    const t = await (await revokeGet(new Request(`http://x/api/revoke/${W}`), { params: Promise.resolve({ wallet: W }) })).json();
+    const signed = getBase64EncodedWireTransaction(await signTransaction([wallet.keyPair], getTransactionDecoder().decode(getBase64Encoder().encode(t.transaction))));
+    const send = () => revokePost(new Request(`http://x/api/revoke/${W}`, { method: "POST", body: JSON.stringify({ signedTransaction: signed }) }), { params: Promise.resolve({ wallet: W }) });
+    statusMock.mockResolvedValue("pending");
+    validMock.mockResolvedValueOnce(false);
+    const expired = await send();
+    expect(expired.status).toBe(409);
+    expect((await expired.json()).error).toBe("It did not go through. Nothing changed. Try again.");
+    validMock.mockResolvedValueOnce(true);
+    const waiting = await send();
+    expect(waiting.status).toBe(409);
+    expect((await waiting.json()).error).toBe("Still waiting for the chain. Try again in a minute.");
+    expect((await repo.getWallet(W))?.status).not.toBe("revoked");
+    statusMock.mockResolvedValue("confirmed");
   });
 });
