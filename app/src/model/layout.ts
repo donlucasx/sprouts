@@ -1,6 +1,7 @@
 import { BAKED_L, type Placed, type PlantId } from "./species";
 import type { Scene } from "./garden";
 import type { PlantOnStage } from "./scene-to-layout";   // a type only: no require cycle
+import { SPRITE_META } from "@/garden/sprite-meta";   // boxes only, no require(): safe in node
 
 /** Spec 5: the canvas is the screen width minus 40 by 260; the soil line at 200; the back row's feet at 214 and the front's at 244. */
 export const CANVAS = { height: 260, soilLine: 200, backFeet: 214, frontFeet: 244, backScale: 0.8 } as const;
@@ -28,9 +29,11 @@ export function signX(x: number, side: -1 | 1, width: number, scale: number): nu
   const half = 15 * scale;
   return Math.min(Math.max(x + side * (14 + half * 0.2), half + 1), width - half - 1);
 }
-/** RG30 (10-02): the garden frames what is planted; 2x is the cap the 3x bakes hold; Garden.tsx eases each change over easeMs. */
-export const FRAME = { maxZoom: 2, pad: 16, easeMs: 1200 } as const;
-export type Frame = { x: number; y: number; w: number; h: number; zoom: number };
+/** RG30 (10-02): the garden frames what is planted; 2x is the cap the 3x bakes hold; Garden.tsx eases each change over easeMs.
+ * R167 (10-02): the view's HEIGHT follows the content, never shorter than the ground band plus `aboveGround`. */
+export const FRAME = { maxZoom: 2, pad: 16, easeMs: 1200, aboveGround: 40 } as const;
+/** `x`, `y`, `w`, `h` in canvas px; `viewH` the view's height on screen (h times zoom). */
+export type Frame = { x: number; y: number; w: number; h: number; zoom: number; viewH: number };
 /** How far a part reaches sideways from its plant's foot, a safe bound as `topOf` takes it: a leaf-like sprite its baked length times
  * its scale whatever its rotation; the head 17.6 scale; a swelling or dot its radius; the rest 8 scale; a stem its farther end. */
 const sideReach = (q: Placed) => {
@@ -39,11 +42,19 @@ const sideReach = (q: Placed) => {
   const len = base ? base[Number(q.name.match(/-s(\d)$/)?.[1] ?? 0)] * q.scale : q.part === "head" ? 17.6 * q.scale : q.part === "swelling" || q.part === "dot" ? q.scale : 8 * q.scale;
   return Math.abs(q.x) + len;
 };
-/** RG30: the viewBox (canvas px) around the present plants: each foot, its sideways reach and its height above the foot, and its own
- * sign; padded 16; the bottom the bed's. The zoom fits that box, capped at 2; the frame is centred on the box and clamped inside the
- * bed. Bare signs and seeds do not widen it; with no plant it is the whole bed. */
+/** R167's floor in view px: the soil band (the soil line to the bed's bottom, 60) plus 40, so a garden of seeds is not a sliver. */
+export const MIN_VIEW_H = CANVAS.height - CANVAS.soilLine + FRAME.aboveGround;
+/** The baked ground's own height in canvas px (86 at 1x, the manifest's): the view always holds all of it, because its wash is
+ * painted from about 13 px under its top and a crop there would show as a hard line. */
+const groundH = () => SPRITE_META["ground"]?.h ?? CANVAS.height - CANVAS.soilLine;
+/** RG30: the box (canvas px) around the present plants: each foot, its sideways reach and its height above the foot, and its own
+ * sign; padded 16; the bottom the bed's. The zoom fits that box's breadth, capped at 2 (and at the bed's height, so the view is never
+ * taller than 260); the frame is centred on the box's breadth and clamped inside the bed. R167: the view's height is the box's
+ * (from its padded top down to the bed's bottom) times the zoom, floored at `minViewH`; only the empty top is cropped, so the ground
+ * and the grain keep their anchor on the soil line, and the view always holds the whole ground sprite. Bare signs and seeds do not widen it; with no plant it is the whole breadth at the floor. */
 export function frameFor(scene: Scene, plants: PlantOnStage[], width: number): Frame {
-  if (plants.length === 0) return { x: 0, y: 0, w: width, h: CANVAS.height, zoom: 1 };
+  const floor = Math.max(MIN_VIEW_H, groundH());
+  if (plants.length === 0) return { x: 0, y: CANVAS.height - floor, w: width, h: floor, zoom: 1, viewH: floor };
   const signs = new Map(scene.parts.flatMap((q) => (q.kind === "sign" ? [[q.plant, q] as const] : [])));
   let x0 = width, x1 = 0, y0: number = CANVAS.height;
   for (const p of plants) {
@@ -54,7 +65,8 @@ export function frameFor(scene: Scene, plants: PlantOnStage[], width: number): F
   }
   x0 = Math.max(0, x0 - FRAME.pad); x1 = Math.min(width, x1 + FRAME.pad); y0 = Math.max(0, y0 - FRAME.pad);
   const zoom = Math.min(FRAME.maxZoom, width / (x1 - x0), CANVAS.height / (CANVAS.height - y0));
-  const w = width / zoom, h = CANVAS.height / zoom;
-  const x = Math.min(Math.max((x0 + x1) / 2 - w / 2, 0), width - w), y = Math.min(Math.max((y0 + CANVAS.height) / 2 - h / 2, 0), CANVAS.height - h);
-  return { x, y, w, h, zoom };
+  const viewH = Math.min(CANVAS.height, Math.max(MIN_VIEW_H, groundH() * zoom, (CANVAS.height - y0) * zoom));
+  const w = width / zoom, h = viewH / zoom;
+  const x = Math.min(Math.max((x0 + x1) / 2 - w / 2, 0), width - w);
+  return { x, y: CANVAS.height - h, w, h, zoom, viewH };
 }

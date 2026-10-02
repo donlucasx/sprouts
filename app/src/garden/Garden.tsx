@@ -10,7 +10,8 @@ import { Soil, Ring, Seed, Sign, Basket, SpriteAt } from "./parts";
 
 const MOUNT_FADE_MS = 300;
 
-/** Spec 5: the canvas is the width minus 40 by 260; two rows; the back row draws first. `justOpened` is read by Task I4's washes. */
+/** Spec 5: the canvas is the width minus 40 by 260; two rows; the back row draws first. R167: the view on it is as tall as the
+ * planted content (frameFor's viewH), so no empty sky sits above the plants. `justOpened` is read by Task I4's washes. */
 export function Garden({ scene }: { scene: Scene; justOpened: Set<string> }) {
   const { width } = useWindowDimensions(); const w = width - 40;
   const of = <K extends Part["kind"]>(kind: K) => scene.parts.filter((p): p is Extract<Part, { kind: K }> => p.kind === kind);
@@ -21,19 +22,19 @@ export function Garden({ scene }: { scene: Scene; justOpened: Set<string> }) {
   // canvas point p lands at (p - frame) * zoom and the frame fills the view; x and zoom ease linearly, and since the frame's right
   // limit (width - width / zoom) is concave in a linearly eased zoom, a frame inside the bed at both ends stays inside it throughout.
   const target = frameFor(scene, plants, w), reduced = useReducedMotion();
-  const fx = useSharedValue(target.x), fy = useSharedValue(target.y), z = useSharedValue(target.zoom);
+  const fx = useSharedValue(target.x), fy = useSharedValue(target.y), z = useSharedValue(target.zoom), vh = useSharedValue(target.viewH);
   useEffect(() => {
     const t = { duration: reduced ? 0 : FRAME.easeMs, easing: Easing.inOut(Easing.cubic) };
-    fx.value = withTiming(target.x, t); fy.value = withTiming(target.y, t); z.value = withTiming(target.zoom, t);
-  }, [target.x, target.y, target.zoom, reduced, fx, fy, z]);
+    fx.value = withTiming(target.x, t); fy.value = withTiming(target.y, t); z.value = withTiming(target.zoom, t); vh.value = withTiming(target.viewH, t);
+  }, [target.x, target.y, target.zoom, target.viewH, reduced, fx, fy, z, vh]);
   const framed = useAnimatedStyle(() => ({ transform: [{ translateX: -fx.value * z.value }, { translateY: -fy.value * z.value }, { scale: z.value }] }));
   // Spec 8's first frame: react-native-svg loads bundled PNGs through Fresco asynchronously on Android, so the garden fades in over
-  // 300 ms on mount and no sprite pops in on its own.
+  // 300 ms on mount and no sprite pops in on its own. The same outer view carries the eased height (R167).
   const shown = useSharedValue(0);
   useEffect(() => { shown.value = withTiming(1, { duration: MOUNT_FADE_MS }); }, [shown]);
-  const fadeIn = useAnimatedStyle(() => ({ opacity: shown.value }));
+  const outer = useAnimatedStyle(() => ({ opacity: shown.value, height: vh.value }));
   return (
-    <Animated.View style={[{ width: w, height: CANVAS.height, overflow: "hidden" }, fadeIn]}>
+    <Animated.View style={[{ width: w, overflow: "hidden" }, outer]}>
      <Animated.View style={[{ width: w, height: CANVAS.height, transformOrigin: "0 0" }, framed]}>
       <Svg width={w} height={CANVAS.height} style={{ position: "absolute" }}>
         <Soil width={w} soilY={CANVAS.soilLine} />
