@@ -53,6 +53,7 @@ describe("the brand tokens carry the manual's constants", () => {
     expect(type.body.fontFamily).toBe(FONT.body)
     expect(type.label.fontFamily).toBe(FONT.label)
     expect(type.caption.fontFamily).toBe(FONT.body)
+    expect(type.button).toEqual({ fontFamily: FONT.label, fontSize: 15, lineHeight: 20 }) // R144: buttons one step up from the label
     for (const t of Object.values(type)) expect(t.lineHeight).toBeGreaterThan(t.fontSize)
   })
   it("spacing on the 4-point grid with the garden's 20 edge; radii 8 / 12 / 16 and the capsule", () => {

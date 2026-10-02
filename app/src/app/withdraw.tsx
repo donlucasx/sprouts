@@ -13,7 +13,7 @@ import { api, ApiError } from '@/lib/api'
 import { useMe, useInvalidateMe } from '@/lib/me'
 import { makeSigner } from '@/lib/sign'
 import { formatSkr } from '@/lib/format'
-import { FONT, spacing, useTheme } from '@/theme'
+import { spacing, type as ramp, useTheme } from '@/theme'
 
 type Plan = { transaction: string; shares: string; amountRaw: string; prunes: boolean; brief: string[] }
 
@@ -154,8 +154,7 @@ export default function Withdraw() {
                 selectionColor={colors.accent}
                 accessibilityLabel="Amount in SKR"
                 style={{
-                  fontFamily: FONT.display,
-                  fontSize: 28,
+                  ...ramp.title,
                   borderBottomWidth: 1,
                   borderBottomColor: colors.hairline,
                   paddingVertical: spacing.sm,

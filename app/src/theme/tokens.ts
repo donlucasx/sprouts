@@ -101,6 +101,8 @@ export const type = {
   body: { fontFamily: FONT.body, fontSize: 16, lineHeight: 24 },
   /** Buttons, field labels, the tagline. */
   label: { fontFamily: FONT.label, fontSize: 13, lineHeight: 18 },
+  /** Buttons and the control bar, one step up from the label (R144: 13 reads small in a 48 dp pill). */
+  button: { fontFamily: FONT.label, fontSize: 15, lineHeight: 20 },
   /** Timestamps, hints; never below 11. */
   caption: { fontFamily: FONT.body, fontSize: 11, lineHeight: 15 },
 } as const
