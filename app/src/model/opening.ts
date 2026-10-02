@@ -15,15 +15,16 @@ export const SEED_MS = 900;             // gen11_motion.py:152-153: a seed over 
 export const SEED_GAP_MS = 120;         // ... 120 ms after the one before
 export const REDUCED_MS = 300;          // constraints, Animation: reduced motion is every part at its end under a 300 ms fade
 
-/** Which strip a leaf-like sprite opens with (gen03's shapes: twig blade, plant_hsol3 broad, gen04 jup small, jito blade; the succulent's
- * teardrop is nearest the blade). Tiers, pups, heads and the rest fade in. */
-const STRIP_SHAPE: Record<string, "blade" | "heart" | "broad" | "small"> = { "leaf-mandarin": "blade", "leaf-sunflower": "broad", "leaf-blueberry": "small", "blade-snake": "blade", "blade-succulent": "blade" };
-export const stripShapeOf = (name: string) => STRIP_SHAPE[name.replace(/-s\d$/, "").replace(/-\d$/, "")];
+/** Which baked strip a leaf-like sprite opens with (I4 fix round 1, ruling a: coloured per species and shape, bake.py STRIP_SPECIES;
+ * gen03's shapes: twig blade, plant_hsol3 broad, gen04 jup small, jito blade; the succulent's teardrop is nearest the blade). Tiers,
+ * pups, heads and the rest fade in. Every value is a key of the generated `STRIPS` (a test holds strips.ts to it). */
+export const STRIP_FOR: Record<string, string> = { "leaf-mandarin": "skr-blade", "blade-succulent": "ore-blade", "leaf-sunflower": "hsol-broad", "blade-snake": "jitosol-blade", "leaf-blueberry": "jupsol-small" };
+export const stripOf = (name: string): string | undefined => STRIP_FOR[name.replace(/-s\d$/, "").replace(/-\d$/, "")];
 
 /** `part` is the index in the plant's layout.parts (for `bud`, in the layout BEFORE the change); every time is ms from the change. */
 export type OpeningItem =
   | { kind: "stem"; plant: PlantId; shoot: string; part: number; delay: number; ms: number }
-  | { kind: "strip"; plant: PlantId; shoot: string; part: number; leaf: number; shape: "blade" | "heart" | "broad" | "small"; delay: number; ms: number }
+  | { kind: "strip"; plant: PlantId; shoot: string; part: number; leaf: number; strip: string; delay: number; ms: number }
   | { kind: "fade"; plant: PlantId; shoot: string | null; part: number; delay: number; ms: number }
   | { kind: "bud"; plant: PlantId; shoot: string; part: number; delay: number; ms: number }
   | { kind: "seed"; id: string; delay: number; ms: number };
@@ -57,8 +58,8 @@ export function openingPlan(o: { scene: Scene; plants: Laid[]; before: Laid[] | 
       let leaf = 0;
       for (const { q, i } of mine) {
         if (q.kind !== "sprite") continue;
-        const shape = stripShapeOf(q.name);
-        if (shape) { push({ kind: "strip", plant, shoot, part: i, leaf, shape, delay: leafAt + PART_GAP_MS * leaf, ms: LEAF_MS }); leaf++; }
+        const strip = stripOf(q.name);
+        if (strip) { push({ kind: "strip", plant, shoot, part: i, leaf, strip, delay: leafAt + PART_GAP_MS * leaf, ms: LEAF_MS }); leaf++; }
         else push({ kind: "fade", plant, shoot, part: i, delay: leafAt, ms: BUD_ARRIVE_MS });
       }
       if (opened.has(shoot)) {
@@ -78,4 +79,16 @@ export function openingPlan(o: { scene: Scene; plants: Laid[]; before: Laid[] | 
   diff.seeds.forEach((id, k) => push({ kind: "seed", id, delay: SEED_GAP_MS * k, ms: SEED_MS }));
   if (o.reduced) return { items: items.map((it) => ({ ...it, delay: 0, ms: REDUCED_MS })), endMs: items.length ? REDUCED_MS : 0 };
   return { items: items.map((it) => ({ ...it, delay: it.delay * o.tempo, ms: it.ms * o.tempo })), endMs: end * o.tempo };
+}
+
+export type PlantItem = Exclude<OpeningItem, { kind: "seed" }>;
+/** I4 fix round 1, ruling c: the picture each item leaves its part in when it ends: every part present in the scene ends fully shown
+ * (a strip on its last frame, which the dry sprite then replaces); only the old closed bud (a part of the layout BEFORE the change, no
+ * longer in the scene) ends gone. */
+export const endOf = (it: OpeningItem): { opacity: 0 | 1; frame: "last" | null } => (it.kind === "bud" ? { opacity: 0, frame: null } : { opacity: 1, frame: it.kind === "strip" ? "last" : null });
+/** Who draws each part of a plant's layout: the static drawing, or the item playing it. Once the garden settles (the plan's end, or a
+ * newer change cutting it short) every part is static, which is each item's end picture: nothing can stay hidden. */
+export function drawnBy(partCount: number, items: PlantItem[], settled: boolean): (PlantItem | "static")[] {
+  const by = new Map(settled ? [] : items.flatMap((it) => (it.kind === "bud" ? [] : [[it.part, it] as const])));
+  return Array.from({ length: partCount }, (_, i) => by.get(i) ?? "static");
 }
