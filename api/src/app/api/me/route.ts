@@ -82,7 +82,9 @@ export async function GET(request: Request) {
     },
     nextPlanting: { pendingCents: pending, thresholdCents: rules.plantThresholdCents, capLeftCents: capLeft, asset: nextAsset },
     lastReceipt: last
-      ? { ts: last.ts, usdcPulledCents: last.usdcPulledCents, networkFeeCents: last.networkFeeCents, asset: lastAsset, amountOutRaw: lastLegs[0]?.amountOutRaw ?? 0n, feeCents: lastLegs[0]?.feeCents ?? 0, signature: last.signature,
+      ? { ts: last.ts, usdcPulledCents: last.usdcPulledCents, networkFeeCents: last.networkFeeCents, asset: lastAsset, amountOutRaw: lastLegs[0]?.amountOutRaw ?? 0n, feeCents: lastLegs[0]?.feeCents ?? 0,
+          feeAmountRaw: lastLegs[0]?.feeAmountRaw ?? 0n, // R139: "0" on a new leg (the fee was in USDC and rounds to zero), so the app says "fee under 1 cent" as on Activity
+          signature: last.signature,
           usdPrice: lastAsset === "SKR" ? skrUsd : (days[lastAsset]?.priceUsd ?? (lastAsset === "stORE" ? storeUsd : null)) }
       : null,
     basket: pendingBasket
