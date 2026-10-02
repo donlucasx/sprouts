@@ -2,8 +2,9 @@
 // Every function is a worklet: Garden and Plant call them on the UI thread. Dependency-free.
 import { PLANT_ORDER, type PlantId } from "./garden";
 
-/** His note (10-02), "the plants should be swaying all the time w the wind": 1.4 degrees either way over a 2.6 s period. */
-export const SWAY = { deg: 1.4, periodMs: 2600 } as const;
+/** His note (10-02), "the plants should be swaying all the time w the wind"; R179 (10-02, 1.4 degrees could not be seen): 3 degrees
+ * either way, 3.2 s each way (a 6.4 s period). */
+export const SWAY = { deg: 3, periodMs: 6400 } as const;
 /** Each plant's own phase, a fraction of the period: the golden ratio's steps keep the six far apart, so the garden never sways in lockstep. */
 export const swayPhase = (plant: PlantId) => (PLANT_ORDER.indexOf(plant) * 0.618034) % 1;
 /** The angle at clock `t` (0 to 1 over one period, one clock for the whole garden) for a plant at `phase`: a sine, so the wrap is seamless. */
