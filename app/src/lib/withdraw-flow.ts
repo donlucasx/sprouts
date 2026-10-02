@@ -1,6 +1,8 @@
 /** What /api/withdraw/build answers: the unsigned unstake and the plan the screen shows. */
 export type WithdrawPlan = { transaction: string; shares: string; amountRaw: string; prunes: boolean; brief: string[] }
 export type WithdrawRequest = { mode: 'earned' | 'amount'; amountRaw?: string }
+/** The line the screen shows when the tap re-planned instead of signing (review, round 3 fix 1: never a silent swap). */
+export const REPLANNED = 'Your garden changed since you opened this. Check the amount and tap Withdraw again.'
 
 /**
  * Device round 3, item 7 (10-02): the transaction is built AT THE TAP. The plan on screen was built when the amount was picked, and
