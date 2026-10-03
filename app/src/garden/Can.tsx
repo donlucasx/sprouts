@@ -100,8 +100,10 @@ export function Can({ ready, reduced, tempo, width, viewH, viewHNow, barBelow, o
     if (to && !reduced) {   // reduced motion: the can pours where it sits
       const spot = spotOf(to).rose;
       if (!reduced) lift.value = withTiming(LIFT, { duration: 150 });
-      dx.value = withTiming(spot.x - r.x - home.x, { duration: t(0.18), easing: Easing.inOut(Easing.cubic) });
-      dy.value = withTiming(spot.y - r.y - home.y, { duration: t(0.18), easing: Easing.inOut(Easing.cubic) });
+      // fix round 1: the slide is held inside the overlay as the drag is (the lifted touch box never leaves its parent)
+      const slide = clampDrag(spot.x - r.x - home.x, spot.y - r.y - home.y, home, hit, { w: width, h: viewHNow + overlayBelow }, LIFT);
+      dx.value = withTiming(slide.dx, { duration: t(0.18), easing: Easing.inOut(Easing.cubic) });
+      dy.value = withTiming(slide.dy, { duration: t(0.18), easing: Easing.inOut(Easing.cubic) });
       await sleep(t(0.18));
     }
     if (!failed && !reduced && Math.abs(tilt.value - TILT) > 1) {   // a drag arrives already tilted

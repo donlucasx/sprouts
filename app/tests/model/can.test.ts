@@ -69,6 +69,19 @@ describe("the drag stays inside the overlay (Android drops touches outside a par
   });
 });
 
+describe("the tap's slide is held inside the overlay too (fix round 1)", () => {
+  it("toward hSOL at the far left, the lifted box stays inside and the rose still lands over hSOL's slot", () => {
+    for (const z of ZOOMS) {
+      const s = canScale(z), width = 320, seat = canSeat(width, GARDEN_H + ROW_GAP + BAR_Y, s), hit = canHit(s), r = roseAt(-40, s);
+      const spot = { x: 0.09 * width, y: 40 };   // the tap's rose spot over hSOL (Garden spotOf: the foot's x, 10 px over the tip)
+      const d = clampDrag(spot.x - r.x - seat.x, spot.y - r.y - seat.y, seat, hit, { w: width, h: overlayH(s) }, 1.08);
+      const cx = seat.x - hit.ox + hit.w / 2 + d.dx, cy = seat.y - hit.oy + hit.h / 2 + d.dy;
+      expect(cx - (1.08 * hit.w) / 2).toBeGreaterThanOrEqual(-1e-9); expect(cy - (1.08 * hit.h) / 2).toBeGreaterThanOrEqual(-1e-9);
+      expect(Math.abs(seat.x + d.dx + r.x - spot.x)).toBeLessThan(40);   // plantUnder's 40 px
+    }
+  });
+});
+
 describe("the drop hit-test, from the overlay's coordinates into the garden's canvas (R186)", () => {
   const frame = { x: 20, y: 120, zoom: 1.5 };   // a zoomed garden: canvas p lands at (p - frame) * zoom on the garden's view
   const slots = { skr: 0.3, jitosol: 0.5 };
