@@ -94,6 +94,38 @@ describe("runPlanting", () => {
     expect(r.planted).toEqual([]);
     expect((await repo.getWallet("W"))!.status).toBe("paused");
   });
+  // R207 review of the fix: the pause switch on a wallet the run had paused for want of USDC is still the user's pause.
+  it("a user pause on top of a no-USDC pause holds: the newest cause is the user's", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await repo.setWalletStatus("W", "paused");
+    await repo.addEvent({ userPubkey: "U", walletPubkey: "W", kind: "paused_no_usdc", detail: null });
+    await repo.addEvent({ userPubkey: "U", walletPubkey: "W", kind: "paused_by_user", detail: { by: "user" } });
+    const r = await runPlanting({ repo, now: NOW, chain: fakeChain() });
+    expect(r.planted).toEqual([]);
+    expect((await repo.getWallet("W"))!.status).toBe("paused");
+  });
+  // R207 review of the fix: the run lists wallets at its start; a pause made while it runs stops the pull.
+  it("a user pause made after the run listed the wallet stops its pull", async () => {
+    const repo = await seeded([83, 62, 70]);
+    const chain = fakeChain({
+      readDelegation: async () => {   // the user taps pause while the run reads the chain
+        await repo.addEvent({ userPubkey: "U", walletPubkey: "W", kind: "paused_by_user", detail: { by: "user" } });
+        await repo.setWalletStatus("W", "paused");
+        return DELEGATION;
+      },
+    });
+    const r = await runPlanting({ repo, now: NOW, chain });
+    expect(r.planted).toEqual([]);
+    expect(r.skipped).toEqual([{ wallet: "W", reason: "paused" }]);
+  });
+  it("a run resume racing a user pause does not pull: the user's pause is newer than any resume of theirs", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await repo.addEvent({ userPubkey: "U", walletPubkey: "W", kind: "paused_by_user", detail: { by: "user" } });
+    await repo.addEvent({ userPubkey: "U", walletPubkey: "W", kind: "resumed", detail: null });   // a run's resume, not the user's
+    const r = await runPlanting({ repo, now: NOW, chain: fakeChain() });
+    expect(r.planted).toEqual([]);
+    expect((await repo.getWallet("W"))!.status).toBe("paused");
+  });
   it("a pause with no event after the last resume (made before user pauses were recorded) stays paused", async () => {
     const repo = await seeded([83, 62, 70]);
     await repo.addEvent({ userPubkey: "U", walletPubkey: "W", kind: "paused_no_usdc", detail: null });
