@@ -19,7 +19,8 @@ const GIVE_UP_AFTER_MS = 30 * 60_000;
 
 export type DelegationState = { exists: boolean; amountPerPeriodRaw: bigint; pulledInPeriodRaw: bigint; periodStartTs: bigint; periodLengthS: bigint };
 export type Built = { tx: unknown; signature: string; expectedOutRaw: bigint; minOutRaw: bigint; lookupTables: unknown[]; lastValidBlockHeight: bigint };
-export type Simulation = { ok: boolean; err: unknown; logs: string[]; units: number };
+/** `delivery`: the balance of the account the planting delivers to (SKR: the puller's own SKR account; a wallet coin: the user's) right before the simulation and after it [R207 review]. */
+export type Simulation = { ok: boolean; err: unknown; logs: string[]; units: number; delivery?: { pre: bigint; post: bigint } };
 export type SignatureStatus = "confirmed" | "failed" | "pending";
 
 /** Everything the run needs from the chain, injected so the run is unit-tested with fakes. */
@@ -215,6 +216,20 @@ async function resumePausedWallets(a: { repo: Repo; now: Date; chain: Chain }) {
   }
 }
 
+/**
+ * R207 review: the stake draws minimum + carry from the puller's pooled SKR account, which also holds other users' remainders, so
+ * a swap that delivered short (or elsewhere) would be covered from their money and still simulate fine. The simulation's own
+ * balances bind it: for SKR the puller's account may fall by at most this user's carry (the swap delivered at least the minimum
+ * the stake takes); for a wallet coin the user's account must gain at least the minimum. A simulation without the balances fails
+ * closed. Returns why the planting is refused, or null.
+ */
+export function deliveryShortfall(sim: Simulation, built: Built, asset: Asset, carryRaw: bigint): string | null {
+  if (!sim.delivery) return "the simulation returned no delivery balance";
+  const change = sim.delivery.post - sim.delivery.pre;
+  if (asset === "SKR") return change >= -carryRaw ? null : `the puller's SKR fell by ${-change}, more than this user's carry of ${carryRaw}`;
+  return change >= built.minOutRaw ? null : `the destination gained ${change}, under the minimum ${built.minOutRaw}`;
+}
+
 async function plantOne(a: { repo: Repo; now: Date; chain: Chain }, w: WalletRow): Promise<Planted | Skipped> {
   try {
     return await plantOneOrThrow(a, w);
@@ -277,7 +292,9 @@ async function plantOneOrThrow(a: { repo: Repo; now: Date; chain: Chain }, w: Wa
   const attempt = async (asset: Asset) => {
     const carry = carryFor(asset);
     const built = await a.chain.buildPlantingTx({ delegator: w.pubkey, user: w.userPubkey, asset, pullRaw: BigInt(amount.pullCents) * USDC_PER_CENT, feeBps: FEE_BPS, delegationPda: w.delegationPda, ...(carry > 0n ? { skrCarryRaw: carry } : {}) });
-    return { built, sim: await a.chain.simulatePlanting(built) };
+    const sim = await a.chain.simulatePlanting(built);
+    const short = sim.ok ? deliveryShortfall(sim, built, asset, carry) : null;
+    return { built, sim: short ? { ...sim, ok: false, err: { delivery: short } } : sim };
   };
   let { built, sim } = await attempt(asset).then((r) => {
     if (asset !== "SKR" && !r.sim.ok) throw new Error(`simulation: ${JSON.stringify(r.sim.err)} ${r.sim.logs.slice(-2).join(" | ")}`);

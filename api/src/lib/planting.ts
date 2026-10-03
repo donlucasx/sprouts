@@ -25,6 +25,8 @@ export type BuiltPlanting = {
   minOutRaw: bigint;
   lookupTables: Address[];
   lastValidBlockHeight: bigint;
+  /** Where the planting delivers: the puller's own SKR account for SKR, the user's token account for a wallet coin; the simulation reports its balance before and after [R207 review]. */
+  deliveryAccount: Address;
 };
 
 /**
@@ -86,7 +88,7 @@ export async function buildPlantingTx(a: { delegator: Address; user: Address; as
     (m) => compressTransactionMessageUsingAddressLookupTables(m, tables),
   );
   const tx = await signTransactionMessageWithSigners(message);
-  return { tx, signature: getSignatureFromTransaction(tx), expectedOutRaw: BigInt(quote.outAmount), minOutRaw, lookupTables: swap.lookupTables, lastValidBlockHeight };
+  return { tx, signature: getSignatureFromTransaction(tx), expectedOutRaw: BigInt(quote.outAmount), minOutRaw, lookupTables: swap.lookupTables, lastValidBlockHeight, deliveryAccount: delivers! };
 }
 
 type TokenBalance = { mint: string; owner?: string; uiTokenAmount: { amount: string } };
@@ -113,10 +115,30 @@ export async function pullerSkrChangeRaw(signature: string): Promise<bigint> {
   return skrChangeFromMeta(tx.meta as Parameters<typeof skrChangeFromMeta>[0], puller.address);
 }
 
-/** Mainnet simulation, no side effects: signature verification off, blockhash replaced. */
-export async function simulatePlanting(b: BuiltPlanting): Promise<{ ok: boolean; err: unknown; logs: string[]; units: number }> {
-  const res = await rpc().simulateTransaction(getBase64EncodedWireTransaction(b.tx), { encoding: "base64", sigVerify: false, replaceRecentBlockhash: true }).send();
-  return { ok: !res.value.err, err: res.value.err, logs: [...(res.value.logs ?? [])], units: Number(res.value.unitsConsumed ?? 0) };
+/** An SPL token account's amount (u64 little-endian at byte 64); no account is zero. */
+export function tokenAmountOf(data: Uint8Array | null): bigint {
+  if (!data) return 0n;
+  if (data.length < 72) throw new Error(`not a token account (${data.length} bytes)`);
+  return Buffer.from(data).readBigUInt64LE(64);
+}
+
+/**
+ * Mainnet simulation, no side effects: signature verification off, blockhash replaced. It also returns the delivery account's
+ * balance read right before and as the simulation leaves it (R207 review), so the run can require the swap really delivered.
+ * One extra read per planting. A concurrent planting landing between the two can move the pooled SKR account; the check then
+ * errs mostly toward refusing, and the next run retries.
+ */
+export async function simulatePlanting(b: BuiltPlanting): Promise<{ ok: boolean; err: unknown; logs: string[]; units: number; delivery?: { pre: bigint; post: bigint } }> {
+  const before = await rpc().getAccountInfo(b.deliveryAccount, { encoding: "base64", commitment: "confirmed" }).send();
+  const pre = tokenAmountOf(before.value ? new Uint8Array(Buffer.from(before.value.data[0], "base64")) : null);
+  const res = await rpc().simulateTransaction(getBase64EncodedWireTransaction(b.tx), {
+    encoding: "base64", sigVerify: false, replaceRecentBlockhash: true, commitment: "confirmed",
+    accounts: { encoding: "base64", addresses: [b.deliveryAccount] },
+  }).send();
+  const after = res.value.accounts?.[0];
+  const ok = !res.value.err;
+  const delivery = ok ? { pre, post: tokenAmountOf(after ? new Uint8Array(Buffer.from(after.data[0], "base64")) : null) } : undefined;
+  return { ok, err: res.value.err, logs: [...(res.value.logs ?? [])], units: Number(res.value.unitsConsumed ?? 0), ...(delivery ? { delivery } : {}) };
 }
 
 /** Send and wait for confirmation. May throw after the transaction landed (a dropped websocket): the caller asks the chain. */

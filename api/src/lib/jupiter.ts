@@ -45,8 +45,10 @@ const CLOSE_ACCOUNT = 9;
 /**
  * Where each Jupiter v6 route instruction puts its output, by Anchor discriminator (sha256("global:<name>")[0..8]). The plain
  * routes carry `user_destination_token_account` at 3 and an optional `destination_token_account` at 4 (None is the Jupiter program
- * id; when set, the output goes there); the shared-accounts routes carry `destination_token_account` at 6. An instruction not in
- * this table (a newer layout) falls back to "present and writable".
+ * id; when set, the output goes there); the shared-accounts routes carry `destination_token_account` at 6. A swap instruction not
+ * in this table is REFUSED (fail closed, by design): a new Jupiter layout stops plantings until its output slot is added here.
+ * Live responses on 2026-10-03 (all six coins, 2 USDC) used only `route` (SKR, cbBTC, stORE) and `shared_accounts_route`
+ * (hSOL, JitoSOL, JupSOL).
  */
 const OUTPUT_SLOTS: Record<string, { user: number; custom: number } | { shared: number }> = {
   e517cb977ae3ad2a: { user: 3, custom: 4 }, // route
@@ -92,22 +94,22 @@ function checkHelperInstruction(kind: string, ix: KitIx, a: { puller: string; de
   refuse(`${kind} program ${prog} is not allowed`);
 }
 
+const swapLayout = (swap: KitIx) => {
+  const disc = Buffer.from((swap.data ?? new Uint8Array()).slice(0, 8)).toString("hex");
+  return { disc, slots: OUTPUT_SLOTS[disc] };
+};
+
 /**
  * The account the swap delivers to, at its decoded position (R207 #4): "present somewhere in the swap" let a response route the
- * output elsewhere and merely list the destination. Known route layouts must deliver to `destination` (for a plain route: the
- * custom slot when it is set, else the user slot); an unknown layout must at least list it writable.
+ * output elsewhere and merely list the destination. The route must deliver to `destination` (for a plain route: the custom slot
+ * when it is set, else the user slot), writable. Unknown layouts never get here (refused in checkSwapInstructions).
  */
 function checkOutput(swap: KitIx, destination: string): void {
   const accounts = swap.accounts ?? [];
   const at = (i: number) => accounts[i];
   const writable = (i: number) => at(i)?.role === AccountRole.WRITABLE || at(i)?.role === AccountRole.WRITABLE_SIGNER;
-  const disc = Buffer.from((swap.data ?? new Uint8Array()).slice(0, 8)).toString("hex");
-  const slots = OUTPUT_SLOTS[disc];
-  if (!slots) {
-    if (!accounts.some((x) => x.address === destination)) refuse("the destination account is missing from the swap");
-    if (!accounts.some((x, i) => x.address === destination && writable(i))) refuse("the destination account is not writable in the swap");
-    return;
-  }
+  const { slots } = swapLayout(swap);
+  if (!slots) return refuse("unknown swap layout");
   const slot = "shared" in slots ? slots.shared : (at(slots.custom)?.address as string | undefined) === JUPITER_AGGREGATOR ? slots.user : slots.custom;
   if (!accounts.some((x) => x.address === destination)) refuse("the destination account is missing from the swap");
   if (at(slot)?.address !== destination || !writable(slot)) refuse(`the swap delivers to ${at(slot)?.address}, not the destination`);
@@ -121,6 +123,8 @@ function checkOutput(swap: KitIx, destination: string): void {
  */
 export function checkSwapInstructions(p: ParsedSwap, a: { puller: string; feeAccount?: string; destination?: string; destinationOwner?: string; wsolAccount?: string }): void {
   if (p.swap.programAddress !== JUPITER_AGGREGATOR) refuse(`swap program is ${p.swap.programAddress}`);
+  const { disc, slots } = swapLayout(p.swap);
+  if (!slots) refuse(`swap instruction ${disc} is not a known route layout`);
   for (const ix of p.computeBudget) if (ix.programAddress !== COMPUTE_BUDGET) refuse(`compute budget program ${ix.programAddress} is not allowed`);
   for (const ix of p.setup) checkHelperInstruction("setup", ix, a);
   if (p.cleanup) checkHelperInstruction("cleanup", p.cleanup, a);

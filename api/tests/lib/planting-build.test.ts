@@ -10,7 +10,15 @@ const checks: Record<string, unknown>[] = [];
 
 vi.mock("@/lib/puller", () => ({ pullerSigner: vi.fn(async () => puller) }));
 vi.mock("@/lib/config", () => ({ config: () => ({ feeWallet: "8KiTtZXjcpxUGuH93G12iMVNcTYteTbRvaovdeQdfjc6", heliusRpcUrl: "https://x" }) }));
-vi.mock("@/lib/rpc", () => ({ rpc: () => ({ getLatestBlockhash: () => ({ send: async () => ({ value: { blockhash: "4wiD3N7FrBNJSmZUQDkGHM4CsvDrvyvx7G1FApLGEbJ1", lastValidBlockHeight: 1n } }) }) }) }));
+const tokenAccount = (amount: bigint) => { const b = Buffer.alloc(165); b.writeBigUInt64LE(amount, 64); return b.toString("base64"); };
+const simCalls: { addresses: string[] }[] = [];
+let preAmount: bigint | null = 5_000n;
+let postAmount = 5_200n;
+vi.mock("@/lib/rpc", () => ({ rpc: () => ({
+  getLatestBlockhash: () => ({ send: async () => ({ value: { blockhash: "4wiD3N7FrBNJSmZUQDkGHM4CsvDrvyvx7G1FApLGEbJ1", lastValidBlockHeight: 1n } }) }),
+  getAccountInfo: () => ({ send: async () => ({ value: preAmount === null ? null : { data: [tokenAccount(preAmount), "base64"] } }) }),
+  simulateTransaction: (_tx: string, cfg: { accounts: { addresses: string[] } }) => ({ send: async () => { simCalls.push(cfg.accounts); return { value: { err: null, logs: [], unitsConsumed: 1n, accounts: [{ data: [tokenAccount(postAmount), "base64"] }] } }; } }),
+}) }));
 vi.mock("@/lib/subscriptions", () => ({ buildTransferRecurringIx: vi.fn(async () => ({ programAddress: "De1egAFMkMWZSN5rYXRj9CAdheBamobVNubTsi9avR44", accounts: [], data: new Uint8Array() })) }));
 vi.mock("@/lib/staking", async (orig) => {
   const real = await orig<typeof import("@/lib/staking")>();
@@ -26,7 +34,7 @@ vi.mock("@/lib/jupiter", async (orig) => {
   };
 });
 
-import { buildPlantingTx } from "@/lib/planting";
+import { buildPlantingTx, simulatePlanting, tokenAmountOf } from "@/lib/planting";
 import { SKR_MINT } from "@/lib/constants";
 import { COINS } from "@/domain/coins";
 
@@ -56,5 +64,25 @@ describe("buildPlantingTx (R207 #2, #4)", () => {
     expect(stakes).toEqual([]);
     const [userAta] = await findAssociatedTokenPda({ owner: USER, mint: COINS.hSOL.mint, tokenProgram: TOKEN_PROGRAM_ADDRESS });
     expect(checks[0]).toMatchObject({ destination: userAta, destinationOwner: USER });
+  });
+});
+
+describe("simulatePlanting reports the delivery account's balance before and after (R207 review)", () => {
+  beforeEach(async () => { puller = await generateKeyPairSigner(); simCalls.length = 0; });
+  it("reads the account the planting delivers to, before and as the simulation leaves it", async () => {
+    const b = await buildPlantingTx({ ...base, asset: "SKR" });
+    preAmount = 5_000n; postAmount = 5_200n;
+    const s = await simulatePlanting(b);
+    expect(simCalls[0].addresses).toEqual([b.deliveryAccount]);
+    expect(s.delivery).toEqual({ pre: 5_000n, post: 5_200n });
+    const [pullerSkr] = await findAssociatedTokenPda({ owner: puller.address, mint: SKR_MINT, tokenProgram: TOKEN_PROGRAM_ADDRESS });
+    expect(b.deliveryAccount).toBe(pullerSkr);
+    preAmount = null; // a wallet coin's account created in the transaction starts at zero
+    expect((await simulatePlanting(b)).delivery).toEqual({ pre: 0n, post: 5_200n });
+  });
+  it("decodes a token account's amount and refuses a short buffer", () => {
+    expect(tokenAmountOf(new Uint8Array(Buffer.from(tokenAccount(123n), "base64")))).toBe(123n);
+    expect(tokenAmountOf(null)).toBe(0n);
+    expect(() => tokenAmountOf(new Uint8Array(10))).toThrow(/not a token account/);
   });
 });
