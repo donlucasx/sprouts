@@ -6,19 +6,19 @@ export type WatcherInput = {
   nudged: boolean;         // the greyed can was tapped, until the screen is left
 };
 
-/** R175: the can lives in the garden, in colour while a bud waits and greyed otherwise. */
+/** R186: the can sits at the end of the Next planting bar, in colour while a bud waits and greyed otherwise. */
 export type Watcher = { line: string | null; can: "ready" | "grey" };
 
 /**
  * The ONE line under the garden and the can, decided in one place so they always agree (audits/watering-ux, findings 2, 3, 8 and 12).
- * R184: while a bud waits the line joins the can to the buds (it replaces the prompt and the first-run note); otherwise the can is
+ * R184, R186: while a bud waits the line joins the planting to the can and the buds (one line, no first-run note); otherwise the can is
  * greyed and a tap on it says why nothing happens. With nothing new to open there is no line (R164: the progress row carries the next
  * planting). R96: no clock.
  */
 export function watcherLine(w: WatcherInput): Watcher {
   const one = w.unrevealed === 1;
   if (w.unrevealed > 0) {
-    const line = w.failed ? "Could not water. Try again." : `${w.unrevealed} new ${one ? "sprout is" : "sprouts are"} waiting. Drag the can onto ${one ? "it" : "them"} to water.`;
+    const line = w.failed ? "Could not water. Try again." : `Your change was planted. Drag the can onto the new ${one ? "sprout to open it" : "sprouts to open them"}.`;
     return { line, can: "ready" };
   }
   if (w.opened > 0) return { line: `Opened ${w.opened} new ${w.opened === 1 ? "sprout" : "sprouts"}.`, can: "grey" };

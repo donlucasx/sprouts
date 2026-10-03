@@ -8,7 +8,7 @@ import type { PlantId } from "@/model/garden";
 import { SPRITES } from "./sprites";
 import { WATER } from "./parts";
 import { REDUCED_MS } from "@/model/opening";
-import { canArt, canHit, canHome, dropSize, roseAt, DRIP } from "@/model/can";
+import { canArt, canHit, canSeat, clampDrag, dropSize, roseAt, DRIP } from "@/model/can";
 
 /** gen11_motion.py:159: the tap's whole sequence, 5.4 s: 0 to 18 percent slide to the plant, 18 to 32 tilt to -40 degrees, 32 to 70
  * pour, 70 to 82 back to level, 82 to 100 home. */
@@ -25,10 +25,14 @@ function CanSprite({ m, L, s }: { m: (typeof SPRITES)[string]; L: number; s: num
 }
 
 type Props = {
-  ready: boolean; reduced: boolean; tempo: number; width: number; viewH: SharedValue<number>; viewHNow: number; s: number;
-  /** The plant whose wet spot the rose is over, from a point in the wrapper's frame (RG25's hit test on the canvas). */
+  ready: boolean; reduced: boolean; tempo: number; width: number; s: number;
+  /** The garden view's height (eased on the UI thread) and its value now; the overlay's origin is the garden view's top-left. */
+  viewH: SharedValue<number>; viewHNow: number;
+  /** R186: the bar's centre, px below the garden view's bottom, and the overlay's height below that bottom (the row's bottom). */
+  barBelow: number; overlayBelow: number;
+  /** The plant whose wet spot the rose is over, from a point in the overlay's frame (RG25's hit test on the canvas). */
   targetAt: (pt: { x: number; y: number }) => PlantId | null;
-  /** Where the tap's pour puts the rose for `plant`, and the ground the drops land on, in the wrapper's frame. */
+  /** Where the tap's pour puts the rose for `plant`, and the ground the drops land on, in the overlay's frame. */
   spotOf: (plant: PlantId) => { rose: { x: number; y: number }; groundY: number };
   /** The tap's plant: the first with a closed bud. */
   tapTarget: PlantId | null;
@@ -40,7 +44,9 @@ type Props = {
 };
 
 /**
- * R175, the can in the garden: at its bottom right, under the soil's edge and always there. No bud waiting: greyed (desaturated at 45
+ * R186, the can at the end of the Next planting bar: drawn in an overlay over the garden and the row (its origin the garden view's
+ * top-left), seated at the bar's right end and vertically centred on it, always there; it travels up over the garden when dragged and
+ * glides back to the bar after the pour. (R175 had it in the garden's bottom-right corner.) No bud waiting: greyed (desaturated at 45
  * percent), not draggable, and a tap only says so. A bud waiting: in colour, one wobble on arrival. One finger on the can (and only on
  * it, so it never fights the garden's two-finger zoom) lifts it and it follows the finger, tilting to pour; released over a plant with a
  * bud it pours there while the watering runs (the drops, then the garden opens from the scene diff, that plant first); released
@@ -49,9 +55,9 @@ type Props = {
  * pick-up starts while one runs. Reduced motion: no wobble, lift, tilt, slide or drops; the pour is a 300 ms fade home.
  * R184, R188: 2.6x the first can, a soft contact shadow under it in both states (lighter while it is held), and while a bud waits one drop
  * forming at the rose every 4 s (none when greyed, held or pouring, none under reduced motion). The touch box lies wholly inside the
- * garden's wrapper (canHit, canBelow).
+ * overlay at its seat (canHit, canRoomBelow) and the drag holds it there (clampDrag): Android drops touches outside a parent's bounds.
  */
-export function Can({ ready, reduced, tempo, width, viewH, viewHNow, s, targetAt, spotOf, tapTarget, onPour, onPourEnd, onNudge }: Props) {
+export function Can({ ready, reduced, tempo, width, viewH, viewHNow, barBelow, overlayBelow, s, targetAt, spotOf, tapTarget, onPour, onPourEnd, onNudge }: Props) {
   const dx = useSharedValue(0), dy = useSharedValue(0), tilt = useSharedValue(0), lift = useSharedValue(1), wobble = useSharedValue(0), tilted = useSharedValue(false), seen = useSharedValue(1);
   const busy = useSharedValue(false);   // one pour at a time (a shared value, so the gesture's callbacks may read it)
   const held = useSharedValue(false);   // in the hand or pouring: the shadow lightens and the drip stops at once
@@ -89,7 +95,7 @@ export function Can({ ready, reduced, tempo, width, viewH, viewHNow, s, targetAt
     busy.value = true; held.value = true; setPouring(true);
     let failed = false;
     const req = onPour(target).catch(() => false).then((ok) => { failed = !ok; });
-    const home = canHome(width, viewHNow, s), r = roseAt(TILT, s);
+    const home = canSeat(width, viewHNow + barBelow, s), r = roseAt(TILT, s);
     const where = to ?? target;
     if (to && !reduced) {   // reduced motion: the can pours where it sits
       const spot = spotOf(to).rose;
@@ -126,13 +132,15 @@ export function Can({ ready, reduced, tempo, width, viewH, viewHNow, s, targetAt
     .onTouchesDown((_e, manager) => { if (busy.value) manager.fail(); else manager.activate(); })
     .onStart(() => { held.value = true; runOnJS(setHolding)(true); if (!reduced) lift.value = withTiming(LIFT, { duration: 120 }); })
     .onUpdate((e) => {
-      dx.value = e.translationX; dy.value = e.translationY;
+      // held inside the overlay (the garden and the row), lifted or not, so no part of the touch box ever leaves its parent
+      const d = clampDrag(e.translationX, e.translationY, canSeat(width, viewH.value + barBelow, s), hit, { w: width, h: viewH.value + overlayBelow }, reduced ? 1 : LIFT);
+      dx.value = d.dx; dy.value = d.dy;
       if (!reduced && !tilted.value && Math.hypot(e.translationX, e.translationY) > MOVED) { tilted.value = true; tilt.value = withTiming(TILT, { duration: 300 }); }
     })
     .onEnd((e, success) => {
       if (!success) { runOnJS(goHome)(); return; }
       if (Math.hypot(e.translationX, e.translationY) <= MOVED) { lift.value = 1; dx.value = 0; dy.value = 0; held.value = false; runOnJS(setHolding)(false); runOnJS(tap)(); return; }
-      const home = canHome(width, viewH.value, s), r = roseAt(tilt.value, s);
+      const home = canSeat(width, viewH.value + barBelow, s), r = roseAt(tilt.value, s);
       runOnJS(release)(home.x + dx.value + r.x, home.y + dy.value + r.y);
     })
     .enabled(inColour);
@@ -140,7 +148,7 @@ export function Can({ ready, reduced, tempo, width, viewH, viewHNow, s, targetAt
   const gesture = Gesture.Exclusive(drag, nudge);
 
   const place = useAnimatedStyle(() => {
-    const home = canHome(width, viewH.value, s);
+    const home = canSeat(width, viewH.value + barBelow, s);
     return { opacity: seen.value, transform: [{ translateX: home.x + dx.value - hit.ox }, { translateY: home.y + dy.value - hit.oy }, { rotate: `${wobble.value}deg` }, { scale: lift.value }] };
   });
   const shadowStyle = useAnimatedStyle(() => ({ opacity: held.value ? 0.45 : 1 }));

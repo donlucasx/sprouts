@@ -1,10 +1,10 @@
-import { useEffect, useLayoutEffect, useMemo, useState } from "react";
-import { AccessibilityInfo, useWindowDimensions } from "react-native";
+import { useEffect, useLayoutEffect, useMemo, useState, type ReactNode } from "react";
+import { AccessibilityInfo, View, useWindowDimensions } from "react-native";
 import Animated, { Easing, cancelAnimation, useAnimatedProps, useAnimatedStyle, useReducedMotion, useSharedValue, withRepeat, withSequence, withTiming } from "react-native-reanimated";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Svg, { G } from "react-native-svg";
 import { PLANT_ORDER, type Scene, type Part, type PlantId } from "@/model/garden";
-import { CANVAS, FOOT_Y, FRAME, PLANT_SCALE, frameFor, plantUnder, SIDE_GUTTER, signPlacement, toCanvas } from "@/model/layout";
+import { CANVAS, FOOT_Y, FRAME, PLANT_SCALE, frameFor, plantUnder, SIDE_GUTTER, signPlacement } from "@/model/layout";
 import { plantLayouts } from "@/model/scene-to-layout";
 import { SOIL_CLIP_ID } from "@/model/soil-clip";
 import { diffScenes, gateDiff, sceneKey, NO_CHANGE, type Diff } from "@/lib/scene-diff";
@@ -12,7 +12,7 @@ import { openingPlan, REDUCED_MS } from "@/model/opening";
 import { SWAY, GUST_IDLE, clampZoom, gustDelays, gustGap, gustSpanMs, pinchOffset } from "@/model/motion";
 import { Plant } from "./Plant";
 import { Can } from "./Can";
-import { canBelow, canScale } from "@/model/can";
+import { canScale, overlayToCanvas, ROW_GAP } from "@/model/can";
 import { Appear } from "./Strip";
 import { Soil, SoilClip, Ring, Seed, Sign, Basket, SpriteAt } from "./parts";
 
@@ -24,6 +24,10 @@ const AnimatedG = Animated.createAnimatedComponent(G);
  * one, what of the change may move (gateDiff), and the plant the can was dropped on. Keyed on content, so a re-render or a re-parsed read
  * of the same garden is no change and never restarts or holds a plan. */
 type Change = { n: number; key: string; scene: Scene; before: Scene | null; diff: Diff; first: PlantId | null };
+
+/** R186: what the Next planting row needs to seat the can at its bar's end: the can's scale (its slot and room come from it) and a
+ * report of the row's own layout, the bar's centre and the row's height, both px from the row's top. */
+export type CanRow = { s: number; onLayout: (m: { bar: number; height: number }) => void };
 
 /** Reduced motion as the system has it now (the review's item 5): read at mount and followed live through `reduceMotionChanged`. */
 function useReduceMotion() {
@@ -39,11 +43,12 @@ function useReduceMotion() {
 
 /** Spec 5: the canvas is the width minus 40 by 260; two rows; the back row draws first. R167: the view on it is as tall as the
  * planted content plus room to grow (frameFor's viewH, device round 3 item 1). Task I4: the plants sway, the changes animate from the
- * scene diff (Plant, Strip), the can lives at the bottom right (Can, R175) and two fingers zoom up to 3x (R173). `tempo` scales every
+ * scene diff (Plant, Strip), the can sits at the end of the Next planting bar (Can, R186) and two fingers zoom up to 3x (R173). `tempo` scales every
  * moment (1 on Home, 8 for a slowed preview). `onWater` is the watering request for both the drag and the tap. `live` is true while
  * the scene comes from a read made since Home opened (not the saved one): ruling b, an app open plays nothing and every part is drawn
- * final; new buds and seeds move only between two live reads, opens only after a watering made here. */
-export function Garden({ scene: incoming, live, canReady, onWater, onNudge, tempo = 1 }: { scene: Scene; live: boolean; canReady: boolean; onWater: (target: PlantId | null) => Promise<boolean>; onNudge: () => void; tempo?: number }) {
+ * final; new buds and seeds move only between two live reads, opens only after a watering made here. R186: `row` draws the Next planting
+ * row directly under the garden, and the can sits at its bar's end in an overlay over both (the garden view's top-left its origin). */
+export function Garden({ scene: incoming, live, canReady, onWater, onNudge, row, tempo = 1 }: { scene: Scene; live: boolean; canReady: boolean; onWater: (target: PlantId | null) => Promise<boolean>; onNudge: () => void; row: (can: CanRow) => ReactNode; tempo?: number }) {
   const { width } = useWindowDimensions(); const w = width - 40;
   const reduced = useReduceMotion();
   // What changed, and the plan it plays (the openings, the arrivals); the static drawing leaves out every moving part until it settles.
@@ -73,12 +78,13 @@ export function Garden({ scene: incoming, live, canReady, onWater, onNudge, temp
   const framed = useAnimatedStyle(() => ({ transform: [{ translateX: -fx.value * z.value }, { translateY: -fy.value * z.value }, { scale: z.value }] }));
   const framedPlants = useAnimatedStyle(() => ({ transform: [{ translateX: -fx.value * z.value }, { translateY: -fy.value * z.value }, { scale: z.value }] }));   // the plant layer's own copy (one animated style per view)
   // Spec 8's first frame: react-native-svg loads bundled PNGs through Fresco asynchronously on Android, so the garden fades in over
-  // 300 ms on mount and no sprite pops in on its own. The same outer view carries the eased height (R167), with the can's room below.
+  // 300 ms on mount and no sprite pops in on its own. The same outer view carries the eased height (R167); the can fades in with it.
   const canS = canScale(target.zoom);   // R188: 2.6x G11's proportion (can11 at 1/3 against the plants, never under 32 px wide)
-  const below = canBelow(canS);
+  const [rowAt, setRowAt] = useState<{ bar: number; height: number } | null>(null);   // R186: the row's bar and height, once laid out
   const shown = useSharedValue(0);
   useEffect(() => { shown.value = withTiming(1, { duration: MOUNT_FADE_MS }); }, [shown]);
-  const outer = useAnimatedStyle(() => ({ opacity: shown.value, height: vh.value + below }));
+  const outer = useAnimatedStyle(() => ({ opacity: shown.value, height: vh.value }));
+  const canShown = useAnimatedStyle(() => ({ opacity: shown.value }));
   const clip = useAnimatedStyle(() => ({ height: vh.value }));        // the box the zoom's gesture covers
   const clipGround = useAnimatedStyle(() => ({ height: vh.value }));  // one animated style per view
   const clipPlants = useAnimatedStyle(() => ({ height: vh.value }));
@@ -161,10 +167,11 @@ export function Garden({ scene: incoming, live, canReady, onWater, onNudge, temp
     const ground = onScreen(foot.x, foot.y), tip = onScreen(foot.x, foot.y - (pl?.layout.top ?? 0) * PLANT_SCALE);   // R187: the plant drawn 1.25x about its foot
     return { rose: { x: ground.x, y: Math.max(12, tip.y - 10) }, groundY: ground.y };
   };
-  const targetAt = (pt: { x: number; y: number }) => { const c = toCanvas(pt, target); return plantUnder(c.x, c.y, budSlots, w); };
+  const targetAt = (pt: { x: number; y: number }) => { const c = overlayToCanvas(pt, target); return plantUnder(c.x, c.y, budSlots, w); };
   const pour = (plant: PlantId | null) => { setWatering({ target: plant }); return onWater(plant); };
 
   return (
+    <View style={{ width: w }}>
     <Animated.View style={[{ width: w }, outer]}>
      <GestureDetector gesture={zoomGesture}>
      <Animated.View style={[{ width: w }, clip]}>
@@ -200,7 +207,16 @@ export function Garden({ scene: incoming, live, canReady, onWater, onNudge, temp
      </Animated.View>
      </Animated.View>
      </GestureDetector>
-     <Can ready={canReady} reduced={reduced} tempo={tempo} width={w} viewH={vh} viewHNow={target.viewH} s={canS} targetAt={targetAt} spotOf={spotOf} tapTarget={budPlants[0] ?? null} onPour={pour} onPourEnd={() => setWatering(null)} onNudge={onNudge} />
     </Animated.View>
+    {/* R186: the Next planting row directly under the garden; the can sits at its bar's end */}
+    <View style={{ marginTop: ROW_GAP }}>{row({ s: canS, onLayout: setRowAt })}</View>
+    {/* the overlay over the garden and the row: the can's whole touch box stays inside it, at rest and while dragged over the garden
+        (Android drops touches outside a parent's bounds); box-none, so the garden's pinch and the row take every other touch */}
+    {rowAt ? (
+      <Animated.View pointerEvents="box-none" style={[{ position: "absolute", left: 0, top: 0, right: 0, bottom: 0 }, canShown]}>
+        <Can ready={canReady} reduced={reduced} tempo={tempo} width={w} viewH={vh} viewHNow={target.viewH} barBelow={ROW_GAP + rowAt.bar} overlayBelow={ROW_GAP + rowAt.height} s={canS} targetAt={targetAt} spotOf={spotOf} tapTarget={budPlants[0] ?? null} onPour={pour} onPourEnd={() => setWatering(null)} onNudge={onNudge} />
+      </Animated.View>
+    ) : null}
+    </View>
   );
 }

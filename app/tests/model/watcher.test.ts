@@ -2,13 +2,13 @@ import { describe, it, expect } from "vitest";
 import { watcherLine } from "@/model/watcher";
 
 // The design as locked (audits/watering-ux/RECONCILED.md, R96), with the can in the garden (R175) and ONE line joining the can to
-// the buds (R184): the line and the can always agree, and there is no clock.
+// the buds (R184; R186's words): the line and the can always agree, and there is no clock.
 const rest = { unrevealed: 0, opened: 0, failed: false, nudged: false };
 
 describe("watcherLine", () => {
-  it("a bud waits: the can is in colour and one line joins it to the buds (R184)", () => {
-    expect(watcherLine({ ...rest, unrevealed: 1 })).toEqual({ line: "1 new sprout is waiting. Drag the can onto it to water.", can: "ready" });
-    expect(watcherLine({ ...rest, unrevealed: 3 }).line).toBe("3 new sprouts are waiting. Drag the can onto them to water.");
+  it("a bud waits: the can is in colour and one line joins the planting to the can and the buds (R186)", () => {
+    expect(watcherLine({ ...rest, unrevealed: 1 })).toEqual({ line: "Your change was planted. Drag the can onto the new sprout to open it.", can: "ready" });
+    expect(watcherLine({ ...rest, unrevealed: 3 }).line).toBe("Your change was planted. Drag the can onto the new sprouts to open them.");
   });
   it("just opened: the count, the can greyed", () => {
     expect(watcherLine({ ...rest, opened: 1 })).toEqual({ line: "Opened 1 new sprout.", can: "grey" });
@@ -25,6 +25,6 @@ describe("watcherLine", () => {
     expect(watcherLine({ ...rest, unrevealed: 1, failed: true })).toEqual({ line: "Could not water. Try again.", can: "ready" });
   });
   it("a new bud outranks the opened line, so the line always agrees with the can", () => {
-    expect(watcherLine({ ...rest, unrevealed: 1, opened: 2 })).toEqual({ line: "1 new sprout is waiting. Drag the can onto it to water.", can: "ready" });
+    expect(watcherLine({ ...rest, unrevealed: 1, opened: 2 })).toEqual({ line: "Your change was planted. Drag the can onto the new sprout to open it.", can: "ready" });
   });
 });
