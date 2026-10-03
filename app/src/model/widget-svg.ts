@@ -1,5 +1,5 @@
 import type { Scene } from "./garden";
-import { SIGN_LABEL, SIGN_SCALE, SIGN_TEXT, signStand, signX } from "./layout";
+import { PLANT_SCALE, SIGN_LABEL, SIGN_SCALE, SIGN_TEXT, signStand, signX } from "./layout";
 import { stemPaths, spriteTransform, soilPaths, leafPath } from "./paint";
 import { COLORS, SOIL } from "./species";
 import { SOIL_CLIP_ID, soilBottomAt, soilClipPath } from "./soil-clip";
@@ -29,24 +29,27 @@ const roomAbove = (gardenH: number, band: number) => gardenH - band + FOOT_IN_BA
 /** k: the largest scale, at most 1 (spec 5's cap), at which every drawn plant's top stays `WIDGET_TOP_MARGIN` under the garden's top
  * edge, measured from where the feet actually stand (R167, 10-02: the old rule measured from the soil line and floored the top at
  * 60 px, so a young garden drew small under a band of empty sky). */
-export function widgetScale(scene: Scene, gardenH: number, wide: boolean): number {
+export function widgetScale(scene: Scene, gardenH: number, wide: boolean, cap = 1): number {
   const band = soilBand(gardenH), room = roomAbove(gardenH, band);
-  return Math.max(0, Math.min(1, ...drawnRows(scene, band, wide).filter((d) => d.top > 0).map((d) => (room - d.step) / d.top)));
+  return Math.max(0, Math.min(cap, ...drawnRows(scene, band, wide).filter((d) => d.top > 0).map((d) => (room - d.step) / d.top)));
 }
+/** R187: the plants' own scale, the same k rule with R187's 1.25 as its cap: a garden with room draws its plants 1.25x (the rings and the
+ * seeds stay at k), and a garden the height binds keeps every top under the edge, so its plants are no larger than the fit allows. */
+export const widgetPlantScale = (scene: Scene, gardenH: number, wide: boolean) => widgetScale(scene, gardenH, wide, PLANT_SCALE);
 /** R167: the garden's height on a widget whose host fixes `maxH`: the shortest height that draws the plants as large as `maxH` does
  * (so they are never smaller) with the signs inside it, never under the soil band plus 40; the rest goes back to the text lines. */
 export function widgetGardenHeight(scene: Scene, maxH: number, wide: boolean): number {
-  const best = widgetScale(scene, maxH, wide), floor = Math.min(maxH, WIDGET_SOIL_BAND + 40), signAy = SPRITE_META["sign"]?.ay ?? 14;
+  const best = widgetPlantScale(scene, maxH, wide), floor = Math.min(maxH, WIDGET_SOIL_BAND + 40), signAy = SPRITE_META["sign"]?.ay ?? 14;
   for (let h = Math.ceil(floor); h < maxH; h++) {
     const band = soilBand(h), signRoom = !wide || roomAbove(h, band) >= (FOOT_IN_BAND.front - FOOT_IN_BAND.back) * band - 3 + WIDGET_SIGN_SCALE * signAy;
-    if (signRoom && widgetScale(scene, h, wide) >= best - 1e-9) return h;
+    if (signRoom && widgetPlantScale(scene, h, wide) >= best - 1e-9) return h;
   }
   return maxH;
 }
 /** The garden as one SVG string for the widget: the sprites the scene uses declared once in <defs>, placed with <use>; stems as
  * paths; the wide widget shows both rows and the signs at a fixed WIDGET_SIGN_SCALE (1.08); the small widget the front row only and no sign. */
 export function widgetGardenSvg(scene: Scene, width: number, height: number, wide: boolean): string {
-  const k = widgetScale(scene, height, wide), band = soilBand(height);
+  const k = widgetScale(scene, height, wide), kp = widgetPlantScale(scene, height, wide), band = soilBand(height);
   const line = height - band, foot = (row: "front" | "back") => line + band * FOOT_IN_BAND[row];
   const used = new Set<string>(); const body: string[] = [];
   // one placement, three modes (the spike's ledger): a <use> of a sprite declared once; a data image per placement; a vector outline
@@ -71,11 +74,12 @@ export function widgetGardenSvg(scene: Scene, width: number, height: number, wid
   for (const s of of("seed")) { const sg = of("sign").find((q) => q.plant === s.plant); if (sg && (wide || sg.row === "front")) place("seed", sg.x * width + (s.index % 2 ? 1 : -1) * (3 + 2.4 * Math.floor(s.index / 2)) * k, foot(sg.row), ((s.index * 37) % 60) - 30, k); }   // on the small widget they sit at the plant's foot (no sign)
   for (const p of [...plants.filter((q) => q.row === "back"), ...plants.filter((q) => q.row === "front")]) {
     const fx = p.x * width, fy = foot(p.row);
+    // R187: every part of a plant at kp (1.25x within the k rule), about its foot
     for (const q of [...p.layout.parts].sort((a, b) => a.z - b.z)) {
-      if (q.kind === "stem") body.push(stemPaths(fx + q.x0 * k, fy + q.y0 * k, fx + q.x1 * k, fy + q.y1 * k, q.w0 * k, q.w1 * k, q.bend * k, q.color).map((s) => `<path d="${s.d}" fill="${s.fill}" opacity="${s.opacity}"/>`).join(""));
-      else if (q.part === "swelling") body.push(`<circle cx="${f(fx + q.x * k)}" cy="${f(fy + q.y * k)}" r="${f(q.scale * k)}" fill="${COLORS[p.plant].light}" opacity="${f(0.4 + 0.35 * Math.min(1, (q.scale - 2.2) / 2.4))}"/>`);   // the app's formula
-      else if (q.part === "dot") body.push(`<circle cx="${f(fx + q.x * k)}" cy="${f(fy + q.y * k)}" r="${f(q.scale * k)}" fill="${COLORS.ore.token}" opacity=".95"/>`);
-      else place(q.name, fx + q.x * k, fy + q.y * k, q.rot, q.scale * k, (q.xScale ?? q.scale) * k);
+      if (q.kind === "stem") body.push(stemPaths(fx + q.x0 * kp, fy + q.y0 * kp, fx + q.x1 * kp, fy + q.y1 * kp, q.w0 * kp, q.w1 * kp, q.bend * kp, q.color).map((s) => `<path d="${s.d}" fill="${s.fill}" opacity="${s.opacity}"/>`).join(""));
+      else if (q.part === "swelling") body.push(`<circle cx="${f(fx + q.x * kp)}" cy="${f(fy + q.y * kp)}" r="${f(q.scale * kp)}" fill="${COLORS[p.plant].light}" opacity="${f(0.4 + 0.35 * Math.min(1, (q.scale - 2.2) / 2.4))}"/>`);   // the app's formula
+      else if (q.part === "dot") body.push(`<circle cx="${f(fx + q.x * kp)}" cy="${f(fy + q.y * kp)}" r="${f(q.scale * kp)}" fill="${COLORS.ore.token}" opacity=".95"/>`);
+      else place(q.name, fx + q.x * kp, fy + q.y * kp, q.rot, q.scale * kp, (q.xScale ?? q.scale) * kp);
     }
   }
   // R168: the one blank board, the word as vector text over it (AndroidSVG cannot load the app's font: a plain sans-serif, same ink and place)

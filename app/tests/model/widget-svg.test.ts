@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { widgetGardenSvg, widgetGardenHeight, widgetScale, WIDGET_SOIL_BAND } from "@/model/widget-svg";
+import { widgetGardenSvg, widgetGardenHeight, widgetScale, widgetPlantScale, WIDGET_SOIL_BAND } from "@/model/widget-svg";
 import { SPRITE_META } from "@/garden/sprite-meta";
 import { buildScene, type GardenInput } from "@/model/garden";
+import { plantLayouts } from "@/model/scene-to-layout";
 const NOW = new Date("2026-10-08T12:00:00-07:00");
 const base: GardenInput = { now: NOW, wateredAt: NOW, plantings: [], picks: [], skrPutInRaw: 0n, skrEarnedRaw: 0n, skrPickedRaw: 0n, skrPrincipalPickedRaw: 0n, pendingCents: 0, thresholdCents: 200, allocation: { SKR: 50, stORE: 10, hSOL: 10, JitoSOL: 10, JupSOL: 10, cbBTC: 10 }, earned: {}, storePutInRaw: 0n, joinedValueRaw: 0n, basket: null };
 const p = (id: string, d: number, asset: GardenInput["plantings"][number]["asset"] = "SKR") => ({ id, ts: new Date(NOW.getTime() - d * 86_400_000), asset, amountOutRaw: 1n, usdcInCents: 200 });
@@ -59,9 +60,28 @@ describe("the widget string (spec 5 and 8)", () => {
     const h = widgetGardenHeight(oct8, maxH, wide), svg = widgetGardenSvg(oct8, w, h, wide), top = paintedTop(svg);
     expect(h).toBeLessThanOrEqual(maxH); expect(svg).toContain(`height="${h}" viewBox="0 0 ${w} ${h}"`);
     expect(top).toBeGreaterThanOrEqual(0); expect(top / h).toBeLessThan(0.2);   // measured 10-02: 2.7 of 86 and 2.6 of 92 (before: 24.8 of 86, 30.6 of 120)
-    expect(widgetScale(oct8, h, wide)).toBeCloseTo(widgetScale(oct8, maxH, wide), 9);   // the plants are as large as the full height draws them
+    expect(widgetPlantScale(oct8, h, wide)).toBeCloseTo(widgetPlantScale(oct8, maxH, wide), 9);   // the plants are as large as the full height draws them
   });
   it("R167: a garden of seeds keeps the soil band plus 40, never a sliver", () => {
     expect(widgetGardenHeight(buildScene({ ...base, pendingCents: 80, nextAsset: "SKR" }), 120, true)).toBe(WIDGET_SOIL_BAND + 40);
+  });
+});
+
+describe("R187 in the widget: the plants 1.25x within the k rule, the rings and seeds unchanged", () => {
+  const young = buildScene({ ...base, plantings: [p("a", 1)] });
+  it("a young garden with room draws its plants at 1.25 while k (the rings, the seeds) stays at its cap of 1", () => {
+    expect(widgetScale(young, 140, true)).toBe(1);
+    expect(widgetPlantScale(young, 140, true)).toBe(1.25);
+    const svg = widgetGardenSvg(young, 300, 140, true);
+    // every plant sprite drawn at 1.25 its layout's scale (the y scale of each <use>, against the layout's sprite parts)
+    const drawn = [...svg.matchAll(/<use xlink:href="#s-([a-z0-9-]+)" transform="[^"]*scale\([-\d.]+ ([-\d.]+)\)/g)].filter((m) => !["ground", "sign", "seed", "ring"].includes(m[1])).map((m) => Number(m[2])).sort((x, y) => x - y);
+    const laid = plantLayouts(young).flatMap((pl) => pl.layout.parts.flatMap((q) => (q.kind === "sprite" && q.part !== "swelling" && q.part !== "dot" ? [q.scale * 1.25] : []))).sort((x, y) => x - y);
+    expect(drawn.length).toBe(laid.length); expect(drawn.length).toBeGreaterThan(0);
+    drawn.forEach((d, i) => expect(d).toBeCloseTo(laid[i], 1));
+    expect(paintedTop(svg)).toBeGreaterThanOrEqual(0);
+  });
+  it("a garden the height binds keeps the k rule: its plants fit under the top edge, no larger than the fit allows", () => {
+    expect(widgetPlantScale(year, 120, true)).toBeCloseTo(widgetScale(year, 120, true), 9);
+    expect(paintedTop(widgetGardenSvg(year, 300, 120, true))).toBeGreaterThanOrEqual(0);
   });
 });
