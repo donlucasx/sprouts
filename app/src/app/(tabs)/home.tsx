@@ -234,9 +234,9 @@ export default function Home() {
         <View style={{ gap: spacing.xs, marginTop: spacing.xs }}>
           {coinRows(me).map((r) => (
             <View key={r.asset} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 28 }}>
-              {/* R198: SKR and stORE one step up the ramp, read as plain text, not headers. Device check 2b: heading (20) read too big
-                  beside the tiles; the lead rows sit at 18, two px over the others, and shrink rather than wrap (a coin row never breaks) */}
-              <ThemedText numeric variant={r.lead ? 'heading' : 'body'} accessibilityRole="text" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} style={[{ flex: 1 }, r.lead ? { fontSize: 18, lineHeight: 24 } : null]}>
+              {/* R198, R206: SKR and stORE in the heading face at 16, the others' size, so the two lead rows match each other and never
+                  break beside their status (heading 20, then 18, wrapped or shrank stORE); read as plain text, not headers */}
+              <ThemedText numeric variant={r.lead ? 'heading' : 'body'} accessibilityRole="text" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} style={[{ flex: 1 }, r.lead ? { fontSize: 16, lineHeight: 22 } : null]}>
                 {r.amount}
               </ThemedText>
               {/* R205: each coin's status at the row's right, an icon and a caption: SKR's lock, stORE's source (R194) under it */}
