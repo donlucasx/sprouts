@@ -167,6 +167,13 @@ async function pausedForNoUsdc(repo: Repo, w: WalletRow): Promise<boolean> {
   return events.find((e) => e.walletPubkey === w.pubkey)?.kind === "paused_no_usdc";
 }
 
+/** R207: the user's own newest word on a wallet is a pause (a run's resume, detail null, does not count against it). */
+async function userPauseStands(repo: Repo, w: WalletRow): Promise<boolean> {
+  const events = await repo.listEvents(w.userPubkey, ["paused_by_user", "resumed"], 200);
+  const mine = events.find((e) => e.walletPubkey === w.pubkey && (e.kind === "paused_by_user" || (e.detail as { by?: string } | null)?.by === "user"));
+  return mine?.kind === "paused_by_user";
+}
+
 async function resumePausedWallets(a: { repo: Repo; now: Date; chain: Chain }) {
   for (const w of await a.repo.listPausedWallets()) {
     if (!(await pausedForNoUsdc(a.repo, w))) continue;
@@ -216,6 +223,14 @@ async function plantOneOrThrow(a: { repo: Repo; now: Date; chain: Chain }, w: Wa
   const left = capLeftCents(cap, pulledThisPeriod);
   const amount = plantAmountCents({ pendingCents: pending, capLeftCents: left, feeCents: NETWORK_FEE_CENTS, minCents: forced ? 0 : rules.plantThresholdCents });
   if (amount.pullCents === 0) return { wallet: w.pubkey, reason: left === 0 ? "cap reached" : "below threshold" };
+
+  // R207: the run listed this wallet as active at its start; a pause made since, or a run resume racing a user pause, must not pull.
+  // Read again just before the pull: still active, and the user's newest word on it is not a pause.
+  const now = await a.repo.getWallet(w.pubkey);
+  if (now?.status !== "active" || (await userPauseStands(a.repo, w))) {
+    if (now?.status === "active") await a.repo.setWalletStatus(w.pubkey, "paused");
+    return { wallet: w.pubkey, reason: "paused" };
+  }
 
   // An RPC error here throws to plantOne ("build failed"); only a successful read that comes up short pauses the wallet.
   if ((await a.chain.usdcBalanceRaw(w.pubkey)) < BigInt(amount.pullCents) * USDC_PER_CENT) {

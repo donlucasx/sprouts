@@ -24,7 +24,8 @@ export async function POST(request: Request, ctx: { params: Promise<{ pubkey: st
     if (!check.ok) return NextResponse.json({ error: check.error, reauth: true }, { status: 403 });
   }
   const status = parsed.data.action === "pause" ? "paused" : "active";
-  await repo.setWalletStatus(pubkey, status);
+  // R207: the cause first, then the status (a failed write leaves the wallet as it was, never paused with no cause)
   await repo.addEvent({ userPubkey: session.pubkey, walletPubkey: pubkey, kind: status === "active" ? "resumed" : "paused_by_user", detail: { by: "user" } });
+  await repo.setWalletStatus(pubkey, status);
   return NextResponse.json({ pubkey, status });
 }
