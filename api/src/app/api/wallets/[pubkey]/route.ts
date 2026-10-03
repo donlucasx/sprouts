@@ -25,6 +25,6 @@ export async function POST(request: Request, ctx: { params: Promise<{ pubkey: st
   }
   const status = parsed.data.action === "pause" ? "paused" : "active";
   await repo.setWalletStatus(pubkey, status);
-  if (status === "active") await repo.addEvent({ userPubkey: session.pubkey, walletPubkey: pubkey, kind: "resumed", detail: { by: "user" } });
+  await repo.addEvent({ userPubkey: session.pubkey, walletPubkey: pubkey, kind: status === "active" ? "resumed" : "paused_by_user", detail: { by: "user" } });
   return NextResponse.json({ pubkey, status });
 }

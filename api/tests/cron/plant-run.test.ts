@@ -74,12 +74,34 @@ describe("runPlanting", () => {
     expect(repo.events.some((e) => e.kind === "paused_no_usdc")).toBe(true);
   });
 
-  it("resumes a paused wallet once USDC is back", async () => {
+  it("resumes a wallet the run paused for want of USDC once the USDC is back", async () => {
     const repo = await seeded([83, 62, 70]);
     await repo.setWalletStatus("W", "paused");
+    await repo.addEvent({ userPubkey: "U", walletPubkey: "W", kind: "paused_no_usdc", detail: null });
     const r = await runPlanting({ repo, now: NOW, chain: fakeChain() });
     expect(r.planted.length).toBe(1);
     expect(repo.events.some((e) => e.kind === "resumed")).toBe(true);
+  });
+
+  // Security audit R207 (HIGH): the run never undoes a user's pause; only their signed resume does (R84).
+  it("never resumes a wallet the user paused, even with USDC back and an older no-USDC pause", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await repo.setWalletStatus("W", "paused");
+    await repo.addEvent({ userPubkey: "U", walletPubkey: "W", kind: "paused_no_usdc", detail: null });
+    await repo.addEvent({ userPubkey: "U", walletPubkey: "W", kind: "resumed", detail: null });
+    await repo.addEvent({ userPubkey: "U", walletPubkey: "W", kind: "paused_by_user", detail: { by: "user" } });
+    const r = await runPlanting({ repo, now: NOW, chain: fakeChain() });
+    expect(r.planted).toEqual([]);
+    expect((await repo.getWallet("W"))!.status).toBe("paused");
+  });
+  it("a pause with no event after the last resume (made before user pauses were recorded) stays paused", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await repo.addEvent({ userPubkey: "U", walletPubkey: "W", kind: "paused_no_usdc", detail: null });
+    await repo.addEvent({ userPubkey: "U", walletPubkey: "W", kind: "resumed", detail: null });
+    await repo.setWalletStatus("W", "paused");
+    const r = await runPlanting({ repo, now: NOW, chain: fakeChain() });
+    expect(r.planted).toEqual([]);
+    expect((await repo.getWallet("W"))!.status).toBe("paused");
   });
 
   it("marks the wallet revoked when the delegation is gone", async () => {
