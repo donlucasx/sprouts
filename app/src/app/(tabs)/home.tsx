@@ -117,7 +117,8 @@ export default function Home() {
   const staked = BigInt(me.pot.skrStakedRaw)
   const totals = gardenTotals(me)
   const pause = pauseState(me.wallets)
-  // R96, R175 and R184: the one line and the can decided together, so they always agree; the can is in colour only while a bud waits.
+  // R96, R184 and R186: the one line and the can decided together, so they always agree; the can is in colour only while a bud waits.
+  // R186: the Next planting row draws inside the garden (directly under it, the can at its bar's end); the line comes after it.
   const watcher = watcherLine({
     unrevealed: scene.unrevealed,
     opened,
@@ -157,13 +158,16 @@ export default function Home() {
         canReady={watcher.can === 'ready'}
         onWater={water}
         onNudge={() => setNudged(true)}
+        row={(can) => (
+          <NextPlanting
+            row={nextRow}
+            pendingCents={me.nextPlanting.pendingCents}
+            thresholdCents={me.nextPlanting.thresholdCents}
+            can={can}
+          />
+        )}
       />
       {watcher.line ? <WatcherLine text={watcher.line} /> : null}
-      <NextPlanting
-        row={nextRow}
-        pendingCents={me.nextPlanting.pendingCents}
-        thresholdCents={me.nextPlanting.thresholdCents}
-      />
       {receiptLine ? (
         <Pressable
           onPress={() => router.push('/activity')}
