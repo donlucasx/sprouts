@@ -252,6 +252,34 @@ describe("link flow", () => {
     expect(r.status).toBe(404);
   });
 
+  // Security R207 #5: the page shows whose garden a code links into before any wallet is asked.
+  it("a code with no wallet answers only whose garden it links into, and binds nothing", async () => {
+    const c = await mintCode(repo);
+    const r = await getTx(new Request(`http://x/api/link/${c.code.toLowerCase()}`), { params: Promise.resolve({ code: c.code.toLowerCase() }) });
+    expect(r.status).toBe(200);
+    expect(await r.json()).toEqual({ owner: "lucas.skr" });
+    expect((await repo.peekLinkCode(c.code))!.walletPubkey).toBeNull();
+  });
+
+  it("an owner with no .skr name is shown by the first and last four of the Seed Vault key", async () => {
+    const SV = "7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs";
+    await repo.upsertUser({ seedVaultPubkey: SV, sgtMint: "M3", skrName: null });
+    const token = await issueSession(SV, "M3");
+    const { code } = await (await newCode(new Request("http://x/api/link/new", { method: "POST", headers: { authorization: `Bearer ${token}` } }))).json();
+    expect(await (await getTx(new Request(`http://x/api/link/${code}`), { params: Promise.resolve({ code }) })).json()).toEqual({ owner: "7vfC...voxs" });
+  });
+
+  it("the preview of an unknown code is a 404", async () => {
+    const r = await getTx(new Request("http://x/api/link/ZZZZZZ"), { params: Promise.resolve({ code: "ZZZZZZ" }) });
+    expect(r.status).toBe(404);
+  });
+
+  it("the approval names the same owner, so the page can check it against what the user confirmed", async () => {
+    const c = await mintCode(repo);
+    const t = await (await getTx(new Request(`http://x/api/link/${c.code}?wallet=${WALLET}`), { params: Promise.resolve({ code: c.code }) })).json();
+    expect(t.owner).toBe("lucas.skr");
+  });
+
   it("requires a session to mint a code", async () => {
     expect((await newCode(new Request("http://x/api/link/new", { method: "POST" }))).status).toBe(401);
   });

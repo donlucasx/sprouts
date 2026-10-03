@@ -99,6 +99,10 @@ export interface Repo {
 
   // The watcher's budget (spec 6): every model call recorded; spend since a moment, calls by one user since a moment.
   addWatcherCall(c: NewWatcherCall): Promise<number>;
+  /** A reserved call's real usage, once the model has answered (R207 #6: calls are reserved at an estimate before they run). */
+  settleWatcherCall(id: number, u: { inputTokens: number; outputTokens: number; costMicrocents: number }): Promise<void>;
+  /** A reservation given back: refused over a cap, or the model was never reached. */
+  deleteWatcherCall(id: number): Promise<void>;
   watcherSpendMicrocents(since: Date): Promise<number>;
   watcherCallsBy(userPubkey: string, since: Date): Promise<number>;
   listWatcherCalls(): Promise<T.WatcherCallRow[]>;
