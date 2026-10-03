@@ -119,7 +119,26 @@ describe("rules, wallets, revoke", () => {
     expect((await act(W, { action: "resume", reauth: await reauth(repo, user) })).status).toBe(409);
   });
 
-  it("revoke: GET is not an oracle, POST sends the wallet's own signed revoke and marks it revoked [A3]", async () => {
+  // Security R207 #7 and #9: the per-wallet limit alone let one caller enumerate many wallets; a per-IP limit now binds too, keyed
+  // on the platform's address, so a rotated x-forwarded-for prefix does not open a new bucket.
+  it("revoke GET: one caller enumerating many wallets is stopped by the per-IP limit", async () => {
+    const was = process.env.VERCEL;
+    process.env.VERCEL = "1";
+    try {
+      const get = (w: string, ip: string, spoof: string) => revokeGet(new Request(`http://x/api/revoke/${w}`, { headers: { "x-real-ip": ip, "x-forwarded-for": `${spoof}, ${ip}` } }), { params: Promise.resolve({ wallet: w }) });
+      const wallets = await Promise.all(Array.from({ length: 21 }, async () => (await generateKeyPairSigner()).address));
+      const statuses = [];
+      for (const [i, w] of wallets.entries()) statuses.push((await get(w, "198.51.100.9", `10.0.0.${i}`)).status);
+      expect(statuses.slice(0, 20).every((st) => st === 200)).toBe(true);
+      expect(statuses[20]).toBe(429);
+      expect((await get(wallets[0], "198.51.100.10", "10.0.0.1")).status).toBe(200);   // another caller is not affected
+    } finally {
+      if (was === undefined) delete process.env.VERCEL;
+      else process.env.VERCEL = was;
+    }
+  });
+
+  it("revoke: GET answers no transaction for an unknown wallet, POST sends the wallet's own signed revoke and marks it revoked [A3]", async () => {
     const unknown = await revokeGet(new Request("http://x/api/revoke/9H7ChDC2o32wC8jcpVDjLGQhwyx1hmLW1fiCjsjUuzFm"), { params: Promise.resolve({ wallet: "9H7ChDC2o32wC8jcpVDjLGQhwyx1hmLW1fiCjsjUuzFm" }) });
     expect(unknown.status).toBe(200);
     expect((await unknown.json()).transaction).toBeNull();
