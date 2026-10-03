@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { buildScene } from "@/model/garden";
 import { plantLayouts } from "@/model/scene-to-layout";
-import { frameFor, FOOT_Y, PLANT_SCALE, SIDE_GUTTER } from "@/model/layout";
+import { frameFor, FOOT_Y, PLANT_SCALE, SIDE_GUTTER, WIND_REACH_DEG } from "@/model/layout";
 import { GUST, SWAY } from "@/model/motion";
 import { SPRITE_META } from "@/garden/sprite-meta";
 import { previewInputAt } from "@/model/fixtures/median-year";
@@ -38,32 +38,31 @@ describe("the wind's room at the top and inside a zoomed frame (R183, R187, R189
     const s = buildScene(input), L = plantLayouts(s), f = frameFor(s, L, width);
     for (const deg of ANGLES) for (const c of reach(L, f, width, deg)) {
       expect(c.ry, `${c.plant} ${c.kind} top at ${deg}`).toBeGreaterThanOrEqual(f.y);
-      if (f.x > 0.5) expect(c.rx, `${c.plant} left at ${deg}`).toBeGreaterThanOrEqual(f.x);
-      if (f.x + f.w < width - 0.5) expect(c.rx, `${c.plant} right at ${deg}`).toBeLessThanOrEqual(f.x + f.w);
+      // a zoomed frame (no wider than the bed) that sits inside the bed holds its plants; a full garden's frame (zoomed out, wider than
+      // the bed since fix round 1) is held by the gutters instead
+      if (f.w <= width && f.x > 0.5) expect(c.rx, `${c.plant} left at ${deg}`).toBeGreaterThanOrEqual(f.x);
+      if (f.w <= width && f.x + f.w < width - 0.5) expect(c.rx, `${c.plant} right at ${deg}`).toBeLessThanOrEqual(f.x + f.w);
     }
   });
 });
 
-// The round-3 ruling: plants may spill into the screen's 20 px side gutters (the plant layer's room), never past them. With R187's
-// 1.25x plants that holds for a young or mid garden at every angle; a full-breadth garden (day 240, the year) cannot hold it: its frame
-// is already the canvas's own edge, and R187 keeps the slots and the frame. The overshoot is measured here, so it can only shrink.
-describe("the side gutters (I4 fix round 3) with 1.25x plants (R187)", () => {
-  for (const [label, input] of GARDENS.slice(2)) for (const width of [320, 353]) it(`${label} at ${width} wide stays within the gutters, gusts included`, () => {
+// The round-3 ruling: plants may spill into the screen's 20 px side gutters (the plant layer's room), never past them. R187 fix round 1
+// (the controller's ruling): a garden whose reach at 1.25x (the steady sway either way, the gust's peak) would pass them zooms out just
+// enough (frameFor's gutter-fit term), so every garden holds, gusts included; the slots never move.
+describe("the side gutters (I4 fix round 3) with 1.25x plants (R187) and the gust's peak (R189)", () => {
+  for (const [label, input] of GARDENS) for (const width of [320, 353]) it(`${label} at ${width} wide stays within the gutters at every angle`, () => {
     const s = buildScene(input), L = plantLayouts(s), f = frameFor(s, L, width);
     for (const deg of ANGLES) for (const c of reach(L, f, width, deg)) {
-      expect(c.sx, `${c.plant} within the left gutter at ${deg}`).toBeGreaterThanOrEqual(-SIDE_GUTTER);
-      expect(c.sx, `${c.plant} within the right gutter at ${deg}`).toBeLessThanOrEqual(width + SIDE_GUTTER);
+      expect(c.sx, `${c.plant} within the left gutter at ${deg}`).toBeGreaterThanOrEqual(-SIDE_GUTTER - 1e-9);
+      expect(c.sx, `${c.plant} within the right gutter at ${deg}`).toBeLessThanOrEqual(width + SIDE_GUTTER + 1e-9);
     }
   });
-  // measured 10-02 with the baked boxes (they overstate the paint by about 2 px a side, 2.5 at 1.25x): past the gutter, at 320 / 353 wide
-  //   the year:   steady sway  left 7.7 / 4.7  right 8.1 / 5.5;  gust peak  right 13.5 / 10.8 (hSOL's head left, cbBTC's spruce right)
-  //   day 240:    steady sway  left 2.5 / 0    right 8.1 / 5.5;  gust peak  right 13.5 / 10.8
-  for (const [label, input] of GARDENS.slice(0, 2)) for (const width of [320, 353]) it(`${label} at ${width} wide spills past the gutter by at most 9 px in the steady sway and 14 px at a gust's peak`, () => {
-    const s = buildScene(input), L = plantLayouts(s), f = frameFor(s, L, width);
-    const past = (deg: number) => Math.max(0, ...reach(L, f, width, deg).map((c) => Math.max(-SIDE_GUTTER - c.sx, c.sx - width - SIDE_GUTTER)));
-    expect(Math.max(past(-SWAY.deg), past(SWAY.deg))).toBeLessThanOrEqual(9);
-    expect(past(GUST.deg)).toBeLessThanOrEqual(14);
-    expect(past(GUST.deg)).toBeGreaterThan(0);   // the cost is real at 1.25x: reported to the founder (i4b report, concern 1)
+  it("the angles frameFor fits are the sway's either way and the gust's peak", () => expect([...WIND_REACH_DEG]).toEqual([-SWAY.deg, SWAY.deg, GUST.deg]));
+  it("only the full-breadth gardens zoom out: day 240 and the year below 1, day 120 at 1", () => {
+    for (const width of [320, 353]) {
+      for (const day of [240, 365]) { const s = buildScene(previewInputAt(day)); expect(frameFor(s, plantLayouts(s), width).zoom).toBeLessThan(1); }
+      const s = buildScene(previewInputAt(120)); expect(frameFor(s, plantLayouts(s), width).zoom).toBe(1);
+    }
   });
 });
 
