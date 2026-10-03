@@ -4,11 +4,11 @@ import { SPRITE_META } from "@/garden/sprite-meta";
 
 const REST = SPRITE_META["can"];
 const ZOOMS = [0.5, 1, 1.25, 1.5, 2];
-describe("the can's size and seat (R175; R180; R184: 2.2x the first can, tucked under the soil's bottom-right corner)", () => {
-  it("is drawn 2.2x G11's proportion (can11 at a third of the frame's zoom), never under 2.2 x 32 px wide", () => {
-    expect(CAN_GROW).toBe(2.2);
-    expect(REST.w * canScale(1)).toBeCloseTo(2.2 * 32, 9);              // at zoom 1 the 32 px floor: 70.4 px
-    expect(REST.w * canScale(2)).toBeCloseTo(2.2 * REST.w * 2 / 3, 9);   // at the cap: 108 px
+describe("the can's size and seat (R175; R180; R184; R188: 2.6x the first can, tucked under the soil's bottom-right corner)", () => {
+  it("is drawn 2.6x G11's proportion (can11 at a third of the frame's zoom), never under 2.6 x 32 px wide", () => {
+    expect(CAN_GROW).toBe(2.6);
+    expect(REST.w * canScale(1)).toBeCloseTo(2.6 * 32, 9);              // at zoom 1 the 32 px floor: 83.2 px
+    expect(REST.w * canScale(2)).toBeCloseTo(2.6 * REST.w * 2 / 3, 9);   // at the cap: 127.7 px
   });
   it("its top overlaps the view's bottom edge by 8 px and its right edge sits 4 px in", () => {
     for (const z of ZOOMS) {
