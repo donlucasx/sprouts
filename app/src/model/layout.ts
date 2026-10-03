@@ -20,6 +20,43 @@ export function plantTurn(deg: number) {
   "worklet";
   return [{ rotate: `${deg}deg` }, { scale: PLANT_SCALE }];
 }
+/** R187 fix round 1: the angles a plant reaches at in the wind, which frameFor's gutter-fit term holds: the steady sway either way
+ * (motion.ts SWAY.deg) and the gust's peak (GUST.deg, always rightward). Literals here, so layout does not import motion (motion imports
+ * garden, which imports layout); a test holds them to motion's. */
+export const WIND_REACH_DEG = [-5, 5, 12] as const;
+/** A part's baked box corners (or a stem's two ends) in its plant's frame at 1x, foot at the origin. */
+function partCorners(q: Placed): [number, number][] {
+  if (q.kind === "stem") return [[q.x0, q.y0], [q.x1, q.y1]];
+  const m = SPRITE_META[q.name]; if (!m) return [[q.x, q.y]];
+  const r = (q.rot * Math.PI) / 180, sx = q.xScale ?? q.scale, sy = q.scale;
+  return ([[0, 0], [m.w, 0], [0, m.h], [m.w, m.h]] as const).map(([u, v]) => { const lx = (u - m.ax) * sx, ly = (v - m.ay) * sy; return [q.x + lx * Math.cos(r) - ly * Math.sin(r), q.y + lx * Math.sin(r) + ly * Math.cos(r)]; });
+}
+/** The canvas x span every plant reaches at PLANT_SCALE, turned to each of WIND_REACH_DEG about its foot. */
+export function windSpan(plants: PlantOnStage[], width: number): { lo: number; hi: number } {
+  let lo = Infinity, hi = -Infinity;
+  for (const p of plants) for (const deg of WIND_REACH_DEG) {
+    const a = (deg * Math.PI) / 180, fx = p.x * width;
+    for (const q of p.layout.parts) for (const [x, y] of partCorners(q)) { const rx = fx + (x * Math.cos(a) - y * Math.sin(a)) * PLANT_SCALE; lo = Math.min(lo, rx); hi = Math.max(hi, rx); }
+  }
+  return { lo, hi };
+}
+/**
+ * R187 fix round 1 (the controller's ruling): the gutter-fit term of the frame's zoom, and the frame's x. At zoom z the screen, gutters
+ * included, shows canvas x from x - G/z to x + (width + G)/z; every plant's wind span [lo, hi] must lie inside it. The zoom is today's
+ * (`zoom0`) unless that cannot hold the span, then just small enough:
+ * - if a frame inside the bed (0 <= x <= width - width/z, so the soil fills the view) can hold it at some zoom of 1 or more, the largest
+ *   such zoom: the span's breadth (width + 2G) / (hi - lo), and the room each side, G / (hi - width) and G / -lo;
+ * - else only the span's breadth binds (a full-breadth garden zooms under 1 and the paper shows past the bed's ends).
+ * x is today's (centred on the content box, held in the bed; centred on the bed when the frame is wider than it), moved only as far as
+ * the span needs. A garden that fits keeps its zoom and frame; the slots never move.
+ */
+export function gutterFit(zoom0: number, mid: number, span: { lo: number; hi: number }, width: number): { zoom: number; x: number } {
+  const G = SIDE_GUTTER, breadth = (width + 2 * G) / Math.max(1e-9, span.hi - span.lo);
+  const inBed = Math.min(zoom0, breadth, span.hi > width ? G / (span.hi - width) : Infinity, span.lo < 0 ? G / -span.lo : Infinity);
+  const zoom = inBed >= 1 ? inBed : Math.min(zoom0, breadth);
+  const w = width / zoom, pref = w <= width ? Math.min(Math.max(mid - w / 2, 0), width - w) : (width - w) / 2;
+  return { zoom, x: Math.min(Math.max(pref, span.hi - (width + G) / zoom), span.lo + G / zoom) };
+}
 /** RG17, gen06_garden.py:59: the locked slots as fractions of the width. */
 export const SLOT_X: Record<PlantId, number> = { skr: 0.3, ore: 0.8, hsol: 0.09, jitosol: 0.5, jupsol: 0.67, cbbtc: 0.92 };
 export const FOOT_Y = (row: "front" | "back") => (row === "front" ? CANVAS.frontFeet : CANVAS.backFeet);
@@ -115,11 +152,11 @@ export function frameFor(scene: Scene, plants: PlantOnStage[], width: number, ro
   }
   x0 = Math.max(0, x0 - FRAME.pad); x1 = Math.min(width, x1 + FRAME.pad);
   const content = CANVAS.height - Math.max(0, y0);
-  const zoom = Math.min(FRAME.maxZoom, width / (x1 - x0), CANVAS.height / content);
+  const zoom0 = Math.min(FRAME.maxZoom, width / (x1 - x0), CANVAS.height / content);
+  const { zoom, x } = gutterFit(zoom0, (x0 + x1) / 2, windSpan(plants, width), width);
   const headroom = Math.max(room.share * content, room.minPx / zoom);   // canvas px
   const viewH = Math.min(MAX_VIEW_H, Math.max(MIN_VIEW_H, groundH() * zoom, (content + headroom) * zoom));
   const w = width / zoom, h = viewH / zoom;
-  const x = Math.min(Math.max((x0 + x1) / 2 - w / 2, 0), width - w);
   return { x, y: CANVAS.height - h, w, h, zoom, viewH };
 }
 /** RG25, drag to pour: the plant under the rose. `slots` holds the slots (fractions of the width) of the plants with a closed bud; the

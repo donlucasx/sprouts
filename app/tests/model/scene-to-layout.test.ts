@@ -33,9 +33,9 @@ describe("the frame (RG30, R167, R185: room above the tallest part max(72 dp, 60
     expect((209.381 - f.y) * f.zoom).toBeCloseTo(72, 2);
     expect(f.x).toBeGreaterThanOrEqual(0); expect(f.x).toBeLessThanOrEqual(57.7); expect(f.x + f.w).toBeGreaterThanOrEqual(96);
   });
-  it("the full year: the whole breadth at zoom 1; the headroom (60 percent of 237.7 = 142.6) grows the view to its 320 cap, 60 px above the canvas's top", () => {
+  it("the full year: the whole breadth, zoomed out to 0.945 so its 1.25x plants hold the side gutters in a gust (R187 fix round 1; zoom 1 before); the view at its 320 cap", () => {
     const s = buildScene(previewInputAt(365)), f = frame(s);
-    expect(f).toMatchObject({ x: 0, w: 320, zoom: 1, y: -60, viewH: 320 });
+    expect(f.zoom).toBeCloseTo(0.94455, 4); expect(f.viewH).toBe(320); expect(f.x).toBeCloseTo(-6.48, 2); expect(f.y).toBeCloseTo(-78.78, 2);   // before: x 0, zoom 1, y -60
     expect(tallest(s)).toBeCloseTo(22.32, 2);   // the 22 px left above the tallest part is all the bed has
   });
   it("a tall garden at zoom 1: the headroom is 60 percent of the content's height once that passes 72 px (day 120)", () => {
@@ -43,9 +43,9 @@ describe("the frame (RG30, R167, R185: room above the tallest part max(72 dp, 60
     expect(t).toBeCloseTo(107.22, 2); expect(f.zoom).toBe(1);   // the content 152.8 canvas px; 60 percent of it is 91.7
     expect(t - f.y).toBeCloseTo(0.6 * (260 - t), 6); expect(f.viewH).toBeCloseTo(244.45, 2);
   });
-  it("day 240: the view grows by 60 percent of its 192.9 px content (115.7) to 308.6, above the canvas's top", () => {
+  it("day 240: the view grows by 60 percent of its 192.9 px content (115.7) above the canvas's top; zoomed out to 0.957 for the gutters (R187 fix round 1)", () => {
     const f = frame(buildScene(previewInputAt(240)));
-    expect(f.zoom).toBe(1); expect(f.viewH).toBeCloseTo(308.61, 2); expect(f.y).toBeCloseTo(-48.61, 2);
+    expect(f.zoom).toBeCloseTo(0.9575, 4); expect(f.viewH).toBeCloseTo(295.49, 2); expect(f.y).toBeCloseTo(-48.61, 2);   // before: zoom 1, viewH 308.61
   });
   it("R185's headroom never shrinks the plants (I4 fix round 5): the zoom with it equals the zoom without it", () => {
     const tall = buildScene({ ...base, pendingCents: 0, earned: {}, plantings: Array.from({ length: 40 }, (_, i) => p(`h${i}`, 300 - i * 7, "hSOL")) });   // a lone sunflower: narrow and tall, so the height binds
@@ -66,6 +66,13 @@ describe("the frame (RG30, R167, R185: room above the tallest part max(72 dp, 60
     for (const l of L) { expect(l.x * 320).toBeGreaterThanOrEqual(f.x); expect(l.x * 320).toBeLessThanOrEqual(f.x + f.w); }
     expect(f.viewH).toBeCloseTo(148.71, 2);   // the content 76.4 canvas px at zoom 1.004 plus the 72 px floor of headroom (60 percent is 45.8)
     expect((tallest(s) - f.y) * f.zoom).toBeCloseTo(72, 6);   // 72 px of room to grow (40 in round 3, 23.3 in round 2, 183.3 before R167)
+  });
+  it("R187 fix round 1: the Saga's young garden (six plants, one planting each) fits the gutters at the gust's peak and keeps its zoom", () => {
+    const now = new Date("2026-10-02T14:30:00-07:00"), d = (id: string, asset: GardenInput["plantings"][number]["asset"], iso: string, c: number) => ({ id, ts: new Date(iso), asset, amountOutRaw: 1n, usdcInCents: c });
+    const s = buildScene({ ...base, now, wateredAt: now, pendingCents: 0, earned: {}, plantings: [d("s", "SKR", "2026-09-29T14:00:00-07:00", 65), d("o", "stORE", "2026-09-30T11:40:00-07:00", 10), d("h", "hSOL", "2026-10-01T19:00:00-07:00", 103), d("j", "JitoSOL", "2026-10-01T16:00:00-07:00", 25), d("u", "JupSOL", "2026-10-01T16:30:00-07:00", 25), d("c", "cbBTC", "2026-10-01T17:00:00-07:00", 25)] });
+    // recorded from frameFor before the gutter-fit term (main f10d166 + R187, 10-02): 320 wide 1.004016064257028, 353 wide 1.0121863799283155
+    expect(frameFor(s, plantLayouts(s), 320).zoom).toBeCloseTo(1.004016064257028, 12);
+    expect(frameFor(s, plantLayouts(s), 353).zoom).toBeCloseTo(1.0121863799283155, 12);
   });
   it("the Oct 8 garden: the band above the tallest part is the 72 px headroom floor (60 percent of its 93.8 canvas px is 56.3)", () => {
     const s = buildScene({ ...base, plantings: [p("a", 10.8), p("b", 8.4), p("c", 6), p("d", 3.6), p("e", 1.2), p("o", 9, "stORE"), p("o2", 2, "stORE"), p("h", 4, "hSOL"), p("j", 2, "JitoSOL")] }), f = frame(s);
