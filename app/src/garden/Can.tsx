@@ -170,7 +170,12 @@ export function Can({ ready, reduced, tempo, width, s, wobbleKey, overlayW, view
     }
     await finish(to);
   }
-  const tap = () => { if (tapTarget) void tapPour(tapTarget); };
+  /** A touch that ends where it began. If the drag already sent a watering (it went over a bud and came back), it is that drag's
+   * release, never a new tap: the tap would be refused as busy and the sequence never finish (review of fix/check2). */
+  const tap = () => {
+    if (seq.req) { onDrop(); void finish(null); return; }
+    if (tapTarget) void tapPour(tapTarget);
+  };
   /** R201, while dragging (the rose's pour point, sent from the UI thread as it moves): over a plant still waiting the can tilts and
    * pours there, the first such plant sends the watering, each one reached may open; off them it levels and the stream stops. */
   const hover = (x: number, y: number) => {

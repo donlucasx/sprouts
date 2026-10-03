@@ -235,9 +235,17 @@ export default function Home() {
           {coinRows(me).map((r) => (
             <View key={r.asset} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 28 }}>
               {/* R198: SKR and stORE one step up the ramp (heading, the tiles' step), read as plain text, not headers */}
-              <ThemedText numeric variant={r.lead ? 'heading' : 'body'} accessibilityRole="text" style={{ flex: 1 }}>
-                {r.amount}
-              </ThemedText>
+              {/* stORE's caption sits under its amount: beside it, the lead row's amount wrapped (device check 2b) */}
+              <View style={{ flex: 1 }}>
+                <ThemedText numeric variant={r.lead ? 'heading' : 'body'} accessibilityRole="text">
+                  {r.amount}
+                </ThemedText>
+                {r.note ? (
+                  <ThemedText variant="caption" tone="secondary">
+                    {r.note}
+                  </ThemedText>
+                ) : null}
+              </View>
               {r.locked ? (
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
                   <MaterialCommunityIcons name="lock-outline" size={14} color={colors.textSecondary} />
@@ -245,10 +253,6 @@ export default function Home() {
                     locked to your Seeker
                   </ThemedText>
                 </View>
-              ) : r.note ? (
-                <ThemedText variant="caption" tone="secondary">
-                  {r.note}
-                </ThemedText>
               ) : null}
             </View>
           ))}
