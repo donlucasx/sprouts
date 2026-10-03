@@ -9,6 +9,10 @@ import { canRoomBelow, canSlot } from '@/model/can'
 
 /** R169: the baked strokes' box height at 1x (both are the same box); the painted stroke inside is about 5.5 tall. */
 const BAR_H = Math.ceil(Math.max(SPRITES['bar-track']?.h ?? 12, SPRITES['bar-fill']?.h ?? 12))
+/** R199: the room this row keeps under its bar for the can's touch box (canRoomBelow at the baked bar's height), at can scale `s`.
+ * Left of the can's slot that room is empty paper, so Home lays the one status line into it (WatcherLine's `tuck`) and the garden,
+ * the bar, the line and the last planting read as one block. */
+export const roomUnderBar = (s: number) => canRoomBelow(s, BAR_H)
 /** The pale track on the dark ground: the Mint wash would glare at full strength there. */
 const DARK_TRACK_OPACITY = 0.35
 

@@ -196,6 +196,13 @@ describe('Home as numbers (R150)', () => {
     expect(note(0.4)).toEqual([null, null])
     expect(note(-2)).toEqual([null, null])
   })
+  it('coinRows: SKR and stORE lead (R198), every other coin does not, whatever the order the holdings arrive in', () => {
+    const store = { ...hsol, asset: 'stORE' as const, heldRaw: '135592754' }
+    const rows = coinRows({ pot, holdings: [{ ...hsol, asset: 'cbBTC' }, store, hsol, { ...hsol, asset: 'JitoSOL' }] })
+    expect(rows.map((r) => [r.asset, r.lead])).toEqual([['SKR', true], ['stORE', true], ['hSOL', false], ['JitoSOL', false], ['cbBTC', false]])
+    // without SKR staked, stORE still leads alone
+    expect(coinRows({ pot: { ...pot, skrStakedRaw: '0' }, holdings: [hsol, store] }).map((r) => [r.asset, r.lead])).toEqual([['stORE', true], ['hSOL', false]])
+  })
   it('coinRows: no SKR row while nothing is staked', () => {
     expect(coinRows({ pot: { ...pot, skrStakedRaw: '0' }, holdings: [hsol] }).map((r) => r.asset)).toEqual(['hSOL'])
   })

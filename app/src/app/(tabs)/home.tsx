@@ -14,7 +14,8 @@ import { Button } from '@/components/Button'
 import { ThemedText } from '@/components/ThemedText'
 import { MarkedTitle } from '@/components/Lockup'
 import { WatcherLine } from '@/components/WatcherLine'
-import { NextPlanting } from '@/components/NextPlanting'
+import { NextPlanting, roomUnderBar } from '@/components/NextPlanting'
+import { canSlot } from '@/model/can'
 import { nextPlantingRow } from '@/lib/next-planting'
 import { PauseRow } from '@/components/PauseRow'
 import { arrivalLine, formatUsd, formatSkr, formatAsOf } from '@/lib/format'
@@ -25,13 +26,16 @@ import { freshWalletSignIn } from '@/lib/reauth'
 import { identity } from '@/lib/identity'
 import { radius, spacing, TARGET, useTheme } from '@/theme'
 
+/** R199: the Last planting row's hit slop at its bottom and sides; the row is TARGET minus this tall, so its touch target is 48 dp.
+ * No slop at its top: that edge meets the garden's row, where the can's touch box ends, and a later sibling's slop would win there. */
+const RECEIPT_SLOP = spacing.sm
+
 export default function Home() {
   const { setSession } = useSession()
   const { colors } = useTheme()
   const { data: me, stale, fresh, refetch, asOf, loading, unauthorized } = useMe()
   const invalidate = useInvalidateMe()
   const queryClient = useQueryClient()
-  const [opened, setOpened] = useState(0)
   const [failed, setFailed] = useState(false)
   const [nudged, setNudged] = useState(false)
   const [pausing, setPausing] = useState(false)
@@ -41,12 +45,11 @@ export default function Home() {
   // eslint-disable-next-line react-hooks/exhaustive-deps -- `now` is taken once per render on purpose; the scene follows the local date
   const scene = useMemo(() => (me ? buildScene(toGardenInput(me, now)) : null), [me, today])
   // Coming back to Home reads again: a wallet linked on the web, a planting, a withdrawal show without a pull-down. Leaving it
-  // ends the "Opened" line and forgets a failed watering and the greyed can's hint (audits/watering-ux, finding 10).
+  // forgets a failed watering and the greyed can's hint (audits/watering-ux, finding 10).
   useFocusEffect(
     useCallback(() => {
       void refetch()
       return () => {
-        setOpened(0)
         setFailed(false)
         setNudged(false)
       }
@@ -57,16 +60,15 @@ export default function Home() {
    * The reveal (R55): the API records the moment, the fresh read opens the buds, then the garden plays each one opening from the
    * scene diff. The state comes from the read, never from the gesture. The can's drag onto a plant and its tap send this same
    * watering: the API opens every bud, and the garden opens the plant the can was dropped on first. The can holds its pour while
-   * this runs; a failure says so instead of nothing (finding 8) and sends the can home.
+   * this runs; a failure says so instead of nothing (finding 8) and sends the can home. R199: a success adds no line; the buds
+   * opening are the confirmation.
    */
   async function water(): Promise<boolean> {
     if (!me || !scene) return false
     setFailed(false)
-    const opening = scene.parts.filter((p) => p.kind === 'sprout' && p.bud).length
     try {
       await api('/api/water', { method: 'POST', body: {} })
       await invalidate()
-      setOpened(opening)
       return true
     } catch {
       setFailed(true)
@@ -118,10 +120,10 @@ export default function Home() {
   const totals = gardenTotals(me)
   const pause = pauseState(me.wallets)
   // R96, R184 and R186: the one line and the can decided together, so they always agree; the can is in colour only while a bud waits.
-  // R186: the Next planting row draws inside the garden (directly under it, the can at its bar's end); the line comes after it.
+  // R186: the Next planting row draws inside the garden (directly under it, the can at its bar's end). R199: the line rides in that
+  // row too, tucked into the paper under the bar beside the can (WatcherLine's `tuck`).
   const watcher = watcherLine({
     unrevealed: scene.unrevealed,
-    opened,
     failed,
     nudged,
   })
@@ -159,26 +161,31 @@ export default function Home() {
         onWater={water}
         onNudge={() => setNudged(true)}
         row={(can) => (
-          <NextPlanting
-            row={nextRow}
-            pendingCents={me.nextPlanting.pendingCents}
-            thresholdCents={me.nextPlanting.thresholdCents}
-            can={can}
-          />
+          <>
+            <NextPlanting
+              row={nextRow}
+              pendingCents={me.nextPlanting.pendingCents}
+              thresholdCents={me.nextPlanting.thresholdCents}
+              can={can}
+            />
+            {watcher.line ? <WatcherLine text={watcher.line} tuck={{ room: roomUnderBar(can.s), slot: canSlot(can.s) }} /> : null}
+          </>
         )}
       />
-      {watcher.line ? <WatcherLine text={watcher.line} /> : null}
+      {/* R199: the last planting closes the garden section: it sits straight under the garden (the screen's gap taken back), its row
+          40 dp plus an 8 dp slop below, so its touch target stays 48 dp while the block stays tight. */}
       {receiptLine ? (
         <Pressable
           onPress={() => router.push('/activity')}
           accessibilityRole="button"
           accessibilityLabel={`${receiptLine}. Opens Activity.`}
-          hitSlop={8}
+          hitSlop={{ top: 0, bottom: RECEIPT_SLOP, left: RECEIPT_SLOP, right: RECEIPT_SLOP }}
           style={({ pressed }) => ({
             flexDirection: 'row',
             alignItems: 'center',
             gap: spacing.xs,
-            minHeight: TARGET,
+            minHeight: TARGET - RECEIPT_SLOP,
+            marginTop: -spacing.lg,
             opacity: pressed ? 0.6 : 1,
           })}
         >
@@ -188,7 +195,8 @@ export default function Home() {
           <MaterialCommunityIcons name="chevron-right" size={18} color={colors.textSecondary} />
         </Pressable>
       ) : null}
-      <Card>
+      {/* R199: one small step more than the screen's gap before the pot card, so the garden section reads as one block above it. */}
+      <Card style={{ marginTop: spacing.sm }}>
         {/* R146 and R150: the whole garden in dollars, two stat tiles, then one row per coin; no sentences. */}
         <ThemedText variant="label" tone="secondary">
           In your garden
@@ -220,7 +228,8 @@ export default function Home() {
         <View style={{ gap: spacing.xs, marginTop: spacing.xs }}>
           {coinRows(me).map((r) => (
             <View key={r.asset} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 28 }}>
-              <ThemedText numeric style={{ flex: 1 }}>
+              {/* R198: SKR and stORE one step up the ramp (heading, the tiles' step), read as plain text, not headers */}
+              <ThemedText numeric variant={r.lead ? 'heading' : 'body'} accessibilityRole="text" style={{ flex: 1 }}>
                 {r.amount}
               </ThemedText>
               {r.locked ? (
