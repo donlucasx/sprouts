@@ -29,7 +29,7 @@ export async function POST(request: Request) {
   for (const w of await repo.listWalletsOf(session.pubkey)) {
     if (w.status === "revoked" || w.status === next) continue;
     await repo.setWalletStatus(w.pubkey, next);
-    if (next === "active") await repo.addEvent({ userPubkey: session.pubkey, walletPubkey: w.pubkey, kind: "resumed", detail: { by: "user" } });
+    await repo.addEvent({ userPubkey: session.pubkey, walletPubkey: w.pubkey, kind: next === "active" ? "resumed" : "paused_by_user", detail: { by: "user" } });
   }
   const wallets = await repo.listWalletsOf(session.pubkey);
   return NextResponse.json({ paused, wallets: wallets.map((w) => ({ pubkey: w.pubkey, status: w.status })) });

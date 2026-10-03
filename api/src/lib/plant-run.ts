@@ -156,8 +156,20 @@ async function estimateMinted(chain: Chain, legs: { asset: Asset; amountOutRaw: 
   return (skr * 1_000_000_000n) / (await chain.sharePrice());
 }
 
+/**
+ * A wallet the RUN paused for want of USDC comes back once the USDC is there. A wallet the USER paused never does: only their own
+ * signed resume ends it (R84). One status serves both, so the cause is read from the wallet's newest pause or resume event: only
+ * `paused_no_usdc` resumes; a user pause, or a pause with no event (one made before user pauses were recorded, after a resume),
+ * stays paused, failing closed (security audit R207, HIGH).
+ */
+async function pausedForNoUsdc(repo: Repo, w: WalletRow): Promise<boolean> {
+  const events = await repo.listEvents(w.userPubkey, ["paused_no_usdc", "paused_by_user", "resumed"], 200);
+  return events.find((e) => e.walletPubkey === w.pubkey)?.kind === "paused_no_usdc";
+}
+
 async function resumePausedWallets(a: { repo: Repo; now: Date; chain: Chain }) {
   for (const w of await a.repo.listPausedWallets()) {
+    if (!(await pausedForNoUsdc(a.repo, w))) continue;
     const rules = rulesRowToRules(await a.repo.getRules(w.userPubkey));
     const need = BigInt(rules.plantThresholdCents + NETWORK_FEE_CENTS) * USDC_PER_CENT;
     try {

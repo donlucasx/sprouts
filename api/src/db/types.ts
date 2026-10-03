@@ -111,6 +111,7 @@ export type EventKind =
   | "withdraw_skipped"
   | "run_stopped"
   | "paused_no_usdc"
+  | "paused_by_user"   // security audit (R207): a user pause is recorded, so the cron can tell it from a no-USDC pause
   | "resumed"
   | "proposal_made"
   | "proposal_accepted"
