@@ -4,6 +4,7 @@ import { Link, Redirect, router, useFocusEffect } from 'expo-router'
 import { MaterialCommunityIcons } from '@expo/vector-icons'
 import { useQueryClient } from '@tanstack/react-query'
 import { useMe, useInvalidateMe, toGardenInput } from '@/lib/me'
+import { demo } from '@/lib/garden-input'
 import { api, ApiError, type MeResponse } from '@/lib/api'
 import { buildScene } from '@/model/garden'
 import { watcherLine } from '@/model/watcher'
@@ -70,6 +71,7 @@ export default function Home() {
     setFailed(false)
     try {
       await api('/api/water', { method: 'POST', body: {} })
+      demo.watered = true
       await invalidate()
       return true
     } catch {
