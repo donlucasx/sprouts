@@ -32,3 +32,25 @@ describe("coinAccountInstructions", () => {
     });
   }
 });
+
+import { skrChangeFromMeta } from "@/lib/planting";
+
+// Security audit R207 #2: the SKR remainder is read from the confirmed transaction's own balances, the puller's SKR only, so other
+// owners and other mints in the same transaction do not count.
+describe("skrChangeFromMeta", () => {
+  const SKR = "SKRbvo6Gf7GondiT3BbTfuRDPqLWei4j2Qy2NPGZhW3";
+  const PULLER = "9H7ChDC2o32wC8jcpVDjLGQhwyx1hmLW1fiCjsjUuzFm";
+  const bal = (owner: string, amount: string, mint = SKR) => ({ mint, owner, uiTokenAmount: { amount } });
+  it("is post minus pre for the puller's SKR, ignoring other owners and mints", () => {
+    const meta = {
+      preTokenBalances: [bal(PULLER, "5000"), bal(USER, "10"), bal(PULLER, "999", "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v")],
+      postTokenBalances: [bal(PULLER, "5250"), bal(USER, "999999"), bal(PULLER, "0", "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v")],
+    };
+    expect(skrChangeFromMeta(meta, PULLER)).toBe(250n);
+    expect(skrChangeFromMeta({ preTokenBalances: [], postTokenBalances: [bal(PULLER, "40")] }, PULLER)).toBe(40n); // account created in the transaction
+    expect(skrChangeFromMeta({ preTokenBalances: [bal(PULLER, "500")], postTokenBalances: [bal(PULLER, "300")] }, PULLER)).toBe(-200n); // a carry drew more than the swap left
+  });
+  it("throws when the puller's SKR account is not in the transaction at all", () => {
+    expect(() => skrChangeFromMeta({ preTokenBalances: [bal(USER, "1")], postTokenBalances: null }, PULLER)).toThrow(/no SKR account/);
+  });
+});

@@ -65,6 +65,13 @@ export type PlantingRow = {
   sharesBefore: bigint | null;
   sharesAfter: bigint | null;
   sharesMinted: bigint | null;
+  /**
+   * SKR slippage remainder ledger (security audit R207 #2; spec 3.2 step 4): `skrCarryInRaw` is the user's earlier remainder this
+   * planting's stake drew from the puller's account (reserved while `sent`, spent once `confirmed`, given back if `failed`);
+   * `skrSurplusRaw` is what this planting's swap delivered above the quote's minimum, read once after confirmation, null until then.
+   */
+  skrCarryInRaw: bigint;
+  skrSurplusRaw: bigint | null;
 };
 
 /** `feeCents` is the 0.5% taken in USDC (R105); `rateAtPlanting` is the coin's `coin_days.rate` that day, null before the first snapshot. */

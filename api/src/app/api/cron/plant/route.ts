@@ -7,7 +7,7 @@ import { rpc } from "@/lib/rpc";
 import { runPlanting, type Chain } from "@/lib/plant-run";
 import { runWithdrawCrank } from "@/lib/withdraw-run";
 import { readDelegation, usdcAta } from "@/lib/subscriptions";
-import { buildPlantingTx, simulatePlanting, sendPlanting, signatureStatus, type BuiltPlanting } from "@/lib/planting";
+import { buildPlantingTx, simulatePlanting, sendPlanting, signatureStatus, pullerSkrChangeRaw, type BuiltPlanting } from "@/lib/planting";
 import { readPosition, crankWithdraw, sharePrice } from "@/lib/staking";
 import { reconcileOwnStakes } from "@/lib/reconcile";
 import { snapshotCoins, IMPACT_LIMIT_PCT, type CoinReads } from "@/lib/coin-data";
@@ -47,6 +47,7 @@ function realChain(): Chain {
     readShares: async (u) => (await readPosition(address(u))).shares,
     sharePrice,
     assetBalanceRaw: (owner, asset) => assetBalanceRaw(address(owner), asset),
+    pullerSkrChangeRaw: (sig) => pullerSkrChangeRaw(sig),
   };
 }
 
