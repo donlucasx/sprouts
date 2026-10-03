@@ -4,13 +4,19 @@ import type { Diff } from "@/lib/scene-diff";
 import { PLANT_ORDER, type PlantId, type Scene } from "./garden";
 import type { PlantLayout } from "./species";
 
-export const LEAF_MS = 3000;            // gen11_motion.py:32 LEAF_S = 3.0: a 0.3 s stroke, a 1.5 s decelerating bloom, the settle with the rim darkening last
-export const PART_GAP_MS = 800;         // gen11_motion.py:33 GAP = 0.8: every opening part starts this long after the previous one
-export const STEM_MS = 600;             // gen11_motion.py:173: a twig's or branch's stem is a 0.6 s stroke reveal, then its leaf
-export const BUD_FADE_MS = 1400;        // gen11_motion.py:156 budout 1.4 s ease-in ...
-export const BUD_FADE_AFTER_MS = 250;   // ... from 0.25 s after its first leaf's stroke begins (:193)
+/** R202 (device check 2, "it all happens kinda fast"; his pick "About 2x slower", each leaf over ~5 s): the watering's opening runs at
+ * G11's timings times PACE, order and gaps kept in proportion (the can's own sequence doubles, CAN_MS). New buds and seeds keep G11's. */
+export const PACE = 5 / 3;
+const paced = (ms: number) => Math.round(ms * PACE);
+export const LEAF_MS = paced(3000);     // 5 s; gen11_motion.py:32 LEAF_S = 3.0: a 0.3 s stroke, a 1.5 s decelerating bloom, the settle with the rim darkening last
+export const PART_GAP_MS = paced(800);  // gen11_motion.py:33 GAP = 0.8: every opening part starts this long after the previous one
+export const STEM_MS = paced(600);      // gen11_motion.py:173: a twig's or branch's stem is a 0.6 s stroke reveal, then its leaf
+export const BUD_FADE_MS = paced(1400); // gen11_motion.py:156 budout 1.4 s ease-in ...
+export const BUD_FADE_AFTER_MS = paced(250);   // ... from 0.25 s after its first leaf's stroke begins (:193)
+export const PART_FADE_MS = paced(1050);       // an opening shoot's other parts (tiers, pups, heads) fade in with its first leaf
+export const OPEN_BEAT_MS = 800;        // R202: the beat between the water reaching a plant and its bud starting to open
 export const BUD_ARRIVE_MS = 1050;      // gen11_motion.py:154, :157: a new bud comes in over 1.05 s
-export const TOKEN_ARRIVE_MS = 1500;    // gen11_motion.py:178: an earned token over 1.5 s, after the openings
+export const TOKEN_ARRIVE_MS = paced(1500);   // gen11_motion.py:178: an earned token over 1.5 s, after the openings
 export const SEED_MS = 900;             // gen11_motion.py:152-153: a seed over 0.9 s ...
 export const SEED_GAP_MS = 120;         // ... 120 ms after the one before
 export const REDUCED_MS = 300;          // constraints, Animation: reduced motion is every part at its end under a 300 ms fade
@@ -32,18 +38,22 @@ type Laid = { plant: PlantId; layout: PlantLayout };
 
 /**
  * The opening order (gen11_motion.py:35; RG25): the plant the can was dropped on first (`first`; a tap passes null), then the others in
- * garden order; in each plant its opened shoots in slot order, then the nodes that just became branches. One shoot: its stems' stroke
- * reveal, then its leaves one strip each, 0.8 s apart (the next shoot starts 0.8 s after its last leaf starts); its other parts fade in
- * with the first leaf; its old bud fades from 0.25 s after that leaf. New buds arrive at once, seeds 120 ms apart, earned tokens after
- * the last opening ends. `tempo` scales every time (the preview runs at 8); reduced motion is one 300 ms fade for all, no order.
+ * garden order; in each plant its opened shoots in slot order, then the nodes that just became branches. The first opening starts
+ * OPEN_BEAT_MS in (R202). One shoot: its stems' stroke reveal, then its leaves one strip each, PART_GAP_MS apart (the next shoot
+ * starts PART_GAP_MS after its last leaf starts); its other parts fade in with the first leaf; its old bud fades from
+ * BUD_FADE_AFTER_MS after that leaf. New buds arrive at once, seeds 120 ms apart, earned tokens after the last opening ends.
+ * R201, a release group: with `order`, only those plants open, in that order, each one's tokens after the group's openings, and no
+ * arrivals or seeds (the garden plays those at the change, arrivalsOf); times are then from the group's release. `tempo` scales every
+ * time (a slowed preview runs at 8); reduced motion is one 300 ms fade for all, no order.
  */
-export function openingPlan(o: { scene: Scene; plants: Laid[]; before: Laid[] | null; diff: Diff; first: PlantId | null; reduced: boolean; tempo: number }): { items: OpeningItem[]; endMs: number } {
+export function openingPlan(o: { scene: Scene; plants: Laid[]; before: Laid[] | null; diff: Diff; first: PlantId | null; reduced: boolean; tempo: number; order?: PlantId[] }): { items: OpeningItem[]; endMs: number } {
   const { scene, plants, diff } = o;
   const items: OpeningItem[] = [];
-  const order = [...(o.first ? [o.first] : []), ...PLANT_ORDER.filter((p) => p !== o.first)];
+  const order = o.order ?? [...(o.first ? [o.first] : []), ...PLANT_ORDER.filter((p) => p !== o.first)];
+  const group = o.order !== undefined;
   const slotOf = new Map(scene.parts.flatMap((p) => (p.kind === "sprout" ? [[p.id, p.slot] as const] : [])));
   const opened = new Set(diff.opened), branched = new Set(diff.branches);
-  let t = 0, end = 0;
+  let t = OPEN_BEAT_MS, end = 0;
   const push = (it: OpeningItem) => { items.push(it); end = Math.max(end, it.delay + it.ms); };
   for (const plant of order) {
     const pl = plants.find((p) => p.plant === plant); if (!pl) continue;
@@ -60,7 +70,7 @@ export function openingPlan(o: { scene: Scene; plants: Laid[]; before: Laid[] | 
         if (q.kind !== "sprite") continue;
         const strip = stripOf(q.name);
         if (strip) { push({ kind: "strip", plant, shoot, part: i, leaf, strip, delay: leafAt + PART_GAP_MS * leaf, ms: LEAF_MS }); leaf++; }
-        else push({ kind: "fade", plant, shoot, part: i, delay: leafAt, ms: BUD_ARRIVE_MS });
+        else push({ kind: "fade", plant, shoot, part: i, delay: leafAt, ms: PART_FADE_MS });
       }
       if (opened.has(shoot)) {
         const old = o.before?.find((p) => p.plant === plant)?.layout.parts ?? [];
@@ -70,15 +80,34 @@ export function openingPlan(o: { scene: Scene; plants: Laid[]; before: Laid[] | 
     }
   }
   // arrivals: new closed buds swell in at once; earned tokens after the openings (the k-th token sprite of a plant is its k-th fruit)
-  for (const pl of plants) pl.layout.parts.forEach((q, i) => { if (q.kind === "sprite" && q.part === "bud" && q.shoot && diff.buds.includes(q.shoot)) push({ kind: "fade", plant: pl.plant, shoot: q.shoot, part: i, delay: 0, ms: BUD_ARRIVE_MS }); });
+  if (!group) for (const pl of plants) pl.layout.parts.forEach((q, i) => { if (q.kind === "sprite" && q.part === "bud" && q.shoot && diff.buds.includes(q.shoot)) push({ kind: "fade", plant: pl.plant, shoot: q.shoot, part: i, delay: 0, ms: BUD_ARRIVE_MS }); });
   const opensEnd = end;
   for (const pl of plants) {
+    if (group && !order.includes(pl.plant)) continue;
     const tokens = pl.layout.parts.flatMap((q, i) => (q.kind === "sprite" && q.part === "token" ? [i] : []));
     for (const tk of diff.tokens) if (tk.plant === pl.plant && tokens[tk.index] !== undefined) push({ kind: "fade", plant: pl.plant, shoot: null, part: tokens[tk.index], delay: opensEnd, ms: TOKEN_ARRIVE_MS });
   }
-  diff.seeds.forEach((id, k) => push({ kind: "seed", id, delay: SEED_GAP_MS * k, ms: SEED_MS }));
+  if (!group) diff.seeds.forEach((id, k) => push({ kind: "seed", id, delay: SEED_GAP_MS * k, ms: SEED_MS }));
   if (o.reduced) return { items: items.map((it) => ({ ...it, delay: 0, ms: REDUCED_MS })), endMs: items.length ? REDUCED_MS : 0 };
   return { items: items.map((it) => ({ ...it, delay: it.delay * o.tempo, ms: it.ms * o.tempo })), endMs: end * o.tempo };
+}
+
+/** R201: the plants a watering's change opens (an opened or branched shoot, or an earned token), in garden order: the plants a drag may
+ * hold closed until the can reaches them. */
+export function openingPlants(scene: Scene, diff: Diff): PlantId[] {
+  const moved = new Set([...diff.opened, ...diff.branches]);
+  const of = new Set([...scene.parts.flatMap((p) => (p.kind === "sprout" && moved.has(p.id) ? [p.plant] : [])), ...diff.tokens.map((t) => t.plant)]);
+  return PLANT_ORDER.filter((p) => of.has(p));
+}
+/** R201: a held change's arrivals only (new buds, seeds); its openings and tokens play per release group. */
+export const arrivalsOf = (d: Diff): Diff => ({ ...d, opened: [], branches: [], tokens: [] });
+/** R201, the drag's releases: each time the can reaches a plant, or the drag ends (`dropped`, every plant still held opens), the
+ * plants newly released form the next group, the visited in visit order then the rest in garden order. Returns `groups` itself when
+ * nothing new is released, so a render can compare by reference. */
+export function releaseGroups(groups: PlantId[][], visited: PlantId[], dropped: boolean, openers: PlantId[]): PlantId[][] {
+  const done = new Set(groups.flat());
+  const fresh = [...visited.filter((p) => openers.includes(p)), ...(dropped ? openers : [])].filter((p, i, a) => !done.has(p) && a.indexOf(p) === i);
+  return fresh.length ? [...groups, fresh] : groups;
 }
 
 export type PlantItem = Exclude<OpeningItem, { kind: "seed" }>;

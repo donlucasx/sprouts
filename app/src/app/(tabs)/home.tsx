@@ -40,6 +40,7 @@ export default function Home() {
   const [nudged, setNudged] = useState(false)
   const [pausing, setPausing] = useState(false)
   const [pauseError, setPauseError] = useState<string | null>(null)
+  const [landed, setLanded] = useState(0) // R195: every landing here and every pull-to-refresh replays the can's wobble
   const now = new Date()
   const today = now.toDateString()
   // eslint-disable-next-line react-hooks/exhaustive-deps -- `now` is taken once per render on purpose; the scene follows the local date
@@ -49,6 +50,7 @@ export default function Home() {
   useFocusEffect(
     useCallback(() => {
       void refetch()
+      setLanded((n) => n + 1)
       return () => {
         setFailed(false)
         setNudged(false)
@@ -143,7 +145,10 @@ export default function Home() {
       refreshControl={
         <RefreshControl
           refreshing={false}
-          onRefresh={() => refetch()}
+          onRefresh={() => {
+            setLanded((n) => n + 1)
+            void refetch()
+          }}
           colors={[colors.accent]}
           progressBackgroundColor={colors.surface}
           tintColor={colors.accent}
@@ -158,6 +163,7 @@ export default function Home() {
         scene={scene}
         live={fresh}
         canReady={watcher.can === 'ready'}
+        wobble={landed}
         onWater={water}
         onNudge={() => setNudged(true)}
         row={(can) => (
