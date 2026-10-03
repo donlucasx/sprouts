@@ -16,7 +16,8 @@ import { userStakePda } from '@/lib/sign'
 
 export const USER = address('9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM')
 export const OTHER = address('7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU')
-export const PULLER = address('HN7cABqLq46Es1jh92dQQisAq662SmxELLLsHHe4YWrH')
+export const PULLER = address('HJCJKRQLV2HVKfe3sFdTF5jjBY1xfWgnK8cLcjH7qnHd') // the production puller (app sign.ts PULLER)
+export const ATTACKER = address('HN7cABqLq46Es1jh92dQQisAq662SmxELLLsHHe4YWrH')
 const BLOCKHASH = 'EkSnNWid2cvwEVnVx9aBqawnmiCNiDgp3gUdkDPTKN1N' as Blockhash
 
 /** buildUserTransaction's shape, with the fee payer a parameter so a test can build one for someone else. */
@@ -47,8 +48,8 @@ export async function cancelIx(user: Address = USER, position?: Address): Promis
 }
 
 /** link/[code] GET: approve once at $5 a day (DAILY_CAP_RAW), optionally the first link of a wallet with no USDC account, or a re-link. */
-export async function linkIxs(o: { capRaw?: bigint; existingInitId?: bigint; createAta?: boolean; revokeOld?: boolean } = {}): Promise<Instruction[]> {
-  const ixs = (await buildApproveOnceIxs({ delegator: USER, delegatee: PULLER, capRaw: o.capRaw ?? 5_000_000n, nonce: 42n, existingInitId: o.existingInitId, createAta: o.createAta })) as Instruction[]
+export async function linkIxs(o: { capRaw?: bigint; existingInitId?: bigint; createAta?: boolean; revokeOld?: boolean; delegatee?: Address } = {}): Promise<Instruction[]> {
+  const ixs = (await buildApproveOnceIxs({ delegator: USER, delegatee: o.delegatee ?? PULLER, capRaw: o.capRaw ?? 5_000_000n, nonce: 42n, existingInitId: o.existingInitId, createAta: o.createAta })) as Instruction[]
   if (o.revokeOld) ixs.unshift(buildRevokeDelegationIx({ delegator: USER, delegationPda: await delegationPda({ delegator: USER, delegatee: PULLER, nonce: 7n }) }) as Instruction)
   return ixs
 }

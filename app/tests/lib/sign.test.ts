@@ -4,7 +4,7 @@ import {
   getTransactionDecoder, getTransactionEncoder, type Instruction, type Transaction,
 } from '@solana/kit'
 import { makeSigner, REFUSED, SignRefused, type SignFlow } from '@/lib/sign'
-import { cancelIx, linkIxs, OTHER, revokeIxs, unstakeIx, USER, wire } from '../fixtures/api-built'
+import { ATTACKER, cancelIx, linkIxs, OTHER, revokeIxs, unstakeIx, USER, wire } from '../fixtures/api-built'
 
 /** A wallet stand-in that records what it was asked to sign and hands it back unchanged. */
 function wallet() {
@@ -56,6 +56,12 @@ async function linkWith(patch: (data: Uint8Array) => void, o: Parameters<typeof 
     return { ...ix, data }
   })
 }
+/** The instruction with account `i` replaced (same role), or with one writable account added at the end. */
+const at = (ix: Instruction, i: number, addr: Instruction['programAddress']): Instruction => ({ ...ix, accounts: (ix.accounts ?? []).map((m, j) => (j === i ? { ...m, address: addr } : m)) })
+const plus = (ix: Instruction): Instruction => ({ ...ix, accounts: [...(ix.accounts ?? []), { address: OTHER, role: AccountRole.WRITABLE }] })
+const mapFirst = async (ixs: Promise<Instruction[]>, f: (ix: Instruction) => Instruction) => (await ixs).map((ix, i) => (i === 0 ? f(ix) : ix))
+const SUBS = address('De1egAFMkMWZSN5rYXRj9CAdheBamobVNubTsi9avR44')
+const SKR = address('SKRbvo6Gf7GondiT3BbTfuRDPqLWei4j2Qy2NPGZhW3')
 const setU64 = (d: Uint8Array, at: number, v: bigint) => new DataView(d.buffer).setBigUint64(at, v, true)
 
 describe('makeSigner (security R207 #3: the app checks what the Seed Vault signs)', () => {
@@ -127,5 +133,56 @@ describe('makeSigner (security R207 #3: the app checks what the Seed Vault signs
     it('revoke that creates a delegation', async () => refused(wire([...(await revokeIxs()), ...(await linkIxs({ existingInitId: 9n }))]), revoke, 'plan'))
     it('revoke with a System transfer added', async () => refused(wire([...(await revokeIxs()), drain]), revoke, 'program'))
     it('revoke with no instruction', async () => refused(wire([]), revoke, 'plan'))
+
+    // Review of 37ab59d: every account the builders emit is pinned, so a swapped or added account is refused too.
+    it('link approving the $5 a day to a key that is not the puller', async () => refused(wire(await linkIxs({ delegatee: ATTACKER })), link, 'plan'))
+    it('link naming the puller but the delegation account of another key', async () => {
+      const theirs = (await linkIxs({ delegatee: ATTACKER })).find((ix) => ix.data?.[0] === 2)!
+      const moved = (await linkIxs()).map((ix) => (ix.data?.[0] === 2 ? at(ix, 2, theirs.accounts![2].address) : ix))
+      await refused(wire(moved), link, 'plan')
+    })
+    it('link whose create names another authority', async () => refused(wire((await linkIxs()).map((ix) => (ix.data?.[0] === 2 ? at(ix, 1, OTHER) : ix))), link, 'plan'))
+    it('link whose create carries an extra account', async () => refused(wire((await linkIxs()).map((ix) => (ix.data?.[0] === 2 ? plus(ix) : ix))), link, 'plan'))
+    it('link whose ATA create is for another owner', async () => refused(wire(await mapFirst(linkIxs({ createAta: true }), (ix) => at(ix, 2, OTHER))), link, 'plan'))
+    it('link whose ATA create is for another mint', async () => refused(wire(await mapFirst(linkIxs({ createAta: true }), (ix) => at(ix, 3, SKR))), link, 'plan'))
+    it('link whose ATA create makes another account', async () => refused(wire(await mapFirst(linkIxs({ createAta: true }), (ix) => at(ix, 1, OTHER))), link, 'plan'))
+    it('link whose init names another USDC account', async () =>
+      refused(wire((await linkIxs()).map((ix) => (ix.programAddress === SUBS && ix.data?.[0] === 0 ? at(ix, 3, OTHER) : ix))), link, 'plan'))
+    it('link whose init carries data', async () =>
+      refused(wire((await linkIxs()).map((ix) => (ix.programAddress === SUBS && ix.data?.[0] === 0 ? { ...ix, data: new Uint8Array([0, 1]) } : ix))), link, 'plan'))
+    it('link whose old-delegation revoke carries an extra account', async () => refused(wire(await mapFirst(linkIxs({ revokeOld: true }), plus)), link, 'plan'))
+    it('link whose old-delegation revoke carries data', async () =>
+      refused(wire(await mapFirst(linkIxs({ revokeOld: true }), (ix) => ({ ...ix, data: new Uint8Array([3, 0]) }))), link, 'plan'))
+    it('revoke whose authority revoke names another USDC account', async () => {
+      const [del, auth] = await revokeIxs()
+      await refused(wire([del, at(auth, 1, OTHER)]), revoke, 'plan')
+    })
+    it('revoke whose delegation revoke carries an extra account', async () => {
+      const [del, auth] = await revokeIxs()
+      await refused(wire([plus(del), auth]), revoke, 'plan')
+    })
+    it('revoke whose instruction carries extra data', async () => {
+      const [del, auth] = await revokeIxs()
+      await refused(wire([{ ...del, data: new Uint8Array([3, 0]) }, auth]), revoke, 'plan')
+    })
+    it('withdraw with another stake vault', async () => refused(wire([at(await unstakeIx(5n), 4, OTHER)]), withdraw(), 'plan'))
+    it('withdraw with another event authority', async () => refused(wire([at(await unstakeIx(5n), 6, OTHER)]), withdraw(), 'plan'))
+    it('withdraw with an extra writable account', async () => refused(wire([plus(await unstakeIx(5n))]), withdraw(), 'plan'))
+    it('put it back with an extra writable account', async () => refused(wire([plus(await cancelIx())]), cancel, 'plan'))
+    it('withdraw whose data is another staking instruction on the unstake accounts', async () => {
+      const ix = await unstakeIx(5n)
+      const data = new Uint8Array(ix.data!)
+      data[0] ^= 1
+      await refused(wire([{ ...ix, data }]), withdraw(), 'plan')
+    })
+    it('put it back whose data is another staking instruction on the cancel accounts', async () => {
+      const ix = await cancelIx()
+      await refused(wire([{ ...ix, data: new Uint8Array(8) }]), cancel, 'plan')
+    })
+    it('revoke with a one-byte Subscriptions call that is not a revoke (close authority, 6)', async () => {
+      const [del, auth] = await revokeIxs()
+      await refused(wire([{ ...del, data: new Uint8Array([6]) }, auth]), revoke, 'plan')
+    })
+    it('put it back with another stake vault', async () => refused(wire([at(await cancelIx(), 4, OTHER)]), cancel, 'plan'))
   })
 })
