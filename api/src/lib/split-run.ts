@@ -40,6 +40,8 @@ const system = (stop: Stop) => [
   "Pick whole percents that sum to 100, inside each coin's max and at or above SKR's floor. Prefer measured growth; weigh short spans lightly; a coin marked no data or not tradeable keeps yesterday's share (the code holds it there); move gently from yesterday.",
   "Then write one line, under 25 words, second person, plain words, no advice, no exclamation marks, quoting only numbers from the table, that says why today's split leans where it does.",
   'Say "your coins", "your split": the line speaks to the person whose round-ups these are.',
+  // R177: stORE's growth has a source the other coins lack; the line names it when the split leans to stORE.
+  'stORE grows from ORE mining fees. When today\'s split leans to stORE, say where its growth comes from, as in "stORE pays the most this week, from ORE mining fees".',
 ].join("\n");
 
 const r1 = (n: number) => Math.round(n * 10) / 10;

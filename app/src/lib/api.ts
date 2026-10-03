@@ -28,7 +28,7 @@ export async function api<T>(path: string, init: { method?: "GET" | "POST" | "PU
 
 // Response types the screens use. Every raw amount is a decimal string (bigint on the wire).
 /** One wallet-held coin as /api/me serves it (zero balances are omitted). */
-export type Holding = { asset: Asset; heldRaw: string; putInCents: number; valueUsd: number | null; earnedUsd: number | null; earnedUnderlyingRaw: string | null };
+export type Holding = { asset: Asset; heldRaw: string; putInCents: number; valueUsd: number | null; earnedUsd: number | null; earnedUnderlyingRaw: string | null; growthPct?: number | null };   // growthPct: the week's measured growth, % a year (R194); absent from an API before it
 /** The Yield Manager block of /api/me. `changedDay` is a UTC date; `stopSplit` is today's split for the user's stop (the stop default before the first run). */
 export type Manager = { managed: boolean; stop: Stop; pins: Pins; changedDay: string | null; undoAvailable: boolean; why: string | null; fallback: string | null; stopSplit: Split };
 /** One split change as /api/activity serves it. */

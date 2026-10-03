@@ -187,6 +187,15 @@ describe('Home as numbers (R150)', () => {
     expect(rows[0].amount).toBe('34.90 SKR ($0.64)')
     expect(rows[1].amount).toBe('0.0123 hSOL ($2.07)')
   })
+  it('coinRows: stORE alone carries its source and the week\'s rate (R177, R194); none while collecting or under 1%; never on other coins', () => {
+    const store = { ...hsol, asset: 'stORE' as const, heldRaw: '135592754' }
+    const note = (g: number | null | undefined) => coinRows({ pot: { ...pot, skrStakedRaw: '0' }, holdings: [{ ...store, growthPct: g }, { ...hsol, growthPct: 9 }] }).map((r) => r.note)
+    expect(note(7.46)).toEqual(['grows from ORE mining, ~7%/yr', null])
+    expect(note(null)).toEqual([null, null])
+    expect(note(undefined)).toEqual([null, null])
+    expect(note(0.4)).toEqual([null, null])
+    expect(note(-2)).toEqual([null, null])
+  })
   it('coinRows: no SKR row while nothing is staked', () => {
     expect(coinRows({ pot: { ...pot, skrStakedRaw: '0' }, holdings: [hsol] }).map((r) => r.asset)).toEqual(['hSOL'])
   })

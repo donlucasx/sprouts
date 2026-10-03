@@ -204,5 +204,6 @@ describe("checkWhy (spec 6.4)", () => {
   it("the template names the top coin, or says it is collecting", () => {
     expect(templateWhy({ stop: "balanced", top: { asset: "hSOL", pct: 7.24 } })).toBe("hSOL grew at 7.2% a year over the past week, the most of your coins.");
     expect(templateWhy({ stop: "bold", top: null })).toBe("Collecting the first week of numbers; the split follows the limits for Bold.");
+    expect(templateWhy({ stop: "bold", top: { asset: "stORE", pct: 7.46 } })).toBe("stORE grew at 7.5% a year over the past week, the most of your coins, from ORE mining fees.");
   });
 });

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { MemoryRepo } from "@/db/memory";
-import { holdingsFrom, latestCoinDays } from "@/lib/holdings";
+import { holdingsFrom, latestCoinDays, rateFacts } from "@/lib/holdings";
 import type { CoinDayRow, PlantingLegRow } from "@/db/types";
 
 const day = (asset: CoinDayRow["asset"], rate: number | null, priceUsd: number): CoinDayRow => ({ day: "2026-10-04", asset, rate, ratePrev: null, ratePrevDays: null, priceUsd, liquidityUsd: null, priceChange24h: null, tradeable: true, lastUpdateEpoch: 1047, ok: true });
@@ -59,5 +59,27 @@ describe("latestCoinDays", () => {
     expect(d.JitoSOL?.priceUsd).toBe(180);
     const [h] = holdingsFrom({ held: { hSOL: 1_000_000_000n }, legs: [leg("hSOL", 200, 1_000_000_000n, 1.18)], days: d });
     expect(h.earnedUsd).not.toBeNull();
+  });
+});
+
+// R192: a leg planted before snapshots began counts from the coin's first recorded rate; R194: the week's measured growth rides along.
+describe("rateFacts", () => {
+  it("gives each rated coin its first good rate and its measured growth; cbBTC has none; a null-rate leg counts from the first rate", async () => {
+    const repo = new MemoryRepo();
+    await repo.putCoinDay({ ...day("stORE", null, 110), day: "2026-09-30", ok: false });
+    await repo.putCoinDay({ ...day("stORE", 1.049906576, 116), day: "2026-10-01" });
+    await repo.putCoinDay({ ...day("stORE", 1.050113682, 122), day: "2026-10-02" });
+    const f = await rateFacts(repo, "2026-10-02");
+    expect(f.stORE?.firstRate).toBe(1.049906576);
+    expect(f.stORE?.growthPct).toBeCloseTo(7.46, 1);   // one day of the production rows, annualised
+    expect(f.cbBTC).toBeUndefined();
+    expect(f.hSOL).toEqual({ firstRate: null, growthPct: null });
+    const days = { stORE: { ...day("stORE", 1.050113682, 122), day: "2026-10-02" } };
+    const [h] = holdingsFrom({ held: { stORE: 100_000_000_000n }, legs: [leg("stORE", 100, 100_000_000_000n, null)], days, facts: f });
+    expect(Number(h.earnedUnderlyingRaw) / 1e11).toBeCloseTo(1.050113682 - 1.049906576, 9);
+    expect(h.growthPct).toBeCloseTo(7.46, 1);
+    const [none] = holdingsFrom({ held: { stORE: 100_000_000_000n }, legs: [leg("stORE", 100, 100_000_000_000n, null)], days });
+    expect(none.earnedUnderlyingRaw).toBe(0n);   // without the facts, the old rule: a null-rate leg counts 0
+    expect(none.growthPct).toBeNull();
   });
 });
