@@ -62,13 +62,18 @@ export function extractSwapLegs(tx: HeliusEnhancedTx, wallet: string): SwapLegs 
   return { wallet, inMint: out.mint, inAmount: out.amount, outMint: inn.mint, outAmount: inn.amount };
 }
 
-export type BookResult = { booked: true; walletPubkey: string; roundupCents: number } | { booked: false };
+export type BookResult = { booked: true; walletPubkey: string; roundupCents: number } | { booked: false; refused?: string };
+
+/** The on-chain re-check (lib/verify-swap, R207 #8): null when the chain agrees, else the reason the swap is refused. */
+export type SwapVerifier = (a: { signature: string; wallet: string; legs: SwapLegs; timestamp: number }) => Promise<string | null>;
 
 /**
  * Book one swap for the first known, non-revoked wallet among its parties: size it, class it, compute the round-up, insert once.
  * A transaction the puller paid for is one of Sprouts' own plantings, never a swap to round up (review M14).
+ * With `verify` (the webhook always passes it, R207 #8), the swap is re-read from chain before it is booked; the check runs only
+ * once a known wallet with two legs is found, so an event Sprouts would ignore anyway costs no RPC call.
  */
-export async function bookSwap(a: { repo: Repo; tx: HeliusEnhancedTx; priceUsd: PriceLookup; ignoreFeePayer?: string }): Promise<BookResult> {
+export async function bookSwap(a: { repo: Repo; tx: HeliusEnhancedTx; priceUsd: PriceLookup; ignoreFeePayer?: string; verify?: SwapVerifier }): Promise<BookResult> {
   // Not gated on Helius's type: a swap through a router Helius does not know arrives as INITIALIZE_ACCOUNT or UNKNOWN (09-30);
   // the legs decide, and one-sided transfers never have two.
   if (a.ignoreFeePayer && a.tx.feePayer === a.ignoreFeePayer) return { booked: false };
@@ -84,6 +89,10 @@ export async function bookSwap(a: { repo: Repo; tx: HeliusEnhancedTx; priceUsd: 
     if (!wallet || wallet.status === "revoked") continue;
     const legs = extractSwapLegs(a.tx, pubkey);
     if (!legs) continue;
+    if (a.verify) {
+      const refused = await a.verify({ signature: a.tx.signature, wallet: pubkey, legs, timestamp: a.tx.timestamp });
+      if (refused) return { booked: false, refused };
+    }
     const rules = rulesRowToRules(await a.repo.getRules(wallet.userPubkey));
     const size = await usdSizeCents(legs, a.priceUsd);
     const roundupCents = computeRoundupCents(size, rules);

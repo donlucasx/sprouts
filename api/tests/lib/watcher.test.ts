@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { compileRule, costMicrocents, watcherBudget, WatcherError, type ModelCall } from "@/lib/watcher";
+import { compileRule, costMicrocents, reserveWatcherCall, COMPILE_ESTIMATE_MICROCENTS, MONTH_CAP_MICROCENTS, SPLIT_RESERVE_MICROCENTS, WatcherError, type ModelCall } from "@/lib/watcher";
 import { MemoryRepo } from "@/db/memory";
 import type { Rules } from "@/domain/roundup";
 
@@ -82,31 +82,67 @@ describe("costMicrocents (Haiku 4.5: $1 per million tokens in, $5 per million ou
 
 // Design notes section 5: a budget counter caps spend at $10 a month in total and a few calls per user per day; every surface
 // has a template behind it, so hitting the cap changes nothing but the watcher's silence.
-describe("watcherBudget", () => {
+describe("reserveWatcherCall", () => {
   const now = new Date("2026-10-02T17:00:00Z");
   const call = (userPubkey: string, costMicrocents: number, ts = now) => ({ userPubkey, kind: "compile" as const, inputTokens: 1, outputTokens: 1, costMicrocents, ts });
+  const reserve = (repo: MemoryRepo, userPubkey = "U") => reserveWatcherCall(repo, { userPubkey, now });
 
-  it("is open with nothing spent", async () => {
+  it("is open with nothing spent, and holds the place at the estimate", async () => {
     const repo = new MemoryRepo();
-    expect(await watcherBudget(repo, "U", now)).toBeNull();
+    const r = await reserve(repo);
+    expect(r).toEqual({ id: 1 });
+    expect((await repo.listWatcherCalls()).map((c) => c.costMicrocents)).toEqual([COMPILE_ESTIMATE_MICROCENTS]);
   });
 
-  it("rests for the month once $10 has gone, whoever spent it", async () => {
+  it("rests for the month once $8 has gone, whoever spent it: $2 stays for the Yield Manager (R207 #6)", async () => {
     const repo = new MemoryRepo();
-    await repo.addWatcherCall(call("someone-else", 1_000_000_000));
-    expect(await watcherBudget(repo, "U", now)).toBe("month");
+    await repo.addWatcherCall(call("someone-else", MONTH_CAP_MICROCENTS - SPLIT_RESERVE_MICROCENTS));
+    expect(await reserve(repo)).toEqual({ refused: "month" });
+    expect((await repo.listWatcherCalls()).length).toBe(1);   // the refused reservation was given back
+  });
+
+  it("the last call that fits under $8 still goes through", async () => {
+    const repo = new MemoryRepo();
+    await repo.addWatcherCall(call("someone-else", MONTH_CAP_MICROCENTS - SPLIT_RESERVE_MICROCENTS - COMPILE_ESTIMATE_MICROCENTS));
+    expect("id" in (await reserve(repo))).toBe(true);
+    expect(await reserve(repo)).toEqual({ refused: "month" });
   });
 
   it("last month's spend does not count", async () => {
     const repo = new MemoryRepo();
     await repo.addWatcherCall(call("U", 1_000_000_000, new Date("2026-09-30T23:00:00Z")));
-    expect(await watcherBudget(repo, "U", now)).toBeNull();
+    expect("id" in (await reserve(repo))).toBe(true);
   });
 
   it("stops one user after 30 calls in a day, and only that user", async () => {
     const repo = new MemoryRepo();
-    for (let i = 0; i < 30; i++) await repo.addWatcherCall(call("U", 70_000));
-    expect(await watcherBudget(repo, "U", now)).toBe("day");
-    expect(await watcherBudget(repo, "V", now)).toBeNull();
+    for (let i = 0; i < 29; i++) await repo.addWatcherCall(call("U", 70_000));
+    expect("id" in (await reserve(repo))).toBe(true);   // the 30th
+    expect(await reserve(repo)).toEqual({ refused: "day" });
+    expect("id" in (await reserve(repo, "V"))).toBe(true);
+  });
+
+  // The R207 PoC: 60 concurrent calls against 30 a day all passed a read-then-record budget. Reserved first, they cannot.
+  it("a concurrent burst never admits more than the day's cap", async () => {
+    const repo = new MemoryRepo();
+    const results = await Promise.all(Array.from({ length: 60 }, () => reserve(repo)));
+    expect(results.filter((r) => "id" in r).length).toBeLessThanOrEqual(30);
+    expect((await repo.listWatcherCalls()).length).toBeLessThanOrEqual(30);
+  });
+
+  it("a small concurrent burst well under the cap all goes through (no needless refusals)", async () => {
+    const repo = new MemoryRepo();
+    const results = await Promise.all(Array.from({ length: 5 }, () => reserve(repo)));
+    expect(results.every((r) => "id" in r)).toBe(true);
+  });
+
+  it("a settled reservation carries the real cost; a deleted one frees its place", async () => {
+    const repo = new MemoryRepo();
+    const r = await reserve(repo);
+    if (!("id" in r)) throw new Error("refused");
+    await repo.settleWatcherCall(r.id, { inputTokens: 300, outputTokens: 40, costMicrocents: 50_000 });
+    expect((await repo.listWatcherCalls())[0]).toMatchObject({ inputTokens: 300, outputTokens: 40, costMicrocents: 50_000 });
+    await repo.deleteWatcherCall(r.id);
+    expect((await repo.listWatcherCalls()).length).toBe(0);
   });
 });

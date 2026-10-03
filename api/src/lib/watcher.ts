@@ -27,14 +27,38 @@ export const costMicrocents = (u: Usage) => u.inputTokens * IN_MICROCENTS_PER_TO
 /** The budget (design notes 5): $10 a month in total, and 30 calls per user per day. Every surface has a template behind it. */
 export const MONTH_CAP_MICROCENTS = 1_000_000_000;
 export const DAY_CAP_CALLS = 30;
+/**
+ * $2 of the month kept for the Yield Manager (security R207 #6): user-facing calls stop at $8, so no account, however busy, can
+ * spend the month and switch the daily split decision to its rule fallback for everyone. The split run itself spends about $0.50
+ * a month (six calls a day, R133 retries included), and its own check in split-run.ts still reads the full $10.
+ */
+export const SPLIT_RESERVE_MICROCENTS = 200_000_000;
+/**
+ * What a compile call is booked at before the model answers: 2,000 tokens in (system, tool schema, current rules, 300 characters
+ * of text: about 900 in practice) and the 300-token answer ceiling. An upper bound, so the reservation never under-counts the
+ * call it holds a place for; the row is settled to the real usage once the model has answered.
+ */
+export const COMPILE_ESTIMATE_MICROCENTS = 2_000 * IN_MICROCENTS_PER_TOKEN + 300 * OUT_MICROCENTS_PER_TOKEN;
 
-/** Null when the watcher may be called; "month" when the month's $10 has gone; "day" when this user has had today's calls. */
-export async function watcherBudget(repo: Repo, userPubkey: string, now: Date): Promise<"month" | "day" | null> {
-  const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-  if ((await repo.watcherSpendMicrocents(monthStart)) >= MONTH_CAP_MICROCENTS) return "month";
-  const dayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-  if ((await repo.watcherCallsBy(userPubkey, dayStart)) >= DAY_CAP_CALLS) return "day";
-  return null;
+/**
+ * Reserve one model call against the budget BEFORE calling (security R207 #6, the check-then-act race: N concurrent requests all
+ * read the budget before any was recorded, so all N reached the model). The order is the fix: the call's row is inserted first,
+ * at its estimate, and only then are the month's spend and the user's calls today counted, INCLUDING that row; over a cap, the
+ * row is deleted and the call refused. Two racing reservations cannot both pass the last slot: whichever counts second sees the
+ * other's row, because each row was committed before its own count began. They can both FAIL near a cap (each sees the other),
+ * which errs toward silence, never spend. No lock and no SQL function, so it runs on PostgREST as it is, with no migration.
+ * Afterwards: `settleWatcherCall` with the real usage, or `deleteWatcherCall` if the model was never reached (nothing spent).
+ */
+export async function reserveWatcherCall(repo: Repo, a: { userPubkey: string; now: Date; estimateMicrocents?: number }): Promise<{ id: number } | { refused: "month" | "day" }> {
+  const id = await repo.addWatcherCall({ userPubkey: a.userPubkey, kind: "compile", inputTokens: 0, outputTokens: 0, costMicrocents: a.estimateMicrocents ?? COMPILE_ESTIMATE_MICROCENTS, ts: a.now });
+  const monthStart = new Date(Date.UTC(a.now.getUTCFullYear(), a.now.getUTCMonth(), 1));
+  const dayStart = new Date(Date.UTC(a.now.getUTCFullYear(), a.now.getUTCMonth(), a.now.getUTCDate()));
+  let refused: "month" | "day" | null = null;
+  if ((await repo.watcherSpendMicrocents(monthStart)) > MONTH_CAP_MICROCENTS - SPLIT_RESERVE_MICROCENTS) refused = "month";
+  else if ((await repo.watcherCallsBy(a.userPubkey, dayStart)) > DAY_CAP_CALLS) refused = "day";
+  if (!refused) return { id };
+  await repo.deleteWatcherCall(id);
+  return { refused };
 }
 
 // The controls' own ranges and steps (Rules screen, R92): the model may say anything, the compiler snaps and clamps to these.
