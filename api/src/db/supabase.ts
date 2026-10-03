@@ -168,6 +168,19 @@ export class SupabaseRepo implements Repo {
     if (error) throw new Error(error.message);
   }
 
+  /** One statement on the server (skr_credit, 0007): the sums stay exact in numeric, never round-tripped through JS numbers. */
+  async skrCreditRaw(userPubkey: string) {
+    const { data, error } = await this.db.rpc("skr_credit", { p_user: userPubkey });
+    if (error) throw new Error(error.message);
+    return BigInt(String(data ?? 0));
+  }
+
+  /** Written only while null: a second booking of the same planting never overwrites it. */
+  async setPlantingSkrSurplus(plantingId: string, surplusRaw: bigint) {
+    const { error } = await this.db.from("plantings").update({ skr_surplus_raw: surplusRaw.toString() }).eq("id", plantingId).is("skr_surplus_raw", null);
+    if (error) throw new Error(error.message);
+  }
+
   async listSentPlantings(olderThan: Date) {
     return this.many(this.db.from("plantings").select().eq("status", "sent").lt("ts", olderThan.toISOString()), plantingRow);
   }
@@ -181,6 +194,8 @@ export class SupabaseRepo implements Repo {
       user_pubkey: p.userPubkey, wallet_pubkey: p.walletPubkey, signature: p.signature, usdc_pulled_cents: p.usdcPulledCents,
       network_fee_cents: p.networkFeeCents, status: p.status, ai_line: p.aiLine, shares_before: p.sharesBefore == null ? null : p.sharesBefore.toString(),
       ...(p.ts ? { ts: p.ts.toISOString() } : {}),
+      // R207 #2 (0007): sent only when there is a carry, so a planting without one never depends on the column.
+      ...(p.skrCarryInRaw ? { skr_carry_in_raw: p.skrCarryInRaw.toString() } : {}),
     }).select().single(), plantingRow);
     if (legs.length) {
       const { error } = await this.db.from("planting_legs").insert(legs.map((l) => ({
@@ -465,6 +480,7 @@ function plantingRow(r: Row): T.PlantingRow {
     id: String(r.id), userPubkey: String(r.user_pubkey), walletPubkey: String(r.wallet_pubkey), ts: date(r.ts), signature: str(r.signature),
     usdcPulledCents: Number(r.usdc_pulled_cents), networkFeeCents: Number(r.network_fee_cents), status: r.status as T.PlantingStatus, aiLine: str(r.ai_line),
     sharesBefore: big(r.shares_before), sharesAfter: big(r.shares_after), sharesMinted: big(r.shares_minted),
+    skrCarryInRaw: big(r.skr_carry_in_raw) ?? 0n, skrSurplusRaw: big(r.skr_surplus_raw),
   };
 }
 

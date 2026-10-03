@@ -160,6 +160,21 @@ export class MemoryRepo implements Repo {
     for (const s of this.swaps.values()) if (s.plantingId === plantingId) s.plantingId = null;
   }
 
+  async skrCreditRaw(userPubkey: string) {
+    let credit = 0n;
+    for (const p of this.plantings.values()) {
+      if (p.userPubkey !== userPubkey || p.status === "failed") continue;
+      if (p.status === "confirmed") credit += p.skrSurplusRaw ?? 0n;
+      credit -= p.skrCarryInRaw;
+    }
+    return credit;
+  }
+
+  async setPlantingSkrSurplus(plantingId: string, surplusRaw: bigint) {
+    const p = this.plantings.get(plantingId);
+    if (p && p.skrSurplusRaw === null) p.skrSurplusRaw = surplusRaw;
+  }
+
   async listSentPlantings(olderThan: Date) {
     return [...this.plantings.values()].filter((p) => p.status === "sent" && p.ts.getTime() < olderThan.getTime());
   }
@@ -178,7 +193,7 @@ export class MemoryRepo implements Repo {
 
   async insertPlanting(p: NewPlanting, legs: Omit<T.PlantingLegRow, "plantingId">[]): Promise<T.PlantingRow> {
     const { sharesBefore = null, ts, ...rest } = p;
-    const row: T.PlantingRow = { ...rest, id: id(), ts: ts ?? new Date(), sharesBefore, sharesAfter: null, sharesMinted: null };
+    const row: T.PlantingRow = { ...rest, id: id(), ts: ts ?? new Date(), sharesBefore, sharesAfter: null, sharesMinted: null, skrCarryInRaw: rest.skrCarryInRaw ?? 0n, skrSurplusRaw: null };
     this.plantings.set(row.id, row);
     for (const leg of legs) this.legs.push({ ...leg, plantingId: row.id });
     return row;

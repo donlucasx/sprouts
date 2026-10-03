@@ -28,7 +28,7 @@ export type Chain = {
   /** 0n when the wallet has no USDC account; throws on an RPC error (which must not read as "no USDC"). */
   usdcBalanceRaw(owner: string): Promise<bigint>;
   /** Builds and signs; the signature is known before anything is sent. */
-  buildPlantingTx(a: { delegator: string; user: string; asset: Asset; pullRaw: bigint; feeBps: number; delegationPda: string }): Promise<Built>;
+  buildPlantingTx(a: { delegator: string; user: string; asset: Asset; pullRaw: bigint; feeBps: number; delegationPda: string; skrCarryRaw?: bigint }): Promise<Built>;
   simulatePlanting(built: Built): Promise<Simulation>;
   /** Sends and waits for confirmation; may throw after the transaction has landed (a dropped websocket), so the caller checks. */
   sendPlanting(built: Built): Promise<void>;
@@ -39,6 +39,8 @@ export type Chain = {
   sharePrice(): Promise<bigint>;
   /** The Seed Vault wallet's balance of a wallet coin (every coin but SKR), 0n with no account; throws on an RPC error. Read before a send and after confirmation: what the planting delivered [R141]. */
   assetBalanceRaw(owner: string, asset: Asset): Promise<bigint>;
+  /** The puller's SKR change inside one confirmed transaction (swap in, stake out), from that transaction's own balances [R207 #2]. */
+  pullerSkrChangeRaw(signature: string): Promise<bigint>;
 };
 
 export type Planted = { wallet: string; asset: Asset; pullCents: number; signature: string };
@@ -118,6 +120,29 @@ async function bookConfirmed(repo: Repo, chain: Chain, p: PlantingRow, outBefore
   const minted = p.sharesBefore === null ? await estimateMinted(chain, legs) : after - p.sharesBefore;
   await repo.setPlantingShares(p.id, { before: p.sharesBefore, after, minted });
   await recordLanded(repo, chain, p, legs, minted, outBefore);
+  await recordSkrSurplus(repo, chain, p, legs);
+}
+
+/**
+ * Security audit R207 #2, spec 3.2 step 4: the stake takes the quote's minimum (plus the user's carried remainder), so what the swap
+ * delivered above the minimum stays in the puller's account. It is recorded against THIS planting, hence this user, as
+ * surplus = the puller's SKR change in this transaction + the carry its stake drew, and the user's next SKR stake adds it. Read from
+ * the transaction by signature, so concurrent plantings of other users in the same account do not mix in; written once (a second
+ * booking cannot add it twice). A failed read leaves it unrecorded and says so: the remainder then stays with the puller, never
+ * with another user.
+ */
+async function recordSkrSurplus(repo: Repo, chain: Chain, p: PlantingRow, legs: PlantingLegRow[]) {
+  if (!p.signature || !legs.some((l) => l.asset === "SKR")) return;
+  try {
+    const surplus = (await chain.pullerSkrChangeRaw(p.signature)) + p.skrCarryInRaw;
+    if (surplus < 0n) {
+      console.error(`planting ${p.id}: SKR surplus ${surplus} is below zero (the swap delivered under the minimum?); nothing carried`);
+      return;
+    }
+    await repo.setPlantingSkrSurplus(p.id, surplus);
+  } catch (e) {
+    console.error(`planting ${p.id}: the SKR remainder could not be read (${message(e)}); it is not carried`);
+  }
 }
 
 /**
@@ -239,9 +264,19 @@ async function plantOneOrThrow(a: { repo: Repo; now: Date; chain: Chain }, w: Wa
     return { wallet: w.pubkey, reason: "no usdc" };
   }
 
+  // R207 #2: this user's SKR remainder from earlier plantings rides on an SKR stake. A failed read carries nothing (fail closed).
+  let credit = 0n;
+  try {
+    credit = await a.repo.skrCreditRaw(w.userPubkey);
+  } catch (e) {
+    console.error(`planting for ${w.pubkey}: the SKR remainder could not be read (${message(e)}); nothing carried today`);
+  }
+  const carryFor = (asset: Asset) => (asset === "SKR" && credit > 0n ? credit : 0n);
+
   let asset = pickAsset(w.ledgerCents, rules.allocation);
   const attempt = async (asset: Asset) => {
-    const built = await a.chain.buildPlantingTx({ delegator: w.pubkey, user: w.userPubkey, asset, pullRaw: BigInt(amount.pullCents) * USDC_PER_CENT, feeBps: FEE_BPS, delegationPda: w.delegationPda });
+    const carry = carryFor(asset);
+    const built = await a.chain.buildPlantingTx({ delegator: w.pubkey, user: w.userPubkey, asset, pullRaw: BigInt(amount.pullCents) * USDC_PER_CENT, feeBps: FEE_BPS, delegationPda: w.delegationPda, ...(carry > 0n ? { skrCarryRaw: carry } : {}) });
     return { built, sim: await a.chain.simulatePlanting(built) };
   };
   let { built, sim } = await attempt(asset).then((r) => {
@@ -277,9 +312,15 @@ async function plantOneOrThrow(a: { repo: Repo; now: Date; chain: Chain }, w: Wa
   // The coin's rate on the day it was planted, for "earned" per coin (spec 7.6); null before the first snapshot.
   const rateAtPlanting = (await a.repo.getCoinDay(dayOf(a.now), asset))?.rate ?? null;
   const planting = await a.repo.insertPlanting(
-    { userPubkey: w.userPubkey, walletPubkey: w.pubkey, signature: built.signature, usdcPulledCents: amount.pullCents, networkFeeCents: NETWORK_FEE_CENTS, status: "sent", aiLine: null, sharesBefore, ts: a.now },
+    { userPubkey: w.userPubkey, walletPubkey: w.pubkey, signature: built.signature, usdcPulledCents: amount.pullCents, networkFeeCents: NETWORK_FEE_CENTS, status: "sent", aiLine: null, sharesBefore, ts: a.now, ...(carryFor(asset) > 0n ? { skrCarryInRaw: carryFor(asset) } : {}) },
     [{ asset, usdcInCents: amount.changeCents, amountOutRaw: built.minOutRaw, staked: asset === "SKR", feeAmountRaw: 0n, feeCents: Math.round((amount.pullCents * FEE_BPS) / 10_000), rateAtPlanting }],
   );
+  // R207 #2: the carry is reserved by the row just written; if another run spent the same remainder meanwhile, the user's credit is
+  // now below zero and this planting stands down before claiming or sending (a failed read stands down too).
+  if (planting.skrCarryInRaw > 0n && (await a.repo.skrCreditRaw(w.userPubkey).catch(() => -1n)) < 0n) {
+    await a.repo.setPlantingStatus(planting.id, "failed");
+    return { wallet: w.pubkey, reason: "claimed elsewhere" };
+  }
   const claimed = await a.repo.claimSwaps(swaps.map((s) => s.signature), planting.id);
   if (claimed !== swaps.length) {
     // Another run got there first: give back whatever this one took and let that run finish.
