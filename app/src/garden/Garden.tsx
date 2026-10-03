@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AccessibilityInfo, View, useWindowDimensions } from "react-native";
 import Animated, { Easing, cancelAnimation, useAnimatedProps, useAnimatedStyle, useReducedMotion, useSharedValue, withRepeat, withSequence, withTiming } from "react-native-reanimated";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
@@ -8,7 +8,7 @@ import { CANVAS, FOOT_Y, FRAME, PLANT_SCALE, frameFor, plantUnder, SIDE_GUTTER, 
 import { plantLayouts } from "@/model/scene-to-layout";
 import { SOIL_CLIP_ID } from "@/model/soil-clip";
 import { diffScenes, gateDiff, sceneKey, NO_CHANGE, type Diff } from "@/lib/scene-diff";
-import { openingPlan, REDUCED_MS } from "@/model/opening";
+import { arrivalsOf, openingPlan, openingPlants, releaseGroups, REDUCED_MS } from "@/model/opening";
 import { SWAY, GUST_IDLE, clampZoom, gustDelays, gustGap, gustSpanMs, pinchOffset } from "@/model/motion";
 import { Plant } from "./Plant";
 import { Can } from "./Can";
@@ -19,11 +19,15 @@ import { Soil, SoilClip, Ring, Seed, Sign, Basket, SpriteAt } from "./parts";
 const MOUNT_FADE_MS = 300;
 const RING_MS = 1350;      // gen11_motion.py:163: every present plant's ring rises over 1.35 s after a watering
 const SNAP_MS = 250;       // R173: the zoom snaps back to the automatic frame
+const ARRIVE_GUARD_MS = 4000;   // R202: the can stops waiting for an opening this long after the watering if no read has brought one
 const AnimatedG = Animated.createAnimatedComponent(G);
 /** The scene as it changes (spec 6 and 7: the moments fire from the diff, never from the tap): its content key, the scene before this
- * one, what of the change may move (gateDiff), and the plant the can was dropped on. Keyed on content, so a re-render or a re-parsed read
- * of the same garden is no change and never restarts or holds a plan. */
-type Change = { n: number; key: string; scene: Scene; before: Scene | null; diff: Diff; first: PlantId | null };
+ * one, what of the change may move (gateDiff), the plant the can was dropped on, whether a watering made it (`watered`) and whether that
+ * watering was a drag (`held`, R201: each plant's opening waits for the can). Keyed on content, so a re-render or a re-parsed read of
+ * the same garden is no change and never restarts or holds a plan. */
+type Change = { n: number; key: string; scene: Scene; before: Scene | null; diff: Diff; first: PlantId | null; watered: boolean; held: boolean };
+/** A watering in progress: the plant first poured on, whether by drag, and the plants that still had a closed bud when it began. */
+type Watering = { target: PlantId | null; drag: boolean; buds: PlantId[] };
 
 /** R186: what the Next planting row needs to seat the can at its bar's end: the can's scale (its slot and room come from it) and a
  * report of the row's own layout, the bar's centre and the row's height, both px from the row's top. */
@@ -47,18 +51,20 @@ function useReduceMotion() {
  * moment (1 on Home, 8 for a slowed preview). `onWater` is the watering request for both the drag and the tap. `live` is true while
  * the scene comes from a read made since Home opened (not the saved one): ruling b, an app open plays nothing and every part is drawn
  * final; new buds and seeds move only between two live reads, opens only after a watering made here. R186: `row` draws the Next planting
- * row directly under the garden, and the can sits at its bar's end in an overlay over both (the garden view's top-left its origin). */
-export function Garden({ scene: incoming, live, canReady, onWater, onNudge, row, tempo = 1 }: { scene: Scene; live: boolean; canReady: boolean; onWater: (target: PlantId | null) => Promise<boolean>; onNudge: () => void; row: (can: CanRow) => ReactNode; tempo?: number }) {
+ * row directly under the garden, and the can sits at its bar's end in an overlay over both (the garden view's top-left its origin).
+ * R196: the overlay reaches into the screen's right gutter (the garden's box is that much wider, its margin giving it back), so the
+ * finger may carry the can to the screen's edge. R195: `wobble` is bumped on every landing on Home and every pull-to-refresh. */
+export function Garden({ scene: incoming, live, canReady, onWater, onNudge, row, tempo = 1, wobble = 0 }: { scene: Scene; live: boolean; canReady: boolean; onWater: (target: PlantId | null) => Promise<boolean>; onNudge: () => void; row: (can: CanRow) => ReactNode; tempo?: number; wobble?: number }) {
   const { width } = useWindowDimensions(); const w = width - 40;
   const reduced = useReduceMotion();
   // What changed, and the plan it plays (the openings, the arrivals); the static drawing leaves out every moving part until it settles.
   const key = useMemo(() => sceneKey(incoming), [incoming]);
-  const [watering, setWatering] = useState<{ target: PlantId | null } | null>(null);
+  const [watering, setWatering] = useState<Watering | null>(null);
   const [liveKey, setLiveKey] = useState<string | null>(live ? key : null);   // the content last seen from a live read
-  const [change, setChange] = useState<Change>({ n: 0, key, scene: incoming, before: null, diff: NO_CHANGE, first: null });
+  const [change, setChange] = useState<Change>({ n: 0, key, scene: incoming, before: null, diff: NO_CHANGE, first: null, watered: false, held: false });
   if (key !== change.key) {
     const diff = gateDiff(diffScenes(change.scene, incoming), { watered: watering !== null, arrivals: live && liveKey === change.key });
-    setChange({ n: change.n + 1, key, scene: incoming, before: change.scene, diff, first: watering?.target ?? null });
+    setChange({ n: change.n + 1, key, scene: incoming, before: change.scene, diff, first: watering?.target ?? null, watered: watering !== null, held: watering?.drag ?? false });
   }
   if (live && liveKey !== key) setLiveKey(key);
   const scene = change.key === key ? change.scene : incoming;   // drawn from the change's own scene, so its plan's part indexes hold
@@ -90,19 +96,44 @@ export function Garden({ scene: incoming, live, canReady, onWater, onNudge, row,
   const clipPlants = useAnimatedStyle(() => ({ height: vh.value }));
 
   const beforePlants = useMemo(() => (change.before ? plantLayouts(change.before) : null), [change.before]);
-  const plan = useMemo(() => openingPlan({ scene: change.scene, plants: plantLayouts(change.scene), before: beforePlants, diff: change.diff, first: change.first, reduced, tempo }), [change, beforePlants, reduced, tempo]);
-  // Ruling c: the plan settles at its end whatever happened to its players (a skipped or stalled animation), and a newer change cuts it
-  // short; settled, every part is drawn static, its end picture.
-  const [settledN, setSettledN] = useState(0);
-  const active = plan.items.length > 0 && settledN !== change.n;
-  const endMs = plan.endMs, n = change.n;
+  const changePlants = useMemo(() => plantLayouts(change.scene), [change.scene]);
+  // R201: a drag's watering holds each plant's opening until the can reaches it (`visits`, in order) or the drag ends (`dropped`):
+  // the plants released together form a group, played from its release (releaseGroups); the change's arrivals play at once (segment
+  // 0), each group is a segment after it. A plant not yet released is drawn as it was before the change, its bud closed. A tap's
+  // watering (or any other change) is one segment, the whole plan, as before.
+  const [visits, setVisits] = useState<{ plants: PlantId[]; dropped: boolean } | null>(null);
+  const openers = useMemo(() => (change.held ? openingPlants(change.scene, change.diff) : []), [change]);
+  const [groups, setGroups] = useState<{ n: number; list: PlantId[][] }>({ n: 0, list: [] });
+  const list = useMemo(() => (groups.n === change.n ? groups.list : []), [groups, change.n]);
+  if (openers.length) {
+    const next = releaseGroups(list, visits?.plants ?? [], visits?.dropped ?? false, openers);
+    if (next !== list || groups.n !== change.n) setGroups({ n: change.n, list: next });
+  }
+  const held = openers.length > 0;
+  const base = useMemo(() => openingPlan({ scene: change.scene, plants: changePlants, before: beforePlants, diff: held ? arrivalsOf(change.diff) : change.diff, first: change.first, reduced, tempo }), [change, changePlants, beforePlants, held, reduced, tempo]);
+  const groupPlans = useMemo(() => list.map((g) => openingPlan({ scene: change.scene, plants: changePlants, before: beforePlants, diff: change.diff, first: null, reduced, tempo, order: g })), [list, change, changePlants, beforePlants, reduced, tempo]);
+  const segments = [base, ...groupPlans];
+  // Ruling c: each segment settles at its end whatever happened to its players (a skipped or stalled animation), and a newer change
+  // cuts every one short; settled, its parts are drawn static, their end picture. Each segment's clock starts when it first renders.
+  const [ended, setEnded] = useState<{ n: number; done: number[] }>({ n: 0, done: [] });
+  const n = change.n, ends = segments.map((p) => p.endMs), endsKey = ends.join(",");
+  const timers = useRef(new Map<number, ReturnType<typeof setTimeout>>());
+  useEffect(() => () => { for (const id of timers.current.values()) clearTimeout(id); timers.current = new Map(); }, [n]);
   useEffect(() => {
-    if (!endMs) return;
-    const id = setTimeout(() => setSettledN(n), endMs + 100);
-    return () => clearTimeout(id);
-  }, [n, endMs]);
-  const itemsOf = (plant: PlantId) => (active ? plan.items.flatMap((it) => (it.kind !== "seed" && it.plant === plant ? [it] : [])) : []);
-  const arrivingSeeds = new Map(active ? plan.items.flatMap((it) => (it.kind === "seed" ? [[it.id, it] as const] : [])) : []);
+    ends.forEach((ms, i) => {
+      if (timers.current.has(i)) return;
+      timers.current.set(i, setTimeout(() => setEnded((e) => ({ n, done: e.n === n ? [...e.done, i] : [i] })), ms ? ms + 100 : 0));
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `ends` is read through its key; a segment's clock is set once
+  }, [n, endsKey]);
+  const running = (i: number) => (segments[i]?.endMs ?? 0) > 0 && !(ended.n === n && ended.done.includes(i));
+  const groupOf = (plant: PlantId) => list.findIndex((g) => g.includes(plant));
+  const isHeld = (plant: PlantId) => held && openers.includes(plant) && groupOf(plant) < 0;
+  const mine = (i: number, plant: PlantId) => (running(i) ? segments[i]!.items.flatMap((it) => (it.kind !== "seed" && it.plant === plant ? [it] : [])) : []);
+  const itemsOf = (plant: PlantId) => { const g = groupOf(plant); return [...mine(0, plant), ...(g >= 0 ? mine(g + 1, plant) : [])]; };
+  const settledOf = (plant: PlantId) => { const g = groupOf(plant); return !running(0) && !(g >= 0 && running(g + 1)); };
+  const arrivingSeeds = new Map(running(0) ? base.items.flatMap((it) => (it.kind === "seed" ? [[it.id, it] as const] : [])) : []);
+  const settledAll = segments.every((_, i) => !running(i)) && !openers.some(isHeld);
   // The rings rise after a watering (a change that opened something), all present plants at once; reduced motion: a 300 ms fade.
   const ring = useSharedValue(1);
   useLayoutEffect(() => {
@@ -158,9 +189,11 @@ export function Garden({ scene: incoming, live, canReady, onWater, onNudge, row,
   const zoomed = useAnimatedStyle(() => ({ transform: [{ translateX: px.value }, { translateY: py.value }, { scale: ps.value }] }));
   const zoomedPlants = useAnimatedStyle(() => ({ transform: [{ translateX: px.value }, { translateY: py.value }, { scale: ps.value }] }));
 
-  // The can's targets (RG25): the plants with a closed bud, hit by the rose's point carried back onto the canvas.
+  // The can's targets (RG25): the plants with a closed bud (R201: while a watering runs, those that had one when it began, so a drag
+  // still finds the plants not yet reached after the read has opened them), hit by the rose's point carried back onto the canvas.
   const budPlants = PLANT_ORDER.filter((c) => of("sprout").some((s) => s.plant === c && s.bud));
-  const budSlots = Object.fromEntries(of("plant").filter((p) => budPlants.includes(p.plant)).map((p) => [p.plant, p.x]));
+  const targets = watering?.buds ?? budPlants;
+  const budSlots = Object.fromEntries(of("plant").filter((p) => targets.includes(p.plant)).map((p) => [p.plant, p.x]));
   const onScreen = (x: number, y: number) => ({ x: (x - target.x) * target.zoom, y: (y - target.y) * target.zoom });
   const spotOf = (plant: PlantId) => {
     const pl = plants.find((p) => p.plant === plant), foot = footOf(plant);
@@ -168,10 +201,36 @@ export function Garden({ scene: incoming, live, canReady, onWater, onNudge, row,
     return { rose: { x: ground.x, y: Math.max(12, tip.y - 10) }, groundY: ground.y };
   };
   const targetAt = (pt: { x: number; y: number }) => { const c = overlayToCanvas(pt, target); return plantUnder(c.x, c.y, budSlots, w); };
-  const pour = (plant: PlantId | null) => { setWatering({ target: plant }); return onWater(plant); };
+  const wateredAt = useRef(-1);   // the change the watering began on: an opening counts for the can only from a later one
+  const pour = (plant: PlantId | null, drag: boolean) => {
+    wateredAt.current = change.n;
+    setWatering({ target: plant, drag, buds: budPlants });
+    if (drag) setVisits({ plants: plant ? [plant] : [], dropped: false });
+    return onWater(plant);
+  };
+  const onVisit = (plant: PlantId) => setVisits((v) => (v && !v.plants.includes(plant) ? { ...v, plants: [...v.plants, plant] } : v));
+  const onDrop = () => setVisits((v) => (v ? { ...v, dropped: true } : v));
+  // R202: the can waits for the watering's opening to end. Read through a ref (the can's sequence holds an old render's callback); a
+  // waiter resolves once the watered change has fully settled, or after ARRIVE_GUARD_MS if no read has brought one yet.
+  const waiters = useRef<{ res: () => void; guard: ReturnType<typeof setTimeout> | null }[]>([]);
+  const opening = useRef({ opens: false, settled: true });
+  useLayoutEffect(() => {
+    const opens = change.watered && change.diff.opened.length > 0 && change.n > wateredAt.current;
+    opening.current = { opens, settled: settledAll };
+    if (!opens) return;
+    if (settledAll) { const ws = waiters.current; waiters.current = []; for (const x of ws) { if (x.guard) clearTimeout(x.guard); x.res(); } }
+    else for (const x of waiters.current) if (x.guard) { clearTimeout(x.guard); x.guard = null; }
+  });
+  useEffect(() => () => { for (const x of waiters.current) { if (x.guard) clearTimeout(x.guard); x.res(); } waiters.current = []; }, []);
+  const afterOpening = () => new Promise<void>((res) => {
+    if (opening.current.opens && opening.current.settled) { res(); return; }
+    const x: (typeof waiters.current)[number] = { res, guard: null };
+    if (!opening.current.opens) x.guard = setTimeout(() => { waiters.current = waiters.current.filter((y) => y !== x); res(); }, ARRIVE_GUARD_MS * tempo);
+    waiters.current.push(x);
+  });
 
   return (
-    <View style={{ width: w }}>
+    <View style={{ width: w + SIDE_GUTTER, marginRight: -SIDE_GUTTER }}>
     <Animated.View style={[{ width: w }, outer]}>
      <GestureDetector gesture={zoomGesture}>
      <Animated.View style={[{ width: w }, clip]}>
@@ -201,7 +260,11 @@ export function Garden({ scene: incoming, live, canReady, onWater, onNudge, row,
      <Animated.View style={[{ position: "absolute", left: -SIDE_GUTTER, top: 0, width: w + 2 * SIDE_GUTTER, overflow: "hidden" }, clipPlants]} pointerEvents="none">
      <Animated.View style={[{ position: "absolute", left: SIDE_GUTTER, top: 0, width: w, height: CANVAS.height, transformOrigin: [0, 0, 0] }, zoomedPlants]}>
      <Animated.View style={[{ width: w, height: CANVAS.height, transformOrigin: "0 0" }, framedPlants]}>
-      {[...back, ...front].map((p) => <Plant key={p.plant} p={p} footX={p.x * w} footY={FOOT_Y(p.row)} sway={sway} gust={gust} gustDelay={delays[p.plant] ?? 0} reduced={reduced} items={itemsOf(p.plant)} settled={!active} before={beforePlants?.find((b) => b.plant === p.plant)?.layout ?? null} />)}
+      {[...back, ...front].map((p) => {
+       const was = beforePlants?.find((b) => b.plant === p.plant)?.layout ?? null;
+       if (isHeld(p.plant) && was) return <Plant key={p.plant} p={{ ...p, layout: was }} footX={p.x * w} footY={FOOT_Y(p.row)} sway={sway} gust={gust} gustDelay={delays[p.plant] ?? 0} reduced={reduced} items={[]} settled before={null} />;   // R201: held, as it was
+       return <Plant key={p.plant} p={p} footX={p.x * w} footY={FOOT_Y(p.row)} sway={sway} gust={gust} gustDelay={delays[p.plant] ?? 0} reduced={reduced} items={itemsOf(p.plant)} settled={settledOf(p.plant)} before={was} />;
+     })}
      </Animated.View>
      </Animated.View>
      </Animated.View>
@@ -209,12 +272,12 @@ export function Garden({ scene: incoming, live, canReady, onWater, onNudge, row,
      </GestureDetector>
     </Animated.View>
     {/* R186: the Next planting row directly under the garden; the can sits at its bar's end */}
-    <View style={{ marginTop: ROW_GAP }}>{row({ s: canS, onLayout: setRowAt })}</View>
-    {/* the overlay over the garden and the row: the can's whole touch box stays inside it, at rest and while dragged over the garden
-        (Android drops touches outside a parent's bounds); box-none, so the garden's pinch and the row take every other touch */}
+    <View style={{ width: w, marginTop: ROW_GAP }}>{row({ s: canS, onLayout: setRowAt })}</View>
+    {/* the overlay over the garden, the row and the right gutter: the can's touch box lies inside it at rest and the finger stays inside
+        it while dragged (Android drops touches outside a parent's bounds); box-none, so the garden's pinch and the row take every other touch */}
     {rowAt ? (
       <Animated.View pointerEvents="box-none" style={[{ position: "absolute", left: 0, top: 0, right: 0, bottom: 0 }, canShown]}>
-        <Can ready={canReady} reduced={reduced} tempo={tempo} width={w} viewH={vh} viewHNow={target.viewH} barBelow={ROW_GAP + rowAt.bar} overlayBelow={ROW_GAP + rowAt.height} s={canS} targetAt={targetAt} spotOf={spotOf} tapTarget={budPlants[0] ?? null} onPour={pour} onPourEnd={() => setWatering(null)} onNudge={onNudge} />
+        <Can ready={canReady} reduced={reduced} tempo={tempo} width={w} overlayW={w + SIDE_GUTTER} wobbleKey={wobble} viewH={vh} viewHNow={target.viewH} barBelow={ROW_GAP + rowAt.bar} overlayBelow={ROW_GAP + rowAt.height} s={canS} targetAt={targetAt} spotOf={spotOf} tapTarget={budPlants[0] ?? null} onPour={pour} onVisit={onVisit} onDrop={onDrop} afterOpening={afterOpening} onPourEnd={() => setWatering(null)} onNudge={onNudge} />
       </Animated.View>
     ) : null}
     </View>
