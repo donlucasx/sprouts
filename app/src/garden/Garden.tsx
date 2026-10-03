@@ -74,7 +74,7 @@ export function Garden({ scene: incoming, live, canReady, onWater, onNudge, temp
   const framedPlants = useAnimatedStyle(() => ({ transform: [{ translateX: -fx.value * z.value }, { translateY: -fy.value * z.value }, { scale: z.value }] }));   // the plant layer's own copy (one animated style per view)
   // Spec 8's first frame: react-native-svg loads bundled PNGs through Fresco asynchronously on Android, so the garden fades in over
   // 300 ms on mount and no sprite pops in on its own. The same outer view carries the eased height (R167), with the can's room below.
-  const canS = canScale(target.zoom);   // R180: 1.6x G11's proportion (can11 at 1/3 against the plants, never under 32 px wide)
+  const canS = canScale(target.zoom);   // R188: 2.6x G11's proportion (can11 at 1/3 against the plants, never under 32 px wide)
   const below = canBelow(canS);
   const shown = useSharedValue(0);
   useEffect(() => { shown.value = withTiming(1, { duration: MOUNT_FADE_MS }); }, [shown]);

@@ -4,9 +4,9 @@ import { SPRITE_META } from "@/garden/sprite-meta";
 
 const REST = SPRITE_META["can"] ?? { w: 73.67, h: 57.33, ax: 47.67, ay: 31.33 };
 const HALF = Math.max(...[SPRITE_META["can"], SPRITE_META["can-tilt"]].flatMap((m) => (m ? [m.ax, m.w - m.ax, m.ay, m.h - m.ay] : [0])));
-/** R184 (10-02): the can 2.2x the size it first had (G11's proportion, can11 at a third of the frame's zoom, at least 32 px wide);
- * R180 had 1.6x. */
-export const CAN_GROW = 2.2;
+/** R188 (10-02, "a tad bigger so it stands out"): the can 2.6x the size it first had (G11's proportion, can11 at a third of the frame's
+ * zoom, at least 32 px wide); R184 had 2.2x, R180 1.6x. */
+export const CAN_GROW = 2.6;
 /** R175: the can's top sits this many px over the garden view's bottom edge (the soil's), so it reads as connected. */
 export const CAN_OVERLAP = 8;
 /** The touch box reaches this far past the drawn can at its left, top and bottom; at its right it stops at the wrapper's edge. */

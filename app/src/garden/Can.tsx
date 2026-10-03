@@ -47,7 +47,7 @@ type Props = {
  * elsewhere it glides back. A tap waters every bud: the can goes to the first plant with a bud, pours and comes back (G11's sequence).
  * A failed watering sends it straight back (Home's line says why). The can keeps its colour until its sequence ends, and no second
  * pick-up starts while one runs. Reduced motion: no wobble, lift, tilt, slide or drops; the pour is a 300 ms fade home.
- * R184: 2.2x the first can, a soft contact shadow under it in both states (lighter while it is held), and while a bud waits one drop
+ * R184, R188: 2.6x the first can, a soft contact shadow under it in both states (lighter while it is held), and while a bud waits one drop
  * forming at the rose every 4 s (none when greyed, held or pouring, none under reduced motion). The touch box lies wholly inside the
  * garden's wrapper (canHit, canBelow).
  */
