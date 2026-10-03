@@ -234,25 +234,17 @@ export default function Home() {
         <View style={{ gap: spacing.xs, marginTop: spacing.xs }}>
           {coinRows(me).map((r) => (
             <View key={r.asset} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 28 }}>
-              {/* R198: SKR and stORE one step up the ramp (heading, the tiles' step), read as plain text, not headers */}
-              {/* stORE's caption sits under its amount: beside it, the lead row's amount wrapped (device check 2b) */}
-              <View style={{ flex: 1 }}>
-                {/* device check 2b: heading (20) read too big beside the tiles; the lead rows sit at 18, two px over the others, and shrink
-                    rather than wrap (a coin row never breaks) */}
-                <ThemedText numeric variant={r.lead ? 'heading' : 'body'} accessibilityRole="text" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} style={r.lead ? { fontSize: 18, lineHeight: 24 } : undefined}>
-                  {r.amount}
-                </ThemedText>
-                {r.note ? (
+              {/* R198: SKR and stORE one step up the ramp, read as plain text, not headers. Device check 2b: heading (20) read too big
+                  beside the tiles; the lead rows sit at 18, two px over the others, and shrink rather than wrap (a coin row never breaks) */}
+              <ThemedText numeric variant={r.lead ? 'heading' : 'body'} accessibilityRole="text" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} style={[{ flex: 1 }, r.lead ? { fontSize: 18, lineHeight: 24 } : null]}>
+                {r.amount}
+              </ThemedText>
+              {/* R205: each coin's status at the row's right, an icon and a caption: SKR's lock, stORE's source (R194) under it */}
+              {r.locked || r.note ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs, flexShrink: 0 }}>
+                  <MaterialCommunityIcons name={r.locked ? 'lock-outline' : 'pickaxe'} size={14} color={colors.textSecondary} />
                   <ThemedText variant="caption" tone="secondary">
-                    {r.note}
-                  </ThemedText>
-                ) : null}
-              </View>
-              {r.locked ? (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
-                  <MaterialCommunityIcons name="lock-outline" size={14} color={colors.textSecondary} />
-                  <ThemedText variant="caption" tone="secondary">
-                    locked to your Seeker
+                    {r.locked ? 'locked to your Seeker' : r.note}
                   </ThemedText>
                 </View>
               ) : null}
