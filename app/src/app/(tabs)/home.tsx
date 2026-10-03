@@ -237,7 +237,9 @@ export default function Home() {
               {/* R198: SKR and stORE one step up the ramp (heading, the tiles' step), read as plain text, not headers */}
               {/* stORE's caption sits under its amount: beside it, the lead row's amount wrapped (device check 2b) */}
               <View style={{ flex: 1 }}>
-                <ThemedText numeric variant={r.lead ? 'heading' : 'body'} accessibilityRole="text">
+                {/* device check 2b: heading (20) read too big beside the tiles; the lead rows sit at 18, two px over the others, and shrink
+                    rather than wrap (a coin row never breaks) */}
+                <ThemedText numeric variant={r.lead ? 'heading' : 'body'} accessibilityRole="text" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} style={r.lead ? { fontSize: 18, lineHeight: 24 } : undefined}>
                   {r.amount}
                 </ThemedText>
                 {r.note ? (
