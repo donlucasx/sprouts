@@ -13,7 +13,8 @@ function fakeChain(over: Partial<Chain> = {}): Chain {
     usdcBalanceRaw: async () => 50_000_000n,
     // the signature is known once the puller signs, before anything is sent
     buildPlantingTx: async (a) => ({ tx: {}, signature: `sig${++n}`, expectedOutRaw: a.pullRaw * 48n, minOutRaw: a.pullRaw * 47n, lookupTables: [], lastValidBlockHeight: 0n }),
-    simulatePlanting: async () => ({ ok: true, err: null, logs: [], units: 200_000 }),
+    // the delivery account gains the minimum: passes the R207 delivery check for SKR (may not fall past the carry) and wallet coins
+    simulatePlanting: async (b) => ({ ok: true, err: null, logs: [], units: 200_000, delivery: { pre: 1_000n, post: 1_000n + b.minOutRaw } }),
     sendPlanting: async () => {},
     signatureStatus: async () => "pending",
     readShares: async () => 1_000_000_000n,
@@ -188,7 +189,7 @@ describe("runPlanting", () => {
       buildPlantingTx: async (a) => { built.push(a.asset); return { tx: { asset: a.asset } as never, signature: `sig-${a.asset}`, expectedOutRaw: a.pullRaw * 48n, minOutRaw: a.pullRaw * 47n, lookupTables: [], lastValidBlockHeight: 0n }; },
       simulatePlanting: async (b) => (b.tx as unknown as { asset: string }).asset === "stORE"
         ? { ok: false, err: { InstructionError: [3, "Custom"] }, logs: ["Program log: account not initialized"], units: 0 }
-        : { ok: true, err: null, logs: [], units: 200_000 },
+        : { ok: true, err: null, logs: [], units: 200_000, delivery: { pre: 0n, post: 0n } },
     });
     const r = await runPlanting({ repo, now: NOW, chain });
     expect(built).toEqual(["stORE", "SKR"]);
@@ -572,5 +573,60 @@ describe("the SKR slippage remainder (R207 #2)", () => {
     await runPlanting({ repo, now: NOW, chain: fakeChain({ pullerSkrChangeRaw: async () => { throw new Error("rpc down"); } }) });
     expect(plantings(repo)[0]).toMatchObject({ status: "confirmed", skrSurplusRaw: null });
     expect(await repo.skrCreditRaw("U")).toBe(0n);
+  });
+});
+
+// R207 review: the pooled puller SKR account holds other users' remainders, so the simulation's own balances must show the swap
+// delivered: SKR may fall by at most this user's carry; a wallet coin's account must gain at least the minimum. Nothing is sent otherwise.
+describe("the delivery check on the simulation (R207 review)", () => {
+  const sim = (pre: bigint, post: bigint) => async () => ({ ok: true, err: null, logs: [], units: 1, delivery: { pre, post } });
+  const countSends = () => { const c = { n: 0 }; return { c, sendPlanting: async () => { c.n++; } }; };
+
+  it("happy path: an SKR planting whose stake draws exactly this user's carry from the float is sent", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await runPlanting({ repo, now: NOW, chain: fakeChain({ pullerSkrChangeRaw: async () => 500n }) });
+    for (const [i, c] of [83, 62, 70].entries()) await repo.insertSwap({ signature: `h${i}`, walletPubkey: "W", ts: new Date(NOW.getTime() - 3_600_000), inMint: "a", inAmount: 1, outMint: "b", outAmount: 1, usdSizeCents: 100, class: "major", roundupCents: c });
+    const { c, sendPlanting } = countSends();
+    const r = await runPlanting({ repo, now: new Date(NOW.getTime() + 86_400_000), chain: fakeChain({ simulatePlanting: sim(10_000n, 9_500n), sendPlanting }) });
+    expect(c.n).toBe(1);
+    expect(r.planted.length).toBe(1);
+  });
+
+  it("refuses an SKR planting whose swap delivered short: the stake would draw on other users' remainders", async () => {
+    const repo = await seeded([83, 62, 70]);
+    const { c, sendPlanting } = countSends();
+    const r = await runPlanting({ repo, now: NOW, chain: fakeChain({ simulatePlanting: sim(10_000n, 9_999n), sendPlanting }) });
+    expect(c.n).toBe(0);
+    expect(r.skipped).toEqual([{ wallet: "W", reason: "simulation failed" }]);
+    expect(JSON.stringify(repo.events.at(-1)?.detail)).toMatch(/fell by 1, more than this user's carry of 0/);
+    expect((await repo.unplantedSwaps("W")).length).toBe(3);
+  });
+
+  it("refuses an SKR planting whose stake draws more than this user's credit", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await runPlanting({ repo, now: NOW, chain: fakeChain({ pullerSkrChangeRaw: async () => 500n }) });
+    for (const [i, c] of [83, 62, 70].entries()) await repo.insertSwap({ signature: `x${i}`, walletPubkey: "W", ts: new Date(NOW.getTime() - 3_600_000), inMint: "a", inAmount: 1, outMint: "b", outAmount: 1, usdSizeCents: 100, class: "major", roundupCents: c });
+    const { c, sendPlanting } = countSends();
+    const r = await runPlanting({ repo, now: new Date(NOW.getTime() + 86_400_000), chain: fakeChain({ simulatePlanting: sim(10_000n, 9_499n), sendPlanting }) });
+    expect(c.n).toBe(0);
+    expect(r.skipped[0].reason).toBe("simulation failed");
+  });
+
+  it("refuses a wallet coin delivered elsewhere (the user's account gains nothing) and plants SKR instead", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await repo.saveRules("U", { allocation: { ...SKR_ONLY, SKR: 0, hSOL: 100 } });
+    const r = await runPlanting({ repo, now: NOW, chain: fakeChain({
+      buildPlantingTx: async (a) => ({ tx: { asset: a.asset } as never, signature: `sig-${a.asset}`, expectedOutRaw: 48n, minOutRaw: 47n, lookupTables: [], lastValidBlockHeight: 0n }),
+      simulatePlanting: async (b) => ({ ok: true, err: null, logs: [], units: 1, delivery: (b.tx as unknown as { asset: string }).asset === "hSOL" ? { pre: 100n, post: 146n } : { pre: 0n, post: 0n } }),
+    }) });
+    expect(r.planted[0]?.asset).toBe("SKR");
+    expect(JSON.stringify(repo.events.find((e) => e.kind === "leg_fallback")?.detail)).toMatch(/gained 46, under the minimum 47/);
+  });
+
+  it("a simulation that reports no delivery balance fails closed", async () => {
+    const repo = await seeded([83, 62, 70]);
+    const { c, sendPlanting } = countSends();
+    await runPlanting({ repo, now: NOW, chain: fakeChain({ simulatePlanting: async () => ({ ok: true, err: null, logs: [], units: 1 }), sendPlanting }) });
+    expect(c.n).toBe(0);
   });
 });

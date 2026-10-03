@@ -200,9 +200,9 @@ describe("checkSwapInstructions, decoded (R207 #4)", () => {
     expect(() => checkSwapInstructions(shared(DEST, false), { ...opts, destination: DEST })).toThrow(/delivers to/);
   });
 
-  it("an unknown route layout must at least carry the destination writable", () => {
-    const other = (writable: boolean) => swapWith([1, 2, 3, 4, 5, 6, 7, 8], [acc(PULLER, false, true), acc(DEST, writable)]);
-    expect(() => checkSwapInstructions(other(true), { ...opts, destination: DEST })).not.toThrow();
-    expect(() => checkSwapInstructions(other(false), { ...opts, destination: DEST })).toThrow(/not writable/);
+  it("refuses a swap instruction whose layout is unknown, even with the destination writable (fail closed)", () => {
+    const other = swapWith([1, 2, 3, 4, 5, 6, 7, 8], [acc(PULLER, false, true), acc(DEST)]);
+    expect(() => checkSwapInstructions(other, { ...opts, destination: DEST })).toThrow(/0102030405060708 is not a known route layout/);
+    expect(() => checkSwapInstructions(other, { puller: PULLER })).toThrow(/not a known route layout/);
   });
 });
