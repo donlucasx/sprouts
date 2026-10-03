@@ -7,7 +7,7 @@ import { readPosition, sharePrice } from "@/lib/staking";
 import { priceUsd } from "@/lib/jupiter";
 import { storeBalanceRaw, storeRedeemRate } from "@/lib/store";
 import { readDelegation } from "@/lib/subscriptions";
-import { readHoldings, latestCoinDays, holdingsFrom } from "@/lib/holdings";
+import { readHoldings, latestCoinDays, holdingsFrom, rateFacts } from "@/lib/holdings";
 import { pickAsset } from "@/domain/allocation";
 import { potInputs, potFromInputs } from "@/lib/pot";
 import { capLeftCents } from "@/domain/cap";
@@ -30,12 +30,12 @@ export async function GET(request: Request) {
 
   const owner = address(user.seedVaultPubkey);
   const day = dayOf(new Date());
-  const [position, price, skrUsd, storeUsd, storeRaw, inputs, held, days] = await Promise.all([
-    readPosition(owner), sharePrice(), priceUsd(SKR_MINT), priceUsd(STORE_MINT), storeBalanceRaw(owner), potInputs(repo, user), readHoldings(owner), latestCoinDays(repo, day),
+  const [position, price, skrUsd, storeUsd, storeRaw, inputs, held, days, facts] = await Promise.all([
+    readPosition(owner), sharePrice(), priceUsd(SKR_MINT), priceUsd(STORE_MINT), storeBalanceRaw(owner), potInputs(repo, user), readHoldings(owner), latestCoinDays(repo, day), rateFacts(repo, day),
   ]);
   const pot = potFromInputs(user, inputs, { position, sharePrice: price });
   const { plantings, legs, withdrawals } = inputs;
-  const holdings = holdingsFrom({ held, legs, days });
+  const holdings = holdingsFrom({ held, legs, days, facts });
   const storePlantedRaw = legs.filter((l) => l.asset === "stORE").reduce((s, l) => s + l.amountOutRaw, 0n);
   const storePutInRaw = storeRaw < storePlantedRaw ? storeRaw : storePlantedRaw;   // R159: what left takes its share of the basis
   const storeEarnedRaw = holdings.find((h) => h.asset === "stORE")?.earnedUnderlyingRaw ?? 0n;

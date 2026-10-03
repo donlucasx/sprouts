@@ -5,6 +5,7 @@ import type { CoinDayRow, PlantingLegRow } from "@/db/types";
 import { ASSETS, COINS, type Asset } from "@/domain/coins";
 import { addDays } from "@/domain/day";
 import { rpc } from "./rpc";
+import { growth } from "./coin-data";
 
 /** The coins that sit in the Seed Vault wallet (every coin but SKR today). */
 export const WALLET_COINS: Asset[] = ASSETS.filter((a) => COINS[a].held === "wallet");
@@ -42,15 +43,31 @@ export async function latestCoinDays(repo: Repo, day: string): Promise<Partial<R
   return out;
 }
 
-export type Holding = { asset: Asset; heldRaw: bigint; putInCents: number; valueUsd: number | null; earnedUsd: number | null; earnedUnderlyingRaw: bigint | null };
+/**
+ * R192, R194: each coin's first recorded rate (the stand-in for a leg planted before snapshots began) and its measured growth over
+ * the past week (`growth`, spec 5.3), null while collecting.
+ */
+export type RateFacts = { firstRate: number | null; growthPct: number | null };
+export async function rateFacts(repo: Repo, day: string): Promise<Partial<Record<Asset, RateFacts>>> {
+  const out: Partial<Record<Asset, RateFacts>> = {};
+  for (const a of ASSETS) {
+    if (COINS[a].kind === "btc") continue;
+    const all = await repo.listCoinDays(a, "2000-01-01");
+    const first = all.find((r) => r.ok && r.rate !== null && r.rate > 0) ?? null;
+    out[a] = { firstRate: first?.rate ?? null, growthPct: growth(all.filter((r) => r.day >= addDays(day, -8))).pct };
+  }
+  return out;
+}
+
+export type Holding = { asset: Asset; heldRaw: bigint; putInCents: number; valueUsd: number | null; earnedUsd: number | null; earnedUnderlyingRaw: bigint | null; growthPct: number | null };
 
 /**
  * Spec 7.6: value = balance times today's price; earned = each leg's amount times the rate's rise since it was planted, in the
  * coin's underlying (SOL for an LST, ORE for stORE), priced at the underlying's price derived from the coin's own price over its
- * rate. A leg planted before the first snapshot (null rate) counts 0. cbBTC has no rate, so no earned. What left the wallet takes
+ * rate. A leg planted before the first snapshot (null rate) counts from the coin's first recorded rate (R192), else 0. cbBTC has no rate, so no earned. What left the wallet takes
  * its share of the basis (R159): both are scaled by the fraction still held.
  */
-export function holdingsFrom(a: { held: Partial<Record<Asset, bigint>>; legs: PlantingLegRow[]; days: Partial<Record<Asset, CoinDayRow | null>> }): Holding[] {
+export function holdingsFrom(a: { held: Partial<Record<Asset, bigint>>; legs: PlantingLegRow[]; days: Partial<Record<Asset, CoinDayRow | null>>; facts?: Partial<Record<Asset, RateFacts>> }): Holding[] {
   const out: Holding[] = [];
   for (const asset of WALLET_COINS) {
     const heldRaw = a.held[asset] ?? 0n;
@@ -68,11 +85,12 @@ export function holdingsFrom(a: { held: Partial<Record<Asset, bigint>>; legs: Pl
     let earnedUnderlyingRaw: bigint | null = null;
     let earnedUsd: number | null = null;
     if (coin.kind !== "btc" && day?.rate != null && day.rate > 0) {
-      const underlying = kept * legs.reduce((s, l) => (l.rateAtPlanting === null ? s : s + (Number(l.amountOutRaw) / scale) * Math.max(0, (day.rate as number) - l.rateAtPlanting)), 0);
+      const from = (l: PlantingLegRow) => l.rateAtPlanting ?? a.facts?.[asset]?.firstRate ?? null;
+      const underlying = kept * legs.reduce((s, l) => { const r = from(l); return r === null ? s : s + (Number(l.amountOutRaw) / scale) * Math.max(0, (day.rate as number) - r); }, 0);
       earnedUnderlyingRaw = BigInt(Math.round(underlying * scale));
       earnedUsd = day.priceUsd != null ? underlying * (day.priceUsd / day.rate) : null;
     }
-    out.push({ asset, heldRaw, putInCents, valueUsd, earnedUsd, earnedUnderlyingRaw });
+    out.push({ asset, heldRaw, putInCents, valueUsd, earnedUsd, earnedUnderlyingRaw, growthPct: a.facts?.[asset]?.growthPct ?? null });
   }
   return out;
 }

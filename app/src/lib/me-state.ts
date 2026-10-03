@@ -68,14 +68,18 @@ export function pauseState(wallets: { status: string }[]): { shown: boolean; on:
   }
 }
 
-/** Home's coin rows (R150): SKR first, locked (R134's lock), then each held coin in the coins' order; amounts only. */
-export type CoinRow = { asset: Asset; amount: string; locked: boolean }
+/** Home's coin rows (R150): SKR first, locked (R134's lock), then each held coin in the coins' order; amounts, and stORE's one
+ * caption (R177, R194): where its growth comes from, with the week's measured rate; none while collecting or under 1%. */
+export type CoinRow = { asset: Asset; amount: string; locked: boolean; note: string | null }
+export function storeNote(growthPct: number | null | undefined): string | null {
+  return growthPct != null && Math.round(growthPct) >= 1 ? `grows from ORE mining, ~${Math.round(growthPct)}%/yr` : null
+}
 export function coinRows(me: Pick<MeResponse, 'pot' | 'holdings'>): CoinRow[] {
   const staked = BigInt(me.pot.skrStakedRaw)
-  const rows: CoinRow[] = staked > 0n ? [{ asset: 'SKR', amount: formatSkr(staked, me.pot.skrUsd), locked: true }] : []
+  const rows: CoinRow[] = staked > 0n ? [{ asset: 'SKR', amount: formatSkr(staked, me.pot.skrUsd), locked: true, note: null }] : []
   for (const asset of ASSETS) {
     const h = me.holdings.find((x) => x.asset === asset)
-    if (h) rows.push({ asset, amount: holdingAmount(h), locked: false })
+    if (h) rows.push({ asset, amount: holdingAmount(h), locked: false, note: asset === 'stORE' ? storeNote(h.growthPct) : null })
   }
   return rows
 }

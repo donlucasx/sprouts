@@ -193,5 +193,6 @@ export function checkWhy(line: string, facts: number[]): string | null {
 /** The line behind the model's (spec 6.4): the top measured coin, or the collecting line. */
 export function templateWhy(a: { stop: Stop; top: { asset: Asset; pct: number } | null }): string {
   if (!a.top) return `Collecting the first week of numbers; the split follows the limits for ${STOP_LABEL[a.stop]}.`;
-  return `${a.top.asset} grew at ${(Math.round(a.top.pct * 10) / 10).toFixed(1)}% a year over the past week, the most of your coins.`;
+  const source = a.top.asset === "stORE" ? ", from ORE mining fees" : "";   // R177: stORE's growth has a named source
+  return `${a.top.asset} grew at ${(Math.round(a.top.pct * 10) / 10).toFixed(1)}% a year over the past week, the most of your coins${source}.`;
 }

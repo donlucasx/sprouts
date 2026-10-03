@@ -230,6 +230,10 @@ export default function Home() {
                     locked to your Seeker
                   </ThemedText>
                 </View>
+              ) : r.note ? (
+                <ThemedText variant="caption" tone="secondary">
+                  {r.note}
+                </ThemedText>
               ) : null}
             </View>
           ))}
