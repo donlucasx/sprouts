@@ -20,6 +20,7 @@ function icon(on: IconName, off: IconName) {
 /**
  * The four places, always one tap away (his note, 09-29: Rules, Withdraw and Settings sat below the fold on Home). Withdraw lives on
  * the pot card, since it acts on that number; linking a wallet on the wallets card and in Settings. Material icons, the platform's.
+ * The order is the declaration order below (R197: Garden | Rules | Activity | Settings).
  */
 export default function TabsLayout() {
   const { colors } = useTheme()
@@ -37,11 +38,12 @@ export default function TabsLayout() {
     >
       {/* R163: the Garden tab carries the Sprouts mark in the tab bar's tint (the label already says Garden). */}
       <Tabs.Screen name="home" options={{ title: 'Garden', tabBarIcon: ({ color }) => <Mark size={24} color={String(color)} decorative /> }} />
+      {/* R197 (device check 2, his note): Rules before Activity, so the bar reads Garden | Rules | Activity | Settings. */}
+      <Tabs.Screen name="rules" options={{ title: 'Rules', tabBarIcon: icon('tune-variant', 'tune-variant') }} />
       <Tabs.Screen
         name="activity"
         options={{ title: 'Activity', tabBarIcon: icon('format-list-bulleted', 'format-list-bulleted') }}
       />
-      <Tabs.Screen name="rules" options={{ title: 'Rules', tabBarIcon: icon('tune-variant', 'tune-variant') }} />
       <Tabs.Screen name="settings" options={{ title: 'Settings', tabBarIcon: icon('cog', 'cog-outline') }} />
     </Tabs>
   )

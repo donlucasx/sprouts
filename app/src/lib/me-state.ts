@@ -69,17 +69,21 @@ export function pauseState(wallets: { status: string }[]): { shown: boolean; on:
 }
 
 /** Home's coin rows (R150): SKR first, locked (R134's lock), then each held coin in the coins' order; amounts, and stORE's one
- * caption (R177, R194): where its growth comes from, with the week's measured rate; none while collecting or under 1%. */
-export type CoinRow = { asset: Asset; amount: string; locked: boolean; note: string | null }
+ * caption (R177, R194): where its growth comes from, with the week's measured rate; none while collecting or under 1%.
+ * R198 (device check 2, his note): `lead` marks the SKR and stORE rows, which Home sets one step up the type ramp from the other
+ * coins (heading against body, the same step as the Put in / Earned tiles above them), so the two Seeker coins lead the list. */
+export type CoinRow = { asset: Asset; amount: string; locked: boolean; note: string | null; lead: boolean }
+/** R198: the coins whose rows lead Home's list, one type step up. */
+export const LEAD_COINS: readonly Asset[] = ['SKR', 'stORE']
 export function storeNote(growthPct: number | null | undefined): string | null {
   return growthPct != null && Math.round(growthPct) >= 1 ? `grows from ORE mining, ~${Math.round(growthPct)}%/yr` : null
 }
 export function coinRows(me: Pick<MeResponse, 'pot' | 'holdings'>): CoinRow[] {
   const staked = BigInt(me.pot.skrStakedRaw)
-  const rows: CoinRow[] = staked > 0n ? [{ asset: 'SKR', amount: formatSkr(staked, me.pot.skrUsd), locked: true, note: null }] : []
+  const rows: CoinRow[] = staked > 0n ? [{ asset: 'SKR', amount: formatSkr(staked, me.pot.skrUsd), locked: true, note: null, lead: true }] : []
   for (const asset of ASSETS) {
     const h = me.holdings.find((x) => x.asset === asset)
-    if (h) rows.push({ asset, amount: holdingAmount(h), locked: false, note: asset === 'stORE' ? storeNote(h.growthPct) : null })
+    if (h) rows.push({ asset, amount: holdingAmount(h), locked: false, note: asset === 'stORE' ? storeNote(h.growthPct) : null, lead: LEAD_COINS.includes(asset) })
   }
   return rows
 }
