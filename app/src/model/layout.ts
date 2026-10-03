@@ -10,6 +10,16 @@ export const ROW_OF: Record<PlantId, "front" | "back"> = { skr: "front", ore: "f
 /** I4 fix round 3: the screen's side padding (theme spacing.edge; Home draws the garden at the width minus twice this). The plants may
  * spill this far past the garden's sides (a swaying sunflower, the spruce); the soil, the signs and the frame stay inside. */
 export const SIDE_GUTTER = 20;
+/** R187 (10-02, "Scale plants 1.25x in place"): every plant (stems, leaves, tokens, buds, the swelling) draws 25 percent bigger about its
+ * own foot, on the same slot; the signs, the soil and the rings keep their size. The frame is not refitted to it (same composition). */
+export const PLANT_SCALE = 1.25;
+/** Where a point of a plant drawn at its 1x layout lands once the plant is drawn PLANT_SCALE about its foot. */
+export const fromFoot = (pt: { x: number; y: number }, foot: { x: number; y: number }) => ({ x: foot.x + (pt.x - foot.x) * PLANT_SCALE, y: foot.y + (pt.y - foot.y) * PLANT_SCALE });
+/** The plant view's transform about its foot (the view's transform origin): the wind's turn and R187's scale. */
+export function plantTurn(deg: number) {
+  "worklet";
+  return [{ rotate: `${deg}deg` }, { scale: PLANT_SCALE }];
+}
 /** RG17, gen06_garden.py:59: the locked slots as fractions of the width. */
 export const SLOT_X: Record<PlantId, number> = { skr: 0.3, ore: 0.8, hsol: 0.09, jitosol: 0.5, jupsol: 0.67, cbbtc: 0.92 };
 export const FOOT_Y = (row: "front" | "back") => (row === "front" ? CANVAS.frontFeet : CANVAS.backFeet);

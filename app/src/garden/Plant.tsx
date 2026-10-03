@@ -4,6 +4,7 @@ import type { PlantOnStage } from "@/model/scene-to-layout";
 import type { PlantLayout } from "@/model/species";
 import { drawnBy, type PlantItem } from "@/model/opening";
 import { windAngle, swayPhase } from "@/model/motion";
+import { plantTurn } from "@/model/layout";
 import { PlacedPart } from "./parts";
 import { Strip, Appear, StemReveal } from "./Strip";
 /** Room below the foot: the succulent's outermost blades turn past level and their baked boxes reach up to 10.6 px under it (the
@@ -13,7 +14,8 @@ const BELOW = 12;
  * One plant: its layout drawn in one Svg whose origin is the plant's foot, positioned on the garden. Parts draw in z order.
  * The sway (his note, 10-02): the whole plant turns about its foot on the garden's one clock `sway` at its own phase, all the time;
  * none under reduced motion. R189: the garden's gust clock `gust` (ms into a gust) less this plant's `gustDelay` swings it to about
- * 12 degrees and back (windAngle). The opening (spec 6): every part an `items` entry moves is left out of the static drawing and drawn by
+ * 12 degrees and back (windAngle). R187: the same view transform draws the whole plant 1.25x about its foot (plantTurn), the
+ * openings' players with it, under reduced motion too. The opening (spec 6): every part an `items` entry moves is left out of the static drawing and drawn by
  * its own player (Strip, Appear, StemReveal) until the garden settles (`drawnBy`: then every part is static, its end picture, so
  * nothing can stay hidden); a closed bud that opened fades out from `before`, the layout the scene had before the change.
  */
@@ -25,7 +27,7 @@ export function Plant({ p, footX, footY, sway, gust, gustDelay, reduced, items: 
   const by = drawnBy(p.layout.parts.length, items, settled);
   const parts = p.layout.parts.map((q, i) => ({ q, i })).filter(({ i }) => by[i] === "static").sort((a, b) => a.q.z - b.q.z);
   const phase = swayPhase(p.plant);
-  const swayStyle = useAnimatedStyle(() => (reduced ? { transform: [] } : { transform: [{ rotate: `${windAngle(sway.value, phase, gust.value - gustDelay)}deg` }] }));
+  const swayStyle = useAnimatedStyle(() => ({ transform: plantTurn(reduced ? 0 : windAngle(sway.value, phase, gust.value - gustDelay)) }));
   const key = (it: PlantItem) => `${it.kind}-${it.part}`;
   return (
     <Animated.View style={[{ position: "absolute", left: footX - W / 2, top: footY - H, width: W, height: H + BELOW, transformOrigin: [W / 2, H, 0] }, swayStyle]} pointerEvents="none">

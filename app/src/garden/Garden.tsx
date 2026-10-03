@@ -4,7 +4,7 @@ import Animated, { Easing, cancelAnimation, useAnimatedProps, useAnimatedStyle, 
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Svg, { G } from "react-native-svg";
 import { PLANT_ORDER, type Scene, type Part, type PlantId } from "@/model/garden";
-import { CANVAS, FOOT_Y, FRAME, frameFor, plantUnder, SIDE_GUTTER, signPlacement, toCanvas } from "@/model/layout";
+import { CANVAS, FOOT_Y, FRAME, PLANT_SCALE, frameFor, plantUnder, SIDE_GUTTER, signPlacement, toCanvas } from "@/model/layout";
 import { plantLayouts } from "@/model/scene-to-layout";
 import { SOIL_CLIP_ID } from "@/model/soil-clip";
 import { diffScenes, gateDiff, sceneKey, NO_CHANGE, type Diff } from "@/lib/scene-diff";
@@ -158,7 +158,7 @@ export function Garden({ scene: incoming, live, canReady, onWater, onNudge, temp
   const onScreen = (x: number, y: number) => ({ x: (x - target.x) * target.zoom, y: (y - target.y) * target.zoom });
   const spotOf = (plant: PlantId) => {
     const pl = plants.find((p) => p.plant === plant), foot = footOf(plant);
-    const ground = onScreen(foot.x, foot.y), tip = onScreen(foot.x, foot.y - (pl?.layout.top ?? 0));
+    const ground = onScreen(foot.x, foot.y), tip = onScreen(foot.x, foot.y - (pl?.layout.top ?? 0) * PLANT_SCALE);   // R187: the plant drawn 1.25x about its foot
     return { rose: { x: ground.x, y: Math.max(12, tip.y - 10) }, groundY: ground.y };
   };
   const targetAt = (pt: { x: number; y: number }) => { const c = toCanvas(pt, target); return plantUnder(c.x, c.y, budSlots, w); };
