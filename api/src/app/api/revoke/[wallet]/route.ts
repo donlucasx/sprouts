@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { address, type Address } from "@solana/kit";
 import { getRepo } from "@/db/repo";
-import { rateLimited } from "@/lib/auth-guard";
+import { clientIp, rateLimited } from "@/lib/auth-guard";
 import { buildRevokeIxs, readDelegation } from "@/lib/subscriptions";
 import { verifyPostedTransaction } from "@/lib/verify-tx";
 import { buildUserTransaction, sendPosted, waitConfirmed, settleUnconfirmed, STILL_WAITING } from "@/lib/user-tx";
@@ -23,13 +23,17 @@ function parseWallet(raw: string): Address | null {
 
 /**
  * The full revoke for a trading wallet to sign (the delegation and the USDC authority), no session needed: the wallet's own
- * signature is the proof. An unknown or already revoked wallet answers 200 with no transaction, so the route is not an oracle [A22].
+ * signature is the proof. An unknown or already revoked wallet answers 200 with no transaction [A22]. That IS an answer to "does
+ * this wallet use Sprouts" (security R207 #9), but not a new one: every live delegation is a Subscriptions account whose header
+ * names the delegator and the delegatee (the puller), so one getProgramAccounts call filtered on the puller lists every linked
+ * wallet. Gating this route on a signed message would cost every revoke a second wallet prompt and hide nothing the chain does
+ * not already show, so the route is rate limited per caller IP as well as per wallet, which stops cheap enumeration through it.
  */
 export async function GET(request: Request, ctx: { params: Promise<{ wallet: string }> }) {
   const { wallet: raw } = await ctx.params;
   const wallet = parseWallet(raw);
   if (!wallet) return NextResponse.json({ error: "That does not look like a Solana address." }, { status: 400 });
-  if (rateLimited(`revoke:${wallet}`)) return NextResponse.json({ error: "Too many requests. Try again in a minute." }, { status: 429 });
+  if (rateLimited(`revoke-ip:${clientIp(request)}`, 20) || rateLimited(`revoke:${wallet}`)) return NextResponse.json({ error: "Too many requests. Try again in a minute." }, { status: 429 });
   const row = await (await getRepo()).getWallet(wallet);
   if (!row || row.status === "revoked") return NextResponse.json({ transaction: null });
   const transaction = await buildUserTransaction(wallet, await buildRevokeIxs({ delegator: wallet, delegationPda: address(row.delegationPda) }));
@@ -41,6 +45,8 @@ export async function POST(request: Request, ctx: { params: Promise<{ wallet: st
   const { wallet: raw } = await ctx.params;
   const wallet = parseWallet(raw);
   if (!wallet) return NextResponse.json({ error: "That does not look like a Solana address." }, { status: 400 });
+  // Per caller IP (R207 #7): a send holds a function for up to 30 s of polling, so a loop from one address is slowed here.
+  if (rateLimited(`revoke-post:${clientIp(request)}`)) return NextResponse.json({ error: "Too many requests. Try again in a minute." }, { status: 429 });
   const parsed = Body.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Bad request." }, { status: 400 });
   const repo = await getRepo();

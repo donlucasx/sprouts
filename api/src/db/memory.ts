@@ -23,6 +23,7 @@ export class MemoryRepo implements Repo {
   adjustments: T.StakeAdjustmentRow[] = [];
   sessions = new Map<string, T.SessionRow>();
   watcherCalls: T.WatcherCallRow[] = [];
+  private watcherCallSeq = 0;
   coinDays = new Map<string, T.CoinDayRow>();
   splitDays = new Map<string, T.SplitDayRow>();
 
@@ -213,9 +214,16 @@ export class MemoryRepo implements Repo {
   }
 
   async addWatcherCall(c: NewWatcherCall) {
-    const id = this.watcherCalls.length + 1;
+    const id = ++this.watcherCallSeq;   // a sequence, like bigserial: a deleted reservation never frees its id
     this.watcherCalls.push({ ...c, id, ts: c.ts ?? new Date() });
     return id;
+  }
+  async settleWatcherCall(id: number, u: { inputTokens: number; outputTokens: number; costMicrocents: number }) {
+    const c = this.watcherCalls.find((x) => x.id === id);
+    if (c) Object.assign(c, u);
+  }
+  async deleteWatcherCall(id: number) {
+    this.watcherCalls = this.watcherCalls.filter((c) => c.id !== id);
   }
   async watcherSpendMicrocents(since: Date) {
     return this.watcherCalls.filter((c) => c.ts.getTime() >= since.getTime()).reduce((sum, c) => sum + c.costMicrocents, 0);

@@ -231,6 +231,14 @@ export class SupabaseRepo implements Repo {
     if (error) throw new Error(error.message);
     return Number((data as Row).id);
   }
+  async settleWatcherCall(id: number, u: { inputTokens: number; outputTokens: number; costMicrocents: number }) {
+    const { error } = await this.db.from("watcher_calls").update({ input_tokens: u.inputTokens, output_tokens: u.outputTokens, cost_microcents: u.costMicrocents }).eq("id", id);
+    if (error) throw new Error(error.message);
+  }
+  async deleteWatcherCall(id: number) {
+    const { error } = await this.db.from("watcher_calls").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+  }
   /** Summed here, not in SQL: at $0.001 a call the month's cap is ten thousand rows of one column, read once per call. */
   async watcherSpendMicrocents(since: Date) {
     const { data, error } = await this.db.from("watcher_calls").select("cost_microcents").gte("ts", since.toISOString());
