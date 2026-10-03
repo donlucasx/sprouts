@@ -14,6 +14,7 @@ import { Plant } from "./Plant";
 import { Can } from "./Can";
 import { canScale, overlayToCanvas, ROW_GAP } from "@/model/can";
 import { Appear } from "./Strip";
+import { Wind } from "./Wind";
 import { Soil, SoilClip, Ring, Seed, Sign, Basket, SpriteAt } from "./parts";
 
 const MOUNT_FADE_MS = 300;
@@ -196,6 +197,8 @@ export function Garden({ scene: incoming, live, canReady, onWater, onNudge, row,
      </Animated.View>
      </Animated.View>
      </Animated.View>
+     {/* R200: the painted wind curls ride each gust across the sky, over the ground and behind the plants (Wind.tsx) */}
+     <Wind gust={gust} width={w} viewH={vh} reduced={reduced} />
      {/* the plant layer (I4 fix round 3): the same zoom and frame, clipped at the top and bottom only, with the screen's side gutters as
          room, so a swaying sunflower or the spruce may draw into the margins; the page cannot scroll sideways (its scroll is vertical) */}
      <Animated.View style={[{ position: "absolute", left: -SIDE_GUTTER, top: 0, width: w + 2 * SIDE_GUTTER, overflow: "hidden" }, clipPlants]} pointerEvents="none">
