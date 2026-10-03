@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { SWAY, swayAngle, swayPhase, frameAt, clampZoom, panLimit, pinchOffset } from "@/model/motion";
+import { SWAY, swayAngle, swayPhase, frameAt, clampZoom, panLimit, pinchOffset, GUST, GUST_IDLE, gustGap, gustDelays, gustSpanMs, gustEnvelope, windAngle } from "@/model/motion";
 import { PLANT_ORDER } from "@/model/garden";
 
 describe("the sway (his note: swaying all the time with the wind; R179, R183: 5 degrees either way, 3.2 s each way)", () => {
@@ -52,5 +52,42 @@ describe("two-finger zoom (R173: up to 3x with pan, snapping back to the automat
     // clamped inside the view
     expect(pinchOffset(0, 1, 2, 0, 0, 300)).toBe(0);
     expect(pinchOffset(0, 1, 2, 290, 10, 300)).toBe(-300);
+  });
+});
+
+describe("the gusts (R189: every 8 to 15 s at random, about 12 degrees, eased over about 1.5 s, rolling left to right 120 ms a plant)", () => {
+  it("the schedule: the next gust starts 8 to 15 s after the last, spread over the whole range", () => {
+    expect(gustGap(0)).toBe(8000);
+    expect(gustGap(0.999999)).toBeCloseTo(15000, 0);
+    expect(gustGap(0.5)).toBe(11500);
+    for (let i = 0; i < 200; i++) { const g = gustGap(Math.random()); expect(g).toBeGreaterThanOrEqual(8000); expect(g).toBeLessThanOrEqual(15000); }
+    expect(gustGap(-1)).toBe(8000); expect(gustGap(2)).toBe(15000);   // a bad draw never leaves the range
+    // the whole roll (six plants) is over well before the next gust can start
+    expect(gustSpanMs(6)).toBe(1500 + 5 * 120);
+    expect(gustSpanMs(6)).toBeLessThan(gustGap(0));
+  });
+  it("the per-plant delay: 120 ms after its left neighbour, across both rows, by where each plant stands", () => {
+    // at 320 wide: hsol 28.8, skr 96, jitosol 160, jupsol 214.4, ore 256, cbbtc 294.4
+    expect(gustDelays({ skr: 96, ore: 256, hsol: 28.8, jitosol: 160, jupsol: 214.4, cbbtc: 294.4 })).toEqual({ hsol: 0, skr: 120, jitosol: 240, jupsol: 360, ore: 480, cbbtc: 600 });
+    expect(gustDelays({ ore: 200, skr: 100 })).toEqual({ skr: 0, ore: 120 });   // two plants: the left one first
+    expect(gustDelays({})).toEqual({});
+    expect(GUST.stepMs).toBe(120);
+  });
+  it("the envelope: nothing before or after, eased in and out over 1.5 s, the peak in the middle", () => {
+    expect(GUST.ms).toBe(1500);
+    expect(gustEnvelope(-50)).toBe(0); expect(gustEnvelope(0)).toBe(0); expect(gustEnvelope(1500)).toBe(0); expect(gustEnvelope(GUST_IDLE)).toBe(0);
+    expect(gustEnvelope(750)).toBeCloseTo(1, 9);
+    // eased: slow at both ends (a tenth of the way in moves under a tenth of the swing), rising to the peak, then falling back
+    expect(gustEnvelope(150)).toBeLessThan(0.1); expect(gustEnvelope(1350)).toBeLessThan(0.1);
+    for (let t = 0; t < 750; t += 50) expect(gustEnvelope(t + 50)).toBeGreaterThan(gustEnvelope(t));
+    for (let t = 750; t < 1450; t += 50) expect(gustEnvelope(t + 50)).toBeLessThan(gustEnvelope(t));
+  });
+  it("the peak: about 12 degrees with the wind (rightward, as it rolls left to right), from any point of the steady sway", () => {
+    expect(GUST.deg).toBe(12);
+    for (const t of [0, 0.25, 0.5, 0.75]) for (const ph of [0, 0.3]) expect(windAngle(t, ph, 750)).toBeCloseTo(12, 9);
+    // no gust: the steady 5 degree sway, unchanged
+    for (const t of [0, 0.1, 0.25, 0.6]) expect(windAngle(t, 0.2, GUST_IDLE)).toBeCloseTo(swayAngle(t, 0.2), 9);
+    // never past the peak at any point of a gust
+    for (let ms = 0; ms <= 1500; ms += 25) for (const t of [0, 0.25, 0.75]) { const a = windAngle(t, 0, ms); expect(a).toBeLessThanOrEqual(12 + 1e-9); expect(a).toBeGreaterThanOrEqual(-SWAY.deg - 1e-9); }
   });
 });

@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { AccessibilityInfo, useWindowDimensions } from "react-native";
-import Animated, { Easing, cancelAnimation, useAnimatedProps, useAnimatedStyle, useReducedMotion, useSharedValue, withRepeat, withTiming } from "react-native-reanimated";
+import Animated, { Easing, cancelAnimation, useAnimatedProps, useAnimatedStyle, useReducedMotion, useSharedValue, withRepeat, withSequence, withTiming } from "react-native-reanimated";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Svg, { G } from "react-native-svg";
 import { PLANT_ORDER, type Scene, type Part, type PlantId } from "@/model/garden";
@@ -9,7 +9,7 @@ import { plantLayouts } from "@/model/scene-to-layout";
 import { SOIL_CLIP_ID } from "@/model/soil-clip";
 import { diffScenes, gateDiff, sceneKey, NO_CHANGE, type Diff } from "@/lib/scene-diff";
 import { openingPlan, REDUCED_MS } from "@/model/opening";
-import { SWAY, clampZoom, pinchOffset } from "@/model/motion";
+import { SWAY, GUST_IDLE, clampZoom, gustDelays, gustGap, gustSpanMs, pinchOffset } from "@/model/motion";
 import { Plant } from "./Plant";
 import { Can } from "./Can";
 import { canBelow, canScale } from "@/model/can";
@@ -112,6 +112,23 @@ export function Garden({ scene: incoming, live, canReady, onWater, onNudge, temp
     sway.value = 0; sway.value = withRepeat(withTiming(1, { duration: SWAY.periodMs, easing: Easing.linear }), -1, false);
     return () => cancelAnimation(sway);
   }, [reduced, sway]);
+  // R189: a gust every 8 to 15 s at random, rolling left to right. One gust clock (ms into the gust, linear over the six-plant roll);
+  // each plant reads it less its own delay. Idle between gusts and under reduced motion; the first one comes 8 s or more after mount.
+  const gust = useSharedValue(GUST_IDLE);
+  useEffect(() => {
+    if (reduced) { cancelAnimation(gust); gust.value = GUST_IDLE; return; }
+    const span = gustSpanMs(PLANT_ORDER.length);
+    let id: ReturnType<typeof setTimeout>;
+    const next = () => {
+      id = setTimeout(() => {
+        gust.value = withSequence(withTiming(0, { duration: 0 }), withTiming(span, { duration: span, easing: Easing.linear }));
+        next();
+      }, gustGap(Math.random()));
+    };
+    next();
+    return () => { clearTimeout(id); cancelAnimation(gust); gust.value = GUST_IDLE; };
+  }, [reduced, gust]);
+  const delays = gustDelays(Object.fromEntries(plants.map((p) => [p.plant, p.x])));
 
   // R173: two fingers zoom up to 3x over the automatic frame and, as they move, pan; on release, or a double tap, the garden snaps back.
   // One pinch does both (its focal point carries the pan), so no one-finger gesture is ever taken from the can or the page's scroll.
@@ -177,7 +194,7 @@ export function Garden({ scene: incoming, live, canReady, onWater, onNudge, temp
      <Animated.View style={[{ position: "absolute", left: -SIDE_GUTTER, top: 0, width: w + 2 * SIDE_GUTTER, overflow: "hidden" }, clipPlants]} pointerEvents="none">
      <Animated.View style={[{ position: "absolute", left: SIDE_GUTTER, top: 0, width: w, height: CANVAS.height, transformOrigin: [0, 0, 0] }, zoomedPlants]}>
      <Animated.View style={[{ width: w, height: CANVAS.height, transformOrigin: "0 0" }, framedPlants]}>
-      {[...back, ...front].map((p) => <Plant key={p.plant} p={p} footX={p.x * w} footY={FOOT_Y(p.row)} sway={sway} reduced={reduced} items={itemsOf(p.plant)} settled={!active} before={beforePlants?.find((b) => b.plant === p.plant)?.layout ?? null} />)}
+      {[...back, ...front].map((p) => <Plant key={p.plant} p={p} footX={p.x * w} footY={FOOT_Y(p.row)} sway={sway} gust={gust} gustDelay={delays[p.plant] ?? 0} reduced={reduced} items={itemsOf(p.plant)} settled={!active} before={beforePlants?.find((b) => b.plant === p.plant)?.layout ?? null} />)}
      </Animated.View>
      </Animated.View>
      </Animated.View>

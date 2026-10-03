@@ -12,6 +12,35 @@ export function swayAngle(t: number, phase: number): number {
   "worklet";
   return SWAY.deg * Math.sin(2 * Math.PI * (t + phase));
 }
+/** R189 (10-02, "every now and then a lil gust of wind moves the plants even more"): the steady sway stays, and every 8 to 15 s at
+ * random a gust swings each plant to about 12 degrees with the wind, eased in and out over 1.5 s, rolling across the garden from left
+ * to right, each plant 120 ms after its left neighbour; then back to the steady sway. Off under reduced motion. */
+export const GUST = { deg: 12, ms: 1500, minGapMs: 8000, maxGapMs: 15000, stepMs: 120 } as const;
+/** The gust clock's value between gusts: far past every plant's gust, so the envelope reads 0. */
+export const GUST_IDLE = 1e6;
+/** The wait from one gust's start to the next, from a draw `r` in [0, 1) (Math.random), clamped into 8 to 15 s. */
+export const gustGap = (r: number) => GUST.minGapMs + Math.min(1, Math.max(0, r)) * (GUST.maxGapMs - GUST.minGapMs);
+/** The gust clock's whole run for `n` plants: the last plant's delay plus one gust. */
+export const gustSpanMs = (n: number) => GUST.ms + Math.max(0, n - 1) * GUST.stepMs;
+/** Each plant's delay into the gust: its rank from the left by foot x (both rows together) times 120 ms; ties keep PLANT_ORDER. */
+export function gustDelays(xs: Partial<Record<PlantId, number>>): Partial<Record<PlantId, number>> {
+  const order = (Object.keys(xs) as PlantId[]).sort((a, b) => (xs[a] as number) - (xs[b] as number) || PLANT_ORDER.indexOf(a) - PLANT_ORDER.indexOf(b));
+  return Object.fromEntries(order.map((p, i) => [p, i * GUST.stepMs]));
+}
+/** How much of the gust a plant feels `ms` into its own gust: 0 outside the 1.5 s, sin squared inside (eased in and out), 1 at 750 ms. */
+export function gustEnvelope(ms: number): number {
+  "worklet";
+  if (ms <= 0 || ms >= GUST.ms) return 0;
+  const s = Math.sin((Math.PI * ms) / GUST.ms);
+  return s * s;
+}
+/** The plant's angle: the steady sway (clock `t`, its `phase`) blended toward the gust's 12 degrees by the envelope at `gustMs`, the
+ * ms into this plant's own gust (the garden's gust clock minus the plant's delay). With no gust it is exactly the steady sway. */
+export function windAngle(t: number, phase: number, gustMs: number): number {
+  "worklet";
+  const g = gustEnvelope(gustMs);
+  return swayAngle(t, phase) * (1 - g) + GUST.deg * g;
+}
 /** A-STRIP: the frame shown at progress `p` (0 to 1 over the leaf's time): whole frames only, each held a 1/frames share, the last held. */
 export function frameAt(p: number, frames: number): number {
   "worklet";
