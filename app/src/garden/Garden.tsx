@@ -1,6 +1,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AccessibilityInfo, View, useWindowDimensions } from "react-native";
-import Animated, { Easing, cancelAnimation, useAnimatedProps, useAnimatedStyle, useReducedMotion, useSharedValue, withDelay, withRepeat, withSequence, withTiming } from "react-native-reanimated";
+import { ThemedText } from "@/components/ThemedText";
+import { radius, spacing, useTheme } from "@/theme";
+import Animated, { Easing, FadeIn, FadeOut, cancelAnimation, runOnJS, useAnimatedProps, useAnimatedStyle, useReducedMotion, useSharedValue, withDelay, withRepeat, withSequence, withTiming } from "react-native-reanimated";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Svg, { G } from "react-native-svg";
 import { PLANT_ORDER, type Scene, type Part, type PlantId } from "@/model/garden";
@@ -24,6 +26,8 @@ const RING_MS = 1350;      // gen11_motion.py:163: every present plant's ring ri
 const SNAP_MS = 250;       // R173: the zoom snaps back to the automatic frame
 /** R248: the buds' call: 0.6 s after a landing, 1.1 s long, then every 4.5 s while a bud waits. */
 const BUD_CALL = { firstMs: 600, ms: 1100, everyMs: 4500 } as const;
+/** R250: a plant's label shows this long, this wide. */
+const LABEL_MS = 4500, LABEL_W = 260;
 const ARRIVE_GUARD_MS = 4000;   // R202: the can stops waiting for an opening this long after the watering if no read has brought one
 const AnimatedG = Animated.createAnimatedComponent(G);
 /** The scene as it changes (spec 6 and 7: the moments fire from the diff, never from the tap): its content key, the scene before this
@@ -59,8 +63,9 @@ function useReduceMotion() {
  * row directly under the garden, and the can sits at its bar's end in an overlay over both (the garden view's top-left its origin).
  * R196: the overlay reaches into the screen's right gutter (the garden's box is that much wider, its margin giving it back), so the
  * finger may carry the can to the screen's edge. R195: `wobble` is bumped on every landing on Home and every pull-to-refresh. */
-export function Garden({ scene: incoming, live, canReady, onWater, onNudge, row, tempo = 1, wobble = 0 }: { scene: Scene; live: boolean; canReady: boolean; onWater: (target: PlantId | null) => Promise<boolean>; onNudge: () => void; row: (can: CanRow) => ReactNode; tempo?: number; wobble?: number }) {
+export function Garden({ scene: incoming, live, canReady, onWater, onNudge, row, tempo = 1, wobble = 0, labelFor }: { scene: Scene; live: boolean; canReady: boolean; onWater: (target: PlantId | null) => Promise<boolean>; onNudge: () => void; row: (can: CanRow) => ReactNode; tempo?: number; wobble?: number; labelFor?: (plant: PlantId, budWaiting: boolean) => string[] }) {
   const { width } = useWindowDimensions(); const w = width - 40;
+  const { colors } = useTheme();
   const reduced = useReduceMotion();
   // What changed, and the plan it plays (the openings, the arrivals); the static drawing leaves out every moving part until it settles.
   const key = useMemo(() => sceneKey(incoming), [incoming]);
@@ -203,7 +208,22 @@ export function Garden({ scene: incoming, live, canReady, onWater, onNudge, row,
       ps.value = s;
     })
     .onEnd(snap);
-  const zoomGesture = Gesture.Race(pinch, Gesture.Tap().numberOfTaps(2).onEnd(snap));
+  // R250: one tap on a plant shows its label (what is drawn, in words); a second tap, or 4.5 s, hides it. The double tap still snaps.
+  const [label, setLabel] = useState<{ plant: PlantId; lines: string[]; n: number } | null>(null);
+  useEffect(() => {
+    if (!label) return;
+    const id = setTimeout(() => setLabel(null), LABEL_MS);
+    return () => clearTimeout(id);
+  }, [label]);
+  const onTapAt = (x: number, y: number) => {
+    const c = overlayToCanvas({ x, y }, target);
+    const plant = labelFor ? plantUnder(c.x, c.y, Object.fromEntries(plants.map((p) => [p.plant, p.x])), w) : null;
+    if (!plant || label?.plant === plant) { setLabel(null); return; }
+    setLabel((l) => ({ plant, lines: labelFor!(plant, budPlants.includes(plant)), n: (l?.n ?? 0) + 1 }));
+  };
+  const doubleTap = Gesture.Tap().numberOfTaps(2).onEnd(snap);
+  const singleTap = Gesture.Tap().maxDuration(300).onEnd((e, ok) => { if (ok) runOnJS(onTapAt)(e.x, e.y); });
+  const zoomGesture = Gesture.Race(pinch, Gesture.Exclusive(doubleTap, singleTap));
   const zoomed = useAnimatedStyle(() => ({ transform: [{ translateX: px.value }, { translateY: py.value }, { scale: ps.value }] }));
   const zoomedPlants = useAnimatedStyle(() => ({ transform: [{ translateX: px.value }, { translateY: py.value }, { scale: ps.value }] }));
 
@@ -298,6 +318,13 @@ export function Garden({ scene: incoming, live, canReady, onWater, onNudge, row,
      </Animated.View>
      </GestureDetector>
     </Animated.View>
+    {/* R250: the tapped plant's label, in the sky over it (the garden's headroom), centred on the plant and held inside the garden */}
+    {label ? (
+      <Animated.View key={label.n} entering={reduced ? undefined : FadeIn.duration(160)} exiting={reduced ? undefined : FadeOut.duration(160)} pointerEvents="none"
+        style={{ position: "absolute", top: spacing.sm, left: Math.min(Math.max(spotOf(label.plant).rose.x - LABEL_W / 2, 0), w - LABEL_W), width: LABEL_W, backgroundColor: colors.surface, borderRadius: radius.md, paddingVertical: spacing.sm, paddingHorizontal: spacing.md, gap: 2, elevation: 3, shadowColor: "#000", shadowOpacity: 0.12, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } }}>
+        {label.lines.map((l, i) => <ThemedText key={i} variant={i === 0 ? "label" : "caption"} tone={i === 0 ? undefined : "secondary"}>{l}</ThemedText>)}
+      </Animated.View>
+    ) : null}
     {/* R186: the Next planting row directly under the garden; the can sits at its bar's end */}
     <View style={{ width: w, marginTop: ROW_GAP }}>{row({ s: canS, onLayout: setRowAt })}</View>
     {/* the overlay over the garden, the row and the right gutter: the can's touch box lies inside it at rest and the finger stays inside
