@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { slotsFor, signSide, signX, signScale, SIGN_SCALE, ROW_OF, CANVAS } from "@/model/layout";
+import { SIGN_GAP, slotsFor, signSide, signX, signScale, SIGN_SCALE, ROW_OF, CANVAS } from "@/model/layout";
 
 describe("the two rows (RG6, RG22, G6)", () => {
   it("six occupants take the locked slots", () => {
@@ -21,8 +21,9 @@ describe("the sign rule (RG7, gen06:68-74)", () => {
   });
   it("round 3 item 2 and R231: the signs 1.35x, the front row's 1.2 times that (1.62), the back row 0.8; the offset and the clamp use the bigger half width", () => {
     expect(SIGN_SCALE).toBe(1.35); expect(signScale("front")).toBeCloseTo(1.62, 12); expect(signScale("back")).toBeCloseTo(1.08, 12);
-    expect(signX(96, -1, 320, signScale("front"))).toBeCloseTo(96 - (14 + 24.3 * 0.2), 9);   // 77.14 (79 at 1x)
+    expect(signX(96, -1, 320, signScale("front"))).toBeCloseTo(96 - (24.3 + SIGN_GAP), 9);   // R232: 68.7, the board wholly beside the foot
     expect(signX(310, 1, 320, signScale("front"))).toBeCloseTo(320 - 24.3 - 1, 9);   // clamped a pixel inside: 294.7
     expect(signX(5, -1, 320, signScale("back"))).toBeCloseTo(16.2 + 1, 9);   // 17.2
+    expect(signX(200, 1, 320, signScale("back"))).toBeCloseTo(200 + 16.2 + SIGN_GAP, 9);   // R232: the near edge 3 px off the foot
   });
 });

@@ -87,8 +87,11 @@ export const signScale = (row: "front" | "back") => SIGN_SCALE * (row === "front
  * drawn scale (signScale: 1.35 front, 1.08 back), so its half width (15 at 1x) grows with the board. */
 export function signX(x: number, side: -1 | 1, width: number, scale: number): number {
   const half = 15 * scale;
-  return Math.min(Math.max(x + side * (14 + half * 0.2), half + 1), width - half - 1);
+  return Math.min(Math.max(x + side * (half + SIGN_GAP), half + 1), width - half - 1);
 }
+/** R232 (10-04, "the JitoSOL stake should move left a bit as to not cover the sprout"): the board stands wholly beside its plant's
+ * foot, its near edge SIGN_GAP px off it (gen06's 14 plus a fifth of the half width overlapped a young sprout). */
+export const SIGN_GAP = 3;
 /** R181 (RG32): the post's foot from the sign's anchor, in the board's 1x units before its scale (bake.py: the contact mark reaches 9.4
  * below the generator's origin; the lowest painted pixel of the bake sits at x +1), and the room kept above the soil's bottom edge. */
 export const SIGN_FOOT = { x: 1, y: 9.4 } as const;
@@ -100,8 +103,9 @@ export function signStand(x: number, want: number, scale: number, soilBottom: (x
   return Math.min(want, soilBottom(x + SIGN_FOOT.x * scale) - SIGN_SOIL_MARGIN - SIGN_FOOT.y * scale);
 }
 /** The app's stake for a sign part, at the garden's width: its anchor and its drawn scale. */
-export function signPlacement(s: { x: number; side: -1 | 1; row: "front" | "back" }, width: number) {
-  const scale = signScale(s.row), x = signX(s.x * width, s.side, width, scale), g = appGround(width);
+/** R234: `zoom` is the frame's; the stake's drawn scale is signScale over it, so a stake keeps one size on screen while the plants zoom. */
+export function signPlacement(s: { x: number; side: -1 | 1; row: "front" | "back" }, width: number, zoom = 1) {
+  const scale = signScale(s.row) / zoom, x = signX(s.x * width, s.side, width, scale), g = appGround(width);
   return { x, y: signStand(x, FOOT_Y(s.row) + 4, scale, (px) => soilBottomAt(px, g)), scale };
 }
 /** R168 (10-02): the word on a stake, drawn as crisp type over the one blank baked board (`sign`), in the board's own frame: the anchor
@@ -131,7 +135,7 @@ const sideReach = (q: Placed) => {
 export const MIN_VIEW_H = CANVAS.height - CANVAS.soilLine + FRAME.aboveGround;
 /** The baked ground's own height in canvas px (86 at 1x, the manifest's): the view always holds all of it, because its wash is
  * painted from about 13 px under its top and a crop there would show as a hard line. */
-const groundH = () => SPRITE_META["ground"]?.h ?? CANVAS.height - CANVAS.soilLine;
+const groundH = () => (SPRITE_META["ground"]?.h ?? 86) * GROUND.sy;   // R231: drawn GROUND.sy deep
 /** I4 fix round 5: the view's height cap on screen (it was the bed's 260 before R185's headroom). */
 export const MAX_VIEW_H = 380;   // R231: from 320, for the deeper ground
 /** RG30: the box (canvas px) around the present plants: each foot, its sideways reach and its height above the foot, and its own
@@ -144,6 +148,12 @@ export const MAX_VIEW_H = 380;   // R231: from 320, for the deeper ground
  * line. Bare signs and seeds do not widen it; with no plant it is the whole breadth at the floor. `room` is the headroom rule (tests
  * pass none to show the zoom does not depend on it). */
 export function frameFor(scene: Scene, plants: PlantOnStage[], width: number, room: { share: number; minPx: number } = HEADROOM): Frame {
+  // R234: the stakes keep one size on screen (signScale over the zoom), so the box depends on the zoom it sets: three passes settle it
+  let f = frameAt(scene, plants, width, room, 1);
+  for (let i = 0; i < 3; i++) f = frameAt(scene, plants, width, room, f.zoom);
+  return f;
+}
+function frameAt(scene: Scene, plants: PlantOnStage[], width: number, room: { share: number; minPx: number }, signZoom: number): Frame {
   const floor = Math.max(MIN_VIEW_H, groundH());
   if (plants.length === 0) return { x: 0, y: CANVAS.height - floor, w: width, h: floor, zoom: 1, viewH: floor };
   const signs = new Map(scene.parts.flatMap((q) => (q.kind === "sign" ? [[q.plant, q] as const] : [])));
@@ -152,7 +162,7 @@ export function frameFor(scene: Scene, plants: PlantOnStage[], width: number, ro
     const fx = p.x * width, reach = Math.max(0, ...p.layout.parts.map(sideReach));
     x0 = Math.min(x0, fx - reach); x1 = Math.max(x1, fx + reach); y0 = Math.min(y0, FOOT_Y(p.row) - p.layout.top);
     const s = signs.get(p.plant);
-    if (s) { const sc = signScale(s.row), sx = signX(s.x * width, s.side, width, sc); x0 = Math.min(x0, sx - 15 * sc); x1 = Math.max(x1, sx + 15 * sc); }
+    if (s) { const sc = signScale(s.row) / signZoom, sx = signX(s.x * width, s.side, width, sc); x0 = Math.min(x0, sx - 15 * sc); x1 = Math.max(x1, sx + 15 * sc); }
   }
   x0 = Math.max(0, x0 - FRAME.pad); x1 = Math.min(width, x1 + FRAME.pad);
   const content = CANVAS.height - Math.max(0, y0);
