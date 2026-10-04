@@ -14,6 +14,9 @@ export type GroundPlace = { x0: number; y0: number; sx: number; sy: number };
 /** R231 (10-04, his ruling: a taller garden, more depth between the rows): the bake drawn GROUND.sy deep, its top edge where it was
  * (the bake's top at 161, so the soil line stays at 200), its bottom on the canvas bottom, GROUND.bottom (from 260). */
 export const GROUND = { sy: 1.5, bottom: 161 + 1.5 * 86 } as const;
+/** R238 (10-04, his note: the soil's sides and bottom a rounded wash on paper, not a rectangle): the ground spans whatever the frame
+ * shows, so its painted ends are never cut by the zoom; `frame` in canvas px (Layout's Frame x and w). */
+export const frameGround = (width: number, frame: { x: number; w: number }): GroundPlace => ({ ...appGround(width), x0: frame.x, sx: frame.w / 320 });
 export const appGround = (width: number): GroundPlace => ({ x0: 0, y0: GROUND.bottom - GROUND.sy * (SPRITE_META["ground"]?.h ?? 86), sx: width / 320, sy: GROUND.sy });
 /** R181: the painted soil's bottom edge at x (garden px): the lowest crossing of the outline with the vertical at x; the outline's lowest
  * point when x is outside it. */

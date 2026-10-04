@@ -34,9 +34,9 @@ export const SPRITE_META: Record<string, SpriteMeta> = {
   "bud-spruce": { w: 10.33, h: 14.33, ax: 5.67, ay: 12.33 },
   "token-cbbtc": { w: 14.33, h: 12.67, ax: 7.33, ay: 7.0 },
   "sign": { w: 38.33, h: 25.67, ax: 20.0, ay: 14.0 },
-  "blade-succulent-0": { w: 23.67, h: 47.33, ax: 12.67, ay: 43.33 },
-  "blade-succulent-1": { w: 23.67, h: 47.33, ax: 12.67, ay: 43.33 },
-  "blade-succulent-2": { w: 23.67, h: 47.33, ax: 12.67, ay: 43.33 },
+  "blade-succulent-0": { w: 23.33, h: 47.0, ax: 12.33, ay: 43.0 },
+  "blade-succulent-1": { w: 23.33, h: 47.0, ax: 12.33, ay: 43.0 },
+  "blade-succulent-2": { w: 23.33, h: 47.0, ax: 12.33, ay: 43.0 },
   "blossom-mandarin": { w: 11.0, h: 10.33, ax: 6.0, ay: 5.67 },
   "bell-blueberry": { w: 9.33, h: 7.33, ax: 5.0, ay: 0.67 },
   "head-sunflower": { w: 41.67, h: 40.67, ax: 21.0, ay: 20.33 },
@@ -54,4 +54,4 @@ export const SPRITE_META: Record<string, SpriteMeta> = {
   "can-grey": { w: 73.67, h: 57.33, ax: 47.67, ay: 31.33 },
 };
 /** R176: the painted soil as a polygon in the ground sprite's 1x units (bake.py ground_outline); rings clip to it. */
-export const GROUND_OUTLINE: [number, number][] = [[195, 14], [101, 16], [68, 22], [65, 24], [51, 26], [14, 28], [2, 32], [2, 44], [5, 62], [0, 64], [6, 66], [7, 76], [30, 78], [139, 82], [140, 82], [318, 78], [318, 70], [312, 30], [261, 26], [257, 24], [230, 20], [218, 16], [206, 14]];
+export const GROUND_OUTLINE: [number, number][] = [[195, 14], [101, 16], [68, 22], [65, 24], [27, 30], [15, 36], [11, 40], [8, 48], [8, 56], [13, 64], [58, 72], [121, 76], [221, 76], [285, 70], [304, 66], [307, 62], [309, 48], [305, 38], [299, 32], [294, 30], [285, 28], [261, 26], [257, 24], [230, 20], [206, 14]];
