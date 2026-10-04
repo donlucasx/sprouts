@@ -39,6 +39,10 @@ export function MarkedTitle({ children, size = 28 }: { children: string; size?: 
       <Mark size={Math.round(1.18 * size)} decorative />
       <Text
         accessibilityRole="header"
+        // R288: one line always; a long .skr name shrinks to fit instead of wrapping
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.6}
         style={{
           fontFamily: FONT.display,
           fontSize: size,

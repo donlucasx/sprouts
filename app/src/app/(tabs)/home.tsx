@@ -180,7 +180,7 @@ export default function Home() {
         />
       }
     >
-      <MarkedTitle>{name ? `${name}'s garden` : 'Your garden'}</MarkedTitle>
+      <MarkedTitle size={22}>{name ? `${name}'s garden` : 'Your garden'}</MarkedTitle>
       {pause.shown ? (
         <PauseRow on={pause.on} line={pause.line} busy={pausing} error={pauseError} onChange={togglePaused} />
       ) : null}
