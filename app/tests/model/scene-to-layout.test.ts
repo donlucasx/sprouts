@@ -76,10 +76,10 @@ describe("the frame (RG30, R167, R185: room above the tallest part max(72 dp, 60
     // recorded from frameFor before the gutter-fit term (main f10d166 + R187, 10-02): 320 wide 1.004016064257028, 353 wide 1.0121863799283155
     // R231: re-recorded with the 1.3x front row and its 1.62x signs (the content a little wider): 1 and 1.0064
     expect(frameFor(s, plantLayouts(s), 320).zoom).toBeCloseTo(1, 12);
-    expect(frameFor(s, plantLayouts(s), 353).zoom).toBeCloseTo(1.0064148253741982, 12);
+    expect(frameFor(s, plantLayouts(s), 353).zoom).toBeCloseTo(1.0059559431193184, 12);   // R237: SKR at .34
   });
   it("the Oct 8 garden: the band above the tallest part is 60 percent of its 125.2 canvas px content (75.7 on screen), past the 72 px floor since R231", () => {
     const s = buildScene({ ...base, plantings: [p("a", 10.8), p("b", 8.4), p("c", 6), p("d", 3.6), p("e", 1.2), p("o", 9, "stORE"), p("o2", 2, "stORE"), p("h", 4, "hSOL"), p("j", 2, "JitoSOL")] }), f = frame(s);
-    expect((tallest(s) - f.y) * f.zoom).toBeCloseTo(75.68, 2); expect(f.viewH).toBeCloseTo(201.81, 2);   // 170.27 before R231, 138.3 in round 3
+    expect((tallest(s) - f.y) * f.zoom).toBeCloseTo(75.20, 2);   // R237: 75.68 with SKR at .30 expect(f.viewH).toBeCloseTo(201.81, 2);   // 170.27 before R231, 138.3 in round 3
   });
 });

@@ -5,8 +5,8 @@ describe("the plant under the rose (RG25; the slots are those of the plants with
   it("the nearest slot by x within 40 px, over the garden", () => {
     expect(plantUnder(96, 120, six, 320)).toBe("skr");
     expect(plantUnder(300, 60, six, 320)).toBe("cbbtc");      // 5.6 px from .92
-    expect(plantUnder(130, 100, six, 320)).toBe("jitosol");   // 34 from SKR, 30 from JitoSOL: the nearer wins
-    expect(plantUnder(62, 100, six, 320)).toBe("hsol");       // 33.2 from hSOL, 34 from SKR
+    expect(plantUnder(140, 100, six, 320)).toBe("jitosol");   // R237 (SKR at .34, 108.8 px): 31.2 from SKR, 20 from JitoSOL: the nearer wins
+    expect(plantUnder(62, 100, six, 320)).toBe("hsol");       // 33.2 from hSOL, 46.8 from SKR
   });
   it("nothing when the rose is off every plant, below the front feet, above the canvas, or no plant has a bud", () => {
     expect(plantUnder(60, 100, { skr: 0.4 }, 320)).toBeNull();   // a lone front SKR at .40 = 128 px: 68 away

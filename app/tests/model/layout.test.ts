@@ -3,12 +3,12 @@ import { SIGN_GAP, slotsFor, signSide, signX, signScale, SIGN_SCALE, ROW_OF, CAN
 
 describe("the two rows (RG6, RG22, G6)", () => {
   it("six occupants take the locked slots", () => {
-    expect(slotsFor(["skr", "ore", "hsol", "jitosol", "jupsol", "cbbtc"])).toEqual({ skr: 0.3, ore: 0.8, hsol: 0.09, jitosol: 0.5, jupsol: 0.67, cbbtc: 0.92 });
+    expect(slotsFor(["skr", "ore", "hsol", "jitosol", "jupsol", "cbbtc"])).toEqual({ skr: 0.34, ore: 0.8, hsol: 0.09, jitosol: 0.5, jupsol: 0.67, cbbtc: 0.92 });   // R237: SKR from 0.30
   });
   it("a lone front occupant centres at 0.40; a lone back plant keeps its slot (RG22)", () => {
     expect(slotsFor(["skr"])).toEqual({ skr: 0.4 }); expect(slotsFor(["ore", "hsol"])).toEqual({ ore: 0.4, hsol: 0.09 }); expect(slotsFor(["hsol"])).toEqual({ hsol: 0.09 });
   });
-  it("a bare sign occupies a slot like a plant", () => expect(slotsFor(["skr", "ore"])).toEqual({ skr: 0.3, ore: 0.8 }));
+  it("a bare sign occupies a slot like a plant", () => expect(slotsFor(["skr", "ore"])).toEqual({ skr: 0.34, ore: 0.8 }));
   it("rows and feet are the spec's", () => { expect(ROW_OF.jupsol).toBe("back"); expect(CANVAS).toEqual({ height: 290, soilLine: 200, backFeet: 214, frontFeet: 266, backScale: 0.8, frontScale: 1.3 }); });   // R231: from 260 and 244
 });
 
