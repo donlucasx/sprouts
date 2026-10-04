@@ -15,7 +15,9 @@ describe("the sunflower (gen03 plant_hsol3, cap 222)", () => {
     const l = sunflower(sh([40, 30, 20, 12, 5]), O, 1);
     expect(stems(l).find((s) => s.part === "trunk")).toMatchObject({ x1: -1, y1: -(22 + 16 * 5), bend: 2, color: "#6E9B2E" });
     const leaves = sprites(l).filter((s) => s.part === "leaf");
-    expect(leaves[0]).toMatchObject({ name: "leaf-sunflower-s3", rot: 68 - 30, x: (6 + 2 * 3) * 0.9 });
+    expect(leaves[0]).toMatchObject({ name: "leaf-sunflower-s3", rot: 68 - 30 });
+    const tr = stems(l).find((s) => s.part === "trunk")!, pet = stems(l).find((s) => s.part === "petiole")!;   // R290: the petiole leaves the bowed trunk's centreline
+    const t = pet.y0 / tr.y1; expect(pet.x0).toBeCloseTo(2 * t * (1 - t) * ((tr.x1 / 2) + tr.bend) + t * t * tr.x1, 6); expect(leaves[0].x).toBeCloseTo(pet.x0 + (6 + 2 * 3) * 0.9, 6);
     expect(stems(l).filter((s) => s.part === "branch")).toHaveLength(2);   // nodes 0 and 1 have three newer above
     expect(sunflower(sh(Array.from({ length: 20 }, (_, i) => 200 - i * 9)), O, 1).top).toBeLessThanOrEqual(222 + 30);
   });

@@ -1,5 +1,5 @@
 import { CAPS, COLORS, SOIL, type LayoutOpts, type PlantLayout, type ShootIn } from "../species";
-import { type Acc, band, finish, sprite, stageOf, stem, swelling, twig } from "./common";
+import { type Acc, alongAtY, band, finish, sprite, stageOf, stem, swelling, twig } from "./common";
 
 /** RG15, gen04_garden.py:161-180: canes of eight shoots from the base; cane c leans ±(14 + 6 · ceil(c / 2)) and rises
  * min(161.5, 18 + 15 m), later canes times 0.85; a twig of two then three small ovals per node; at most four canes (spec 5), later
@@ -16,7 +16,7 @@ export function blueberry(shoots: ShootIn[], o: LayoutOpts, k: number): PlantLay
     stem(acc, "cane", 0, 0, lean, -rise, 2.6 * k, 1.1 * k, n > 6 ? SOIL.caneWood : c.deep, lean * 0.3, 0);
     if (ci === 0) firstTip = { x: lean, y: -rise };
     cane.forEach((s, i) => {
-      const t = (i + 0.5) / Math.max(1, m), nx = lean * t, ny = -8 * k - step * (i + 0.5), side = i % 2 === 0 ? -1 : 1, st = stageOf(s.ageDays), sz = band(s.band) * k;
+      const ny = -8 * k - step * (i + 0.5), nx = alongAtY(0, 0, lean, -rise, lean * 0.3, ny), side = i % 2 === 0 ? -1 : 1, st = stageOf(s.ageDays), sz = band(s.band) * k;
       if (!s.opened) { sprite(acc, "bud", "bud-blueberry", nx + side * 2 * k, ny, side * 35, 0.9 * sz, 2, s.id); return; }
       acc.tips.push(twig(acc, "leaf-blueberry", nx, ny, side * (62 - 6 * (i % 3)), (8 + 3 * st) * k, sz, st >= 2 ? 3 : 2, st, k, c.deep, s.id));
     });

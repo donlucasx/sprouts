@@ -15,6 +15,16 @@ export function stem(acc: Acc, part: StemPart, x0: number, y0: number, x1: numbe
 export function sprite(acc: Acc, part: SpritePart, name: string, x: number, y: number, rot: number, scale: number, z: number, shoot?: string, xScale?: number) {
   acc.parts.push(xScale === undefined ? { kind: "sprite", part, name, x, y, rot, scale, z, shoot } : { kind: "sprite", part, name, x, y, rot, scale, xScale, z, shoot });
 }
+/** R290 (10-04): a point on a stem's painted centreline at parameter t (0 base, 1 tip): gen01's quadratic, its control point the
+ * middle plus `bend` in x (paint.ts ribbon), so y is linear in t. Every branch, twig and node leaves its parent from here, never from
+ * the straight chord (a bent stem's chord misses its paint by up to half the bend). */
+export const along = (x0: number, y0: number, x1: number, y1: number, bend: number, t: number) => {
+  const mx = (x0 + x1) / 2 + bend;
+  return { x: (1 - t) ** 2 * x0 + 2 * t * (1 - t) * mx + t * t * x1, y: y0 + (y1 - y0) * t };
+};
+/** The centreline's x at height y on a stem from (x0, y0) to (x1, y1), y clamped to the stem. */
+export const alongAtY = (x0: number, y0: number, x1: number, y1: number, bend: number, y: number) =>
+  along(x0, y0, x1, y1, bend, y1 === y0 ? 0 : Math.min(1, Math.max(0, (y - y0) / (y1 - y0)))).x;
 /** gen06_garden.py:18: a succulent blade's width for its length, so a long blade stays slender; the sprite is baked at L = 40. */
 export const bladeWidth = (L: number) => Math.max(4, Math.min(0.42 * L, 6.5 + 0.12 * L));
 export const bladeXScale = (scale: number) => bladeWidth(scale * 40) / bladeWidth(40);
