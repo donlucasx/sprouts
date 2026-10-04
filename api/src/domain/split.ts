@@ -10,10 +10,11 @@ type NonSkr = Exclude<Asset, "SKR">;
 const NON_SKR: readonly NonSkr[] = ["stORE", "hSOL", "JitoSOL", "JupSOL", "cbBTC"] as const;
 
 /** R119 floors; per-coin maxes (spec 4.1). Minimums are 0 everywhere; stORE is capped low on its thin market. */
+// R251 (10-04, his "a + c"): stORE's caps 10 / 20 / 30, from R121's 5 / 10 / 20, so it can grow into a real second holding
 export const STOPS: Record<Stop, { floor: number; max: Record<NonSkr, number> }> = {
-  careful: { floor: 50, max: { stORE: 5, hSOL: 15, JitoSOL: 15, JupSOL: 15, cbBTC: 30 } },
-  balanced: { floor: 35, max: { stORE: 10, hSOL: 25, JitoSOL: 25, JupSOL: 25, cbBTC: 25 } },
-  bold: { floor: 25, max: { stORE: 20, hSOL: 35, JitoSOL: 35, JupSOL: 35, cbBTC: 20 } },
+  careful: { floor: 50, max: { stORE: 10, hSOL: 15, JitoSOL: 15, JupSOL: 15, cbBTC: 30 } },
+  balanced: { floor: 35, max: { stORE: 20, hSOL: 25, JitoSOL: 25, JupSOL: 25, cbBTC: 25 } },
+  bold: { floor: 25, max: { stORE: 30, hSOL: 35, JitoSOL: 35, JupSOL: 35, cbBTC: 20 } },
 };
 export const STOP_LABEL: Record<Stop, string> = { careful: "Careful", balanced: "Balanced", bold: "Bold" };
 /** With the manager off, pins alone set the split and SKR still keeps a quarter (spec 4.1). */

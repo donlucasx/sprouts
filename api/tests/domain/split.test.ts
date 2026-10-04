@@ -11,7 +11,7 @@ describe("the stop tables", () => {
   it("floors 50 / 35 / 25, manual 25; stORE capped 5 / 10 / 20", () => {
     expect([STOPS.careful.floor, STOPS.balanced.floor, STOPS.bold.floor]).toEqual([50, 35, 25]);
     expect(floorFor(false, "bold")).toBe(25);
-    expect([STOPS.careful.max.stORE, STOPS.balanced.max.stORE, STOPS.bold.max.stORE]).toEqual([5, 10, 20]);
+    expect([STOPS.careful.max.stORE, STOPS.balanced.max.stORE, STOPS.bold.max.stORE]).toEqual([10, 20, 30]);   // R251 (5 / 10 / 20 before)
   });
   it("every stop default sums to 100, keeps the floor and respects every max", () => {
     for (const stop of ["careful", "balanced", "bold"] as const) {
@@ -150,7 +150,7 @@ describe("clampSplit (spec 6.3)", () => {
   it("SKR below the floor is raised by taking from the largest coins first", () => {
     const s = clampSplit({ stop: "careful", proposed: split({ SKR: 10, cbBTC: 30, hSOL: 15, JitoSOL: 15, JupSOL: 15, stORE: 15 }), noData: [], yesterday: null })!;
     expect(s.SKR).toBe(50);
-    expect(s.stORE).toBeLessThanOrEqual(5);
+    expect(s.stORE).toBeLessThanOrEqual(10);
     expect(sum(s)).toBe(100);
   });
   it("the move limit never applies to the first day", () => {
@@ -163,9 +163,9 @@ describe("fallbackSplit (spec 6.5)", () => {
   it("fills the highest measured growth first, each to its max, SKR at least the floor", () => {
     const s = fallbackSplit({ stop: "balanced", growth: { hSOL: 7.2, JitoSOL: 6.1, JupSOL: 5.9, stORE: 9.0, cbBTC: 0 }, noData: [], yesterday: null });
     expect(s.SKR).toBe(45);                       // max(floor 35, default 45)
-    expect(s.stORE).toBe(10);                     // the highest, capped at 10
+    expect(s.stORE).toBe(20);                     // the highest, capped at 20 (R251)
     expect(s.hSOL).toBe(25);
-    expect(s.JitoSOL).toBe(20);                   // the remainder
+    expect(s.JitoSOL).toBe(10);                   // the remainder (20 before R251 raised stORE)
     expect(sum(s)).toBe(100);
   });
   it("skips coins without a measured number and obeys the move limit against yesterday", () => {

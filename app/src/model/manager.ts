@@ -11,10 +11,11 @@ const NON_SKR: readonly NonSkr[] = ["stORE", "hSOL", "JitoSOL", "JupSOL", "cbBTC
 
 export const STOP_LABEL: Record<Stop, string> = { careful: "Careful", balanced: "Balanced", bold: "Bold" };
 export const STOP_FLOOR: Record<Stop, number> = { careful: 50, balanced: 35, bold: 25 };
+// R251 (10-04): stORE 10 / 20 / 30 (from 5 / 10 / 20), the API's STOPS (api/src/domain/split.ts)
 export const STOP_MAX: Record<Stop, Record<NonSkr, number>> = {
-  careful: { stORE: 5, hSOL: 15, JitoSOL: 15, JupSOL: 15, cbBTC: 30 },
-  balanced: { stORE: 10, hSOL: 25, JitoSOL: 25, JupSOL: 25, cbBTC: 25 },
-  bold: { stORE: 20, hSOL: 35, JitoSOL: 35, JupSOL: 35, cbBTC: 20 },
+  careful: { stORE: 10, hSOL: 15, JitoSOL: 15, JupSOL: 15, cbBTC: 30 },
+  balanced: { stORE: 20, hSOL: 25, JitoSOL: 25, JupSOL: 25, cbBTC: 25 },
+  bold: { stORE: 30, hSOL: 35, JitoSOL: 35, JupSOL: 35, cbBTC: 20 },
 };
 export const MANUAL_FLOOR = 25;
 export const PIN_MAX: Record<Asset, number> = { SKR: 100, stORE: 50, hSOL: 75, JitoSOL: 75, JupSOL: 75, cbBTC: 75 };
