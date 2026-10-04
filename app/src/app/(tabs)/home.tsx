@@ -222,7 +222,8 @@ export default function Home() {
         </Pressable>
       ) : null}
       {/* R199: one small step more than the screen's gap before the pot card, so the garden section reads as one block above it. */}
-      <Card style={{ marginTop: spacing.sm }}>
+      {/* R236 (10-04, his note): closer under the Last planting row; the row's own touch height already leaves room */}
+      <Card style={{ marginTop: -spacing.xs }}>
         {/* R146 and R150: the whole garden in dollars, two stat tiles, then one row per coin; no sentences. */}
         <ThemedText variant="label" tone="secondary">
           In your garden

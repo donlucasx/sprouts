@@ -60,7 +60,8 @@ export function gutterFit(zoom0: number, mid: number, span: { lo: number; hi: nu
   return { zoom, x: Math.min(Math.max(pref, span.hi - (width + G) / zoom), span.lo + G / zoom) };
 }
 /** RG17, gen06_garden.py:59: the locked slots as fractions of the width. */
-export const SLOT_X: Record<PlantId, number> = { skr: 0.3, ore: 0.8, hsol: 0.09, jitosol: 0.5, jupsol: 0.67, cbbtc: 0.92 };
+export const SLOT_X: Record<PlantId, number> = { skr: 0.34,   // R237 (10-04): SKR from 0.30, a nudge right
+  ore: 0.8, hsol: 0.09, jitosol: 0.5, jupsol: 0.67, cbbtc: 0.92 };
 export const FOOT_Y = (row: "front" | "back") => (row === "front" ? CANVAS.frontFeet : CANVAS.backFeet);
 /** Where each occupant stands. An occupant is a present plant or a bare sign (gen06:57-58). A lone FRONT occupant centres at 0.40
  * (gen06:61); a lone back plant keeps its species slot (RG22). */
@@ -117,7 +118,7 @@ export const SIGN_TEXT = { size: 6.8, y: -4.1, rot: -4 } as const;
 export const SIGN_LABEL: Record<PlantId, string> = { skr: "SKR", ore: "stORE", hsol: "hSOL", jitosol: "JitoSOL", jupsol: "JupSOL", cbbtc: "cbBTC" };
 /** RG30 (10-02): the garden frames what is planted; 2x is the cap the 3x bakes hold; Garden.tsx eases each change over easeMs.
  * R167 (10-02): the view's HEIGHT follows the content, never shorter than the ground band plus `aboveGround`. */
-export const FRAME = { maxZoom: 2, pad: 18, easeMs: 1200, aboveGround: 40 } as const;   // R231: pad from 16, the 1.3x front row's sway
+export const FRAME = { maxZoom: 2, pad: 20, easeMs: 1200, aboveGround: 40 } as const;   // R231: pad from 16, the 1.3x front row's sway
 /** Room to grow above the tallest part: 60 percent of the content's height (the tallest part down to the bed's bottom), never under
  * 72 px on screen (R185; device round 3 item 1 had a quarter and 40 px); it replaces the 16 px margin on top only. */
 export const HEADROOM = { share: 0.6, minPx: 72 } as const;   // R185 (10-02, "waiting for more headroom"): from round 3's 25 percent and 40 px

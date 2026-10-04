@@ -19,8 +19,10 @@ describe("buildScene: plants, rows and signs (RG6, RG7, RG22)", () => {
   });
   it("one plant per coin with a kept shoot, on its row at its slot, with a sign on the roomier side", () => {
     const s = buildScene({ ...base, wateredAt: NOW, allocation: BALANCED, plantings: [planting("a", 5), planting("b", 4, "stORE"), planting("c", 3, "hSOL"), planting("d", 2, "JitoSOL"), planting("e", 1, "JupSOL"), planting("f", 1, "cbBTC")] });
-    expect(of(s, "plant").map((p) => [p.plant, p.row, p.x, p.species])).toEqual([["skr", "front", 0.3, "mandarin"], ["ore", "front", 0.8, "succulent"], ["hsol", "back", 0.09, "sunflower"], ["jitosol", "back", 0.5, "snake"], ["jupsol", "back", 0.67, "blueberry"], ["cbbtc", "back", 0.92, "spruce"]]);
+    expect(of(s, "plant").map((p) => [p.plant, p.row, p.x, p.species])).toEqual([["skr", "front", 0.34, "mandarin"], ["ore", "front", 0.8, "succulent"], ["hsol", "back", 0.09, "sunflower"], ["jitosol", "back", 0.5, "snake"], ["jupsol", "back", 0.67, "blueberry"], ["cbbtc", "back", 0.92, "spruce"]]);
     expect(of(s, "sign")).toHaveLength(6);
+    // R237 fix: each stake takes the roomier side within its own row, so JitoSOL's and JupSOL's never share the narrow gap between them
+    expect(Object.fromEntries(of(s, "sign").map((q) => [q.plant, q.side]))).toMatchObject({ hsol: 1, jitosol: -1, jupsol: 1, cbbtc: -1 });
     expect(of(s, "sign").find((p) => p.plant === "hsol")?.side).toBe(1);     // the edge counts double: more room on the right
   });
   it("signs for every coin with a share; seeds beside nextAsset's sign only, while it has no plant (Review Focus 1)", () => {
@@ -32,7 +34,7 @@ describe("buildScene: plants, rows and signs (RG6, RG7, RG22)", () => {
   });
   it("a lone front plant centres at 0.40 and a bare sign occupies its slot (RG22)", () => {
     expect(of(buildScene({ ...base, plantings: [planting("a", 2)] }), "plant")[0].x).toBe(0.4);
-    expect(of(buildScene({ ...base, plantings: [planting("a", 2)], allocation: { ...SPLIT, SKR: 60, stORE: 40 } }), "plant")[0].x).toBe(0.3);
+    expect(of(buildScene({ ...base, plantings: [planting("a", 2)], allocation: { ...SPLIT, SKR: 60, stORE: 40 } }), "plant")[0].x).toBe(0.34);   // R237
   });
 });
 
