@@ -84,6 +84,8 @@ export function roseOnScreen(seat: { x: number; y: number }, d: { dx: number; dy
  * plant pours POUR_SHARE of it from the release. Then (R202) the can waits, level, until the opening ends, and only then goes home. */
 export const CAN_MS = 10800;
 export const POUR_SHARE = 0.38;
+/** R246: the tap's sweep pours across the garden over POUR_SHARE, then holds at the last plant this much more of the sequence. */
+export const SWEEP_TAIL = 0.06;
 /** R195 (device check 2, "it should wait about 2 seconds before it wobbles"): the can's one wobble starts this long after it shows
  * ready, and again on every landing on the garden and every pull-to-refresh while a bud waits. */
 export const WOBBLE_WAIT_MS = 2000;

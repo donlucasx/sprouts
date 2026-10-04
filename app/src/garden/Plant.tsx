@@ -19,13 +19,31 @@ const BELOW = 12;
  * its own player (Strip, Appear, StemReveal) until the garden settles (`drawnBy`: then every part is static, its end picture, so
  * nothing can stay hidden); a closed bud that opened fades out from `before`, the layout the scene had before the change.
  */
-export function Plant({ p, footX, footY, sway, gust, gustDelay, reduced, items: planned, settled, before: was }: { p: PlantOnStage; footX: number; footY: number; sway: SharedValue<number>; gust: SharedValue<number>; gustDelay: number; reduced: boolean; items: PlantItem[]; settled: boolean; before: PlantLayout | null }) {
+/** R248 (10-04, "Should the buds also increase in size slightly as they wobble to grab attention?", ruled "Wobble + swell"): a closed
+ * bud is drawn in its own small view about its anchor, which `call` (0 to 1, one call; Garden's clock) swells about 15 percent and
+ * rocks a few degrees, settling back by the call's end. */
+const BUD_BOX = 40;
+function Bud({ q, plant, ox, oy, call }: { q: Extract<PlantOnStage["layout"]["parts"][number], { kind: "sprite" }>; plant: PlantOnStage["plant"]; ox: number; oy: number; call: SharedValue<number> }) {
+  const style = useAnimatedStyle(() => {
+    const t = call.value, on = t > 0 && t < 1;
+    return { transform: [{ rotate: `${on ? 9 * Math.sin(4 * Math.PI * t) * (1 - t) : 0}deg` }, { scale: on ? 1 + 0.15 * Math.sin(Math.PI * t) : 1 }] };
+  });
+  const B = BUD_BOX * Math.max(1, q.scale);
+  return (
+    <Animated.View style={[{ position: "absolute", left: ox + q.x - B / 2, top: oy + q.y - B / 2, width: B, height: B, transformOrigin: [B / 2, B / 2, 0] }, style]} pointerEvents="none">
+      <Svg width={B} height={B}><G x={B / 2} y={B / 2}><PlacedPart p={{ ...q, x: 0, y: 0 }} plant={plant} /></G></Svg>
+    </Animated.View>
+  );
+}
+export function Plant({ p, footX, footY, sway, gust, gustDelay, reduced, items: planned, settled, before: was, call }: { p: PlantOnStage; footX: number; footY: number; sway: SharedValue<number>; gust: SharedValue<number>; gustDelay: number; reduced: boolean; items: PlantItem[]; settled: boolean; before: PlantLayout | null; call?: SharedValue<number> }) {
   const items = settled ? [] : planned, before = settled ? null : was;
   const all = before ? [...p.layout.parts, ...before.parts] : p.layout.parts;
   const reach = Math.max(60, ...all.map((q) => (q.kind === "stem" ? Math.max(Math.abs(q.x0), Math.abs(q.x1)) : Math.abs(q.x) + 20)));
   const W = Math.ceil(reach * 2 + 8), H = Math.ceil(Math.max(p.layout.top, before?.top ?? 0) + 24);
   const by = drawnBy(p.layout.parts.length, items, settled);
-  const parts = p.layout.parts.map((q, i) => ({ q, i })).filter(({ i }) => by[i] === "static").sort((a, b) => a.q.z - b.q.z);
+  const all0 = p.layout.parts.map((q, i) => ({ q, i })).filter(({ i }) => by[i] === "static").sort((a, b) => a.q.z - b.q.z);
+  const isBud = (q: (typeof all0)[number]["q"]): q is Extract<typeof q, { kind: "sprite" }> => !!call && !reduced && q.kind === "sprite" && q.part === "bud";
+  const parts = all0.filter(({ q }) => !isBud(q)), buds = all0.flatMap(({ q, i }) => (isBud(q) ? [{ q, i }] : []));   // R248: buds in their own views
   const phase = swayPhase(p.plant);
   const swayStyle = useAnimatedStyle(() => ({ transform: plantTurn(reduced ? 0 : windAngle(sway.value, phase, gust.value - gustDelay)) }));
   const key = (it: PlantItem) => `${it.kind}-${it.part}`;
@@ -48,6 +66,7 @@ export function Plant({ p, footX, footY, sway, gust, gustDelay, reduced, items: 
           })}
         </G>
       </Svg>
+      {call ? buds.map(({ q, i }) => <Bud key={`bud${i}`} q={q} plant={p.plant} ox={W / 2} oy={H} call={call} />) : null}
     </Animated.View>
   );
 }
