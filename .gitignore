@@ -9,3 +9,6 @@ dist
 spikes/keys/
 .superpowers/
 .DS_Store
+
+# Track P device screenshots
+.shots/
