@@ -15,6 +15,7 @@ import { Can } from "./Can";
 import { canScale, overlayToCanvas, ROW_GAP } from "@/model/can";
 import { Appear } from "./Strip";
 import { Wind } from "./Wind";
+import { packScene } from "@/model/spread";
 import { Soil, SoilClip, Ring, Seed, Sign, Basket, SpriteAt } from "./parts";
 
 const MOUNT_FADE_MS = 300;
@@ -68,7 +69,8 @@ export function Garden({ scene: incoming, live, canReady, onWater, onNudge, row,
     setChange({ n: change.n + 1, key, scene: incoming, before: change.scene, diff, first: watering?.target ?? null, watered: watering !== null, held: watering?.drag ?? false });
   }
   if (live && liveKey !== key) setLiveKey(key);
-  const scene = change.key === key ? change.scene : incoming;   // drawn from the change's own scene, so its plan's part indexes hold
+  const raw = change.key === key ? change.scene : incoming;   // drawn from the change's own scene, so its plan's part indexes hold
+  const scene = useMemo(() => packScene(raw), [raw]);   // R234: packed together while the plants are small (part order kept)   // R234: packed toward the middle while the plants are small (part order kept)   // R234: packed toward the middle while the plants are small (part order kept)
   const of = <K extends Part["kind"]>(kind: K) => scene.parts.filter((p): p is Extract<Part, { kind: K }> => p.kind === kind);
   const plants = useMemo(() => plantLayouts(scene), [scene]);
   const footOf = (plant: string) => { const pl = plants.find((p) => p.plant === plant) ?? of("sign").find((s) => s.plant === plant); return pl ? { x: pl.x * w, y: FOOT_Y(pl.row) } : { x: w * 0.4, y: CANVAS.frontFeet }; };
@@ -271,7 +273,7 @@ export function Garden({ scene: incoming, live, canReady, onWater, onNudge, row,
         return <Plant key={p.plant} p={p} footX={p.x * w} footY={FOOT_Y(p.row)} sway={sway} gust={gust} gustDelay={delays[p.plant] ?? 0} reduced={reduced} items={itemsOf(p.plant)} settled={settledOf(p.plant)} before={was} />;
        }),
        <Svg key={`signs-${row}`} width={w} height={CANVAS.height} style={{ position: "absolute", left: 0, top: 0 }} pointerEvents="none">
-        {of("sign").filter((s) => s.row === row).map((s) => { const at = signPlacement(s, w); return <G key={`s${s.plant}`} x={at.x} y={at.y}><Sign plant={s.plant} scale={at.scale} /></G>; })}
+        {of("sign").filter((s) => s.row === row).map((s) => { const at = signPlacement(s, w, target.zoom); return <G key={`s${s.plant}`} x={at.x} y={at.y}><Sign plant={s.plant} scale={at.scale} /></G>; })}
        </Svg>,
       ])}
      </Animated.View>
