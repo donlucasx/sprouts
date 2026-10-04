@@ -18,16 +18,14 @@ const me = {
   rules: { roundupOn: true, roundupToCents: 100, pctOn: true, pctBps: 100, pctThresholdCents: 10000, plantThresholdCents: 200, plantMaxDays: 7, dailyCapCents: 500, managed: false, stop: "balanced", pins: {}, allocation: { SKR: 100, stORE: 0, hSOL: 0, JitoSOL: 0, JupSOL: 0, cbBTC: 0 } },
 } as unknown as MeResponse;
 
-describe("R170: the widget's garden sits at the bottom, directly above the text", () => {
-  it.each([[150, 180, false], [300, 180, true]] as const)("at %i by %i (wide %s): the root stacks to the bottom, garden then text, nothing stretches", (width, height, wide) => {
+describe("R252: the widget's text at the top, its garden at the bottom", () => {
+  it.each([[150, 180, false], [300, 180, true]] as const)("at %i by %i (wide %s): text first, garden last, spread apart", (width, height, wide) => {
     const root = SproutsWidget({ me, width, height, wide }) as El;
-    expect(root.props.style).toMatchObject({ flexDirection: "column", justifyContent: "flex-end" });
-    const [garden, text, ...rest] = kids(root);
+    expect(root.props.style).toMatchObject({ flexDirection: "column", justifyContent: "space-between" });
+    const [text, garden, ...rest] = kids(root);
     expect(rest).toHaveLength(0);
-    expect(garden.type).toBe("SvgWidget");
-    expect(text.type).toBe("FlexWidget");
-    expect(text.props.style?.flex).toBeUndefined();   // the leftover is not handed to the text: it stays above, as paper
-    expect(text.props.style?.justifyContent ?? "flex-start").toBe("flex-start");
+    expect(text.type).toBe("FlexWidget"); expect(garden.type).toBe("SvgWidget");
     expect(kids(text).every((t) => t.type === "TextWidget")).toBe(true);
+    expect(kids(text)[0].props.text).toMatch(/^In your garden \$|SKR/);
   });
 });

@@ -1,93 +1,101 @@
 import type { Scene } from "./garden";
-import { PLANT_SCALE, SIGN_LABEL, SIGN_SCALE, SIGN_TEXT, signStand, signX } from "./layout";
-import { stemPaths, spriteTransform, soilPaths, leafPath } from "./paint";
+import { CANVAS, FOOT_Y, PLANT_SCALE, SIGN_LABEL, SIGN_TEXT, frameFor, signPlacement, windSpan } from "./layout";
+import { stemPaths, spriteTransform } from "./paint";
 import { COLORS, SOIL } from "./species";
-import { SOIL_CLIP_ID, soilBottomAt, soilClipPath } from "./soil-clip";
+import { GROUND, SOIL_CLIP_ID, frameGround, soilClipPath } from "./soil-clip";
 import { plantLayouts } from "./scene-to-layout";
+import { packScene, SPREAD } from "./spread";
 import { SPRITE_META } from "@/garden/sprite-meta";
 import { SPRITES_B64 } from "@/garden/sprites-b64";
 
-export const WIDGET_SOIL_BAND = 30;
-/** The soil band shrinks with a short garden (the small widget's is 60 px): a third of the height, at most 30. */
-export const soilBand = (gardenH: number) => Math.min(WIDGET_SOIL_BAND, Math.round(gardenH / 3));
-/** From the spike's ledger: `use` (defs plus use, the plan), `image` (a data image per placement), `path` (vector outlines, no sprites). */
-export const WIDGET_MODE: "use" | "image" | "path" = "use";
-const f = (n: number) => Number(n.toFixed(1));
-/** The room left above the tallest drawn part. */
-export const WIDGET_TOP_MARGIN = 6;
-/** The wide widget's signs: the app's 0.8 times SIGN_SCALE (1.08), not scaled by k. */
-export const WIDGET_SIGN_SCALE = 0.8 * SIGN_SCALE;
-/** The front row's feet sit 0.73 of the band under the soil line, the back row's 0.23 (the app's 44 and 14 of a 60 band). */
-const FOOT_IN_BAND = { front: 0.73, back: 0.23 } as const;
-type Drawn = { top: number; step: number };
-/** The plants this widget draws (the small one the front row only), each as its height above its foot (k = 1) and its foot's step above
- * the front row's feet. */
-const drawnRows = (scene: Scene, band: number, wide: boolean): Drawn[] =>
-  plantLayouts(scene).filter((p) => wide || p.row === "front").map((p) => ({ top: p.layout.top, step: (FOOT_IN_BAND.front - FOOT_IN_BAND[p.row]) * band }));
-/** Room above the front row's feet in a garden `gardenH` tall, the margin kept. */
-const roomAbove = (gardenH: number, band: number) => gardenH - band + FOOT_IN_BAND.front * band - WIDGET_TOP_MARGIN;
-/** k: the largest scale, at most 1 (spec 5's cap), at which every drawn plant's top stays `WIDGET_TOP_MARGIN` under the garden's top
- * edge, measured from where the feet actually stand (R167, 10-02: the old rule measured from the soil line and floored the top at
- * 60 px, so a young garden drew small under a band of empty sky). */
-export function widgetScale(scene: Scene, gardenH: number, wide: boolean, cap = 1): number {
-  const band = soilBand(gardenH), room = roomAbove(gardenH, band);
-  return Math.max(0, Math.min(cap, ...drawnRows(scene, band, wide).filter((d) => d.top > 0).map((d) => (room - d.step) / d.top)));
+const f = (n: number) => Number(n.toFixed(2));
+/** R252 (10-04, his photo: "is this what the widget is supposed to look like rn?"): the widget draws the app's own garden: the same
+ * packing (R234), frame (RG30), deep ground spanning the frame (R231, R238), both rows, the stakes in front of their plants (R226), in
+ * the app's canvas units at the 320 reference width, shown through an SVG viewBox. The view is the app's frame, widened or heightened
+ * (sky above, the bed's bottom kept) to the widget's own shape. */
+export const WIDGET_REF = SPREAD.ref;
+/** Stakes are drawn only when they come out at least this many widget px per canvas px (a narrow widget's six boards would be specks). */
+export const WIDGET_SIGN_MIN_PX = 0.75;
+/** R252: a narrow widget (no stakes, no wind) draws its plants this much over the app's 1.25x, so a six-coin garden reads at that width. */
+export const WIDGET_BOOST = 1.4;
+
+export type WidgetView = { scene: Scene; x: number; y: number; w: number; h: number; zoom: number; px: number; signs: boolean };
+/** The packed scene and the canvas box the widget shows, for a garden `width` by `height` widget px: `px` widget px per canvas px. */
+export function widgetView(scene: Scene, width: number, height: number): WidgetView {
+  const full = viewOf(scene, width, height, SPREAD.take);
+  if (full.px >= WIDGET_SIGN_MIN_PX) return { ...full, signs: true };
+  // too narrow for legible stakes: drawn without them, so the garden packs fully (R234's whole packing) around the plants alone
+  const bare: Scene = { ...scene, parts: scene.parts.filter((q) => q.kind !== "sign") };
+  return { ...tightView(bare, width, height), signs: false };
 }
-/** R187: the plants' own scale, the same k rule with R187's 1.25 as its cap: a garden with room draws its plants 1.25x (the rings and the
- * seeds stay at k), and a garden the height binds keeps every top under the edge, so its plants are no larger than the fit allows. */
-export const widgetPlantScale = (scene: Scene, gardenH: number, wide: boolean) => widgetScale(scene, gardenH, wide, PLANT_SCALE);
-/** R167: the garden's height on a widget whose host fixes `maxH`: the shortest height that draws the plants as large as `maxH` does
- * (so they are never smaller) with the signs inside it, never under the soil band plus 40; the rest goes back to the text lines. */
-export function widgetGardenHeight(scene: Scene, maxH: number, wide: boolean): number {
-  const best = widgetPlantScale(scene, maxH, wide), floor = Math.min(maxH, WIDGET_SOIL_BAND + 40), signAy = SPRITE_META["sign"]?.ay ?? 14;
-  for (let h = Math.ceil(floor); h < maxH; h++) {
-    const band = soilBand(h), signRoom = !wide || roomAbove(h, band) >= (FOOT_IN_BAND.front - FOOT_IN_BAND.back) * band - 3 + WIDGET_SIGN_SCALE * signAy;
-    if (signRoom && widgetPlantScale(scene, h, wide) >= best - 1e-9) return h;
-  }
-  return maxH;
+/** R253 (10-04, "make sure theres not a lot of negative space in the widget- zoom in the garden"): a narrow widget's view hugs its plants
+ * (TIGHT_INSET of the view either side of their reach, the flat-topped mound full there, R243) and is as short as the plants and the bed
+ * need, so on a tall widget the garden zooms in to fill the height and only what is left over is paper. */
+const TIGHT_INSET = 0.06, TIGHT_TOP = 8;
+function tightView(scene: Scene, width: number, height: number): Omit<WidgetView, "signs"> {
+  const packed = packScene(scene, WIDGET_REF, 1), L = plantLayouts(packed), fr = frameFor(packed, L, WIDGET_REF);
+  if (L.length === 0) return { ...viewOf(scene, width, height, 1) };
+  const span = windSpan(L, WIDGET_REF), hNeed = needH(L, PLANT_SCALE * WIDGET_BOOST), minW = (span.hi - span.lo) / (1 - 2 * TIGHT_INSET);
+  const w = Math.max(minW, hNeed * (width / Math.max(1, height))), h = Math.max(hNeed, w / (width / Math.max(1, height)));
+  return { scene: packed, x: (span.lo + span.hi) / 2 - w / 2, y: CANVAS.height - h, w, h, zoom: fr.zoom, px: width / w };
 }
-/** The garden as one SVG string for the widget: the sprites the scene uses declared once in <defs>, placed with <use>; stems as
- * paths; the wide widget shows both rows and the signs at a fixed WIDGET_SIGN_SCALE (1.08); the small widget the front row only and no sign. */
-export function widgetGardenSvg(scene: Scene, width: number, height: number, wide: boolean): string {
-  const k = widgetScale(scene, height, wide), kp = widgetPlantScale(scene, height, wide), band = soilBand(height);
-  const line = height - band, foot = (row: "front" | "back") => line + band * FOOT_IN_BAND[row];
+function viewOf(scene: Scene, width: number, height: number, take: number): Omit<WidgetView, "signs"> {
+  const packed = packScene(scene, WIDGET_REF, take), L = plantLayouts(packed), fr = frameFor(packed, L, WIDGET_REF);
+  // R253: the widget has no room to grow into: the view is as tall as the plants and the bed, not the app's headroom
+  const hNeed = needH(L, PLANT_SCALE), ar = width / Math.max(1, height);
+  const w = Math.max(fr.w, hNeed * ar), h = Math.max(hNeed, w / ar);
+  return { scene: packed, x: fr.x + fr.w / 2 - w / 2, y: CANVAS.height - h, w, h, zoom: fr.zoom, px: width / w };
+}
+/** The canvas height the plants (drawn at `k`) and the ground need, from the bed's bottom up, TIGHT_TOP above the tallest. */
+function needH(L: ReturnType<typeof plantLayouts>, k: number): number {
+  const ground = CANVAS.height - (SPRITE_META["ground"]?.h ?? 86) * GROUND.sy;
+  const top = L.length ? Math.min(...L.map((p) => FOOT_Y(p.row) - p.layout.top * k)) - TIGHT_TOP : ground;
+  return CANVAS.height - Math.min(top, ground);
+}
+/** The garden's height on a widget `width` wide with at most `maxH` for it: the view's own height at that width. */
+export function widgetGardenHeight(scene: Scene, width: number, maxH: number): number {
+  const v = widgetView(scene, width, maxH);
+  return Math.min(maxH, Math.round(v.h * v.px));
+}
+
+/** The garden as one SVG string: the sprites the scene uses declared once in <defs> (1x PNGs) and placed with <use>; stems as paths. */
+export function widgetGardenSvg(scene0: Scene, width: number, height: number): string {
+  const v = widgetView(scene0, width, height), scene = v.scene, W = WIDGET_REF;
+  const ground = frameGround(W, { x: v.x, w: v.w });
   const used = new Set<string>(); const body: string[] = [];
-  // one placement, three modes (the spike's ledger): a <use> of a sprite declared once; a data image per placement; a vector outline
   const placeStr = (name: string, x: number, y: number, rot: number, scale: number, xScale = scale): string => {
     const m = SPRITE_META[name]; if (!m || !SPRITES_B64[name]) return "";
-    const t = spriteTransform(m, x, y, rot, scale, xScale);
-    if (WIDGET_MODE === "use") { used.add(name); return `<use xlink:href="#s-${name}" transform="${t}"/>`; }
-    if (WIDGET_MODE === "image") return `<image width="${m.w}" height="${m.h}" transform="${t}" xlink:href="data:image/png;base64,${SPRITES_B64[name]}"/>`;
-    const L = m.h, W = m.w * 0.36; const plant = name.split("-")[1];   // path mode: the leaf outline in the part's green, every leaf-like the same shape
-    const col = (COLORS as Record<string, { green: string }>)[plant]?.green ?? "#2E8B57";
-    return `<g transform="translate(${f(x)} ${f(y)}) rotate(${f(rot)}) scale(${f(xScale)} ${f(scale)})"><path d="${leafPath(L, W, -1)}" fill="${col}" opacity=".52"/><path d="${leafPath(L, W, 1)}" fill="${col}" opacity=".52"/></g>`;
+    used.add(name); return `<use xlink:href="#s-${name}" transform="${spriteTransform(m, x, y, rot, scale, xScale)}"/>`;
   };
   const place = (...a: Parameters<typeof placeStr>) => { body.push(placeStr(...a)); };
-  if (WIDGET_MODE === "path") body.push(...soilPaths(width, line, band).map((q) => `<path d="${q.d}" fill="${q.fill}" opacity="${q.opacity}"${q.stroke ? ` stroke="${q.stroke}" stroke-width="${q.strokeWidth}"` : ""}/>`));
-  else place("ground", 0, height - SPRITE_META["ground"].h * (band / 60), 0, band / 60, width / 320);   // RG28: the app's ground bake, its bottom on the widget's bottom, scaled from the app's 60 px band to this one
-  const plants = plantLayouts(scene).filter((p) => wide || p.row === "front");
   const of = <K extends Scene["parts"][number]["kind"]>(kind: K) => scene.parts.filter((p): p is Extract<Scene["parts"][number], { kind: K }> => p.kind === kind);
-  // R176 (no soil, no water): every ring sits in a group clipped to the soil's outline, placed as the ground sprite is (AndroidSVG: a <clipPath> of a path)
-  const gk = band / 60, ground = { x0: 0, y0: height - SPRITE_META["ground"].h * gk, sx: width / 320, sy: gk }, clip = `<clipPath id="${SOIL_CLIP_ID}"><path d="${soilClipPath(0, height - SPRITE_META["ground"].h * gk, width / 320, gk)}"/></clipPath>`;
+  const plants = plantLayouts(scene);
+  const footOf = (plant: string) => { const p = plants.find((q) => q.plant === plant) ?? of("sign").find((q) => q.plant === plant); return p ? { x: p.x * W, y: FOOT_Y(p.row) } : null; };
+  place("ground", ground.x0, ground.y0, 0, ground.sy, ground.sx);
+  // R176 (no soil, no water): the rings in a group clipped to the soil's outline, placed as the ground is
+  const clip = `<clipPath id="${SOIL_CLIP_ID}"><path d="${soilClipPath(ground.x0, ground.y0, ground.sx, ground.sy)}"/></clipPath>`;
   let rings = false;
-  for (const r of of("ring")) { const pl = plants.find((p) => p.plant === r.plant); if (pl) { rings = true; body.push(`<g clip-path="url(#${SOIL_CLIP_ID})"><g opacity="${f(1 - r.age)}">${placeStr("ring", pl.x * width, foot(pl.row) + 1, 0, k * (pl.row === "front" ? 1 : 2 / 3))}</g></g>`); } }
-  for (const s of of("seed")) { const sg = of("sign").find((q) => q.plant === s.plant); if (sg && (wide || sg.row === "front")) place("seed", sg.x * width + (s.index % 2 ? 1 : -1) * (3 + 2.4 * Math.floor(s.index / 2)) * k, foot(sg.row), ((s.index * 37) % 60) - 30, k); }   // on the small widget they sit at the plant's foot (no sign)
-  for (const p of [...plants.filter((q) => q.row === "back"), ...plants.filter((q) => q.row === "front")]) {
-    const fx = p.x * width, fy = foot(p.row);
-    // R187: every part of a plant at kp (1.25x within the k rule), about its foot
-    for (const q of [...p.layout.parts].sort((a, b) => a.z - b.z)) {
-      if (q.kind === "stem") body.push(stemPaths(fx + q.x0 * kp, fy + q.y0 * kp, fx + q.x1 * kp, fy + q.y1 * kp, q.w0 * kp, q.w1 * kp, q.bend * kp, q.color).map((s) => `<path d="${s.d}" fill="${s.fill}" opacity="${s.opacity}"/>`).join(""));
-      else if (q.part === "swelling") body.push(`<circle cx="${f(fx + q.x * kp)}" cy="${f(fy + q.y * kp)}" r="${f(q.scale * kp)}" fill="${COLORS[p.plant].light}" opacity="${f(0.4 + 0.35 * Math.min(1, (q.scale - 2.2) / 2.4))}"/>`);   // the app's formula
-      else if (q.part === "dot") body.push(`<circle cx="${f(fx + q.x * kp)}" cy="${f(fy + q.y * kp)}" r="${f(q.scale * kp)}" fill="${COLORS.ore.token}" opacity=".95"/>`);
-      else place(q.name, fx + q.x * kp, fy + q.y * kp, q.rot, q.scale * kp, (q.xScale ?? q.scale) * kp);
+  for (const r of of("ring")) { const ft = footOf(r.plant); if (ft) { rings = true; body.push(`<g clip-path="url(#${SOIL_CLIP_ID})"><g opacity="${f(1 - r.age)}">${placeStr("ring", ft.x, ft.y + 2, 0, r.plant === "skr" || r.plant === "ore" ? CANVAS.frontScale : 2 / 3)}</g></g>`); } }
+  for (const s of of("seed")) { const ft = footOf(s.plant); if (ft) place("seed", ft.x + (s.index % 2 ? 1 : -1) * (3 + 2.4 * Math.floor(s.index / 2)), ft.y + 1 - 1.2 * (s.index % 3), ((s.index * 37) % 60) - 30, 1); }
+  const signs = v.signs;
+  for (const row of ["back", "front"] as const) {
+    for (const p of plants.filter((q) => q.row === row)) {
+      const fx = p.x * W, fy = FOOT_Y(p.row), k = PLANT_SCALE * (v.signs ? 1 : WIDGET_BOOST);   // R187: the app's 1.25x about the foot; R252: a narrow widget more
+      for (const q of [...p.layout.parts].sort((a, b) => a.z - b.z)) {
+        if (q.kind === "stem") body.push(stemPaths(fx + q.x0 * k, fy + q.y0 * k, fx + q.x1 * k, fy + q.y1 * k, q.w0 * k, q.w1 * k, q.bend * k, q.color).map((s) => `<path d="${s.d}" fill="${s.fill}" opacity="${s.opacity}"/>`).join(""));
+        else if (q.part === "swelling") body.push(`<circle cx="${f(fx + q.x * k)}" cy="${f(fy + q.y * k)}" r="${f(q.scale * k)}" fill="${COLORS[p.plant].light}" opacity="${f(0.4 + 0.35 * Math.min(1, (q.scale - 2.2) / 2.4))}"/>`);   // the app's formula
+        else if (q.part === "dot") body.push(`<circle cx="${f(fx + q.x * k)}" cy="${f(fy + q.y * k)}" r="${f(q.scale * k)}" fill="${COLORS.ore.token}" opacity=".95"/>`);
+        else place(q.name, fx + q.x * k, fy + q.y * k, q.rot, q.scale * k, (q.xScale ?? q.scale) * k);
+      }
+    }
+    // R226: the row's stakes in front of its plants; R168: the one blank board and the word as vector text (AndroidSVG cannot load the
+    // app's font: a plain sans-serif, same ink and place)
+    if (signs) for (const s of of("sign").filter((q) => q.row === row)) {
+      const at = signPlacement(s, W, v.zoom, ground);
+      place("sign", at.x, at.y, 0, at.scale);
+      body.push(`<g transform="translate(${f(at.x)} ${f(at.y)}) scale(${f(at.scale)}) rotate(${SIGN_TEXT.rot})"><text x="0" y="${SIGN_TEXT.y}" text-anchor="middle" font-family="sans-serif" font-size="${SIGN_TEXT.size}" font-weight="500" fill="${SOIL.ink}">${SIGN_LABEL[s.plant]}</text></g>`);
     }
   }
-  // R168: the one blank board, the word as vector text over it (AndroidSVG cannot load the app's font: a plain sans-serif, same ink and place)
-  if (wide) for (const s of of("sign")) {
-    const x = signX(s.x * width, s.side, width, WIDGET_SIGN_SCALE), y = signStand(x, foot(s.row) + 3, WIDGET_SIGN_SCALE, (px) => soilBottomAt(px, ground));   // R181: the post in the soil
-    place("sign", x, y, 0, WIDGET_SIGN_SCALE);
-    body.push(`<g transform="translate(${Number(x.toFixed(2))} ${Number(y.toFixed(2))}) scale(${WIDGET_SIGN_SCALE}) rotate(${SIGN_TEXT.rot})"><text x="0" y="${SIGN_TEXT.y}" text-anchor="middle" font-family="sans-serif" font-size="${SIGN_TEXT.size}" font-weight="500" fill="${SOIL.ink}">${SIGN_LABEL[s.plant]}</text></g>`);
-  }
   const defs = [...used].map((n) => `<image id="s-${n}" width="${SPRITE_META[n].w}" height="${SPRITE_META[n].h}" xlink:href="data:image/png;base64,${SPRITES_B64[n]}"/>`).join("");
-  return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><defs>${defs}${rings && WIDGET_MODE !== "path" ? clip : ""}</defs>${body.join("")}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${width}" height="${height}" viewBox="${f(v.x)} ${f(v.y)} ${f(v.w)} ${f(v.h)}" preserveAspectRatio="xMidYMax meet"><defs>${defs}${rings ? clip : ""}</defs>${body.join("")}</svg>`;
 }
