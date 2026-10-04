@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
-import { View, Pressable, RefreshControl } from 'react-native'
+import { View, Pressable, RefreshControl, Image } from 'react-native'
 import { Link, Redirect, router, useFocusEffect } from 'expo-router'
 import { MaterialCommunityIcons } from '@expo/vector-icons'
 import { useQueryClient } from '@tanstack/react-query'
@@ -9,6 +9,7 @@ import { api, ApiError, type MeResponse } from '@/lib/api'
 import { buildScene } from '@/model/garden'
 import { watcherLine } from '@/model/watcher'
 import { Garden } from '@/garden/Garden'
+import { SPRITES } from '@/garden/sprites'
 import { Screen } from '@/components/Screen'
 import { Card } from '@/components/Card'
 import { Button } from '@/components/Button'
@@ -25,7 +26,26 @@ import { gardenTotals, pauseState, coinRows, statTiles, walletsLine, lastPlantin
 import { setPaused } from '@/lib/pause-api'
 import { freshWalletSignIn } from '@/lib/reauth'
 import { identity } from '@/lib/identity'
-import { radius, spacing, TARGET, useTheme } from '@/theme'
+import { FONT, radius, spacing, TARGET, useTheme } from '@/theme'
+import type { Asset } from '@/lib/coins'
+
+/** R230: each row of Home's coin list leads with the coin's painted token (the garden's fruit) and its full name, portfolio style. */
+const COIN_ICON: Record<Asset, number> = {
+  SKR: SPRITES['token-skr'].src,
+  stORE: SPRITES['token-ore'].src,
+  hSOL: SPRITES['token-hsol'].src,
+  JitoSOL: SPRITES['token-jitosol'].src,
+  JupSOL: SPRITES['token-jupsol'].src,
+  cbBTC: SPRITES['token-cbbtc'].src,
+}
+const COIN_FULL_NAME: Record<Asset, string> = {
+  SKR: 'Seeker',
+  stORE: 'Staked ORE',
+  hSOL: 'Helius Staked SOL',
+  JitoSOL: 'Jito Staked SOL',
+  JupSOL: 'Jupiter Staked SOL',
+  cbBTC: 'Coinbase Wrapped BTC',
+}
 
 /** R199: the Last planting row's hit slop at its bottom and sides; the row is TARGET minus this tall, so its touch target is 48 dp.
  * No slop at its top: that edge meets the garden's row, where the can's touch box ends, and a later sibling's slop would win there. */
@@ -233,23 +253,48 @@ export default function Home() {
             </View>
           ))}
         </View>
-        <View style={{ gap: spacing.xs, marginTop: spacing.xs }}>
-          {coinRows(me).map((r) => (
-            <View key={r.asset} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 28 }}>
-              {/* R198, R206: SKR and stORE in the heading face at 16, the others' size, so the two lead rows match each other and never
-                  break beside their status (heading 20, then 18, wrapped or shrank stORE); read as plain text, not headers */}
-              <ThemedText numeric variant={r.lead ? 'heading' : 'body'} accessibilityRole="text" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} style={[{ flex: 1 }, r.lead ? { fontSize: 16, lineHeight: 22 } : null]}>
-                {r.amount}
-              </ThemedText>
-              {/* R205: each coin's status at the row's right, an icon and a caption: SKR's lock, stORE's source (R194) under it */}
-              {r.locked || r.note ? (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs, flexShrink: 0 }}>
-                  <MaterialCommunityIcons name={r.locked ? 'lock-outline' : 'pickaxe'} size={14} color={colors.textSecondary} />
-                  <ThemedText variant="caption" tone="secondary">
-                    {r.locked ? 'locked to your Seeker' : r.note}
-                  </ThemedText>
-                </View>
-              ) : null}
+        {/* R230 (his note, "a more familiar portfolio look, like coinmarketcap's"): one row per coin, the token and the full name with
+            the amount under it on the left, the dollars with the coin's status under them on the right; hairlines between rows.
+            Replaces R198/R205's one-line rows (the lead rows' larger face goes: every row now has the same two lines). */}
+        <View style={{ marginTop: spacing.xs }}>
+          {coinRows(me).map((r, i) => (
+            <View
+              key={r.asset}
+              accessible
+              accessibilityLabel={`${COIN_FULL_NAME[r.asset]}, ${r.amount}${r.locked ? ', locked to your Seeker' : r.note ? `, ${r.note}` : ''}`}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: spacing.md,
+                paddingVertical: spacing.md,
+                borderTopWidth: i === 0 ? 0 : 1,
+                borderTopColor: colors.hairline,
+              }}
+            >
+              <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: colors.iconGround, alignItems: 'center', justifyContent: 'center' }}>
+                <Image source={COIN_ICON[r.asset]} style={{ width: 30, height: 30 }} resizeMode="contain" />
+              </View>
+              <View style={{ flex: 1, gap: 2 }}>
+                <ThemedText variant="body" style={{ fontFamily: FONT.label }} numberOfLines={1}>
+                  {COIN_FULL_NAME[r.asset]}
+                </ThemedText>
+                <ThemedText variant="caption" tone="secondary" numeric numberOfLines={1}>
+                  {r.qty}
+                </ThemedText>
+              </View>
+              <View style={{ alignItems: 'flex-end', gap: 2, flexShrink: 0, maxWidth: '50%' }}>
+                <ThemedText variant="body" numeric style={{ fontFamily: FONT.label }}>
+                  {r.usd ?? '–'}
+                </ThemedText>
+                {r.locked || r.note ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    <MaterialCommunityIcons name={r.locked ? 'lock-outline' : 'pickaxe'} size={12} color={colors.textSecondary} />
+                    <ThemedText variant="caption" tone="secondary" numberOfLines={1}>
+                      {r.locked ? 'Locked to your Seeker' : r.note}
+                    </ThemedText>
+                  </View>
+                ) : null}
+              </View>
             </View>
           ))}
         </View>
