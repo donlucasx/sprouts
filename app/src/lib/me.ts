@@ -1,11 +1,11 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { createMMKV } from "react-native-mmkv"; // v4: a factory, and MMKV is a type only [A5]
 import { api, ApiError, type MeResponse } from "./api";
 import { applyRulesTo, pickMeState, usableMe, type ManagerExtra } from "./me-state";
 import { refreshWidget } from "./widget-refresh";
 export { toGardenInput } from "./garden-input";
 
-export const store = createMMKV({ id: "sprouts" });
+import { store } from "./store";
+export { store };
 const KEY = "me.last";
 
 /** The last verified read, or null when there is none or it predates the Yield Manager build: every reader (Home, the widget task, the background fetch) goes through here. */

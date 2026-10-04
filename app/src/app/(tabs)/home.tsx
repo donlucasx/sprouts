@@ -4,6 +4,7 @@ import { Link, Redirect, router, useFocusEffect } from 'expo-router'
 import { MaterialCommunityIcons } from '@expo/vector-icons'
 import { useQueryClient } from '@tanstack/react-query'
 import { useMe, useInvalidateMe, toGardenInput } from '@/lib/me'
+import { recordWatering, wateredPlantsFor } from '@/lib/last-watering'
 import { api, ApiError, type MeResponse } from '@/lib/api'
 import { buildScene } from '@/model/garden'
 import { watcherLine } from '@/model/watcher'
@@ -64,7 +65,7 @@ export default function Home() {
   const now = new Date()
   const today = now.toDateString()
   // eslint-disable-next-line react-hooks/exhaustive-deps -- `now` is taken once per render on purpose; the scene follows the local date
-  const scene = useMemo(() => (me ? buildScene(toGardenInput(me, now)) : null), [me, today])
+  const scene = useMemo(() => (me ? buildScene(toGardenInput(me, now, wateredPlantsFor(me.user.wateredAt))) : null), [me, today])
   // Coming back to Home reads again: a wallet linked on the web, a planting, a withdrawal show without a pull-down. Leaving it
   // forgets a failed watering and the greyed can's hint (audits/watering-ux, finding 10).
   useFocusEffect(
@@ -88,8 +89,11 @@ export default function Home() {
   async function water(): Promise<boolean> {
     if (!me || !scene) return false
     setFailed(false)
+    // R249: the plants with a bud as the watering begins are the ones it opens; kept with the answer's time for the rings
+    const buds = [...new Set(scene.parts.flatMap((q) => (q.kind === 'sprout' && q.bud ? [q.plant] : [])))]
     try {
-      await api('/api/water', { method: 'POST', body: {} })
+      const answer = await api<{ wateredAt: string }>('/api/water', { method: 'POST', body: {} })
+      if (answer?.wateredAt) recordWatering(answer.wateredAt, buds)
       await invalidate()
       return true
     } catch {

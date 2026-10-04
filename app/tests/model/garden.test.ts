@@ -93,10 +93,13 @@ describe("buildScene: earned, pups, rings, the basket (RG16, RG20, RG11)", () =>
     expect(of(buildScene({ ...base, wateredAt: NOW, plantings: many }), "pup").map((p) => p.index)).toEqual([0, 1]);
     expect(of(buildScene({ ...base, wateredAt: NOW, plantings: many.slice(0, 7) }), "pup")).toHaveLength(0);
   });
-  it("one ring per present plant after a watering, fading over the day (Review Focus 5)", () => {
+  it("R249: a ring under each plant the watering opened, fading over the day; the recorded plants when there are any", () => {
     const s = buildScene({ ...base, wateredAt: new Date(NOW.getTime() - 6 * 3_600_000), plantings: [planting("a", 2), planting("b", 2, "hSOL")], allocation: BALANCED });
     expect(of(s, "ring").map((r) => [r.plant, r.age])).toEqual([["skr", 0.25], ["hsol", 0.25]]);
     expect(of(buildScene({ ...base, wateredAt: new Date(NOW.getTime() - 2 * 86_400_000), plantings: [planting("a", 3)] }), "ring")).toHaveLength(0);
+    // recorded: only those; a plant whose planting was opened long before stays dry
+    expect(of(buildScene({ ...base, wateredAt: new Date(NOW.getTime() - 6 * 3_600_000), wateredPlants: ["hsol"], plantings: [planting("a", 2), planting("b", 2, "hSOL")], allocation: BALANCED }), "ring").map((r) => r.plant)).toEqual(["hsol"]);
+    expect(of(buildScene({ ...base, wateredAt: new Date(NOW.getTime() - 6 * 3_600_000), plantings: [planting("a", 20), planting("b", 2, "hSOL")], allocation: BALANCED }), "ring").map((r) => r.plant)).toEqual(["hsol"]);
   });
   it("the basket and the transplant are drawn as today", () => {
     const s = buildScene({ ...base, joinedValueRaw: 7n, basket: { amountRaw: 3n, readyAt: NOW } });

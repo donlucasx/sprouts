@@ -8,7 +8,7 @@ import { SPRITES } from "./sprites";
 import { WATER } from "./parts";
 import { Stream } from "./Pour";
 import { REDUCED_MS } from "@/model/opening";
-import { canArt, canHit, canSeat, clampDrag, dropSize, grabAt, roseAt, roseOnScreen, CAN_MS, DRIP, POUR_SHARE, STREAM, WOBBLE_WAIT_MS } from "@/model/can";
+import { canArt, canHit, canSeat, clampDrag, dropSize, grabAt, roseAt, roseOnScreen, CAN_MS, DRIP, POUR_SHARE, STREAM, SWEEP_TAIL, WOBBLE_WAIT_MS } from "@/model/can";
 
 const TILT = -40, LIFT = 1.08, MOVED = 8, HOVER_STEP = 3, TILT_MS = 350;
 const REST = SPRITES["can"], TILTED = SPRITES["can-tilt"], GREY = SPRITES["can-grey"];   // can-grey: baked desaturated at 45 percent (ruling d)
@@ -40,8 +40,11 @@ type Props = {
   targetAt: (pt: { x: number; y: number }) => PlantId | null;
   /** Where the tap's pour puts the rose for `plant`, and the ground the water lands on, in the overlay's frame. */
   spotOf: (plant: PlantId) => { rose: { x: number; y: number }; groundY: number };
-  /** The tap's plant: the first with a closed bud. */
+  /** The tap's plant: the first with a closed bud (the tap runs only while one waits). */
   tapTarget: PlantId | null;
+  /** R246: every plant left to right, the tap's sweep across the garden, and the plants with a bud it opens as it passes. */
+  sweep: PlantId[];
+  buds: PlantId[];
   /** The watering request (one per sequence, the same call for drag and tap); resolves false when it failed. `target` is the plant
    * first poured on (null for a tap); `drag` holds each plant's opening until the can reaches it (R201). */
   onPour: (target: PlantId | null, drag: boolean) => Promise<boolean>;
@@ -74,7 +77,7 @@ type Props = {
  * motion). The touch box lies wholly inside the overlay at its seat (canHit, canRoomBelow); the drag holds the finger inside it and,
  * R196, lets the art hang past the right edge (clampDrag): Android drops touches outside a parent's bounds.
  */
-export function Can({ ready, reduced, tempo, width, s, wobbleKey, overlayW, viewH, viewHNow, barBelow, overlayBelow, targetAt, spotOf, tapTarget, onPour, onVisit, onDrop, afterOpening, onPourEnd, onNudge }: Props) {
+export function Can({ ready, reduced, tempo, width, s, wobbleKey, overlayW, viewH, viewHNow, barBelow, overlayBelow, targetAt, spotOf, tapTarget, sweep, buds, onPour, onVisit, onDrop, afterOpening, onPourEnd, onNudge }: Props) {
   const dx = useSharedValue(0), dy = useSharedValue(0), tilt = useSharedValue(0), lift = useSharedValue(1), wobble = useSharedValue(0), seen = useSharedValue(1);
   const busy = useSharedValue(false);   // one watering at a time (a shared value, so the gesture's callbacks may read it)
   const held = useSharedValue(false);   // in the hand or pouring: the shadow lightens and the drip stops at once
@@ -133,7 +136,7 @@ export function Can({ ready, reduced, tempo, width, s, wobbleKey, overlayW, view
   /** The end of a sequence. Poured at `where` (a release over a plant, or the tap): the pour holds at least its share of the sequence
    * and while the request runs, then (R202) the can levels and waits for the opening to end, then home. Not poured there (a release
    * off every plant after an earlier pour): home at once, and the sequence ends once the request and the opening have. */
-  async function finish(where: PlantId | null) {
+  async function finish(where: PlantId | null, share: number = POUR_SHARE) {
     const request = seq.req ?? Promise.resolve(false);
     if (where) {
       if (!seq.failed && !reduced) {
@@ -141,7 +144,7 @@ export function Can({ ready, reduced, tempo, width, s, wobbleKey, overlayW, view
         if (alpha.value < 0.5) startStream(spotOf(where).groundY);   // the tap's pour starts here; a drag's is already running
         else ground.value = spotOf(where).groundY;
       }
-      const least = sleep(t(POUR_SHARE));
+      const least = sleep(t(share));
       const ok = await request;
       if (ok) await least;
       stopStream();
@@ -154,27 +157,43 @@ export function Can({ ready, reduced, tempo, width, s, wobbleKey, overlayW, view
     }
     put(seq, "req", null); put(seq, "over", null); busy.value = false; setPouring(false); onPourEnd();
   }
-  /** The tap: to the first plant with a bud, tilt, pour; the rest as a release there (finish). */
-  async function tapPour(to: PlantId) {
-    if (busy.value) return;
-    water(null, false);
+  /** R246 (10-04, "when tapping the can, the can should water throughout the garden, not just one plant"): the tap lifts the can to the
+   * leftmost plant, tilts and pours, and sweeps left to right over every plant across the pour's share of the sequence; it is a drag's
+   * watering, so each bud opens as the can reaches its plant (R201); then the rest as a release at the last plant (finish), its pour short. */
+  async function tapPour() {
+    if (busy.value || sweep.length === 0) return;
+    water(null, true);
+    const last = sweep[sweep.length - 1]!;
+    if (reduced) { for (const p of buds) onVisit(p); onDrop(); await finish(last, SWEEP_TAIL); return; }   // the can pours where it sits
     const home = canSeat(width, viewHNow + barBelow, s), r = roseAt(TILT, s);
-    if (!reduced) {   // reduced motion: the can pours where it sits
+    const slideTo = (to: PlantId, ms: number) => {
       const spot = spotOf(to).rose;
-      lift.value = withTiming(LIFT, { duration: 150 });
       // the slide is held as the drag is, the box's centre standing for a finger (fix round 1, R196)
       const slide = clampDrag(spot.x - r.x - home.x, spot.y - r.y - home.y, home, hit, { w: overlayW, h: viewHNow + overlayBelow }, LIFT, grabAt(home, hit, { x: hit.w / 2, y: hit.h / 2 }));
-      dx.value = withTiming(slide.dx, { duration: t(0.18), easing: Easing.inOut(Easing.cubic) });
-      dy.value = withTiming(slide.dy, { duration: t(0.18), easing: Easing.inOut(Easing.cubic) });
-      await sleep(t(0.18));
+      dx.value = withTiming(slide.dx, { duration: ms, easing: Easing.inOut(Easing.sin) });
+      dy.value = withTiming(slide.dy, { duration: ms, easing: Easing.inOut(Easing.sin) });
+    };
+    lift.value = withTiming(LIFT, { duration: 150 });
+    slideTo(sweep[0]!, t(0.18)); await sleep(t(0.18));
+    tilt.value = withTiming(TILT, { duration: t(0.1), easing: Easing.inOut(Easing.ease) }); await sleep(t(0.1));
+    if (!seq.failed) startStream(spotOf(sweep[0]!).groundY);
+    if (buds.includes(sweep[0]!)) onVisit(sweep[0]!);
+    const hop = t(POUR_SHARE) / Math.max(1, sweep.length - 1);
+    for (const p of sweep.slice(1)) {
+      if (seq.failed) break;
+      slideTo(p, hop); ground.value = withTiming(spotOf(p).groundY, { duration: hop });
+      await sleep(hop);
+      if (buds.includes(p)) onVisit(p);
     }
-    await finish(to);
+    for (const p of buds) onVisit(p);   // any bud the sweep did not pass opens with the release
+    onDrop();
+    await finish(last, SWEEP_TAIL);
   }
   /** A touch that ends where it began. If the drag already sent a watering (it went over a bud and came back), it is that drag's
    * release, never a new tap: the tap would be refused as busy and the sequence never finish (review of fix/check2). */
   const tap = () => {
     if (seq.req) { onDrop(); void finish(null); return; }
-    if (tapTarget) void tapPour(tapTarget);
+    if (tapTarget) void tapPour();
   };
   /** R201, while dragging (the rose's pour point, sent from the UI thread as it moves): over a plant still waiting the can tilts and
    * pours there, the first such plant sends the watering, each one reached may open; off them it levels and the stream stops. */
