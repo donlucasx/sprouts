@@ -11,9 +11,9 @@ const slots = (s: Scene) => s.parts.flatMap((q) => (q.kind === "plant" || q.kind
 const zoom = (s: Scene) => frameFor(s, plantLayouts(s), 320).zoom;
 
 describe("R234: adaptive spacing, the young garden packed together", () => {
-  it("the Saga's six young plants pack, the frame zooms in at least 1.4x, and no row touches", () => {
+  it("the Saga's six young plants pack, the frame zooms in about 1.3x (R235), and no row touches", () => {
     const p = packScene(saga);
-    expect(zoom(p)).toBeGreaterThan(zoom(saga) * 1.4);
+    expect(zoom(p)).toBeGreaterThan(zoom(saga) * 1.15); expect(zoom(p)).toBeLessThan(zoom(saga) * 1.5);
     expect(clearIn(p)).toBe(true);
   });
   it("the composition's order and rhythm hold: same left-to-right order, every gap at most its locked width and at least 30 percent of it", () => {
