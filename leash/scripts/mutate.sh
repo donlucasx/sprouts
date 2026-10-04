@@ -6,6 +6,11 @@ cd "$(dirname "$0")/.."
 BIN="${AGAVE_BIN:-$HOME/.local/share/agave-v3.1.11/solana-release/bin}"
 TSV=tests/mutations.tsv
 mkdir -p target
+# Restore every guard a mutation pass removed, however the run ends (EXIT, Ctrl-C, kill); touch so cargo rebuilds.
+restore() { find program/src -name '*.mutbak' -print0 | while IFS= read -r -d '' b; do mv "$b" "${b%.mutbak}" && touch "${b%.mutbak}"; done; }
+trap restore EXIT
+trap 'restore; exit 130' INT
+trap 'restore; exit 143' TERM
 build() { "$BIN/cargo-build-sbf" --manifest-path program/Cargo.toml --sbf-out-dir target/deploy >target/mutate-build.log 2>&1; }
 rows() { if [ $# -eq 0 ]; then grep -v '^#' "$TSV" | grep -v '^[[:space:]]*$'; else for g in "$@"; do awk -v g="$g" '$1==g' "$TSV"; done; fi; }
 fail=0; red=0; total=0
@@ -27,9 +32,9 @@ while read -r id kind file testfile testname; do
       echo "RED      $id ($testfile::$testname)"; red=$((red + 1))
     fi
   fi
-  mv "$file.mutbak" "$file"
+  mv "$file.mutbak" "$file" && touch "$file" # the backup's old mtime would make cargo keep the mutated build
 done < <(rows "$@")
 build
-if ! git diff --quiet -- program; then echo "TREE DIRTY after mutation run"; fail=1; fi
+if [ -n "$(git status --porcelain -- program)" ]; then echo "TREE DIRTY after mutation run"; git status --porcelain -- program; fail=1; fi
 echo "mutation rows RED: $red / $total"
 exit $fail

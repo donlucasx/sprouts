@@ -6,32 +6,44 @@ fn num(v: &serde_json::Value) -> f64 {
     v.as_str().map(|s| s.parse::<f64>().unwrap()).or_else(|| v.as_f64()).unwrap_or_else(|| panic!("not a number: {v}"))
 }
 
-#[test]
-fn s2_klend_reserves_match_mint_supply_and_api() {
+fn klend_reserve_matches_mint_supply_and_api(reserve: &str, liq: &str, coll: &str, dec: i32) {
     let r = reference();
-    for (reserve, liq, coll, dec) in [(addr::RESERVE_USDC, addr::USDC, addr::KUSDC, 6), (addr::RESERVE_SOL, addr::WSOL, addr::KSOL, 9)] {
-        let a = must_fixture(reserve);
-        assert_eq!(a.owner, b58(addr::KLEND), "{reserve} owner");
-        assert_eq!(a.data.len(), 8624, "{reserve} length");
-        assert_eq!(&a.data[0..8], &c::KLEND_RESERVE_DISC, "{reserve} discriminator");
-        assert_eq!(&a.data[32..64], &bytes(addr::KLEND_MARKET), "{reserve} lending_market @32");
-        assert_eq!(&a.data[128..160], &bytes(liq), "{reserve} liquidity mint @128");
-        assert_eq!(&a.data[2560..2592], &bytes(coll), "{reserve} collateral mint @2560");
-        let mint = must_fixture(coll);
-        let rd = u64_at(&a.data, 2592);
-        assert_eq!(rd, u64_at(&mint.data, 36), "{reserve}: collateral supply @2592 == the kToken mint's supply (same slot)");
-        let fees = u128_at(&a.data, 344) + u128_at(&a.data, 360) + u128_at(&a.data, 376);
-        let rn = u64_at(&a.data, 224) as u128 + ((u128_at(&a.data, 232) - fees) >> 60);
-        let api = num(&r["kamino_total_supply"][reserve]) * 10f64.powi(dec);
-        let lag = (rn as f64 - api).abs() / api;
-        println!("S2 KLEND {reserve}: rn {rn} rd {rd} rate {:.6} (Kamino API lag {lag:.2e})", rn as f64 / rd as f64);
-        assert!(lag < 5e-4, "{reserve}: total liquidity {rn} vs Kamino API {api}");
-    }
+    let a = must_fixture(reserve);
+    assert_eq!(a.owner, b58(addr::KLEND), "{reserve} owner");
+    assert_eq!(a.data.len(), 8624, "{reserve} length");
+    assert_eq!(&a.data[0..8], &c::KLEND_RESERVE_DISC, "{reserve} discriminator");
+    assert_eq!(&a.data[32..64], &bytes(addr::KLEND_MARKET), "{reserve} lending_market @32");
+    assert_eq!(&a.data[128..160], &bytes(liq), "{reserve} liquidity mint @128");
+    assert_eq!(&a.data[2560..2592], &bytes(coll), "{reserve} collateral mint @2560");
+    let mint = must_fixture(coll);
+    let rd = u64_at(&a.data, 2592);
+    assert_eq!(rd, u64_at(&mint.data, 36), "{reserve}: collateral supply @2592 == the kToken mint's supply (same slot)");
+    let fees = u128_at(&a.data, 344) + u128_at(&a.data, 360) + u128_at(&a.data, 376);
+    let rn = u64_at(&a.data, 224) as u128 + ((u128_at(&a.data, 232) - fees) >> 60);
+    let api = num(&r["kamino_total_supply"][reserve]) * 10f64.powi(dec);
+    let lag = (rn as f64 - api).abs() / api;
+    println!("S2 KLEND {reserve}: rn {rn} rd {rd} rate {:.6} (Kamino API lag {lag:.2e})", rn as f64 / rd as f64);
+    assert!(lag < 5e-4, "{reserve}: total liquidity {rn} vs Kamino API {api}");
+}
+
+#[test]
+fn s2_klend_usdc_reserve_matches_mint_supply_and_api() {
+    klend_reserve_matches_mint_supply_and_api(addr::RESERVE_USDC, addr::USDC, addr::KUSDC, 6);
+}
+
+#[test]
+fn s2_klend_sol_reserve_matches_mint_supply_and_api() {
+    klend_reserve_matches_mint_supply_and_api(addr::RESERVE_SOL, addr::WSOL, addr::KSOL, 9);
+}
+
+#[test]
+fn s2_klend_dust_reserve_is_a_separate_reserve() {
     let dust = must_fixture(addr::RESERVE_DUST);
     assert_eq!(dust.owner, b58(addr::KLEND));
     assert_eq!(&dust.data[32..64], &bytes(addr::KLEND_MARKET), "AWnKJ9 is in the same market");
     assert_eq!(&dust.data[2560..2592], &bytes(addr::KUSDC_DUST), "AWnKJ9 has its own collateral mint");
 }
+
 
 #[test]
 fn s2_jlend_rate_matches_api() {
@@ -150,6 +162,8 @@ fn s2_pyth_accounts_layout() {
         assert_eq!(&a.data[41..73], &feed, "{acct} feed id");
         let expo = i32_at(&a.data, 89);
         assert!((-12..=0).contains(&expo) && i64_at(&a.data, 73) > 0, "{acct} price/exponent");
-        println!("S2 PYTH {acct}: price {} e{expo} conf {} age {} s", i64_at(&a.data, 73), u64_at(&a.data, 81), now - i64_at(&a.data, 93));
+        let age = now - i64_at(&a.data, 93);
+        println!("S2 PYTH {acct}: price {} e{expo} conf {} age {age} s", i64_at(&a.data, 73), u64_at(&a.data, 81));
+        assert!(age.abs() <= 600, "{acct}: publish_time @93 is {age} s from the snapshot's time (layout sanity bound 600 s)");
     }
 }
