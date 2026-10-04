@@ -23,6 +23,7 @@ export class MemoryRepo implements Repo {
   adjustments: T.StakeAdjustmentRow[] = [];
   sessions = new Map<string, T.SessionRow>();
   watcherCalls: T.WatcherCallRow[] = [];
+  private watcherCallSeq = 0;
   coinDays = new Map<string, T.CoinDayRow>();
   splitDays = new Map<string, T.SplitDayRow>();
 
@@ -160,6 +161,21 @@ export class MemoryRepo implements Repo {
     for (const s of this.swaps.values()) if (s.plantingId === plantingId) s.plantingId = null;
   }
 
+  async skrCreditRaw(userPubkey: string) {
+    let credit = 0n;
+    for (const p of this.plantings.values()) {
+      if (p.userPubkey !== userPubkey || p.status === "failed") continue;
+      if (p.status === "confirmed") credit += p.skrSurplusRaw ?? 0n;
+      credit -= p.skrCarryInRaw;
+    }
+    return credit;
+  }
+
+  async setPlantingSkrSurplus(plantingId: string, surplusRaw: bigint) {
+    const p = this.plantings.get(plantingId);
+    if (p && p.skrSurplusRaw === null) p.skrSurplusRaw = surplusRaw;
+  }
+
   async listSentPlantings(olderThan: Date) {
     return [...this.plantings.values()].filter((p) => p.status === "sent" && p.ts.getTime() < olderThan.getTime());
   }
@@ -178,7 +194,7 @@ export class MemoryRepo implements Repo {
 
   async insertPlanting(p: NewPlanting, legs: Omit<T.PlantingLegRow, "plantingId">[]): Promise<T.PlantingRow> {
     const { sharesBefore = null, ts, ...rest } = p;
-    const row: T.PlantingRow = { ...rest, id: id(), ts: ts ?? new Date(), sharesBefore, sharesAfter: null, sharesMinted: null };
+    const row: T.PlantingRow = { ...rest, id: id(), ts: ts ?? new Date(), sharesBefore, sharesAfter: null, sharesMinted: null, skrCarryInRaw: rest.skrCarryInRaw ?? 0n, skrSurplusRaw: null };
     this.plantings.set(row.id, row);
     for (const leg of legs) this.legs.push({ ...leg, plantingId: row.id });
     return row;
@@ -213,9 +229,16 @@ export class MemoryRepo implements Repo {
   }
 
   async addWatcherCall(c: NewWatcherCall) {
-    const id = this.watcherCalls.length + 1;
+    const id = ++this.watcherCallSeq;   // a sequence, like bigserial: a deleted reservation never frees its id
     this.watcherCalls.push({ ...c, id, ts: c.ts ?? new Date() });
     return id;
+  }
+  async settleWatcherCall(id: number, u: { inputTokens: number; outputTokens: number; costMicrocents: number }) {
+    const c = this.watcherCalls.find((x) => x.id === id);
+    if (c) Object.assign(c, u);
+  }
+  async deleteWatcherCall(id: number) {
+    this.watcherCalls = this.watcherCalls.filter((c) => c.id !== id);
   }
   async watcherSpendMicrocents(since: Date) {
     return this.watcherCalls.filter((c) => c.ts.getTime() >= since.getTime()).reduce((sum, c) => sum + c.costMicrocents, 0);

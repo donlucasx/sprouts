@@ -19,7 +19,8 @@ const GIVE_UP_AFTER_MS = 30 * 60_000;
 
 export type DelegationState = { exists: boolean; amountPerPeriodRaw: bigint; pulledInPeriodRaw: bigint; periodStartTs: bigint; periodLengthS: bigint };
 export type Built = { tx: unknown; signature: string; expectedOutRaw: bigint; minOutRaw: bigint; lookupTables: unknown[]; lastValidBlockHeight: bigint };
-export type Simulation = { ok: boolean; err: unknown; logs: string[]; units: number };
+/** `delivery`: the balance of the account the planting delivers to (SKR: the puller's own SKR account; a wallet coin: the user's) right before the simulation and after it [R207 review]. */
+export type Simulation = { ok: boolean; err: unknown; logs: string[]; units: number; delivery?: { pre: bigint; post: bigint } };
 export type SignatureStatus = "confirmed" | "failed" | "pending";
 
 /** Everything the run needs from the chain, injected so the run is unit-tested with fakes. */
@@ -28,7 +29,7 @@ export type Chain = {
   /** 0n when the wallet has no USDC account; throws on an RPC error (which must not read as "no USDC"). */
   usdcBalanceRaw(owner: string): Promise<bigint>;
   /** Builds and signs; the signature is known before anything is sent. */
-  buildPlantingTx(a: { delegator: string; user: string; asset: Asset; pullRaw: bigint; feeBps: number; delegationPda: string }): Promise<Built>;
+  buildPlantingTx(a: { delegator: string; user: string; asset: Asset; pullRaw: bigint; feeBps: number; delegationPda: string; skrCarryRaw?: bigint }): Promise<Built>;
   simulatePlanting(built: Built): Promise<Simulation>;
   /** Sends and waits for confirmation; may throw after the transaction has landed (a dropped websocket), so the caller checks. */
   sendPlanting(built: Built): Promise<void>;
@@ -39,6 +40,8 @@ export type Chain = {
   sharePrice(): Promise<bigint>;
   /** The Seed Vault wallet's balance of a wallet coin (every coin but SKR), 0n with no account; throws on an RPC error. Read before a send and after confirmation: what the planting delivered [R141]. */
   assetBalanceRaw(owner: string, asset: Asset): Promise<bigint>;
+  /** The puller's SKR change inside one confirmed transaction (swap in, stake out), from that transaction's own balances [R207 #2]. */
+  pullerSkrChangeRaw(signature: string): Promise<bigint>;
 };
 
 export type Planted = { wallet: string; asset: Asset; pullCents: number; signature: string };
@@ -118,6 +121,29 @@ async function bookConfirmed(repo: Repo, chain: Chain, p: PlantingRow, outBefore
   const minted = p.sharesBefore === null ? await estimateMinted(chain, legs) : after - p.sharesBefore;
   await repo.setPlantingShares(p.id, { before: p.sharesBefore, after, minted });
   await recordLanded(repo, chain, p, legs, minted, outBefore);
+  await recordSkrSurplus(repo, chain, p, legs);
+}
+
+/**
+ * Security audit R207 #2, spec 3.2 step 4: the stake takes the quote's minimum (plus the user's carried remainder), so what the swap
+ * delivered above the minimum stays in the puller's account. It is recorded against THIS planting, hence this user, as
+ * surplus = the puller's SKR change in this transaction + the carry its stake drew, and the user's next SKR stake adds it. Read from
+ * the transaction by signature, so concurrent plantings of other users in the same account do not mix in; written once (a second
+ * booking cannot add it twice). A failed read leaves it unrecorded and says so: the remainder then stays with the puller, never
+ * with another user.
+ */
+async function recordSkrSurplus(repo: Repo, chain: Chain, p: PlantingRow, legs: PlantingLegRow[]) {
+  if (!p.signature || !legs.some((l) => l.asset === "SKR")) return;
+  try {
+    const surplus = (await chain.pullerSkrChangeRaw(p.signature)) + p.skrCarryInRaw;
+    if (surplus < 0n) {
+      console.error(`planting ${p.id}: SKR surplus ${surplus} is below zero (the swap delivered under the minimum?); nothing carried`);
+      return;
+    }
+    await repo.setPlantingSkrSurplus(p.id, surplus);
+  } catch (e) {
+    console.error(`planting ${p.id}: the SKR remainder could not be read (${message(e)}); it is not carried`);
+  }
 }
 
 /**
@@ -156,8 +182,27 @@ async function estimateMinted(chain: Chain, legs: { asset: Asset; amountOutRaw: 
   return (skr * 1_000_000_000n) / (await chain.sharePrice());
 }
 
+/**
+ * A wallet the RUN paused for want of USDC comes back once the USDC is there. A wallet the USER paused never does: only their own
+ * signed resume ends it (R84). One status serves both, so the cause is read from the wallet's newest pause or resume event: only
+ * `paused_no_usdc` resumes; a user pause, or a pause with no event (one made before user pauses were recorded, after a resume),
+ * stays paused, failing closed (security audit R207, HIGH).
+ */
+async function pausedForNoUsdc(repo: Repo, w: WalletRow): Promise<boolean> {
+  const events = await repo.listEvents(w.userPubkey, ["paused_no_usdc", "paused_by_user", "resumed"], 200);
+  return events.find((e) => e.walletPubkey === w.pubkey)?.kind === "paused_no_usdc";
+}
+
+/** R207: the user's own newest word on a wallet is a pause (a run's resume, detail null, does not count against it). */
+async function userPauseStands(repo: Repo, w: WalletRow): Promise<boolean> {
+  const events = await repo.listEvents(w.userPubkey, ["paused_by_user", "resumed"], 200);
+  const mine = events.find((e) => e.walletPubkey === w.pubkey && (e.kind === "paused_by_user" || (e.detail as { by?: string } | null)?.by === "user"));
+  return mine?.kind === "paused_by_user";
+}
+
 async function resumePausedWallets(a: { repo: Repo; now: Date; chain: Chain }) {
   for (const w of await a.repo.listPausedWallets()) {
+    if (!(await pausedForNoUsdc(a.repo, w))) continue;
     const rules = rulesRowToRules(await a.repo.getRules(w.userPubkey));
     const need = BigInt(rules.plantThresholdCents + NETWORK_FEE_CENTS) * USDC_PER_CENT;
     try {
@@ -169,6 +214,20 @@ async function resumePausedWallets(a: { repo: Repo; now: Date; chain: Chain }) {
       console.error(`resume check for ${w.pubkey} skipped: ${message(e)}`);
     }
   }
+}
+
+/**
+ * R207 review: the stake draws minimum + carry from the puller's pooled SKR account, which also holds other users' remainders, so
+ * a swap that delivered short (or elsewhere) would be covered from their money and still simulate fine. The simulation's own
+ * balances bind it: for SKR the puller's account may fall by at most this user's carry (the swap delivered at least the minimum
+ * the stake takes); for a wallet coin the user's account must gain at least the minimum. A simulation without the balances fails
+ * closed. Returns why the planting is refused, or null.
+ */
+export function deliveryShortfall(sim: Simulation, built: Built, asset: Asset, carryRaw: bigint): string | null {
+  if (!sim.delivery) return "the simulation returned no delivery balance";
+  const change = sim.delivery.post - sim.delivery.pre;
+  if (asset === "SKR") return change >= -carryRaw ? null : `the puller's SKR fell by ${-change}, more than this user's carry of ${carryRaw}`;
+  return change >= built.minOutRaw ? null : `the destination gained ${change}, under the minimum ${built.minOutRaw}`;
 }
 
 async function plantOne(a: { repo: Repo; now: Date; chain: Chain }, w: WalletRow): Promise<Planted | Skipped> {
@@ -205,6 +264,14 @@ async function plantOneOrThrow(a: { repo: Repo; now: Date; chain: Chain }, w: Wa
   const amount = plantAmountCents({ pendingCents: pending, capLeftCents: left, feeCents: NETWORK_FEE_CENTS, minCents: forced ? 0 : rules.plantThresholdCents });
   if (amount.pullCents === 0) return { wallet: w.pubkey, reason: left === 0 ? "cap reached" : "below threshold" };
 
+  // R207: the run listed this wallet as active at its start; a pause made since, or a run resume racing a user pause, must not pull.
+  // Read again just before the pull: still active, and the user's newest word on it is not a pause.
+  const now = await a.repo.getWallet(w.pubkey);
+  if (now?.status !== "active" || (await userPauseStands(a.repo, w))) {
+    if (now?.status === "active") await a.repo.setWalletStatus(w.pubkey, "paused");
+    return { wallet: w.pubkey, reason: "paused" };
+  }
+
   // An RPC error here throws to plantOne ("build failed"); only a successful read that comes up short pauses the wallet.
   if ((await a.chain.usdcBalanceRaw(w.pubkey)) < BigInt(amount.pullCents) * USDC_PER_CENT) {
     await a.repo.setWalletStatus(w.pubkey, "paused");
@@ -212,10 +279,22 @@ async function plantOneOrThrow(a: { repo: Repo; now: Date; chain: Chain }, w: Wa
     return { wallet: w.pubkey, reason: "no usdc" };
   }
 
+  // R207 #2: this user's SKR remainder from earlier plantings rides on an SKR stake. A failed read carries nothing (fail closed).
+  let credit = 0n;
+  try {
+    credit = await a.repo.skrCreditRaw(w.userPubkey);
+  } catch (e) {
+    console.error(`planting for ${w.pubkey}: the SKR remainder could not be read (${message(e)}); nothing carried today`);
+  }
+  const carryFor = (asset: Asset) => (asset === "SKR" && credit > 0n ? credit : 0n);
+
   let asset = pickAsset(w.ledgerCents, rules.allocation);
   const attempt = async (asset: Asset) => {
-    const built = await a.chain.buildPlantingTx({ delegator: w.pubkey, user: w.userPubkey, asset, pullRaw: BigInt(amount.pullCents) * USDC_PER_CENT, feeBps: FEE_BPS, delegationPda: w.delegationPda });
-    return { built, sim: await a.chain.simulatePlanting(built) };
+    const carry = carryFor(asset);
+    const built = await a.chain.buildPlantingTx({ delegator: w.pubkey, user: w.userPubkey, asset, pullRaw: BigInt(amount.pullCents) * USDC_PER_CENT, feeBps: FEE_BPS, delegationPda: w.delegationPda, ...(carry > 0n ? { skrCarryRaw: carry } : {}) });
+    const sim = await a.chain.simulatePlanting(built);
+    const short = sim.ok ? deliveryShortfall(sim, built, asset, carry) : null;
+    return { built, sim: short ? { ...sim, ok: false, err: { delivery: short } } : sim };
   };
   let { built, sim } = await attempt(asset).then((r) => {
     if (asset !== "SKR" && !r.sim.ok) throw new Error(`simulation: ${JSON.stringify(r.sim.err)} ${r.sim.logs.slice(-2).join(" | ")}`);
@@ -250,9 +329,15 @@ async function plantOneOrThrow(a: { repo: Repo; now: Date; chain: Chain }, w: Wa
   // The coin's rate on the day it was planted, for "earned" per coin (spec 7.6); null before the first snapshot.
   const rateAtPlanting = (await a.repo.getCoinDay(dayOf(a.now), asset))?.rate ?? null;
   const planting = await a.repo.insertPlanting(
-    { userPubkey: w.userPubkey, walletPubkey: w.pubkey, signature: built.signature, usdcPulledCents: amount.pullCents, networkFeeCents: NETWORK_FEE_CENTS, status: "sent", aiLine: null, sharesBefore, ts: a.now },
+    { userPubkey: w.userPubkey, walletPubkey: w.pubkey, signature: built.signature, usdcPulledCents: amount.pullCents, networkFeeCents: NETWORK_FEE_CENTS, status: "sent", aiLine: null, sharesBefore, ts: a.now, ...(carryFor(asset) > 0n ? { skrCarryInRaw: carryFor(asset) } : {}) },
     [{ asset, usdcInCents: amount.changeCents, amountOutRaw: built.minOutRaw, staked: asset === "SKR", feeAmountRaw: 0n, feeCents: Math.round((amount.pullCents * FEE_BPS) / 10_000), rateAtPlanting }],
   );
+  // R207 #2: the carry is reserved by the row just written; if another run spent the same remainder meanwhile, the user's credit is
+  // now below zero and this planting stands down before claiming or sending (a failed read stands down too).
+  if (planting.skrCarryInRaw > 0n && (await a.repo.skrCreditRaw(w.userPubkey).catch(() => -1n)) < 0n) {
+    await a.repo.setPlantingStatus(planting.id, "failed");
+    return { wallet: w.pubkey, reason: "claimed elsewhere" };
+  }
   const claimed = await a.repo.claimSwaps(swaps.map((s) => s.signature), planting.id);
   if (claimed !== swaps.length) {
     // Another run got there first: give back whatever this one took and let that run finish.

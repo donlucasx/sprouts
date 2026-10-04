@@ -26,10 +26,18 @@ export async function POST(request: Request) {
     if (!check.ok) return NextResponse.json({ error: check.error, reauth: true }, { status: 403 });
   }
   const next = paused ? "paused" : "active";
+  // R207: the user's pause is recorded on every wallet it covers, one already paused by the run for want of USDC included (else the
+  // run would read that wallet's newest cause as no-USDC and resume it), and recorded BEFORE the status moves, so a failed write
+  // leaves the wallet as it was rather than paused with no cause.
   for (const w of await repo.listWalletsOf(session.pubkey)) {
-    if (w.status === "revoked" || w.status === next) continue;
-    await repo.setWalletStatus(w.pubkey, next);
-    if (next === "active") await repo.addEvent({ userPubkey: session.pubkey, walletPubkey: w.pubkey, kind: "resumed", detail: { by: "user" } });
+    if (w.status === "revoked") continue;
+    if (next === "paused") {
+      await repo.addEvent({ userPubkey: session.pubkey, walletPubkey: w.pubkey, kind: "paused_by_user", detail: { by: "user" } });
+      if (w.status !== "paused") await repo.setWalletStatus(w.pubkey, "paused");
+    } else if (w.status !== "active") {
+      await repo.addEvent({ userPubkey: session.pubkey, walletPubkey: w.pubkey, kind: "resumed", detail: { by: "user" } });
+      await repo.setWalletStatus(w.pubkey, "active");
+    }
   }
   const wallets = await repo.listWalletsOf(session.pubkey);
   return NextResponse.json({ paused, wallets: wallets.map((w) => ({ pubkey: w.pubkey, status: w.status })) });

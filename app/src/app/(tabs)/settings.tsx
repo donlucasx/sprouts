@@ -15,7 +15,7 @@ import { unregisterBackgroundRefresh } from '@/lib/background'
 import { useSession } from '@/lib/session'
 import { useMobileWallet } from '@wallet-ui/react-native-kit'
 import { formatWallet, HOLDINGS_NOTE } from '@/lib/format'
-import { makeSigner } from '@/lib/sign'
+import { makeSigner, SignRefused } from '@/lib/sign'
 import { freshSignIn } from '@/lib/signin'
 import { freshWalletSignIn } from '@/lib/reauth'
 import { identity } from '@/lib/identity'
@@ -117,11 +117,11 @@ export default function Settings() {
     try {
       const t = await api<{ transaction: string | null }>(`/api/revoke/${wallet}`)
       if (!t.transaction) throw new ApiError(409, 'Nothing to revoke.')
-      const signed = await makeSigner(signTransaction)(t.transaction)
+      const signed = await makeSigner(signTransaction, { kind: 'revoke', user: wallet })(t.transaction)
       await api(`/api/revoke/${wallet}`, { method: 'POST', body: { signedTransaction: signed } })
       await invalidate()
     } catch (e) {
-      setWalletError(e instanceof ApiError ? e.message : 'The revoke did not go through. Try again.')
+      setWalletError(e instanceof ApiError || e instanceof SignRefused ? e.message : 'The revoke did not go through. Try again.')
     } finally {
       setWalletBusy(false)
       setSigning(false)

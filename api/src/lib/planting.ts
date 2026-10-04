@@ -8,12 +8,14 @@ import { getSetComputeUnitLimitInstruction, getSetComputeUnitPriceInstruction } 
 import { findAssociatedTokenPda, TOKEN_PROGRAM_ADDRESS, getCreateAssociatedTokenIdempotentInstruction } from "@solana-program/token";
 import { getQuote, getSwapInstructions, checkSwapInstructions, checkQuoteMints } from "./jupiter";
 import { buildTransferRecurringIx } from "./subscriptions";
-import { buildStakeIx } from "./staking";
+import { buildStakeIx, skrAta } from "./staking";
 import { pullerSigner } from "./puller";
 import { rpc } from "./rpc";
 import { config } from "./config";
-import { USDC_MINT } from "./constants";
+import { USDC_MINT, SKR_MINT } from "./constants";
 import { COINS, type Asset } from "@/domain/coins";
+
+const WSOL_MINT = address("So11111111111111111111111111111111111111112");
 
 export type BuiltPlanting = {
   tx: Awaited<ReturnType<typeof signTransactionMessageWithSigners>>;
@@ -23,6 +25,8 @@ export type BuiltPlanting = {
   minOutRaw: bigint;
   lookupTables: Address[];
   lastValidBlockHeight: bigint;
+  /** Where the planting delivers: the puller's own SKR account for SKR, the user's token account for a wallet coin; the simulation reports its balance before and after [R207 review]. */
+  deliveryAccount: Address;
 };
 
 /**
@@ -41,8 +45,10 @@ export async function coinAccountInstructions(a: { asset: Asset; payer: Transact
  * The planting: one versioned transaction the puller signs alone. Pull USDC from the trading wallet, swap it on Jupiter with the
  * 0.5% fee taken in USDC on the input side (R105), deliver the coin (SKR into the puller's account and then the stake keyed by
  * the Seed Vault key; every other coin straight into the user's own token account). If any step fails, nothing moves.
+ * The SKR stake takes the quote's minimum plus `skrCarryRaw`, the same user's slippage remainder from earlier SKR plantings that
+ * still sits in the puller's account (spec 3.2 step 4; security audit R207 #2); the run decides it, the ledger is in plant-run.
  */
-export async function buildPlantingTx(a: { delegator: Address; user: Address; asset: Asset; pullRaw: bigint; feeBps: number; delegationPda: Address }): Promise<BuiltPlanting> {
+export async function buildPlantingTx(a: { delegator: Address; user: Address; asset: Asset; pullRaw: bigint; feeBps: number; delegationPda: Address; skrCarryRaw?: bigint }): Promise<BuiltPlanting> {
   const puller = await pullerSigner();
   const coin = COINS[a.asset];
   const feeWallet = address(config().feeWallet);
@@ -54,8 +60,11 @@ export async function buildPlantingTx(a: { delegator: Address; user: Address; as
   const [userAta] = await findAssociatedTokenPda({ owner: a.user, mint: coin.mint, tokenProgram: TOKEN_PROGRAM_ADDRESS });
   const destination = coin.held === "wallet" ? userAta : undefined;
   const swap = await getSwapInstructions({ quote, userPublicKey: puller.address, feeAccount, ...(destination ? { destinationTokenAccount: destination } : {}) });
-  // Nothing from the network is signed unchecked: the aggregator, the helper programs, the signers, the fee and destination accounts.
-  checkSwapInstructions(swap, { puller: puller.address, feeAccount, ...(destination ? { destination } : {}) });
+  // Nothing from the network is signed unchecked: the aggregator, each decoded helper instruction, the signers, the fee account,
+  // and where the swap delivers (R207 #4): the user's token account for a wallet coin, the puller's own SKR account for SKR.
+  const [wsolAccount] = await findAssociatedTokenPda({ owner: puller.address, mint: WSOL_MINT, tokenProgram: TOKEN_PROGRAM_ADDRESS });
+  const delivers = destination ?? (coin.held === "staked" ? await skrAta(puller.address) : undefined);
+  checkSwapInstructions(swap, { puller: puller.address, feeAccount, wsolAccount, ...(delivers ? { destination: delivers } : {}), ...(destination ? { destinationOwner: a.user } : {}) });
   const minOutRaw = BigInt(quote.otherAmountThreshold);
 
   const ixs: Instruction[] = [
@@ -67,7 +76,7 @@ export async function buildPlantingTx(a: { delegator: Address; user: Address; as
     swap.swap,
     ...(swap.cleanup ? [swap.cleanup] : []),
     // The one line Radiants ticket 367 may change: today SKR is staked into the position keyed by the Seed Vault key.
-    ...(coin.held === "staked" ? [await buildStakeIx({ payer: puller, user: a.user, amountRaw: minOutRaw })] : []),
+    ...(coin.held === "staked" ? [await buildStakeIx({ payer: puller, user: a.user, amountRaw: minOutRaw + (a.skrCarryRaw ?? 0n) })] : []),
   ];
   const tables = await fetchAddressesForLookupTables(swap.lookupTables, rpc());
   const { value: { blockhash, lastValidBlockHeight } } = await rpc().getLatestBlockhash().send();
@@ -79,13 +88,57 @@ export async function buildPlantingTx(a: { delegator: Address; user: Address; as
     (m) => compressTransactionMessageUsingAddressLookupTables(m, tables),
   );
   const tx = await signTransactionMessageWithSigners(message);
-  return { tx, signature: getSignatureFromTransaction(tx), expectedOutRaw: BigInt(quote.outAmount), minOutRaw, lookupTables: swap.lookupTables, lastValidBlockHeight };
+  return { tx, signature: getSignatureFromTransaction(tx), expectedOutRaw: BigInt(quote.outAmount), minOutRaw, lookupTables: swap.lookupTables, lastValidBlockHeight, deliveryAccount: delivers! };
 }
 
-/** Mainnet simulation, no side effects: signature verification off, blockhash replaced. */
-export async function simulatePlanting(b: BuiltPlanting): Promise<{ ok: boolean; err: unknown; logs: string[]; units: number }> {
-  const res = await rpc().simulateTransaction(getBase64EncodedWireTransaction(b.tx), { encoding: "base64", sigVerify: false, replaceRecentBlockhash: true }).send();
-  return { ok: !res.value.err, err: res.value.err, logs: [...(res.value.logs ?? [])], units: Number(res.value.unitsConsumed ?? 0) };
+type TokenBalance = { mint: string; owner?: string; uiTokenAmount: { amount: string } };
+
+/**
+ * What one confirmed transaction changed in `owner`'s SKR holdings, from its own pre and post token balances (R207 #2). Read by
+ * signature, so other users' plantings landing at the same time in the same puller account cannot leak into it. Throws when the
+ * owner has no SKR account in the transaction at all: an SKR planting always touches it (the swap fills it, the stake drains it).
+ */
+export function skrChangeFromMeta(meta: { preTokenBalances?: readonly TokenBalance[] | null; postTokenBalances?: readonly TokenBalance[] | null }, owner: string): bigint {
+  const mine = (list: readonly TokenBalance[] | null | undefined) => (list ?? []).filter((b) => b.mint === SKR_MINT && b.owner === owner);
+  const pre = mine(meta.preTokenBalances);
+  const post = mine(meta.postTokenBalances);
+  if (!pre.length && !post.length) throw new Error(`no SKR account of ${owner} in the transaction`);
+  const sum = (l: TokenBalance[]) => l.reduce((s, b) => s + BigInt(b.uiTokenAmount.amount), 0n);
+  return sum(post) - sum(pre);
+}
+
+/** The puller's SKR change in a confirmed planting: what the swap delivered minus what the stake took (R207 #2). */
+export async function pullerSkrChangeRaw(signature: string): Promise<bigint> {
+  const puller = await pullerSigner();
+  const tx = await rpc().getTransaction(signature as Parameters<ReturnType<typeof rpc>["getTransaction"]>[0], { encoding: "json", maxSupportedTransactionVersion: 0, commitment: "confirmed" }).send();
+  if (!tx?.meta) throw new Error(`transaction ${signature} not found`);
+  return skrChangeFromMeta(tx.meta as Parameters<typeof skrChangeFromMeta>[0], puller.address);
+}
+
+/** An SPL token account's amount (u64 little-endian at byte 64); no account is zero. */
+export function tokenAmountOf(data: Uint8Array | null): bigint {
+  if (!data) return 0n;
+  if (data.length < 72) throw new Error(`not a token account (${data.length} bytes)`);
+  return Buffer.from(data).readBigUInt64LE(64);
+}
+
+/**
+ * Mainnet simulation, no side effects: signature verification off, blockhash replaced. It also returns the delivery account's
+ * balance read right before and as the simulation leaves it (R207 review), so the run can require the swap really delivered.
+ * One extra read per planting. A concurrent planting landing between the two can move the pooled SKR account; the check then
+ * errs mostly toward refusing, and the next run retries.
+ */
+export async function simulatePlanting(b: BuiltPlanting): Promise<{ ok: boolean; err: unknown; logs: string[]; units: number; delivery?: { pre: bigint; post: bigint } }> {
+  const before = await rpc().getAccountInfo(b.deliveryAccount, { encoding: "base64", commitment: "confirmed" }).send();
+  const pre = tokenAmountOf(before.value ? new Uint8Array(Buffer.from(before.value.data[0], "base64")) : null);
+  const res = await rpc().simulateTransaction(getBase64EncodedWireTransaction(b.tx), {
+    encoding: "base64", sigVerify: false, replaceRecentBlockhash: true, commitment: "confirmed",
+    accounts: { encoding: "base64", addresses: [b.deliveryAccount] },
+  }).send();
+  const after = res.value.accounts?.[0];
+  const ok = !res.value.err;
+  const delivery = ok ? { pre, post: tokenAmountOf(after ? new Uint8Array(Buffer.from(after.data[0], "base64")) : null) } : undefined;
+  return { ok, err: res.value.err, logs: [...(res.value.logs ?? [])], units: Number(res.value.unitsConsumed ?? 0), ...(delivery ? { delivery } : {}) };
 }
 
 /** Send and wait for confirmation. May throw after the transaction landed (a dropped websocket): the caller asks the chain. */

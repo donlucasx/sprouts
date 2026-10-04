@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { address, type Address, type Base64EncodedWireTransaction } from "@solana/kit";
 import { z } from "zod";
 import { getRepo } from "@/db/repo";
+import { clientIp, rateLimited } from "@/lib/auth-guard";
 import { config } from "@/lib/config";
 import { readDelegation } from "@/lib/subscriptions";
 import { heliusAddAddress } from "@/lib/helius";
@@ -29,6 +30,8 @@ async function delegationAppears(pda: Address, waitMs: number) {
 
 /** Links the wallet once its delegation is on chain: consumes the code, records the wallet, adds it to the swap webhook. */
 export async function POST(request: Request) {
+  // Per caller IP (R207 #7): the confirm can hold a function for up to 10 s, so a loop from one address is slowed here.
+  if (rateLimited(`link-confirm:${clientIp(request)}`, 20)) return NextResponse.json({ error: "Too many requests. Try again in a minute." }, { status: 429 });
   const parsed = Body.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Bad request." }, { status: 400 });
   const code = parsed.data.code.toUpperCase();

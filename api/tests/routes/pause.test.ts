@@ -40,6 +40,19 @@ describe("POST /api/pause (R147)", () => {
     auth = { authorization: `Bearer ${await issueSession(U, "M")}`, "content-type": "application/json" };
   });
 
+  // Security audit R207 (HIGH): the pause is recorded per wallet, so the daily run can tell it from a no-USDC pause and never undo it.
+  it("paused: true records a user pause on each wallet it pauses", async () => {
+    expect((await call({ paused: true })).status).toBe(200);
+    const kinds = (w: string) => repo.events.filter((e) => e.walletPubkey === w).map((e) => e.kind);
+    expect(kinds("W1")).toEqual(["paused_by_user"]);
+    expect(kinds("W2")).toEqual(["paused_by_user"]);
+    expect(kinds("W3")).toEqual([]);
+  });
+  it("paused: true records the user's pause on a wallet the run had already paused for want of USDC", async () => {
+    await repo.setWalletStatus("W2", "paused");
+    expect((await call({ paused: true })).status).toBe(200);
+    expect(repo.events.filter((e) => e.walletPubkey === "W2").map((e) => e.kind)).toEqual(["paused_by_user"]);
+  });
   it("paused: true pauses every active wallet with the session alone; a revoked wallet is left alone", async () => {
     const res = await call({ paused: true });
     expect(res.status).toBe(200);

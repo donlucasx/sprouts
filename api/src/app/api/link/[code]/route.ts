@@ -3,10 +3,11 @@ import { address, createNoopSigner, pipe, createTransactionMessage, setTransacti
   setTransactionMessageLifetimeUsingBlockhash, appendTransactionMessageInstructions, compileTransaction,
   getBase64EncodedWireTransaction, type Address } from "@solana/kit";
 import { getRepo } from "@/db/repo";
-import { rateLimited } from "@/lib/auth-guard";
+import { clientIp, rateLimited } from "@/lib/auth-guard";
 import { buildApproveOnceIxs, buildRevokeDelegationIx, delegationPda, readDelegation, readSubscriptionAuthority, readUsdcAtaExists } from "@/lib/subscriptions";
 import { pullerSigner } from "@/lib/puller";
 import { rpc } from "@/lib/rpc";
+import { ownerLabel } from "@/lib/owner-label";
 
 export const runtime = "nodejs";
 
@@ -16,13 +17,20 @@ const DAILY_CAP_RAW = 5_000_000n;
 /**
  * The approve-once transaction for a trading wallet, unsigned: the wallet (Phantom on the web page, or the phone's wallet) signs it.
  * The approval is simulated first; the code binds to the first wallet whose approval would land and is consumed only on confirm.
+ * With no `?wallet=` it answers only `{ owner }`, the preview the page shows before connecting (R207 #5); every answer carries
+ * `owner`, so the page can check the approval is for the garden the user confirmed.
  */
 export async function GET(request: Request, ctx: { params: Promise<{ code: string }> }) {
-  const ip = request.headers.get("x-forwarded-for") ?? "local";
-  if (rateLimited(`link:${ip}`)) return NextResponse.json({ error: "Too many requests. Try again in a minute." }, { status: 429 });
+  if (rateLimited(`link:${clientIp(request)}`)) return NextResponse.json({ error: "Too many requests. Try again in a minute." }, { status: 429 });
 
   const { code } = await ctx.params;
-  const walletParam = new URL(request.url).searchParams.get("wallet") ?? "";
+  const walletParam = new URL(request.url).searchParams.get("wallet");
+  const repo = await getRepo();
+  const link = await repo.peekLinkCode(code.toUpperCase());
+  if (walletParam === null) {
+    if (!link) return NextResponse.json({ error: "This code is unknown, expired or already used." }, { status: 404 });
+    return NextResponse.json({ owner: ownerLabel(await repo.getUser(link.userPubkey), link.userPubkey) });
+  }
   let wallet: Address;
   try {
     wallet = address(walletParam);
@@ -30,12 +38,11 @@ export async function GET(request: Request, ctx: { params: Promise<{ code: strin
     return NextResponse.json({ error: "That does not look like a Solana address." }, { status: 400 });
   }
 
-  const repo = await getRepo();
-  const link = await repo.peekLinkCode(code.toUpperCase());
   if (!link) return NextResponse.json({ error: "This code is unknown, expired or already used." }, { status: 404 });
   if (link.walletPubkey && link.walletPubkey !== wallet) return NextResponse.json({ error: "This code was already used with another wallet. Get a new code in the app, then try again." }, { status: 409 });
 
-  // A wallet another Seeker still holds cannot be taken over; a revoked one can be linked again, by anyone (review I3).
+  // A wallet another Seeker still holds cannot be taken over; a revoked one can be linked again, by anyone (review I3). The 409
+  // tells a code holder the wallet is linked elsewhere (R207 #9); the chain says so too (the delegation names delegator and puller).
   const existing = await repo.getWallet(wallet);
   if (existing && existing.userPubkey !== link.userPubkey && existing.status !== "revoked") {
     return NextResponse.json({ error: "This wallet is linked to another Seeker. Revoke it there first." }, { status: 409 });
@@ -67,7 +74,8 @@ export async function GET(request: Request, ctx: { params: Promise<{ code: strin
   const sim = await rpc().simulateTransaction(transaction, { encoding: "base64", sigVerify: false, replaceRecentBlockhash: true, commitment: "confirmed" }).send();
   if (sim.value.err) return NextResponse.json({ error: simulationError(sim.value.err, sim.value.logs ?? []) }, { status: 400 });
   if (!link.walletPubkey) await repo.bindLinkCode(link.code, wallet, pda);
-  return NextResponse.json({ transaction, cap: DAILY_CAP_CENTS, puller, delegationPda: pda, revokes });
+  const owner = ownerLabel(await repo.getUser(link.userPubkey), link.userPubkey);
+  return NextResponse.json({ transaction, cap: DAILY_CAP_CENTS, puller, delegationPda: pda, revokes, owner });
 }
 
 /** A failed simulation in the words the user needs: no SOL for the rent and fee, or a failure that would happen on chain. */

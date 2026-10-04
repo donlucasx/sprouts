@@ -67,6 +67,25 @@ describe("POST /api/watcher/compile", () => {
     expect((await res.json()).error).toBe("That is enough for today. The controls below still work.");
   });
 
+  // Security R207 #6, the PoC: 60 concurrent requests all passed the read-then-record budget and all reached the model.
+  it("a concurrent burst reaches the model at most 30 times and records at most 30 calls", async () => {
+    const results = await Promise.all(Array.from({ length: 60 }, () => post({ text: "limit $3 a day" })));
+    const ok = results.filter((r) => r.status === 200).length;
+    expect(ok).toBeLessThanOrEqual(30);
+    expect(callToolMock.mock.calls.length).toBe(ok);
+    expect((await repo.listWatcherCalls()).length).toBe(ok);
+    expect(results.every((r) => r.status === 200 || r.status === 429)).toBe(true);
+  });
+
+  it("a failed call that still cost tokens is recorded at its real cost", async () => {
+    callToolMock.mockResolvedValueOnce({ input: { nonsense: true } as never, usage: { inputTokens: 100, outputTokens: 10 } });
+    const res = await post({ text: "limit $3 a day" });
+    expect(res.status).toBe(502);
+    const calls = await repo.listWatcherCalls();
+    expect(calls.length).toBe(1);
+    expect(calls[0]).toMatchObject({ inputTokens: 100, outputTokens: 10, costMicrocents: 10_000 + 5_000 });
+  });
+
   it("a model failure is a plain sentence, and nothing is recorded as spent", async () => {
     callToolMock.mockRejectedValueOnce(new Error("upstream"));
     const res = await post({ text: "limit $3 a day" });
