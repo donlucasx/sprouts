@@ -12,7 +12,7 @@ const rules = (p: Partial<Parameters<typeof splitRows>[0]>) => ({ managed: false
 describe("the tables", () => {
   it("floors, maxes, pin maxes and the step", () => {
     expect(STOP_FLOOR).toEqual({ careful: 50, balanced: 35, bold: 25 });
-    expect(STOP_MAX.careful).toEqual({ stORE: 5, hSOL: 15, JitoSOL: 15, JupSOL: 15, cbBTC: 30 });
+    expect(STOP_MAX.careful).toEqual({ stORE: 10, hSOL: 15, JitoSOL: 15, JupSOL: 15, cbBTC: 30 });
     expect(STOP_MAX.bold.cbBTC).toBe(20);
     expect(PIN_MAX).toEqual({ SKR: 100, stORE: 50, hSOL: 75, JitoSOL: 75, JupSOL: 75, cbBTC: 75 });
     expect(PIN_STEP).toBe(5);
@@ -39,7 +39,7 @@ describe("splitRows (spec 3.1)", () => {
   it("on with no pins: every row auto, SKR with its floor, the others with their max", () => {
     const rows = splitRows(rules({ managed: true, stop: "balanced", allocation: split({ SKR: 45, stORE: 5, hSOL: 20, JitoSOL: 10, JupSOL: 10, cbBTC: 10 }) }));
     expect(rows[0]).toEqual({ asset: "SKR", pct: 45, mode: "auto", bound: "at least 35%" });
-    expect(rows[1]).toEqual({ asset: "stORE", pct: 5, mode: "auto", bound: "at most 10%" });
+    expect(rows[1]).toEqual({ asset: "stORE", pct: 5, mode: "auto", bound: "at most 20%" });   // R251
     expect(rows[5]).toEqual({ asset: "cbBTC", pct: 10, mode: "auto", bound: "at most 25%" });
   });
 
