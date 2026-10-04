@@ -6,6 +6,9 @@ export type { PlantId } from "./species";
 
 export type GardenInput = {
   now: Date; wateredAt: Date | null;
+  /** R249: the plants the last watering opened (the app records them as it waters, lib/last-watering.ts); absent (another phone's
+   * watering, the widget before a record), the plants planted in the week before it stand for them (a bud seldom waits longer). */
+  wateredPlants?: PlantId[] | null;
   plantings: { id: string; ts: Date; asset: Asset; amountOutRaw: bigint; usdcInCents: number }[];
   picks: { ts: Date; asset: Asset; amountRaw: bigint }[];
   skrPutInRaw: bigint; skrEarnedRaw: bigint; skrPickedRaw: bigint; skrPrincipalPickedRaw: bigint;   // principal withdrawn prunes; fruit picked does not [A13]
@@ -123,7 +126,13 @@ export function buildScene(g: GardenInput): Scene {
   if (present.includes("ore")) for (let i = 0; i < pupsByCount(keptOf("ore").length); i++) parts.push({ kind: "pup", plant: "ore", index: i });
   if (g.basket) parts.push({ kind: "basket", amountRaw: g.basket.amountRaw, readyAt: g.basket.readyAt });
   // RG11: one ring under every present plant after a watering, fading over the day.
-  if (wateredAt !== null) { const age = (g.now.getTime() - wateredAt.getTime()) / DAY; if (age < 1) for (const c of present) parts.push({ kind: "ring", plant: c, age }); }
+  // R249 (10-04, "should ONLY the plants who need the watering / have a bud ready get the soil wet underneath?", ruled yes): only
+  // under the plants that watering opened, not every present plant
+  if (wateredAt !== null) {
+    const age = (g.now.getTime() - wateredAt.getTime()) / DAY;
+    const opened = g.wateredPlants ?? [...new Set(sorted.filter((p) => p.ts.getTime() <= wateredAt.getTime() && p.ts.getTime() > wateredAt.getTime() - 7 * DAY).map((p) => coin(p.asset)))];
+    if (age < 1) for (const c of present) if (opened.includes(c)) parts.push({ kind: "ring", plant: c, age });
+  }
   // R96: the can is ready when a bud waits, resting otherwise; there is no clock.
   return { parts, unrevealed, canReady: unrevealed > 0 };
 }

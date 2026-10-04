@@ -5,13 +5,14 @@ import { buildScene } from "@/model/garden";
 import { widgetGardenHeight, widgetGardenSvg } from "@/model/widget-svg";
 import { toGardenInput } from "@/lib/garden-input";
 import { formatAmount, formatSkr, formatUsd } from "@/lib/format";
+import type { PlantId } from "@/model/garden";
 
 /** The home-screen widget, drawn from the last verified read (never a network call of its own): the garden, the pot, next planting. */
 const PAD = 10;
 const TEXT_H = 42;       // the pot line (16) and the next-planting line (12), with their leading
 const WIDE_TEXT_H = 58;  // plus the last-planting line
 
-export function SproutsWidget({ me, width, height, wide }: { me: MeResponse | null; width: number; height: number; wide: boolean }) {
+export function SproutsWidget({ me, width, height, wide, wateredPlants = null }: { me: MeResponse | null; width: number; height: number; wide: boolean; wateredPlants?: PlantId[] | null }) {
   if (!me) {
     return (
       <FlexWidget clickAction="OPEN_APP" style={{ height: "match_parent", width: "match_parent", backgroundColor: "#F4EEDF", borderRadius: 16, padding: 12, justifyContent: "center" }}>
@@ -26,7 +27,7 @@ export function SproutsWidget({ me, width, height, wide }: { me: MeResponse | nu
   // text lines stack at the bottom (the root's flex-end), the garden directly above the text; the leftover is plain paper on top.
   let garden: { svg: string; h: number } | null = null;
   try {
-    const scene = buildScene(toGardenInput(me, new Date())), h = widgetGardenHeight(scene, maxGardenH, wide);
+    const scene = buildScene(toGardenInput(me, new Date(), wateredPlants)), h = widgetGardenHeight(scene, maxGardenH, wide);
     garden = { svg: widgetGardenSvg(scene, gardenW, h, wide), h };
   } catch { garden = null; }  // a cached read missing a newer field must not blank the widget: fall back to the text
   return (

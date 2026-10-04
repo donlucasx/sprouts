@@ -1,5 +1,5 @@
 import type { MeResponse } from "./api";
-import { fruitLadder, type GardenInput } from "@/model/garden";
+import { fruitLadder, type GardenInput, type PlantId } from "@/model/garden";
 import type { Asset } from "./coins";
 
 /** DEMO (device check 2, throwaway branch demo/check-2, never merged): the newest planting reads as a waiting bud until the
@@ -13,14 +13,14 @@ function demoWateredAt(me: MeResponse): Date | null {
 }
 
 /** The API's numbers (decimal strings on the wire) into the model's input; the app never computes money itself. */
-export function toGardenInput(me: MeResponse, now: Date): GardenInput {
+export function toGardenInput(me: MeResponse, now: Date, wateredPlants: PlantId[] | null = null): GardenInput {
   const b = (s: string) => BigInt(s);
   // RG16: every coin's earned as token-fruit. SKR's ladder is the pot's (the API computes it); the others from their holding.
   const earned: GardenInput["earned"] = { SKR: { count: me.pot.fruit, progress: me.pot.nextFruitProgress } };
   for (const h of me.holdings) if (h.asset !== "SKR" && h.earnedUsd !== null) earned[h.asset as Asset] = fruitLadder(h.earnedUsd, h.putInCents);
   return {
     now,
-    wateredAt: demoWateredAt(me),
+    wateredAt: demoWateredAt(me), wateredPlants,
     plantings: me.history.plantings.map((p) => ({ id: p.id, ts: new Date(p.ts), asset: p.asset, amountOutRaw: b(p.amountOutRaw), usdcInCents: p.usdcInCents })),
     picks: me.history.picks.map((p) => ({ ts: new Date(p.ts), asset: p.asset, amountRaw: b(p.amountRaw) })),
     skrPutInRaw: b(me.pot.skrPutInRaw), skrEarnedRaw: b(me.pot.skrEarnedRaw), skrPickedRaw: b(me.pot.skrPickedRaw), skrPrincipalPickedRaw: b(me.pot.skrPrincipalPickedRaw),

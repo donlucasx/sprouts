@@ -17,11 +17,15 @@ import { frameFor, signScale, windSpan, SIGN_GAP } from "./layout";
  * composition's zoom to the fully packed one's (0.5: halfway). */
 export const SPREAD = { share: 0.3, margin: 4, ref: 320, passes: 2, take: 0.5 } as const;
 
+/** R247 (10-04, the glitch before the rings): the packing is measured on the scene with every bud open, so a watering that opens buds
+ * never moves a slot (it did: an opened plant reaches farther and the packing jumped as the buds opened). */
+const opened = (scene: Scene): Scene => ({ ...scene, parts: scene.parts.map((q): Part => (q.kind === "sprout" && q.bud ? { ...q, bud: false } : q)) });
+
 type Occ = { plant: PlantId; row: "front" | "back"; x: number; lo: number; hi: number };
 
 /** Each occupant's reach from its foot (canvas px at `width`): its plant in the wind and its stake at `zoom`. */
 function occupants(scene: Scene, width: number, zoom: number): Occ[] {
-  const L = plantLayouts(scene), out: Occ[] = [];
+  const L = plantLayouts(opened(scene)), out: Occ[] = [];
   for (const q of scene.parts) if (q.kind === "sign") {
     const foot = q.x * width, half = (15 * signScale(q.row)) / zoom, mid = q.side * (half + SIGN_GAP);
     let lo = mid - half, hi = mid + half;
@@ -56,12 +60,12 @@ const zoomOf = (scene: Scene, width: number) => frameFor(scene, plantLayouts(sce
 const moved = (scene: Scene, slots: Map<PlantId, number>, t: number): Scene =>
   ({ ...scene, parts: scene.parts.map((q): Part => ((q.kind === "plant" || q.kind === "sign") && slots.has(q.plant) ? { ...q, x: q.x + (slots.get(q.plant)! - q.x) * t } : q)) });
 export function packScene(scene: Scene, width: number = SPREAD.ref): Scene {
-  const z0 = zoomOf(scene, width);
+  const z0 = zoomOf(opened(scene), width);
   let zoom = z0, slots: Map<PlantId, number> | null = null;
   for (let i = 0; i < SPREAD.passes; i++) {
     const next = packAt(scene, width, zoom);
     if (!next) break;
-    slots = next; zoom = zoomOf(moved(scene, slots, 1), width);
+    slots = next; zoom = zoomOf(opened(moved(scene, slots, 1)), width);
   }
   if (!slots || zoom <= z0) return scene;
   // R235: the zoom a share t of the way gives is about the width over a span linear in t, so t for the zoom `take` of the way is

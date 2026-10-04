@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AccessibilityInfo, View, useWindowDimensions } from "react-native";
-import Animated, { Easing, cancelAnimation, useAnimatedProps, useAnimatedStyle, useReducedMotion, useSharedValue, withRepeat, withSequence, withTiming } from "react-native-reanimated";
+import Animated, { Easing, cancelAnimation, useAnimatedProps, useAnimatedStyle, useReducedMotion, useSharedValue, withDelay, withRepeat, withSequence, withTiming } from "react-native-reanimated";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Svg, { G } from "react-native-svg";
 import { PLANT_ORDER, type Scene, type Part, type PlantId } from "@/model/garden";
@@ -22,6 +22,8 @@ import { Soil, SoilClip, Ring, Seed, Sign, Basket, SpriteAt } from "./parts";
 const MOUNT_FADE_MS = 300;
 const RING_MS = 1350;      // gen11_motion.py:163: every present plant's ring rises over 1.35 s after a watering
 const SNAP_MS = 250;       // R173: the zoom snaps back to the automatic frame
+/** R248: the buds' call: 0.6 s after a landing, 1.1 s long, then every 4.5 s while a bud waits. */
+const BUD_CALL = { firstMs: 600, ms: 1100, everyMs: 4500 } as const;
 const ARRIVE_GUARD_MS = 4000;   // R202: the can stops waiting for an opening this long after the watering if no read has brought one
 const AnimatedG = Animated.createAnimatedComponent(G);
 /** The scene as it changes (spec 6 and 7: the moments fire from the diff, never from the tap): its content key, the scene before this
@@ -141,10 +143,13 @@ export function Garden({ scene: incoming, live, canReady, onWater, onNudge, row,
   const settledAll = segments.every((_, i) => !running(i)) && !openers.some(isHeld);
   // The rings rise after a watering (a change that opened something), all present plants at once; reduced motion: a 300 ms fade.
   const ring = useSharedValue(1);
+  const [ringN, setRingN] = useState(-1);   // R247: the change whose rings have started; until then they are not drawn (one frame showed them full)
   useLayoutEffect(() => {
     if (!change.diff.opened.length) return;
     ring.value = 0; ring.value = withTiming(1, { duration: (reduced ? REDUCED_MS : RING_MS) * tempo });
+    setRingN(change.n);   // eslint-disable-line react-hooks/set-state-in-effect -- R247: one extra render, so the first frame of a change never draws its rings at full
   }, [change, reduced, tempo, ring]);
+  const ringsShown = !change.diff.opened.length || ringN === change.n;
   const ringProps = useAnimatedProps(() => ({ opacity: ring.value }));
 
   // His note (10-02): the wind, all the time. One clock for the garden (0 to 1 every 6.4 s, R179); each plant adds its own phase.
@@ -170,6 +175,14 @@ export function Garden({ scene: incoming, live, canReady, onWater, onNudge, row,
     next();
     return () => { clearTimeout(id); cancelAnimation(gust); gust.value = GUST_IDLE; };
   }, [reduced, gust]);
+  // R248: the waiting buds call: a swell and a rock (Plant's Bud) shortly after each landing, then every few seconds while one waits
+  const budCall = useSharedValue(0);
+  useEffect(() => {
+    cancelAnimation(budCall); budCall.value = 0;
+    if (reduced || !canReady) return;
+    budCall.value = withDelay(BUD_CALL.firstMs, withRepeat(withSequence(withTiming(0, { duration: 0 }), withTiming(1, { duration: BUD_CALL.ms, easing: Easing.inOut(Easing.sin) }), withDelay(BUD_CALL.everyMs, withTiming(1, { duration: 0 }))), -1, false));
+    return () => cancelAnimation(budCall);
+  }, [reduced, canReady, wobble, budCall]);
   const delays = gustDelays(Object.fromEntries(plants.map((p) => [p.plant, p.x])));
 
   // R173: two fingers zoom up to 3x over the automatic frame and, as they move, pan; on release, or a double tap, the garden snaps back.
@@ -246,7 +259,7 @@ export function Garden({ scene: incoming, live, canReady, onWater, onNudge, row,
       <Svg width={w} height={CANVAS.height} style={{ position: "absolute" }}>
         <SoilClip g={ground} />
         <Soil g={ground} />
-        <AnimatedG animatedProps={ringProps}><G clipPath={`url(#${SOIL_CLIP_ID})`}>{of("ring").map((r) => { const f = footOf(r.plant); return <G key={`r${r.plant}`} x={f.x} y={f.y + 2}><Ring age={r.age} k={r.plant === "skr" || r.plant === "ore" ? CANVAS.frontScale : 2 / 3} /></G>; })}</G></AnimatedG>
+        <AnimatedG animatedProps={ringProps}><G clipPath={`url(#${SOIL_CLIP_ID})`}>{(ringsShown ? of("ring") : []).map((r) => { const f = footOf(r.plant); return <G key={`r${r.plant}`} x={f.x} y={f.y + 2}><Ring age={r.age} k={r.plant === "skr" || r.plant === "ore" ? CANVAS.frontScale : 2 / 3} /></G>; })}</G></AnimatedG>
         {of("seed").map((s) => {
           const f = footOf(s.plant), seed = <G key={s.id} x={f.x} y={f.y + 1}><Seed index={s.index} /></G>;
           const a = arrivingSeeds.get(s.id);
@@ -272,8 +285,8 @@ export function Garden({ scene: incoming, live, canReady, onWater, onNudge, row,
       {(["back", "front"] as const).map((row) => [
        ...(row === "back" ? back : front).map((p) => {
         const was = beforePlants?.find((b) => b.plant === p.plant)?.layout ?? null;
-        if (isHeld(p.plant) && was) return <Plant key={p.plant} p={{ ...p, layout: was }} footX={p.x * w} footY={FOOT_Y(p.row)} sway={sway} gust={gust} gustDelay={delays[p.plant] ?? 0} reduced={reduced} items={[]} settled before={null} />;   // R201: held, as it was
-        return <Plant key={p.plant} p={p} footX={p.x * w} footY={FOOT_Y(p.row)} sway={sway} gust={gust} gustDelay={delays[p.plant] ?? 0} reduced={reduced} items={itemsOf(p.plant)} settled={settledOf(p.plant)} before={was} />;
+        if (isHeld(p.plant) && was) return <Plant key={p.plant} p={{ ...p, layout: was }} footX={p.x * w} footY={FOOT_Y(p.row)} sway={sway} gust={gust} gustDelay={delays[p.plant] ?? 0} reduced={reduced} items={[]} settled before={null} call={budCall} />;   // R201: held, as it was
+        return <Plant key={p.plant} p={p} footX={p.x * w} footY={FOOT_Y(p.row)} sway={sway} gust={gust} gustDelay={delays[p.plant] ?? 0} reduced={reduced} items={itemsOf(p.plant)} settled={settledOf(p.plant)} before={was} call={budCall} />;
        }),
        <Svg key={`signs-${row}`} width={w} height={CANVAS.height} style={{ position: "absolute", left: 0, top: 0 }} pointerEvents="none">
         {of("sign").filter((s) => s.row === row).map((s) => { const at = signPlacement(s, w, target.zoom, ground); return <G key={`s${s.plant}`} x={at.x} y={at.y}><Sign plant={s.plant} scale={at.scale} /></G>; })}
@@ -291,7 +304,7 @@ export function Garden({ scene: incoming, live, canReady, onWater, onNudge, row,
         it while dragged (Android drops touches outside a parent's bounds); box-none, so the garden's pinch and the row take every other touch */}
     {rowAt ? (
       <Animated.View pointerEvents="box-none" style={[{ position: "absolute", left: 0, top: 0, right: 0, bottom: 0 }, canShown]}>
-        <Can ready={canReady} reduced={reduced} tempo={tempo} width={w} overlayW={w + SIDE_GUTTER} wobbleKey={wobble} viewH={vh} viewHNow={target.viewH} barBelow={ROW_GAP + rowAt.bar} overlayBelow={ROW_GAP + rowAt.height} s={canS} targetAt={targetAt} spotOf={spotOf} tapTarget={budPlants[0] ?? null} onPour={pour} onVisit={onVisit} onDrop={onDrop} afterOpening={afterOpening} onPourEnd={() => setWatering(null)} onNudge={onNudge} />
+        <Can ready={canReady} reduced={reduced} tempo={tempo} width={w} overlayW={w + SIDE_GUTTER} wobbleKey={wobble} viewH={vh} viewHNow={target.viewH} barBelow={ROW_GAP + rowAt.bar} overlayBelow={ROW_GAP + rowAt.height} s={canS} targetAt={targetAt} spotOf={spotOf} tapTarget={budPlants[0] ?? null} sweep={[...plants].sort((p, q) => p.x - q.x).map((p) => p.plant)} buds={targets} onPour={pour} onVisit={onVisit} onDrop={onDrop} afterOpening={afterOpening} onPourEnd={() => setWatering(null)} onNudge={onNudge} />
       </Animated.View>
     ) : null}
     </View>
