@@ -118,7 +118,7 @@ export const SIGN_TEXT = { size: 6.8, y: -4.1, rot: -4 } as const;
 export const SIGN_LABEL: Record<PlantId, string> = { skr: "SKR", ore: "stORE", hsol: "hSOL", jitosol: "JitoSOL", jupsol: "JupSOL", cbbtc: "cbBTC" };
 /** RG30 (10-02): the garden frames what is planted; 2x is the cap the 3x bakes hold; Garden.tsx eases each change over easeMs.
  * R167 (10-02): the view's HEIGHT follows the content, never shorter than the ground band plus `aboveGround`. */
-export const FRAME = { maxZoom: 2, pad: 20, easeMs: 1200, aboveGround: 40 } as const;   // R231: pad from 16, the 1.3x front row's sway
+export const FRAME = { maxZoom: 2, footInset: 0.12, pad: 20, easeMs: 1200, aboveGround: 40 } as const;   // R231: pad from 16, the 1.3x front row's sway
 /** Room to grow above the tallest part: 60 percent of the content's height (the tallest part down to the bed's bottom), never under
  * 72 px on screen (R185; device round 3 item 1 had a quarter and 40 px); it replaces the 16 px margin on top only. */
 export const HEADROOM = { share: 0.6, minPx: 72 } as const;   // R185 (10-02, "waiting for more headroom"): from round 3's 25 percent and 40 px
@@ -165,7 +165,15 @@ function frameAt(scene: Scene, plants: PlantOnStage[], width: number, room: { sh
     const s = signs.get(p.plant);
     if (s) { const sc = signScale(s.row) / signZoom, sx = signX(s.x * width, s.side, width, sc); x0 = Math.min(x0, sx - 15 * sc); x1 = Math.max(x1, sx + 15 * sc); }
   }
-  x0 = Math.max(0, x0 - FRAME.pad); x1 = Math.min(width, x1 + FRAME.pad);
+  x0 -= FRAME.pad; x1 += FRAME.pad;
+  // R242 (10-04, "hsol and cbBTC plants are on the very edge- they should be sitting within/on the soil"): the ground spans the frame
+  // (R238) and R241's mound thins toward its ends, so every foot and stake post keeps FRAME.footInset of the frame's breadth from either
+  // side, where the mound is full: the box widens about the feet when it must
+  const feet = [...plants.map((p) => p.x * width), ...plants.flatMap((p) => { const s = signs.get(p.plant); return s ? [signX(s.x * width, s.side, width, signScale(s.row) / signZoom)] : []; })];
+  const f0 = Math.min(...feet), f1 = Math.max(...feet), need = (f1 - f0) / (1 - 2 * FRAME.footInset);
+  if (f0 - x0 < FRAME.footInset * need) x0 = f0 - FRAME.footInset * Math.max(need, x1 - x0);
+  if (x1 - f1 < FRAME.footInset * need) x1 = f1 + FRAME.footInset * Math.max(need, x1 - x0);
+  x0 = Math.max(0, x0); x1 = Math.min(width, x1);
   const content = CANVAS.height - Math.max(0, y0);
   const zoom0 = Math.min(FRAME.maxZoom, width / (x1 - x0), CANVAS.height / content);
   const { zoom, x } = gutterFit(zoom0, (x0 + x1) / 2, windSpan(plants, width), width);

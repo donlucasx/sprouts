@@ -252,7 +252,8 @@ export function Garden({ scene: incoming, live, canReady, onWater, onNudge, row,
           const a = arrivingSeeds.get(s.id);
           return a ? <Appear key={s.id} delay={a.delay} ms={a.ms}>{seed}</Appear> : seed;
         })}
-        {of("basket").length ? <G x={w - 40} y={CANVAS.soilLine + 30}><Basket /></G> : null}
+        {/* R242: the basket inside the frame, where the mound is full (it stood at w - 40 and the zoom cut it) */}
+        {of("basket").length ? <G x={target.x + target.w * (1 - FRAME.footInset) - 26} y={CANVAS.frontFeet - 14}><Basket /></G> : null}
         {/* Spec 3: the paper grain once over the whole garden, the static Svg's last child (app only). */}
         <G opacity={0.5}><SpriteAt name="grain" x={0} y={0} scale={CANVAS.height / 260} xScale={w / 320} /></G>
       </Svg>
