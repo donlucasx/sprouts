@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Appearance } from 'react-native'
+import { Appearance, AppState } from 'react-native'
 import { Stack } from 'expo-router'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { StatusBar } from 'expo-status-bar'
@@ -28,6 +28,14 @@ SplashScreen.preventAutoHideAsync().catch(() => {})
 // R153: the saved appearance is applied before the first frame; the theme hook reads useColorScheme, which follows it (and so do the native switches and the keyboard).
 Appearance.setColorScheme(schemeFor(readAppearance()))
 
+/** R227 (10-03, his device note): opened from the widget, the app came up in the phone's dark while Settings said Light. The choice
+ * is applied once at load; a launch that brings a fresh activity (the widget's tap) can report the phone's own scheme after it. So
+ * Light or Dark is applied again whenever the app comes forward or the scheme moves off it; System is left to the phone. */
+function holdAppearance() {
+  const want = readAppearance()
+  if (want !== 'system' && Appearance.getColorScheme() !== want) Appearance.setColorScheme(want)
+}
+
 export default function Layout() {
   const [session, setSessionState] = useState<Session | null>(null)
   const [ready, setReady] = useState(false)
@@ -39,6 +47,15 @@ export default function Layout() {
     AlbertSans_500Medium,
   })
   const { colors, dark } = useTheme()
+  useEffect(() => {
+    holdAppearance()
+    const a = AppState.addEventListener('change', (st) => st === 'active' && holdAppearance())
+    const b = Appearance.addChangeListener(holdAppearance)
+    return () => {
+      a.remove()
+      b.remove()
+    }
+  }, [])
   useEffect(() => {
     loadSession()
       .catch(() => null)
