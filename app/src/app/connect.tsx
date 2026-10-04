@@ -7,7 +7,7 @@ import { Button } from '@/components/Button'
 import { Card } from '@/components/Card'
 import { ThemedText } from '@/components/ThemedText'
 import { api, ApiError } from '@/lib/api'
-import { makeSigner } from '@/lib/sign'
+import { makeSigner, SignRefused } from '@/lib/sign'
 import { useInvalidateMe, useMe } from '@/lib/me'
 import { newlyLinked } from '@/lib/newly-linked'
 import { formatWallet } from '@/lib/format'
@@ -61,12 +61,12 @@ export default function Connect() {
     try {
       const { code } = await api<{ code: string }>('/api/link/new', { method: 'POST', body: {} })
       const t = await api<{ transaction: string; cap: number }>(`/api/link/${code}?wallet=${session.pubkey}`)
-      const signed = await makeSigner(signTransaction)(t.transaction)
+      const signed = await makeSigner(signTransaction, { kind: 'link', user: session.pubkey })(t.transaction)
       await confirmWithRetries(code, session.pubkey, signed)
       await invalidate()
       router.replace('/home')
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'The approval did not go through. Try again.')
+      setError(e instanceof ApiError || e instanceof SignRefused ? e.message : 'The approval did not go through. Try again.')
     } finally {
       setApproving(false)
     }

@@ -13,12 +13,14 @@ function fakeChain(over: Partial<Chain> = {}): Chain {
     usdcBalanceRaw: async () => 50_000_000n,
     // the signature is known once the puller signs, before anything is sent
     buildPlantingTx: async (a) => ({ tx: {}, signature: `sig${++n}`, expectedOutRaw: a.pullRaw * 48n, minOutRaw: a.pullRaw * 47n, lookupTables: [], lastValidBlockHeight: 0n }),
-    simulatePlanting: async () => ({ ok: true, err: null, logs: [], units: 200_000 }),
+    // the delivery account gains the minimum: passes the R207 delivery check for SKR (may not fall past the carry) and wallet coins
+    simulatePlanting: async (b) => ({ ok: true, err: null, logs: [], units: 200_000, delivery: { pre: 1_000n, post: 1_000n + b.minOutRaw } }),
     sendPlanting: async () => {},
     signatureStatus: async () => "pending",
     readShares: async () => 1_000_000_000n,
     sharePrice: async () => 1_146_000_000n,
     assetBalanceRaw: async () => 0n,
+    pullerSkrChangeRaw: async () => 0n,
     ...over,
   };
 }
@@ -74,12 +76,66 @@ describe("runPlanting", () => {
     expect(repo.events.some((e) => e.kind === "paused_no_usdc")).toBe(true);
   });
 
-  it("resumes a paused wallet once USDC is back", async () => {
+  it("resumes a wallet the run paused for want of USDC once the USDC is back", async () => {
     const repo = await seeded([83, 62, 70]);
     await repo.setWalletStatus("W", "paused");
+    await repo.addEvent({ userPubkey: "U", walletPubkey: "W", kind: "paused_no_usdc", detail: null });
     const r = await runPlanting({ repo, now: NOW, chain: fakeChain() });
     expect(r.planted.length).toBe(1);
     expect(repo.events.some((e) => e.kind === "resumed")).toBe(true);
+  });
+
+  // Security audit R207 (HIGH): the run never undoes a user's pause; only their signed resume does (R84).
+  it("never resumes a wallet the user paused, even with USDC back and an older no-USDC pause", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await repo.setWalletStatus("W", "paused");
+    await repo.addEvent({ userPubkey: "U", walletPubkey: "W", kind: "paused_no_usdc", detail: null });
+    await repo.addEvent({ userPubkey: "U", walletPubkey: "W", kind: "resumed", detail: null });
+    await repo.addEvent({ userPubkey: "U", walletPubkey: "W", kind: "paused_by_user", detail: { by: "user" } });
+    const r = await runPlanting({ repo, now: NOW, chain: fakeChain() });
+    expect(r.planted).toEqual([]);
+    expect((await repo.getWallet("W"))!.status).toBe("paused");
+  });
+  // R207 review of the fix: the pause switch on a wallet the run had paused for want of USDC is still the user's pause.
+  it("a user pause on top of a no-USDC pause holds: the newest cause is the user's", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await repo.setWalletStatus("W", "paused");
+    await repo.addEvent({ userPubkey: "U", walletPubkey: "W", kind: "paused_no_usdc", detail: null });
+    await repo.addEvent({ userPubkey: "U", walletPubkey: "W", kind: "paused_by_user", detail: { by: "user" } });
+    const r = await runPlanting({ repo, now: NOW, chain: fakeChain() });
+    expect(r.planted).toEqual([]);
+    expect((await repo.getWallet("W"))!.status).toBe("paused");
+  });
+  // R207 review of the fix: the run lists wallets at its start; a pause made while it runs stops the pull.
+  it("a user pause made after the run listed the wallet stops its pull", async () => {
+    const repo = await seeded([83, 62, 70]);
+    const chain = fakeChain({
+      readDelegation: async () => {   // the user taps pause while the run reads the chain
+        await repo.addEvent({ userPubkey: "U", walletPubkey: "W", kind: "paused_by_user", detail: { by: "user" } });
+        await repo.setWalletStatus("W", "paused");
+        return DELEGATION;
+      },
+    });
+    const r = await runPlanting({ repo, now: NOW, chain });
+    expect(r.planted).toEqual([]);
+    expect(r.skipped).toEqual([{ wallet: "W", reason: "paused" }]);
+  });
+  it("a run resume racing a user pause does not pull: the user's pause is newer than any resume of theirs", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await repo.addEvent({ userPubkey: "U", walletPubkey: "W", kind: "paused_by_user", detail: { by: "user" } });
+    await repo.addEvent({ userPubkey: "U", walletPubkey: "W", kind: "resumed", detail: null });   // a run's resume, not the user's
+    const r = await runPlanting({ repo, now: NOW, chain: fakeChain() });
+    expect(r.planted).toEqual([]);
+    expect((await repo.getWallet("W"))!.status).toBe("paused");
+  });
+  it("a pause with no event after the last resume (made before user pauses were recorded) stays paused", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await repo.addEvent({ userPubkey: "U", walletPubkey: "W", kind: "paused_no_usdc", detail: null });
+    await repo.addEvent({ userPubkey: "U", walletPubkey: "W", kind: "resumed", detail: null });
+    await repo.setWalletStatus("W", "paused");
+    const r = await runPlanting({ repo, now: NOW, chain: fakeChain() });
+    expect(r.planted).toEqual([]);
+    expect((await repo.getWallet("W"))!.status).toBe("paused");
   });
 
   it("marks the wallet revoked when the delegation is gone", async () => {
@@ -133,7 +189,7 @@ describe("runPlanting", () => {
       buildPlantingTx: async (a) => { built.push(a.asset); return { tx: { asset: a.asset } as never, signature: `sig-${a.asset}`, expectedOutRaw: a.pullRaw * 48n, minOutRaw: a.pullRaw * 47n, lookupTables: [], lastValidBlockHeight: 0n }; },
       simulatePlanting: async (b) => (b.tx as unknown as { asset: string }).asset === "stORE"
         ? { ok: false, err: { InstructionError: [3, "Custom"] }, logs: ["Program log: account not initialized"], units: 0 }
-        : { ok: true, err: null, logs: [], units: 200_000 },
+        : { ok: true, err: null, logs: [], units: 200_000, delivery: { pre: 0n, post: 0n } },
     });
     const r = await runPlanting({ repo, now: NOW, chain });
     expect(built).toEqual(["stORE", "SKR"]);
@@ -423,5 +479,154 @@ describe("runPlanting", () => {
     expect(b.planted[0].asset).toBe("JupSOL");
     const legB = (await repo.plantingLegs([...repo.plantings.values()][1].id))[0];
     expect(legB.rateAtPlanting).toBeCloseTo(1.21199, 5);
+  });
+});
+
+// Security audit R207 #2, spec 3.2 step 4: the stake takes the quote's minimum; what the swap delivered above it is recorded against
+// the planting (so the user) after confirmation and added to the same user's next SKR stake, once.
+describe("the SKR slippage remainder (R207 #2)", () => {
+  type BuildArgs = Parameters<Chain["buildPlantingTx"]>[0];
+  const addSwaps = async (repo: MemoryRepo, wallet: string, tag: string) => {
+    for (const [i, c] of [83, 62, 70].entries()) await repo.insertSwap({ signature: `${tag}${i}`, walletPubkey: wallet, ts: new Date(NOW.getTime() - 3_600_000), inMint: "a", inAmount: 1, outMint: "b", outAmount: 1, usdSizeCents: 100, class: "major", roundupCents: c });
+  };
+  const recording = (builds: BuildArgs[], over: Partial<Chain> = {}) => {
+    const base = fakeChain(over);
+    return { ...base, buildPlantingTx: async (a: BuildArgs) => { builds.push(a); return base.buildPlantingTx(a); } } as Chain;
+  };
+  const plantings = (repo: MemoryRepo) => [...repo.plantings.values()].sort((a, b) => a.ts.getTime() - b.ts.getTime());
+
+  it("records the surplus after confirmation and stakes it with the same user's next SKR planting, once", async () => {
+    const repo = await seeded([83, 62, 70]);
+    const builds: BuildArgs[] = [];
+    await runPlanting({ repo, now: NOW, chain: recording(builds, { pullerSkrChangeRaw: async () => 500n }) });
+    expect(builds[0].skrCarryRaw).toBeUndefined();
+    expect(plantings(repo)[0]).toMatchObject({ status: "confirmed", skrCarryInRaw: 0n, skrSurplusRaw: 500n });
+    expect(await repo.skrCreditRaw("U")).toBe(500n);
+
+    // Next day: the stake carries the 500; this swap left 300 above its minimum, the stake drew 500 more: the change is -200.
+    await addSwaps(repo, "W", "d2-");
+    const later = new Date(NOW.getTime() + 86_400_000);
+    await runPlanting({ repo, now: later, chain: recording(builds, { pullerSkrChangeRaw: async () => -200n }) });
+    expect(builds[1].skrCarryRaw).toBe(500n);
+    expect(plantings(repo)[1]).toMatchObject({ status: "confirmed", skrCarryInRaw: 500n, skrSurplusRaw: 300n });
+    expect(await repo.skrCreditRaw("U")).toBe(300n);
+  });
+
+  it("never credits one user's remainder to another user", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await runPlanting({ repo, now: NOW, chain: fakeChain({ pullerSkrChangeRaw: async () => 500n }) });
+    await repo.upsertUser({ seedVaultPubkey: "U2", sgtMint: "M2", skrName: null });
+    await repo.addWallet({ pubkey: "W2", userPubkey: "U2", delegationPda: "D2", dailyCapCents: 500 });
+    await addSwaps(repo, "W2", "u2-");
+    const builds: BuildArgs[] = [];
+    await runPlanting({ repo, now: NOW, chain: recording(builds) });
+    expect(builds.map((b) => [b.user, b.skrCarryRaw])).toEqual([["U2", undefined]]);
+    expect(await repo.skrCreditRaw("U2")).toBe(0n);
+    expect(await repo.skrCreditRaw("U")).toBe(500n);
+  });
+
+  it("a planting reconciled late records its surplus once; booking it again never adds it twice", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await runPlanting({ repo, now: NOW, chain: fakeChain({ sendPlanting: async () => { throw new Error("socket closed"); }, signatureStatus: async () => "pending" }) });
+    expect(await repo.skrCreditRaw("U")).toBe(0n);
+    const later = new Date(NOW.getTime() + 10 * 60_000);
+    await runPlanting({ repo, now: later, chain: fakeChain({ signatureStatus: async () => "confirmed", pullerSkrChangeRaw: async () => 400n }) });
+    expect(await repo.skrCreditRaw("U")).toBe(400n);
+    const p = plantings(repo)[0];
+    await repo.setPlantingSkrSurplus(p.id, 400n);
+    await repo.setPlantingSkrSurplus(p.id, 900n);
+    expect(await repo.skrCreditRaw("U")).toBe(400n);
+  });
+
+  it("a planting that failed on chain gives its carry back; a stORE leg carries nothing", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await runPlanting({ repo, now: NOW, chain: fakeChain({ pullerSkrChangeRaw: async () => 500n }) });
+    await addSwaps(repo, "W", "d2-");
+    const later = new Date(NOW.getTime() + 86_400_000);
+    await runPlanting({ repo, now: later, chain: fakeChain({ sendPlanting: async () => { throw new Error("custom program error"); }, signatureStatus: async () => "failed" }) });
+    expect(plantings(repo)[1]).toMatchObject({ status: "failed", skrCarryInRaw: 500n });
+    expect(await repo.skrCreditRaw("U")).toBe(500n);
+
+    await repo.saveRules("U", { allocation: { ...SKR_ONLY, SKR: 0, stORE: 100 } });
+    const builds: BuildArgs[] = [];
+    await runPlanting({ repo, now: new Date(later.getTime() + 86_400_000), chain: recording(builds) });
+    expect(builds.map((b) => [b.asset, b.skrCarryRaw])).toEqual([["stORE", undefined]]);
+  });
+
+  it("stands down before claiming or sending when another run spent the same remainder meanwhile", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await runPlanting({ repo, now: NOW, chain: fakeChain({ pullerSkrChangeRaw: async () => 500n }) });
+    await addSwaps(repo, "W", "d2-");
+    const spy = vi.spyOn(repo, "skrCreditRaw").mockResolvedValueOnce(500n).mockResolvedValueOnce(-500n);
+    let sent = 0;
+    const r = await runPlanting({ repo, now: new Date(NOW.getTime() + 86_400_000), chain: fakeChain({ sendPlanting: async () => { sent++; } }) });
+    spy.mockRestore();
+    expect(r.skipped).toEqual([{ wallet: "W", reason: "claimed elsewhere" }]);
+    expect(sent).toBe(0);
+    expect(plantings(repo)[1].status).toBe("failed");
+    expect((await repo.unplantedSwaps("W")).length).toBe(3);
+    expect(await repo.skrCreditRaw("U")).toBe(500n);
+  });
+
+  it("a failed remainder read carries nothing and records nothing", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await runPlanting({ repo, now: NOW, chain: fakeChain({ pullerSkrChangeRaw: async () => { throw new Error("rpc down"); } }) });
+    expect(plantings(repo)[0]).toMatchObject({ status: "confirmed", skrSurplusRaw: null });
+    expect(await repo.skrCreditRaw("U")).toBe(0n);
+  });
+});
+
+// R207 review: the pooled puller SKR account holds other users' remainders, so the simulation's own balances must show the swap
+// delivered: SKR may fall by at most this user's carry; a wallet coin's account must gain at least the minimum. Nothing is sent otherwise.
+describe("the delivery check on the simulation (R207 review)", () => {
+  const sim = (pre: bigint, post: bigint) => async () => ({ ok: true, err: null, logs: [], units: 1, delivery: { pre, post } });
+  const countSends = () => { const c = { n: 0 }; return { c, sendPlanting: async () => { c.n++; } }; };
+
+  it("happy path: an SKR planting whose stake draws exactly this user's carry from the float is sent", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await runPlanting({ repo, now: NOW, chain: fakeChain({ pullerSkrChangeRaw: async () => 500n }) });
+    for (const [i, c] of [83, 62, 70].entries()) await repo.insertSwap({ signature: `h${i}`, walletPubkey: "W", ts: new Date(NOW.getTime() - 3_600_000), inMint: "a", inAmount: 1, outMint: "b", outAmount: 1, usdSizeCents: 100, class: "major", roundupCents: c });
+    const { c, sendPlanting } = countSends();
+    const r = await runPlanting({ repo, now: new Date(NOW.getTime() + 86_400_000), chain: fakeChain({ simulatePlanting: sim(10_000n, 9_500n), sendPlanting }) });
+    expect(c.n).toBe(1);
+    expect(r.planted.length).toBe(1);
+  });
+
+  it("refuses an SKR planting whose swap delivered short: the stake would draw on other users' remainders", async () => {
+    const repo = await seeded([83, 62, 70]);
+    const { c, sendPlanting } = countSends();
+    const r = await runPlanting({ repo, now: NOW, chain: fakeChain({ simulatePlanting: sim(10_000n, 9_999n), sendPlanting }) });
+    expect(c.n).toBe(0);
+    expect(r.skipped).toEqual([{ wallet: "W", reason: "simulation failed" }]);
+    expect(JSON.stringify(repo.events.at(-1)?.detail)).toMatch(/fell by 1, more than this user's carry of 0/);
+    expect((await repo.unplantedSwaps("W")).length).toBe(3);
+  });
+
+  it("refuses an SKR planting whose stake draws more than this user's credit", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await runPlanting({ repo, now: NOW, chain: fakeChain({ pullerSkrChangeRaw: async () => 500n }) });
+    for (const [i, c] of [83, 62, 70].entries()) await repo.insertSwap({ signature: `x${i}`, walletPubkey: "W", ts: new Date(NOW.getTime() - 3_600_000), inMint: "a", inAmount: 1, outMint: "b", outAmount: 1, usdSizeCents: 100, class: "major", roundupCents: c });
+    const { c, sendPlanting } = countSends();
+    const r = await runPlanting({ repo, now: new Date(NOW.getTime() + 86_400_000), chain: fakeChain({ simulatePlanting: sim(10_000n, 9_499n), sendPlanting }) });
+    expect(c.n).toBe(0);
+    expect(r.skipped[0].reason).toBe("simulation failed");
+  });
+
+  it("refuses a wallet coin delivered elsewhere (the user's account gains nothing) and plants SKR instead", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await repo.saveRules("U", { allocation: { ...SKR_ONLY, SKR: 0, hSOL: 100 } });
+    const r = await runPlanting({ repo, now: NOW, chain: fakeChain({
+      buildPlantingTx: async (a) => ({ tx: { asset: a.asset } as never, signature: `sig-${a.asset}`, expectedOutRaw: 48n, minOutRaw: 47n, lookupTables: [], lastValidBlockHeight: 0n }),
+      simulatePlanting: async (b) => ({ ok: true, err: null, logs: [], units: 1, delivery: (b.tx as unknown as { asset: string }).asset === "hSOL" ? { pre: 100n, post: 146n } : { pre: 0n, post: 0n } }),
+    }) });
+    expect(r.planted[0]?.asset).toBe("SKR");
+    expect(JSON.stringify(repo.events.find((e) => e.kind === "leg_fallback")?.detail)).toMatch(/gained 46, under the minimum 47/);
+  });
+
+  it("a simulation that reports no delivery balance fails closed", async () => {
+    const repo = await seeded([83, 62, 70]);
+    const { c, sendPlanting } = countSends();
+    await runPlanting({ repo, now: NOW, chain: fakeChain({ simulatePlanting: async () => ({ ok: true, err: null, logs: [], units: 1 }), sendPlanting }) });
+    expect(c.n).toBe(0);
   });
 });

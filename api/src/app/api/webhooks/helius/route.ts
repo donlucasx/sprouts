@@ -5,6 +5,7 @@ import { config } from "@/lib/config";
 import { bookSwap, type HeliusEnhancedTx } from "@/lib/book-swap";
 import { priceUsd } from "@/lib/jupiter";
 import { pullerSigner } from "@/lib/puller";
+import { onChainVerifier } from "@/lib/verify-swap";
 import type { PriceLookup } from "@/domain/sizing";
 
 export const runtime = "nodejs";
@@ -24,6 +25,8 @@ function authorized(header: string | null): boolean {
 /**
  * Helius requires a 200 within one second and drops the event after three retries, so the route acknowledges first and
  * books afterwards. A malformed item is logged and skipped; the signature is the primary key, so retries never double-book.
+ * The secret is not the whole boundary any more (R207 #8): every swap that would be booked is first read from chain and must
+ * have succeeded, be signed by the linked wallet, be recent, carry the event's block time and amounts no larger than the chain's.
  */
 export async function POST(request: Request) {
   if (!authorized(request.headers.get("authorization"))) return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
@@ -33,10 +36,12 @@ export async function POST(request: Request) {
   after(async () => {
     const repo = await getRepo();
     const puller = (await pullerSigner()).address;
+    const verify = onChainVerifier();
     for (const tx of items) {
       try {
-        const r = await bookSwap({ repo, tx, priceUsd: boundedPrice, ignoreFeePayer: puller });
+        const r = await bookSwap({ repo, tx, priceUsd: boundedPrice, ignoreFeePayer: puller, verify });
         if (r.booked) console.log(`booked ${tx.signature} for ${r.walletPubkey}: ${r.roundupCents} cents`);
+        else if (r.refused) console.error(`webhook item refused ${tx.signature}: ${r.refused}`);
       } catch (e) {
         console.error(`webhook item failed ${tx?.signature ?? "?"}: ${e instanceof Error ? e.message : String(e)}`);
       }

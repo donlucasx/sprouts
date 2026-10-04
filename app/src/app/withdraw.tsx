@@ -12,10 +12,11 @@ import { withdrawMode } from '@/lib/me-state'
 import { amountProblem, maxAmountText, parseSkr } from '@/lib/forms'
 import { api, ApiError } from '@/lib/api'
 import { useMe, useInvalidateMe } from '@/lib/me'
-import { makeSigner } from '@/lib/sign'
+import { useSession } from '@/lib/session'
+import { makeSigner, SignRefused } from '@/lib/sign'
 import { arrivalLine, formatSkr } from '@/lib/format'
 import { withdrawRows } from '@/lib/withdraw-list'
-import { withdrawAtTap, REPLANNED, type WithdrawPlan, type WithdrawRequest } from '@/lib/withdraw-flow'
+import { withdrawAtTap, type WithdrawPlan, type WithdrawRequest } from '@/lib/withdraw-flow'
 import { spacing, TARGET, type as ramp, useTheme } from '@/theme'
 
 const Waiting = () => (
@@ -26,6 +27,7 @@ const Waiting = () => (
 
 export default function Withdraw() {
   const { data: me } = useMe()
+  const { session } = useSession()
   const { colors } = useTheme()
   const { signTransaction } = useMobileWallet()
   const invalidate = useInvalidateMe()
@@ -80,7 +82,7 @@ export default function Withdraw() {
     }
   }
   async function sign() {
-    if (!plan) return
+    if (!plan || !session) return
     setBusy(true)
     setError(null)
     try {
@@ -88,33 +90,35 @@ export default function Withdraw() {
         request: plan.request,
         shown: plan,
         build: buildPlan,
-        sign: makeSigner(signTransaction),
+        // Checked against the plan the tap rebuilt (its amount equals the one on screen): only those shares, from this position.
+        sign: (p) => makeSigner(signTransaction, { kind: 'withdraw', user: session.pubkey, shares: p.shares }),
         confirm: (signedTransaction) => api('/api/withdraw/confirm', { method: 'POST', body: { signedTransaction } }),
       })
       if ('replanned' in out) {
         setPlan({ ...out.replanned, request: plan.request })   // the garden moved since the amount was picked: show it, tap again
-        setError(REPLANNED)
+        setError(out.message)
         return
       }
       await invalidate()
       router.replace('/home')
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'The withdrawal did not go through. Nothing moved.')
+      setError(e instanceof ApiError || e instanceof SignRefused ? e.message : 'The withdrawal did not go through. Nothing moved.')
     } finally {
       setBusy(false)
     }
   }
   async function putBack() {
+    if (!session) return
     setBusy(true)
     setError(null)
     try {
       const t = await api<{ transaction: string }>('/api/withdraw/cancel/build', { method: 'POST', body: {} })
-      const signed = await makeSigner(signTransaction)(t.transaction)
+      const signed = await makeSigner(signTransaction, { kind: 'cancel', user: session.pubkey })(t.transaction)
       await api('/api/withdraw/cancel/confirm', { method: 'POST', body: { signedTransaction: signed } })
       await invalidate()
       router.replace('/home')
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Could not put it back. Try again.')
+      setError(e instanceof ApiError || e instanceof SignRefused ? e.message : 'Could not put it back. Try again.')
     } finally {
       setBusy(false)
     }

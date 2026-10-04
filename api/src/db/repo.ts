@@ -3,7 +3,7 @@ import type { Asset, Stop } from "@/domain/coins";
 
 /** A planting as the run records it; the share columns are filled in by the run and the confirmation [A16]. */
 /** `ts` is the run's own clock (the reconciliation measures age against it); left out, the store stamps the row itself. */
-export type NewPlanting = Omit<T.PlantingRow, "id" | "ts" | "sharesBefore" | "sharesAfter" | "sharesMinted"> & { sharesBefore?: bigint | null; ts?: Date };
+export type NewPlanting = Omit<T.PlantingRow, "id" | "ts" | "sharesBefore" | "sharesAfter" | "sharesMinted" | "skrCarryInRaw" | "skrSurplusRaw"> & { sharesBefore?: bigint | null; ts?: Date; skrCarryInRaw?: bigint };
 
 export type NewWatcherCall = Omit<T.WatcherCallRow, "id" | "ts"> & { ts?: Date };
 export type NewWithdrawal = { userPubkey: string; asset: Asset; source: T.WithdrawalSource; unstakeSignature: string | null; sharesUnstaked: bigint; amountRaw: bigint; principalRaw: bigint };
@@ -47,6 +47,13 @@ export interface Repo {
   setPlantingShares(plantingId: string, p: { before: bigint | null; after: bigint; minted: bigint }): Promise<void>;
   /** R141: the leg's amount becomes what landed, once read after confirmation. */
   setLegAmountOut(plantingId: string, asset: Asset, amountOutRaw: bigint): Promise<void>;
+  /**
+   * R207 #2: the user's SKR remainder still in the puller's account, = the surplus of their confirmed plantings minus the carry of
+   * their sent and confirmed ones. Only this user's rows count; a failed planting's carry is given back.
+   */
+  skrCreditRaw(userPubkey: string): Promise<bigint>;
+  /** R207 #2: a confirmed planting's surplus, written once (a second booking of the same planting never overwrites or adds). */
+  setPlantingSkrSurplus(plantingId: string, surplusRaw: bigint): Promise<void>;
   /** Plantings still `sent` (their send threw before confirmation) that started before `olderThan`. */
   listSentPlantings(olderThan: Date): Promise<T.PlantingRow[]>;
   /** Newest first, any status. */
@@ -99,6 +106,10 @@ export interface Repo {
 
   // The watcher's budget (spec 6): every model call recorded; spend since a moment, calls by one user since a moment.
   addWatcherCall(c: NewWatcherCall): Promise<number>;
+  /** A reserved call's real usage, once the model has answered (R207 #6: calls are reserved at an estimate before they run). */
+  settleWatcherCall(id: number, u: { inputTokens: number; outputTokens: number; costMicrocents: number }): Promise<void>;
+  /** A reservation given back: refused over a cap, or the model was never reached. */
+  deleteWatcherCall(id: number): Promise<void>;
   watcherSpendMicrocents(since: Date): Promise<number>;
   watcherCallsBy(userPubkey: string, since: Date): Promise<number>;
   listWatcherCalls(): Promise<T.WatcherCallRow[]>;
