@@ -14,6 +14,9 @@ pub use solana_clock::Clock;
 pub use solana_instruction::{AccountMeta, Instruction};
 pub use solana_pubkey::Pubkey;
 
+pub mod cfg;
+pub use cfg::*;
+
 /// 2026-10-05T00:00:00Z: the clock of every synthetic (non-fork) test.
 pub const NOW: i64 = 1_791_158_400;
 pub const EPOCH: u64 = 880;

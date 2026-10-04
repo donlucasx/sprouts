@@ -1,1 +1,24 @@
 # id kind file testfile testname   (kind: host = pure-function test, svm = litesvm test against the rebuilt leash.so)
+CFG_LEN host program/src/config.rs unit_config decode_account_guards
+CFG_MAGIC host program/src/config.rs unit_config decode_account_guards
+CFG_VERSION host program/src/config.rs unit_config decode_account_guards
+V_PULLER_ADMIN host program/src/config.rs unit_config validate_guards
+V_PULLER_ZERO host program/src/config.rs unit_config validate_guards
+V_PULLER_USDC_ZERO host program/src/config.rs unit_config validate_guards
+V_MAX_PULL_ZERO host program/src/config.rs unit_config validate_guards
+V_MAX_PULL_CEIL host program/src/config.rs unit_config validate_guards
+V_ENABLED host program/src/config.rs unit_config validate_guards
+V_READER host program/src/config.rs unit_config validate_guards
+V_DECIMALS host program/src/config.rs unit_config validate_guards
+V_FEE host program/src/config.rs unit_config validate_guards
+V_FEE_TOL host program/src/config.rs unit_config validate_guards
+V_CONF_MIN host program/src/config.rs unit_config validate_guards
+V_CONF_MAX host program/src/config.rs unit_config validate_guards
+V_AGE_MIN host program/src/config.rs unit_config validate_guards
+V_AGE_MAX host program/src/config.rs unit_config validate_guards
+V_RECEIPT_USDC host program/src/config.rs unit_config validate_guards
+V_RECEIPT_ZERO host program/src/config.rs unit_config validate_guards
+V_RATE_ZERO host program/src/config.rs unit_config validate_guards
+V_FEED host program/src/config.rs unit_config validate_guards
+V_EXTRA_ZERO host program/src/config.rs unit_config validate_guards
+V_STORE_EXTRA host program/src/config.rs unit_config validate_guards
