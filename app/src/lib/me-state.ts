@@ -72,7 +72,13 @@ export function pauseState(wallets: { status: string }[]): { shown: boolean; on:
  * caption (R177, R194): where its growth comes from, with the week's measured rate; none while collecting or under 1%.
  * R198 (device check 2, his note): `lead` marks the SKR and stORE rows, which Home sets one step up the type ramp from the other
  * coins (heading against body, the same step as the Put in / Earned tiles above them), so the two Seeker coins lead the list. */
-export type CoinRow = { asset: Asset; amount: string; locked: boolean; note: string | null; lead: boolean }
+export type CoinRow = { asset: Asset; amount: string; qty: string; usd: string | null; locked: boolean; note: string | null; lead: boolean }
+/** R230 (10-03, his note: "a more familiar portfolio look, like coinmarketcap's"): `amount` split for Home's two-column row, the
+ * coin amount under its name on the left and the dollars on the right; `usd` null when no price is known. */
+function split(amount: string): { qty: string; usd: string | null } {
+  const m = amount.match(/^(.*) \((\$[^)]*)\)$/)
+  return m ? { qty: m[1], usd: m[2] } : { qty: amount, usd: null }
+}
 /** R198: the coins whose rows lead Home's list, one type step up. */
 export const LEAD_COINS: readonly Asset[] = ['SKR', 'stORE']
 export function storeNote(growthPct: number | null | undefined): string | null {
@@ -80,10 +86,10 @@ export function storeNote(growthPct: number | null | undefined): string | null {
 }
 export function coinRows(me: Pick<MeResponse, 'pot' | 'holdings'>): CoinRow[] {
   const staked = BigInt(me.pot.skrStakedRaw)
-  const rows: CoinRow[] = staked > 0n ? [{ asset: 'SKR', amount: formatSkr(staked, me.pot.skrUsd), locked: true, note: null, lead: true }] : []
+  const rows: CoinRow[] = staked > 0n ? [{ asset: 'SKR', amount: formatSkr(staked, me.pot.skrUsd), ...split(formatSkr(staked, me.pot.skrUsd)), locked: true, note: null, lead: true }] : []
   for (const asset of ASSETS) {
     const h = me.holdings.find((x) => x.asset === asset)
-    if (h) rows.push({ asset, amount: holdingAmount(h), locked: false, note: asset === 'stORE' ? storeNote(h.growthPct) : null, lead: LEAD_COINS.includes(asset) })
+    if (h) rows.push({ asset, amount: holdingAmount(h), ...split(holdingAmount(h)), locked: false, note: asset === 'stORE' ? storeNote(h.growthPct) : null, lead: LEAD_COINS.includes(asset) })
   }
   return rows
 }
