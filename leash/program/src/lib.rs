@@ -3,6 +3,7 @@
 #![no_std]
 
 pub mod constants;
+pub mod config;
 pub mod errors;
 
 pub use pinocchio::Address;
