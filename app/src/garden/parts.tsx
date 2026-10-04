@@ -3,7 +3,7 @@ import { SPRITES } from "./sprites";
 import { stemPaths, spriteTransform } from "@/model/paint";
 import { COLORS, SOIL, type Placed, type PlantId } from "@/model/species";
 import { SIGN_LABEL, SIGN_TEXT } from "@/model/layout";
-import { SOIL_CLIP_ID, soilClipPath, appGround } from "@/model/soil-clip";
+import { SOIL_CLIP_ID, soilClipPath, type GroundPlace } from "@/model/soil-clip";
 import { FONT } from "@/theme/tokens";
 
 export const INK = SOIL.ink; export const WATER = SOIL.water; export const OCHRE = SOIL.front;
@@ -26,16 +26,14 @@ export function PlacedPart({ p, plant }: { p: Placed; plant: PlantId }) {
 /** The ground (RG28): one baked wash, 320 wide at 1x anchored top-left, its height the bake's (the manifest's, never a constant), its
  * bottom on the canvas bottom (the soil line plus 60, spec 5), scaled in x to the garden's width; the vignette
  * does not fill the canvas, so the paper shows at its edges. `soilPaths` is not drawn here. */
-export function Soil({ width, soilY }: { width: number; soilY: number }) {
-  const m = SPRITES["ground"]; if (!m) return null;
-  const g = appGround(width); void soilY;   // R231: placed by appGround, the one placement the clip and the stakes read too
+export function Soil({ g }: { g: GroundPlace }) {
+  const m = SPRITES["ground"]; if (!m) return null;   // R231, R238: placed by the frame's ground, the one placement the clip and the stakes read too
   return <SpriteAt name="ground" x={g.x0} y={g.y0} scale={g.sy} xScale={g.sx} />;
 }
 /** R176: the painted soil's outline as a STATIC clip (only animated ClipPath children fail on Android, the spike) for the water rings:
  * the same placement as `Soil`, so the rings stop where the soil does. */
-export function SoilClip({ width, soilY }: { width: number; soilY: number }) {
+export function SoilClip({ g }: { g: GroundPlace }) {
   const m = SPRITES["ground"]; if (!m) return null;
-  const g = appGround(width); void soilY;
   return <Defs><ClipPath id={SOIL_CLIP_ID}><Path d={soilClipPath(g.x0, g.y0, g.sx, g.sy)} /></ClipPath></Defs>;
 }
 /** The water ring (RG11): the front row's at 24, the back row's at 16 (gen06:77, :83: two thirds). */

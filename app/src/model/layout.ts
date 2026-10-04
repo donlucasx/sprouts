@@ -2,7 +2,7 @@ import { BAKED_L, type Placed, type PlantId } from "./species";
 import type { Scene } from "./garden";
 import type { PlantOnStage } from "./scene-to-layout";   // a type only: no require cycle
 import { SPRITE_META } from "@/garden/sprite-meta";   // boxes only, no require(): safe in node
-import { appGround, soilBottomAt, GROUND } from "./soil-clip";
+import { appGround, soilBottomAt, GROUND, type GroundPlace } from "./soil-clip";
 
 /** Spec 5: the canvas is the screen width minus 40 by 260; the soil line at 200; the back row's feet at 214 and the front's at 244. */
 /** R231 (10-04, "play more into the perspective of which are closer (SKR & stORE)"): the canvas 290 deep (the ground 1.5x deeper below
@@ -105,8 +105,8 @@ export function signStand(x: number, want: number, scale: number, soilBottom: (x
 }
 /** The app's stake for a sign part, at the garden's width: its anchor and its drawn scale. */
 /** R234: `zoom` is the frame's; the stake's drawn scale is signScale over it, so a stake keeps one size on screen while the plants zoom. */
-export function signPlacement(s: { x: number; side: -1 | 1; row: "front" | "back" }, width: number, zoom = 1) {
-  const scale = signScale(s.row) / zoom, x = signX(s.x * width, s.side, width, scale), g = appGround(width);
+export function signPlacement(s: { x: number; side: -1 | 1; row: "front" | "back" }, width: number, zoom = 1, ground: GroundPlace = appGround(width)) {
+  const scale = signScale(s.row) / zoom, x = signX(s.x * width, s.side, width, scale), g = ground;
   return { x, y: signStand(x, FOOT_Y(s.row) + 4, scale, (px) => soilBottomAt(px, g)), scale };
 }
 /** R168 (10-02): the word on a stake, drawn as crisp type over the one blank baked board (`sign`), in the board's own frame: the anchor
