@@ -11,7 +11,10 @@ export function soilClipPath(x0: number, y0: number, sx: number, sy: number): st
 /** Where a ground sprite is drawn: its top-left at (x0, y0), scaled sx across and sy down (the app's and the widget's placements). */
 export type GroundPlace = { x0: number; y0: number; sx: number; sy: number };
 /** The app's ground (spec 5, RG28): the soil line plus 60 is its bottom, 320 wide at 1x scaled to the garden's width. */
-export const appGround = (width: number): GroundPlace => ({ x0: 0, y0: 200 + 60 - (SPRITE_META["ground"]?.h ?? 86), sx: width / 320, sy: 1 });
+/** R231 (10-04, his ruling: a taller garden, more depth between the rows): the bake drawn GROUND.sy deep, its top edge where it was
+ * (the bake's top at 161, so the soil line stays at 200), its bottom on the canvas bottom, GROUND.bottom (from 260). */
+export const GROUND = { sy: 1.5, bottom: 161 + 1.5 * 86 } as const;
+export const appGround = (width: number): GroundPlace => ({ x0: 0, y0: GROUND.bottom - GROUND.sy * (SPRITE_META["ground"]?.h ?? 86), sx: width / 320, sy: GROUND.sy });
 /** R181: the painted soil's bottom edge at x (garden px): the lowest crossing of the outline with the vertical at x; the outline's lowest
  * point when x is outside it. */
 export function soilBottomAt(x: number, g: GroundPlace): number {
