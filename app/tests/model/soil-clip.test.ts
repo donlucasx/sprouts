@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { widgetGardenSvg } from "@/model/widget-svg";
+import { widgetGardenSvg, widgetView } from "@/model/widget-svg";
+import { frameGround } from "@/model/soil-clip";
 import { soilClipPath, SOIL_CLIP_ID } from "@/model/soil-clip";
 import { SPRITE_META, GROUND_OUTLINE } from "@/garden/sprite-meta";
 import { buildScene, type GardenInput } from "@/model/garden";
@@ -13,7 +14,7 @@ const inside = (pt: [number, number], poly: [number, number][]) => { let c = fal
 describe("R176: no soil, no water", () => {
   it("every ring <use> in the widget string sits inside a group clipped to the soil, and the clip is declared once in <defs>", () => {
     for (const [w, h, wide] of [[150, 60, false], [300, 120, true]] as const) {
-      const svg = widgetGardenSvg(scene, w, h, wide);
+      const svg = widgetGardenSvg(scene, w, h); void wide;
       const rings = [...svg.matchAll(/<use xlink:href="#s-ring"/g)]; expect(rings.length).toBeGreaterThan(0);
       expect([...svg.matchAll(/<g clip-path="url\(#soil\)"><g opacity="[\d.]+"><use xlink:href="#s-ring"/g)]).toHaveLength(rings.length);
       expect(SOIL_CLIP_ID).toBe("soil");
@@ -21,20 +22,12 @@ describe("R176: no soil, no water", () => {
     }
   });
   it("a garden with no ring declares no clip", () => {
-    expect(widgetGardenSvg(buildScene({ ...base, wateredAt: null, plantings: [pl("a", 3, "SKR")] }), 150, 60, false)).not.toContain("clipPath");
+    expect(widgetGardenSvg(buildScene({ ...base, wateredAt: null, plantings: [pl("a", 3, "SKR")] }), 150, 60)).not.toContain("clipPath");
   });
-  it("the clip polygon is the ground sprite's outline in the widget's own placement, inside the widget; a ring at the far right of the small widget pokes past it, so the clip is doing work", () => {
-    const w = 150, h = 60, svg = widgetGardenSvg(scene, w, h, false);
-    const poly = nums(svg.match(/<clipPath id="soil"><path d="([^"]+)"/)![1]);
-    expect(poly).toHaveLength(GROUND_OUTLINE.length);
-    for (const [x, y] of poly) { expect(x).toBeGreaterThanOrEqual(0); expect(x).toBeLessThanOrEqual(w + 0.01); expect(y).toBeGreaterThanOrEqual(0); expect(y).toBeLessThanOrEqual(h + 0.01); }
-    // the stORE ring (x 0.8, front row): its box, read off its own <use> transform (translate, rotate 0, scale, translate by minus the anchor)
-    const r = SPRITE_META["ring"]; let poked = false;
-    for (const u of svg.matchAll(/<use xlink:href="#s-ring" transform="translate\(([-\d.]+) ([-\d.]+)\) rotate\(0\) scale\(([\d.]+) ([\d.]+)\) translate\(([-\d.]+) ([-\d.]+)\)"/g)) {
-      const [tx, ty, sx, sy, ax, ay] = u.slice(1).map(Number);
-      for (let i = 0; i <= 8; i++) for (let j = 0; j <= 4; j++) { const pt: [number, number] = [tx + (r.w * i / 8 + ax) * sx, ty + (r.h * j / 4 + ay) * sy]; if (!inside(pt, poly)) poked = true; }
-    }
-    expect(poked).toBe(true);
+  it("R252: the clip polygon is the ground sprite's outline placed as the widget's ground is (spanning the view, R238), inside the view's width", () => {
+    const w = 150, h = 120, svg = widgetGardenSvg(scene, w, h), v = widgetView(scene, w, h), g = frameGround(320, v);
+    expect(svg.match(/<clipPath id="soil"><path d="([^"]+)"/)![1]).toBe(soilClipPath(g.x0, g.y0, g.sx, g.sy));
+    for (const [x] of nums(soilClipPath(g.x0, g.y0, g.sx, g.sy))) { expect(x).toBeGreaterThanOrEqual(v.x - 0.01); expect(x).toBeLessThanOrEqual(v.x + v.w + 0.01); }
   });
   it("the app's clip is the same outline placed as the ground is: x scaled by width / 320, its top at soilY + 60 - the sprite's height", () => {
     const d = soilClipPath(0, 200 + 60 - SPRITE_META["ground"].h, 340 / 320, 1), p = nums(d);
