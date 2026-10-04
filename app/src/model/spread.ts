@@ -59,7 +59,7 @@ const zoomOf = (scene: Scene, width: number) => frameFor(scene, plantLayouts(sce
 /** Each plant and stake moved `t` of the way from its locked slot to `slots`. */
 const moved = (scene: Scene, slots: Map<PlantId, number>, t: number): Scene =>
   ({ ...scene, parts: scene.parts.map((q): Part => ((q.kind === "plant" || q.kind === "sign") && slots.has(q.plant) ? { ...q, x: q.x + (slots.get(q.plant)! - q.x) * t } : q)) });
-export function packScene(scene: Scene, width: number = SPREAD.ref): Scene {
+export function packScene(scene: Scene, width: number = SPREAD.ref, take: number = SPREAD.take): Scene {
   const z0 = zoomOf(opened(scene), width);
   let zoom = z0, slots: Map<PlantId, number> | null = null;
   for (let i = 0; i < SPREAD.passes; i++) {
@@ -70,7 +70,7 @@ export function packScene(scene: Scene, width: number = SPREAD.ref): Scene {
   if (!slots || zoom <= z0) return scene;
   // R235: the zoom a share t of the way gives is about the width over a span linear in t, so t for the zoom `take` of the way is
   // (1/zT - 1/z0) / (1/zf - 1/z0)
-  const zT = z0 + (zoom - z0) * SPREAD.take, t = Math.min(1, Math.max(0, (1 / zT - 1 / z0) / (1 / zoom - 1 / z0)));
+  const zT = z0 + (zoom - z0) * take, t = Math.min(1, Math.max(0, (1 / zT - 1 / z0) / (1 / zoom - 1 / z0)));
   return moved(scene, slots, t);
 }
 

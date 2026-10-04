@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { widgetGardenSvg, soilBand } from "@/model/widget-svg";
+import { widgetGardenSvg, widgetView } from "@/model/widget-svg";
 import { signPlacement, SIGN_FOOT, SIGN_SOIL_MARGIN, CANVAS } from "@/model/layout";
-import { soilClipPath, soilBottomAt, appGround, type GroundPlace } from "@/model/soil-clip";
+import { soilClipPath, soilBottomAt, appGround, frameGround, type GroundPlace } from "@/model/soil-clip";
 import { SPRITE_META } from "@/garden/sprite-meta";
 import { buildScene, type GardenInput } from "@/model/garden";
 
@@ -32,10 +32,10 @@ describe("R181: the stakes stand in the soil", () => {
         for (const s of signs) { const at = signPlacement(s, width); footIn(at.x, at.y, at.scale, appGround(width)); }
       }
     });
-    it(`${name}, the wide widget at 300 by 120 and 340 by 110: all six signs' feet in the soil`, () => {
-      for (const [w, h] of [[300, 120], [340, 110]] as const) {
-        const svg = widgetGardenSvg(scene, w, h, true), gk = soilBand(h) / 60;
-        const g: GroundPlace = { x0: 0, y0: h - SPRITE_META["ground"].h * gk, sx: w / 320, sy: gk };
+    it(`${name}, R252: on a widget with stakes (340 by 150, 400 by 170, 480 by 220, where they read): every sign's foot in the soil`, () => {
+      for (const [w, h] of [[340, 150], [400, 170], [480, 220]] as const) {
+        const v = widgetView(scene, w, h), svg = widgetGardenSvg(scene, w, h), g = frameGround(320, v);
+        if (!v.signs) continue;
         const signs = [...svg.matchAll(/<use xlink:href="#s-sign" transform="translate\(([-\d.]+) ([-\d.]+)\) rotate\(0\) scale\(([\d.]+) [\d.]+\)/g)];
         expect(signs).toHaveLength(6);
         for (const m of signs) footIn(Number(m[1]), Number(m[2]), Number(m[3]), g);
