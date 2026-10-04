@@ -13,7 +13,9 @@ import { frameFor, signScale, windSpan, SIGN_GAP } from "./layout";
  * pass in front of each other); and never farther than its locked gap. Measured at the 320 reference width (a wider screen only has more
  * room), then centred on the composition's middle. The stakes' size depends on the zoom the packing allows, so two passes settle it.
  */
-export const SPREAD = { share: 0.3, margin: 4, ref: 320, passes: 2 } as const;
+/** R235 (10-04, "split the difference in size from before to now"): the drawn garden's zoom is `take` of the way from the locked
+ * composition's zoom to the fully packed one's (0.5: halfway). */
+export const SPREAD = { share: 0.3, margin: 4, ref: 320, passes: 2, take: 0.5 } as const;
 
 type Occ = { plant: PlantId; row: "front" | "back"; x: number; lo: number; hi: number };
 
@@ -49,15 +51,23 @@ function packAt(scene: Scene, width: number, zoom: number): Map<PlantId, number>
 }
 
 /** The scene with every plant and stake on its packed slot (part order kept: the opening plans index the parts). */
+const zoomOf = (scene: Scene, width: number) => frameFor(scene, plantLayouts(scene), width).zoom;
+/** Each plant and stake moved `t` of the way from its locked slot to `slots`. */
+const moved = (scene: Scene, slots: Map<PlantId, number>, t: number): Scene =>
+  ({ ...scene, parts: scene.parts.map((q): Part => ((q.kind === "plant" || q.kind === "sign") && slots.has(q.plant) ? { ...q, x: q.x + (slots.get(q.plant)! - q.x) * t } : q)) });
 export function packScene(scene: Scene, width: number = SPREAD.ref): Scene {
-  let zoom = frameFor(scene, plantLayouts(scene), width).zoom, out = scene;
+  const z0 = zoomOf(scene, width);
+  let zoom = z0, slots: Map<PlantId, number> | null = null;
   for (let i = 0; i < SPREAD.passes; i++) {
-    const slots = packAt(scene, width, zoom);
-    if (!slots) return out;
-    out = { ...scene, parts: scene.parts.map((q): Part => ((q.kind === "plant" || q.kind === "sign") && slots.has(q.plant) ? { ...q, x: slots.get(q.plant)! } : q)) };
-    zoom = frameFor(out, plantLayouts(out), width).zoom;
+    const next = packAt(scene, width, zoom);
+    if (!next) break;
+    slots = next; zoom = zoomOf(moved(scene, slots, 1), width);
   }
-  return out;
+  if (!slots || zoom <= z0) return scene;
+  // R235: the zoom a share t of the way gives is about the width over a span linear in t, so t for the zoom `take` of the way is
+  // (1/zT - 1/z0) / (1/zf - 1/z0)
+  const zT = z0 + (zoom - z0) * SPREAD.take, t = Math.min(1, Math.max(0, (1 / zT - 1 / z0) / (1 / zoom - 1 / z0)));
+  return moved(scene, slots, t);
 }
 
 /** True when no plant or stake reaches into another coin's in the same row (the packing's promise; tests hold it). */
