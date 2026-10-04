@@ -9,7 +9,7 @@ describe("the two rows (RG6, RG22, G6)", () => {
     expect(slotsFor(["skr"])).toEqual({ skr: 0.4 }); expect(slotsFor(["ore", "hsol"])).toEqual({ ore: 0.4, hsol: 0.09 }); expect(slotsFor(["hsol"])).toEqual({ hsol: 0.09 });
   });
   it("a bare sign occupies a slot like a plant", () => expect(slotsFor(["skr", "ore"])).toEqual({ skr: 0.3, ore: 0.8 }));
-  it("rows and feet are the spec's", () => { expect(ROW_OF.jupsol).toBe("back"); expect(CANVAS).toEqual({ height: 260, soilLine: 200, backFeet: 214, frontFeet: 244, backScale: 0.8 }); });
+  it("rows and feet are the spec's", () => { expect(ROW_OF.jupsol).toBe("back"); expect(CANVAS).toEqual({ height: 290, soilLine: 200, backFeet: 214, frontFeet: 266, backScale: 0.8, frontScale: 1.3 }); });   // R231: from 260 and 244
 });
 
 describe("the sign rule (RG7, gen06:68-74)", () => {
@@ -19,10 +19,10 @@ describe("the sign rule (RG7, gen06:68-74)", () => {
     expect(signSide(0.09 * 320, xs, 320)).toBe(1);   // at x 28.8: left is twice the edge, 57.6; right 67.2 to SKR; right is larger
     expect(signX(0.92 * 320, 1, 320, signScale("back"))).toBeLessThanOrEqual(320 - 15 * signScale("back") - 1);
   });
-  it("round 3 item 2: the signs 1.35x, the back row still 0.8 of the front; the offset and the clamp use the bigger half width", () => {
-    expect(SIGN_SCALE).toBe(1.35); expect(signScale("front")).toBe(1.35); expect(signScale("back")).toBeCloseTo(1.08, 12);
-    expect(signX(96, -1, 320, signScale("front"))).toBeCloseTo(96 - (14 + 20.25 * 0.2), 9);   // 77.95 (79 at 1x)
-    expect(signX(310, 1, 320, signScale("front"))).toBeCloseTo(320 - 20.25 - 1, 9);   // clamped a pixel inside: 298.75
+  it("round 3 item 2 and R231: the signs 1.35x, the front row's 1.2 times that (1.62), the back row 0.8; the offset and the clamp use the bigger half width", () => {
+    expect(SIGN_SCALE).toBe(1.35); expect(signScale("front")).toBeCloseTo(1.62, 12); expect(signScale("back")).toBeCloseTo(1.08, 12);
+    expect(signX(96, -1, 320, signScale("front"))).toBeCloseTo(96 - (14 + 24.3 * 0.2), 9);   // 77.14 (79 at 1x)
+    expect(signX(310, 1, 320, signScale("front"))).toBeCloseTo(320 - 24.3 - 1, 9);   // clamped a pixel inside: 294.7
     expect(signX(5, -1, 320, signScale("back"))).toBeCloseTo(16.2 + 1, 9);   // 17.2
   });
 });

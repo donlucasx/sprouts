@@ -8,7 +8,7 @@ export function plantLayouts(scene: Scene): PlantOnStage[] {
   const by = <K extends Part["kind"]>(kind: K, plant: PlantId) => scene.parts.filter((p): p is Extract<Part, { kind: K }> => p.kind === kind && (p as { plant?: PlantId }).plant === plant);
   return scene.parts.filter((p): p is Extract<Part, { kind: "plant" }> => p.kind === "plant").map((pl) => {
     const shoots: ShootIn[] = by("sprout", pl.plant).sort((a, b) => a.slot - b.slot).map((s) => ({ id: s.id, ageDays: s.ageDays, band: s.band, opened: !s.bud, branch: s.branch }));
-    const k = pl.row === "back" ? CANVAS.backScale : 1;
+    const k = pl.row === "back" ? CANVAS.backScale : CANVAS.frontScale;   // R231: the front row nearer, 1.3x
     const layout = layoutPlant(pl.species, shoots, { pending: by("swelling", pl.plant)[0]?.progress ?? 0, fruit: by("fruit", pl.plant).length, ripening: by("ripening", pl.plant)[0]?.progress ?? 0, blossom: false, pups: by("pup", pl.plant).length, head: false }, k);
     // R61: a transplanted position is the SKR plant's grown base: a 56 px trunk with four stage-3 blades, its own parts lifted above it
     if (pl.plant === "skr" && scene.parts.some((p) => p.kind === "transplant")) {

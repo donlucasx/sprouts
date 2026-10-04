@@ -242,7 +242,7 @@ export function Garden({ scene: incoming, live, canReady, onWater, onNudge, row,
       <Svg width={w} height={CANVAS.height} style={{ position: "absolute" }}>
         <SoilClip width={w} soilY={CANVAS.soilLine} />
         <Soil width={w} soilY={CANVAS.soilLine} />
-        <AnimatedG animatedProps={ringProps}><G clipPath={`url(#${SOIL_CLIP_ID})`}>{of("ring").map((r) => { const f = footOf(r.plant); return <G key={`r${r.plant}`} x={f.x} y={f.y + 2}><Ring age={r.age} k={r.plant === "skr" || r.plant === "ore" ? 1 : 2 / 3} /></G>; })}</G></AnimatedG>
+        <AnimatedG animatedProps={ringProps}><G clipPath={`url(#${SOIL_CLIP_ID})`}>{of("ring").map((r) => { const f = footOf(r.plant); return <G key={`r${r.plant}`} x={f.x} y={f.y + 2}><Ring age={r.age} k={r.plant === "skr" || r.plant === "ore" ? CANVAS.frontScale : 2 / 3} /></G>; })}</G></AnimatedG>
         {of("seed").map((s) => {
           const f = footOf(s.plant), seed = <G key={s.id} x={f.x} y={f.y + 1}><Seed index={s.index} /></G>;
           const a = arrivingSeeds.get(s.id);
