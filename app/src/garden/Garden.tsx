@@ -235,7 +235,7 @@ export function Garden({ scene: incoming, live, canReady, onWater, onNudge, row,
     <Animated.View style={[{ width: w }, outer]}>
      <GestureDetector gesture={zoomGesture}>
      <Animated.View style={[{ width: w }, clip]}>
-     {/* the ground layer: soil, rings, seeds, signs, grain, clipped to the garden's own box */}
+     {/* the ground layer: soil, rings, seeds, grain (R226: the signs moved to the plant layer, in front of their plants), clipped to the garden's own box */}
      <Animated.View style={[{ position: "absolute", left: 0, top: 0, width: w, overflow: "hidden" }, clipGround]}>
      <Animated.View style={[{ width: w, height: CANVAS.height, transformOrigin: [0, 0, 0] }, zoomed]}>
      <Animated.View style={[{ width: w, height: CANVAS.height, transformOrigin: "0 0" }, framed]}>
@@ -248,7 +248,6 @@ export function Garden({ scene: incoming, live, canReady, onWater, onNudge, row,
           const a = arrivingSeeds.get(s.id);
           return a ? <Appear key={s.id} delay={a.delay} ms={a.ms}>{seed}</Appear> : seed;
         })}
-        {of("sign").map((s) => { const at = signPlacement(s, w); return <G key={`s${s.plant}`} x={at.x} y={at.y}><Sign plant={s.plant} scale={at.scale} /></G>; })}
         {of("basket").length ? <G x={w - 40} y={CANVAS.soilLine + 30}><Basket /></G> : null}
         {/* Spec 3: the paper grain once over the whole garden, the static Svg's last child (app only). */}
         <G opacity={0.5}><SpriteAt name="grain" x={0} y={0} scale={CANVAS.height / 260} xScale={w / 320} /></G>
@@ -263,11 +262,18 @@ export function Garden({ scene: incoming, live, canReady, onWater, onNudge, row,
      <Animated.View style={[{ position: "absolute", left: -SIDE_GUTTER, top: 0, width: w + 2 * SIDE_GUTTER, overflow: "hidden" }, clipPlants]} pointerEvents="none">
      <Animated.View style={[{ position: "absolute", left: SIDE_GUTTER, top: 0, width: w, height: CANVAS.height, transformOrigin: [0, 0, 0] }, zoomedPlants]}>
      <Animated.View style={[{ width: w, height: CANVAS.height, transformOrigin: "0 0" }, framedPlants]}>
-      {[...back, ...front].map((p) => {
-       const was = beforePlants?.find((b) => b.plant === p.plant)?.layout ?? null;
-       if (isHeld(p.plant) && was) return <Plant key={p.plant} p={{ ...p, layout: was }} footX={p.x * w} footY={FOOT_Y(p.row)} sway={sway} gust={gust} gustDelay={delays[p.plant] ?? 0} reduced={reduced} items={[]} settled before={null} />;   // R201: held, as it was
-       return <Plant key={p.plant} p={p} footX={p.x * w} footY={FOOT_Y(p.row)} sway={sway} gust={gust} gustDelay={delays[p.plant] ?? 0} reduced={reduced} items={itemsOf(p.plant)} settled={settledOf(p.plant)} before={was} />;
-     })}
+      {/* R226 (10-03, his note): every stake stands in front of its plant. Back row: plants, then their signs; then the front row
+          the same, so a front plant still covers a back stake it overlaps. */}
+      {(["back", "front"] as const).map((row) => [
+       ...(row === "back" ? back : front).map((p) => {
+        const was = beforePlants?.find((b) => b.plant === p.plant)?.layout ?? null;
+        if (isHeld(p.plant) && was) return <Plant key={p.plant} p={{ ...p, layout: was }} footX={p.x * w} footY={FOOT_Y(p.row)} sway={sway} gust={gust} gustDelay={delays[p.plant] ?? 0} reduced={reduced} items={[]} settled before={null} />;   // R201: held, as it was
+        return <Plant key={p.plant} p={p} footX={p.x * w} footY={FOOT_Y(p.row)} sway={sway} gust={gust} gustDelay={delays[p.plant] ?? 0} reduced={reduced} items={itemsOf(p.plant)} settled={settledOf(p.plant)} before={was} />;
+       }),
+       <Svg key={`signs-${row}`} width={w} height={CANVAS.height} style={{ position: "absolute", left: 0, top: 0 }} pointerEvents="none">
+        {of("sign").filter((s) => s.row === row).map((s) => { const at = signPlacement(s, w); return <G key={`s${s.plant}`} x={at.x} y={at.y}><Sign plant={s.plant} scale={at.scale} /></G>; })}
+       </Svg>,
+      ])}
      </Animated.View>
      </Animated.View>
      </Animated.View>

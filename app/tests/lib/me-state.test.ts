@@ -186,6 +186,9 @@ describe('Home as numbers (R150)', () => {
     expect(rows.map((r) => [r.asset, r.locked])).toEqual([['SKR', true], ['hSOL', false], ['cbBTC', false]])
     expect(rows[0].amount).toBe('34.90 SKR ($0.64)')
     expect(rows[1].amount).toBe('0.0123 hSOL ($2.07)')
+    expect([rows[0].qty, rows[0].usd, rows[1].qty, rows[1].usd]).toEqual(['34.90 SKR', '$0.64', '0.0123 hSOL', '$2.07'])
+    // R230: no price, no dollars column
+    expect(coinRows({ pot: { ...pot, skrUsd: null }, holdings: [] })[0]).toMatchObject({ qty: '34.90 SKR', usd: null })
   })
   it('coinRows: stORE alone carries its source and the week\'s rate (R177, R194); none while collecting or under 1%; never on other coins', () => {
     const store = { ...hsol, asset: 'stORE' as const, heldRaw: '135592754' }
