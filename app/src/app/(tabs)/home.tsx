@@ -5,6 +5,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons'
 import { useQueryClient } from '@tanstack/react-query'
 import { useMe, useInvalidateMe, toGardenInput } from '@/lib/me'
 import { recordWatering, wateredPlantsFor } from '@/lib/last-watering'
+import { plantLabel } from '@/lib/plant-label'
 import { api, ApiError, type MeResponse } from '@/lib/api'
 import { buildScene } from '@/model/garden'
 import { watcherLine } from '@/model/watcher'
@@ -185,6 +186,7 @@ export default function Home() {
       ) : null}
       <Garden
         scene={scene}
+        labelFor={(plant, bud) => plantLabel(me, plant, bud)}
         live={fresh}
         canReady={watcher.can === 'ready'}
         wobble={landed}
