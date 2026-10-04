@@ -177,7 +177,10 @@ function frameAt(scene: Scene, plants: PlantOnStage[], width: number, room: { sh
   const content = CANVAS.height - Math.max(0, y0);
   const zoom0 = Math.min(FRAME.maxZoom, width / (x1 - x0), CANVAS.height / content);
   const { zoom, x } = gutterFit(zoom0, (x0 + x1) / 2, windSpan(plants, width), width);
-  const headroom = Math.max(room.share * content, room.minPx / zoom);   // canvas px
+  // R291 (10-04, his note on a lone SKR: "plus a bit too much negative space above it"): the share is of the content as a zoom-1 garden
+  // shows it, so a garden zoomed in on a few plants no longer multiplies its paper above them by the zoom (a lone plant at 2x had twice
+  // a full garden's room); gardens at zoom 1 or under are unchanged
+  const headroom = Math.max((room.share * content) / Math.max(1, zoom), room.minPx / zoom);   // canvas px
   const viewH = Math.min(MAX_VIEW_H, Math.max(MIN_VIEW_H, groundH() * zoom, (content + headroom) * zoom));
   const w = width / zoom, h = viewH / zoom;
   return { x, y: CANVAS.height - h, w, h, zoom, viewH };
