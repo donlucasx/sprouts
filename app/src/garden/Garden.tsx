@@ -16,6 +16,7 @@ import { canScale, overlayToCanvas, ROW_GAP } from "@/model/can";
 import { Appear } from "./Strip";
 import { Wind } from "./Wind";
 import { packScene } from "@/model/spread";
+import { frameGround } from "@/model/soil-clip";
 import { Soil, SoilClip, Ring, Seed, Sign, Basket, SpriteAt } from "./parts";
 
 const MOUNT_FADE_MS = 300;
@@ -79,6 +80,7 @@ export function Garden({ scene: incoming, live, canReady, onWater, onNudge, row,
   // canvas point p lands at (p - frame) * zoom and the frame fills the view; x and zoom ease linearly, and since the frame's right
   // limit (width - width / zoom) is concave in a linearly eased zoom, a frame inside the bed at both ends stays inside it throughout.
   const target = frameFor(scene, plants, w);
+  const ground = frameGround(w, target);   // R238: the soil spans the frame, its rounded painted ends always in view
   const fx = useSharedValue(target.x), fy = useSharedValue(target.y), z = useSharedValue(target.zoom), vh = useSharedValue(target.viewH);
   useEffect(() => {
     const t = { duration: reduced ? 0 : FRAME.easeMs, easing: Easing.inOut(Easing.cubic) };
@@ -242,8 +244,8 @@ export function Garden({ scene: incoming, live, canReady, onWater, onNudge, row,
      <Animated.View style={[{ width: w, height: CANVAS.height, transformOrigin: [0, 0, 0] }, zoomed]}>
      <Animated.View style={[{ width: w, height: CANVAS.height, transformOrigin: "0 0" }, framed]}>
       <Svg width={w} height={CANVAS.height} style={{ position: "absolute" }}>
-        <SoilClip width={w} soilY={CANVAS.soilLine} />
-        <Soil width={w} soilY={CANVAS.soilLine} />
+        <SoilClip g={ground} />
+        <Soil g={ground} />
         <AnimatedG animatedProps={ringProps}><G clipPath={`url(#${SOIL_CLIP_ID})`}>{of("ring").map((r) => { const f = footOf(r.plant); return <G key={`r${r.plant}`} x={f.x} y={f.y + 2}><Ring age={r.age} k={r.plant === "skr" || r.plant === "ore" ? CANVAS.frontScale : 2 / 3} /></G>; })}</G></AnimatedG>
         {of("seed").map((s) => {
           const f = footOf(s.plant), seed = <G key={s.id} x={f.x} y={f.y + 1}><Seed index={s.index} /></G>;
@@ -273,7 +275,7 @@ export function Garden({ scene: incoming, live, canReady, onWater, onNudge, row,
         return <Plant key={p.plant} p={p} footX={p.x * w} footY={FOOT_Y(p.row)} sway={sway} gust={gust} gustDelay={delays[p.plant] ?? 0} reduced={reduced} items={itemsOf(p.plant)} settled={settledOf(p.plant)} before={was} />;
        }),
        <Svg key={`signs-${row}`} width={w} height={CANVAS.height} style={{ position: "absolute", left: 0, top: 0 }} pointerEvents="none">
-        {of("sign").filter((s) => s.row === row).map((s) => { const at = signPlacement(s, w, target.zoom); return <G key={`s${s.plant}`} x={at.x} y={at.y}><Sign plant={s.plant} scale={at.scale} /></G>; })}
+        {of("sign").filter((s) => s.row === row).map((s) => { const at = signPlacement(s, w, target.zoom, ground); return <G key={`s${s.plant}`} x={at.x} y={at.y}><Sign plant={s.plant} scale={at.scale} /></G>; })}
        </Svg>,
       ])}
      </Animated.View>
