@@ -1,0 +1,19 @@
+[workspace]
+members = ["program", "tests"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[workspace.dependencies]
+pinocchio = { version = "0.11.1", features = ["cpi", "copy", "alloc"] }
+pinocchio-system = "0.6.1"
+solana-address = { version = "2", features = ["curve25519", "decode"] }
+
+[profile.release]
+overflow-checks = true
+opt-level = 3
+lto = true
+codegen-units = 1
