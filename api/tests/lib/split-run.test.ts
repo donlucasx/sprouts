@@ -166,7 +166,7 @@ describe("decideSplits (spec 6.2 to 6.5)", () => {
     const [careful] = await decideSplits({ repo, now: NOW, model: null });
     expect(careful.fallback).toBe("model");
     expect(careful.split.cbBTC).toBe(0);
-    expect(careful.split.stORE).toBe(5);
+    expect(careful.split.stORE).toBe(10);   // R251: careful's stORE cap
     expect(sum(careful.split)).toBe(100);
   });
 
