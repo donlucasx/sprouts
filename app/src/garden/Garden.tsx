@@ -305,8 +305,8 @@ export function Garden({ scene: incoming, live, canReady, onWater, onNudge, row,
       {(["back", "front"] as const).map((row) => [
        ...(row === "back" ? back : front).map((p) => {
         const was = beforePlants?.find((b) => b.plant === p.plant)?.layout ?? null;
-        if (isHeld(p.plant) && was) return <Plant key={p.plant} p={{ ...p, layout: was }} footX={p.x * w} footY={FOOT_Y(p.row)} sway={sway} gust={gust} gustDelay={delays[p.plant] ?? 0} reduced={reduced} items={[]} settled before={null} call={budCall} />;   // R201: held, as it was
-        return <Plant key={p.plant} p={p} footX={p.x * w} footY={FOOT_Y(p.row)} sway={sway} gust={gust} gustDelay={delays[p.plant] ?? 0} reduced={reduced} items={itemsOf(p.plant)} settled={settledOf(p.plant)} before={was} call={budCall} />;
+        if (isHeld(p.plant) && was) return <Plant key={p.plant} p={{ ...p, layout: was }} footX={p.x * w} footY={FOOT_Y(p.row)} sway={sway} gust={gust} gustDelay={delays[p.plant] ?? 0} reduced={reduced} items={[]} settled before={null} call={budCall} zoom={target.zoom} />;   // R201: held, as it was
+        return <Plant key={p.plant} p={p} footX={p.x * w} footY={FOOT_Y(p.row)} sway={sway} gust={gust} gustDelay={delays[p.plant] ?? 0} reduced={reduced} items={itemsOf(p.plant)} settled={settledOf(p.plant)} before={was} call={budCall} zoom={target.zoom} />;
        }),
        <Svg key={`signs-${row}`} width={w} height={CANVAS.height} style={{ position: "absolute", left: 0, top: 0 }} pointerEvents="none">
         {of("sign").filter((s) => s.row === row).map((s) => { const at = signPlacement(s, w, target.zoom, ground); return <G key={`s${s.plant}`} x={at.x} y={at.y}><Sign plant={s.plant} scale={at.scale} /></G>; })}

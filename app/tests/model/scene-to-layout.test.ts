@@ -38,7 +38,7 @@ describe("the frame (RG30, R167, R185: room above the tallest part max(72 dp, 60
   });
   it("the full year: the whole breadth, zoomed out to 0.945 so its 1.25x plants hold the side gutters in a gust (R187 fix round 1; zoom 1 before); the view at its 380 cap (R231; 320 before)", () => {
     const s = buildScene(previewInputAt(365)), f = frame(s);
-    expect(f.zoom).toBeCloseTo(0.94474, 4);   // R289: the finer bakes trim their boxes a hair tighter (0.94464 before) expect(f.viewH).toBe(380); expect(f.x).toBeCloseTo(-6.45, 2); expect(f.y).toBeCloseTo(-112.27, 1);   // R290: -6.48, -112.31 before the twigs left the canes' paint   // before: x 0, zoom 1, y -60
+    expect(f.zoom).toBeCloseTo(0.94781, 4);   // R302: the hard-edged bakes trim their boxes tighter (0.94474 at R289, 0.94464 before) expect(f.viewH).toBe(380); expect(f.x).toBeCloseTo(-6.45, 2); expect(f.y).toBeCloseTo(-112.27, 1);   // R290: -6.48, -112.31 before the twigs left the canes' paint   // before: x 0, zoom 1, y -60
     expect(tallest(s)).toBeCloseTo(22.32, 2);   // the 22 px left above the tallest part is all the bed has
   });
   it("a tall garden at zoom 1: the headroom is 60 percent of the content's height once that passes 72 px (day 120)", () => {
@@ -48,7 +48,7 @@ describe("the frame (RG30, R167, R185: room above the tallest part max(72 dp, 60
   });
   it("day 240: the view grows by 60 percent of its 192.9 px content (115.7) above the canvas's top; zoomed out to 0.957 for the gutters (R187 fix round 1)", () => {
     const f = frame(buildScene(previewInputAt(240)));
-    expect(f.zoom).toBeCloseTo(0.95836, 4);   // R289: 0.95826 before expect(f.viewH).toBeCloseTo(341.72, 2); expect(f.y).toBeCloseTo(-66.61, 1);   // R290: 341.45 before   // R231: 295.49 and -48.61 before   // before: zoom 1, viewH 308.61
+    expect(f.zoom).toBeCloseTo(0.96152, 4);   // R302: 0.95836 at R289, 0.95826 before expect(f.viewH).toBeCloseTo(341.72, 2); expect(f.y).toBeCloseTo(-66.61, 1);   // R290: 341.45 before   // R231: 295.49 and -48.61 before   // before: zoom 1, viewH 308.61
   });
   it("R185's headroom never shrinks the plants (I4 fix round 5): the zoom with it equals the zoom without it", () => {
     const tall = buildScene({ ...base, pendingCents: 0, earned: {}, plantings: Array.from({ length: 40 }, (_, i) => p(`h${i}`, 300 - i * 7, "hSOL")) });   // a lone sunflower: narrow and tall, so the height binds
