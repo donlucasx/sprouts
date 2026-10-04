@@ -2,10 +2,12 @@ import { BAKED_L, type Placed, type PlantId } from "./species";
 import type { Scene } from "./garden";
 import type { PlantOnStage } from "./scene-to-layout";   // a type only: no require cycle
 import { SPRITE_META } from "@/garden/sprite-meta";   // boxes only, no require(): safe in node
-import { appGround, soilBottomAt } from "./soil-clip";
+import { appGround, soilBottomAt, GROUND } from "./soil-clip";
 
 /** Spec 5: the canvas is the screen width minus 40 by 260; the soil line at 200; the back row's feet at 214 and the front's at 244. */
-export const CANVAS = { height: 260, soilLine: 200, backFeet: 214, frontFeet: 244, backScale: 0.8 } as const;
+/** R231 (10-04, "play more into the perspective of which are closer (SKR & stORE)"): the canvas 290 deep (the ground 1.5x deeper below
+ * the same soil line), the front row's feet at 266 (0.73 of the deeper band, from 244) and drawn `frontScale` 1.3x; the back row unchanged. */
+export const CANVAS = { height: GROUND.bottom, soilLine: 200, backFeet: 214, frontFeet: 266, backScale: 0.8, frontScale: 1.3 } as const;
 export const ROW_OF: Record<PlantId, "front" | "back"> = { skr: "front", ore: "front", hsol: "back", jitosol: "back", jupsol: "back", cbbtc: "back" };
 /** I4 fix round 3: the screen's side padding (theme spacing.edge; Home draws the garden at the width minus twice this). The plants may
  * spill this far past the garden's sides (a swaying sunflower, the spruce); the soil, the signs and the frame stay inside. */
@@ -78,7 +80,9 @@ export function signSide(x: number, allX: number[], width: number): -1 | 1 {
 /** Device round 3, item 2 (10-02): the stakes and their words 1.35x the gen01 board, in the app and the widget. */
 export const SIGN_SCALE = 1.35;
 /** The drawn scale of a sign: SIGN_SCALE in the front row, times the back row's 0.8 behind it (1.35 and 1.08). */
-export const signScale = (row: "front" | "back") => SIGN_SCALE * (row === "front" ? 1 : CANVAS.backScale);
+/** R231: the front row's stakes FRONT_SIGN 1.2 times SIGN_SCALE (1.62), nearer the eye; the back row's unchanged (1.08). */
+export const FRONT_SIGN = 1.2;
+export const signScale = (row: "front" | "back") => SIGN_SCALE * (row === "front" ? FRONT_SIGN : CANVAS.backScale);
 /** gen06:72-74: 14 px from the foot plus a fifth of the sign's half width, clamped a pixel inside the canvas. `scale` is the sign's
  * drawn scale (signScale: 1.35 front, 1.08 back), so its half width (15 at 1x) grows with the board. */
 export function signX(x: number, side: -1 | 1, width: number, scale: number): number {
@@ -109,7 +113,7 @@ export const SIGN_TEXT = { size: 6.8, y: -4.1, rot: -4 } as const;
 export const SIGN_LABEL: Record<PlantId, string> = { skr: "SKR", ore: "stORE", hsol: "hSOL", jitosol: "JitoSOL", jupsol: "JupSOL", cbbtc: "cbBTC" };
 /** RG30 (10-02): the garden frames what is planted; 2x is the cap the 3x bakes hold; Garden.tsx eases each change over easeMs.
  * R167 (10-02): the view's HEIGHT follows the content, never shorter than the ground band plus `aboveGround`. */
-export const FRAME = { maxZoom: 2, pad: 16, easeMs: 1200, aboveGround: 40 } as const;
+export const FRAME = { maxZoom: 2, pad: 18, easeMs: 1200, aboveGround: 40 } as const;   // R231: pad from 16, the 1.3x front row's sway
 /** Room to grow above the tallest part: 60 percent of the content's height (the tallest part down to the bed's bottom), never under
  * 72 px on screen (R185; device round 3 item 1 had a quarter and 40 px); it replaces the 16 px margin on top only. */
 export const HEADROOM = { share: 0.6, minPx: 72 } as const;   // R185 (10-02, "waiting for more headroom"): from round 3's 25 percent and 40 px
@@ -129,7 +133,7 @@ export const MIN_VIEW_H = CANVAS.height - CANVAS.soilLine + FRAME.aboveGround;
  * painted from about 13 px under its top and a crop there would show as a hard line. */
 const groundH = () => SPRITE_META["ground"]?.h ?? CANVAS.height - CANVAS.soilLine;
 /** I4 fix round 5: the view's height cap on screen (it was the bed's 260 before R185's headroom). */
-export const MAX_VIEW_H = 320;
+export const MAX_VIEW_H = 380;   // R231: from 320, for the deeper ground
 /** RG30: the box (canvas px) around the present plants: each foot, its sideways reach and its height above the foot, and its own
  * sign; padded 16 at the sides; the bottom the bed's. The zoom fits that box's breadth (capped at 2) and its CONTENT height (the tallest
  * part down to the bed's bottom) in the bed's 260, never the headroom: R185's room to grow never shrinks the plants (I4 fix round 5).
