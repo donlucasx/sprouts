@@ -31,8 +31,9 @@ describe("the frame (RG30, R167, R185: room above the tallest part max(72 dp, 60
     const f = frame(buildScene({ ...base, plantings: [p("a", 1)] }));
     // R231: the front row's feet at 266 and its sprout 1.3x: the top at 221.0, the content 69.0 canvas px, so 60 percent (41.4, 82.8 on
     // screen at 2x) passes the 72 px floor; the sign 1.62x (half width 24.3) at 77.14
-    expect(f).toMatchObject({ zoom: 2, w: 160 }); expect(f.y).toBeCloseTo(179.59, 2); expect(f.h).toBeCloseTo(110.41, 2); expect(f.viewH).toBeCloseTo(220.81, 2);
-    expect((220.995 - f.y) * f.zoom).toBeCloseTo(0.6 * (290 - 220.995) * 2, 2);
+    // R231 fix: the view holds the whole ground, now 129 deep (86 times 1.5), which rules over the headroom here
+    expect(f).toMatchObject({ zoom: 2, w: 160 }); expect(f.y).toBeCloseTo(161, 2); expect(f.h).toBeCloseTo(129, 2); expect(f.viewH).toBeCloseTo(258, 2);
+    expect((220.995 - f.y) * f.zoom).toBeGreaterThanOrEqual(0.6 * (290 - 220.995) * 2);
     expect(f.x).toBeGreaterThanOrEqual(0); expect(f.x).toBeLessThanOrEqual(77.14 - 24.3); expect(f.x + f.w).toBeGreaterThanOrEqual(96);
   });
   it("the full year: the whole breadth, zoomed out to 0.945 so its 1.25x plants hold the side gutters in a gust (R187 fix round 1; zoom 1 before); the view at its 380 cap (R231; 320 before)", () => {
