@@ -11,7 +11,8 @@ const QUOTES: Record<string, [string, string]> = {   // outputMint -> [outAmount
   cbbtcf3aa214zXHbiAZQwf4122FBYbraNdFqgw4iMij: ["3225", "3193"],
   SKRbvo6Gf7GondiT3BbTfuRDPqLWei4j2Qy2NPGZhW3: ["109289617", "108196721"],
 };
-const SOL_PRICE = { feedId: "ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d", price: 12_147_000_000n, conf: 10_000_000n, exponent: -8, publishTime: 0n, full: true };
+// Task 11 (T9 review M5): the builder re-checks this second read like the first, so the mock price is published now.
+const SOL_PRICE = { feedId: "ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d", price: 12_147_000_000n, conf: 10_000_000n, exponent: -8, publishTime: BigInt(Math.floor(Date.now() / 1000)), full: true };
 // T9 finding: without the Sprouts ALT a Jupiter Lend leg does not fit (USDC 1297 B, SOL 1424 B with an empty Jupiter route, over
 // 1232), so SPROUTS_ALT is set here to a table holding exactly sproutsAltAddresses(puller), served as jsonParsed the way the kit
 // reads it. `altOn = false` shows the refusal without it.
@@ -123,7 +124,7 @@ describe("buildPlantingTx: one v0 tx, one pull/settle pair (contracts 3.2)", () 
     expect(b.minOutRaw).toBe(15_554_030n);   // shares - 1 for 16_335_000 lamports at 1.05; the floor is 15_458_437
     const pullerJl = await ata(puller.address, JLEND.SOL_LEND.fTokenMint);
     expect(b.pullerJl).toBe(pullerJl);
-    expect(b.watched).toEqual([await ata(puller.address, WSOL_MINT), pullerJl]);
+    expect(b.watched).toEqual([await ata(puller.address, USDC_MINT), await ata(puller.address, WSOL_MINT), pullerJl]);
     expect(b.deliveryAccount).toBe(await ata(USER, JLEND.SOL_LEND.fTokenMint));
   });
 
@@ -304,13 +305,16 @@ describe("simulatePlanting: the delivery account and every watched account, befo
     altContent = await sproutsAltAddresses(puller.address);
     process.env.SPROUTS_ALT = ALT_ADDR;
   });
-  it("SKR: reads the puller's SKR account before and as the simulation leaves it; no watched accounts", async () => {
+  it("SKR: reads the puller's SKR account before and as the simulation leaves it; the USDC float is the one watched account (T9 review I2)", async () => {
     const b = await buildPlantingTx({ ...base, asset: "SKR", venue: null, leashed: false, carryIn: {} });
-    chainPre.set(b.deliveryAccount, 5_000n); simPost.set(b.deliveryAccount, 5_200n);
+    const usdc = await ata(puller.address, USDC_MINT);
+    chainPre.set(b.deliveryAccount, 5_000n); simPost.set(b.deliveryAccount, 5_200n); chainPre.set(usdc, 70n); simPost.set(usdc, 70n);
     const s = await simulatePlanting(b);
-    expect(simCalls[0]).toEqual([b.deliveryAccount]);
+    expect(b.usdcFloat).toBe(usdc);
+    expect(b.wsolFloat).toBeNull();
+    expect(simCalls[0]).toEqual([b.deliveryAccount, usdc]);
     expect(s.delivery).toEqual({ pre: 5_000n, post: 5_200n });
-    expect(s.watched).toEqual({});
+    expect(s.watched).toEqual({ [usdc]: { pre: 70n, post: 70n } });
   });
   it("a wallet coin's account created in the transaction starts at zero", async () => {
     const b = await buildPlantingTx({ ...base, asset: "hSOL", venue: null, leashed: false, carryIn: {} });
@@ -319,14 +323,16 @@ describe("simulatePlanting: the delivery account and every watched account, befo
   });
   it("SOL on Jupiter Lend: each watched account keeps its own pre/post; the closed puller jl account reads post null", async () => {
     const b = await buildPlantingTx({ ...base, asset: "SOL_LEND", venue: "jupiter_lend", leashed: false, carryIn: {} });
-    const [wsol, jl] = b.watched;
-    expect(b.watched).toEqual([await ata(puller.address, WSOL_MINT), await ata(puller.address, JLEND.SOL_LEND.fTokenMint)]);
-    chainPre.set(wsol, 4_000n); chainPre.set(jl, 7n);             // the user's jl account is absent before (created in the tx)
-    simPost.set(b.deliveryAccount, 15_554_030n); simPost.set(wsol, 4_003n);   // jl absent after: closed
+    const [usdc, wsol, jl] = b.watched;
+    expect(b.watched).toEqual([await ata(puller.address, USDC_MINT), await ata(puller.address, WSOL_MINT), await ata(puller.address, JLEND.SOL_LEND.fTokenMint)]);
+    expect([b.usdcFloat, b.wsolFloat]).toEqual([usdc, wsol]);
+    chainPre.set(usdc, 9n); chainPre.set(wsol, 4_000n); chainPre.set(jl, 7n);   // the user's jl account is absent before (created in the tx)
+    simPost.set(b.deliveryAccount, 15_554_030n); simPost.set(usdc, 9n); simPost.set(wsol, 4_003n);   // jl absent after: closed
     const s = await simulatePlanting(b);
-    expect(simCalls[0]).toEqual([b.deliveryAccount, wsol, jl]);
+    expect(simCalls[0]).toEqual([b.deliveryAccount, usdc, wsol, jl]);
+    // T7 carry: the user's jl account (the delivery account, created by this tx) reads 0 before, not "missing".
     expect(s.delivery).toEqual({ pre: 0n, post: 15_554_030n });
-    expect(s.watched).toEqual({ [wsol]: { pre: 4_000n, post: 4_003n }, [jl]: { pre: 7n, post: null } });
+    expect(s.watched).toEqual({ [usdc]: { pre: 9n, post: 9n }, [wsol]: { pre: 4_000n, post: 4_003n }, [jl]: { pre: 7n, post: null } });
   });
   it("a watched account absent before and present after reads pre null, post its amount", async () => {
     const b = await buildPlantingTx({ ...base, asset: "USDC_LEND", venue: "jupiter_lend", leashed: false, carryIn: {} });
@@ -334,5 +340,76 @@ describe("simulatePlanting: the delivery account and every watched account, befo
     chainPre.set(usdc, 9n); simPost.set(usdc, 9n); simPost.set(jl, 1n);
     const s = await simulatePlanting(b);
     expect(s.watched).toEqual({ [usdc]: { pre: 9n, post: 9n }, [jl]: { pre: null, post: 1n } });
+  });
+});
+
+import { getTransferInstruction, getCreateAssociatedTokenIdempotentInstruction } from "@solana-program/token";
+import { readSponsoredPrice } from "@/lib/pyth";
+import { checkPlantingInstructions } from "@/lib/planting";
+import { AccountRole } from "@solana/kit";
+
+describe("Task 11 carry-ins at the builder: the second price read, the whole-transaction allowlist", () => {
+  beforeEach(async () => {
+    puller = await generateKeyPairSigner(); checks.length = 0; sentPre.length = 0; signedIxs.length = 0; vi.mocked(getQuote).mockClear(); vi.mocked(getSwapInstructions).mockClear();
+    altContent = await sproutsAltAddresses(puller.address);
+    process.env.SPROUTS_ALT = ALT_ADDR;
+  });
+  const swapWith = async (setup: Instruction[]) => {
+    const { JUPITER_AGGREGATOR } = await vi.importActual<typeof import("@/lib/jupiter")>("@/lib/jupiter");
+    vi.mocked(getSwapInstructions).mockResolvedValueOnce({ computeBudget: [], setup, swap: { programAddress: JUPITER_AGGREGATOR as never, accounts: [], data: new Uint8Array([229]) }, cleanup: null, lookupTables: [] } as never);
+  };
+
+  // 5. T9 review M5.
+  it("M5: the second sponsored read (the floor's) is refused when stale, not Full, another feed, or over the on-chain conf cap", async () => {
+    const now = BigInt(Math.floor(Date.now() / 1000));
+    const hsol = { ...base, asset: "hSOL" as const, venue: null, leashed: true };
+    vi.mocked(readSponsoredPrice).mockResolvedValueOnce({ ...SOL_PRICE, publishTime: now - 45n });
+    await expect(buildPlantingTx(hsol)).rejects.toThrow(/sponsored price read for the floor is 45 s old \(usable under 40 s\)/);
+    vi.mocked(readSponsoredPrice).mockResolvedValueOnce({ ...SOL_PRICE, full: false });
+    await expect(buildPlantingTx(hsol)).rejects.toThrow(/not Full/);
+    vi.mocked(readSponsoredPrice).mockResolvedValueOnce({ ...SOL_PRICE, feedId: "2817d7bfe5c64b8ea956e9a26f573ef64e72e4d7891f2d6af9bcc93f7aff9a97" });
+    await expect(buildPlantingTx(hsol)).rejects.toThrow(/not the pinned SOL feed/);
+    await expect(buildPlantingTx({ ...hsol, priceOpts: { waitS: 0, confCapBps: 5, maxAgeS: 60 } })).rejects.toThrow(/confidence .* is over 5 bps/);
+    // Positive control: the same leg with the on-chain max age of 90 takes a 45 s old price.
+    vi.mocked(readSponsoredPrice).mockResolvedValueOnce({ ...SOL_PRICE, publishTime: now - 45n });
+    await expect(buildPlantingTx({ ...hsol, priceOpts: { waitS: 0, confCapBps: 100, maxAgeS: 90 } })).resolves.toMatchObject({ leg: 6 });
+  });
+
+  // 8. Task 7 carry: the whole-transaction allowlist.
+  it("allowlist: a Token Transfer out of the puller's USDC float anywhere in the transaction is refused", async () => {
+    const usdc = await ata(puller.address, USDC_MINT);
+    await swapWith([getTransferInstruction({ source: usdc, destination: await ata(base.delegator, USDC_MINT), authority: puller, amount: 1n }) as Instruction]);
+    await expect(buildPlantingTx({ ...base, asset: "hSOL", venue: null, leashed: false })).rejects.toThrow(/Planting refused: Token instruction 3 on .* is not allowed/);
+  });
+
+  it("allowlist: an ATA create for a third party, or for this user's account of another mint, is refused", async () => {
+    await swapWith([getCreateAssociatedTokenIdempotentInstruction({ payer: puller, ata: await ata(base.delegator, SKR_MINT), owner: base.delegator, mint: SKR_MINT }) as Instruction]);
+    await expect(buildPlantingTx({ ...base, asset: "hSOL", venue: null, leashed: false })).rejects.toThrow(/account creation for .* neither the puller nor this user/);
+    await swapWith([getCreateAssociatedTokenIdempotentInstruction({ payer: puller, ata: await ata(USER, SKR_MINT), owner: USER, mint: SKR_MINT }) as Instruction]);
+    await expect(buildPlantingTx({ ...base, asset: "hSOL", venue: null, leashed: false })).rejects.toThrow(/this user's SKR.*not this leg's coin or receipt/);
+    // Positive control: the puller's own account of any mint (a route's intermediate) and this user's hSOL account pass.
+    await swapWith([getCreateAssociatedTokenIdempotentInstruction({ payer: puller, ata: await ata(puller.address, SKR_MINT), owner: puller.address, mint: SKR_MINT }) as Instruction,
+      getCreateAssociatedTokenIdempotentInstruction({ payer: puller, ata: await ata(USER, "he1iusmfkpAdwvxLNGV8Y1iSbj4rUy6yMhEA3fotn9A"), owner: USER, mint: address("he1iusmfkpAdwvxLNGV8Y1iSbj4rUy6yMhEA3fotn9A") }) as Instruction]);
+    await expect(buildPlantingTx({ ...base, asset: "hSOL", venue: null, leashed: false })).resolves.toBeTruthy();
+  });
+
+  it("allowlist: a program the leg does not use is refused, and so is a second call of one it does", async () => {
+    await swapWith([{ programAddress: address("11111111111111111111111111111111"), accounts: [{ address: puller.address, role: AccountRole.WRITABLE_SIGNER }], data: new Uint8Array([2, 0, 0, 0]) }]);
+    await expect(buildPlantingTx({ ...base, asset: "hSOL", venue: null, leashed: false })).rejects.toThrow(/program 11111111111111111111111111111111 is not allowed in a hSOL planting/);
+    const stake = { programAddress: address("SKRskrmtL83pcL4YqLWt6iPefDqwXQWHSw9S9vz94BZ"), accounts: [], data: new Uint8Array([1]) };
+    const pull = { programAddress: address("De1egAFMkMWZSN5rYXRj9CAdheBamobVNubTsi9avR44"), accounts: [], data: new Uint8Array([5]) };
+    const swap = { programAddress: address("JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4"), accounts: [], data: new Uint8Array([229]) };
+    const a = { puller: puller.address, user: USER, asset: "SKR" as const, venue: null, leashed: false, pullerWsol: await ata(puller.address, WSOL_MINT), pullerJl: null, userMints: [], posted: false };
+    expect(() => checkPlantingInstructions([pull, swap, stake], a)).not.toThrow();
+    expect(() => checkPlantingInstructions([pull, swap, stake, stake], a)).toThrow(/2 instructions of SKRskrmt.*expected 1/);
+    expect(() => checkPlantingInstructions([swap, stake], a)).toThrow(/0 instructions of De1eg.*expected 1/);
+  });
+
+  it("allowlist: a venue builder that adds a Token Transfer on another account than the puller's jl account is refused (K-Lend)", async () => {
+    const { buildKlendDepositIxs } = await import("@/lib/venues/klend");
+    const real = (await vi.importActual<typeof import("@/lib/venues/klend")>("@/lib/venues/klend")).buildKlendDepositIxs;
+    const usdc = await ata(puller.address, USDC_MINT);
+    vi.mocked(buildKlendDepositIxs).mockImplementationOnce(async (x) => [...(await real(x)), getTransferInstruction({ source: usdc, destination: await ata(USER, USDC_MINT), authority: puller, amount: 5n }) as Instruction]);
+    await expect(buildPlantingTx({ ...base, asset: "USDC_LEND", venue: "kamino_klend", leashed: true })).rejects.toThrow(/Planting refused: Token instruction 3/);
   });
 });

@@ -5,6 +5,9 @@ import type { CoinDayRow, PlantingLegRow } from "@/db/types";
 import { ASSETS, COINS, type Asset } from "@/domain/coins";
 import { addDays } from "@/domain/day";
 import { rpc } from "./rpc";
+import { RECEIPT } from "./venues/addresses";
+import { LEND_ASSETS, type LendAsset } from "@/domain/coins";
+import { AUTO_VENUES, type AutoVenue } from "@/domain/venues";
 import { growth } from "./coin-data";
 
 /** The coins that sit in the Seed Vault wallet (every coin but SKR today). */
@@ -24,6 +27,21 @@ export async function assetBalanceRaw(owner: Address, asset: Asset): Promise<big
   const [ata] = await findAssociatedTokenPda({ owner, mint: COINS[asset].mint, tokenProgram: TOKEN_PROGRAM_ADDRESS });
   const acc = await fetchMaybeToken(rpc(), ata);
   return acc.exists ? acc.data.amount : 0n;
+}
+
+/** One lending receipt's balance in the Seed Vault wallet (the user's canonical ATA of the venue's receipt mint), 0n with no account. */
+export async function receiptBalanceRaw(owner: Address, asset: LendAsset, venue: AutoVenue): Promise<bigint> {
+  const [ata] = await findAssociatedTokenPda({ owner, mint: RECEIPT[asset][venue].mint, tokenProgram: TOKEN_PROGRAM_ADDRESS });
+  const acc = await fetchMaybeToken(rpc(), ata);
+  return acc.exists ? acc.data.amount : 0n;
+}
+
+/** Every lending position (four receipt accounts, one read); only positions above zero. */
+export async function readLendingPositions(owner: Address): Promise<{ asset: LendAsset; venue: AutoVenue; receiptRaw: bigint }[]> {
+  const keys = LEND_ASSETS.flatMap((asset) => AUTO_VENUES.map((venue) => ({ asset, venue })));
+  const atas = await Promise.all(keys.map(async (k) => (await findAssociatedTokenPda({ owner, mint: RECEIPT[k.asset][k.venue].mint, tokenProgram: TOKEN_PROGRAM_ADDRESS }))[0]));
+  const accounts = await fetchAllMaybeToken(rpc(), atas);
+  return keys.map((k, i) => ({ ...k, receiptRaw: accounts[i].exists ? accounts[i].data.amount : 0n })).filter((p) => p.receiptRaw > 0n);
 }
 
 /**

@@ -2,6 +2,8 @@ import { describe, it, expect } from "vitest";
 import { MemoryRepo } from "@/db/memory";
 import { SKR_ONLY } from "@/domain/coins";
 import type { CoinDayRow } from "@/db/types";
+import type { Asset } from "@/domain/coins";
+import type { AutoVenue } from "@/domain/venues";
 
 async function withWallet() {
   const r = new MemoryRepo();
@@ -242,5 +244,35 @@ describe("0008: venues, carry, moves, links, terms (memory repo)", () => {
     expect(await repo.getWallet("W")).toMatchObject({ delegationPda: "D2", linkModel: "leash" });
     await repo.setTermsAccepted("U", "2026-10-06", new Date("2026-10-06T10:00:00Z"));
     expect(await repo.getUser("U")).toMatchObject({ termsVersion: "2026-10-06" });
+  });
+});
+
+describe("insertPlanting: the leg-venue guard and the half-write compensation (AMEND 10-04 s20, T3 review I3)", () => {
+  const base = { userPubkey: "U", walletPubkey: "W", usdcPulledCents: 203, networkFeeCents: 3, status: "sent" as const, aiLine: null };
+  const leg = (asset: Asset, venue: AutoVenue | null) => ({ asset, venue, usdcInCents: 200, amountOutRaw: 1n, staked: false, feeAmountRaw: 0n, feeCents: 0, rateAtPlanting: null });
+
+  it("a lending leg without a venue, or a coin leg with one, throws before anything is written", async () => {
+    const r = await withWallet();
+    await expect(r.insertPlanting({ ...base, signature: "a", skrCarryInRaw: 300n, carryIn: { USDC: 500n } }, [leg("USDC_LEND", null)])).rejects.toThrow(/venue/);
+    await expect(r.insertPlanting({ ...base, signature: "b" }, [leg("hSOL", "kamino_klend")])).rejects.toThrow(/venue/);
+    expect(r.plantings.size).toBe(0);                            // the planting count is unchanged after the throw
+    expect(await r.skrCreditRaw("U")).toBe(0n);
+    expect(await r.carryCreditRaw("U", "USDC")).toBe(0n);
+    // Positive controls: a lending leg with its venue, and a retired coin leg (JitoSOL rows stay readable) without one.
+    await r.insertPlanting({ ...base, signature: "c" }, [leg("USDC_LEND", "jupiter_lend")]);
+    await r.insertPlanting({ ...base, signature: "d" }, [leg("JitoSOL", null)]);
+    expect(r.plantings.size).toBe(2);
+  });
+
+  it("a legs or carry insert error after the planting row exists marks the planting failed and rethrows; the carry comes back", async () => {
+    for (const fault of ["legs", "carry"] as const) {
+      const r = await withWallet();
+      r.insertFault = fault;
+      await expect(r.insertPlanting({ ...base, signature: `s-${fault}`, skrCarryInRaw: 300n, carryIn: { USDC: 500n } }, [leg("USDC_LEND", "kamino_klend")])).rejects.toThrow(/insert failed/);
+      expect([...r.plantings.values()].map((p) => p.status)).toEqual(["failed"]);
+      expect(await r.skrCreditRaw("U")).toBe(0n);                // a `sent` orphan would hold -300n
+      expect(await r.carryCreditRaw("U", "USDC")).toBe(0n);
+      expect(r.insertFault).toBeNull();                          // one-shot seam
+    }
   });
 });

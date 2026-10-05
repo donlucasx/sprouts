@@ -2,28 +2,57 @@ import { describe, it, expect, vi } from "vitest";
 import { MemoryRepo } from "@/db/memory";
 import { SKR_ONLY } from "@/domain/coins";
 import { runPlanting, type Chain } from "@/lib/plant-run";
+import type { VenueDayRow } from "@/db/types";
+import type { LeashConfig } from "@/lib/leash";
 
 const NOW = new Date("2026-09-29T14:00:00Z");
 const DELEGATION = { exists: true, amountPerPeriodRaw: 5_000_000n, pulledInPeriodRaw: 0n, periodStartTs: 0n, periodLengthS: 86_400n };
+
+/** T9 review I2: every leg watches the puller's USDC float (PU); a build stub that overrides the fake's carries it too. */
+const FLOAT = { usdcFloat: "PU", watched: ["PU"] };
+/** ...and the simulation reports it unchanged (the swap spent exactly the pull). */
+const HELD = { watched: { PU: { pre: 5_000n, post: 5_000n } } };
 
 function fakeChain(over: Partial<Chain> = {}): Chain {
   let n = 0;
   return {
     readDelegation: async () => DELEGATION,
     usdcBalanceRaw: async () => 50_000_000n,
-    // the signature is known once the puller signs, before anything is sent
-    buildPlantingTx: async (a) => ({ tx: {}, signature: `sig${++n}`, expectedOutRaw: a.pullRaw * 48n, minOutRaw: a.pullRaw * 47n, lookupTables: [], lastValidBlockHeight: 0n }),
-    // the delivery account gains the minimum: passes the R207 delivery check for SKR (may not fall past the carry) and wallet coins
-    simulatePlanting: async (b) => ({ ok: true, err: null, logs: [], units: 200_000, delivery: { pre: 1_000n, post: 1_000n + b.minOutRaw } }),
+    // The signature is known once the puller signs. Every leg watches the puller's USDC float (PU, T9 review I2); SOL lending its
+    // WSOL float (PW); Jupiter Lend the puller's jl account (PJ).
+    buildPlantingTx: async (a) => ({
+      tx: { asset: a.asset }, signature: `sig${++n}`, expectedOutRaw: a.pullRaw * 48n, minOutRaw: a.pullRaw * 47n, lookupTables: [], lastValidBlockHeight: 0n, asset: a.asset, venue: a.venue,
+      usdcFloat: "PU", wsolFloat: a.asset === "SOL_LEND" ? "PW" : null,
+      watched: ["PU", ...(a.asset === "SOL_LEND" ? ["PW"] : []), ...(a.venue === "jupiter_lend" ? ["PJ"] : [])], pullerJl: a.venue === "jupiter_lend" ? "PJ" : null,
+      jlLeftover: a.venue === "jupiter_lend" ? (a.jlLeftover ?? 0n) : null, cleanup: [],
+    }),
+    // The delivery account gains the minimum; the floats hold; the jl account ends closed.
+    simulatePlanting: async (b) => ({ ok: true, err: null, logs: [], units: 200_000, delivery: { pre: 1_000n, post: 1_000n + b.minOutRaw }, watched: Object.fromEntries((b.watched ?? []).map((x) => [x, { pre: 5_000n, post: x === "PJ" ? null : 5_000n }])) }),
     sendPlanting: async () => {},
     signatureStatus: async () => "pending",
     readShares: async () => 1_000_000_000n,
     sharePrice: async () => 1_146_000_000n,
     assetBalanceRaw: async () => 0n,
     pullerSkrChangeRaw: async () => 0n,
+    readLeashConfig: async () => null,
+    lendingPositions: async () => [],
+    pullerCarryChangeRaw: async () => 0n,
+    cleanup: async () => {},
+    priceFresh: async () => {},
     ...over,
   };
 }
+
+/** Today's (NOW) venue rows: both auto venues eligible, Kamino ahead on its 7-day average, plus the underlying prices. */
+async function seedVenues(repo: MemoryRepo, over: Partial<Record<"kamino_klend" | "jupiter_lend", Partial<VenueDayRow>>> = {}) {
+  for (const asset of ["USDC_LEND", "SOL_LEND"] as const) {
+    for (const [venue, pct, rate] of [["kamino_klend", 4.43, 1.2038], ["jupiter_lend", 4.19, 1.0629]] as const) {
+      await repo.putVenueDay({ day: "2026-09-29", venue, asset, supplyPct: pct, rewardsPct: 0, utilizationPct: 90, withdrawableUsd: 1e7, tvlUsd: 1.2e8, exchangeRate: rate, avg7Pct: pct, daysMeasured: 3, eligible: true, verdict: null, reason: null, served: null, ok: true, ...(over[venue] ?? {}) });
+    }
+    await repo.putCoinDay({ day: "2026-09-29", asset, rate: null, ratePrev: null, ratePrevDays: null, priceUsd: asset === "USDC_LEND" ? 1 : 121.47, liquidityUsd: null, priceChange24h: null, tradeable: true, lastUpdateEpoch: null, ok: true });
+  }
+}
+const leashCfg = (enabled: number[]): LeashConfig => ({ puller: "P" as never, pullerUsdc: "PU" as never, maxPullRaw: 5_000_000n, legs: [0, 1, 2, 3, 4, 5, 6, 7].map((l) => ({ enabled: enabled.includes(l), reader: 0, feeBps: 0, tolBps: 0, confCapBps: 0, maxAgeS: 60, receiptMint: null, rateAccount: null, extra: null, feedId: null, feedAccount: null })) });
 
 async function seeded(roundups: number[], opts: { cap?: number; ago?: number } = {}) {
   const repo = new MemoryRepo();
@@ -171,7 +200,7 @@ describe("runPlanting", () => {
     const chain = fakeChain({ buildPlantingTx: async (a) => {
       assets.push(a.asset);
       if (a.asset === "stORE") throw new Error("Jupiter: no route");
-      return { tx: {} as never, signature: "sigF", expectedOutRaw: a.pullRaw * 48n, minOutRaw: a.pullRaw * 47n, lookupTables: [], lastValidBlockHeight: 0n };
+      return { tx: {} as never, signature: "sigF", expectedOutRaw: a.pullRaw * 48n, minOutRaw: a.pullRaw * 47n, lookupTables: [], lastValidBlockHeight: 0n, ...FLOAT };
     } });
     const r = await runPlanting({ repo, now: NOW, chain });
     expect(assets).toEqual(["stORE", "SKR"]);
@@ -186,10 +215,10 @@ describe("runPlanting", () => {
     await repo.bumpLedger("W", "SKR", 200);
     const built: string[] = [];
     const chain = fakeChain({
-      buildPlantingTx: async (a) => { built.push(a.asset); return { tx: { asset: a.asset } as never, signature: `sig-${a.asset}`, expectedOutRaw: a.pullRaw * 48n, minOutRaw: a.pullRaw * 47n, lookupTables: [], lastValidBlockHeight: 0n }; },
+      buildPlantingTx: async (a) => { built.push(a.asset); return { tx: { asset: a.asset } as never, signature: `sig-${a.asset}`, expectedOutRaw: a.pullRaw * 48n, minOutRaw: a.pullRaw * 47n, lookupTables: [], lastValidBlockHeight: 0n, ...FLOAT }; },
       simulatePlanting: async (b) => (b.tx as unknown as { asset: string }).asset === "stORE"
         ? { ok: false, err: { InstructionError: [3, "Custom"] }, logs: ["Program log: account not initialized"], units: 0 }
-        : { ok: true, err: null, logs: [], units: 200_000, delivery: { pre: 0n, post: 0n } },
+        : { ok: true, err: null, logs: [], units: 200_000, delivery: { pre: 0n, post: 0n }, ...HELD },
     });
     const r = await runPlanting({ repo, now: NOW, chain });
     expect(built).toEqual(["stORE", "SKR"]);
@@ -454,7 +483,7 @@ describe("runPlanting", () => {
     const chain = fakeChain({ buildPlantingTx: async (a) => {
       assets.push(a.asset);
       if (a.asset === "hSOL") throw new Error("Jupiter: no route");
-      return { tx: {} as never, signature: "sigH", expectedOutRaw: a.pullRaw * 48n, minOutRaw: a.pullRaw * 47n, lookupTables: [], lastValidBlockHeight: 0n };
+      return { tx: {} as never, signature: "sigH", expectedOutRaw: a.pullRaw * 48n, minOutRaw: a.pullRaw * 47n, lookupTables: [], lastValidBlockHeight: 0n, ...FLOAT };
     } });
     const r = await runPlanting({ repo, now: NOW, chain });
     expect(assets).toEqual(["hSOL", "SKR"]);
@@ -499,7 +528,7 @@ describe("the SKR slippage remainder (R207 #2)", () => {
     const repo = await seeded([83, 62, 70]);
     const builds: BuildArgs[] = [];
     await runPlanting({ repo, now: NOW, chain: recording(builds, { pullerSkrChangeRaw: async () => 500n }) });
-    expect(builds[0].skrCarryRaw).toBeUndefined();
+    expect(builds[0].carryIn.SKR).toBeUndefined();
     expect(plantings(repo)[0]).toMatchObject({ status: "confirmed", skrCarryInRaw: 0n, skrSurplusRaw: 500n });
     expect(await repo.skrCreditRaw("U")).toBe(500n);
 
@@ -507,7 +536,7 @@ describe("the SKR slippage remainder (R207 #2)", () => {
     await addSwaps(repo, "W", "d2-");
     const later = new Date(NOW.getTime() + 86_400_000);
     await runPlanting({ repo, now: later, chain: recording(builds, { pullerSkrChangeRaw: async () => -200n }) });
-    expect(builds[1].skrCarryRaw).toBe(500n);
+    expect(builds[1].carryIn.SKR).toBe(500n);
     expect(plantings(repo)[1]).toMatchObject({ status: "confirmed", skrCarryInRaw: 500n, skrSurplusRaw: 300n });
     expect(await repo.skrCreditRaw("U")).toBe(300n);
   });
@@ -520,7 +549,7 @@ describe("the SKR slippage remainder (R207 #2)", () => {
     await addSwaps(repo, "W2", "u2-");
     const builds: BuildArgs[] = [];
     await runPlanting({ repo, now: NOW, chain: recording(builds) });
-    expect(builds.map((b) => [b.user, b.skrCarryRaw])).toEqual([["U2", undefined]]);
+    expect(builds.map((b) => [b.user, b.carryIn.SKR])).toEqual([["U2", undefined]]);
     expect(await repo.skrCreditRaw("U2")).toBe(0n);
     expect(await repo.skrCreditRaw("U")).toBe(500n);
   });
@@ -550,7 +579,7 @@ describe("the SKR slippage remainder (R207 #2)", () => {
     await repo.saveRules("U", { allocation: { ...SKR_ONLY, SKR: 0, stORE: 100 } });
     const builds: BuildArgs[] = [];
     await runPlanting({ repo, now: new Date(later.getTime() + 86_400_000), chain: recording(builds) });
-    expect(builds.map((b) => [b.asset, b.skrCarryRaw])).toEqual([["stORE", undefined]]);
+    expect(builds.map((b) => [b.asset, b.carryIn.SKR])).toEqual([["stORE", undefined]]);
   });
 
   it("stands down before claiming or sending when another run spent the same remainder meanwhile", async () => {
@@ -579,7 +608,7 @@ describe("the SKR slippage remainder (R207 #2)", () => {
 // R207 review: the pooled puller SKR account holds other users' remainders, so the simulation's own balances must show the swap
 // delivered: SKR may fall by at most this user's carry; a wallet coin's account must gain at least the minimum. Nothing is sent otherwise.
 describe("the delivery check on the simulation (R207 review)", () => {
-  const sim = (pre: bigint, post: bigint) => async () => ({ ok: true, err: null, logs: [], units: 1, delivery: { pre, post } });
+  const sim = (pre: bigint, post: bigint) => async () => ({ ok: true, err: null, logs: [], units: 1, delivery: { pre, post }, ...HELD });
   const countSends = () => { const c = { n: 0 }; return { c, sendPlanting: async () => { c.n++; } }; };
 
   it("happy path: an SKR planting whose stake draws exactly this user's carry from the float is sent", async () => {
@@ -616,8 +645,8 @@ describe("the delivery check on the simulation (R207 review)", () => {
     const repo = await seeded([83, 62, 70]);
     await repo.saveRules("U", { allocation: { ...SKR_ONLY, SKR: 0, hSOL: 100 } });
     const r = await runPlanting({ repo, now: NOW, chain: fakeChain({
-      buildPlantingTx: async (a) => ({ tx: { asset: a.asset } as never, signature: `sig-${a.asset}`, expectedOutRaw: 48n, minOutRaw: 47n, lookupTables: [], lastValidBlockHeight: 0n }),
-      simulatePlanting: async (b) => ({ ok: true, err: null, logs: [], units: 1, delivery: (b.tx as unknown as { asset: string }).asset === "hSOL" ? { pre: 100n, post: 146n } : { pre: 0n, post: 0n } }),
+      buildPlantingTx: async (a) => ({ tx: { asset: a.asset } as never, signature: `sig-${a.asset}`, expectedOutRaw: 48n, minOutRaw: 47n, lookupTables: [], lastValidBlockHeight: 0n, ...FLOAT }),
+      simulatePlanting: async (b) => ({ ok: true, err: null, logs: [], units: 1, delivery: (b.tx as unknown as { asset: string }).asset === "hSOL" ? { pre: 100n, post: 146n } : { pre: 0n, post: 0n }, ...HELD }),
     }) });
     expect(r.planted[0]?.asset).toBe("SKR");
     expect(JSON.stringify(repo.events.find((e) => e.kind === "leg_fallback")?.detail)).toMatch(/gained 46, under the minimum 47/);
@@ -636,6 +665,7 @@ describe("lending legs pay nothing and never fall back to SKR (spec 2, R266)", (
 
   it("a lending leg that fails to build waits for the next run: no SKR planting, no pull, leg_skipped recorded", async () => {
     const repo = await seeded([83, 62, 70]);
+    await seedVenues(repo);
     await repo.saveRules("U", { allocation: lendOnly });
     const built: string[] = [];
     const chain = fakeChain({ buildPlantingTx: async (a) => { built.push(a.asset); throw new Error("venue down"); } });
@@ -650,6 +680,7 @@ describe("lending legs pay nothing and never fall back to SKR (spec 2, R266)", (
 
   it("a lending leg that fails simulation is skipped the same way", async () => {
     const repo = await seeded([83, 62, 70]);
+    await seedVenues(repo);
     await repo.saveRules("U", { allocation: lendOnly });
     const r = await runPlanting({ repo, now: NOW, chain: fakeChain({ simulatePlanting: async () => ({ ok: false, err: "x", logs: [], units: 0 }) }) });
     expect(r.skipped[0].reason).toBe("leg failed");
@@ -657,12 +688,348 @@ describe("lending legs pay nothing and never fall back to SKR (spec 2, R266)", (
 
   it("the leg's fee in cents follows the leg: 0 for lending, 0.5% of the pull for a coin", async () => {
     const repo = await seeded([83, 62, 70]);
+    await seedVenues(repo);
     await repo.saveRules("U", { allocation: lendOnly });
     await runPlanting({ repo, now: NOW, chain: fakeChain() });
     expect(repo.legs[0]).toMatchObject({ asset: "USDC_LEND", feeCents: 0 });
     const repo2 = await seeded([83, 62, 70]);
+    await seedVenues(repo2);
     await repo2.saveRules("U", { allocation: { SKR: 0, stORE: 0, USDC_LEND: 0, SOL_LEND: 0, hSOL: 100, cbBTC: 0 } });
     await runPlanting({ repo: repo2, now: NOW, chain: fakeChain() });
     expect(repo2.legs[0]).toMatchObject({ asset: "hSOL", feeCents: 1 });   // 218 cents x 50 / 10_000 = 1.09
+  });
+});
+
+describe("venues, the leash and the carry in the run (contracts 3.2-3.4)", () => {
+  type BuildArgs = Parameters<Chain["buildPlantingTx"]>[0];
+  const lendOnly = { SKR: 0, stORE: 0, USDC_LEND: 100, SOL_LEND: 0, hSOL: 0, cbBTC: 0 };
+  const recording = (builds: BuildArgs[], over: Partial<Chain> = {}) => { const base = fakeChain(over); return { ...base, buildPlantingTx: async (a: BuildArgs) => { builds.push(a); return base.buildPlantingTx(a); } } as Chain; };
+
+  it("USDC goes to the best eligible venue; the leg records the venue and its exchange rate, no fee", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await seedVenues(repo);
+    await repo.saveRules("U", { allocation: lendOnly });
+    const builds: BuildArgs[] = [];
+    await runPlanting({ repo, now: NOW, chain: recording(builds) });
+    expect(builds[0]).toMatchObject({ asset: "USDC_LEND", venue: "kamino_klend", leashed: false });
+    expect(repo.legs[0]).toMatchObject({ asset: "USDC_LEND", venue: "kamino_klend", rateAtPlanting: 1.2038, feeCents: 0 });
+  });
+
+  it("no eligible venue: the lending share goes to the next leg by the split (spec 3)", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await seedVenues(repo, { kamino_klend: { eligible: false }, jupiter_lend: { verdict: "avoid", reason: "near_full" } });
+    await repo.saveRules("U", { allocation: { ...lendOnly, USDC_LEND: 50, SKR: 50 } });
+    const builds: BuildArgs[] = [];
+    await runPlanting({ repo, now: NOW, chain: recording(builds) });
+    expect(builds.map((b) => b.asset)).toEqual(["SKR"]);
+  });
+
+  it("from $20 of lending no protocol passes 60% (R293): new USDC goes to Jupiter when Kamino holds it all", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await seedVenues(repo);
+    await repo.saveRules("U", { allocation: lendOnly });
+    const builds: BuildArgs[] = [];
+    await runPlanting({ repo, now: NOW, chain: recording(builds, { lendingPositions: async () => [{ asset: "USDC_LEND", venue: "kamino_klend", receiptRaw: 20_000_000n }] }) });   // 20 x 1.2038 = $24.08
+    expect(builds[0].venue).toBe("jupiter_lend");
+  });
+
+  it("Jupiter Lend: when the venue mints N shares the first simulation fails, and the rebuild with the 1-share burn is the one sent", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await seedVenues(repo, { kamino_klend: { eligible: false } });
+    await repo.saveRules("U", { allocation: lendOnly });
+    const builds: BuildArgs[] = [];
+    const chain = recording(builds, {
+      simulatePlanting: async (b) => (b.jlLeftover === 1n
+        ? { ok: true, err: null, logs: [], units: 1, delivery: { pre: 0n, post: b.minOutRaw }, watched: { PU: { pre: 5_000n, post: 5_000n }, PJ: { pre: null, post: null } } }
+        : { ok: false, err: { InstructionError: [9, { Custom: 11 }] }, logs: ["Program log: Error: Non-native account can only be closed if its balance is zero"], units: 1 }),
+    });
+    const r = await runPlanting({ repo, now: NOW, chain });
+    expect(builds.map((b) => b.jlLeftover)).toEqual([undefined, 1n]);
+    expect(r.planted.length).toBe(1);
+  });
+
+  it("R297: with LEASH_LIVE=1 an old puller link is refused before any chain read", async () => {
+    const repo = await seeded([83, 62, 70]);
+    let reads = 0;
+    process.env.LEASH_LIVE = "1";
+    try {
+      const r = await runPlanting({ repo, now: NOW, chain: fakeChain({ readDelegation: async () => { reads++; return DELEGATION; } }) });
+      expect(r.skipped).toEqual([{ wallet: "W", reason: "relink needed" }]);
+      expect(reads).toBe(0);
+    } finally { delete process.env.LEASH_LIVE; }
+    const r2 = await runPlanting({ repo, now: NOW, chain: fakeChain() });   // positive control: before go-live it plants, unleashed
+    expect(r2.planted.length).toBe(1);
+  });
+
+  it("a leashed user's disabled legs hand their share to the enabled leg with the largest share (invariant 2)", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await seedVenues(repo);
+    await repo.setWalletLink("W", { delegationPda: "D", linkModel: "leash" });
+    await repo.saveRules("U", { allocation: { SKR: 45, stORE: 0, USDC_LEND: 15, SOL_LEND: 10, hSOL: 20, cbBTC: 10 } });
+    const builds: BuildArgs[] = [];
+    await runPlanting({ repo, now: NOW, chain: recording(builds, { readLeashConfig: async () => leashCfg([3, 6]) }) });   // Day 1 without K-Lend: USDC on Jupiter Lend, hSOL
+    expect(builds[0]).toMatchObject({ asset: "hSOL", leashed: true });   // SKR 45 + SOL 10 + cbBTC 10 moved to hSOL: 85
+  });
+
+  it("a leashed user's USDC goes to Jupiter Lend when only its leash leg is enabled (the Day-1 fallback venue)", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await seedVenues(repo);
+    await repo.setWalletLink("W", { delegationPda: "D", linkModel: "leash" });
+    await repo.saveRules("U", { allocation: lendOnly });
+    const builds: BuildArgs[] = [];
+    await runPlanting({ repo, now: NOW, chain: recording(builds, { readLeashConfig: async () => leashCfg([3, 6]) }) });
+    expect(builds[0]).toMatchObject({ asset: "USDC_LEND", venue: "jupiter_lend", leashed: true });
+  });
+
+  it("a leashed user plants nothing when the config cannot be read, or no leg is enabled", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await repo.setWalletLink("W", { delegationPda: "D", linkModel: "leash" });
+    expect((await runPlanting({ repo, now: NOW, chain: fakeChain() })).skipped[0].reason).toBe("leash unavailable");
+    expect((await runPlanting({ repo, now: NOW, chain: fakeChain({ readLeashConfig: async () => leashCfg([]) }) })).skipped[0].reason).toBe("no leg enabled");
+  });
+
+  it("the WSOL float may fall by at most this user's WSOL carry (Review Focus 3), with its positive control", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await seedVenues(repo);
+    await repo.saveRules("U", { allocation: { ...lendOnly, USDC_LEND: 0, SOL_LEND: 100 } });
+    const drains = { simulatePlanting: async (b: Parameters<Chain["simulatePlanting"]>[0]) => ({ ok: true, err: null, logs: [], units: 1, delivery: { pre: 0n, post: b.minOutRaw }, watched: { PW: { pre: 5_000n, post: 4_990n }, PU: { pre: 5_000n, post: 5_000n } } }) };
+    const r = await runPlanting({ repo, now: NOW, chain: fakeChain(drains) });
+    expect(r.skipped[0].reason).toBe("leg failed");
+    expect((await repo.unplantedSwaps("W")).length).toBe(3);
+    repo.carryCreditRaw = async (_u: string, k: string) => (k === "WSOL" ? 10n : 0n);
+    expect((await runPlanting({ repo, now: NOW, chain: fakeChain(drains) })).planted.length).toBe(1);
+  });
+
+  it("Jupiter Lend is refused while the puller's jl account survives the planting", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await seedVenues(repo, { kamino_klend: { eligible: false } });
+    await repo.saveRules("U", { allocation: lendOnly });
+    const r = await runPlanting({ repo, now: NOW, chain: fakeChain({ simulatePlanting: async (b) => ({ ok: true, err: null, logs: [], units: 1, delivery: { pre: 0n, post: b.minOutRaw }, watched: { PU: { pre: 5_000n, post: 5_000n }, PJ: { pre: null, post: 1n } } }) }) });
+    expect(r.skipped[0].reason).toBe("leg failed");
+  });
+
+  it("a leashed SKR planting still bounds the puller's pooled SKR float (R207)", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await repo.setWalletLink("W", { delegationPda: "D", linkModel: "leash" });
+    const r = await runPlanting({ repo, now: NOW, chain: fakeChain({ readLeashConfig: async () => leashCfg([0]), simulatePlanting: async () => ({ ok: true, err: null, logs: [], units: 1, delivery: { pre: 5_000n, post: 4_999n }, watched: {} }) }) });
+    expect(r.skipped[0].reason).toBe("simulation failed");
+  });
+
+  it("records the WSOL surplus after confirmation and passes it into the same user's next SOL planting (R295)", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await seedVenues(repo);
+    await repo.saveRules("U", { allocation: { ...lendOnly, USDC_LEND: 0, SOL_LEND: 100 } });
+    const builds: BuildArgs[] = [];
+    await runPlanting({ repo, now: NOW, chain: recording(builds, { pullerCarryChangeRaw: async () => 1_234n }) });
+    expect(await repo.carryCreditRaw("U", "WSOL")).toBe(1_234n);
+    for (const [i, c] of [83, 62, 70].entries()) await repo.insertSwap({ signature: `n${i}`, walletPubkey: "W", ts: NOW, inMint: "a", inAmount: 1, outMint: "b", outAmount: 1, usdSizeCents: 100, class: "major", roundupCents: c });
+    await runPlanting({ repo, now: NOW, chain: recording(builds) });
+    expect(builds[1].carryIn).toEqual({ WSOL: 1_234n });
+  });
+});
+
+import { LEASH_PROGRAM } from "@/lib/constants";
+
+describe("Task 11 carry-ins (T7/T8/T9 reviews)", () => {
+  type BuildArgs = Parameters<Chain["buildPlantingTx"]>[0];
+  const lendOnly = { SKR: 0, stORE: 0, USDC_LEND: 100, SOL_LEND: 0, hSOL: 0, cbBTC: 0 };
+  const hsolOnly = { SKR: 0, stORE: 0, USDC_LEND: 0, SOL_LEND: 0, hSOL: 100, cbBTC: 0 };
+  const recording = (builds: BuildArgs[], over: Partial<Chain> = {}) => { const base = fakeChain(over); return { ...base, buildPlantingTx: async (a: BuildArgs) => { builds.push(a); return base.buildPlantingTx(a); } } as Chain; };
+  const addSwaps = async (repo: MemoryRepo, wallet: string, tag: string) => {
+    for (const [i, c] of [83, 62, 70].entries()) await repo.insertSwap({ signature: `${tag}${i}`, walletPubkey: wallet, ts: new Date(NOW.getTime() - 3_600_000), inMint: "a", inAmount: 1, outMint: "b", outAmount: 1, usdSizeCents: 100, class: "major", roundupCents: c });
+  };
+  const leashed = async (allocation = hsolOnly) => {
+    const repo = await seeded([83, 62, 70]);
+    await seedVenues(repo);
+    await repo.setWalletLink("W", { delegationPda: "D", linkModel: "leash" });
+    await repo.saveRules("U", { allocation });
+    return repo;
+  };
+  const settleMismatch = { ok: false, err: { InstructionError: [7, { Custom: 6007 }] }, logs: [`Program ${LEASH_PROGRAM} failed: custom program error: 0x1777`], units: 1 };
+
+  // 1. The carry cap.
+  it("carry: the build carries exactly this user's own credit, and a credit at or below zero carries nothing", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await seedVenues(repo);
+    await repo.saveRules("U", { allocation: lendOnly });
+    repo.carryCreditRaw = async (_u: string, k: string) => (k === "USDC" ? -700n : 0n);
+    const builds: BuildArgs[] = [];
+    await runPlanting({ repo, now: NOW, chain: recording(builds) });
+    expect(builds[0].carryIn).toEqual({});
+    expect(repo.carry.filter((c) => c.carryInRaw > 0n)).toEqual([]);   // nothing reserved
+    // Positive control: a credit of 700 carries exactly 700, no more.
+    const repo2 = await seeded([83, 62, 70]);
+    await seedVenues(repo2);
+    await repo2.saveRules("U", { allocation: lendOnly });
+    repo2.carryCreditRaw = async (_u: string, k: string) => (k === "USDC" ? 700n : 0n);
+    await runPlanting({ repo: repo2, now: NOW, chain: recording(builds) });
+    expect(builds[1].carryIn).toEqual({ USDC: 700n });
+    expect(repo2.carry.map((c) => c.carryInRaw)).toEqual([700n]);
+  });
+
+  it("carry: a Jupiter Lend rebuild reuses the same carry, the planting reserves it once, and confirmation settles it once", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await seedVenues(repo, { kamino_klend: { eligible: false } });
+    await repo.saveRules("U", { allocation: lendOnly });
+    await runPlanting({ repo, now: NOW, chain: fakeChain({ pullerCarryChangeRaw: async () => 500n }) });
+    expect(await repo.carryCreditRaw("U", "USDC")).toBe(500n);
+    await addSwaps(repo, "W", "d2-");
+    const builds: BuildArgs[] = [];
+    let sims = 0;
+    const later = new Date(NOW.getTime() + 86_400_000);
+    await seedVenues(repo, { kamino_klend: { eligible: false } });
+    for (const v of [...repo.venueDays.values()]) await repo.putVenueDay({ ...v, day: "2026-09-30" });
+    for (const asset of ["USDC_LEND", "SOL_LEND"] as const) await repo.putCoinDay({ ...(await repo.getCoinDay("2026-09-29", asset))!, day: "2026-09-30" });
+    const chain = recording(builds, {
+      // The first simulation fails (the leftover guess), the rebuild passes; the deposit drew all 500 of the carry: the float fell by 500.
+      simulatePlanting: async (b) => (++sims === 1 ? { ok: false, err: "x", logs: [], units: 1 }
+        : { ok: true, err: null, logs: [], units: 1, delivery: { pre: 0n, post: b.minOutRaw }, watched: { PU: { pre: 5_000n, post: 4_500n }, PJ: { pre: null, post: null } } }),
+      pullerCarryChangeRaw: async () => -500n,
+    });
+    const r = await runPlanting({ repo, now: later, chain });
+    expect(r.planted.length).toBe(1);
+    expect(builds.map((b) => b.carryIn)).toEqual([{ USDC: 500n }, { USDC: 500n }]);
+    expect(repo.carry.filter((c) => c.carryInRaw > 0n).length).toBe(1);
+    expect(await repo.carryCreditRaw("U", "USDC")).toBe(0n);   // 500 earned - 500 drawn + 0 left over: drawn once, not twice
+  });
+
+  // 2. T9 review I2: the swap's input is bound to the pull.
+  it("I2: a swap leg whose puller USDC falls (the swap spent more than the pull) is refused; the same leg with the float held plants", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await repo.saveRules("U", { allocation: hsolOnly });
+    const drain = { simulatePlanting: async (b: Parameters<Chain["simulatePlanting"]>[0]) => ({ ok: true, err: null, logs: [], units: 1, delivery: { pre: 0n, post: b.minOutRaw }, watched: { PU: { pre: 5_000n, post: 4_999n } } }) };
+    const r = await runPlanting({ repo, now: NOW, chain: fakeChain(drain) });
+    expect(r.planted).toEqual([]);   // hSOL refused, and its SKR fallback too (the same drain)
+    expect(JSON.stringify(repo.events.find((e) => e.kind === "leg_fallback")?.detail)).toMatch(/puller's USDC fell by 1, more than this user's carry of 0/);
+    expect((await repo.unplantedSwaps("W")).length).toBe(3);
+    expect((await runPlanting({ repo, now: NOW, chain: fakeChain() })).planted[0].asset).toBe("hSOL");
+  });
+
+  it("I2: SOL lending binds both floats: its WSOL holds but its USDC falls, refused", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await seedVenues(repo);
+    await repo.saveRules("U", { allocation: { ...lendOnly, USDC_LEND: 0, SOL_LEND: 100 } });
+    const r = await runPlanting({ repo, now: NOW, chain: fakeChain({ simulatePlanting: async (b) => ({ ok: true, err: null, logs: [], units: 1, delivery: { pre: 0n, post: b.minOutRaw }, watched: { PW: { pre: 5_000n, post: 5_000n }, PU: { pre: 5_000n, post: 4_000n } } }) }) });
+    expect(r.skipped[0].reason).toBe("leg failed");
+  });
+
+  // 3. Run-level prices.
+  it("prices: one leash read per run, one wait per FEED (all feeds at once), builds with waitS 0 and the on-chain cap and age, a re-check before each send", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await repo.setWalletLink("W", { delegationPda: "D", linkModel: "leash" });
+    await repo.saveRules("U", { allocation: hsolOnly });
+    await repo.upsertUser({ seedVaultPubkey: "U2", sgtMint: "M2", skrName: null });
+    await repo.addWallet({ pubkey: "W2", userPubkey: "U2", delegationPda: "D2", dailyCapCents: 500, linkModel: "leash" });
+    await repo.saveRules("U2", { allocation: hsolOnly });
+    await addSwaps(repo, "W2", "u2-");
+    const cfg = leashCfg([6, 7]);
+    cfg.legs[6] = { ...cfg.legs[6], confCapBps: 150, maxAgeS: 90 };
+    cfg.legs[7] = { ...cfg.legs[7], confCapBps: 200, maxAgeS: 600 };
+    let reads = 0;
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const waits: [number, number][] = [];
+    const checks: [number, number][] = [];
+    const builds: BuildArgs[] = [];
+    const r = await runPlanting({ repo, now: NOW, chain: recording(builds, {
+      readLeashConfig: async () => { reads++; return cfg; },
+      priceFresh: async (leg, c, waitS) => {
+        if (waitS === 0) { checks.push([leg, c.maxAgeS]); return; }
+        waits.push([leg, waitS]);
+        inFlight++; maxInFlight = Math.max(maxInFlight, inFlight);
+        await new Promise((res) => setTimeout(res, 5));
+        inFlight--;
+      },
+    }) });
+    expect(r.planted.length).toBe(2);
+    expect(reads).toBe(1);
+    expect(waits.sort()).toEqual([[6, 60], [7, 60]]);   // SOL once (two users on it), cbBTC once
+    expect(maxInFlight).toBe(2);                        // the two feeds wait at the same time
+    expect(builds.map((b) => b.priceOpts)).toEqual([{ waitS: 0, confCapBps: 150, maxAgeS: 90 }, { waitS: 0, confCapBps: 150, maxAgeS: 90 }]);
+    expect(checks).toEqual([[6, 90], [6, 90], [6, 90], [6, 90]]);   // per wallet: before the build, again right before the send
+  });
+
+  it("prices: a price unusable at send sends nothing; the round-ups and the carry go back and the leg waits", async () => {
+    const repo = await leashed();
+    let zeroChecks = 0;
+    let sent = 0;
+    const r = await runPlanting({ repo, now: NOW, chain: fakeChain({
+      readLeashConfig: async () => leashCfg([6]),
+      priceFresh: async (_l, _c, waitS) => { if (waitS === 0 && ++zeroChecks === 2) throw new Error("sponsored SOL price is 61 s old"); },
+      sendPlanting: async () => { sent++; },
+    }) });
+    expect(r.skipped).toEqual([{ wallet: "W", reason: "leg failed" }]);
+    expect(sent).toBe(0);
+    expect([...repo.plantings.values()].map((p) => p.status)).toEqual(["failed"]);
+    expect((await repo.unplantedSwaps("W")).length).toBe(3);
+    expect(JSON.stringify(repo.events.find((e) => e.kind === "leg_skipped")?.detail)).toMatch(/price unusable at send/);
+  });
+
+  // 4. T9 review M4: SettleMismatch.
+  it("6007: a SettleMismatch in simulation is rebuilt once, and the rebuild is the one sent", async () => {
+    const repo = await leashed();
+    const builds: BuildArgs[] = [];
+    let sims = 0;
+    const base = fakeChain();
+    const r = await runPlanting({ repo, now: NOW, chain: recording(builds, { readLeashConfig: async () => leashCfg([0, 6]), simulatePlanting: async (b) => (++sims === 1 ? settleMismatch : base.simulatePlanting(b)) }) });
+    expect(builds.map((b) => b.asset)).toEqual(["hSOL", "hSOL"]);
+    expect(r.planted).toEqual([{ wallet: "W", asset: "hSOL", pullCents: 218, signature: "sig2" }]);
+  });
+
+  it("6007 twice: the leg is skipped (no SKR fallback) and a repeat on a later run raises an alert", async () => {
+    const repo = await leashed();
+    const builds: BuildArgs[] = [];
+    const chain = recording(builds, { readLeashConfig: async () => leashCfg([0, 6]), simulatePlanting: async () => settleMismatch });
+    const r = await runPlanting({ repo, now: NOW, chain });
+    expect(r.skipped).toEqual([{ wallet: "W", reason: "leg failed" }]);
+    expect(builds.map((b) => b.asset)).toEqual(["hSOL", "hSOL"]);
+    expect(repo.events.map((e) => e.kind)).not.toContain("leg_fallback");
+    expect(repo.events.find((e) => e.kind === "leg_skipped")?.detail).toMatchObject({ asset: "hSOL", leashError: "SettleMismatch", alert: false });
+    const log = vi.spyOn(console, "error");
+    await runPlanting({ repo, now: new Date(NOW.getTime() + 86_400_000), chain });
+    expect(log.mock.calls.some((c) => /^ALERT: leash SettleMismatch/.test(String(c[0])))).toBe(true);
+    log.mockRestore();
+    expect(repo.events.filter((e) => e.kind === "leg_skipped").at(-1)?.detail).toMatchObject({ leashError: "SettleMismatch", alert: true });
+  });
+
+  it("6007 from another program (a Jupiter error code) is not a SettleMismatch: no rebuild", async () => {
+    const repo = await leashed();
+    const builds: BuildArgs[] = [];
+    await runPlanting({ repo, now: NOW, chain: recording(builds, { readLeashConfig: async () => leashCfg([6]), simulatePlanting: async () => ({ ...settleMismatch, logs: ["Program JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4 failed: custom program error: 0x1777"] }) }) });
+    expect(builds.length).toBe(1);
+  });
+
+  // 9. SKR has no price source under the leash.
+  it("a leashed SKR leg is skipped when it has no price source: no build, no fallback, not an outage; unleashed SKR still plants", async () => {
+    const repo = await leashed({ ...hsolOnly, hSOL: 0, SKR: 100 });
+    const builds: BuildArgs[] = [];
+    const noSkrPrice = { readLeashConfig: async () => leashCfg([0]), priceFresh: async (leg: number) => { if (leg === 0) throw new Error("leg 0 (SKR) has no price source"); } };
+    const r = await runPlanting({ repo, now: NOW, chain: recording(builds, noSkrPrice) });
+    expect(r.skipped).toEqual([{ wallet: "W", reason: "leg failed" }]);
+    expect(builds).toEqual([]);
+    expect(repo.events.find((e) => e.kind === "leg_skipped")?.detail).toMatchObject({ asset: "SKR" });
+    // A leashed coin leg that fails falls back to SKR only to be skipped there, never planted unpriced or counted as a build failure.
+    const repo2 = await leashed();
+    const r2 = await runPlanting({ repo: repo2, now: NOW, chain: fakeChain({ ...noSkrPrice, readLeashConfig: async () => leashCfg([0, 6]), buildPlantingTx: async () => { throw new Error("Jupiter: no route"); } }) });
+    expect(r2.skipped).toEqual([{ wallet: "W", reason: "leg failed" }]);
+    expect(repo2.events.map((e) => e.kind)).toEqual(["leg_fallback", "leg_skipped"]);
+    // Unleashed users keep today's SKR path, with the same chain.
+    const repo3 = await seeded([83, 62, 70]);
+    expect((await runPlanting({ repo: repo3, now: NOW, chain: fakeChain(noSkrPrice) })).planted[0].asset).toBe("SKR");
+  });
+
+  // 10. leg_skipped at most once per user per day for the same reason.
+  it("a leg skipped on every run is recorded once per user per day for the same reason, again the next day", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await seedVenues(repo);
+    await repo.saveRules("U", { allocation: lendOnly });
+    const chain = fakeChain({ buildPlantingTx: async () => { throw new Error(`venue down at slot ${Math.random()}`); } });
+    await runPlanting({ repo, now: NOW, chain });
+    await runPlanting({ repo, now: new Date(NOW.getTime() + 3_600_000), chain });
+    expect(repo.events.filter((e) => e.kind === "leg_skipped").length).toBe(1);
+    const tomorrow = new Date(NOW.getTime() + 86_400_000);
+    for (const v of [...repo.venueDays.values()]) await repo.putVenueDay({ ...v, day: "2026-09-30" });
+    await runPlanting({ repo, now: tomorrow, chain });
+    expect(repo.events.filter((e) => e.kind === "leg_skipped").length).toBe(2);
   });
 });

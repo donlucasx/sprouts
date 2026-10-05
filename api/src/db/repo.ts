@@ -1,5 +1,6 @@
 import type * as T from "./types";
 import type { Asset, LiveAsset, LendAsset, Stop } from "@/domain/coins";
+import { isLendAsset } from "@/domain/coins";
 import type { Venue } from "@/domain/venues";
 
 /** A planting as the run records it; the share columns are filled in by the run and the confirmation [A16]. */
@@ -7,6 +8,15 @@ import type { Venue } from "@/domain/venues";
 export type NewPlanting = Omit<T.PlantingRow, "id" | "ts" | "sharesBefore" | "sharesAfter" | "sharesMinted" | "skrCarryInRaw" | "skrSurplusRaw"> & {
   sharesBefore?: bigint | null; ts?: Date; skrCarryInRaw?: bigint; carryIn?: Partial<Record<Exclude<T.CarryKind, "SKR">, bigint>>;
 };
+
+/** AMEND 10-04 s20 (T3 review I3): 0008's planting_legs_venue_iff_lend, checked by both repos before any write of a planting. */
+export function checkLegVenues(legs: readonly { asset: string; venue: string | null }[]): void {
+  for (const l of legs) {
+    if (isLendAsset(l.asset) !== (l.venue != null)) {
+      throw new Error(`planting leg ${l.asset} with venue ${l.venue ?? "null"}: a lending leg needs a venue and a coin leg has none (planting_legs_venue_iff_lend)`);
+    }
+  }
+}
 
 export type NewWatcherCall = Omit<T.WatcherCallRow, "id" | "ts"> & { ts?: Date };
 export type NewWithdrawal = { userPubkey: string; asset: Asset; source: T.WithdrawalSource; unstakeSignature: string | null; sharesUnstaked: bigint; amountRaw: bigint; principalRaw: bigint };
@@ -143,6 +153,8 @@ export interface Repo {
   setMoveProposalStatus(id: string, status: T.MoveStatus, sig?: { redeem?: string; deposit?: string }): Promise<void>;
   // carry (SKR keeps skrCreditRaw / setPlantingSkrSurplus / skrCarryInRaw unchanged)
   carryCreditRaw(userPubkey: string, kind: T.CarryKind): Promise<bigint>;
+  /** The carry a planting drew (kind -> carry_in_raw), so a late booking can compute its surplus. */
+  plantingCarry(plantingId: string): Promise<Partial<Record<"WSOL" | "USDC", bigint>>>;
   /** Written once per (planting, kind); creates the row when the planting carried nothing in. */
   setPlantingSurplus(plantingId: string, kind: Exclude<T.CarryKind, "SKR">, surplusRaw: bigint): Promise<void>;
   // links and terms
