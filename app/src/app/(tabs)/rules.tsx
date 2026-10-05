@@ -225,7 +225,7 @@ export default function Rules() {
       </Card>
       <Card>
         <ThemedText variant="heading">{SWITCH_LABEL}</ThemedText>
-        <Row label="On">
+        <Row label={r.managed ? "On" : "Off"}>
           <Switch
             {...toggle}
             value={r.managed}
