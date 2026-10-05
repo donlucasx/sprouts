@@ -81,14 +81,14 @@ describe("the widget's Next planting line is Home's row (one rule: nextPlantingF
   const at = (m: MeResponse) => nextPlantingText(nextPlantingFor(m, buildScene(toGardenInput(m, new Date(), null)), new Date()));
   it("threshold reached (the daily cap hit): the run time, never \"$1.35 of $0.10\"", () => {
     const m = { ...me, nextPlanting: { ...me.nextPlanting, pendingCents: 135, thresholdCents: 10, capLeftCents: 0 } } as MeResponse;
-    expect(line(m)).toMatch(/^Next planting · (Today|Tomorrow), \d/);
+    expect(line(m)).toMatch(/^Next: (Today|Tomorrow), \d/);
     expect(line(m)).toBe(at(m));
   });
   it("paused (every linked wallet paused): Paused", () => {
     const m = { ...me, wallets: [{ pubkey: "W", status: "paused" }] } as unknown as MeResponse;
-    expect(line(m)).toBe("Next planting · Paused"); expect(line(m)).toBe(at(m));
+    expect(line(m)).toBe("Next: Paused"); expect(line(m)).toBe(at(m));
   });
   it("saving: the amount of the threshold", () => {
-    expect(line(me)).toBe("Next planting · $0.50 of $2.00"); expect(line(me)).toBe(at(me));
+    expect(line(me)).toBe("Next: $0.50 of $2.00"); expect(line(me)).toBe(at(me));
   });
 });
