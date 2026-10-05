@@ -81,3 +81,17 @@ fn an_unset_leg_is_never_valid() {
         validate_leg(i, &base().legs[i]).unwrap();
     }
 }
+
+#[test]
+fn leg7_accepts_the_age_ceiling() {
+    // R324 boundary: 3600 s is leg 7's ceiling and is accepted; 3601 is refused (V_AGE_MAX, invalid_configs); legs 0-6 stop at 60.
+    use leash::config::validate_leg;
+    let mut l = base().legs[7];
+    l.max_age_s = 3600;
+    validate_leg(7, &l).unwrap();
+    l.max_age_s = 3601;
+    assert_eq!(validate_leg(7, &l), Err(LeashError::BadConfig));
+    let mut l0 = base().legs[0];
+    l0.max_age_s = 60;
+    validate_leg(0, &l0).unwrap();
+}

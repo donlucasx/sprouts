@@ -35,6 +35,9 @@ fn stack_height() -> u64 {
     1
 }
 
+/// `deny(unreachable_patterns)`: a renamed tag constant would turn its arm into a catch-all binding; this makes that a
+/// compile error instead of a silent dispatch change (Task 2b review).
+#[deny(unreachable_patterns)]
 pub fn process_instruction(program_id: &Address, accounts: &mut [AccountView], data: &[u8]) -> ProgramResult {
     if stack_height() != 1 { return Err(LeashError::NotTopLevel.into()); } // GUARD:TOP_LEVEL
     match data.first() {
