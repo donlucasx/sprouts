@@ -111,7 +111,7 @@ export async function buildRevokeIxs(a: { delegator: Address; delegationPda: Add
 
 /** delegator / delegatee / expiryTs: from the account's header and terms when it exists (the re-link confirm binds them); absent otherwise. */
 export type DelegationState = { exists: boolean; amountPerPeriodRaw: bigint; pulledInPeriodRaw: bigint; periodStartTs: bigint; periodLengthS: bigint;
-  delegator?: Address; delegatee?: Address; expiryTs?: bigint };
+  delegator?: Address; delegatee?: Address; expiryTs?: bigint; mint?: Address; subscriptionAuthority?: Address };
 
 /** Read the delegation live: what the limit is, what was pulled this period, and when the period started. */
 export async function readDelegation(pda: Address): Promise<DelegationState> {
@@ -127,6 +127,8 @@ export async function readDelegation(pda: Address): Promise<DelegationState> {
     delegator: d.header.delegator,
     delegatee: d.header.delegatee,
     expiryTs: BigInt(d.expiryTs),
+    mint: d.mint,
+    subscriptionAuthority: d.subscriptionAuthority,
   };
 }
 
