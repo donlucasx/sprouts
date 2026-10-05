@@ -193,36 +193,50 @@ CU: unleashed `units=` max 187,434 (SOL_LEND:kamino_klend). Leashed units cannot
 
 After `feat/lend-api` is merged, from `build/sprouts/api` (until then the same lines run from `build/sprouts-lend-api/api`). Every line here is simulateTransaction only; none sends a planting. Exit code: 0 all passed, 1 a leg failed, 2 none failed but a leg was skipped (a skip is not a pass).
 
+**AMEND 10-05 (final fix wave; C-I4, R337, R338, R339):** every line below uses the Saga's **Seed Vault wallet** (`--wallet` = the Seed Vault itself, linked in the app), never the web-linked Phantom `887d...`: before go-live a link-page code links to the puller again, so that wallet cannot be re-linked to the leash. Oct 6 re-links exactly ONE wallet (this one, through the app's re-link card, which shows because `RELINK_PILOT` names it); `LEASH_LIVE` is NOT set; every other wallet stays on the puller and keeps planting SKR, stORE and everything. `MOVES_ENABLED` stays unset (off). Day-1 legs: 1,2,6,7 (stORE stays only if step 5's ORE sample and its leashed line pass; else 2,6,7).
+
+0. The Seed Vault wallet is linked (prints its wallet row; `wallet row: none` means link it in the app first):
+
+```
+cd /Users/lucasgarzoli/Documents/claude/seekerhackathon/build/sprouts/api && pnpm tsx --env-file=.env.local spikes/db-peek.ts DjRpjufi1BNBaYXPu5ybGQu9cHhxgpPkHJb1UJbePcTR | head -1
+```
+
 1. After Task 22 D1 (the ALT created, its `SPROUTS_ALT=` line in `.env.local`), check it is there (prints 1):
 
 ```
 cd /Users/lucasgarzoli/Documents/claude/seekerhackathon/build/sprouts/api && grep -c '^SPROUTS_ALT=' .env.local
 ```
 
-2. BEFORE the re-link (D6), every leg unleashed against today's link, now with the real ALT on chain. This is the first time SOL on Jupiter Lend can simulate:
+2. BEFORE the re-link (D6), every leg unleashed against the Seed Vault wallet's current puller link (its delegation from step 0, `<OLD_PDA>`), now with the real ALT on chain. This is the first time SOL on Jupiter Lend can simulate:
 
 ```
-cd /Users/lucasgarzoli/Documents/claude/seekerhackathon/build/sprouts/api && pnpm tsx --env-file=.env.local scripts/simulate-legs.ts --user DjRpjufi1BNBaYXPu5ybGQu9cHhxgpPkHJb1UJbePcTR --wallet 887dEPR85vfSZ45zFrxttJ6cLomwvnYbh5HnyGbTAXVu --delegation GXcd5FZoxQKQm78CCzUzv7sfsL197CxCjt2eCD4ZRrgz --pull 1000000 SOL_LEND:jupiter_lend SOL_LEND:kamino_klend USDC_LEND:jupiter_lend USDC_LEND:kamino_klend cbBTC hSOL stORE SKR
+cd /Users/lucasgarzoli/Documents/claude/seekerhackathon/build/sprouts/api && pnpm tsx --env-file=.env.local scripts/simulate-legs.ts --user DjRpjufi1BNBaYXPu5ybGQu9cHhxgpPkHJb1UJbePcTR --wallet DjRpjufi1BNBaYXPu5ybGQu9cHhxgpPkHJb1UJbePcTR --delegation <OLD_PDA> --pull 1000000 SOL_LEND:jupiter_lend SOL_LEND:kamino_klend USDC_LEND:jupiter_lend USDC_LEND:kamino_klend cbBTC hSOL stORE SKR
 ```
 
-3. After D5-D6 (Config initialised, the legs' flags on, his wallet re-linked to the leash), read the NEW delegation PDA (the first line prints `delegation <pda>`; the script may then stop on a missing HELIUS_WEBHOOK_ID, which is fine):
+3. After D5-D6 (Config initialised with `--enable 1,2,6,7`, the Saga's Seed Vault wallet re-linked to the leash in the app), read the NEW delegation PDA (the first line prints `delegation <pda>`; the script may then stop on a missing HELIUS_WEBHOOK_ID, which is fine):
 
 ```
-cd /Users/lucasgarzoli/Documents/claude/seekerhackathon/build/sprouts/api && pnpm tsx --env-file=.env.local spikes/db-peek.ts 887dEPR85vfSZ45zFrxttJ6cLomwvnYbh5HnyGbTAXVu | head -1
+cd /Users/lucasgarzoli/Documents/claude/seekerhackathon/build/sprouts/api && pnpm tsx --env-file=.env.local spikes/db-peek.ts DjRpjufi1BNBaYXPu5ybGQu9cHhxgpPkHJb1UJbePcTR | head -1
 ```
 
-4. Leashed, every enabled leg (put the PDA from step 3 in place of `<NEW_PDA>`; list only the legs `leash-admin.ts` enabled). Nothing posts: SKR prints `skipped=needs-post` (no price source, R324) and the other priced legs read the sponsored accounts:
+4. Leashed, every enabled leg (put the PDA from step 3 in place of `<NEW_PDA>`; list only the legs `leash-admin.ts` enabled: Day 1 = legs 1,2,6,7). Nothing posts: SKR stays off (no price source, R324) and the priced legs read the sponsored accounts:
 
 ```
-cd /Users/lucasgarzoli/Documents/claude/seekerhackathon/build/sprouts/api && pnpm tsx --env-file=.env.local scripts/simulate-legs.ts --user DjRpjufi1BNBaYXPu5ybGQu9cHhxgpPkHJb1UJbePcTR --wallet 887dEPR85vfSZ45zFrxttJ6cLomwvnYbh5HnyGbTAXVu --delegation <NEW_PDA> --leashed --pull 1000000 SOL_LEND:jupiter_lend SOL_LEND:kamino_klend USDC_LEND:jupiter_lend USDC_LEND:kamino_klend cbBTC hSOL stORE
+cd /Users/lucasgarzoli/Documents/claude/seekerhackathon/build/sprouts/api && pnpm tsx --env-file=.env.local scripts/simulate-legs.ts --user DjRpjufi1BNBaYXPu5ybGQu9cHhxgpPkHJb1UJbePcTR --wallet DjRpjufi1BNBaYXPu5ybGQu9cHhxgpPkHJb1UJbePcTR --delegation <NEW_PDA> --leashed --pull 1000000 USDC_LEND:kamino_klend cbBTC hSOL stORE
 ```
 
 Read each line: `ok=true` passes the leg; `leashError=StalePrice` rerun; `BelowFloor` stop and compare with Task 5's golden vectors; `LegDisabled` the flag is off; `build failed: ... route under floor` means the route's own expected output is under the leash floor (ruling A; see "Ruling A" below), rerun once, then leave that leg disabled. A `jlLeftover=1` on a Jupiter Lend line means set `JL_EXPECTED_LEFTOVER` to `1n` in `src/lib/venues/jlend.ts`. Paste the lines back to Claude: the highest leashed `units=` + 75,000 (the leash's measured 72.6k worst case at 3,000 users; ruling B, 10-04, supersedes the brief's +55k), rounded up to the next 10,000, becomes `PLANTING_CU_LIMIT` (Task 12 Step 4, `## CU limit`).
 
-5. Posted-price run (SKR), ONLY once SKR has a price source (a crypto-entitled Pyth key and `SKR_PRICE_SOURCE` true; not before). This one SENDS puller-paid price transactions (VAA write, verify, rent reclaim; no user funds):
+5. stORE's Day-1 gate (R339), the S4 price-age sample, read-only, 30 minutes. stORE (leg 1) stays enabled only if `ORE max age` is 55 s or less with `not Full/missing 0` AND its step-4 line is `ok=true`; otherwise `leash-admin.ts set --enable 2,6,7`. Paste the SOL and ORE gap lines here (Claude's final review, T11 triage: gaps over 55 s skip legs 1, 4, 5, 6):
 
 ```
-cd /Users/lucasgarzoli/Documents/claude/seekerhackathon/build/sprouts/api && pnpm tsx --env-file=.env.local scripts/simulate-legs.ts --user DjRpjufi1BNBaYXPu5ybGQu9cHhxgpPkHJb1UJbePcTR --wallet 887dEPR85vfSZ45zFrxttJ6cLomwvnYbh5HnyGbTAXVu --delegation <NEW_PDA> --leashed --allow-post --pull 1000000 SKR
+cd /Users/lucasgarzoli/Documents/claude/seekerhackathon/build/sprouts/api && pnpm tsx --env-file=.env.local spikes/pyth-ages.ts
+```
+
+6. Posted-price run (SKR), ONLY once SKR has a price source (a crypto-entitled Pyth key and `SKR_PRICE_SOURCE` true; not before). This one SENDS puller-paid price transactions (VAA write, verify, rent reclaim; no user funds):
+
+```
+cd /Users/lucasgarzoli/Documents/claude/seekerhackathon/build/sprouts/api && pnpm tsx --env-file=.env.local scripts/simulate-legs.ts --user DjRpjufi1BNBaYXPu5ybGQu9cHhxgpPkHJb1UJbePcTR --wallet DjRpjufi1BNBaYXPu5ybGQu9cHhxgpPkHJb1UJbePcTR --delegation <NEW_PDA> --leashed --allow-post --pull 1000000 SKR
 ```
 
 ## Ruling A: the leashed coin-leg swap minimum is the leash floor (Task 12 follow-up, 2026-10-04 21:35 to 21:39 PDT by `date`)
