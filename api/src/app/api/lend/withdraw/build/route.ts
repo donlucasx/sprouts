@@ -16,7 +16,7 @@ export const runtime = "nodejs";
 // R359: `amountRaw` (optional) is what to take out, in the underlying's raw units (USDC 6 / SOL 9 decimals); absent = the whole position.
 const Body = z.object({ asset: z.enum(["USDC_LEND", "SOL_LEND"]), venue: z.enum(["kamino_klend", "jupiter_lend"]), amountRaw: z.string().regex(/^\d+$/).optional() });
 /** R359: the smallest withdrawal, and the smallest rest a partial may leave (a smaller rest is taken too): 0.01 USDC, 0.0001 SOL. */
-export const LEND_MIN_RAW = { USDC_LEND: 10_000n, SOL_LEND: 100_000n } as const;
+const LEND_MIN_RAW = { USDC_LEND: 10_000n, SOL_LEND: 100_000n } as const;
 const MIN_TEXT = { USDC_LEND: "0.01 USDC", SOL_LEND: "0.0001 SOL" } as const;
 const POOL_FULL = "A venue can pause withdrawals when its pool is fully lent out; your money stays yours.";
 
