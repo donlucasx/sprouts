@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { COLORS, CAPS, BAKED_L, BAND_SCALE, PLANT_SPECIES, SWELL_REACH, type Placed } from "@/model/species";
 import { SPRITE_META } from "@/garden/sprite-meta";
+import { layoutPlant } from "@/model/plant-geometry";
 import { stageOf, branchFlags, twig, sprite, stem, along, swelling, pupsByCount, SWELL_LIFT, SWELL_TUCK, SWELL_SEPAL, type Acc } from "@/model/geometry/common";
 
 describe("the species constants (spec 4 and 9)", () => {
@@ -62,6 +63,18 @@ describe("the grammar's helpers", () => {
       expect(t.w0 + (t.w1 - t.w0) * (u / T)).toBeCloseTo(before.w0 + (before.w1 - before.w0) * u, 9);
     }
     expect(sw.x).toBeCloseTo(along(t.x0, t.y0, t.x1, t.y1, t.bend, (sw.y - t.y0) / (t.y1 - t.y0)).x, 9);   // the bud stands on the stem's paint
+  });
+  it("R358: every species' tip stem keeps its old width below the tip when it grows into the bud (no clamp fattens it)", () => {
+    const sh = (n: number) => Array.from({ length: n }, (_, i) => ({ id: `s${i}`, ageDays: 40 - i, band: 1 as const, opened: true, branch: false }));
+    const O = { fruit: 0, ripening: 0, blossom: false, pups: 0, head: false };
+    for (const sp of ["mandarin", "sunflower", "blueberry", "spruce"] as const) for (const n of [1, 3, 12]) for (const k of [1, 0.8]) {
+      const a = layoutPlant(sp, sh(n), { ...O, pending: 0 }, k).parts.find((p) => p.kind === "stem" && !p.shoot) as Extract<Placed, { kind: "stem" }>;
+      const b = layoutPlant(sp, sh(n), { ...O, pending: 1 }, k).parts.find((p) => p.kind === "stem" && !p.shoot) as Extract<Placed, { kind: "stem" }>;
+      const T = (b.y1 - b.y0) / (a.y1 - a.y0); expect(T, `${sp} ${n} ${k}`).toBeGreaterThan(1);
+      expect(b.w0 + (b.w1 - b.w0) / T, `${sp} ${n} ${k}`).toBeCloseTo(a.w1, 9);
+      const o = along(a.x0, a.y0, a.x1, a.y1, a.bend, 1), m = along(b.x0, b.y0, b.x1, b.y1, b.bend, 1 / T);
+      expect(m.x).toBeCloseTo(o.x, 9); expect(m.y).toBeCloseTo(o.y, 9);
+    }
   });
   it("a fresh bud wins the growth point (spec 5): the droplet's base rides above that bud's top, its leader grown up to it", () => {
     const a: Acc = { parts: [], tips: [] };

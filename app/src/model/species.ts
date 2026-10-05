@@ -8,8 +8,8 @@ export type Stage = 0 | 1 | 2 | 3;
 /** One planting as the geometry sees it: age in days, the amount band, opened or a bud, and whether it is a branch node (RG19). */
 export type ShootIn = { id: string; ageDays: number; band: Band; opened: boolean; branch: boolean };
 /** One placed thing: a sprite by name, or a vector stem by its two ends. x and y are px from the plant's foot (0, 0), y negative
- * upward, already multiplied by k; rot in degrees, SVG sense; scale multiplies the sprite's baked size (for `swelling` and `dot`
- * it is the circle's radius in px). */
+ * upward, already multiplied by k; rot in degrees, SVG sense; scale multiplies the sprite's baked size (for `dot` it is the
+ * circle's radius in px; R358: the swelling is a sprite like any other). */
 export type Placed =
   | { kind: "sprite"; name: string; x: number; y: number; rot: number; scale: number; xScale?: number; z: number; shoot?: string; part: "leaf" | "bud" | "blade" | "tier" | "token" | "blossom" | "head" | "bell" | "pup" | "swelling" | "tip" | "dot" | "furl" }
   | { kind: "stem"; x0: number; y0: number; x1: number; y1: number; w0: number; w1: number; bend: number; color: string; z: number; shoot?: string; part: "trunk" | "twig" | "nub" | "branch" | "cane" | "stalk" | "petiole" | "fan" };

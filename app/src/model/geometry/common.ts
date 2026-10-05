@@ -65,7 +65,8 @@ export const finish = (acc: Acc, growthPoint: { x: number; y: number }): PlantLa
 export const SWELL_LIFT = 1.87, SWELL_TUCK = 0.5, SWELL_SEPAL = 0.8;
 export const swellScale = (pending: number, k: number) => (Math.min(4.6, 2.2 + 3.2 * pending) / 3.8) * k;
 /** The stem `s` continued along its own quadratic to height `y` (y is linear in t, so t = T past 1): the first 1 / T of the new stem is
- * the old one exactly, its centreline and its width (gen01's taper is linear in t), never thinner than `minW` at the new end. */
+ * the old one exactly, its centreline and its width (gen01's taper is linear in t) (`minW` only a guard far under any
+ * real taper: a floor that fires would fatten the old stem). */
 function grow(s: Extract<Placed, { kind: "stem" }>, y: number, minW: number) {
   const T = (y - s.y0) / (s.y1 - s.y0); if (!(T > 1)) return;
   const end = along(s.x0, s.y0, s.x1, s.y1, s.bend, T), cx = (1 - T) * s.x0 + T * ((s.x0 + s.x1) / 2 + s.bend);
@@ -86,7 +87,7 @@ export function swelling(acc: Acc, species: Species, x: number, y: number, pendi
   const furled = nub ? acc.parts.filter((p): p is Extract<Placed, { kind: "sprite" }> => p.kind === "sprite" && p.part === "furl" && p.shoot === nub.shoot) : [];
   if (furled.length) base = Math.min(base, Math.min(...furled.map((p) => p.y - Math.cos(rad(p.rot)) * (BAKED_L[p.name.replace(/-s\d$/, "")]?.[Number(p.name.slice(-1))] ?? 12) * p.scale)) - 1 * k - SWELL_SEPAL * s);
   let bx = x;
-  if (tip) { grow(tip, base - SWELL_TUCK * s, 1.2 * k); bx = alongAtY(tip.x0, tip.y0, tip.x1, tip.y1, tip.bend, base); }
+  if (tip) { grow(tip, base - SWELL_TUCK * s, 0.4 * k); bx = alongAtY(tip.x0, tip.y0, tip.x1, tip.y1, tip.bend, base); }
   sprite(acc, "swelling", `swell-${species}`, bx, base, 0, s, 4);
 }
 export const band = (b: 0 | 1 | 2) => BAND_SCALE[b];
