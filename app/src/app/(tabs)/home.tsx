@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { View, Pressable, RefreshControl, Image, useWindowDimensions } from 'react-native'
 import { Link, Redirect, router, useFocusEffect } from 'expo-router'
 import { MaterialCommunityIcons } from '@expo/vector-icons'
@@ -10,6 +10,8 @@ import { plantLabel } from '@/lib/plant-label'
 import { api, ApiError, type MeResponse } from '@/lib/api'
 import { buildScene } from '@/model/garden'
 import { withDevBud, type DevBud } from '@/lib/dev-bud'
+import { DEMO_SHOT } from '@/lib/demo-shot'
+import { drawDemoWidget } from '@/lib/widget-refresh'
 import { frameFor, skyAbove, valuePull } from '@/model/layout'
 import { packScene } from '@/model/spread'
 import { plantLayouts } from '@/model/scene-to-layout'
@@ -78,6 +80,8 @@ export default function Home() {
   const today = now.toDateString()
   // R351's device check, DEV builds only: the dev menu's "Grow a bud" adds a local SKR bud; the can then waters it locally (nothing is sent)
   const [devBud, setDevBud] = useState<DevBud | null>(null)
+  const meRef = useRef(me)
+  meRef.current = me
   useEffect(() => {
     if (typeof __DEV__ !== 'undefined' && __DEV__) {
       void import('expo-dev-menu')
@@ -85,6 +89,7 @@ export default function Home() {
           registerDevMenuItems([
             { name: 'Grow a bud (SKR, local)', callback: () => setDevBud({ budAt: new Date(Date.now() - 1000), wateredAt: null }), shouldCollapse: true },
             { name: 'Clear the dev bud', callback: () => setDevBud(null), shouldCollapse: true },
+            ...(DEMO_SHOT ? [{ name: 'Demo: draw the widget', callback: () => void drawDemoWidget(meRef.current ?? null), shouldCollapse: true }] : []),
           ]),
         )
         .catch(() => {})
