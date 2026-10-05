@@ -1,5 +1,5 @@
 import type { MeResponse } from './api'
-import { confirmWithRetries } from './confirm-retry'
+import { confirmWithRetries, RELINK_NOT_ON_CHAIN_YET } from './confirm-retry'
 import { NEEDS_LIVE } from './lend-mock'
 import { leashPda, type SignFlow } from './sign'
 
@@ -20,6 +20,8 @@ export const RELINK = {
   body: 'Even if our server is hacked, it can only move your daily round-up (max $5) into your own savings. Never anywhere else.',
   button: 'Re-link',
   waiting: 'Waiting for your Seeker.',
+  /** After the signature returned, while the confirm (and its retries) runs: the Seeker is done. */
+  checking: 'Approved. Checking the chain.',
   disclosure: 'Linked a wallet on a computer?',
   web: (short: string) => `${short}: open sprouts.money/link on the computer with that wallet, enter the code, and approve.`,
   /** Contracts 5.5 verbatim: the link page shows this sentence beside the same address. */
@@ -99,12 +101,15 @@ export async function relinkThisPhone(a: {
   build: () => Promise<{ transaction: string }>
   sign: (flow: SignFlow) => (transaction: string) => Promise<string>
   confirm: (body: { signedTransaction: string }) => Promise<unknown>
+  /** Called once the Seeker returned the signature, before the first confirm. */
+  onSigned?: () => void
   sleep?: (ms: number) => Promise<void>
 }): Promise<void> {
   const built = await a.build()
   const signedTransaction = await a.sign({ kind: 'relink', user: a.user })(built.transaction)
+  a.onSigned?.()
   try {
-    await confirmWithRetries(() => a.confirm({ signedTransaction }), { sleep: a.sleep })
+    await confirmWithRetries(() => a.confirm({ signedTransaction }), { notOnChainYet: RELINK_NOT_ON_CHAIN_YET, sleep: a.sleep })
   } catch (e) {
     throw new RelinkSent(e)
   }
