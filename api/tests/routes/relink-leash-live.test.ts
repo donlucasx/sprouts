@@ -91,6 +91,21 @@ describe("relink.needed x LEASH_LIVE x plant-run, across relink/confirm", () => 
     expect(r.skipped).toEqual([]);
     expect(r.planted.length).toBe(1);
   });
+  it("R339 pilot (LEASH_LIVE unset, RELINK_PILOT lists this Seed Vault): the app's re-link card shows for its own wallet only; after relink/confirm the wallet is leashed and the card goes", async () => {
+    delete process.env.LEASH_LIVE;
+    await repo.addWallet({ pubkey: "WEB", userPubkey: user.address, delegationPda: "DW", dailyCapCents: 500 });   // a web-linked wallet stays on the puller
+    process.env.RELINK_PILOT = ` other, ${user.address} `;
+    try {
+      expect((await getMe()).relink).toEqual({ needed: true, wallets: [{ pubkey: user.address, via: "app" }] });   // never the link page before go-live
+      expect((await relink()).status).toBe(200);
+      expect((await repo.getWallet(user.address))!.linkModel).toBe("leash");
+      expect((await getMe()).relink).toEqual({ needed: false, wallets: [{ pubkey: "WEB", via: "link_page" }] });
+      // A user not on the list sees nothing before go-live.
+      process.env.RELINK_PILOT = "someone-else";
+      await repo.setWalletLink(user.address, { delegationPda: OLD, linkModel: "puller" });
+      expect((await getMe()).relink.needed).toBe(false);
+    } finally { delete process.env.RELINK_PILOT; }
+  });
   it("LEASH_LIVE=1 and no wallet on the puller link: not needed", async () => {
     process.env.LEASH_LIVE = "1";
     await repo.setWalletLink(user.address, { delegationPda: "D", linkModel: "leash" });

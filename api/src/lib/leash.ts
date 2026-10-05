@@ -120,6 +120,8 @@ export const SKR_PRICE_SOURCE = false;
 
 /** R297 go-live switch: new links point at the leash, old puller links stop planting. Off until the owner sets LEASH_LIVE=1. */
 export const leashLive = (): boolean => process.env.LEASH_LIVE === "1";
+/** R339 (10-05): the Seed Vault pubkeys asked to re-link before go-live (comma-separated, spaces ignored); the leash's one-wallet proof. */
+export const relinkPilot = (): string[] => (process.env.RELINK_PILOT ?? "").split(",").map((x) => x.trim()).filter(Boolean);
 
 export async function leashPda(delegator: Address, user: Address): Promise<Address> {
   const [pda] = await getProgramDerivedAddress({ programAddress: LEASH_PROGRAM, seeds: ["leash", enc.encode(delegator), enc.encode(user)] });
