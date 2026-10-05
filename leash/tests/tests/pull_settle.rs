@@ -45,12 +45,19 @@ fn under_delivery_against_min_out() {
 #[test]
 fn floor_boundary_synthetic_legs() {
     type Setup = fn(&mut World, &Pubkey) -> Leg;
-    let legs: [(Setup, u64, u64); 3] = [(cbbtc_leg, 5_000_000, CBBTC_FLOOR_5USD), (hsol_leg, 5_000_000, HSOL_FLOOR_5USD), (usdc_klend_leg, 2_000_000, USDC_KLEND_FLOOR_2USD)];
-    for (make, amount, floor) in legs {
+    // contracts 2.10 Kimi #1: the fixture's tol_bps, asserted. 100 on the fee-bearing coin legs (0, 1, 6, 7), 150 on the
+    // fee-free SOL lending legs (4, 5), 10 on the USDC lending legs (2, 3). This test plants on legs 7, 6, 2 (100, 100, 10).
+    let fixture = mainnet_config(&Pubkey::new_unique(), &Pubkey::new_unique(), ALL);
+    assert_eq!(fixture.legs.map(|l| l.tol_bps), [100, 100, 10, 10, 150, 150, 100, 100], "fixture tol_bps per leg");
+    assert_eq!(fixture.legs.map(|l| l.fee_bps), [50, 50, 0, 0, 0, 0, 50, 50], "fixture fee_bps per leg");
+    let legs: [(Setup, u64, u64, u16); 3] = [(cbbtc_leg, 5_000_000, CBBTC_FLOOR_5USD, 100), (hsol_leg, 5_000_000, HSOL_FLOOR_5USD, 100), (usdc_klend_leg, 2_000_000, USDC_KLEND_FLOOR_2USD, 10)];
+    for (make, amount, floor, tol) in legs {
         let mut w = world(ALL);
         let user = Pubkey::new_unique();
         let l = link(&mut w, user, user);
         let g = make(&mut w, &user);
+        let on_chain = decode_account(&w.svm.get_account(&w.config).unwrap().data).unwrap().legs[g.leg as usize];
+        assert_eq!(on_chain.tol_bps, tol, "leg {}: tol_bps in the installed Config", g.leg);
         let sink = new_token(&mut w.svm, pk(&c::USDC), Pubkey::new_unique(), 0);
         expect_custom(run(planting(&w, &l, &g, amount, floor, floor - 1, sink, 0), &mut w), 3, 6009);
         expect_custom(run(planting(&w, &l, &g, amount, floor - 1, floor - 1, sink, 0), &mut w), 0, 6008);
@@ -465,6 +472,43 @@ fn compute_units_per_leg() {
             (v[0], v[v.len() / 2], v[v.len() - 1])
         };
         println!("CU {name} (min, median, max of 16 users): pull incl. CPI {:?}, of which Subscriptions {:?}; settle {:?}; tx total {:?}", col(0), col(1), col(2), col(3));
-        assert!(col(3).2 < 200_000, "a planting fits the default 200k budget");
+        // Task 6, 3,000 users per leg: tx-total median 25.7k-27.6k, max 72,559 (hSOL; each extra bump attempt ~1.5k). A
+        // 70k max bound would fail ~1-2% of runs on bump luck alone, so the regression bound is on the MEDIAN (40k: ~12k
+        // of headroom, about one more Config copy) and the max keeps a no-flake ceiling (100k: ~20 bump attempts past
+        // the 3,000-user max), both far inside the 200k default budget.
+        assert!(col(3).1 < 40_000, "{name}: median planting (stand-in swap included) under 40k CU, got {}", col(3).1);
+        assert!(col(3).2 < 100_000, "{name}: every planting under 100k CU, max {}", col(3).2);
     }
+}
+
+#[test]
+fn interleaved_pairs_are_refused() {
+    // [pull A, swap, settle A, pull B, swap, settle B]: each pair valid on its own; pull A sees three other leash ixs
+    let (mut w, l, g, sink) = setup();
+    let half = 2_500_000u64;
+    let f = price::floor_raw(half, 1, 1, Some((6_500_000_000_000, -8)), 50, 100, 8).unwrap() as u64;
+    let a = planting(&w, &l, &g, half, f, f, sink, 0);
+    let b = planting(&w, &l, &g, half, f, f, sink, f as u128);
+    expect_custom(run([a.clone(), b].concat(), &mut w), 0, 6006);
+    assert_eq!(token_amount(&w.svm, &l.delegator_usdc), 100_000_000);
+    // control: the first pair alone passes
+    run(a, &mut w).expect("one pair");
+    assert_eq!(token_amount(&w.svm, &g.receipt), f);
+}
+
+#[test]
+fn returning_user_settles_on_the_delta() {
+    // the receipt already holds 1_000_000 sats: pull reads pre = 1_000_000 and pins it into settle's data; the floor is
+    // measured on post - pre, not on the balance
+    let (mut w, l, g, sink) = setup();
+    let held = 1_000_000u64;
+    let user = l.user;
+    put(&mut w.svm, g.receipt, token_program(), token_data(&b58(addr::CBBTC), &user, held));
+    // settle claiming pre 0 (the balance would then count as delivered): pull's pinned pre differs, SettleMismatch
+    expect_custom(run(planting(&w, &l, &g, 5_000_000, CBBTC_FLOOR_5USD, 0, sink, 0), &mut w), 0, 6007);
+    // pre = the held balance, one unit under the floor delivered: refused at settle although post >> min_out
+    expect_custom(run(planting(&w, &l, &g, 5_000_000, CBBTC_FLOOR_5USD, CBBTC_FLOOR_5USD - 1, sink, held as u128), &mut w), 3, 6009);
+    run(planting(&w, &l, &g, 5_000_000, CBBTC_FLOOR_5USD, CBBTC_FLOOR_5USD, sink, held as u128), &mut w).expect("a returning user's planting");
+    assert_eq!(token_amount(&w.svm, &g.receipt), held + CBBTC_FLOOR_5USD);
+    assert_eq!(token_amount(&w.svm, &l.delegator_usdc), 95_000_000);
 }

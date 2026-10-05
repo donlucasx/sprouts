@@ -1,5 +1,5 @@
 [workspace]
-members = ["program", "tests"]
+members = ["program", "tests", "tests/cpi-wrapper"]
 resolver = "2"
 
 [workspace.package]

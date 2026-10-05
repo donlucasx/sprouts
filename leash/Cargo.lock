@@ -1261,6 +1261,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "leash-cpi-wrapper"
+version = "0.1.0"
+dependencies = [
+ "pinocchio",
+]
+
+[[package]]
 name = "leash-tests"
 version = "0.1.0"
 dependencies = [
