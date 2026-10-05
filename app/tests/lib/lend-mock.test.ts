@@ -29,6 +29,12 @@ describe('the dev mock (EXPO_PUBLIC_LEND_MOCK=1 only)', () => {
     expect(me.history.plantings.map((p) => p.asset)).toEqual(['USDC_LEND', 'SOL_LEND'])
     expect(me.moveProposal).toBeNull()   // no faked card unless EXPO_PUBLIC_LEND_MOCK_MOVE=1
   })
+  it('every wallet is on the old puller link; another active wallet re-links on the link page, a revoked one is not asked (T9)', () => {
+    const withWeb = { ...real, wallets: [...real.wallets, { pubkey: 'W', status: 'active', dailyCapCents: 500 }, { pubkey: 'R', status: 'revoked', dailyCapCents: 500 }] } as MeResponse
+    const me = mockAfter('/api/me', withWeb) as MeResponse
+    expect(me.wallets.map((w) => w.linkModel)).toEqual(['puller', 'puller', 'puller'])
+    expect(me.relink).toEqual({ needed: true, wallets: [{ pubkey: 'U', via: 'app' }, { pubkey: 'W', via: 'link_page' }] })
+  })
   it('Terms accepted through the mock stay accepted', () => {
     expect(mockBefore('/api/terms', 'POST', { version: '2026-10-06' })).toMatchObject({ answer: { acceptedVersion: '2026-10-06' } })
     expect((mockAfter('/api/me', real) as MeResponse).terms?.acceptedVersion).toBe(FIXTURE_TERMS_VERSION)

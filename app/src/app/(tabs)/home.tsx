@@ -21,6 +21,7 @@ import { NextPlanting, roomUnderBar } from '@/components/NextPlanting'
 import { canSlot } from '@/model/can'
 import { nextPlantingRow } from '@/lib/next-planting'
 import { PauseRow } from '@/components/PauseRow'
+import { RelinkCard } from '@/components/RelinkCard'
 import { arrivalLine, formatUsd, formatSkr, formatAsOf } from '@/lib/format'
 import { useSession } from '@/lib/session'
 import { gardenTotals, pauseState, coinRows, statTiles, walletsLine, lastPlantingLine } from '@/lib/me-state'
@@ -186,6 +187,7 @@ export default function Home() {
       {pause.shown ? (
         <PauseRow on={pause.on} line={pause.line} busy={pausing} error={pauseError} onChange={togglePaused} />
       ) : null}
+      <RelinkCard me={me} />
       <Garden
         scene={scene}
         labelFor={(plant, bud) => plantLabel(me, plant, bud)}
