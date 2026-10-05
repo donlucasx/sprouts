@@ -5,7 +5,7 @@ import { FIXTURE_ACTIVITY, FIXTURE_POSITIONS, FIXTURE_TERMS_VERSION, FIXTURE_VEN
 export const LEND_MOCK = process.env.EXPO_PUBLIC_LEND_MOCK === "1";
 const LEND_MOCK_MOVE = process.env.EXPO_PUBLIC_LEND_MOCK_MOVE === "1";
 const POOL_FULL = "A venue can pause withdrawals when its pool is fully lent out; your money stays yours.";
-const NEEDS_LIVE = "Mock mode: this needs the live API.";
+export const NEEDS_LIVE = "Mock mode: this needs the live API.";
 let termsAccepted = false;
 export function resetMock() {
   termsAccepted = false;
