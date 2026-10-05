@@ -7,6 +7,8 @@ import { ASSETS, COINS, isLendAsset, type LendAsset, type LiveAsset } from "@/do
 import { addDays, dayOf } from "@/domain/day";
 import { capLeftCents, plantAmountCents } from "@/domain/cap";
 import { redistributeDisabled } from "@/domain/split";
+import { lendingUsdByProtocol } from "./user-routing";
+export { lendingUsdByProtocol } from "./user-routing";
 import { AUTO_VENUES, VENUE_PROTOCOL, pickVenue, venueCandidates, type AutoVenue, type Protocol } from "@/domain/venues";
 import { LEASH_PROGRAM } from "./constants";
 import { enabledLegs, leashLegOf, leashLive, LEASH_ERRORS, LEG_SPEC, SKR_PRICE_SOURCE, type LeashConfig, type LeashLegByte } from "./leash";
@@ -391,19 +393,6 @@ export function legShortfall(sim: Simulation, built: Built, asset: LiveAsset, ve
     return floatsShortfall(sim, built, asset, carry);
   }
   return deliveryShortfall(sim, built, asset, carry.SKR ?? 0n) ?? floatsShortfall(sim, built, asset, carry);
-}
-
-/** The user's lending value per protocol (the 60% cap's input): receipt x the venue's exchange rate (underlying raw per receipt raw) x the underlying's price. */
-export function lendingUsdByProtocol(positions: LendPosition[], rows: VenueDayRow[], prices: Partial<Record<LendAsset, number | null>>): Partial<Record<Protocol, number>> {
-  const out: Partial<Record<Protocol, number>> = {};
-  for (const p of positions) {
-    const price = prices[p.asset];
-    if (!price) continue;
-    const rate = rows.find((r) => r.venue === p.venue && r.asset === p.asset)?.exchangeRate ?? 1;
-    const usd = ((Number(p.receiptRaw) * rate) / 10 ** COINS[p.asset].decimals) * price;
-    out[VENUE_PROTOCOL[p.venue]] = (out[VENUE_PROTOCOL[p.venue]] ?? 0) + usd;
-  }
-  return out;
 }
 
 /** The leash program's own custom error in a failed simulation, read from its "Program <leash> failed" log line (other programs' 6000-range codes do not count). */
