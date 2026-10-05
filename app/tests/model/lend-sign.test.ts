@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { signLabel, boardXOf, signX, signScale, signPlacement, stakeAt, stakeScale, stakeSides, frameFor, LEND_SIGN, LEND_STAKE_K, SIDE_GUTTER, SIGN_LABEL, SIGN_FOOT, SIGN_SOIL_MARGIN, STAKE_TRUNK } from "@/model/layout";
+import { FOOT_Y, signLabel, boardXOf, signX, signScale, signPlacement, stakeAt, stakeScale, stakeSpots, drawnSpans, frameFor, STAKE_WALK, LEND_SIGN, LEND_STAKE_K, SIDE_GUTTER, SIGN_LABEL, SIGN_FOOT, SIGN_SOIL_MARGIN, STAKE_TRUNK } from "@/model/layout";
 import { packScene } from "@/model/spread";
 import { plantLayouts } from "@/model/scene-to-layout";
 import type { Scene } from "@/model/garden";
@@ -55,29 +55,46 @@ describe("the lending plants (contracts 7.1)", () => {
     expect(lines.jupsol).toEqual({ line1: "SOL", line2: "Jupiter 3.9%" });
     expect(lines.skr).toEqual({ line1: "SKR", line2: null });
   });
-  it("every stake, wide ones too, stands in the soil at 320 and 353 wide", () => {
-    for (const width of [320, 353]) for (const scene of [lendScene(LEND), packScene(lendScene(LEND), width)]) {
-      const zoom = frameFor(scene, plantLayouts(scene), width).zoom, sides = stakeSides(scene, width, zoom);
-      for (const q of scene.parts) if (q.kind === "sign") for (const z of [1, zoom]) {
-      const at = signPlacement(q, width, z, appGround(width), sides), g = appGround(width);
-      expect(soilBottomAt(at.x + SIGN_FOOT.x * at.scale, g) - (at.y + SIGN_FOOT.y * at.scale)).toBeGreaterThanOrEqual(SIGN_SOIL_MARGIN - 0.06);
+  it("every stake, wide ones too, stands in the soil at 320, 353 and 360 wide", () => {
+    for (const width of [320, 353, 360]) for (const s0 of SCENES()) for (const scene of [s0, packScene(s0, width)]) {
+      const plants = plantLayouts(scene), zoom = frameFor(scene, plants, width).zoom;
+      for (const z of [1, zoom]) {
+        const spots = stakeSpots(scene, plants, width, z);
+        for (const q of scene.parts) if (q.kind === "sign") {
+          const at = signPlacement(q, width, z, appGround(width), spots), g = appGround(width);
+          expect(soilBottomAt(at.x + SIGN_FOOT.x * at.scale, g) - (at.y + SIGN_FOOT.y * at.scale)).toBeGreaterThanOrEqual(SIGN_SOIL_MARGIN - 0.06);
+        }
       }
     }
   });
 });
 
-/** Each back-row board's span [lo, hi] in canvas px as the app draws it (packed, framed, sides resolved), left to right. */
-function backBoards(scene0: Scene, width: number) {
-  const scene = packScene(scene0, width), zoom = frameFor(scene, plantLayouts(scene), width).zoom, sides = stakeSides(scene, width, zoom);
-  return scene.parts.flatMap((q) => {
-    if (q.kind !== "sign" || q.row !== "back") return [];
-    const a = stakeAt(q, width, zoom, sides), h = 15 * a.scale * a.boardX;
-    return [{ plant: q.plant, lo: a.x - h, hi: a.x + h, side: a.side }];
-  }).sort((a, b) => a.lo - b.lo);
-}
 const only = (split: Partial<GardenInput["allocation"]>): GardenInput["allocation"] => ({ SKR: 0, stORE: 0, USDC_LEND: 0, SOL_LEND: 0, hSOL: 0, cbBTC: 0, ...split });
+/** The gardens the stake tests hold: the Seeker's mock garden (10-04: SKR, USDC and SOL planted, hSOL and cbBTC bare), four coins
+ * with cbBTC bare, all six planted young, five grown (60 days), and SKR with USDC alone. */
+function SCENES(): Scene[] {
+  const g = (plantings: GardenInput["plantings"], allocation = base.allocation) => buildScene({ ...base, lendSigns: LEND, allocation, plantings });
+  return [
+    g([p("s", 9, "SKR"), p("s2", 8, "SKR"), p("s3", 7, "SKR"), p("u", 2, "USDC_LEND"), p("l", 3, "SOL_LEND")]),
+    lendScene(LEND),
+    g([p("s", 6, "SKR"), p("u", 2, "USDC_LEND"), p("l", 3, "SOL_LEND"), p("h", 4, "hSOL"), p("c", 5, "cbBTC"), p("o", 5, "stORE")], { ...base.allocation, stORE: 5 }),
+    g([p("s", 60, "SKR"), p("s2", 50, "SKR"), p("u", 60, "USDC_LEND"), p("l", 60, "SOL_LEND"), p("h", 60, "hSOL"), p("c", 60, "cbBTC")]),
+    g([p("s", 6, "SKR"), p("u", 2, "USDC_LEND")], only({ SKR: 50, USDC_LEND: 50 })),
+  ];
+}
+/** The garden as the app draws it at `width`: packed, framed, the stakes' spots resolved. */
+function drawn(scene0: Scene, width: number) {
+  const scene = packScene(scene0, width), plants = plantLayouts(scene), f = frameFor(scene, plants, width), spots = stakeSpots(scene, plants, width, f.zoom);
+  const boards = scene.parts.flatMap((q) => {
+    if (q.kind !== "sign") return [];
+    const a = stakeAt(q, width, f.zoom, spots), h = 15 * a.scale * a.boardX;
+    return [{ q, a, lo: a.x - h, hi: a.x + h, natural: signX(q.x * width, a.side, width, a.scale, a.boardX) }];
+  });
+  return { scene, plants, f, spots, boards };
+}
+const cover = (lo: number, hi: number, spans: readonly (readonly [number, number])[]) => spans.reduce((t, [l, h]) => t + Math.max(0, Math.min(hi, h) - Math.max(lo, l)), 0);
 
-describe("fix round 1: the lending stake larger as a whole (R262, legible on the phone)", () => {
+describe("the lending stake larger as a whole (R262, legible on the phone)", () => {
   it("a two-line stake is LEND_STAKE_K times its row's scale; a one-line stake is unchanged", () => {
     const two = { line1: "USDC", line2: "Kamino 4.4%" }, one = { line1: "SKR", line2: null };
     expect(LEND_STAKE_K).toBe(1.35);
@@ -88,55 +105,81 @@ describe("fix round 1: the lending stake larger as a whole (R262, legible on the
     const q = lendScene(LEND).parts.find((x) => x.kind === "sign" && x.plant === "jupsol")!;
     expect(signPlacement(q as Extract<typeof q, { kind: "sign" }>, 320, 2).scale).toBeCloseTo(stakeScale("back", two) / 2, 9);
   });
-  it("adjacent back-row boards do not overlap at 320 or 353 wide (the lending plants, hSOL, and SKR in front)", () => {
-    for (const width of [320, 353]) {
-      const b = backBoards(buildScene({ ...base, lendSigns: LEND, allocation: only({ SKR: 40, USDC_LEND: 20, SOL_LEND: 20, hSOL: 20 }), plantings: [p("s", 6, "SKR"), p("u", 2, "USDC_LEND"), p("l", 3, "SOL_LEND"), p("h", 4, "hSOL")] }), width);
-      expect(b.map((x) => x.plant)).toEqual(["hsol", "jitosol", "jupsol"]);
-      for (let i = 1; i < b.length; i++) expect(b[i].lo).toBeGreaterThanOrEqual(b[i - 1].hi);
+});
+
+describe("R326: a lending stake stands where its whole board reads", () => {
+  it("no back-row board overlaps another, cbBTC's included (the round 1 SOL/cbBTC collision), at 320, 353 and 360", () => {
+    for (const width of [320, 353, 360]) for (const s0 of SCENES()) {
+      const b = drawn(s0, width).boards.filter((x) => x.q.row === "back").sort((x, y) => x.lo - y.lo);
+      for (let i = 1; i < b.length; i++) expect(b[i].lo, `${width} ${b[i - 1].q.plant}/${b[i].q.plant}`).toBeGreaterThanOrEqual(b[i - 1].hi - 1e-6);
     }
   });
-  // KNOWN COLLISION (fix round 1 report): with cbBTC's stake too, SOL's board and cbBTC's share an 80 px gap at 320 and overlap (by up
-  // to 24 px at 1.35, 4 px even at 1.0). it.fails records it; when a ruling resolves it this turns red: make it a plain it then.
-  it.fails("KNOWN: with cbBTC's stake, the SOL and cbBTC boards still overlap at 320", () => {
-    const b = backBoards(lendScene(LEND), 320);
-    for (let i = 1; i < b.length; i++) expect(b[i].lo).toBeGreaterThanOrEqual(b[i - 1].hi);
+  /** A two-line face's cover by front parts (over its words) and back parts (under it), canvas px, as drawn. */
+  const faceCover = (d: ReturnType<typeof drawn>, x: ReturnType<typeof drawn>["boards"][number], width: number, c = x.a.x) => {
+    const y = FOOT_Y(x.q.row) + 4, h = x.hi - x.a.x, band = (row: "front" | "back") => drawnSpans(d.plants.filter((l) => l.row === row), width, y - 12 * x.a.scale, y - x.a.scale);
+    return { front: cover(c - h, c + h, band("front")), back: cover(c - h, c + h, band("back")) };
+  };
+  it("a two-line face reads clear where its reach holds a clear spot (four coins at 320 and 360, six at 360)", () => {
+    for (const [s0, width] of [[SCENES()[1], 320], [SCENES()[1], 360], [SCENES()[2], 360]] as const) {
+      const d = drawn(s0, width);
+      for (const x of d.boards) if (x.q.lines.line2) {
+        const c = faceCover(d, x, width);
+        expect(c.front, `${width} ${x.q.plant}`).toBe(0); expect(c.back, `${width} ${x.q.plant}`).toBeLessThanOrEqual(0.5);
+        expect(x.lo).toBeGreaterThanOrEqual(1 - 1e-6); expect(x.hi).toBeLessThanOrEqual(width - 1 + 1e-6);
+      }
+    }
+  });
+  it("its post stays its plant's: nearer its own foot than any other back-row foot", () => {
+    for (const width of [320, 353, 360]) for (const s0 of SCENES()) {
+      const d = drawn(s0, width), feet = d.boards.filter((x) => x.q.row === "back");
+      for (const x of feet) if (x.q.lines.line2) for (const o of feet) if (o !== x)
+        expect(Math.abs(x.a.x - x.q.x * width), `${width} ${x.q.plant}/${o.q.plant}`).toBeLessThan(Math.abs(x.a.x - o.q.x * width));
+    }
+  });
+  // KNOWN (fix round 2 report): in the Seeker's garden the mandarin's canopy, as drawnSpans measures it (baked boxes with their clear
+  // margins, swayed 5 degrees), spans the board's height over the whole stretch where the USDC post is nearer its own foot than the
+  // blueberry's, so no x in reach is clear by that measure. On the Seeker (t3-garden-r2.png) the words read whole, a leaf touching the
+  // board's left edge. it.fails records it; a tighter measure or a ruling turns it red.
+  it.fails("KNOWN: the Seeker's garden at 360 still hides part of the USDC face behind the mandarin", () => {
+    const d = drawn(SCENES()[0], 360), x = d.boards.find((b) => b.q.plant === "jitosol")!;
+    expect(faceCover(d, x, 360).front).toBe(0);
+  });
+  it("one-line stakes keep R237's side at signX", () => {
+    for (const width of [320, 360]) for (const s0 of SCENES()) for (const x of drawn(s0, width).boards) if (!x.q.lines.line2) {
+      expect(x.a.side).toBe(x.q.side); expect(x.a.x).toBeCloseTo(signX(x.q.x * width, x.q.side, width, x.a.scale, x.a.boardX), 9);
+    }
   });
 });
 
-describe("fix round 1: a lending stake steps off a front trunk (BUILD-INVENTED RULE, narrows R237, awaits Lucas)", () => {
+describe("R327: a lending stake steps off a front trunk", () => {
   const two = (lendSigns: GardenInput["lendSigns"]) => buildScene({ ...base, lendSigns, allocation: only({ SKR: 50, USDC_LEND: 50 }), plantings: [p("s", 6, "SKR"), p("u", 2, "USDC_LEND")] });
-  it("SKR in front, USDC_LEND behind at the adjacent slot: R237's side lands on the mandarin's trunk, so the stake flips clear of it", () => {
+  it("SKR in front, USDC_LEND behind at the adjacent slot: R237's side lands on the mandarin's trunk, so the stake stands on the other side", () => {
     for (const width of [320, 353]) {
-      const scene = two(LEND), skr = scene.parts.flatMap((q) => (q.kind === "plant" && q.plant === "skr" ? [q.x] : []))[0] * width;
+      const scene = two(LEND), plants = plantLayouts(scene), skr = scene.parts.flatMap((q) => (q.kind === "plant" && q.plant === "skr" ? [q.x] : []))[0] * width;
       const q = scene.parts.find((x) => x.kind === "sign" && x.plant === "jitosol") as Extract<Scene["parts"][number], { kind: "sign" }>;
       expect(q.side).toBe(-1);   // R237: left, toward the SKR mandarin
-      const span = (side: -1 | 1) => { const a = stakeAt({ ...q, side }, width, 1), h = 15 * a.scale * a.boardX; return [a.x - h, a.x + h]; };
-      const [lo0, hi0] = span(-1);
-      expect(skr + STAKE_TRUNK > lo0 && skr - STAKE_TRUNK < hi0).toBe(true);   // would sit on the trunk
-      const sides = stakeSides(scene, width, 1);
-      expect(sides.get("jitosol")).toBe(1);
-      const at = signPlacement(q, width, 1, appGround(width), sides), h = 15 * at.scale * at.boardX;
+      const a0 = stakeAt(q, width, 1), h0 = 15 * a0.scale * a0.boardX;
+      expect(skr + STAKE_TRUNK > a0.x - h0 && skr - STAKE_TRUNK < a0.x + h0).toBe(true);   // would sit on the trunk
+      const spots = stakeSpots(scene, plants, width, 1);
+      expect(spots.get("jitosol")!.side).toBe(1);
+      const at = signPlacement(q, width, 1, appGround(width), spots), h = 15 * at.scale * at.boardX;
       expect(at.x - h).toBeGreaterThanOrEqual(skr + STAKE_TRUNK);   // clear of the trunk band
       expect(at.x + h).toBeLessThanOrEqual(width - 1);
     }
   });
-  it("a one-line stake never flips (the same scene without line two keeps R237's side)", () => {
+  it("a one-line stake never moves (the same scene without line two keeps R237's side at signX)", () => {
     const scene = two(null);
-    expect(stakeSides(scene, 320, 1).get("jitosol")).toBe(-1);
+    expect(stakeSpots(scene, plantLayouts(scene), 320, 1).get("jitosol")).toEqual({ side: -1, x: null });
   });
 });
 
-describe("fix round 1: a bare stake the frame would cut is framed whole (the mock's cbBTC at the card's edge)", () => {
+describe("a bare stake the frame would cut is framed whole (round 1: the mock's cbBTC at the screen's edge)", () => {
   it("every stake is wholly inside the frame or wholly past the SIDE_GUTTER band the view draws beyond it", () => {
-    // the Seeker's mock garden (10-04, width 360): SKR, USDC and SOL planted, hSOL and cbBTC bare; cbBTC's stake 3.5 px past the frame
-    const seeker = buildScene({ ...base, lendSigns: LEND, plantings: [p("s", 9, "SKR"), p("s2", 8, "SKR"), p("s3", 7, "SKR"), p("u", 2, "USDC_LEND"), p("l", 3, "SOL_LEND")] });
-    const scenes = [seeker, lendScene(LEND), buildScene({ ...base, lendSigns: LEND, plantings: [p("s", 6, "SKR"), p("l", 3, "SOL_LEND")] }), buildScene({ ...base, plantings: [p("s", 6, "SKR")] })];
-    for (const width of [320, 353, 360]) for (const s0 of scenes) {
-      const scene = packScene(s0, width), f = frameFor(scene, plantLayouts(scene), width), sides = stakeSides(scene, width, f.zoom);
-      for (const q of scene.parts) if (q.kind === "sign") {
-        const a = stakeAt(q, width, f.zoom, sides), h = 15 * a.scale * a.boardX, lo = a.x - h, hi = a.x + h;
-        const g = SIDE_GUTTER / f.zoom, inside = lo >= f.x - 1e-6 && hi <= f.x + f.w + 1e-6, outside = hi <= f.x - g || lo >= f.x + f.w + g;
-        expect(inside || outside).toBe(true);
+    for (const width of [320, 353, 360]) for (const s0 of [...SCENES(), buildScene({ ...base, plantings: [p("s", 6, "SKR")] })]) {
+      const d = drawn(s0, width), g = SIDE_GUTTER / d.f.zoom;
+      for (const x of d.boards) {
+        const inside = x.lo >= d.f.x - 1e-6 && x.hi <= d.f.x + d.f.w + 1e-6, outside = x.hi <= d.f.x - g || x.lo >= d.f.x + d.f.w + g;
+        expect(inside || outside, `${width} ${x.q.plant}`).toBe(true);
       }
     }
   });

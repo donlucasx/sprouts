@@ -1,6 +1,6 @@
 import type { Part, PlantId, Scene } from "./garden";
 import { plantLayouts } from "./scene-to-layout";
-import { frameFor, stakeSides, stakeAt, windSpan, SIGN_GAP } from "./layout";
+import { frameFor, stakeSpots, stakeAt, windSpan, SIGN_GAP } from "./layout";
 
 /**
  * R234 (10-04, his ruling, "Adaptive spacing"): while the plants are small the garden packs them together, so RG30's frame can zoom in
@@ -25,10 +25,10 @@ type Occ = { plant: PlantId; row: "front" | "back"; x: number; lo: number; hi: n
 
 /** Each occupant's reach from its foot (canvas px at `width`): its plant in the wind and its stake at `zoom`. */
 function occupants(scene: Scene, width: number, zoom: number): Occ[] {
-  const L = plantLayouts(opened(scene)), out: Occ[] = [], sides = stakeSides(scene, width, zoom);
+  const L = plantLayouts(opened(scene)), out: Occ[] = [], spots = stakeSpots(scene, L, width, zoom);
   for (const q of scene.parts) if (q.kind === "sign") {
-    // fix round 1: the stake's own scale, board and side (a two-line stake is larger and may flip off a front trunk), unclamped
-    const at = stakeAt(q, width, zoom, sides), foot = q.x * width, half = 15 * at.scale * at.boardX, mid = at.side * (half + SIGN_GAP);
+    // the stake's own scale and board; a one-line stake at its side, unclamped; a two-line stake where R326/R327 put it
+    const at = stakeAt(q, width, zoom, spots), foot = q.x * width, half = 15 * at.scale * at.boardX, mid = q.lines.line2 ? at.x - foot : at.side * (half + SIGN_GAP);
     let lo = mid - half, hi = mid + half;
     const p = L.find((l) => l.plant === q.plant);
     if (p) { const w = windSpan([p], width); lo = Math.min(lo, w.lo - foot); hi = Math.max(hi, w.hi - foot); }

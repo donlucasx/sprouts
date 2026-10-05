@@ -106,41 +106,109 @@ export function signStand(x: number, want: number, scale: number, soilBottom: (x
 }
 /** The app's stake for a sign part, at the garden's width: its anchor, its drawn scale and its board's widening. */
 /** R234: `zoom` is the frame's; the stake's drawn scale is signScale over it, so a stake keeps one size on screen while the plants zoom. */
-/** `sides`: stakeSides of the scene being drawn (a two-line stake's side after its flip); absent, the scene's own side. */
-export function signPlacement(s: StakeOf, width: number, zoom = 1, ground: GroundPlace = appGround(width), sides?: ReadonlyMap<PlantId, -1 | 1>) {
-  const { x, scale, boardX, side } = stakeAt(s, width, zoom, sides), g = ground;
+/** `spots`: stakeSpots of the scene being drawn (a two-line stake's side and x after R327's flip and R326's clear-spot search);
+ * absent, the scene's own side at signX. */
+export function signPlacement(s: StakeOf, width: number, zoom = 1, ground: GroundPlace = appGround(width), spots?: Spots) {
+  const { x, scale, boardX, side } = stakeAt(s, width, zoom, spots), g = ground;
   return { x, y: signStand(x, FOOT_Y(s.row) + 4, scale, (px) => soilBottomAt(px, g)), scale, boardX, side };
 }
 type StakeOf = { plant?: PlantId; x: number; side: -1 | 1; row: "front" | "back"; lines?: SignLines };
+export type Spot = { side: -1 | 1; x: number | null };
+export type Spots = ReadonlyMap<PlantId, Spot>;
 /** A stake's x, drawn scale (stakeScale over the zoom), board widening and side: the one place every caller (signPlacement, frameAt,
  * the packing) reads them from. */
-export function stakeAt(s: StakeOf, width: number, zoom: number, sides?: ReadonlyMap<PlantId, -1 | 1>) {
-  const scale = stakeScale(s.row, s.lines) / zoom, boardX = boardXOf(s.lines), side = (s.plant && sides?.get(s.plant)) || s.side;
-  return { x: signX(s.x * width, side, width, scale, boardX), scale, boardX, side };
+export function stakeAt(s: StakeOf, width: number, zoom: number, spots?: Spots) {
+  const scale = stakeScale(s.row, s.lines) / zoom, boardX = boardXOf(s.lines), spot = s.plant ? spots?.get(s.plant) : undefined, side = spot?.side ?? s.side;
+  return { x: spot?.x ?? signX(s.x * width, side, width, scale, boardX), scale, boardX, side };
 }
 /**
- * BUILD-INVENTED RULE (fix round 1 of lending Task 3, 10-04; NOT Lucas's ruling: it narrows R237 and waits for his): a two-line
- * (lending) back-row stake whose board would be covered takes the other side of its plant, when that side is clear and its board fits
- * inside the canvas unclamped; otherwise it keeps R237's side. "Covered" and "clear" mean: the board overlaps a present front-row
- * plant's trunk band (its foot x +/- STAKE_TRUNK canvas px: the mandarin's trunk and its lowest branch base; R226 draws the front row
- * over the back stakes, and R237 stopped counting front plants for a back stake's side), or another back-row stake's board (at its
- * own side, the flips taken left to right). Why: on the Seeker the USDC stake's "Kamino 4.4%" sat behind the SKR mandarin's trunk.
- * One-line stakes are untouched. Returns each stake's side by plant.
+ * R327 (10-04, ruled; it narrows R237): a two-line (lending) back-row stake whose board would be covered takes the other side of its
+ * plant, when that side is clear and its board fits inside the canvas unclamped; otherwise it keeps R237's side. "Covered" here: the
+ * board overlaps a present front-row plant's trunk band (its foot x +/- STAKE_TRUNK canvas px) or another back-row stake's board.
+ *
+ * R326 (10-04, "adjust stake placement for legibility. careful w putting the sign over the leaves, as it may cover the early plant
+ * sprout"): then, from that spot, the stake searches outward on both sides for the nearest x where its whole board face clears every
+ * plant's drawn parts (front plants cover a board, R226; a board covers back plants and their sprouts, its own plant's included) and
+ * every other stake's board, inside the canvas; never drawn over the front row. Its post stays its plant's: at most STAKE_WALK screen
+ * px from where signX (after R327) puts it, and nearer its own foot than any other back-row foot. The two-line stakes are placed
+ * together; with no clear x in reach they take the least covered (a front part over the words weighs STAKE_FRONT_W, a part under
+ * the board 1), and a board never overlaps another while any placement avoids it. One-line stakes keep R237's side and signX.
  */
 export const STAKE_TRUNK = 10;
-export function stakeSides(scene: Scene, width: number, zoom: number): Map<PlantId, -1 | 1> {
-  const signs = scene.parts.flatMap((q) => (q.kind === "sign" ? [q] : [])).sort((a, b) => a.x - b.x);
-  const out = new Map<PlantId, -1 | 1>(signs.map((q) => [q.plant, q.side]));
-  const trunks = scene.parts.flatMap((q) => (q.kind === "plant" && q.row === "front" ? [q.x * width] : []));
-  const span = (q: (typeof signs)[number], side: -1 | 1) => { const a = stakeAt({ ...q, side }, width, zoom), h = 15 * a.scale * a.boardX; return [a.x - h, a.x + h] as const; };
-  const covered = (q: (typeof signs)[number], [lo, hi]: readonly [number, number]) =>
-    trunks.some((f) => f + STAKE_TRUNK > lo && f - STAKE_TRUNK < hi) ||
-    signs.some((o) => o !== q && o.row === "back" && (([l, h]) => h > lo && l < hi)(span(o, out.get(o.plant)!)));
-  for (const q of signs) {
-    if (!q.lines.line2 || q.row !== "back" || !covered(q, span(q, q.side))) continue;
-    const other = -q.side as -1 | 1, a = stakeAt(q, width, zoom), h = 15 * a.scale * a.boardX, c = q.x * width + other * (h + SIGN_GAP);
-    if (c - h >= 1 && c + h <= width - 1 && !covered(q, span(q, other))) out.set(q.plant, other);
+/** R326: how far (screen px) a two-line stake may walk from its signX spot; the clearance (canvas px) kept from a drawn part. */
+export const STAKE_WALK = 48, STAKE_CLEAR = 1.5;
+/** R326: a front part over a board hides its words; one under it only hides a little plant: the search weighs the first 3 to 1. */
+export const STAKE_FRONT_W = 3;
+/** The angles the clearance holds a plant at: still and its steady sway either way (motion SWAY.deg; the gust is momentary). */
+const STAKE_SWAY = [-5, 0, 5] as const;
+/** Each drawn part's x span (canvas px) inside the vertical band [y0, y1], at PLANT_SCALE about its foot and at each STAKE_SWAY angle:
+ * a sprite's baked box (a convex quad) or a stem's segment widened by its half width, clipped to the band. */
+export function drawnSpans(plants: readonly PlantOnStage[], width: number, y0: number, y1: number): [number, number][] {
+  const out: [number, number][] = [];
+  for (const p of plants) {
+    const fx = p.x * width, fy = FOOT_Y(p.row);
+    for (const q of p.layout.parts) for (const deg of STAKE_SWAY) {
+      const a = (deg * Math.PI) / 180, pad = q.kind === "stem" ? (Math.max(q.w0, q.w1) * PLANT_SCALE) / 2 : 0;
+      const pts = partCorners(q).map(([x, y]) => [fx + (x * Math.cos(a) - y * Math.sin(a)) * PLANT_SCALE, fy + (x * Math.sin(a) + y * Math.cos(a)) * PLANT_SCALE] as const);
+      const xs: number[] = [], lo = y0 - pad, hi = y1 + pad;
+      // a quad's corners come as (0,0) (w,0) (0,h) (w,h): walk them in ring order; a stem's two ends are one edge
+      const ring = pts.length === 4 ? [pts[0], pts[1], pts[3], pts[2]] : pts;
+      for (let i = 0; i < ring.length; i++) {
+        const [ax, ay] = ring[i], [bx, by] = ring[(i + 1) % ring.length];
+        if (ay >= lo && ay <= hi) xs.push(ax);
+        for (const yy of [lo, hi]) if ((ay - yy) * (by - yy) < 0) xs.push(ax + ((yy - ay) / (by - ay)) * (bx - ax));
+      }
+      if (xs.length) out.push([Math.min(...xs) - pad, Math.max(...xs) + pad]);
+    }
   }
+  return out;
+}
+const overlap = (lo: number, hi: number, spans: readonly (readonly [number, number])[]) =>
+  spans.reduce((t, [l, h]) => t + Math.max(0, Math.min(hi, h) - Math.max(lo, l)), 0);
+export function stakeSpots(scene: Scene, plants: readonly PlantOnStage[], width: number, zoom: number): Map<PlantId, Spot> {
+  const signs = scene.parts.flatMap((q) => (q.kind === "sign" ? [q] : [])).sort((a, b) => a.x - b.x);
+  const out = new Map<PlantId, Spot>(signs.map((q) => [q.plant, { side: q.side, x: null }]));
+  const trunks = scene.parts.flatMap((q) => (q.kind === "plant" && q.row === "front" ? [q.x * width] : []));
+  const board = (q: (typeof signs)[number], spot?: Spot) => { const a = stakeAt(q, width, zoom, spot ? new Map([[q.plant, spot]]) : out), h = 15 * a.scale * a.boardX; return [a.x - h, a.x + h] as const; };
+  const others = (q: (typeof signs)[number]) => signs.filter((o) => o !== q && o.row === "back").map((o) => board(o));
+  const covered = (q: (typeof signs)[number], [lo, hi]: readonly [number, number]) =>
+    trunks.some((f) => f + STAKE_TRUNK > lo && f - STAKE_TRUNK < hi) || overlap(lo, hi, others(q)) > 0;
+  const lend = signs.filter((q) => q.lines.line2 && q.row === "back");
+  // R327: the flip, stake by stake from the left
+  for (const q of lend) if (covered(q, board(q))) {
+    const other = -q.side as -1 | 1, a = stakeAt(q, width, zoom), h = 15 * a.scale * a.boardX, c = q.x * width + other * (h + SIGN_GAP);
+    if (c - h >= 1 && c + h <= width - 1 && !covered(q, board(q, { side: other, x: null }))) out.set(q.plant, { side: other, x: null });
+  }
+  if (lend.length === 0) return out;
+  // R326: the two-line stakes' x together, each within STAKE_WALK of its spot and its post nearer its own foot than any other
+  // back-row foot, minimising in turn: board over board (the one-line
+  // stakes' and each other's), plant parts over or under a face (front parts weighted STAKE_FRONT_W), then the distance walked
+  const fixed = signs.filter((o) => o.row === "back" && !lend.includes(o)).map((o) => board(o));
+  const opts = lend.map((q) => {
+    const a = stakeAt(q, width, zoom, out), h = 15 * a.scale * a.boardX, y = FOOT_Y(q.row) + 4, y0 = y - 12 * a.scale, y1 = y - a.scale;
+    const front = drawnSpans(plants.filter((pl) => pl.row === "front"), width, y0, y1), back = drawnSpans(plants.filter((pl) => pl.row === "back"), width, y0, y1);
+    const walk = STAKE_WALK / zoom, lo = Math.max(h + 1, a.x - walk), hi = Math.min(width - h - 1, a.x + walk);
+    // its post stays its plant's: nearer its own foot than any other back-row foot (a plant's or a bare stake's)
+    const own = q.x * width, feet = signs.filter((o) => o !== q && o.row === "back").map((o) => o.x * width);
+    const mine = (c: number) => feet.every((f) => Math.abs(c - own) < Math.abs(c - f));
+    const all = lo > hi ? [] : [...new Set([Math.min(Math.max(a.x, lo), hi), ...Array.from({ length: Math.floor(hi - lo) + 1 }, (_, i) => lo + i), hi])].filter(mine);
+    const xs = all.length > 0 ? all : [a.x];
+    return xs.map((c) => ({ c, h, plant: q.plant, foot: q.x * width, boards: overlap(c - h, c + h, fixed),
+      parts: STAKE_FRONT_W * overlap(c - h - STAKE_CLEAR, c + h + STAKE_CLEAR, front) + overlap(c - h - STAKE_CLEAR, c + h + STAKE_CLEAR, back), walk: Math.abs(c - a.x) }));
+  });
+  type Opt = (typeof opts)[number][number];
+  let best: Opt[] = [], bestCost = [Infinity, Infinity, Infinity];
+  const less = (u: number[], v: number[]) => { for (let i = 0; i < u.length; i++) if (Math.abs(u[i] - v[i]) > 1e-9) return u[i] < v[i]; return false; };
+  const pick = (i: number, chosen: Opt[], cost: number[]) => {
+    if (cost[0] > bestCost[0] + 1e-9) return;
+    if (i === opts.length) { if (less(cost, bestCost)) { best = [...chosen]; bestCost = cost; } return; }
+    for (const o of opts[i]) {
+      const pair = chosen.reduce((t, k) => t + Math.max(0, Math.min(o.c + o.h, k.c + k.h) - Math.max(o.c - o.h, k.c - k.h)), 0);
+      pick(i + 1, [...chosen, o], [cost[0] + o.boards + pair, cost[1] + o.parts, cost[2] + o.walk]);
+    }
+  };
+  pick(0, [], [0, 0, 0]);
+  for (const o of best) out.set(o.plant, { side: o.c >= o.foot ? 1 : -1, x: o.c });
   return out;
 }
 /** R168 (10-02): the word on a stake, drawn as crisp type over the one blank baked board (`sign`), in the board's own frame: the anchor
@@ -218,7 +286,7 @@ export function frameFor(scene: Scene, plants: PlantOnStage[], width: number, ro
   for (let j = 0; j < 3; j++) {
     let grew = false;
     for (const q of scene.parts) if (q.kind === "sign" && !present.has(q.plant) && !bare.has(q.plant)) {
-      const a = stakeAt(q, width, f.zoom, stakeSides(scene, width, f.zoom)), h = 15 * a.scale * a.boardX, lo = a.x - h, hi = a.x + h, g = SIDE_GUTTER / f.zoom;
+      const a = stakeAt(q, width, f.zoom, stakeSpots(scene, plants, width, f.zoom)), h = 15 * a.scale * a.boardX, lo = a.x - h, hi = a.x + h, g = SIDE_GUTTER / f.zoom;
       if (hi > f.x - g && lo < f.x + f.w + g && (lo < f.x || hi > f.x + f.w)) { bare.add(q.plant); grew = true; }
     }
     if (!grew) break;
@@ -236,7 +304,7 @@ function frameAt(scene: Scene, plants: PlantOnStage[], width: number, room: { sh
     x0 = Math.min(x0, fx - reach); x1 = Math.max(x1, fx + reach); y0 = Math.min(y0, FOOT_Y(p.row) - p.layout.top);
   }
   // each present plant's stake, and the bare stakes frameFor found the frame cutting (fix round 1)
-  const sides = stakeSides(scene, width, signZoom), stakes = [...signs.values()].filter((s) => bare.has(s.plant) || plants.some((p) => p.plant === s.plant)).map((s) => stakeAt(s, width, signZoom, sides));
+  const spots = stakeSpots(scene, plants, width, signZoom), stakes = [...signs.values()].filter((s) => bare.has(s.plant) || plants.some((p) => p.plant === s.plant)).map((s) => stakeAt(s, width, signZoom, spots));
   for (const a of stakes) { const h = 15 * a.scale * a.boardX; x0 = Math.min(x0, a.x - h); x1 = Math.max(x1, a.x + h); }
   x0 -= FRAME.pad; x1 += FRAME.pad;
   // R242 (10-04, "hsol and cbBTC plants are on the very edge- they should be sitting within/on the soil"): the ground spans the frame
