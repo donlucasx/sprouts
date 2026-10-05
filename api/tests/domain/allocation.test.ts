@@ -19,6 +19,12 @@ describe("pickAsset", () => {
     expect(pickAsset({}, split({ SKR: 30, hSOL: 35, USDC_LEND: 35 }))).toBe("USDC_LEND"); // a tie between two non-SKR legs goes to the first in ASSETS order, and USDC_LEND now precedes hSOL
   });
 
+  it("a target summing under 100 (a share left unpulled, R336 follow-up) is read as proportions of its own total", () => {
+    // hSOL 15 / cbBTC 30 is one third / two thirds: after 34 / 66 cbBTC is the one below its share.
+    expect(pickAsset({ hSOL: 34, cbBTC: 66 }, split({ hSOL: 15, cbBTC: 30 }))).toBe("cbBTC");
+    expect(pickAsset({ hSOL: 32, cbBTC: 68 }, split({ hSOL: 15, cbBTC: 30 }))).toBe("hSOL");
+  });
+
   it("a coin whose target is 0 is never picked, even with an empty ledger entry", () => {
     expect(pickAsset({ SKR: 100 }, split({ SKR: 50, hSOL: 50 }))).toBe("hSOL");
     expect(pickAsset({ SKR: 100, cbBTC: 0 }, split({ SKR: 50, hSOL: 50 }))).not.toBe("cbBTC");

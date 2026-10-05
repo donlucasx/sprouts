@@ -761,14 +761,27 @@ describe("venues, the leash and the carry in the run (contracts 3.2-3.4)", () =>
     expect(r2.planted.length).toBe(1);
   });
 
-  it("a leashed user's disabled legs hand their share to the enabled leg with the largest share (invariant 2)", async () => {
+  it("a leashed user's disabled legs water-fill the enabled legs to their stop maxes, the rest to USDC lending (R336 follow-up)", async () => {
     const repo = await seeded([83, 62, 70]);
     await seedVenues(repo);
     await repo.setWalletLink("W", { delegationPda: "D", linkModel: "leash" });
     await repo.saveRules("U", { allocation: { SKR: 45, stORE: 0, USDC_LEND: 15, SOL_LEND: 10, hSOL: 20, cbBTC: 10 } });
     const builds: BuildArgs[] = [];
     await runPlanting({ repo, now: NOW, chain: recording(builds, { readLeashConfig: async () => leashCfg([3, 6]) }) });   // Day 1 without K-Lend: USDC on Jupiter Lend, hSOL
-    expect(builds[0]).toMatchObject({ asset: "hSOL", leashed: true });   // SKR 45 + SOL 10 + cbBTC 10 moved to hSOL: 85
+    // Balanced: SKR 45 + SOL 10 + cbBTC 10 moved; hSOL fills to its max 25, USDC to 30 and takes the other 40: USDC 75, hSOL 25.
+    // (The old rule handed all 65 to hSOL: 85% in one volatile coin.)
+    expect(builds[0]).toMatchObject({ asset: "USDC_LEND", venue: "jupiter_lend", leashed: true, pullRaw: 2_180_000n });
+  });
+
+  it("USDC lending disabled and every enabled leg at its max: only the enabled share is pulled, the rest stays in the wallet", async () => {
+    const repo = await seeded([150, 150, 150]);   // 450 cents of change
+    await repo.setWalletLink("W", { delegationPda: "D", linkModel: "leash" });
+    await repo.saveRules("U", { stop: "careful", allocation: { SKR: 60, stORE: 0, USDC_LEND: 10, SOL_LEND: 0, hSOL: 10, cbBTC: 20 } });
+    const builds: BuildArgs[] = [];
+    const r = await runPlanting({ repo, now: NOW, chain: recording(builds, { readLeashConfig: async () => leashCfg([6, 7]) }) });
+    // Careful maxes hSOL 15 + cbBTC 30 = 45%: 202 cents of change (+3 fee) pulled, not 450.
+    expect(builds[0]).toMatchObject({ asset: "cbBTC", leashed: true, pullRaw: 2_050_000n });
+    expect(r.planted[0]).toMatchObject({ pullCents: 205 });
   });
 
   it("a leashed user's USDC goes to Jupiter Lend when only its leash leg is enabled (the Day-1 fallback venue)", async () => {

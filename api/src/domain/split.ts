@@ -34,10 +34,15 @@ export const floorFor = (managed: boolean, stop: Stop): number => (managed ? STO
 export const stopMax = (stop: Stop, a: LiveAsset): number => (a === "SKR" ? 100 : STOPS[stop].max[a]);
 
 /**
- * Spec 6.5 and 3: a leg that cannot take money this planting (its leash flag is off for a leashed user, or no lending venue is
- * eligible) hands its whole share to the enabled leg with the largest share (ASSETS order on ties). Null when no leg is enabled.
+ * Spec 6.5 and 3, as ruled by R336 (+ Claude's follow-up, 10-04): a leg that cannot take money this planting (its leash flag is off
+ * for a leashed user, or no lending venue is eligible) hands its share to the enabled legs, WATER-FILLED up to each one's stop max
+ * for `stop` (one point at a time to the leg with the most headroom; ASSETS order on ties). What is left once every enabled leg is
+ * at its max goes to USDC_LEND, the least volatile leg, even past its max. When USDC_LEND is itself disabled the remainder is left
+ * unpulled: the split then sums under 100 and the planting run pulls only that share (plant-run). (The brief's "else the enabled
+ * leg with the most headroom" is the fill itself: a remainder exists only when no enabled leg has headroom left.)
+ * An enabled leg already over its max (a pin) keeps its share and takes nothing more. Null when no leg is enabled.
  */
-export function redistributeDisabled(split: Split, disabled: readonly LiveAsset[]): Split | null {
+export function redistributeDisabled(split: Split, disabled: readonly LiveAsset[], stop: Stop): Split | null {
   const enabled = ASSETS.filter((a) => !disabled.includes(a));
   if (enabled.length === 0) return null;
   const out: Split = { ...split };
@@ -47,9 +52,15 @@ export function redistributeDisabled(split: Split, disabled: readonly LiveAsset[
     moved += out[a];
     out[a] = 0;
   }
-  if (moved === 0) return out;
-  const target = enabled.reduce((best, a) => (out[a] > out[best] ? a : best), enabled[0]);
-  out[target] += moved;
+  const headroom = (a: LiveAsset) => Math.max(0, stopMax(stop, a) - out[a]);
+  while (moved > 1e-9) {
+    const best = enabled.reduce((b, a) => (headroom(a) > headroom(b) ? a : b), enabled[0]);
+    const step = Math.min(1, moved, headroom(best));
+    if (step <= 1e-9) break;
+    out[best] += step;
+    moved -= step;
+  }
+  if (moved > 1e-9 && enabled.includes("USDC_LEND")) out.USDC_LEND += moved;
   return out;
 }
 
@@ -122,7 +133,7 @@ function takeFrom(x: Record<LiveAsset, number>, donors: LiveAsset[], deficit: nu
  * over the free coins renormalised to what is left, clamped to the stop maxes, SKR kept at the floor, rounded to 100.
  */
 export function effectiveSplit(a: { managed: boolean; stop: Stop; pins: Pins; stopSplit: Split; disabled?: readonly LiveAsset[] }): Split {
-  const done = (s: Split): Split => (a.disabled?.length ? (redistributeDisabled(s, a.disabled) ?? s) : s);
+  const done = (s: Split): Split => (a.disabled?.length ? (redistributeDisabled(s, a.disabled, a.stop) ?? s) : s);
   if (!a.managed) {
     const out = zeroSplit();
     let rest = 100;
