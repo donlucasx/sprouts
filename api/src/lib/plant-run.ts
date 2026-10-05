@@ -545,7 +545,7 @@ async function plantOneOrThrow(a: { repo: Repo; now: Date; chain: Chain }, w: Wa
   if (!target) return { wallet: w.pubkey, reason: "no leg enabled" };
   // R336 follow-up: with USDC lending disabled and every enabled leg at its stop max, the rest of the split is left unpulled. One leg
   // takes each planting, so "unpulled" is the pull itself: only the target's share of the change is pulled (the USDC stays in the
-  // wallet; the round-ups are all claimed by this planting). The venue check above used the larger amount (the stricter 60% test).
+  // wallet; the round-ups are all claimed by this planting). The venue check above used the larger amount (the stricter 60% test); both are already bounded by the cap and the USDC balance.
   const share = ASSETS.reduce((sum, leg) => sum + target[leg], 0);
   if (share < 100 - 1e-9) {
     amount = plantAmountCents({ pendingCents: Math.floor((pending * share) / 100), capLeftCents: left, feeCents: NETWORK_FEE_CENTS, minCents: forced ? 0 : rules.plantThresholdCents });

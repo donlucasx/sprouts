@@ -151,6 +151,16 @@ describe("runPlanting", () => {
     expect(under.events.find((e) => e.kind === "paused_no_usdc")!.detail).toEqual({ needCents: 500 });
   });
 
+  it("the 7-day rule (minimum zero) plants whatever change the balance covers above the fee; at or under the fee it pauses", async () => {
+    const old = { ago: 8 * 86_400_000 };
+    const four = await seeded([83, 62], old);
+    expect((await runPlanting({ repo: four, now: NOW, chain: fakeChain({ usdcBalanceRaw: async () => 40_000n }) })).planted[0].pullCents).toBe(4);
+    expect((await four.unplantedSwaps("W")).length).toBe(0);   // as with the cap: every round-up is claimed, 1 cent of change planted
+    const three = await seeded([83, 62], old);
+    expect((await runPlanting({ repo: three, now: NOW, chain: fakeChain({ usdcBalanceRaw: async () => 30_000n }) })).skipped[0].reason).toBe("no usdc");
+    expect((await three.unplantedSwaps("W")).length).toBe(2);
+  });
+
   it("the run after a balance-bounded planting behaves like the run after a cap-bounded one: nothing pending, no pull, no pause", async () => {
     const repo = await seeded([100, 100]);
     await repo.saveRules("U", { plantThresholdCents: 10 });
