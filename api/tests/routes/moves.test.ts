@@ -1,0 +1,184 @@
+import { describe, it, expect, beforeEach, beforeAll, vi } from "vitest";
+import { generateKeyPairSigner, getBase64Encoder, getTransactionDecoder, getCompiledTransactionMessageDecoder, signTransaction, getBase64EncodedWireTransaction, type KeyPairSigner } from "@solana/kit";
+import { MemoryRepo } from "@/db/memory";
+import { setRepoForTests } from "@/db/repo";
+import type { MoveProposalRow, VenueDayRow } from "@/db/types";
+import { issueSession } from "@/lib/session";
+import { dayOf } from "@/domain/day";
+import { KLEND_PROGRAM, JLEND_PROGRAM } from "@/lib/constants";
+import { checkBeforeSigning } from "../fixtures/app/sign";
+
+let receipt = 1_661_072n;
+vi.mock("@/lib/rpc", () => ({ rpc: () => ({ getLatestBlockhash: () => ({ send: async () => ({ value: { blockhash: "GHtXQBsoZHVnNFa9YevAzFr17DJjgHXk3ycTKD5xD3Zi", lastValidBlockHeight: 1n } }) }) }) }));
+vi.mock("@/lib/holdings", async (orig) => ({ ...(await orig<object>()), receiptBalanceRaw: vi.fn(async () => receipt) }));
+vi.mock("@/lib/venues/klend", async (orig) => ({ ...(await orig<object>()), klendRate: vi.fn(async () => ({ rn: 12_050n, rd: 10_000n, availableRaw: 10n ** 12n })) }));
+vi.mock("@/lib/venues/jlend", async (orig) => ({ ...(await orig<object>()), jlendRate: vi.fn(async () => ({ rn: 11n, rd: 10n })) }));
+vi.mock("@/lib/venues/rates", () => ({ jupiterWithdrawableRaw: vi.fn(async () => 10n ** 12n) }));
+vi.mock("@/lib/user-tx", async (orig) => ({ ...(await orig<object>()), sendPosted: vi.fn(async () => {}), waitConfirmed: vi.fn(async () => "confirmed"), settleUnconfirmed: vi.fn(async () => "expired") }));
+
+import { sendPosted, waitConfirmed, buildUserTransaction } from "@/lib/user-tx";
+import { buildMove } from "@/lib/venues/user-builders";
+import { lendingFrom, latestVenueRows } from "@/lib/holdings";
+import { GET as list } from "@/app/api/moves/route";
+import { POST as build } from "@/app/api/moves/build/route";
+import { POST as confirm } from "@/app/api/moves/confirm/route";
+import { POST as dismiss } from "@/app/api/moves/dismiss/route";
+
+let user: KeyPairSigner;
+beforeAll(async () => { process.env.SESSION_SECRET ??= "test-secret-test-secret-test-secret"; user = await generateKeyPairSigner(); });
+
+const vrow = (venue: "kamino_klend" | "jupiter_lend", asset: "USDC_LEND" | "SOL_LEND", exchangeRate: number): VenueDayRow => ({ day: dayOf(new Date()), venue, asset, supplyPct: 4, rewardsPct: 0, utilizationPct: 90, withdrawableUsd: 1e9, tvlUsd: 1e9, exchangeRate, avg7Pct: 4, daysMeasured: 7, eligible: true, verdict: null, reason: null, served: null, ok: true });
+
+describe("Moves (spec 7, contracts 5.4 with S3 = ONE: [redeem, deposit] in one session)", () => {
+  let repo: MemoryRepo;
+  let p: MoveProposalRow;
+  const propose = async (asset: "USDC_LEND" | "SOL_LEND" = "USDC_LEND") =>
+    (await repo.insertMoveProposal({ userPubkey: user.address, asset, fromVenue: "jupiter_lend", toVenue: "kamino_klend", receiptRaw: 1_661_072n, valueUsd: 5000, fromAvg7Pct: 4.19, toAvg7Pct: 4.43, gain30dUsd: 0.98, costUsd: 0.25 }))!;
+  beforeEach(async () => {
+    repo = new MemoryRepo(); setRepoForTests(repo);
+    await repo.upsertUser({ seedVaultPubkey: user.address, sgtMint: "M", skrName: null });
+    for (const asset of ["USDC_LEND", "SOL_LEND"] as const) { await repo.putVenueDay(vrow("jupiter_lend", asset, 1.1)); await repo.putVenueDay(vrow("kamino_klend", asset, 1.205)); }
+    receipt = 1_661_072n;
+    vi.mocked(sendPosted).mockClear(); vi.mocked(waitConfirmed).mockReset().mockResolvedValue("confirmed");
+    p = await propose();
+  });
+  const auth = async () => ({ authorization: `Bearer ${await issueSession(user.address, "M")}` });
+  const call = async (fn: (r: Request) => Promise<Response>, body: unknown) => fn(new Request("http://x", { method: "POST", headers: await auth(), body: JSON.stringify(body) }));
+  const sign = async (b64: string) => getBase64EncodedWireTransaction(await signTransaction([user.keyPair], getTransactionDecoder().decode(getBase64Encoder().encode(b64))));
+  const msgOf = (b64: string) => getCompiledTransactionMessageDecoder().decode(getTransactionDecoder().decode(getBase64Encoder().encode(b64)).messageBytes) as unknown as { staticAccounts: string[]; instructions: { programAddressIndex: number }[]; addressTableLookups?: unknown[]; version: number | string };
+  const programs = (b64: string) => { const m = msgOf(b64); return m.instructions.map((ix) => m.staticAccounts[ix.programAddressIndex]); };
+
+  it("GET /api/moves: the open card as contracts 5.4, or null", async () => {
+    const body = await (await list(new Request("http://x/api/moves", { headers: await auth() }))).json();
+    expect(body.proposal).toMatchObject({ id: p.id, asset: "USDC_LEND", from: "jupiter_lend", to: "kamino_klend", receiptRaw: "1661072", valueUsd: 5000, fromAvg7Pct: 4.19, toAvg7Pct: 4.43, gain30dUsd: 0.98, costUsd: 0.25 });
+    expect(Object.keys(body.proposal).sort()).toEqual(["asset", "costUsd", "from", "fromAvg7Pct", "gain30dUsd", "id", "receiptRaw", "to", "toAvg7Pct", "ts", "valueUsd"].sort());
+    await repo.setMoveProposalStatus(p.id, "expired");
+    expect(await (await list(new Request("http://x/api/moves", { headers: await auth() }))).json()).toEqual({ proposal: null });
+  });
+
+  it("dismiss: status dismissed, the move_dismissed event { id, asset, from, to, receiptRaw, status }; twice is a 409; someone else's card is a 404", async () => {
+    const res = await call(dismiss, { id: p.id });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ dismissed: true });
+    expect((await repo.getMoveProposal(p.id))?.status).toBe("dismissed");
+    expect(repo.events.find((e) => e.kind === "move_dismissed")?.detail).toEqual({ id: p.id, asset: "USDC_LEND", from: "jupiter_lend", to: "kamino_klend", receiptRaw: "1661072", status: "dismissed" });
+    expect((await call(dismiss, { id: p.id })).status).toBe(409);
+    await repo.upsertUser({ seedVaultPubkey: "OTHER", sgtMint: "M2", skrName: null });
+    const theirs = (await repo.insertMoveProposal({ userPubkey: "OTHER", asset: "USDC_LEND", fromVenue: "jupiter_lend", toVenue: "kamino_klend", receiptRaw: 1n, valueUsd: 5000, fromAvg7Pct: 4, toAvg7Pct: 5, gain30dUsd: 1, costUsd: 0.25 }))!;
+    expect((await call(dismiss, { id: theirs.id })).status).toBe(404);
+    expect((await call(build, { id: theirs.id })).status).toBe(404);
+  });
+
+  it("build: two v0 txs, redeem then deposit, the user paying, no lookup table; depositRaw = 99.9% of the expected out", async () => {
+    const res = await call(build, { id: p.id });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.transactions).toHaveLength(2);
+    for (const t of body.transactions) {
+      const m = msgOf(t);
+      expect(m.version).toBe(0);
+      expect(m.staticAccounts[0]).toBe(user.address);
+      expect(m.addressTableLookups?.length ?? 0).toBe(0);
+    }
+    expect(programs(body.transactions[0])).toContain(JLEND_PROGRAM);
+    expect(programs(body.transactions[0])).not.toContain(KLEND_PROGRAM);
+    expect(programs(body.transactions[1])).toContain(KLEND_PROGRAM);
+    expect(programs(body.transactions[1])).not.toContain(JLEND_PROGRAM);
+    // expected = 1_661_072 x 11 / 10 = 1_827_179; x 9990 / 10000 = 1_825_351; served = floor(1_661_072 x 1.1) = 1_827_179
+    expect(body).toMatchObject({ receiptRaw: "1661072", depositRaw: "1825351", brief: "Moves your USDC from Jupiter to Kamino: about 1.83 USDC out, 1.83 USDC in." });
+  });
+
+  it("build: depositRaw is capped by the underlyingRaw /api/me serves for the source position (interest accrued since the snapshot); the app's sign.ts accepts both txs with that cap", async () => {
+    await repo.putVenueDay(vrow("jupiter_lend", "USDC_LEND", 1.098));   // the snapshot lags the live 1.1
+    const served = lendingFrom({ positions: [{ asset: "USDC_LEND", venue: "jupiter_lend", receiptRaw: receipt }], legs: [], rows: await latestVenueRows(repo, dayOf(new Date())), prices: {} })[0].underlyingRaw;
+    expect(served).toBe(1_823_857n);
+    const body = await (await call(build, { id: p.id })).json();
+    expect(body.depositRaw).toBe("1823857");   // under 1_825_351 (99.9% of the live redeem): the rest stays in the wallet
+    for (const [i, part] of (["redeem", "deposit"] as const).entries()) {
+      const tx = getTransactionDecoder().decode(getBase64Encoder().encode(body.transactions[i]));
+      await expect(checkBeforeSigning(tx, { kind: "move_jlend_to_klend", user: user.address, asset: "USDC_LEND", receiptRaw: body.receiptRaw, depositRaw: body.depositRaw, depositCapRaw: served.toString(), part })).resolves.toBeUndefined();
+    }
+  });
+
+  it("build: the redeem never exceeds the card's position, nor the wallet's receipt balance", async () => {
+    receipt = 1_000_000n;
+    expect((await (await call(build, { id: p.id })).json()).receiptRaw).toBe("1000000");
+    receipt = 0n;
+    expect((await call(build, { id: p.id })).status).toBe(409);
+  });
+
+  it("confirm: both land; done with both signatures; the move_done event { id, asset, from, to, receiptRaw, status }", async () => {
+    const built = await (await call(build, { id: p.id })).json();
+    const res = await call(confirm, { id: p.id, signedTransactions: await Promise.all(built.transactions.map(sign)) });
+    expect(res.status).toBe(200);
+    const { move } = await res.json();
+    expect(move).toMatchObject({ id: p.id, status: "done" });
+    expect(typeof move.redeemSignature).toBe("string");
+    expect(typeof move.depositSignature).toBe("string");
+    expect(vi.mocked(sendPosted)).toHaveBeenCalledTimes(2);
+    expect(await repo.getMoveProposal(p.id)).toMatchObject({ status: "done", redeemSignature: move.redeemSignature, depositSignature: move.depositSignature });
+    expect(repo.events.find((e) => e.kind === "move_done")?.detail).toEqual({ id: p.id, asset: "USDC_LEND", from: "jupiter_lend", to: "kamino_klend", receiptRaw: "1661072", status: "done" });
+    // a replayed confirm answers the record, sends nothing
+    vi.mocked(sendPosted).mockClear();
+    expect((await (await call(confirm, { id: p.id, signedTransactions: await Promise.all(built.transactions.map(sign)) })).json()).move).toEqual(move);
+    expect(vi.mocked(sendPosted)).not.toHaveBeenCalled();
+  });
+
+  it("confirm rebuilds the deposit with the server's own depositRaw: a signed deposit for more USDC is refused, nothing sent", async () => {
+    const built = await (await call(build, { id: p.id })).json();
+    const owner = user.address;
+    const bigger = await buildUserTransaction(owner, await buildMove({ user: owner, asset: "USDC_LEND", from: "jupiter_lend", to: "kamino_klend", receiptRaw: 1_661_072n, depositRaw: 1_825_352n, part: "deposit" }));
+    const res = await call(confirm, { id: p.id, signedTransactions: [await sign(built.transactions[0]), await sign(bigger)] });
+    expect(res.status).toBe(400);
+    expect(vi.mocked(sendPosted)).not.toHaveBeenCalled();
+    // and a redeem for more receipt than built
+    const moreRedeem = await buildUserTransaction(owner, await buildMove({ user: owner, asset: "USDC_LEND", from: "jupiter_lend", to: "kamino_klend", receiptRaw: 1_661_073n, depositRaw: 1_825_351n, part: "redeem" }));
+    expect((await call(confirm, { id: p.id, signedTransactions: [await sign(moreRedeem), await sign(built.transactions[1])] })).status).toBe(400);
+    // swapped order
+    expect((await call(confirm, { id: p.id, signedTransactions: [await sign(built.transactions[1]), await sign(built.transactions[0])] })).status).toBe(400);
+    expect(vi.mocked(sendPosted)).not.toHaveBeenCalled();
+    expect((await repo.getMoveProposal(p.id))?.status).toBe("open");
+  });
+
+  it("confirm before any build is a 409", async () => {
+    const owner = user.address;
+    const r = await buildUserTransaction(owner, await buildMove({ user: owner, asset: "USDC_LEND", from: "jupiter_lend", to: "kamino_klend", receiptRaw: 1_661_072n, depositRaw: 1_825_351n, part: "redeem" }));
+    const d = await buildUserTransaction(owner, await buildMove({ user: owner, asset: "USDC_LEND", from: "jupiter_lend", to: "kamino_klend", receiptRaw: 1_661_072n, depositRaw: 1_825_351n, part: "deposit" }));
+    expect((await call(confirm, { id: p.id, signedTransactions: [await sign(r), await sign(d)] })).status).toBe(409);
+  });
+
+  it("the redeem fails: nothing moved, the deposit is never sent, the card stays open", async () => {
+    const built = await (await call(build, { id: p.id })).json();
+    vi.mocked(waitConfirmed).mockResolvedValue("failed");
+    const res = await call(confirm, { id: p.id, signedTransactions: await Promise.all(built.transactions.map(sign)) });
+    expect(res.status).toBe(409);
+    expect((await res.json()).partial).toBeUndefined();
+    expect(vi.mocked(sendPosted)).toHaveBeenCalledTimes(1);
+    expect((await repo.getMoveProposal(p.id))?.status).toBe("open");
+  });
+
+  it("the redeem lands and the deposit fails: 409 partial in the USDC wording; status failed", async () => {
+    const built = await (await call(build, { id: p.id })).json();
+    vi.mocked(waitConfirmed).mockResolvedValueOnce("confirmed").mockResolvedValue("failed");
+    const res = await call(confirm, { id: p.id, signedTransactions: await Promise.all(built.transactions.map(sign)) });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "Your USDC is back in your wallet; the move did not finish.", partial: true });
+    expect(await repo.getMoveProposal(p.id)).toMatchObject({ status: "failed" });
+  });
+
+  it("SOL: the partial 409 names SOL and hands back an unwrap tx for the WSOL the redeem left (no stranded WSOL)", async () => {
+    await repo.setMoveProposalStatus(p.id, "dismissed");
+    const sol = await propose("SOL_LEND");
+    const built = await (await call(build, { id: sol.id })).json();
+    expect(built.brief).toMatch(/^Moves your SOL from Jupiter to Kamino: about \d+\.\d{4} SOL out, \d+\.\d{4} SOL in\.$/);
+    vi.mocked(waitConfirmed).mockResolvedValueOnce("confirmed").mockResolvedValue("failed");
+    const res = await call(confirm, { id: sol.id, signedTransactions: await Promise.all(built.transactions.map(sign)) });
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body).toMatchObject({ error: "Your SOL is back in your wallet; the move did not finish.", partial: true });
+    // the unwrap: one Token CloseAccount of the user's WSOL account back to the user, the user paying
+    const m = msgOf(body.unwrapTransaction);
+    expect(m.staticAccounts[0]).toBe(user.address);
+    expect(programs(body.unwrapTransaction)).toEqual(["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"]);
+  });
+});
