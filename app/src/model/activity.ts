@@ -49,7 +49,7 @@ export function withdrawalRow(day: string, w: Withdrawal & { id: string; withdra
   return { key: w.id, line: withdrawalRowLine(day, w, skrUsd, readyAt, now), details: [], signature: w.withdrawSignature ?? w.unstakeSignature }
 }
 
-/** Spec 7: a lending position back to the wallet. underlyingRaw is asked of Track A; without it the line names the leg. */
+/** Spec 7: a lending position back to the wallet. underlyingRaw is null when the API does not know the amount; then the line names the coin and no amount. */
 export function lendWithdrawalRow(day: string, w: LendWithdrawal): ActivityRow {
   const what = w.underlyingRaw && /^\d+$/.test(w.underlyingRaw) ? underlyingAmount(w.asset, w.underlyingRaw) : `your ${COIN_NAME_LONG[w.asset]}`
   return { key: `lw-${w.signature}`, line: `${day}, withdrew ${what} from ${VENUE_NAME[w.venue]}`, details: ['Back in your Seeker wallet.'], signature: w.signature }
