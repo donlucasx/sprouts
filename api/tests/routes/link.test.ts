@@ -4,12 +4,18 @@ import { setRepoForTests } from "@/db/repo";
 import { issueSession } from "@/lib/session";
 import { getBase64Encoder, getCompiledTransactionMessageDecoder, getTransactionDecoder, getBase64EncodedWireTransaction, generateKeyPairSigner, signTransaction, decompileTransactionMessage, prependTransactionMessageInstructions, compileTransaction, address, type KeyPairSigner } from "@solana/kit";
 
-vi.mock("@/lib/subscriptions", async (orig) => ({
-  ...(await orig<object>()),
-  readDelegation: vi.fn(async () => ({ exists: true, amountPerPeriodRaw: 5_000_000n, pulledInPeriodRaw: 0n, periodStartTs: 0n, periodLengthS: 86_400n })),
-  readSubscriptionAuthority: vi.fn(async () => ({ exists: false })),
-  readUsdcAtaExists: vi.fn(async () => true),
-}));
+vi.mock("@/lib/subscriptions", async (orig) => {
+  const readDelegation = vi.fn(async (_pda?: unknown) => ({ exists: true, amountPerPeriodRaw: 5_000_000n, pulledInPeriodRaw: 0n, periodStartTs: 0n, periodLengthS: 86_400n }));
+  return {
+    ...(await orig<object>()),
+    readDelegation,
+    // The confirm's poll now lives in lib/subscriptions (Task 19) and calls readDelegation inside the module, past this mock;
+    // it answers what the mocked read says, so the tests below keep steering it through readDelegation.
+    waitForDelegation: vi.fn(async (pda: unknown) => readDelegation(pda)),
+    readSubscriptionAuthority: vi.fn(async () => ({ exists: false })),
+    readUsdcAtaExists: vi.fn(async () => true),
+  };
+});
 vi.mock("@/lib/helius", () => ({ heliusAddAddress: vi.fn(async () => undefined) }));
 // The per-address limiter has its own tests; these exercise the link flow, which now makes more requests than one window allows.
 vi.mock("@/lib/auth-guard", async (orig) => ({ ...(await orig<object>()), rateLimited: () => false }));
@@ -243,6 +249,7 @@ describe("link flow", () => {
     await getTx(new Request(`http://x/api/link/${c.code}?wallet=${WALLET}`), { params: Promise.resolve({ code: c.code }) });
     const r = await confirm(new Request("http://x/api/link/confirm", { method: "POST", body: JSON.stringify({ code: c.code, wallet: WALLET, waitMs: 0 }) }));
     expect(r.status).toBe(409);
+    expect((await r.json()).error).toBe("No delegation found for this wallet yet. Sign the approval first.");
     expect(await repo.peekLinkCode(c.code)).not.toBeNull();
     (readDelegation as unknown as { mockResolvedValue: (v: unknown) => void }).mockResolvedValue({ exists: true, amountPerPeriodRaw: 5_000_000n, pulledInPeriodRaw: 0n, periodStartTs: 0n, periodLengthS: 86_400n });
   });
@@ -282,5 +289,34 @@ describe("link flow", () => {
 
   it("requires a session to mint a code", async () => {
     expect((await newCode(new Request("http://x/api/link/new", { method: "POST" }))).status).toBe(401);
+  });
+
+  // The leash PDA is seeded by the garden's key, so these two tests use a garden whose id is a real address.
+  const GARDEN = "HJCJKRQLV2HVKfe3sFdTF5jjBY1xfWgnK8cLcjH7qnHd";
+  async function gardenCode() {
+    await repo.upsertUser({ seedVaultPubkey: GARDEN, sgtMint: "M2", skrName: null });
+    const res = await newCode(new Request("http://x/api/link/new", { method: "POST", headers: { authorization: `Bearer ${await issueSession(GARDEN, "M2")}` } }));
+    return (await res.json()) as { code: string };
+  }
+  it("after go-live (LEASH_LIVE=1) a new link's delegatee is the leash PDA of (wallet, garden), and confirm records link_model leash", async () => {
+    process.env.LEASH_LIVE = "1";
+    try {
+      const { code } = await gardenCode();
+      const res = await getTx(new Request(`http://x/api/link/${code}?wallet=${WALLET}`), { params: Promise.resolve({ code }) });
+      const body = await res.json();
+      const { leashPda } = await import("@/lib/leash");
+      expect(body.delegatee).toBe(await leashPda(address(WALLET), address(GARDEN)));
+      expect(body.puller).toBe("4wiD3N7FrBNJSmZUQDkGHM4CsvDrvyvx7G1FApLGEbJ1");
+      const ok = await confirm(new Request("http://x/api/link/confirm", { method: "POST", body: JSON.stringify({ code, wallet: WALLET, waitMs: 0 }) }));
+      expect(ok.status).toBe(200);
+      expect((await repo.getWallet(WALLET))!.linkModel).toBe("leash");
+    } finally { delete process.env.LEASH_LIVE; }
+  });
+  it("before go-live the delegatee stays the puller and the link is a puller link", async () => {
+    const { code } = await gardenCode();
+    const body = await (await getTx(new Request(`http://x/api/link/${code}?wallet=${WALLET}`), { params: Promise.resolve({ code }) })).json();
+    expect(body.delegatee).toBe("4wiD3N7FrBNJSmZUQDkGHM4CsvDrvyvx7G1FApLGEbJ1");
+    await confirm(new Request("http://x/api/link/confirm", { method: "POST", body: JSON.stringify({ code, wallet: WALLET, waitMs: 0 }) }));
+    expect((await repo.getWallet(WALLET))!.linkModel).toBe("puller");
   });
 });

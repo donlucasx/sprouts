@@ -59,3 +59,20 @@ describe("connectWith", () => {
     expect((await connectWith(withAccounts([{ address: "A1" }]))).address).toBe("A1");
   });
 });
+
+describe("signWith checks the approval's delegate (contracts 5.5: the link page learns the leash delegatee)", () => {
+  // A CreateRecurringDelegation-shaped instruction: Subscriptions program, data[0] = 2, the delegatee at account 3.
+  const create = (delegatee: PublicKey) => new TransactionInstruction({ programId: new PublicKey("De1egAFMkMWZSN5rYXRj9CAdheBamobVNubTsi9avR44"), data: Buffer.from([2]), keys: [
+    { pubkey: payer, isSigner: true, isWritable: true }, { pubkey: Keypair.generate().publicKey, isSigner: false, isWritable: false },
+    { pubkey: Keypair.generate().publicKey, isSigner: false, isWritable: true }, { pubkey: delegatee, isSigner: false, isWritable: false },
+  ] });
+  it("refuses an approval naming another delegate, without asking the wallet; signs the expected one", async () => {
+    let asked = 0;
+    const w = wallet("Phantom", { features: { [CONNECT]: {}, [SIGN]: { signTransaction: async () => { asked++; return [{ signedTransaction: new Uint8Array([1]) }]; } } } });
+    const leash = Keypair.generate().publicKey;
+    await expect(signWith(w, { address: payer.toBase58() }, tx(create(Keypair.generate().publicKey)), leash.toBase58())).rejects.toThrow("unexpected delegate");
+    expect(asked).toBe(0);
+    await signWith(w, { address: payer.toBase58() }, tx(create(leash)), leash.toBase58());
+    expect(asked).toBe(1);
+  });
+});
