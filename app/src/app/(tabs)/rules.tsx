@@ -16,7 +16,9 @@ import { undoSplit } from '@/lib/manager-api'
 import {
   splitRows,
   modeWord,
-  togglePin,
+  setCoinOn,
+  managedPins,
+  managedPreview,
   stepPin,
   pinsForOn,
   undoLine,
@@ -79,6 +81,11 @@ export default function Rules() {
   // The ORE disclosure shows inline once: the first time the manager is switched on, or, off, the first time stORE's pin leaves zero (spec 3.1).
   // F1: switched on but not yet saved, the saved allocation is still the OFF one; the rows preview the stop's split instead.
   const unsavedOn = r.managed && !saved.managed
+  // R346: the preview follows the draft's coin switches and stop; with nothing changed, the saved allocation is the truth.
+  const coinsChanged =
+    r.managed &&
+    (unsavedOn || r.stop !== saved.stop || JSON.stringify(managedPins(r.pins)) !== JSON.stringify(managedPins(saved.pins)))
+  const preview = coinsChanged ? managedPreview(me.manager.stopSplit, managedPins(r.pins), r.stop) : undefined
   const showDisclosure =
     (r.managed && !saved.managed) || (!r.managed && (r.pins.stORE ?? 0) > 0 && (saved.pins.stORE ?? 0) === 0)
 
@@ -92,7 +99,8 @@ export default function Rules() {
       const reauth = raises ? await freshSignIn(freshWalletSignIn(identity)) : undefined
       const answer = await api<MeResponse['rules']>('/api/rules', {
         method: 'PUT',
-        body: { ...patch, ...(reauth ? { reauth } : {}) },
+        // R346: with the manager on, the only pins saved are the coins switched off (an old non-zero pin becomes "on" here).
+        body: { ...patch, ...(r.managed ? { pins: managedPins(r.pins) } : {}), ...(reauth ? { reauth } : {}) },
       })
       // The answer and the draft clear land together, so the screen moves once; the fresh read reconciles in the background.
       applyRules(answer, { undoAvailable: false, changedDay: null })
@@ -253,9 +261,9 @@ export default function Rules() {
           </>
         )}
         <ThemedText variant="heading" style={{ marginTop: spacing.xs }}>
-          {saved.managed ? "Today's split" : r.managed ? 'The split after you save' : 'Your split'}
+          {saved.managed && !coinsChanged ? "Today's split" : r.managed ? 'The split after you save' : 'Your split'}
         </ThemedText>
-        {splitRows(r, unsavedOn ? me.manager.stopSplit : undefined).map((row) => (
+        {splitRows(r, preview).map((row) => (
           <View
             key={row.asset}
             style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.xs }}
@@ -280,12 +288,13 @@ export default function Rules() {
             {r.managed && (
               <Switch
                 {...toggle}
-                accessibilityLabel={`Pin ${COIN_NAME_LONG[row.asset]}`}
-                value={row.mode === 'pinned'}
-                onValueChange={(on) => edit({ pins: togglePin(r.pins, row.asset, on, row.pct) })}
+                accessibilityLabel={`Use ${COIN_NAME_LONG[row.asset]}`}
+                value={row.mode !== 'off'}
+                disabled={row.asset === 'SKR'}
+                onValueChange={(on) => edit({ pins: setCoinOn(r.pins, row.asset, on) })}
               />
             )}
-            {row.mode === 'pinned' && (
+            {!r.managed && row.mode === 'pinned' && (
               <StepButtons
                 what={COIN_NAME_LONG[row.asset]}
                 onLess={() => edit({ pins: stepPin(r.pins, row.asset, -1) })}
