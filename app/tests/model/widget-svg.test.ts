@@ -37,11 +37,11 @@ describe("R252: the widget draws the app's garden through a viewBox", () => {
     }
     expect(plantLayouts(oct8).some((p) => p.row === "back")).toBe(true);
   });
-  it("stakes only where they read: none on a narrow widget, six on a wide one, each with its word", () => {
+  it("stakes only where they read: none on a narrow widget, one per planted coin on a wide one (R349: four), each with its word", () => {
     const narrow = widgetGardenSvg(oct8, 150, 120), wide = widgetGardenSvg(oct8, 400, 170);
     expect(widgetView(oct8, 150, 120).signs).toBe(false); expect(uses(narrow)).not.toContain("sign");
-    expect(widgetView(oct8, 400, 170).px).toBeGreaterThanOrEqual(WIDGET_SIGN_MIN_PX); expect(uses(wide).filter((n) => n === "sign")).toHaveLength(6);
-    expect([...wide.matchAll(/<text /g)]).toHaveLength(6);   // oct8's six coins all hold a sign (the allocation)
+    expect(widgetView(oct8, 400, 170).px).toBeGreaterThanOrEqual(WIDGET_SIGN_MIN_PX); expect(uses(wide).filter((n) => n === "sign")).toHaveLength(4);
+    expect([...wide.matchAll(/<text /g)]).toHaveLength(4);   // R349: oct8's four planted coins hold a sign; the two share-only coins do not
   });
   it("a year's garden fits the view: no sprite anchor or stem end above the view's top", () => {
     for (const [w, h] of [[150, 120], [340, 160]] as const) { const svg = widgetGardenSvg(year, w, h), [, y] = box(svg); expect(paintedTop(svg)).toBeGreaterThanOrEqual(y - 0.5); }

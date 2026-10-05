@@ -25,10 +25,11 @@ describe("R181: the stakes stand in the soil", () => {
     const g = appGround(320), b = soilBottomAt(160, g);
     expect(b).toBeGreaterThan(CANVAS.soilLine + 40); expect(b).toBeLessThanOrEqual(CANVAS.height);
   });
-  for (const [name, scene] of [["Oct 8", oct8], ["the year", year]] as const) {
-    it(`${name}, the app at 320 and 353 wide: all six signs' feet in the soil`, () => {
+  // R349: a stake per PLANTED coin; Oct 8 plants four (SOL lending and cbBTC hold a share only), the year all six.
+  for (const [name, scene, n] of [["Oct 8", oct8, 4], ["the year", year, 6]] as const) {
+    it(`${name}, the app at 320 and 353 wide: every sign's foot in the soil`, () => {
       for (const width of [320, 353]) {
-        const signs = scene.parts.filter((q) => q.kind === "sign"); expect(signs).toHaveLength(6);
+        const signs = scene.parts.filter((q) => q.kind === "sign"); expect(signs).toHaveLength(n);
         for (const s of signs) { const at = signPlacement(s, width); footIn(at.x, at.y, at.scale, appGround(width)); }
       }
     });
@@ -37,7 +38,7 @@ describe("R181: the stakes stand in the soil", () => {
         const v = widgetView(scene, w, h), svg = widgetGardenSvg(scene, w, h), g = frameGround(320, v);
         if (!v.signs) continue;
         const signs = [...svg.matchAll(/<use xlink:href="#s-sign" transform="translate\(([-\d.]+) ([-\d.]+)\) rotate\(0\) scale\(([\d.]+) [\d.]+\)/g)];
-        expect(signs).toHaveLength(6);
+        expect(signs).toHaveLength(n);
         for (const m of signs) footIn(Number(m[1]), Number(m[2]), Number(m[3]), g);
       }
     });
