@@ -1,7 +1,7 @@
-import { SKR_ONLY, type Split, type Stop, type Asset } from "./coins";
+import { SKR_ONLY, type Split, type Stop, type LiveAsset } from "./coins";
 
 /** The user's own pins: a fixed percent per coin (spec 4.2); a missing coin is the manager's to set, or 0 when the manager is off. */
-export type Pins = Partial<Record<Asset, number>>;
+export type Pins = Partial<Record<LiveAsset, number>>;
 
 /** The user's rules. All money in integer cents; percentages in basis points; the split in whole percents. */
 export type Rules = {

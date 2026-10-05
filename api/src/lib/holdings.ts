@@ -51,7 +51,7 @@ export type RateFacts = { firstRate: number | null; growthPct: number | null };
 export async function rateFacts(repo: Repo, day: string): Promise<Partial<Record<Asset, RateFacts>>> {
   const out: Partial<Record<Asset, RateFacts>> = {};
   for (const a of ASSETS) {
-    if (COINS[a].kind === "btc") continue;
+    if (COINS[a].kind === "btc" || COINS[a].kind === "lend") continue;
     const all = await repo.listCoinDays(a, "2000-01-01");
     const first = all.find((r) => r.ok && r.rate !== null && r.rate > 0) ?? null;
     out[a] = { firstRate: first?.rate ?? null, growthPct: growth(all.filter((r) => r.day >= addDays(day, -8))).pct };

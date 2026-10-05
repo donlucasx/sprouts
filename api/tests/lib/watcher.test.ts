@@ -8,7 +8,7 @@ import type { Rules } from "@/domain/roundup";
 const current: Rules = {
   roundupOn: true, roundupToCents: 100, pctOn: true, pctBps: 100, pctThresholdCents: 10_000,
   plantThresholdCents: 200, plantMaxDays: 7, dailyCapCents: 500, managed: false, stop: "balanced", pins: {},
-  allocation: { SKR: 100, stORE: 0, hSOL: 0, JitoSOL: 0, JupSOL: 0, cbBTC: 0 },
+  allocation: { SKR: 100, stORE: 0, hSOL: 0, USDC_LEND: 0, SOL_LEND: 0, cbBTC: 0 },
 };
 const answers = (input: unknown, usage = { inputTokens: 400, outputTokens: 60 }): ModelCall => async () => ({ input, usage });
 

@@ -5,7 +5,7 @@ import { rulesRowToRules, type RulesRow } from "@/db/types";
 import { requireSession } from "@/lib/auth-guard";
 import { badRequest } from "@/lib/bad-request";
 import { ReauthSchema, verifyReauth } from "@/lib/reauth";
-import { isAsset, sameSplit, type Asset } from "@/domain/coins";
+import { isLiveAsset, sameSplit, type LiveAsset } from "@/domain/coins";
 import type { Pins } from "@/domain/roundup";
 import { validatePins, floorFor, effectiveSplit, STOP_DEFAULTS, STOP_LABEL, PIN_MAX } from "@/domain/split";
 import { dayOf } from "@/domain/day";
@@ -57,8 +57,8 @@ export async function PUT(request: Request) {
     if (rawPins !== undefined) {
       pins = {};
       for (const [k, v] of Object.entries(rawPins)) {
-        if (!isAsset(k)) return NextResponse.json({ error: "Bad request: pins." }, { status: 400 });
-        if (v !== 0) pins[k as Asset] = v; // a 0 pin is no pin: the app drops zeros on its side and the API does the same (the audit's P5 note)
+        if (!isLiveAsset(k)) return NextResponse.json({ error: "Bad request: pins." }, { status: 400 });
+        if (v !== 0) pins[k as LiveAsset] = v; // a 0 pin is no pin: the app drops zeros on its side and the API does the same (the audit's P5 note)
       }
       pinsByUndo = false; // pins you send are yours
     }

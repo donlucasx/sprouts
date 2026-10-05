@@ -34,8 +34,8 @@ describe("GET /api/me with the Yield Manager (spec 7.7)", () => {
     await repo.setPlantingShares(p.id, { before: 0n, after: 0n, minted: 0n });
     const today = new Date().toISOString().slice(0, 10);
     await repo.putCoinDay({ day: today, asset: "hSOL", rate: 1.2, ratePrev: null, ratePrevDays: null, priceUsd: 168, liquidityUsd: 1e8, priceChange24h: 0, tradeable: true, lastUpdateEpoch: 1047, ok: true });
-    await repo.putSplitDay({ day: today, stop: "balanced", split: split({ SKR: 40, stORE: 5, hSOL: 25, JitoSOL: 15, JupSOL: 10, cbBTC: 5 }), modelAnswer: null, why: "hSOL grew the most.", fallback: null, callId: 1 });
-    await repo.saveRules(U, { managed: true, stop: "balanced", allocation: split({ SKR: 40, stORE: 5, hSOL: 25, JitoSOL: 15, JupSOL: 10, cbBTC: 5 }), prevAllocation: split({ SKR: 100 }), allocationDay: today });
+    await repo.putSplitDay({ day: today, stop: "balanced", split: split({ SKR: 40, stORE: 5, hSOL: 25, USDC_LEND: 15, SOL_LEND: 10, cbBTC: 5 }), modelAnswer: null, why: "hSOL grew the most.", fallback: null, callId: 1 });
+    await repo.saveRules(U, { managed: true, stop: "balanced", allocation: split({ SKR: 40, stORE: 5, hSOL: 25, USDC_LEND: 15, SOL_LEND: 10, cbBTC: 5 }), prevAllocation: split({ SKR: 100 }), allocationDay: today });
   });
 
   it("serves holdings with earned, the manager block, a real cap left, and the receipt's price", async () => {

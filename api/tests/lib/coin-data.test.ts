@@ -36,7 +36,7 @@ describe("snapshotCoins (spec 5.2)", () => {
     expect(by.stORE.rate).toBeCloseTo(1.0496, 4);
     expect(by.cbBTC.rate).toBeNull();
     expect(rows.every((r) => r.ok && r.tradeable && r.priceUsd === 100)).toBe(true);
-    expect((await repo.getCoinDay("2026-10-02", "JupSOL"))?.ok).toBe(true);
+    expect((await repo.getCoinDay("2026-10-02", "USDC_LEND"))?.ok).toBe(true);
   });
 
   it("one coin's failed read does not block the others, and is marked no data with an event", async () => {
@@ -54,7 +54,6 @@ describe("snapshotCoins (spec 5.2)", () => {
     const rows = await snapshotCoins({ repo, now: NOW, reads: fakeReads({ currentEpoch: async () => 1048n, quoteOk: async (a) => { quoted.push(a); return a !== "cbBTC"; } }) });
     const by = Object.fromEntries(rows.map((r) => [r.asset, r]));
     expect(by.hSOL.ok).toBe(false);
-    expect(by.JitoSOL.ok).toBe(false);
     expect(quoted).not.toContain("SKR");
     expect(by.SKR.tradeable).toBe(true);
     expect(by.cbBTC.tradeable).toBe(false);

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { Repo } from "@/db/repo";
 import type { SplitDayRow } from "@/db/types";
-import { ASSETS, STOP_ORDER, sameSplit, zeroSplit, type Asset, type Split, type Stop } from "@/domain/coins";
+import { ASSETS, STOP_ORDER, sameSplit, zeroSplit, type LiveAsset, type Split, type Stop } from "@/domain/coins";
 import { STOPS, STOP_DEFAULTS, STOP_LABEL, stopMax, clampSplit, fallbackSplit, checkWhy, templateWhy, effectiveSplit } from "@/domain/split";
 import { dayOf, addDays } from "@/domain/day";
 import { growth, priceChange } from "./coin-data";
@@ -14,11 +14,11 @@ import type { ModelCall, Usage } from "./anthropic";
  * split recomputed around their pins. The model is a parameter: nothing here touches the network in tests.
  */
 
-export type CoinFacts = { asset: Asset; growthPct: number | null; days: number; pricePct: number | null; priceDays: number; tradeable: boolean; noData: boolean };
+export type CoinFacts = { asset: LiveAsset; growthPct: number | null; days: number; pricePct: number | null; priceDays: number; tradeable: boolean; noData: boolean };
 
 const Int = z.number().int().min(0).max(100);
 const SUM_MESSAGE = "the six numbers must sum to 100";
-const Answer = z.object({ SKR: Int, stORE: Int, hSOL: Int, JitoSOL: Int, JupSOL: Int, cbBTC: Int, why: z.string().min(1).max(200) }).strict()
+const Answer = z.object({ SKR: Int, stORE: Int, USDC_LEND: Int, SOL_LEND: Int, hSOL: Int, cbBTC: Int, why: z.string().min(1).max(200) }).strict()
   .refine((o) => ASSETS.reduce((s, a) => s + o[a], 0) === 100, { message: SUM_MESSAGE });
 const badSum = (e: z.ZodError) => e.issues.some((i) => i.message === SUM_MESSAGE);
 
@@ -28,10 +28,10 @@ const TOOL = {
   input_schema: {
     type: "object",
     properties: {
-      SKR: { type: "integer" }, stORE: { type: "integer" }, hSOL: { type: "integer" }, JitoSOL: { type: "integer" }, JupSOL: { type: "integer" }, cbBTC: { type: "integer" },
+      SKR: { type: "integer" }, stORE: { type: "integer" }, USDC_LEND: { type: "integer" }, SOL_LEND: { type: "integer" }, hSOL: { type: "integer" }, cbBTC: { type: "integer" },
       why: { type: "string", description: "One line, under 25 words, second person, plain words, no advice, no exclamation marks, quoting only numbers from the table, saying why today's split leans where it does." },
     },
-    required: ["SKR", "stORE", "hSOL", "JitoSOL", "JupSOL", "cbBTC", "why"],
+    required: ["SKR", "stORE", "USDC_LEND", "SOL_LEND", "hSOL", "cbBTC", "why"],
   },
 };
 
@@ -84,8 +84,8 @@ export function factsNumbers(facts: CoinFacts[], stop: Stop, yesterday: Split | 
   return n;
 }
 
-function topCoin(facts: CoinFacts[]): { asset: Asset; pct: number } | null {
-  let top: { asset: Asset; pct: number } | null = null;
+function topCoin(facts: CoinFacts[]): { asset: LiveAsset; pct: number } | null {
+  let top: { asset: LiveAsset; pct: number } | null = null;
   for (const f of facts) if (!f.noData && f.growthPct !== null && f.days > 0 && (!top || f.growthPct > top.pct)) top = { asset: f.asset, pct: f.growthPct };
   return top;
 }
@@ -98,7 +98,7 @@ export async function decideSplits(a: { repo: Repo; now: Date; model: ModelCall 
   const facts = await readFacts(a.repo, day);
   const noData = facts.filter((f) => f.noData).map((f) => f.asset);
   // A coin with no measured span (cbBTC's constant 0, a collecting coin) is not a measured growth: the fallback skips it (spec 6.5).
-  const growthMap: Partial<Record<Asset, number | null>> = Object.fromEntries(facts.map((f) => [f.asset, f.days > 0 ? f.growthPct : null]));
+  const growthMap: Partial<Record<LiveAsset, number | null>> = Object.fromEntries(facts.map((f) => [f.asset, f.days > 0 ? f.growthPct : null]));
   const allNoData = facts.every((f) => f.asset === "SKR" || f.noData);
   const monthStart = new Date(Date.UTC(a.now.getUTCFullYear(), a.now.getUTCMonth(), 1));
   const overBudget = (await a.repo.watcherSpendMicrocents(monthStart)) >= MONTH_CAP_MICROCENTS;
