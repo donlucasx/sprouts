@@ -116,8 +116,8 @@ export type ActivityResponse = {
     id: string; ts: string; asset: Asset; source: "sprouts" | "wallet"; amountRaw: string | null; principalRaw: string;
     unstakeSignature: string | null; withdrawSignature: string | null; cancelled: boolean; delivered: boolean;
   }[];
-  /** underlyingRaw: asked of Track A (this plan's contract note); without it the line names no amount. */
-  lendWithdrawals?: { ts: string; asset: LendAsset; venue: AutoVenue; receiptRaw: string; underlyingRaw?: string; signature: string }[];
+  /** underlyingRaw: string | null on the API (null when the amount is not known); null or absent, the line names the coin and no amount. */
+  lendWithdrawals?: { ts: string; asset: LendAsset; venue: AutoVenue; receiptRaw: string; underlyingRaw?: string | null; signature: string }[];
   moves?: { ts: string; asset: LendAsset; from: AutoVenue; to: AutoVenue; receiptRaw: string; status: MoveStatus }[];
   found?: FoundVenue[];
 };

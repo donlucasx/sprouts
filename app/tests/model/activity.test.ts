@@ -51,6 +51,7 @@ describe('lending withdrawals, moves and found venues', () => {
   it('a lending withdrawal names the amount when the API gives it, else the leg', () => {
     expect(keep(lendWithdrawalRow('Oct 5', { ts: '', asset: 'SOL_LEND', venue: 'jupiter_lend', receiptRaw: '940800', underlyingRaw: '1000000', signature: 'w' }))).toEqual({ key: 'lw-w', line: 'Oct 5, withdrew 0.0010 SOL from Jupiter', details: ['Back in your Seeker wallet.'], signature: 'w' })
     expect(keep(lendWithdrawalRow('Oct 5', { ts: '', asset: 'USDC_LEND', venue: 'kamino_klend', receiptRaw: '1', signature: 'x' })).line).toBe('Oct 5, withdrew your USDC lending from Kamino')
+    expect(keep(lendWithdrawalRow('Oct 5', { ts: '', asset: 'USDC_LEND', venue: 'kamino_klend', receiptRaw: '1', underlyingRaw: null, signature: 'x' })).line).toBe('Oct 5, withdrew your USDC lending from Kamino')
   })
   it('a move: done, did not finish, kept; an open or expired proposal is not a row', () => {
     const m = { ts: '2026-10-05T19:00:00Z', asset: 'USDC_LEND' as const, from: 'jupiter_lend' as const, to: 'kamino_klend' as const, receiptRaw: '940000' }
