@@ -26,3 +26,38 @@ sbf_build() {
     return 1
   fi
 }
+
+# Verifiable build (owner ruling R334): the release leash.so is built by solana-verify in docker, from the Agave 3.1.11
+# image pinned by digest, so anyone can rebuild the same bytes and `solana-verify verify-from-repo` can match them on chain.
+# Needs docker (on this Mac: `colima start`) and solana-verify 0.5.2 (`cargo install solana-verify --version 0.5.2 --locked`).
+VERIFY_IMAGE=solanafoundation/solana-verifiable-build@sha256:4687aba06e83923eb01b550451335fcf452c9feb9c70f309ba75a8e683a482c2
+SOLANA_VERIFY="${SOLANA_VERIFY:-$HOME/.cargo/bin/solana-verify}"
+
+# verify_build <log> [quiet]: solana-verify build of the leash crate (mount = this leash/ directory) into target/deploy/leash.so;
+# fail on a non-zero exit OR a stack overflow line, as sbf_build does. Run from leash/ (test.sh and mutate.sh cd there).
+# Keep no other crate named `leash` under leash/ (no clones in target/): solana-verify builds the first one it finds.
+verify_build() {
+  local log=$1 quiet=${2:-}
+  local rc=0
+  docker info >/dev/null 2>&1 || { echo "VERIFY BUILD: docker is not running (on this Mac: colima start)" >&2; return 1; }
+  [ -x "$SOLANA_VERIFY" ] || { echo "VERIFY BUILD: $SOLANA_VERIFY missing (cargo install solana-verify --version 0.5.2 --locked)" >&2; return 1; }
+  find program/src -name '*.rs' -exec touch {} +
+  if [ -n "$quiet" ]; then
+    "$SOLANA_VERIFY" build --library-name leash --base-image "$VERIFY_IMAGE" "$PWD" >"$log" 2>&1 || rc=$?
+  else
+    ( set -o pipefail; "$SOLANA_VERIFY" build --library-name leash --base-image "$VERIFY_IMAGE" "$PWD" 2>&1 | tee "$log" ) || rc=$?
+  fi
+  if [ "$rc" != 0 ]; then echo "VERIFY BUILD FAILED (exit $rc, $log)" >&2; return 1; fi
+  if stack_overflow_in "$log"; then
+    echo "SBF STACK OVERFLOW (verify build): solana-verify exited 0 but reported:" >&2
+    grep 'Stack offset' "$log" >&2
+    return 1
+  fi
+  grep -q '^Building program at /build//program/$' "$log" || { echo "VERIFY BUILD built another crate than leash/program ($log)" >&2; return 1; }
+}
+
+# leash_build <log> [quiet]: the release path (verify_build) unless LEASH_LOCAL_SBF=1 asks for this machine's cargo-build-sbf,
+# whose bytes differ from the release (fine for a quick local loop, never for a gate).
+leash_build() {
+  if [ -n "${LEASH_LOCAL_SBF:-}" ]; then sbf_build program/Cargo.toml "$@"; else verify_build "$@"; fi
+}
