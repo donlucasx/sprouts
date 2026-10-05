@@ -42,10 +42,10 @@ export function SproutsWidget({ me, width, height, wide, wateredPlants = null }:
   return (
     <FlexWidget clickAction="OPEN_APP" style={{ height: "match_parent", width: "match_parent", backgroundColor: "#F4EEDF", borderRadius: 16, padding: PAD, flexDirection: "column", justifyContent: "flex-start" }}>
       <FlexWidget style={{ width: "match_parent", flexDirection: "column" }}>
-        <TextWidget text={total === null ? formatSkr(BigInt(me.pot.skrStakedRaw), me.pot.skrUsd) : `In your garden ${formatUsd(Math.round(total * 100))}`} style={{ fontSize: 16, color: "#2B2B2B", fontWeight: "600" }} />
-        <TextWidget text={next} style={{ fontSize: 12, color: "#6B6558" }} />
+        <TextWidget text={total === null ? formatSkr(BigInt(me.pot.skrStakedRaw), me.pot.skrUsd) : `In your garden ${formatUsd(Math.round(total * 100))}`} maxLines={1} truncate="END" style={{ fontSize: 16, color: "#2B2B2B", fontWeight: "600" }} />
+        <TextWidget text={next} maxLines={1} truncate="END" style={{ fontSize: 12, color: "#6B6558" }} />
         {showLast && lastPlantingLine(me.lastReceipt) ? (
-          <TextWidget text={lastPlantingLine(me.lastReceipt)!} style={{ fontSize: 12, color: "#6B6558" }} />
+          <TextWidget text={lastPlantingLine(me.lastReceipt)!} maxLines={1} truncate="END" style={{ fontSize: 12, color: "#6B6558" }} />
         ) : null}
       </FlexWidget>
       {garden !== null ? <SvgWidget svg={garden.svg} style={{ width: gardenW, height: garden.h, marginTop: GAP }} /> : null}
