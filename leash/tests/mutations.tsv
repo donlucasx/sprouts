@@ -136,7 +136,7 @@ SETTLE_MIN_OUT svm program/src/lib.rs pull_settle under_delivery_against_min_out
 SETTLE_SKR_EXISTS svm program/src/lib.rs pull_settle settle_refuses_an_absent_user_stake
 TOP_LEVEL svm program/src/lib.rs cpi cpi_into_pull_is_refused
 TOP_LEVEL svm program/src/lib.rs cpi cpi_double_pull_one_settle_is_refused
-SETTLE_LEN svm program/src/lib.rs bindings standalone_settle_guards
+SETTLE_LEN svm program/src/lib.rs bindings settle_len_extra_byte
 SETTLE_LEG svm program/src/lib.rs bindings standalone_settle_guards
 SETTLE_NEGATIVE svm program/src/lib.rs bindings standalone_settle_guards
 SETTLE_FLOOR svm program/src/lib.rs bindings standalone_settle_guards
