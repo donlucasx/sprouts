@@ -95,6 +95,6 @@ describe("the frame (RG30, R167, R185: room above the tallest part max(72 dp, 60
   });
   it("the Oct 8 garden: the band above the tallest part is 60 percent of its 125.2 canvas px content (75.7 on screen), past the 72 px floor since R231", () => {
     const s = buildScene({ ...base, plantings: [p("a", 10.8), p("b", 8.4), p("c", 6), p("d", 3.6), p("e", 1.2), p("o", 9, "stORE"), p("o2", 2, "stORE"), p("h", 4, "hSOL"), p("j", 2, "USDC_LEND")] }), f = frame(s);
-    expect((tallest(s) - f.y) * f.zoom).toBeCloseTo(75.10, 2);   // R291: zoom 1.0014, so 75.20 / 1.0014; R237: 75.68 with SKR at .30 expect(f.viewH).toBeCloseTo(201.81, 2);   // 170.27 before R231, 138.3 in round 3
+    expect((tallest(s) - f.y) * f.zoom).toBeCloseTo(76.0, 2);   // R358: 76.00, the droplet bud on the SKR tip stands taller than the old circle (75.10 before); R291: zoom 1.0014, so 75.20 / 1.0014; R237: 75.68 with SKR at .30 expect(f.viewH).toBeCloseTo(201.81, 2);   // 170.27 before R231, 138.3 in round 3
   });
 });

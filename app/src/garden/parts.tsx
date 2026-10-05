@@ -28,7 +28,6 @@ export function PaintedStem({ s }: { s: Extract<Placed, { kind: "stem" }> }) {
 /** One placed part of a plant, in the plant's own frame (its foot at 0, 0). */
 export function PlacedPart({ p, plant }: { p: Placed; plant: PlantId }) {
   if (p.kind === "stem") return <PaintedStem s={p} />;
-  if (p.part === "swelling") return <Circle cx={p.x} cy={p.y} r={p.scale} fill={COLORS[plant].light} opacity={0.4 + 0.35 * Math.min(1, (p.scale - 2.2) / 2.4)} />;
   if (p.part === "dot") return <Circle cx={p.x} cy={p.y} r={p.scale} fill={COLORS.ore.token} opacity={0.95} />;
   return <SpriteAt name={p.name} x={p.x} y={p.y} rot={p.rot} scale={p.scale} xScale={p.xScale} />;
 }

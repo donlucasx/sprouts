@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { mandarin } from "@/model/geometry/mandarin";
-import { branchFlags } from "@/model/geometry/common";
+import { branchFlags, SWELL_LIFT, SWELL_TUCK } from "@/model/geometry/common";
 import type { ShootIn, LayoutOpts } from "@/model/species";
 import { BAKED_L } from "@/model/species";
 
@@ -43,8 +43,10 @@ describe("the mandarin (spec 4, gen04:70-110)", () => {
     expect(sprites(l).filter((s) => s.name === "token-skr")).toHaveLength(2);
     expect(stems(l).filter((s) => s.part === "stalk")).toHaveLength(2);
     expect(sprites(l).find((s) => s.name === "blossom-mandarin")?.scale).toBeCloseTo(0.8, 5);
-    const sw = sprites(l).find((s) => s.part === "swelling");
-    expect(sw).toMatchObject({ x: 1.5, y: -67.2 }); expect(sw?.scale).toBeCloseTo(3.8, 9);   // seated on the tip: 1.2 px above it (G10); min(4.6, 2.2 + 3.2 · 0.5) is 3.8000000000000003 in floats
+    const sw = sprites(l).find((s) => s.part === "swelling")!, trunk = stems(l).find((s) => s.part === "trunk")!;
+    // R358: the droplet bud stands on the trunk's tip (66 up), on a leader that is the trunk itself grown on into it
+    expect(sw).toMatchObject({ name: "swell-mandarin" }); expect(sw.scale).toBeCloseTo(1, 9); expect(sw.y).toBeCloseTo(-66 - SWELL_LIFT, 9);
+    expect(sw.x).toBeCloseTo(1.5, 0); expect(trunk.y1).toBeCloseTo(sw.y - SWELL_TUCK, 9);
   });
   it("the back-row scale k multiplies every position", () => {
     const a = mandarin(shoots([20, 10, 5]), O, 1), b = mandarin(shoots([20, 10, 5]), O, 0.8);

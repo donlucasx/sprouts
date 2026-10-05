@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { SWELL_LIFT } from "@/model/geometry/common";
 import { sunflower } from "@/model/geometry/sunflower";
 import { spruce } from "@/model/geometry/spruce";
 import { branchFlags } from "@/model/geometry/common";
@@ -26,6 +27,12 @@ describe("the sunflower (gen03 plant_hsol3, cap 222)", () => {
     const l = sunflower(sh([20, 15, 10, 5]), { ...O, fruit: 2 }, 1);
     expect(sprites(l).find((s) => s.part === "head")).toMatchObject({ x: -1, y: -(22 + 16 * 4) });
     expect(sprites(l).filter((s) => s.name === "token-hsol").map((t) => t.y)).toEqual([-(22 + 64) * 0.55, -(22 + 64) * 0.55 + 6]);
+  });
+  it("R358: the droplet bud stands on the stem's tip, or with the head on the disc's top edge (7 up), never on its face", () => {
+    const bare = sprites(sunflower(sh([20, 15, 10]), { ...O, pending: 0.5 }, 1)).find((s) => s.part === "swelling")!;
+    expect(bare.name).toBe("swell-sunflower"); expect(bare.y).toBeCloseTo(-(22 + 16 * 3) - SWELL_LIFT, 9);
+    const headed = sprites(sunflower(sh([20, 15, 10, 5]), { ...O, pending: 0.5 }, 1)).find((s) => s.part === "swelling")!;
+    expect(headed.y).toBeCloseTo(-(22 + 16 * 4) - 7, 9);
   });
 });
 
@@ -97,10 +104,10 @@ describe("the snake plant (gen04:143-159)", () => {
     expect(Math.max(...xs.map(Math.abs))).toBeLessThanOrEqual(26 + 6);
     expect(sprites(many).filter((s) => s.part === "blade")).toHaveLength(30);
   });
-  it("tokens at the foot, the swelling 4 px up and right", () => {
+  it("tokens at the foot, the droplet bud in the fan's heart, its sepals clear of the tokens (R358)", () => {
     const l = snake(sh([20]), { ...O, fruit: 2, pending: 0.25 }, 1);
     expect(sprites(l).filter((s) => s.name === "token-jitosol").map((t) => [t.x, t.y])).toEqual([[-4, -4], [4, -4]]);
-    expect(sprites(l).find((s) => s.part === "swelling")).toMatchObject({ x: 4, y: -4, scale: 3 });
+    expect(sprites(l).find((s) => s.part === "swelling")).toMatchObject({ name: "swell-snake", x: 2, y: -12 }); expect(sprites(l).find((s) => s.part === "swelling")!.scale).toBeCloseTo(3 / 3.8, 9);
   });
   it("band 2 at k 0.8: the blade's scale is band times k and carries no xScale, so the drawn length is 1.28 · 0.8 · 64", () => {
     const l = snake([{ id: "a", ageDays: 40, band: 2, opened: true, branch: false }], O, 0.8);

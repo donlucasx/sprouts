@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { mandarin } from "@/model/geometry/mandarin";
-import { branchFlags, alongAtY } from "@/model/geometry/common";
+import { branchFlags, alongAtY, SWELL_SEPAL } from "@/model/geometry/common";
 import { NUB, FURL_ROT, FURL_S, FURL_X, FURL_LEAN, UNFURL_STEM, UNFURL_PAIR, sproutState, unfurlParts, unfurlLayout, twigAxis, isClosedPart } from "@/model/sprout";
 import type { LayoutOpts, Placed, ShootIn } from "@/model/species";
 
@@ -80,6 +80,6 @@ describe("R351: the mandarin's closed shoot is its own twig folded (no new art, 
     const l = mandarin(shoots([5, 1, 0], [2]), { ...O, pending: 0.5 }, 1.3);
     const sw = l.parts.find((p): p is Sprite => p.kind === "sprite" && p.part === "swelling")!;
     const tips = l.parts.filter((p): p is Sprite => p.kind === "sprite" && p.part === "furl").map((p) => p.y - Math.cos((p.rot * Math.PI) / 180) * 12 * p.scale);
-    expect(sw.y + sw.scale).toBeLessThan(Math.min(...tips));
+    expect(sw.y + SWELL_SEPAL * sw.scale).toBeLessThan(Math.min(...tips));   // R358: the droplet's base, its sepals under it, clear of the pair
   });
 });
