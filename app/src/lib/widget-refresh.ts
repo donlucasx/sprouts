@@ -9,7 +9,7 @@ import { readZeroMarks } from "./zero-marks";
 export async function refreshWidget(me: MeResponse | null) {
   await requestWidgetUpdate({
     widgetName: "Sprouts",
-    renderWidget: (info) => React.createElement(SproutsWidget, { me, width: info.width, height: info.height, wide: info.width >= 300, wateredPlants: wateredPlantsFor(me?.user.wateredAt), restartMarks: readZeroMarks() }),
+    renderWidget: (info) => React.createElement(SproutsWidget, { me, width: info.width, height: info.height, wateredPlants: wateredPlantsFor(me?.user.wateredAt), restartMarks: readZeroMarks() }),
     widgetNotFound: () => {},
   });
 }
