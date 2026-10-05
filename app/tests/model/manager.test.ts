@@ -16,7 +16,7 @@ describe("the tables", () => {
     expect(STOP_MAX.bold.cbBTC).toBe(20);
     expect(PIN_MAX).toEqual({ SKR: 100, stORE: 50, hSOL: 75, USDC_LEND: 75, SOL_LEND: 75, cbBTC: 75 });
     expect(PIN_STEP).toBe(5);
-    expect(MANAGER_LINE).toBe("Each morning, AI picks how your new change is split, leaning toward the coins paying more, within the limit you choose below. It never sells what you hold.");  // R348
+    expect(MANAGER_LINE).toBe("Each morning, AI splits your new change toward the coins paying more. It never sells what you hold.");  // R348
     expect(PRO_BADGE).toBe("Pro");
     expect(PRO_LINE).toBe("Included free during launch.");  // R347
     expect(ROWS_LINE).toEqual({ on: "Switch a coin off and the manager won't buy it.", off: "Set your own split." });  // R348

@@ -58,7 +58,7 @@ export async function PUT(request: Request) {
       pins = {};
       for (const [k, v] of Object.entries(rawPins)) {
         if (!isLiveAsset(k)) return NextResponse.json({ error: "Bad request: pins." }, { status: 400 });
-        if (v !== 0) pins[k as LiveAsset] = v; // a 0 pin is no pin: the app drops zeros on its side and the API does the same (the audit's P5 note)
+        pins[k as LiveAsset] = v; // zeros are sorted out below, once the switch's next state is known (R346)
       }
       pinsByUndo = false; // pins you send are yours
     }
@@ -70,6 +70,9 @@ export async function PUT(request: Request) {
       pinsByUndo = false;
     }
     if (!nextManaged) delete pins.SKR; // spec 4.2: off, SKR is always the rest, so an SKR pin from the manager's time is dropped
+    // R346: on, a 0 pin is a coin switched off (the manager never buys it), so it is kept; SKR cannot be switched off (its floor).
+    // Off, a 0 pin is no pin: the manual split's 0 means nothing, SKR is the rest (the audit's P5 note).
+    for (const k of Object.keys(pins) as LiveAsset[]) if (pins[k] === 0 && (!nextManaged || k === "SKR")) delete pins[k];
     const floor = floorFor(nextManaged, nextStop);
     const problem = validatePins(pins, floor);
     if (problem) return NextResponse.json({ error: PIN_COPY(floor, STOP_LABEL[nextStop])[problem] }, { status: 400 });

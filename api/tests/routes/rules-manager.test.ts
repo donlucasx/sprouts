@@ -121,10 +121,21 @@ describe("PUT /api/rules with the Yield Manager", () => {
     expect((await repo.getRules(U)).pinsByUndo).toBe(false);
   });
 
-  it("a 0 pin from a bare PUT is dropped, as the app drops zeros on its side", async () => {
-    await put({ managed: true, stop: "balanced" });
-    const res = (await (await put({ pins: { hSOL: 0, cbBTC: 10 } })).json()) as { pins: Record<string, number> };
-    expect(res.pins).toEqual({ cbBTC: 10 });
+  it("R346: on, a 0 pin is a coin switched off: kept, and the split gives it nothing", async () => {
+    await repo.putSplitDay({ day: "2026-10-01", stop: "balanced", split: split({ SKR: 40, stORE: 5, hSOL: 25, USDC_LEND: 15, SOL_LEND: 10, cbBTC: 5 }), modelAnswer: null, why: "w", fallback: null, callId: 1, venuePick: null });
+    const res = (await (await put({ managed: true, stop: "balanced", pins: { hSOL: 0, cbBTC: 0 } })).json()) as { pins: Record<string, number>; allocation: Split };
+    expect(res.pins).toEqual({ hSOL: 0, cbBTC: 0 });
+    expect(res.allocation.hSOL).toBe(0);
+    expect(res.allocation.cbBTC).toBe(0);
+    expect(Object.values(res.allocation).reduce((a, b) => a + b, 0)).toBe(100);
+    expect((await repo.getRules(U)).pins).toEqual({ hSOL: 0, cbBTC: 0 });
+  });
+
+  it("R346: SKR cannot be switched off; off, a 0 pin is no pin (the manual split's 0 means nothing)", async () => {
+    const on = (await (await put({ managed: true, stop: "balanced", pins: { SKR: 0, hSOL: 0 } })).json()) as { pins: Record<string, number> };
+    expect(on.pins).toEqual({ hSOL: 0 });
+    const off = (await (await put({ managed: false, pins: { hSOL: 0, cbBTC: 10 } })).json()) as { pins: Record<string, number> };
+    expect(off.pins).toEqual({ cbBTC: 10 });
   });
 
   it("a bad body names the field it failed on, in the API's own sentence (R44 holds)", async () => {
