@@ -24,7 +24,7 @@ import { MarkedTitle } from '@/components/Lockup'
 import { WatcherLine } from '@/components/WatcherLine'
 import { NextPlanting, roomUnderBar } from '@/components/NextPlanting'
 import { canSlot } from '@/model/can'
-import { nextPlantingRow } from '@/lib/next-planting'
+import { nextPlantingFor } from '@/lib/next-planting'
 import { PauseRow } from '@/components/PauseRow'
 import { RelinkCard } from '@/components/RelinkCard'
 import { MoveCard } from '@/components/MoveCard'
@@ -194,13 +194,7 @@ export default function Home() {
     failed,
     nudged,
   })
-  const nextRow = nextPlantingRow({
-    pendingCents: me.nextPlanting.pendingCents,
-    thresholdCents: me.nextPlanting.thresholdCents,
-    hasPlant: scene.parts.some((p) => p.kind === 'plant'),
-    now,
-    paused: pause.shown && !pause.on,
-  })
+  const nextRow = nextPlantingFor(me, scene, now)
   const wallets = me.wallets.filter((w) => w.status !== 'revoked')
   const receiptLine = lastPlantingLine(me.lastReceipt)
   const walletsRow = walletsLine(wallets)

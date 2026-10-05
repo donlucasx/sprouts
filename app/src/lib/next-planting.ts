@@ -1,4 +1,7 @@
 import { formatUsd } from "./format";
+import { pauseState } from "./me-state";
+import type { MeResponse } from "./api";
+import type { Scene } from "@/model/garden";
 
 /** The daily planting job runs at 14:00 UTC (R164). */
 const RUN_HOUR_UTC = 14;
@@ -38,3 +41,20 @@ export function nextPlantingRow(p: { pendingCents: number; thresholdCents: numbe
   if (pending <= 0) return { state: "empty", label, value: of, fraction: 0 };
   return { state: "saving", label, value: of, fraction: pending / threshold };
 }
+
+/** The Next planting row from one read, Home's and the widget's alike (his note 10-05: the widget said "$1.35 of $0.10" where Home said
+ * "Tomorrow, 7 AM"): paused while every linked wallet is paused (Home's switch), "Next planting" once the garden holds a plant. */
+export function nextPlantingFor(me: Pick<MeResponse, "nextPlanting" | "wallets">, scene: Pick<Scene, "parts">, now: Date): NextPlantingRow {
+  const pause = pauseState(me.wallets);
+  return nextPlantingRow({
+    pendingCents: me.nextPlanting.pendingCents,
+    thresholdCents: me.nextPlanting.thresholdCents,
+    hasPlant: scene.parts.some((p) => p.kind === "plant"),
+    now,
+    paused: pause.shown && !pause.on,
+  });
+}
+
+/** The row as one line (the widget has no bar): "Next planting · Tomorrow, 7 AM". */
+/** The widget's one line, short enough for a 2-cell widget (his note 10-05: "Tomorrow, 7 ..." was cut): "Next: Tomorrow, 7 AM". */
+export const nextPlantingText = (row: NextPlantingRow): string => `${row.label === "Next planting" ? "Next" : "First"}: ${row.value}`;
