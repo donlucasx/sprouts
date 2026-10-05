@@ -6,6 +6,8 @@ import { dayOf } from "@/domain/day";
 // The user's lending receipts (the 60% cap's input, K-I5): none by default; a test sets a position.
 vi.mock("@/lib/holdings", async (orig) => ({ ...(await orig<object>()), readLendingPositions: vi.fn(async () => []) }));
 import { readLendingPositions } from "@/lib/holdings";
+vi.mock("@/lib/leash", async (orig) => ({ ...(await orig<object>()), readLeashConfig: vi.fn(async () => { throw new Error("not deployed"); }) }));
+import { readLeashConfig, LEG_BYTES, type LeashConfig } from "@/lib/leash";
 import { GET as venues } from "@/app/api/venues/route";
 
 const U = "HJCJKRQLV2HVKfe3sFdTF5jjBY1xfWgnK8cLcjH7qnHd";
@@ -42,6 +44,15 @@ describe("GET /api/venues (contracts 5.1)", () => {
     const body = await (await get()).json();
     expect(body.picks).toEqual({ USDC_LEND: null, SOL_LEND: null });
     expect(body.why).toBe("Kamino already holds 60% of your lending and no other venue passed today's checks; your USDC share goes to the next leg. No lending venue passed today's checks; your SOL share goes to the next leg.");
+    expect(body.venues.find((v: { venue: string }) => v.venue === "kamino_klend").picked).toBe(false);
+  });
+  it("residual O2: a leashed user's picks are the venues the leash allows; with none allowed the sentence says the leash", async () => {
+    await repo.addWallet({ pubkey: "W", userPubkey: U, delegationPda: "D", dailyCapCents: 500, linkModel: "leash" });
+    const legs = LEG_BYTES.map((b) => ({ enabled: b === 0 || b === 3, reader: 0, feeBps: 0, tolBps: 0 })) as unknown as LeashConfig["legs"];
+    vi.mocked(readLeashConfig).mockResolvedValueOnce({ legs } as LeashConfig);   // USDC on Jupiter only, and Jupiter is avoided today
+    const body = await (await get()).json();
+    expect(body.picks).toEqual({ USDC_LEND: null, SOL_LEND: null });
+    expect(body.why).toBe("Your wallet's leash does not take USDC to Kamino yet and no venue it allows passed today's checks; your USDC share goes to the next leg.");   // the SOL sentence would pass WHY_MAX
     expect(body.venues.find((v: { venue: string }) => v.venue === "kamino_klend").picked).toBe(false);
   });
   it("K-I5: the receipts unreadable: the stop's picks and sentence stand", async () => {

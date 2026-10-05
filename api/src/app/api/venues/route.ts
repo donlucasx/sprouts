@@ -5,7 +5,8 @@ import { requireSession } from "@/lib/auth-guard";
 import { json } from "@/lib/json";
 import { address } from "@solana/kit";
 import { latestCoinDays, latestVenueRows, readLendingPositions } from "@/lib/holdings";
-import { userRouting } from "@/lib/user-routing";
+import { leashAllowedFor, userRouting } from "@/lib/user-routing";
+import { readLeashConfig } from "@/lib/leash";
 import { dayOf, addDays } from "@/domain/day";
 import { VENUES, VENUE_NAME, isAutoVenue, type Venue } from "@/domain/venues";
 import { LEND_ASSETS, type LendAsset } from "@/domain/coins";
@@ -38,8 +39,12 @@ export async function GET(request: Request) {
     return null;
   });
   const coinDays = await latestCoinDays(repo, today);
-  const pending = (await Promise.all((await repo.listWalletsOf(user.seedVaultPubkey)).map((w) => repo.unplantedSwaps(w.pubkey)))).flat().reduce((s, x) => s + x.roundupCents, 0);
-  const routing = await userRouting({ repo, splitRow: split, positions, prices: { USDC_LEND: coinDays.USDC_LEND?.priceUsd ?? null, SOL_LEND: coinDays.SOL_LEND?.priceUsd ?? null }, addUsd: Math.min(pending, rules.dailyCapCents) / 100 });
+  const wallets = await repo.listWalletsOf(user.seedVaultPubkey);
+  const pending = (await Promise.all(wallets.map((w) => repo.unplantedSwaps(w.pubkey)))).flat().reduce((s, x) => s + x.roundupCents, 0);
+  // Residual O2: a leashed user is shown only venues the leash allows (the run's set), exactly as /api/me.
+  const leashed = wallets.some((w) => w.linkModel === "leash" && w.status !== "revoked");
+  const leash = leashAllowedFor(leashed, leashed ? await readLeashConfig().catch(() => null) : null);
+  const routing = await userRouting({ repo, splitRow: split, positions, prices: { USDC_LEND: coinDays.USDC_LEND?.priceUsd ?? null, SOL_LEND: coinDays.SOL_LEND?.priceUsd ?? null }, addUsd: Math.min(pending, rules.dailyCapCents) / 100, leash });
   const picks: Partial<Record<LendAsset, string | null>> = routing.picks;
   const venues = VENUES.flatMap((venue) => LEND_ASSETS.map((asset) => ({ venue, asset, r: rows.find((x) => x.venue === venue && x.asset === asset) ?? null })))
     .filter(({ venue, asset, r }) => r !== null || ALWAYS.some((x) => x.venue === venue && x.asset === asset))

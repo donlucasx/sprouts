@@ -9,10 +9,10 @@ import { storeBalanceRaw, storeRedeemRate } from "@/lib/store";
 import { readDelegation } from "@/lib/subscriptions";
 import { readHoldings, latestCoinDays, holdingsFrom, rateFacts, readLendingPositions, lendingFrom, lendHoldings, latestVenueRows } from "@/lib/holdings";
 import { lendSignsFor, underlyingOutRaw, receiptOutRaw } from "@/lib/lend-view";
-import { readLeashConfig, enabledLegs, LEG_SPEC, leashLive, relinkPilot } from "@/lib/leash";
+import { readLeashConfig, enabledLegs, LEG_SPEC, leashLive, relinkPilot, type LeashConfig } from "@/lib/leash";
 import { TERMS_VERSION } from "@/lib/terms";
 import { carryMoves, moveCarriesFor } from "@/lib/moves";
-import { userRouting } from "@/lib/user-routing";
+import { leashAllowedFor, userRouting } from "@/lib/user-routing";
 import { ASSETS, COINS, type LiveAsset } from "@/domain/coins";
 import { pickAsset } from "@/domain/allocation";
 import { potInputs, potFromInputs } from "@/lib/pot";
@@ -86,15 +86,17 @@ export async function GET(request: Request) {
   const splitRow = (await repo.getSplitDay(day, rules.stop)) ?? (await repo.latestSplitDay(rules.stop));
   // K-I5: the picks and the routing sentence after THIS user's 60% venue cap (the stored pick is the stop's, before it).
   const prices = { USDC_LEND: days.USDC_LEND?.priceUsd ?? null, SOL_LEND: days.SOL_LEND?.priceUsd ?? null };
-  const routing = await userRouting({ repo, splitRow, positions: lendRead, prices, addUsd: Math.min(pending, rules.dailyCapCents) / 100 });
-  const picks = routing.picks;
   // Contracts 5.2: legsEnabled is null for a user with no leashed wallet; [] when the leash config cannot be read (nothing is enabled we can show).
   const leashWallets = wallets.filter((w) => w.linkModel === "leash" && w.status !== "revoked");
   let legsEnabled: LiveAsset[] | null = null;
+  let leashCfg: LeashConfig | null = null;
   if (leashWallets.length) {
-    const cfg = await readLeashConfig().catch(() => null);
-    legsEnabled = cfg ? [...new Set(enabledLegs(cfg).map((b) => LEG_SPEC[b].asset))] : [];
+    leashCfg = await readLeashConfig().catch(() => null);
+    legsEnabled = leashCfg ? [...new Set(enabledLegs(leashCfg).map((b) => LEG_SPEC[b].asset))] : [];
   }
+  // Residual O2: a leashed user is shown only venues the leash allows (the run's set).
+  const routing = await userRouting({ repo, splitRow, positions: lendRead, prices, addUsd: Math.min(pending, rules.dailyCapCents) / 100, leash: leashAllowedFor(leashWallets.length > 0, leashCfg) });
+  const picks = routing.picks;
   // Re-link (contracts 5.5, R287): this user's wallets still on the puller; a wallet on the leash or revoked never needs it.
   const pullerWallets = wallets.filter((w) => w.linkModel === "puller" && w.status !== "revoked");
   const open = await repo.openMoveProposal(user.seedVaultPubkey);
