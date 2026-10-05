@@ -150,9 +150,17 @@ const DOMAIN_SHAPED = /\b[a-z0-9-]+\.[a-z]{2,}\b/i;
 /** checkWhy (URLs stripped, whitespace and newlines collapsed, numbers in the facts) plus the allowlist; returns what to STORE. */
 export function safeLine(line: string, facts: number[]): string | null {
   const s = checkWhy(line, facts);
-  if (s === null || !SAFE_CHARS.test(s) || DOMAIN_SHAPED.test(s)) return null;
+  if (s === null || !SAFE_CHARS.test(s) || DOMAIN_SHAPED.test(s) || DOMAIN_SHAPED.test(joinDots(s))) return null;
   return s;
 }
+/**
+ * K-M6: "kamino . finance" must not slip past DOMAIN_SHAPED. Spaces before a dot are dropped, and spaces after one when a lowercase
+ * word follows (a sentence end is ". " then a capital in every line we keep, so "a year. SKR" stays two sentences).
+ */
+const joinDots = (s: string) => s.replace(/\s+\.\s*/g, ".").replace(/\.\s+(?=[a-z])/g, ".");
+/** K-M3: a scouted pool's project and symbol (DefiLlama's raw strings) are stored only as plain names: no markup, no invisible or bidi characters, no domain. */
+const PLAIN_NAME = /^[A-Za-z0-9][A-Za-z0-9 _-]{0,39}$/;
+export const plainName = (s: string): boolean => PLAIN_NAME.test(s) && !DOMAIN_SHAPED.test(joinDots(s));
 /** A model sentence that talks about lending (a venue, USDC, SOL, lending) could contradict code's routing: it is not kept. */
 const TALKS_LENDING = /kamino|jupiter|marginfi|lulo|\bUSDC\b|\bSOL\b|\blend/i;
 export const WHY_MAX = 200;
@@ -259,7 +267,7 @@ export async function decideSplits(a: { repo: Repo; now: Date; model: Conversati
         }
         for (const f of found) {
           const pool = scouted.get(f.poolId);
-          if (pool) foundRows.push({ day, poolId: pool.poolId, project: pool.project, symbol: pool.symbol, asset: pool.asset, apyBasePct: pool.apyBasePct, tvlUsd: pool.tvlUsd, note: f.note });
+          if (pool && plainName(pool.project) && plainName(pool.symbol)) foundRows.push({ day, poolId: pool.poolId, project: pool.project, symbol: pool.symbol, asset: pool.asset, apyBasePct: pool.apyBasePct, tvlUsd: pool.tvlUsd, note: f.note });
         }
         const clamped = clampSplit({ stop, proposed: numbers as Split, noData, yesterday });
         if (!clamped) byRule("bounds");
