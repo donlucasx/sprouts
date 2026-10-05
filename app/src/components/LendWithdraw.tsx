@@ -86,6 +86,10 @@ export function LendWithdraw(props: {
       props.onDone(out.line)
     } catch (e) {
       setError(e instanceof ApiError || e instanceof SignRefused ? e.message : 'The withdrawal did not go through. Nothing moved.')
+      // Review I1: the transaction may have landed (a 409 "may still go through", a dropped answer). Read the position again and drop the
+      // plan, so a second tap is planned from the position as it is now, never the same part signed twice from the old one.
+      setPlan(null)
+      await invalidate().catch(() => {})
     } finally {
       gate.leave()
       setBusy(false)

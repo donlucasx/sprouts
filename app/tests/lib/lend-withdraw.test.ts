@@ -93,6 +93,13 @@ describe('prepareLendWithdraw and withdrawLendAtTap (R359: plan first, then sign
     // ...while All on that API still works as before
     expect(await prepareLendWithdraw({ position: kamino, request: ALL, build: async () => old })).toMatchObject({ plan: { receiptRaw: '1661200' } })
   })
+  it('review I2: an amount answered with the whole position is refused unless the rest really is under the smallest withdrawal', async () => {
+    // 1.999752 shown; asking 1.00 leaves 0.99: an `all` answer is not a dust take
+    expect(await prepareLendWithdraw({ position: kamino, request: { amountRaw: '1000000' }, build: async () => b({ all: true }) })).toEqual({ stopped: POSITION_CHANGED })
+  })
+  it('review I3: Max sends All (the screen rate lags the venue, so the shown value as an amount would leave a rest)', () => {
+    expect(lendRequest('amount', lendMaxText(kamino), kamino)).toEqual({})
+  })
   it('the rest too small to leave: the API answers all, the plan shows it; signing then needs the whole receipt', async () => {
     const dust = b({ all: true, brief: 'About 2.00 USDC comes back. The rest is too small to leave, so this takes it all.' })
     expect(await prepareLendWithdraw({ position: kamino, request: { amountRaw: '1995000' }, build: async () => dust })).toEqual({ plan: dust })
@@ -100,7 +107,8 @@ describe('prepareLendWithdraw and withdrawLendAtTap (R359: plan first, then sign
   it('the fresh build at the tap differs from the plan shown (all vs part, or a larger receipt): re-plans, signs nothing', async () => {
     const sign = vi.fn()
     const shown = b({ receiptRaw: '830600', all: false })
-    let out = await withdrawLendAtTap({ user: USER, position: kamino, request: { amountRaw: '1000000' }, shown, build: async () => b({ all: true }), sign, confirm: vi.fn() })
+    // 1.995 of 1.999752: shown as a part, the fresh build takes it all (the rest became dust): ask again
+    let out = await withdrawLendAtTap({ user: USER, position: kamino, request: { amountRaw: '1995000' }, shown: b({ receiptRaw: '1657000', all: false }), build: async () => b({ all: true }), sign, confirm: vi.fn() })
     expect(out).toMatchObject({ replanned: { all: true }, message: AMOUNT_CHANGED_LEND })
     out = await withdrawLendAtTap({ user: USER, position: kamino, request: { amountRaw: '1000000' }, shown, build: async () => b({ receiptRaw: '830700', all: false }), sign, confirm: vi.fn() })
     expect(out).toMatchObject({ message: AMOUNT_CHANGED_LEND })

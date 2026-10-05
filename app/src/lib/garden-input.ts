@@ -41,6 +41,8 @@ export function nextZeroMarks(me: MeResponse, prev: ZeroMarks): ZeroMarks {
     if (held[a] !== false) continue;
     if (isLend(a) && me.positions !== undefined && me.positionsRead !== "ok") continue;
     const newest = me.history.plantings.filter((p) => p.asset === a).map((p) => p.ts).sort((x, y) => new Date(x).getTime() - new Date(y).getTime()).at(-1);
+    // Review: a planting booked within 10 minutes of this read may not be in the balance yet; marking on it would hide it for good.
+    if (newest && new Date(me.pot.asOf).getTime() - new Date(newest).getTime() < 10 * 60_000) continue;
     if (newest && (!out[a] || new Date(newest).getTime() > new Date(out[a]!).getTime())) out[a] = newest;
   }
   return out;
