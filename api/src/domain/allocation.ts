@@ -14,10 +14,12 @@ export function pickAsset(ledger: Ledger, target: Split): LiveAsset {
   const wanted = ASSETS.filter((a) => target[a] > 0);
   if (wanted.length === 0) return "SKR";
   const total = wanted.reduce((s, a) => s + (ledger[a] ?? 0), 0);
+  // A target may sum under 100 (R336 follow-up: a share left unpulled); its legs are then read as proportions of its own total.
+  const targetTotal = wanted.reduce((s, a) => s + target[a], 0);
   let best: LiveAsset = wanted[0];
   let bestGap = -Infinity;
   for (const a of wanted) {
-    const gap = total === 0 ? target[a] : target[a] / 100 - (ledger[a] ?? 0) / total;
+    const gap = total === 0 ? target[a] : target[a] / targetTotal - (ledger[a] ?? 0) / total;
     if (gap > bestGap) {
       best = a;
       bestGap = gap;

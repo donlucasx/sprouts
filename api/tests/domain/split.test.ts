@@ -220,18 +220,54 @@ describe("checkWhy (spec 6.4)", () => {
 
 import { redistributeDisabled } from "@/domain/split";
 
-describe("redistributeDisabled (spec 6.5: a disabled leg's share goes to the next enabled leg)", () => {
-  it("moves every disabled share to the enabled leg with the largest share", () => {
-    const s = { SKR: 45, stORE: 0, USDC_LEND: 15, SOL_LEND: 10, hSOL: 20, cbBTC: 10 };
-    expect(redistributeDisabled(s, ["SKR", "SOL_LEND", "stORE"])).toEqual({ SKR: 0, stORE: 0, USDC_LEND: 15, SOL_LEND: 0, hSOL: 75, cbBTC: 10 });
+describe("redistributeDisabled (R336 + Claude follow-up: water-fill to the stop maxes, remainder to USDC lending)", () => {
+  const DEF = STOP_DEFAULTS;
+  const sum = (x: Record<string, number>) => Object.values(x).reduce((a, b) => a + b, 0);
+  // Day-1 leash legs {2,6,7}: USDC on K-Lend, hSOL, cbBTC enabled; SKR, stORE and SOL_LEND disabled.
+  const DAY1 = ["SKR", "stORE", "SOL_LEND"] as const;
+  // With stORE (leg 1): {1,2,6,7}.
+  const DAY1_STORE = ["SKR", "SOL_LEND"] as const;
+  it("Careful, legs {2,6,7}: hSOL and cbBTC fill to their maxes (15, 30), USDC to 30 then takes the remainder 25: no 80% cbBTC", () => {
+    expect(redistributeDisabled(DEF.careful, DAY1, "careful")).toEqual({ SKR: 0, stORE: 0, USDC_LEND: 55, SOL_LEND: 0, hSOL: 15, cbBTC: 30 });
+  });
+  it("Balanced, legs {2,6,7}: hSOL 25, cbBTC 25 (maxes), USDC the rest (50)", () => {
+    expect(redistributeDisabled(DEF.balanced, DAY1, "balanced")).toEqual({ SKR: 0, stORE: 0, USDC_LEND: 50, SOL_LEND: 0, hSOL: 25, cbBTC: 25 });
+  });
+  it("Bold, legs {2,6,7}: hSOL 35, cbBTC 20 (maxes), USDC 45", () => {
+    expect(redistributeDisabled(DEF.bold, DAY1, "bold")).toEqual({ SKR: 0, stORE: 0, USDC_LEND: 45, SOL_LEND: 0, hSOL: 35, cbBTC: 20 });
+  });
+  it("legs {1,2,6,7}: stORE takes up to its max too, before the remainder goes to USDC", () => {
+    expect(redistributeDisabled(DEF.careful, DAY1_STORE, "careful")).toEqual({ SKR: 0, stORE: 10, USDC_LEND: 45, SOL_LEND: 0, hSOL: 15, cbBTC: 30 });
+    expect(redistributeDisabled(DEF.balanced, DAY1_STORE, "balanced")).toEqual({ SKR: 0, stORE: 20, USDC_LEND: 30, SOL_LEND: 0, hSOL: 25, cbBTC: 25 });
+    // Bold: 45 points, headroom stORE 30, hSOL 10, cbBTC 10: stORE first to the common level, then one point each (ties in ASSETS order).
+    expect(redistributeDisabled(DEF.bold, DAY1_STORE, "bold")).toEqual({ SKR: 0, stORE: 29, USDC_LEND: 20, SOL_LEND: 0, hSOL: 33, cbBTC: 18 });
+  });
+  it("every result: sums to 100, and no enabled leg but USDC_LEND sits over its stop max", () => {
+    for (const stop of ["careful", "balanced", "bold"] as const) for (const dis of [DAY1, DAY1_STORE]) {
+      const r = redistributeDisabled(DEF[stop], dis, stop)!;
+      expect(sum(r)).toBe(100);
+      for (const a of ["stORE", "SOL_LEND", "hSOL", "cbBTC"] as const) expect(r[a]).toBeLessThanOrEqual(STOPS[stop].max[a]);
+    }
+  });
+  it("the fill goes to the leg with the most headroom first (water levels), so a small share spreads instead of piling on one leg", () => {
+    // Unleashed, Balanced, SOL_LEND has no eligible venue: its 10 points go one by one to the most headroom (SKR has 55).
+    expect(redistributeDisabled(DEF.balanced, ["SOL_LEND"], "balanced")).toEqual({ SKR: 55, stORE: 0, USDC_LEND: 15, SOL_LEND: 0, hSOL: 20, cbBTC: 10 });
+    const s = { SKR: 30, stORE: 20, USDC_LEND: 10, SOL_LEND: 10, hSOL: 15, cbBTC: 15 };
+    // SKR and SOL_LEND off (leashed): 40 points; careful headroom stORE 0 (already over), USDC 20, hSOL 0, cbBTC 15; 5 left go to USDC.
+    expect(redistributeDisabled(s, ["SKR", "SOL_LEND"], "careful")).toEqual({ SKR: 0, stORE: 20, USDC_LEND: 35, SOL_LEND: 0, hSOL: 15, cbBTC: 30 });
+  });
+  it("USDC_LEND disabled and every enabled leg at its max: the remainder is left unpulled (the split sums under 100)", () => {
+    const r = redistributeDisabled(DEF.careful, ["SKR", "stORE", "USDC_LEND", "SOL_LEND"], "careful")!;
+    expect(r).toEqual({ SKR: 0, stORE: 0, USDC_LEND: 0, SOL_LEND: 0, hSOL: 15, cbBTC: 30 });
+    expect(sum(r)).toBe(45);
+  });
+  it("an enabled leg already over its max (a pin) keeps its share and takes nothing more", () => {
+    const s = { SKR: 25, stORE: 0, USDC_LEND: 0, SOL_LEND: 0, hSOL: 0, cbBTC: 75 };
+    expect(redistributeDisabled(s, ["SKR", "stORE", "SOL_LEND", "hSOL"], "careful")).toEqual({ SKR: 0, stORE: 0, USDC_LEND: 25, SOL_LEND: 0, hSOL: 0, cbBTC: 75 });
   });
   it("leaves a split alone when nothing disabled holds a share, and answers null when nothing is enabled", () => {
     const s = { SKR: 100, stORE: 0, USDC_LEND: 0, SOL_LEND: 0, hSOL: 0, cbBTC: 0 };
-    expect(redistributeDisabled(s, ["stORE"])).toEqual(s);
-    expect(redistributeDisabled(s, ["SKR", "stORE", "USDC_LEND", "SOL_LEND", "hSOL", "cbBTC"])).toBeNull();
-  });
-  it("ties go to the first leg in ASSETS order", () => {
-    const s = { SKR: 50, stORE: 0, USDC_LEND: 25, SOL_LEND: 0, hSOL: 25, cbBTC: 0 };
-    expect(redistributeDisabled(s, ["SKR"])).toEqual({ SKR: 0, stORE: 0, USDC_LEND: 75, SOL_LEND: 0, hSOL: 25, cbBTC: 0 });
+    expect(redistributeDisabled(s, ["stORE"], "balanced")).toEqual(s);
+    expect(redistributeDisabled(s, ["SKR", "stORE", "USDC_LEND", "SOL_LEND", "hSOL", "cbBTC"], "balanced")).toBeNull();
   });
 });

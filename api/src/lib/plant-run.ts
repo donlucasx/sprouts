@@ -477,7 +477,7 @@ async function plantOneOrThrow(a: { repo: Repo; now: Date; chain: Chain }, w: Wa
   // The lowest of the user's own limit (rules, adjustable in the app), the wallet's recorded cap and the on-chain allowance.
   const cap = Math.min(rules.dailyCapCents, w.dailyCapCents, Number(delegation.amountPerPeriodRaw / USDC_PER_CENT));
   const left = capLeftCents(cap, pulledThisPeriod);
-  const amount = plantAmountCents({ pendingCents: pending, capLeftCents: left, feeCents: NETWORK_FEE_CENTS, minCents: forced ? 0 : rules.plantThresholdCents });
+  let amount = plantAmountCents({ pendingCents: pending, capLeftCents: left, feeCents: NETWORK_FEE_CENTS, minCents: forced ? 0 : rules.plantThresholdCents });
   if (amount.pullCents === 0) return { wallet: w.pubkey, reason: left === 0 ? "cap reached" : "below threshold" };
 
   // R207: the run listed this wallet as active at its start; a pause made since, or a run resume racing a user pause, must not pull.
@@ -518,7 +518,7 @@ async function plantOneOrThrow(a: { repo: Repo; now: Date; chain: Chain }, w: Wa
   // Which legs can take money today: the leash flags (leashed users), an eligible venue under the 60% cap (lending).
   const enabled = leashed ? (ctx.leash ? new Set<number>(enabledLegs(ctx.leash)) : null) : undefined;
   if (enabled === null) return { wallet: w.pubkey, reason: "leash unavailable" };
-  const pullRaw = BigInt(amount.pullCents) * USDC_PER_CENT;
+  let pullRaw = BigInt(amount.pullCents) * USDC_PER_CENT;
   let positionsUsd: Partial<Record<Protocol, number>> | null | undefined;
   const venues: Partial<Record<LendAsset, AutoVenue | null>> = {};
   const disabled: LiveAsset[] = [];
@@ -535,8 +535,17 @@ async function plantOneOrThrow(a: { repo: Repo; now: Date; chain: Chain }, w: Wa
       if (!venues[leg]) disabled.push(leg);
     } else if (enabled && !enabled.has(leashLegOf(leg, null))) disabled.push(leg);
   }
-  const target = redistributeDisabled(rules.allocation, disabled);
+  const target = redistributeDisabled(rules.allocation, disabled, rules.stop);
   if (!target) return { wallet: w.pubkey, reason: "no leg enabled" };
+  // R336 follow-up: with USDC lending disabled and every enabled leg at its stop max, the rest of the split is left unpulled. One leg
+  // takes each planting, so "unpulled" is the pull itself: only the target's share of the change is pulled (the USDC stays in the
+  // wallet; the round-ups are all claimed by this planting). The venue check above used the larger amount (the stricter 60% test).
+  const share = ASSETS.reduce((sum, leg) => sum + target[leg], 0);
+  if (share < 100 - 1e-9) {
+    amount = plantAmountCents({ pendingCents: Math.floor((pending * share) / 100), capLeftCents: left, feeCents: NETWORK_FEE_CENTS, minCents: forced ? 0 : rules.plantThresholdCents });
+    if (amount.pullCents === 0) return { wallet: w.pubkey, reason: "below threshold" };
+    pullRaw = BigInt(amount.pullCents) * USDC_PER_CENT;
+  }
 
   type Attempt = { built: Built; sim: Simulation; carry: Partial<Record<CarryKind, bigint>>; venue: AutoVenue | null; leg: LeashLegByte | null; cfg: PriceCfg | null; feedAlive: boolean; settleMismatch: boolean };
   let asset: LiveAsset = pickAsset(w.ledgerCents, target);
