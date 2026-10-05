@@ -10,27 +10,20 @@ import { api, ApiError } from '@/lib/api'
 import { makeSigner, SignRefused } from '@/lib/sign'
 import { useInvalidateMe, useMe } from '@/lib/me'
 import { newlyLinked } from '@/lib/newly-linked'
+import { confirmWithRetries, LINK_NOT_ON_CHAIN_YET } from '@/lib/confirm-retry'
 import { formatWallet } from '@/lib/format'
 import { useSession } from '@/lib/session'
 import { FONT, spacing } from '@/theme'
 
 /**
- * Confirms the link; when the delegation is late on chain the API answers 409 and the same code is confirmed again (no new signature,
- * no new code), so a late approval never leaves a stray delegation behind a fresh one (review I7).
+ * Confirms the link; when the delegation is late on chain the same code is confirmed again (no new signature, no new code), so a late
+ * approval never leaves a stray delegation behind a fresh one (review I7). The retry loop lives in confirm-retry.ts (T9 shares it).
  */
-async function confirmWithRetries(code: string, wallet: string, signedTransaction: string) {
-  let body: Record<string, string> = { code, wallet, signedTransaction }
-  for (let attempt = 0; ; attempt++) {
-    try {
-      await api('/api/link/confirm', { method: 'POST', body })
-      return
-    } catch (e) {
-      const late = e instanceof ApiError && e.status === 409 && e.message.includes('No delegation found')
-      if (!late || attempt >= 4) throw e
-      body = { code, wallet } // the approval was sent; only the delegation read is pending
-      await new Promise((r) => setTimeout(r, 4_000))
-    }
-  }
+function confirmLink(code: string, wallet: string, signedTransaction: string) {
+  // after the first send the approval is out; only the delegation read is pending
+  return confirmWithRetries((attempt) => api('/api/link/confirm', { method: 'POST', body: attempt === 0 ? { code, wallet, signedTransaction } : { code, wallet } }), {
+    notOnChainYet: LINK_NOT_ON_CHAIN_YET,
+  })
 }
 
 export default function Connect() {
@@ -62,7 +55,7 @@ export default function Connect() {
       const { code } = await api<{ code: string }>('/api/link/new', { method: 'POST', body: {} })
       const t = await api<{ transaction: string; cap: number }>(`/api/link/${code}?wallet=${session.pubkey}`)
       const signed = await makeSigner(signTransaction, { kind: 'link', user: session.pubkey })(t.transaction)
-      await confirmWithRetries(code, session.pubkey, signed)
+      await confirmLink(code, session.pubkey, signed)
       await invalidate()
       router.replace('/home')
     } catch (e) {

@@ -1,15 +1,15 @@
 import { describe, it, expect } from "vitest";
 import { buildScene, PLANT_OF, fruitLadder, type GardenInput, type Part } from "@/model/garden";
-import type { Asset } from "@/lib/coins";
+import type { LiveAsset } from "@/lib/coins";
 
 const NOW = new Date("2026-10-08T12:00:00-07:00");
-const SPLIT = { SKR: 100, stORE: 0, hSOL: 0, JitoSOL: 0, JupSOL: 0, cbBTC: 0 };
-const BALANCED = { SKR: 45, stORE: 0, hSOL: 20, JitoSOL: 15, JupSOL: 10, cbBTC: 10 };
+const SPLIT = { SKR: 100, stORE: 0, hSOL: 0, USDC_LEND: 0, SOL_LEND: 0, cbBTC: 0 };
+const BALANCED = { SKR: 45, stORE: 0, hSOL: 20, USDC_LEND: 15, SOL_LEND: 10, cbBTC: 10 };
 const base: GardenInput = {
   now: NOW, wateredAt: null, plantings: [], picks: [], skrPutInRaw: 0n, skrEarnedRaw: 0n, skrPickedRaw: 0n, skrPrincipalPickedRaw: 0n,
   pendingCents: 0, thresholdCents: 200, allocation: SPLIT, earned: {}, storePutInRaw: 0n, joinedValueRaw: 0n, basket: null,
 };
-const planting = (id: string, daysAgo: number, asset: Asset = "SKR", cents = 200) => ({ id, ts: new Date(NOW.getTime() - daysAgo * 86_400_000), asset, amountOutRaw: 1n, usdcInCents: cents });
+const planting = (id: string, daysAgo: number, asset: LiveAsset = "SKR", cents = 200) => ({ id, ts: new Date(NOW.getTime() - daysAgo * 86_400_000), asset, amountOutRaw: 1n, usdcInCents: cents });
 const of = <K extends Part["kind"]>(s: { parts: Part[] }, kind: K) => s.parts.filter((p): p is Extract<Part, { kind: K }> => p.kind === kind);
 
 describe("buildScene: plants, rows and signs (RG6, RG7, RG22)", () => {
@@ -18,7 +18,7 @@ describe("buildScene: plants, rows and signs (RG6, RG7, RG22)", () => {
     expect(s.parts.map((p) => p.kind)).toEqual(["soil"]); expect(s.canReady).toBe(false);
   });
   it("one plant per coin with a kept shoot, on its row at its slot, with a sign on the roomier side", () => {
-    const s = buildScene({ ...base, wateredAt: NOW, allocation: BALANCED, plantings: [planting("a", 5), planting("b", 4, "stORE"), planting("c", 3, "hSOL"), planting("d", 2, "JitoSOL"), planting("e", 1, "JupSOL"), planting("f", 1, "cbBTC")] });
+    const s = buildScene({ ...base, wateredAt: NOW, allocation: BALANCED, plantings: [planting("a", 5), planting("b", 4, "stORE"), planting("c", 3, "hSOL"), planting("d", 2, "USDC_LEND"), planting("e", 1, "SOL_LEND"), planting("f", 1, "cbBTC")] });
     expect(of(s, "plant").map((p) => [p.plant, p.row, p.x, p.species])).toEqual([["skr", "front", 0.34, "mandarin"], ["ore", "front", 0.8, "succulent"], ["hsol", "back", 0.09, "sunflower"], ["jitosol", "back", 0.5, "snake"], ["jupsol", "back", 0.67, "blueberry"], ["cbbtc", "back", 0.92, "spruce"]]);
     expect(of(s, "sign")).toHaveLength(6);
     // R237 fix: each stake takes the roomier side within its own row, so JitoSOL's and JupSOL's never share the narrow gap between them
@@ -105,5 +105,5 @@ describe("buildScene: earned, pups, rings, the basket (RG16, RG20, RG11)", () =>
     const s = buildScene({ ...base, joinedValueRaw: 7n, basket: { amountRaw: 3n, readyAt: NOW } });
     expect(of(s, "transplant")).toHaveLength(1); expect(of(s, "basket")).toHaveLength(1); expect(of(s, "plant")[0]).toMatchObject({ plant: "skr", x: 0.4 });
   });
-  it("PLANT_OF maps every asset", () => expect(Object.values(PLANT_OF)).toEqual(["skr", "ore", "hsol", "jitosol", "jupsol", "cbbtc"]));
+  it("PLANT_OF maps every live leg; lending reuses the JitoSOL and JupSOL species (contracts 7.1)", () => expect(PLANT_OF).toEqual({ SKR: "skr", stORE: "ore", USDC_LEND: "jitosol", SOL_LEND: "jupsol", hSOL: "hsol", cbBTC: "cbbtc" }));
 });

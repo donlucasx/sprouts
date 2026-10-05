@@ -15,6 +15,7 @@ import { loadSession, saveSession, SessionContext, type Session } from '@/lib/se
 import { registerBackgroundRefresh } from '@/lib/background' // the task itself is defined from index.js (headless starts)
 import { askNotificationPermissionOnce } from '@/lib/notify'
 import { useTheme } from '@/theme'
+import { Splash } from '@/components/Splash'
 import { readAppearance } from '@/lib/prefs'
 import { schemeFor } from '@/theme/appearance'
 
@@ -88,6 +89,7 @@ export default function Layout() {
           <SessionContext.Provider value={{ session, setSession }}>
             <StatusBar style={dark ? 'light' : 'dark'} />
             <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }} />
+            <Splash />
           </SessionContext.Provider>
         </MobileWalletProvider>
       </QueryClientProvider>

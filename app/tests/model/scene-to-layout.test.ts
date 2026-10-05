@@ -4,7 +4,7 @@ import { frameFor, FOOT_Y, MAX_VIEW_H, PLANT_SCALE } from "@/model/layout";
 import { previewInputAt } from "@/model/fixtures/median-year";
 import { buildScene, type GardenInput } from "@/model/garden";
 const NOW = new Date("2026-10-08T12:00:00-07:00");
-const base: GardenInput = { now: NOW, wateredAt: NOW, plantings: [], picks: [], skrPutInRaw: 0n, skrEarnedRaw: 0n, skrPickedRaw: 0n, skrPrincipalPickedRaw: 0n, pendingCents: 120, thresholdCents: 200, nextAsset: "SKR", allocation: { SKR: 50, stORE: 10, hSOL: 10, JitoSOL: 10, JupSOL: 10, cbBTC: 10 }, earned: { SKR: { count: 1, progress: 0.5 } }, storePutInRaw: 0n, joinedValueRaw: 0n, basket: null };
+const base: GardenInput = { now: NOW, wateredAt: NOW, plantings: [], picks: [], skrPutInRaw: 0n, skrEarnedRaw: 0n, skrPickedRaw: 0n, skrPrincipalPickedRaw: 0n, pendingCents: 120, thresholdCents: 200, nextAsset: "SKR", allocation: { SKR: 50, stORE: 10, hSOL: 10, USDC_LEND: 10, SOL_LEND: 10, cbBTC: 10 }, earned: { SKR: { count: 1, progress: 0.5 } }, storePutInRaw: 0n, joinedValueRaw: 0n, basket: null };
 const p = (id: string, d: number, asset: GardenInput["plantings"][number]["asset"] = "SKR") => ({ id, ts: new Date(NOW.getTime() - d * 86_400_000), asset, amountOutRaw: 1n, usdcInCents: 200 });
 describe("from the scene to the layouts", () => {
   it("one layout per present plant, the back row at 0.8 and the front at 1.3 (R231), the opts read off the parts", () => {
@@ -63,7 +63,7 @@ describe("the frame (RG30, R167, R185: room above the tallest part max(72 dp, 60
   it("no plant: the whole breadth at the floor, the soil band (90 since R231) plus 40", () => expect(frame(buildScene(base))).toEqual({ x: 0, y: 160, w: 320, h: 130, zoom: 1, viewH: 130 }));
   it("six young plants, one planting each (the Saga's garden on 10-02): every plant in the breadth, 72 px of room above them: 148.7 px tall, not 260", () => {
     const now = new Date("2026-10-02T14:30:00-07:00"), d = (id: string, asset: GardenInput["plantings"][number]["asset"], iso: string, c: number) => ({ id, ts: new Date(iso), asset, amountOutRaw: 1n, usdcInCents: c });
-    const s = buildScene({ ...base, now, wateredAt: now, pendingCents: 0, earned: {}, plantings: [d("s", "SKR", "2026-09-29T14:00:00-07:00", 65), d("o", "stORE", "2026-09-30T11:40:00-07:00", 10), d("h", "hSOL", "2026-10-01T19:00:00-07:00", 103), d("j", "JitoSOL", "2026-10-01T16:00:00-07:00", 25), d("u", "JupSOL", "2026-10-01T16:30:00-07:00", 25), d("c", "cbBTC", "2026-10-01T17:00:00-07:00", 25)] });
+    const s = buildScene({ ...base, now, wateredAt: now, pendingCents: 0, earned: {}, plantings: [d("s", "SKR", "2026-09-29T14:00:00-07:00", 65), d("o", "stORE", "2026-09-30T11:40:00-07:00", 10), d("h", "hSOL", "2026-10-01T19:00:00-07:00", 103), d("j", "USDC_LEND", "2026-10-01T16:00:00-07:00", 25), d("u", "SOL_LEND", "2026-10-01T16:30:00-07:00", 25), d("c", "cbBTC", "2026-10-01T17:00:00-07:00", 25)] });
     const L = plantLayouts(s), f = frameFor(s, L, 320);
     expect(L).toHaveLength(6);
     for (const l of L) { expect(l.x * 320).toBeGreaterThanOrEqual(f.x); expect(l.x * 320).toBeLessThanOrEqual(f.x + f.w); }
@@ -72,20 +72,20 @@ describe("the frame (RG30, R167, R185: room above the tallest part max(72 dp, 60
   });
   it("R187 fix round 1: the Saga's young garden (six plants, one planting each) fits the gutters at the gust's peak and keeps its zoom", () => {
     const now = new Date("2026-10-02T14:30:00-07:00"), d = (id: string, asset: GardenInput["plantings"][number]["asset"], iso: string, c: number) => ({ id, ts: new Date(iso), asset, amountOutRaw: 1n, usdcInCents: c });
-    const s = buildScene({ ...base, now, wateredAt: now, pendingCents: 0, earned: {}, plantings: [d("s", "SKR", "2026-09-29T14:00:00-07:00", 65), d("o", "stORE", "2026-09-30T11:40:00-07:00", 10), d("h", "hSOL", "2026-10-01T19:00:00-07:00", 103), d("j", "JitoSOL", "2026-10-01T16:00:00-07:00", 25), d("u", "JupSOL", "2026-10-01T16:30:00-07:00", 25), d("c", "cbBTC", "2026-10-01T17:00:00-07:00", 25)] });
+    const s = buildScene({ ...base, now, wateredAt: now, pendingCents: 0, earned: {}, plantings: [d("s", "SKR", "2026-09-29T14:00:00-07:00", 65), d("o", "stORE", "2026-09-30T11:40:00-07:00", 10), d("h", "hSOL", "2026-10-01T19:00:00-07:00", 103), d("j", "USDC_LEND", "2026-10-01T16:00:00-07:00", 25), d("u", "SOL_LEND", "2026-10-01T16:30:00-07:00", 25), d("c", "cbBTC", "2026-10-01T17:00:00-07:00", 25)] });
     // recorded from frameFor before the gutter-fit term (main f10d166 + R187, 10-02): 320 wide 1.004016064257028, 353 wide 1.0121863799283155
     // R231: re-recorded with the 1.3x front row and its 1.62x signs (the content a little wider): 1 and 1.0064
     expect(frameFor(s, plantLayouts(s), 320).zoom).toBeCloseTo(1, 12);
     expect(frameFor(s, plantLayouts(s), 353).zoom).toBeCloseTo(1, 12);   // R242: the feet inset holds it at 1 (1.006 with SKR at .34)
   });
   it("R291 (10-04, a lone SKR: \"plus a bit too much negative space above it\"): zoomed in, the room above the plants is what a zoom-1 garden shows, not that times the zoom", () => {
-    const lone = (n: number) => buildScene({ ...base, pendingCents: 0, earned: {}, allocation: { SKR: 100, stORE: 0, hSOL: 0, JitoSOL: 0, JupSOL: 0, cbBTC: 0 }, plantings: Array.from({ length: n }, (_, i) => p(`a${i}`, 6 + (n - i) * 4)) });
+    const lone = (n: number) => buildScene({ ...base, pendingCents: 0, earned: {}, allocation: { SKR: 100, stORE: 0, hSOL: 0, USDC_LEND: 0, SOL_LEND: 0, cbBTC: 0 }, plantings: Array.from({ length: n }, (_, i) => p(`a${i}`, 6 + (n - i) * 4)) });
     const s = lone(5), f = frameFor(s, plantLayouts(s), 360), t = tallest(s);
     expect(f.zoom).toBe(2);
     expect((t - f.y) * f.zoom).toBeCloseTo(Math.max(72, 0.6 * (290 - t)), 6);   // 76.5 on screen; 125 before (60 percent of the content times the zoom, held by the 380 cap)
   });
   it("R291: no lone plant of any coin, any size, is cut at the top: its 1.25x drawing (R187) clears the view's top by 8 dp", () => {
-    for (const asset of ["SKR", "stORE", "hSOL", "JitoSOL", "JupSOL", "cbBTC"] as const) for (const n of [1, 2, 3, 5, 8, 12, 20, 40]) {
+    for (const asset of ["SKR", "stORE", "hSOL", "USDC_LEND", "SOL_LEND", "cbBTC"] as const) for (const n of [1, 2, 3, 5, 8, 12, 20, 40]) {
       const s = buildScene({ ...base, pendingCents: 120, plantings: Array.from({ length: n }, (_, i) => p(`a${i}`, 3 + (n - i) * 5, asset)) });
       for (const w of [320, 360]) {
         const L = plantLayouts(s), f = frameFor(s, L, w);
@@ -94,7 +94,7 @@ describe("the frame (RG30, R167, R185: room above the tallest part max(72 dp, 60
     }
   });
   it("the Oct 8 garden: the band above the tallest part is 60 percent of its 125.2 canvas px content (75.7 on screen), past the 72 px floor since R231", () => {
-    const s = buildScene({ ...base, plantings: [p("a", 10.8), p("b", 8.4), p("c", 6), p("d", 3.6), p("e", 1.2), p("o", 9, "stORE"), p("o2", 2, "stORE"), p("h", 4, "hSOL"), p("j", 2, "JitoSOL")] }), f = frame(s);
+    const s = buildScene({ ...base, plantings: [p("a", 10.8), p("b", 8.4), p("c", 6), p("d", 3.6), p("e", 1.2), p("o", 9, "stORE"), p("o2", 2, "stORE"), p("h", 4, "hSOL"), p("j", 2, "USDC_LEND")] }), f = frame(s);
     expect((tallest(s) - f.y) * f.zoom).toBeCloseTo(75.10, 2);   // R291: zoom 1.0014, so 75.20 / 1.0014; R237: 75.68 with SKR at .30 expect(f.viewH).toBeCloseTo(201.81, 2);   // 170.27 before R231, 138.3 in round 3
   });
 });

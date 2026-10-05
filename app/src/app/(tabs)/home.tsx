@@ -21,6 +21,9 @@ import { NextPlanting, roomUnderBar } from '@/components/NextPlanting'
 import { canSlot } from '@/model/can'
 import { nextPlantingRow } from '@/lib/next-planting'
 import { PauseRow } from '@/components/PauseRow'
+import { RelinkCard } from '@/components/RelinkCard'
+import { MoveCard } from '@/components/MoveCard'
+import { termsNeeded, termsSummary } from '@/lib/terms'
 import { arrivalLine, formatUsd, formatSkr, formatAsOf } from '@/lib/format'
 import { useSession } from '@/lib/session'
 import { gardenTotals, pauseState, coinRows, statTiles, walletsLine, lastPlantingLine } from '@/lib/me-state'
@@ -28,25 +31,27 @@ import { setPaused } from '@/lib/pause-api'
 import { freshWalletSignIn } from '@/lib/reauth'
 import { identity } from '@/lib/identity'
 import { FONT, radius, spacing, TARGET, useTheme } from '@/theme'
-import type { Asset } from '@/lib/coins'
+import type { LiveAsset } from '@/lib/coins'
 
 /** R230: each row of Home's coin list leads with the coin's painted token (the garden's fruit) and its full name, portfolio style. */
-const COIN_ICON: Record<Asset, number> = {
+const COIN_ICON: Record<LiveAsset, number> = {
   SKR: SPRITES['token-skr'].src,
   stORE: SPRITES['token-ore'].src,
+  USDC_LEND: SPRITES['token-jitosol'].src,
+  SOL_LEND: SPRITES['token-jitosol'].src,
   hSOL: SPRITES['token-hsol'].src,
-  JitoSOL: SPRITES['token-jitosol'].src,
-  JupSOL: SPRITES['token-jupsol'].src,
   cbBTC: SPRITES['token-cbbtc'].src,
 }
-const COIN_FULL_NAME: Record<Asset, string> = {
+const COIN_FULL_NAME: Record<LiveAsset, string> = {
   SKR: 'Seeker',
   stORE: 'Staked ORE',
+  USDC_LEND: 'USDC lending',
+  SOL_LEND: 'SOL lending',
   hSOL: 'Helius Staked SOL',
-  JitoSOL: 'Jito Staked SOL',
-  JupSOL: 'Jupiter Staked SOL',
   cbBTC: 'Coinbase Wrapped BTC',
 }
+/** USDC has no painted token yet (contracts 10.6): a plain dollar glyph in USDC's blue. SOL lending shows the Solana-glyph token. */
+const USDC_BLUE = '#2775CA'
 
 /** R199: the Last planting row's hit slop at its bottom and sides; the row is TARGET minus this tall, so its touch target is 48 dp.
  * No slop at its top: that edge meets the garden's row, where the can's touch box ends, and a later sibling's slop would win there. */
@@ -184,6 +189,16 @@ export default function Home() {
       {pause.shown ? (
         <PauseRow on={pause.on} line={pause.line} busy={pausing} error={pauseError} onChange={togglePaused} />
       ) : null}
+      <RelinkCard me={me} />
+      {termsNeeded(me) ? (
+        <Card>
+          <ThemedText variant="heading">Terms and Privacy</ThemedText>
+          {termsSummary().map((l) => (
+            <ThemedText key={l} tone="secondary">{`• ${l}`}</ThemedText>
+          ))}
+          <Button title="Read and agree" onPress={() => router.push('/terms')} />
+        </Card>
+      ) : null}
       <Garden
         scene={scene}
         labelFor={(plant, bud) => plantLabel(me, plant, bud)}
@@ -264,7 +279,7 @@ export default function Home() {
         <View style={{ marginTop: spacing.xs }}>
           {coinRows(me).map((r, i) => (
             <View
-              key={r.asset}
+              key={r.key}
               accessible
               accessibilityLabel={`${COIN_FULL_NAME[r.asset]}, ${r.amount}${r.locked ? ', locked to your Seeker' : r.note ? `, ${r.note}` : ''}`}
               style={{
@@ -277,7 +292,11 @@ export default function Home() {
               }}
             >
               <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: colors.iconGround, alignItems: 'center', justifyContent: 'center' }}>
-                <Image source={COIN_ICON[r.asset]} style={{ width: 30, height: 30 }} resizeMode="contain" />
+                {r.asset === 'USDC_LEND' ? (
+                  <MaterialCommunityIcons name="currency-usd" size={26} color={USDC_BLUE} />
+                ) : (
+                  <Image source={COIN_ICON[r.asset]} style={{ width: 30, height: 30 }} resizeMode="contain" />
+                )}
               </View>
               <View style={{ flex: 1, gap: 2 }}>
                 <ThemedText variant="body" style={{ fontFamily: FONT.label }} numberOfLines={1}>
@@ -293,7 +312,7 @@ export default function Home() {
                 </ThemedText>
                 {r.locked || r.note ? (
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                    <MaterialCommunityIcons name={r.locked ? 'lock-outline' : 'pickaxe'} size={12} color={colors.textSecondary} />
+                    <MaterialCommunityIcons name={r.locked ? 'lock-outline' : r.venue ? 'bank-outline' : 'pickaxe'} size={12} color={colors.textSecondary} />
                     <ThemedText variant="caption" tone="secondary" numberOfLines={1}>
                       {r.locked ? 'Locked to your Seeker' : r.note}
                     </ThemedText>
@@ -312,6 +331,7 @@ export default function Home() {
           <Button title="Withdraw" kind="quiet" onPress={() => {}} />
         </Link>
       </Card>
+      <MoveCard me={me} />
       {walletsRow ? (
         <Pressable
           onPress={() => router.push('/settings')}

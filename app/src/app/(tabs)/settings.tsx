@@ -7,8 +7,8 @@ import { Button } from '@/components/Button'
 import { ThemedText } from '@/components/ThemedText'
 import { Disclosure } from '@/components/Disclosure'
 import { TwoWay } from '@/components/TwoWay'
-import { useQueryClient } from '@tanstack/react-query'
-import { api, ApiError, type MeResponse } from '@/lib/api'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { api, ApiError, type MeResponse, type VenuesResponse } from '@/lib/api'
 import { useMe, store, useInvalidateMe } from '@/lib/me'
 import { refreshWidget } from '@/lib/widget-refresh'
 import { unregisterBackgroundRefresh } from '@/lib/background'
@@ -21,46 +21,18 @@ import { freshWalletSignIn } from '@/lib/reauth'
 import { identity } from '@/lib/identity'
 import { readAppearance, writeAppearance, readNotify, writeNotify } from '@/lib/prefs'
 import type { NoticeKind } from '@/lib/notices'
-import { ORE_DISCLOSURE } from '@/lib/ore-copy'
+import { DISCLOSURES, VENUES_EMPTY } from '@/lib/settings-copy'
+import { PUBLIC_GUARANTEE } from '@/lib/relink'
+import { venueCard } from '@/model/venues'
 import { spacing, switchColors, useTheme } from '@/theme'
 import { schemeFor, type Appearance as AppearanceChoice } from '@/theme/appearance'
 
-/** The disclosures, verbatim (spec 3.5 and 9; R60; RECONCILED rules 10 to 12; R81 the remainder; R84 the sessions): the safety story the judges read. */
 /** R161: each notice and its switch's words, in the order they show. */
 const NOTICES: [NoticeKind, string][] = [
   ['plantings', 'Tell me when my change is planted'],
   ['withdrawals', 'Tell me when a withdrawal arrives'],
   ['manager', 'Tell me when the manager moves my split'],
   ['limit', 'Tell me when the daily limit is reached'],
-]
-
-const DISCLOSURES: [string, string][] = [
-  [
-    'How Sprouts holds your money',
-    "It does not. Your SKR is staked in Solana Mobile's staking program under your Seeker's key; only that key can unstake it, with your fingerprint. Your linked wallets grant Sprouts' puller key an allowance of at most your daily limit in USDC, revocable on chain at any time. The puller holds your change for one transaction: pull, swap, plant. It keeps nothing beyond the disclosed fee and the slippage remainder. Sprouts pays the rent of your staking position, about $0.25, on your first planting.",
-  ],
-  [
-    'What "earned" means',
-    "Rewards are paid by the staking program every two days into the share price. Sprouts draws what the program shows and nothing else; a fruit is earned SKR since you joined, in SKR, with today's dollar value beside it. The dollar value of your garden moves with the price of SKR and can be lower than what you put in.",
-  ],
-  ['Watering', 'Watering moves no money and signs nothing. It opens new growth on the screen.'],
-  [
-    'Fees',
-    "Sprouts takes 0.5% of each planting, in USDC, inside the swap, and passes through the network fee (about $0.03). The remainder of a swap's slippage (cents) stays with Sprouts. Both are on every receipt.",
-  ],
-  [
-    'Signed in',
-    'Signing in keeps you signed in for seven days on this phone; sign out ends it at once. Raising your daily limit or resuming a wallet asks your Seeker for a fresh fingerprint.',
-  ],
-  ['ORE, if you choose it', ORE_DISCLOSURE],
-  [
-    'Coins the Yield Manager can buy',
-    "hSOL, JitoSOL and JupSOL are SOL staked with Helius, Jito and Jupiter; their value moves with SOL. cbBTC is bitcoin held by Coinbase; its value moves with bitcoin. All four sit in your Seeker wallet, not locked, and you can move them from any Solana wallet; Sprouts cannot sell or withdraw them for you, and pays each coin's one-time account rent. The list is fixed in code; nothing else can be bought.",
-  ],
-  [
-    'Not advice',
-    'Sprouts is not tax advice and not investment advice. The Yield Manager, if you turn it on, chooses how new round-ups are split across six coins inside limits you set and limits in code. It never sets the amount, never sells anything you hold, and every change it makes shows in Activity with an undo. The tax export is a record, not a filing.',
-  ],
 ]
 
 export default function Settings() {
@@ -79,6 +51,8 @@ export default function Settings() {
   const [walletBusy, setWalletBusy] = useState(false)
   const [signing, setSigning] = useState(false)
   const [walletError, setWalletError] = useState<string | null>(null)
+  const venues = useQuery({ queryKey: ['venues'], queryFn: () => api<VenuesResponse>('/api/venues'), retry: false })
+  const card = venueCard(venues.data, venues.isError, VENUES_EMPTY)
 
   /** R153: the choice is saved, applied to the phone's scheme at once (the theme and the native controls follow), and shown. */
   function setAppearance(a: AppearanceChoice) {
@@ -189,6 +163,25 @@ export default function Settings() {
         </Link>
       </Card>
       <Card>
+        {/* R275, R276: the rates the Yield Manager reads, its verdicts and today's pick (GET /api/venues) */}
+        <ThemedText variant="heading">Lending venues today</ThemedText>
+        {'lines' in card ? (
+          <>
+            {card.why ? <ThemedText tone="secondary">{card.why}</ThemedText> : null}
+            {card.lines.map((v) => (
+              <View key={v.key} style={{ gap: 2, paddingVertical: spacing.xs }}>
+                <ThemedText>{v.title}</ThemedText>
+                <ThemedText variant="caption" tone="secondary">
+                  {v.detail}
+                </ThemedText>
+              </View>
+            ))}
+          </>
+        ) : (
+          <ThemedText tone="secondary">{card.message}</ThemedText>
+        )}
+      </Card>
+      <Card>
         <ThemedText variant="heading">Appearance</ThemedText>
         <TwoWay
           options={[
@@ -226,9 +219,10 @@ export default function Settings() {
         <ThemedText tone="secondary">Coming soon.</ThemedText>
       </Card>
       <Card style={{ gap: 0 }}>
-        {/* R145 and R153: the eight disclosures as rows that open in place, grouped as About at the end. */}
-        <ThemedText variant="heading" style={{ marginBottom: spacing.sm }}>
-          About Sprouts
+        {/* R145 and R153: the disclosures as rows that open in place, grouped as About at the end; R300's promise above them, the precise rule inside. */}
+        <ThemedText variant="heading">About Sprouts</ThemedText>
+        <ThemedText variant="caption" tone="secondary" style={{ marginTop: spacing.xs, marginBottom: spacing.sm }}>
+          {PUBLIC_GUARANTEE}
         </ThemedText>
         {DISCLOSURES.map(([h, p], i) => (
           <Disclosure key={h} title={h} first={i === 0}>
@@ -236,6 +230,7 @@ export default function Settings() {
           </Disclosure>
         ))}
       </Card>
+      <Button title="Terms and Privacy" kind="quiet" onPress={() => router.push('/terms')} />
       <Button title="Sign out" kind="quiet" disabled={busy} onPress={() => signOut(false)} />
       <Button title="Sign out of all devices" kind="quiet" disabled={busy} onPress={() => signOut(true)} />
       <ThemedText variant="caption" tone="secondary">

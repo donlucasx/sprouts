@@ -10,7 +10,8 @@ vi.mock("@/lib/api", () => ({
   api: vi.fn(async () => ({ domain: "sprouts.money", statement: "Sign in to Sprouts.", uri: "https://sprouts.money", version: "1", chainId: "solana:mainnet", nonce: "abc123", issuedAt: "2026-09-29T16:00:00Z", expirationTime: "2026-09-29T16:10:00Z" })),
 }));
 
-import { freshSignIn, unwrapBase64Text } from "@/lib/signin";
+import { freshSignIn, signInWithSeeker, unwrapBase64Text } from "@/lib/signin";
+import { api } from "@/lib/api";
 
 const sig = new Uint8Array(64).map((_, i) => (i * 37 + 200) % 256); // real signature bytes, some above 127
 const message = new TextEncoder().encode("sprouts.money wants you to sign in with your Solana account:\nDjRp\n\nSign in to Sprouts.\n\nNonce: abc123");
@@ -47,5 +48,13 @@ describe("freshSignIn", () => {
     const r = await freshSignIn(async () => ({ account: { address: "DjRp" }, signedMessage: message, signature: sig }));
     expect(decode(r.output.signature)).toEqual(sig);
     expect(decode(r.output.signedMessage)).toEqual(message);
+  });
+});
+
+describe("signInWithSeeker (R283: the Terms are accepted at sign-in)", () => {
+  it("sends the Terms version with the verify call", async () => {
+    await signInWithSeeker(async () => ({ account: { address: "DjRp" }, signedMessage: message, signature: sig }));
+    const verify = vi.mocked(api).mock.calls.find((c) => c[0] === "/api/auth/verify");
+    expect((verify?.[1] as { body: { termsVersion?: string } }).body.termsVersion).toBe("2026-10-06");
   });
 });
