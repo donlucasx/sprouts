@@ -16,7 +16,7 @@ import { isLend, type LendAsset } from './coins'
  * (api/src/lib/wallet-choice.ts); the app now checks more, per flow, before the wallet is asked: the fee payer is the user, the
  * user is the only signer, no lookup table, only the programs the API's builder uses (as top-level instructions), and the
  * instruction itself where it carries a number the screen showed (the unstake's shares and position; the approval's $5 a day to the
- * puller), with every account list pinned in full (review of 37ab59d).
+ * puller or, after go-live, the leash PDA), with every account list pinned in full (review of 37ab59d).
  * Anything else throws SignRefused and nothing is signed. The ids below are the API's (api/src/lib/constants.ts), copied, since the
  * app must not take them from the API it is checking.
  */
@@ -41,18 +41,19 @@ export const KLEND_MARKET = '7u3HeHxYDLhnCoErrtycNokbQYbWGzLs6JSDqGAv5PfF'
 export const KLEND_LMA = '9DrvZvyWh1HuAoZxvYWMvkf2XCzryCpGgHqrMjyDWpmo'
 export const KLEND_SCOPE_PRICES = '3t4JZcueEzTbVP6kLxXrL3VpWx45jDer4eqysweBchNH'
 /** The PINNED reserves (spec 3: never "the best reserve in the market"). */
-export const KLEND_RESERVE: Record<LendAsset, { reserve: string; liquidityMint: string; supplyVault: string; collateralMint: string }> = {
-  USDC_LEND: { reserve: 'D6q6wuQSrifJKZYpR1M8R4YawnLDtDsMmWM1NbBmgJ59', liquidityMint: USDC_MINT, supplyVault: 'Bgq7trRgVMeq33yt235zM2onQ4bRDBsY5EWiTetF4qw6', collateralMint: 'B8V6WVjPxW1UGwVDfxH2d2r8SyT4cqn7dQRK6XneVa7D' },
-  SOL_LEND: { reserve: 'd4A2prbA2whesmvHaL88BH6Ewn5N4bTSU2Ze8P6Bc4Q', liquidityMint: WSOL_MINT, supplyVault: 'GafNuUXj9rxGLn4y79dPu6MHSuPWeJR6UtTWuexpGh3U', collateralMint: '2UywZrUdyqs5vDchy7fKQJKau2RVyuzBev2XKGPDSiX1' },
-}
+/** Frozen at both levels (T6 review Minor 1): a module that writes into these tables cannot loosen the check; strict mode throws. */
+export const KLEND_RESERVE: Readonly<Record<LendAsset, Readonly<{ reserve: string; liquidityMint: string; supplyVault: string; collateralMint: string }>>> = Object.freeze({
+  USDC_LEND: Object.freeze({ reserve: 'D6q6wuQSrifJKZYpR1M8R4YawnLDtDsMmWM1NbBmgJ59', liquidityMint: USDC_MINT, supplyVault: 'Bgq7trRgVMeq33yt235zM2onQ4bRDBsY5EWiTetF4qw6', collateralMint: 'B8V6WVjPxW1UGwVDfxH2d2r8SyT4cqn7dQRK6XneVa7D' } as const),
+  SOL_LEND: Object.freeze({ reserve: 'd4A2prbA2whesmvHaL88BH6Ewn5N4bTSU2Ze8P6Bc4Q', liquidityMint: WSOL_MINT, supplyVault: 'GafNuUXj9rxGLn4y79dPu6MHSuPWeJR6UtTWuexpGh3U', collateralMint: '2UywZrUdyqs5vDchy7fKQJKau2RVyuzBev2XKGPDSiX1' } as const),
+} as const)
 export const JLEND_PROGRAM = 'jup3YeL8QhtSx1e253b2FDvsMNC87fDrgQZivbrndc9'
 export const JLEND_LIQUIDITY_PROGRAM = 'jupeiUmn818Jg1ekPURTpr4mFo29p46vygyykFJ3wZC'
 export const JLEND_LENDING_ADMIN = '5nmGjA4s7ATzpBQXC5RNceRpaJ7pYw2wKsNBWyuSAZV6'
 export const JLEND_LIQUIDITY = '7s1da8DduuBFqGra5bJBjpnvL5E9mGzCuMk1Qkh4or2Z'
-export const JLEND: Record<LendAsset, { lending: string; mint: string; fTokenMint: string; strl: string; lspol: string; rateModel: string; vault: string; rewardsRateModel: string; claimAccount: string }> = {
-  USDC_LEND: { lending: '2vVYHYM8VYnvZqQWpTJSj8o8DBf1wM8pVs3bsTgYZiqJ', mint: USDC_MINT, fTokenMint: '9BEcn9aPEmhSPbPQeFGjidRiEKki46fVQDyPpSQXPA2D', strl: '94vK29npVbyRHXH63rRcTiSr26SFhrQTzbpNJuhQEDu', lspol: 'Hf9gtkM4dpVBahVSzEXSVCAPpKzBsBcns3s8As3z77oF', rateModel: '5pjzT5dFTsXcwixoab1QDLvZQvpYJxJeBphkyfHGn688', vault: 'BmkUoKMFYBxNSzWXyUjyMJjMAaVz4d8ZnxwwmhDCUXFB', rewardsRateModel: '5xSPBiD3TibamAnwHDhZABdB4z4F9dcj5PnbteroBTTd', claimAccount: 'HN1r4VfkDn53xQQfeGDYrNuDKFdemAhZsHYRwBrFhsW' },
-  SOL_LEND: { lending: 'BeAqbxfrcXmzEYT2Ra62oW2MqkuFDHaCtps47Mzg6Zj3', mint: WSOL_MINT, fTokenMint: '2uQsyo1fXXQkDtcpXnLofWy88PxcvnfH2L8FPSE62FVU', strl: '4Y66HtUEqbbbpZdENGtFdVhUMS3tnagffn3M4do59Nfy', lspol: '4SkEYxmiRgQ4VYyvh9VB4k39M49BpqazyzDUFDzJhXQm', rateModel: 'Acvyi9HBGmqh3Exe1N4PjBVyY8fokq2AdC6fSLqV6KSo', vault: '5JP5zgYCb9W37QQLgAHRHuinFLrKt87akDY1CgZoTPzr', rewardsRateModel: 'CkeQGDRsgMZcCaU8cZEdC2aFAohia4jLzL36RaLcUDsR', claimAccount: '6AQGR8zK4KTVZfZ9UZaRzyEL5ynvwVaF5ywVdmtJT24N' },
-}
+export const JLEND: Readonly<Record<LendAsset, Readonly<{ lending: string; mint: string; fTokenMint: string; strl: string; lspol: string; rateModel: string; vault: string; rewardsRateModel: string; claimAccount: string }>>> = Object.freeze({
+  USDC_LEND: Object.freeze({ lending: '2vVYHYM8VYnvZqQWpTJSj8o8DBf1wM8pVs3bsTgYZiqJ', mint: USDC_MINT, fTokenMint: '9BEcn9aPEmhSPbPQeFGjidRiEKki46fVQDyPpSQXPA2D', strl: '94vK29npVbyRHXH63rRcTiSr26SFhrQTzbpNJuhQEDu', lspol: 'Hf9gtkM4dpVBahVSzEXSVCAPpKzBsBcns3s8As3z77oF', rateModel: '5pjzT5dFTsXcwixoab1QDLvZQvpYJxJeBphkyfHGn688', vault: 'BmkUoKMFYBxNSzWXyUjyMJjMAaVz4d8ZnxwwmhDCUXFB', rewardsRateModel: '5xSPBiD3TibamAnwHDhZABdB4z4F9dcj5PnbteroBTTd', claimAccount: 'HN1r4VfkDn53xQQfeGDYrNuDKFdemAhZsHYRwBrFhsW' } as const),
+  SOL_LEND: Object.freeze({ lending: 'BeAqbxfrcXmzEYT2Ra62oW2MqkuFDHaCtps47Mzg6Zj3', mint: WSOL_MINT, fTokenMint: '2uQsyo1fXXQkDtcpXnLofWy88PxcvnfH2L8FPSE62FVU', strl: '4Y66HtUEqbbbpZdENGtFdVhUMS3tnagffn3M4do59Nfy', lspol: '4SkEYxmiRgQ4VYyvh9VB4k39M49BpqazyzDUFDzJhXQm', rateModel: 'Acvyi9HBGmqh3Exe1N4PjBVyY8fokq2AdC6fSLqV6KSo', vault: '5JP5zgYCb9W37QQLgAHRHuinFLrKt87akDY1CgZoTPzr', rewardsRateModel: 'CkeQGDRsgMZcCaU8cZEdC2aFAohia4jLzL36RaLcUDsR', claimAccount: '6AQGR8zK4KTVZfZ9UZaRzyEL5ynvwVaF5ywVdmtJT24N' } as const),
+} as const)
 // Anchor discriminators sha256("global:<name>")[0..8] (contracts 6, recomputed 10-04); Token CloseAccount is tag 9.
 const KLEND_REFRESH = [2, 218, 138, 235, 79, 201, 25, 102]
 const KLEND_REDEEM = [234, 117, 181, 125, 185, 142, 220, 29]
@@ -63,6 +64,7 @@ const TOKEN_CLOSE_ACCOUNT = 9
  * The production puller (RESUME: "Puller HJCJ... funded"), the ONLY delegatee an approval from this app may name: without it pinned,
  * a hostile API could have the user approve $5 a day to its own key. ROTATING THE PULLER (a new PULLER_SECRET in the API's env)
  * NEEDS AN APP UPDATE with the new address here, or every "Approve" on the phone is refused (the web page /link is not affected).
+ * After go-live (spec 6.5) new links and re-links name leashPda(user, user) instead; ROTATING THE PULLER then no longer needs an app update for links.
  */
 export const PULLER = 'HJCJKRQLV2HVKfe3sFdTF5jjBY1xfWgnK8cLcjH7qnHd'
 
@@ -87,8 +89,13 @@ export type SignFlow =
   | { kind: 'cancel'; user: string }
   | { kind: 'link'; user: string }
   | { kind: 'revoke'; user: string }
-  /** Spec 7, R264: one lending position back to the wallet; receiptRaw is the position the screen showed (/api/me positions). */
+  /**
+   * Spec 7, R264: one lending position back to the wallet. receiptRaw is the position the screen showed: /api/me positions[].receiptRaw
+   * (contracts 5.2), never the build response's receiptRaw (5.3), which the caller only compares with it (a mismatch stops before signing).
+   */
   | { kind: 'withdraw_klend' | 'withdraw_jlend'; user: string; asset: LendAsset; receiptRaw: string }
+  /** R287, contracts 6: the Seed Vault wallet (delegator == user) moves its approval to the leash; web-linked wallets re-link on the link page. */
+  | { kind: 'relink'; user: string }
 
 /** The sentences a refusal shows; each ends "Nothing was signed." so the screen needs no wording of its own. */
 export const REFUSED = {
@@ -124,6 +131,11 @@ const key = (a: string) => getAddressEncoder().encode(a as Address)
 /** The position the unstake and the cancel act on, derived here as api/src/lib/staking.ts userStakePda does (never read from the API). */
 export async function userStakePda(user: string): Promise<string> {
   return pda(SKR_STAKING_PROGRAM, ['user_stake', key(STAKE_CONFIG), key(user), key(GUARDIAN_POOL)])
+}
+
+/** Contracts 2.2 (DECIDED 10-04): the leash PDA a delegation names, ["leash", delegator, user] under the leash program. */
+export async function leashPda(delegator: string, user: string): Promise<string> {
+  return pda(LEASH_PROGRAM, ['leash', key(delegator), key(user)])
 }
 
 /** Every address the builders put in a user transaction, derived on the phone from the user alone (the delegation also needs the nonce). */
@@ -217,6 +229,57 @@ async function jlendRedeemSteps(user: string, asset: LendAsset, amount: bigint, 
 }
 
 /**
+ * An approval (link, relink): [create the USDC account], [revoke an old delegation], [init the authority], create the delegation: exactly
+ * one create, from this wallet, to one of `delegatees`, at $5 a day with no expiry; at most `maxRevokes` revokes. A fixed delegation or a
+ * transfer (other discriminators) is refused. Order (both API builders): the ATA create and the revokes (link/[code] prepends its revoke,
+ * contracts 5.5 puts it after the ATA create) before the init, the init before the create, the create last; at most one ATA create and
+ * one init. A revoke may not name the delegation being created.
+ */
+async function checkApproval(ixs: Ix[], user: string, d: Awaited<ReturnType<typeof derived>>, delegatees: readonly string[], maxRevokes: number): Promise<void> {
+  let creates = 0
+  let revokes = 0
+  let atas = 0
+  let inits = 0
+  const revoked: string[] = []
+  // Only the two programs the builders use (no ComputeBudget, contracts 6 AMEND s20); a foreign one is 'program' wherever it sits.
+  if (ixs.some((ix) => ix.program !== ATA_PROGRAM && ix.program !== SUBSCRIPTIONS_PROGRAM)) refuse('program')
+  for (const ix of ixs) {
+    if (creates > 0) refuse('plan') // the create is the last instruction
+    if (ix.program === ATA_PROGRAM) {
+      if (ix.data.length !== 1 || ix.data[0] !== ATA_CREATE_IDEMPOTENT) refuse('plan')
+      accountsAre(ix, [user, d.usdcAta, user, USDC_MINT, SYSTEM_PROGRAM, TOKEN_PROGRAM])
+      if (++atas > 1 || inits > 0) refuse('plan')
+      continue
+    }
+    const kind = ix.data[0]
+    if (kind === SUB_INIT) {
+      if (ix.data.length !== 1) refuse('plan')
+      accountsAre(ix, [user, d.authority, USDC_MINT, d.usdcAta, SYSTEM_PROGRAM, TOKEN_PROGRAM])
+      if (++inits > 1) refuse('plan')
+      continue
+    }
+    if (kind === SUB_REVOKE_DELEGATION) {
+      if (ix.data.length !== 1) refuse('plan')
+      accountsAre(ix, [user, null])
+      if (++revokes > maxRevokes || inits > 0) refuse('plan')
+      revoked.push(ix.accounts[1])
+      continue
+    }
+    if (kind !== SUB_CREATE_RECURRING) refuse('plan')
+    // data: u8 discriminator, nonce u64, amountPerPeriod u64, periodLengthS u64, startTs i64, expiryTs i64, initId i64.
+    if (ix.data.length !== 49 || ix.accounts.length !== 5) refuse('plan')
+    if (u64At(ix.data, 9) !== LINK_DAILY_CAP_RAW || u64At(ix.data, 17) !== DAY_S || i64At(ix.data, 33) !== 0n) refuse('plan')
+    const delegatee = ix.accounts[3]
+    if (!delegatees.includes(delegatee)) refuse('plan')
+    const delegation = await delegationPda(d.authority, user, delegatee, u64At(ix.data, 1))
+    accountsAre(ix, [user, d.authority, delegation, delegatee, SYSTEM_PROGRAM])
+    if (revoked.includes(delegation)) refuse('plan')
+    creates++
+  }
+  if (creates !== 1) refuse('plan')
+}
+
+/**
  * Per flow, what the API's builder puts in (api/src/lib/staking.ts, subscriptions.ts, app/api/link/[code]); nothing else passes. Every
  * account list is pinned in full, in the generated builders' order (unstake: userStake, stakeConfig, guardianPool, user, stakeVault,
  * mint, eventAuthority, program; cancel the same without the mint; ATA create: payer, ata, owner, mint, system, token; init: owner,
@@ -225,6 +288,12 @@ async function jlendRedeemSteps(user: string, asset: LendAsset, amount: bigint, 
  */
 async function checkInstructions(ixs: Ix[], flow: SignFlow): Promise<void> {
   const user = flow.user
+  // The lending withdraws use none of derived()'s four PDAs (T6 review Minor 4).
+  if (flow.kind === 'withdraw_klend' || flow.kind === 'withdraw_jlend') {
+    if (!isLend(flow.asset)) return refuse('plan')
+    const amount = amountOf(flow.receiptRaw)
+    return steps(ixs, flow.kind === 'withdraw_klend' ? await klendRedeemSteps(user, flow.asset, amount, true) : await jlendRedeemSteps(user, flow.asset, amount, true))
+  }
   const d = await derived(user)
   switch (flow.kind) {
     case 'withdraw': {
@@ -248,44 +317,12 @@ async function checkInstructions(ixs: Ix[], flow: SignFlow): Promise<void> {
         else refuse('plan')
       }
       return
-    case 'link': {
-      // [create the USDC account], [revoke the old delegation], [init the authority], create the delegation: exactly one create,
-      // from this wallet, to the puller, at the limit the screen shows. A fixed delegation or a transfer (other discriminators) is refused.
-      let creates = 0
-      for (const ix of ixs) {
-        if (ix.program === ATA_PROGRAM) {
-          if (ix.data.length !== 1 || ix.data[0] !== ATA_CREATE_IDEMPOTENT) refuse('plan')
-          accountsAre(ix, [user, d.usdcAta, user, USDC_MINT, SYSTEM_PROGRAM, TOKEN_PROGRAM])
-          continue
-        }
-        if (ix.program !== SUBSCRIPTIONS_PROGRAM) refuse('program')
-        const kind = ix.data[0]
-        if (kind === SUB_INIT) {
-          if (ix.data.length !== 1) refuse('plan')
-          accountsAre(ix, [user, d.authority, USDC_MINT, d.usdcAta, SYSTEM_PROGRAM, TOKEN_PROGRAM])
-          continue
-        }
-        if (kind === SUB_REVOKE_DELEGATION) {
-          if (ix.data.length !== 1) refuse('plan')
-          accountsAre(ix, [user, null])
-          continue
-        }
-        if (kind !== SUB_CREATE_RECURRING) refuse('plan')
-        // data: u8 discriminator, nonce u64, amountPerPeriod u64, periodLengthS u64, startTs i64, expiryTs i64, initId i64.
-        if (ix.data.length !== 49) refuse('plan')
-        if (u64At(ix.data, 9) !== LINK_DAILY_CAP_RAW || u64At(ix.data, 17) !== DAY_S || i64At(ix.data, 33) !== 0n) refuse('plan')
-        accountsAre(ix, [user, d.authority, await delegationPda(d.authority, user, PULLER, u64At(ix.data, 1)), PULLER, SYSTEM_PROGRAM])
-        creates++
-      }
-      if (creates !== 1) refuse('plan')
-      return
-    }
-    case 'withdraw_klend':
-      if (!isLend(flow.asset)) return refuse('plan')
-      return steps(ixs, await klendRedeemSteps(user, flow.asset, amountOf(flow.receiptRaw), true))
-    case 'withdraw_jlend':
-      if (!isLend(flow.asset)) return refuse('plan')
-      return steps(ixs, await jlendRedeemSteps(user, flow.asset, amountOf(flow.receiptRaw), true))
+    case 'link':
+      // Before go-live the puller; after it, new links name this wallet's leash PDA (spec 6.5). Nothing else.
+      return checkApproval(ixs, user, d, [PULLER, await leashPda(user, user)], Infinity)
+    case 'relink':
+      // Contracts 6: as link, but only to the leash PDA (delegator and user both this key), never the puller, at most one revoke.
+      return checkApproval(ixs, user, d, [await leashPda(user, user)], 1)
   }
 }
 

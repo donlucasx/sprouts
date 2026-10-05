@@ -3,7 +3,7 @@ import {
   AccountRole, address, getBase64Decoder, getBase64Encoder, getCompiledTransactionMessageDecoder, getCompiledTransactionMessageEncoder,
   getTransactionDecoder, getTransactionEncoder, type Instruction, type Transaction,
 } from '@solana/kit'
-import { makeSigner, REFUSED, SignRefused, type SignFlow } from '@/lib/sign'
+import { JLEND, KLEND_RESERVE, makeSigner, REFUSED, SignRefused, type SignFlow } from '@/lib/sign'
 import { ATTACKER, OTHER, USER, wire } from '../fixtures/api-built'
 import { ataOf, ix, jlendWithdrawIxs, klendWithdrawIxs, KRES, L, u64le } from '../fixtures/lend-built'
 
@@ -152,5 +152,22 @@ describe('every single-account substitution in the four withdraw flows is refuse
     expect(passed).toEqual([])
     // 18 + 24 + 27 (K-Lend: 6 refresh + 12 redeem, 6 create, 3 close) + 18 + 24 + 21 (Jupiter Lend: 18 redeem, 6 create, 3 close)
     expect(tried).toBe(132)
+  })
+})
+
+describe('the pinned venue tables cannot be loosened at runtime (T6 review Minor 1)', () => {
+  it('a write into KLEND_RESERVE or JLEND, at either level, throws and changes nothing', async () => {
+    const before = JSON.stringify([KLEND_RESERVE, JLEND])
+    const k = KLEND_RESERVE as unknown as Record<string, Record<string, string>>
+    const j = JLEND as unknown as Record<string, Record<string, string>>
+    expect(() => { k.USDC_LEND.supplyVault = ATTACKER }).toThrow(TypeError)
+    expect(() => { k.SOL_LEND = { reserve: ATTACKER } }).toThrow(TypeError)
+    expect(() => { delete k.USDC_LEND }).toThrow(TypeError)
+    expect(() => { j.USDC_LEND.claimAccount = ATTACKER }).toThrow(TypeError)
+    expect(() => { j.SOL_LEND = { lending: ATTACKER } }).toThrow(TypeError)
+    expect(() => { j.USDC_LEND.extra = ATTACKER }).toThrow(TypeError)
+    expect(JSON.stringify([KLEND_RESERVE, JLEND])).toBe(before)
+    for (const t of [KLEND_RESERVE, JLEND]) for (const v of [t, t.USDC_LEND, t.SOL_LEND]) expect(Object.isFrozen(v)).toBe(true)
+    await signed(wire(await kUsdc()), kFlow('USDC_LEND', '1661200'))
   })
 })
