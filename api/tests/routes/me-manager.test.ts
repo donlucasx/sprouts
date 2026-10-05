@@ -13,7 +13,7 @@ vi.mock("@/lib/staking", () => ({
 }));
 vi.mock("@/lib/jupiter", () => ({ priceUsd: vi.fn(async () => 0.0183) }));
 vi.mock("@/lib/store", () => ({ storeBalanceRaw: vi.fn(async () => 0n), storeRedeemRate: vi.fn(async () => 1_049_600_000n) }));
-vi.mock("@/lib/holdings", async (orig) => ({ ...(await orig<object>()), readHoldings: vi.fn(async () => ({ hSOL: 2_000_000_000n, cbBTC: 0n })) }));
+vi.mock("@/lib/holdings", async (orig) => ({ ...(await orig<object>()), readHoldings: vi.fn(async () => ({ hSOL: 2_000_000_000n, cbBTC: 0n })), readLendingPositions: vi.fn(async () => []) }));
 vi.mock("@/lib/subscriptions", () => ({ readDelegation: vi.fn(async () => ({ exists: true, amountPerPeriodRaw: 5_000_000n, pulledInPeriodRaw: 2_180_000n, periodStartTs: BigInt(Math.floor(Date.now() / 1000) - 600), periodLengthS: 86_400n })) }));
 
 import { GET as me } from "@/app/api/me/route";
