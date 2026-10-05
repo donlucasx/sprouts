@@ -466,7 +466,7 @@ async function plantOneOrThrow(a: { repo: Repo; now: Date; chain: Chain }, w: Wa
   const pulledThisPeriod = a.now.getTime() < periodEndMs ? Number(delegation.pulledInPeriodRaw / USDC_PER_CENT) : 0;
   // The lowest of the user's own limit (rules, adjustable in the app), the wallet's recorded cap and the on-chain allowance.
   const cap = Math.min(rules.dailyCapCents, w.dailyCapCents, Number(delegation.amountPerPeriodRaw / USDC_PER_CENT));
-  const left = capLeftCents(cap, pulledThisPeriod);
+  let left = capLeftCents(cap, pulledThisPeriod);
   let amount = plantAmountCents({ pendingCents: pending, capLeftCents: left, feeCents: NETWORK_FEE_CENTS, minCents: forced ? 0 : rules.plantThresholdCents });
   if (amount.pullCents === 0) return { wallet: w.pubkey, reason: left === 0 ? "cap reached" : "below threshold" };
 
@@ -478,11 +478,22 @@ async function plantOneOrThrow(a: { repo: Repo; now: Date; chain: Chain }, w: Wa
     return { wallet: w.pubkey, reason: "paused" };
   }
 
-  // An RPC error here throws to plantOne ("build failed"); only a successful read that comes up short pauses the wallet.
-  if ((await a.chain.usdcBalanceRaw(w.pubkey)) < BigInt(amount.pullCents) * USDC_PER_CENT) {
-    await a.repo.setWalletStatus(w.pubkey, "paused");
-    await a.repo.addEvent({ userPubkey: w.userPubkey, walletPubkey: w.pubkey, kind: "paused_no_usdc", detail: { needCents: amount.pullCents } });
-    return { wallet: w.pubkey, reason: "no usdc" };
+  // An RPC error here throws to plantOne ("build failed"); only a successful read that comes up short changes the planting.
+  // Owner 10-05 ("yes, fix the gap"): the wallet's USDC bounds the pull like the cap does, in whole cents rounded down, so the pull
+  // (change + fee) never exceeds the balance. A short balance that still covers the minimum plants what it covers, with the same
+  // claim as a cap-bounded planting (every pending round-up is claimed; the uncovered rest is never pulled). Only a balance under
+  // the minimum (threshold + fee) pauses, which the resume undoes at threshold + fee; before, a balance between the two looped
+  // pause / resume / pause and planted nothing.
+  const balanceCents = Number((await a.chain.usdcBalanceRaw(w.pubkey)) / USDC_PER_CENT);
+  if (balanceCents < amount.pullCents) {
+    const wanted = amount.pullCents;
+    left = Math.min(left, balanceCents);
+    amount = plantAmountCents({ pendingCents: pending, capLeftCents: left, feeCents: NETWORK_FEE_CENTS, minCents: forced ? 0 : rules.plantThresholdCents });
+    if (amount.pullCents === 0) {
+      await a.repo.setWalletStatus(w.pubkey, "paused");
+      await a.repo.addEvent({ userPubkey: w.userPubkey, walletPubkey: w.pubkey, kind: "paused_no_usdc", detail: { needCents: wanted } });
+      return { wallet: w.pubkey, reason: "no usdc" };
+    }
   }
 
   // R207 #2 generalised (R295): each kind's remainder rides on the next planting of the same kind. T9 carry: the carry is exactly
