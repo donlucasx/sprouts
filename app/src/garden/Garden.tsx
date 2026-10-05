@@ -6,7 +6,7 @@ import Animated, { Easing, FadeIn, FadeOut, cancelAnimation, runOnJS, useAnimate
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Svg, { G } from "react-native-svg";
 import { PLANT_ORDER, type Scene, type Part, type PlantId } from "@/model/garden";
-import { CANVAS, FOOT_Y, FRAME, PLANT_SCALE, frameFor, stakeSpots, plantUnder, SIDE_GUTTER, signPlacement } from "@/model/layout";
+import { CANVAS, DRAW_ORDER, FOOT_Y, FRAME, PLANT_SCALE, frameFor, stakeSpots, plantUnder, SIDE_GUTTER, signPlacement } from "@/model/layout";
 import { plantLayouts } from "@/model/scene-to-layout";
 import { SOIL_CLIP_ID } from "@/model/soil-clip";
 import { diffScenes, gateDiff, sceneKey, NO_CHANGE, type Diff } from "@/lib/scene-diff";
@@ -311,18 +311,17 @@ export function Garden({ scene: incoming, live, canReady, onWater, onNudge, row,
      <Animated.View style={[{ position: "absolute", left: -SIDE_GUTTER, top: 0, width: w + 2 * SIDE_GUTTER, overflow: "hidden" }, clipPlants]} pointerEvents="none">
      <Animated.View style={[{ position: "absolute", left: SIDE_GUTTER, top: 0, width: w, height: CANVAS.height, transformOrigin: [0, 0, 0] }, zoomedPlants]}>
      <Animated.View style={[{ width: w, height: CANVAS.height, transformOrigin: "0 0" }, framedPlants]}>
-      {/* R226 (10-03, his note): every stake stands in front of its plant. Back row: plants, then their signs; then the front row
-          the same, so a front plant still covers a back stake it overlaps. */}
-      {(["back", "front"] as const).map((row) => [
-       ...(row === "back" ? back : front).map((p) => {
+      {/* R226 (10-03, his note): every stake stands in front of its plant. R355 (10-05, "the USDC plant is hidden behind the SKR
+          tree"): DRAW_ORDER, both rows of plants and then every stake, so no plant covers a sign's words. */}
+      {DRAW_ORDER.map(({ layer, row }) => layer === "plants" ? (row === "back" ? back : front).map((p) => {
         const was = beforePlants?.find((b) => b.plant === p.plant)?.layout ?? null;
         if (isHeld(p.plant) && was) return <Plant key={p.plant} p={{ ...p, layout: was }} footX={p.x * w} footY={FOOT_Y(p.row)} sway={sway} gust={gust} gustDelay={delays[p.plant] ?? 0} reduced={reduced} items={[]} settled before={null} call={budCall} zoom={target.zoom} />;   // R201: held, as it was
         return <Plant key={p.plant} p={p} footX={p.x * w} footY={FOOT_Y(p.row)} sway={sway} gust={gust} gustDelay={delays[p.plant] ?? 0} reduced={reduced} items={itemsOf(p.plant)} settled={settledOf(p.plant)} before={was} call={budCall} zoom={target.zoom} />;
-       }),
+       }) : (
        <Svg key={`signs-${row}`} width={w} height={CANVAS.height} style={{ position: "absolute", left: 0, top: 0 }} pointerEvents="none">
         {of("sign").filter((s) => s.row === row).map((s) => { const at = signPlacement(s, w, target.zoom, ground, spots); return <G key={`s${s.plant}`} x={at.x} y={at.y}><Sign lines={s.lines} scale={at.scale} /></G>; })}
-       </Svg>,
-      ])}
+       </Svg>
+      ))}
      </Animated.View>
      </Animated.View>
      </Animated.View>

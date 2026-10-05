@@ -1,5 +1,5 @@
 import type { Scene } from "./garden";
-import { CANVAS, FOOT_Y, LEND_SIGN, PLANT_SCALE, SIGN_TEXT, frameFor, stakeSpots, signPlacement, windSpan } from "./layout";
+import { CANVAS, DRAW_ORDER, FOOT_Y, LEND_SIGN, PLANT_SCALE, SIGN_TEXT, frameFor, stakeSpots, signPlacement, windSpan } from "./layout";
 import { stemPaths, spriteTransform } from "./paint";
 import { COLORS, SOIL } from "./species";
 import { GROUND, SOIL_CLIP_ID, frameGround, soilClipPath } from "./soil-clip";
@@ -80,8 +80,9 @@ export function widgetGardenSvg(scene0: Scene, width: number, height: number): s
   for (const r of of("ring")) { const ft = footOf(r.plant); if (ft) { rings = true; body.push(`<g clip-path="url(#${SOIL_CLIP_ID})"><g opacity="${f(1 - r.age)}">${placeStr("ring", ft.x, ft.y + 2, 0, r.plant === "skr" || r.plant === "ore" ? CANVAS.frontScale : 2 / 3)}</g></g>`); } }
   for (const s of of("seed")) { const ft = footOf(s.plant); if (ft) place("seed", ft.x + (s.index % 2 ? 1 : -1) * (3 + 2.4 * Math.floor(s.index / 2)), ft.y + 1 - 1.2 * (s.index % 3), ((s.index * 37) % 60) - 30, 1); }
   const signs = v.signs, spots = stakeSpots(scene, plants, W, v.zoom);
-  for (const row of ["back", "front"] as const) {
-    for (const p of plants.filter((q) => q.row === row)) {
+  // R355: DRAW_ORDER, both rows of plants and then every stake (R226 had each row's stakes straight after that row's plants)
+  for (const { layer, row } of DRAW_ORDER) {
+    if (layer === "plants") for (const p of plants.filter((q) => q.row === row)) {
       const fx = p.x * W, fy = FOOT_Y(p.row), k = PLANT_SCALE * (v.signs ? 1 : WIDGET_BOOST);   // R187: the app's 1.25x about the foot; R252: a narrow widget more
       for (const q of [...p.layout.parts].sort((a, b) => a.z - b.z)) {
         if (q.kind === "stem") body.push(stemPaths(fx + q.x0 * k, fy + q.y0 * k, fx + q.x1 * k, fy + q.y1 * k, q.w0 * k, q.w1 * k, q.bend * k, q.color).map((s) => `<path d="${s.d}" fill="${s.fill}" opacity="${s.opacity}"/>`).join(""));
@@ -90,9 +91,9 @@ export function widgetGardenSvg(scene0: Scene, width: number, height: number): s
         else place(q.name, fx + q.x * k, fy + q.y * k, q.rot, q.scale * k, (q.xScale ?? q.scale) * k);
       }
     }
-    // R226: the row's stakes in front of its plants; R168: the one blank board and the word as vector text (AndroidSVG cannot load the
+    // R168: the one blank board and the word as vector text (AndroidSVG cannot load the
     // app's font: a plain sans-serif, same ink and place)
-    if (signs) for (const s of of("sign").filter((q) => q.row === row)) {
+    if (layer === "signs" && signs) for (const s of of("sign").filter((q) => q.row === row)) {
       const at = signPlacement(s, W, v.zoom, ground, spots);
       place("sign", at.x, at.y, 0, at.scale, at.scale * at.boardX);
       const words: [number, number, string][] = s.lines.line2
