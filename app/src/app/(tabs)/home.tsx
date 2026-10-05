@@ -47,6 +47,8 @@ const COIN_FULL_NAME: Record<LiveAsset, string> = {
   hSOL: 'Helius Staked SOL',
   cbBTC: 'Coinbase Wrapped BTC',
 }
+/** USDC has no painted token yet (contracts 10.6): a plain dollar glyph in USDC's blue. SOL lending shows the Solana-glyph token. */
+const USDC_BLUE = '#2775CA'
 
 /** R199: the Last planting row's hit slop at its bottom and sides; the row is TARGET minus this tall, so its touch target is 48 dp.
  * No slop at its top: that edge meets the garden's row, where the can's touch box ends, and a later sibling's slop would win there. */
@@ -264,7 +266,7 @@ export default function Home() {
         <View style={{ marginTop: spacing.xs }}>
           {coinRows(me).map((r, i) => (
             <View
-              key={r.asset}
+              key={r.key}
               accessible
               accessibilityLabel={`${COIN_FULL_NAME[r.asset]}, ${r.amount}${r.locked ? ', locked to your Seeker' : r.note ? `, ${r.note}` : ''}`}
               style={{
@@ -277,7 +279,11 @@ export default function Home() {
               }}
             >
               <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: colors.iconGround, alignItems: 'center', justifyContent: 'center' }}>
-                <Image source={COIN_ICON[r.asset]} style={{ width: 30, height: 30 }} resizeMode="contain" />
+                {r.asset === 'USDC_LEND' ? (
+                  <MaterialCommunityIcons name="currency-usd" size={26} color={USDC_BLUE} />
+                ) : (
+                  <Image source={COIN_ICON[r.asset]} style={{ width: 30, height: 30 }} resizeMode="contain" />
+                )}
               </View>
               <View style={{ flex: 1, gap: 2 }}>
                 <ThemedText variant="body" style={{ fontFamily: FONT.label }} numberOfLines={1}>
@@ -293,7 +299,7 @@ export default function Home() {
                 </ThemedText>
                 {r.locked || r.note ? (
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                    <MaterialCommunityIcons name={r.locked ? 'lock-outline' : 'pickaxe'} size={12} color={colors.textSecondary} />
+                    <MaterialCommunityIcons name={r.locked ? 'lock-outline' : r.venue ? 'bank-outline' : 'pickaxe'} size={12} color={colors.textSecondary} />
                     <ThemedText variant="caption" tone="secondary" numberOfLines={1}>
                       {r.locked ? 'Locked to your Seeker' : r.note}
                     </ThemedText>

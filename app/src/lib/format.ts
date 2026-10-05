@@ -1,5 +1,5 @@
 import { isLend, VENUE_NAME, type AutoVenue, type LiveAsset } from "./coins";
-import type { Holding } from "./api";
+import type { Holding, LendingPosition } from "./api";
 
 /** Display decimals per leg (the mints', read on chain; stORE is 11; lending legs show the UNDERLYING, USDC 6 and SOL 9, never the receipt). Never money math: the API computes, the app formats. */
 export const DECIMALS: Record<LiveAsset, number> = { SKR: 6, stORE: 11, USDC_LEND: 6, SOL_LEND: 9, hSOL: 9, cbBTC: 8 };
@@ -139,4 +139,15 @@ export function roundUpTo(cents: number, toCents: number): number {
 /** One linked wallet in a line: the short address, its status, its daily limit. Home and Settings say it the same way. */
 export function formatWallet(w: { pubkey: string; status: string; dailyCapCents: number }): string {
   return `${w.pubkey.slice(0, 4)}...${w.pubkey.slice(-4)}, ${w.status}, up to ${formatUsd(w.dailyCapCents)} a day`;
+}
+
+/** A lending position in UNDERLYING units with its value: "2.00 USDC ($2.00)" (contracts 5.2: underlyingRaw is USDC 6 / SOL 9). */
+export function positionAmount(p: LendingPosition): string {
+  const amount = (Number(p.underlyingRaw) / 10 ** DECIMALS[p.asset]).toFixed(SHOWN[p.asset]);
+  return `${amount} ${COIN_NAME[p.asset]}${p.valueUsd === null ? "" : ` (${formatUsd(Math.round(p.valueUsd * 100))})`}`;
+}
+/** The row's status under the dollars: the venue and today's rate, then what it earned once that is a cent. */
+export function positionNote(p: LendingPosition): string {
+  const where = p.ratePct === null ? VENUE_NAME[p.venue] : `${VENUE_NAME[p.venue]} ${p.ratePct.toFixed(1)}%`;
+  return p.earnedUsd !== null && p.earnedUsd >= 0.005 ? `${where}, earned ${formatUsd(Math.round(p.earnedUsd * 100))}` : where;
 }
