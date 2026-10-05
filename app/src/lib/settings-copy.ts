@@ -4,7 +4,7 @@ import { WEB_LINK_TRUST } from './relink'
 
 /** Spec 6.2, the precise guarantee, verbatim (Settings and README). */
 export const PRECISE_GUARANTEE =
-  "Once you re-link, Sprouts' server can only pull through the Sprouts program: at most your $5 daily limit, and only in a transaction that leaves at least 98.5% of that value (99.9% for USDC lending), at a live oracle price, in your own allowed coins, lending positions or SKR stake; otherwise it reverts. The server still chooses when, which leg and how much up to the limit; rounding remainders carry to your next planting. Only Sprouts' offline admin key can change these rules."
+  "Once you re-link, Sprouts' server can only pull through the Sprouts program: at most your $5 daily limit, and only in a transaction that leaves at least 98.5% of that value (99.9% for USDC lending), at a live oracle price, in the coins Sprouts has enabled, lending positions or SKR stake; otherwise it reverts. The server still chooses when, which leg and how much up to the limit; rounding remainders carry to your next planting. Only Sprouts' offline admin key can change these rules or replace the program; your $5-a-day limit still holds."
 
 /** Contracts 2.6 and R324: where the program's prices come from and cbBTC's looser age. Build-written copy, awaiting his ruling. The SKR price line waits on contracts 10 item 15 (fix round 1, I1). */
 export const PRICE_LINE = "Prices come from Pyth's free price accounts; cbBTC is priced at most 10 minutes ago."
