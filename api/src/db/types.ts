@@ -125,6 +125,7 @@ export type EventKind =
   | "split_changed"
   | "split_undone"
   | "leg_fallback"
+  | "leg_skipped"
   | "coin_no_data";
 
 export type EventRow = { id: number; userPubkey: string | null; walletPubkey: string | null; ts: Date; kind: EventKind; detail: unknown };

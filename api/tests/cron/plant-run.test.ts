@@ -630,3 +630,39 @@ describe("the delivery check on the simulation (R207 review)", () => {
     expect(c.n).toBe(0);
   });
 });
+
+describe("lending legs pay nothing and never fall back to SKR (spec 2, R266)", () => {
+  const lendOnly = { SKR: 0, stORE: 0, USDC_LEND: 100, SOL_LEND: 0, hSOL: 0, cbBTC: 0 };
+
+  it("a lending leg that fails to build waits for the next run: no SKR planting, no pull, leg_skipped recorded", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await repo.saveRules("U", { allocation: lendOnly });
+    const built: string[] = [];
+    const chain = fakeChain({ buildPlantingTx: async (a) => { built.push(a.asset); throw new Error("venue down"); } });
+    const r = await runPlanting({ repo, now: NOW, chain });
+    expect(built).toEqual(["USDC_LEND"]);
+    expect(r.planted).toEqual([]);
+    expect(r.skipped).toEqual([{ wallet: "W", reason: "leg failed" }]);
+    expect(repo.events.map((e) => e.kind)).toContain("leg_skipped");
+    expect(repo.events.map((e) => e.kind)).not.toContain("leg_fallback");
+    expect((await repo.unplantedSwaps("W")).length).toBe(3);
+  });
+
+  it("a lending leg that fails simulation is skipped the same way", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await repo.saveRules("U", { allocation: lendOnly });
+    const r = await runPlanting({ repo, now: NOW, chain: fakeChain({ simulatePlanting: async () => ({ ok: false, err: "x", logs: [], units: 0 }) }) });
+    expect(r.skipped[0].reason).toBe("leg failed");
+  });
+
+  it("the leg's fee in cents follows the leg: 0 for lending, 0.5% of the pull for a coin", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await repo.saveRules("U", { allocation: lendOnly });
+    await runPlanting({ repo, now: NOW, chain: fakeChain() });
+    expect(repo.legs[0]).toMatchObject({ asset: "USDC_LEND", feeCents: 0 });
+    const repo2 = await seeded([83, 62, 70]);
+    await repo2.saveRules("U", { allocation: { SKR: 0, stORE: 0, USDC_LEND: 0, SOL_LEND: 0, hSOL: 100, cbBTC: 0 } });
+    await runPlanting({ repo: repo2, now: NOW, chain: fakeChain() });
+    expect(repo2.legs[0]).toMatchObject({ asset: "hSOL", feeCents: 1 });   // 218 cents x 50 / 10_000 = 1.09
+  });
+});
