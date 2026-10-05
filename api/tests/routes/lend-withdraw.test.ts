@@ -1,3 +1,4 @@
+import { existsSync, readFileSync } from "node:fs";
 import { describe, it, expect, beforeEach, beforeAll, vi } from "vitest";
 import { generateKeyPairSigner, getBase64Encoder, getTransactionDecoder, getCompiledTransactionMessageDecoder, decompileTransactionMessage, compileTransaction, signTransaction, getBase64EncodedWireTransaction, type KeyPairSigner, type Instruction } from "@solana/kit";
 import { MemoryRepo } from "@/db/memory";
@@ -12,9 +13,11 @@ vi.mock("@/lib/holdings", async (orig) => ({ ...(await orig<object>()), receiptB
 vi.mock("@/lib/venues/klend", async (orig) => ({ ...(await orig<object>()), klendRate: vi.fn(async () => ({ rn: 12_050n, rd: 10_000n, availableRaw: available })) }));
 let jlAvailable = 10n ** 12n;
 vi.mock("@/lib/venues/jlend", async (orig) => ({ ...(await orig<object>()), jlendRate: vi.fn(async () => ({ rn: 11n, rd: 10n })) }));
-vi.mock("@/lib/venues/withdrawable", () => ({ jupiterWithdrawableRaw: vi.fn(async () => jlAvailable) }));
-vi.mock("@/lib/user-tx", async (orig) => ({ ...(await orig<object>()), sendPosted: vi.fn(async () => {}), waitConfirmed: vi.fn(async () => "confirmed") }));
+vi.mock("@/lib/venues/rates", () => ({ jupiterWithdrawableRaw: vi.fn(async () => jlAvailable) }));
+vi.mock("@/lib/user-tx", async (orig) => ({ ...(await orig<object>()), sendPosted: vi.fn(async () => {}), waitConfirmed: vi.fn(async () => "confirmed"), settleUnconfirmed: vi.fn(async () => "pending") }));
 
+import { sendPosted, waitConfirmed, settleUnconfirmed, STILL_WAITING } from "@/lib/user-tx";
+import { klendRate } from "@/lib/venues/klend";
 import { POST as build } from "@/app/api/lend/withdraw/build/route";
 import { POST as confirm } from "@/app/api/lend/withdraw/confirm/route";
 
@@ -75,5 +78,87 @@ describe("Withdraw a lending position (contracts 5.3, R264)", () => {
     expect(await res.json()).toEqual({ error: "A venue can pause withdrawals when its pool is fully lent out; your money stays yours.", poolFull: true });
     jlAvailable = 1_827_179n;
     expect((await call(build, { asset: "USDC_LEND", venue: "jupiter_lend" })).status).toBe(200);
+  });
+
+  // ---- Task 18 carries ----
+  const built = async (asset = "USDC_LEND", venue = "kamino_klend") => (await call(build, { asset, venue })).json();
+  const confirmBody = async (b: { transaction: string }, asset = "USDC_LEND", venue = "kamino_klend") => ({ signedTransaction: await sign(b.transaction), asset, venue });
+
+  it("a replayed confirm (same signature) books one event, answers with the recorded one", async () => {
+    const body = await confirmBody(await built());
+    const first = await call(confirm, body);
+    const second = await call(confirm, body);
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(await second.json()).toEqual(await first.json());
+    expect(repo.events.filter((e) => e.kind === "lend_withdrawn").length).toBe(1);
+  });
+  it("build: a venue read that fails is a plain 503, no stack, no 'Nothing moved'", async () => {
+    vi.mocked(klendRate).mockRejectedValueOnce(new Error("rpc 500 at /secret/path.ts:12"));
+    const res = await call(build, { asset: "USDC_LEND", venue: "kamino_klend" });
+    expect(res.status).toBe(503);
+    const { error } = await res.json();
+    expect(error).toBe("Could not read the venue just now. Try again in a minute.");
+    expect(error).not.toMatch(/Nothing moved|secret|rpc/);
+  });
+  it("confirm: a withdrawal larger than the position is refused (400), nothing sent", async () => {
+    const body = await confirmBody(await built());
+    receipt = 1_000n;
+    vi.mocked(sendPosted).mockClear();
+    expect((await call(confirm, body)).status).toBe(400);
+    expect(sendPosted).not.toHaveBeenCalled();
+    expect(repo.events.some((e) => e.kind === "lend_withdrawn")).toBe(false);
+  });
+  it("confirm: a transaction with no redeem of the venue's program is not a withdrawal (400)", async () => {
+    const b = await built();
+    const t = getTransactionDecoder().decode(getBase64Encoder().encode(b.transaction));
+    const m = decompileTransactionMessage(getCompiledTransactionMessageDecoder().decode(t.messageBytes));
+    const onlyAta = { ...m, instructions: (m.instructions as readonly Instruction[]).slice(0, 1) };
+    const wire = getBase64EncodedWireTransaction(await signTransaction([user.keyPair], compileTransaction(onlyAta as typeof m)));
+    const res = await call(confirm, { signedTransaction: wire, asset: "USDC_LEND", venue: "kamino_klend" });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("That is not a withdrawal.");
+  });
+  it("confirm: a failed rate read records the withdrawal with a null underlyingRaw (the money moved)", async () => {
+    const body = await confirmBody(await built());
+    vi.mocked(klendRate).mockRejectedValueOnce(new Error("rate down"));
+    const res = await call(confirm, body);
+    expect(res.status).toBe(200);
+    expect((await res.json()).withdrawn).toMatchObject({ receiptRaw: "1661072", underlyingRaw: null });
+    expect(repo.events.find((e) => e.kind === "lend_withdrawn")?.detail).toMatchObject({ underlyingRaw: null });
+  });
+  it("confirm: unsettled sends are 409 with the plain sentences and record nothing (failed, expired, still pending)", async () => {
+    const body = await confirmBody(await built());
+    const cases: [string, string][] = [["failed", "The withdrawal failed on chain. Nothing moved."], ["expired", "It did not go through. Nothing moved. Try again."], ["pending", STILL_WAITING.withdraw]];
+    for (const [state, sentence] of cases) {
+      vi.mocked(waitConfirmed).mockResolvedValueOnce(state === "failed" ? "failed" : "pending");
+      if (state !== "failed") vi.mocked(settleUnconfirmed).mockResolvedValueOnce(state === "expired" ? "expired" : "pending");
+      const res = await call(confirm, body);
+      expect(res.status).toBe(409);
+      expect((await res.json()).error).toBe(sentence);
+    }
+    expect(repo.events.some((e) => e.kind === "lend_withdrawn")).toBe(false);
+  });
+  it("confirm: a throw after the send (confirmation poll, then the event write) is the 'may still go through' 409, never a 500", async () => {
+    const body = await confirmBody(await built());
+    vi.mocked(sendPosted).mockRejectedValueOnce(new Error("socket hang up"));
+    vi.mocked(waitConfirmed).mockRejectedValueOnce(new Error("rpc down"));
+    let res = await call(confirm, body);
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toBe(STILL_WAITING.withdraw);
+    vi.spyOn(repo, "addEvent").mockRejectedValueOnce(new Error("db down"));
+    res = await call(confirm, body);
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toBe(STILL_WAITING.withdraw);
+  });
+  it("the vendored copy of the app's sign.ts equals the app's file byte for byte, bar the one documented import edit", () => {
+    const appSign = "/Users/lucasgarzoli/Documents/claude/seekerhackathon/build/sprouts-lend-app/app/src/lib/sign.ts";
+    if (!existsSync(appSign)) { console.warn(`SKIPPED: ${appSign} does not exist on this machine, so the vendored copy was not compared`); return; }
+    // The vendored header says what was changed: the app's `import { isLend, type LendAsset } from './coins'` is inlined as two lines
+    // (and a comment). Undo exactly that edit, then every other byte must match.
+    const vendored = readFileSync(new URL("../fixtures/app/sign.ts", import.meta.url), "utf8");
+    const edit = /\/\/ VENDORED \(API Task 18\)[^\n]*\n\/\/ except this import[^\n]*\ntype LendAsset = [^\n]*\nconst isLend = [^\n]*\n/;
+    expect(edit.test(vendored)).toBe(true);
+    expect(vendored.replace(edit, "import { isLend, type LendAsset } from './coins'\n")).toBe(readFileSync(appSign, "utf8"));
   });
 });
