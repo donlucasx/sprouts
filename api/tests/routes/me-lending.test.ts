@@ -81,6 +81,9 @@ describe("GET /api/me, lending (contracts 5.2)", () => {
     const body = await get();
     expect(body.positions).toEqual([]);
     expect(body.holdings.find((h: { asset: string }) => h.asset === "USDC_LEND")).toBeUndefined();
+    // R360: the app must not read this empty list as a zero (the garden would drop the plant for good)
+    expect(body.positionsRead).toBe("failed");
+    expect((await get()).positionsRead).toBe("ok");
   });
   it("relink.needed only once LEASH_LIVE=1, listing this user's puller wallets and how each re-links", async () => {
     expect((await get()).relink).toEqual({ needed: false, wallets: [{ pubkey: "W", via: "link_page" }] });

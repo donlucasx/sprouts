@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, type MeResponse } from "./api";
 import { applyRulesTo, normalizeMe, pickMeState, usableMe, type ManagerExtra } from "./me-state";
 import { refreshWidget } from "./widget-refresh";
+import { recordZeroMarks } from "./zero-marks";
 export { toGardenInput } from "./garden-input";
 
 import { store } from "./store";
@@ -17,6 +18,7 @@ export function readLastMe(): MeResponse | null {
 
 export function writeLastMe(me: MeResponse) {
   store.set(KEY, JSON.stringify(me));
+  recordZeroMarks(me);   // R360: a coin seen at zero now starts again from a seedling at its next planting
 }
 
 /** Home's data: the live read when it works, the last verified one when it does not (never a zero pot, never a guessed fruit). */

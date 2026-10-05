@@ -3,7 +3,7 @@ import { FlexWidget, TextWidget, SvgWidget } from "react-native-android-widget";
 import type { MeResponse } from "@/lib/api";
 import { buildScene } from "@/model/garden";
 import { widgetGarden } from "@/model/widget-svg";
-import { toGardenInput } from "@/lib/garden-input";
+import { toGardenInput, type ZeroMarks } from "@/lib/garden-input";
 import { formatSkr, formatUsd } from "@/lib/format";
 import { gardenTotals, lastPlantingLine } from "@/lib/me-state";
 import { nextPlantingFor, nextPlantingText } from "@/lib/next-planting";
@@ -15,7 +15,7 @@ const TEXT_H = 42;       // the pot line (16) and the next-planting line (12), w
 const WIDE_TEXT_H = 58;  // plus the last-planting line
 const GAP = 6;           // between the text and the garden
 
-export function SproutsWidget({ me, width, height, wide, wateredPlants = null }: { me: MeResponse | null; width: number; height: number; wide: boolean; wateredPlants?: PlantId[] | null }) {
+export function SproutsWidget({ me, width, height, wide, wateredPlants = null, restartMarks = {} }: { me: MeResponse | null; width: number; height: number; wide: boolean; wateredPlants?: PlantId[] | null; restartMarks?: ZeroMarks }) {
   if (!me) {
     return (
       <FlexWidget clickAction="OPEN_APP" style={{ height: "match_parent", width: "match_parent", backgroundColor: "#F4EEDF", borderRadius: 16, padding: 12, justifyContent: "center" }}>
@@ -32,7 +32,7 @@ export function SproutsWidget({ me, width, height, wide, wateredPlants = null }:
   const now = new Date();
   let garden: { svg: string; h: number } | null = null, scene: Scene | null = null;
   try {
-    scene = buildScene(toGardenInput(me, now, wateredPlants));
+    scene = buildScene(toGardenInput(me, now, wateredPlants, restartMarks));
     garden = widgetGarden(scene, gardenW, maxGardenH);
   } catch { garden = null; }
   // His note 10-05: Home's own Next planting row (run time once the threshold is reached, Paused while paused), as one line
