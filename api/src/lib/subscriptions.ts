@@ -40,7 +40,7 @@ export async function readUsdcAtaExists(owner: Address): Promise<boolean> {
   return (await fetchMaybeToken(rpc(), await usdcAta(owner))).exists;
 }
 
-export async function buildApproveOnceIxs(a: { delegator: Address; delegatee: Address; capRaw: bigint; nonce: bigint; existingInitId?: bigint; createAta?: boolean }): Promise<Instruction[]> {
+export async function buildApproveOnceIxs(a: { delegator: Address; delegatee: Address; capRaw: bigint; nonce: bigint; startTs?: bigint; existingInitId?: bigint; createAta?: boolean }): Promise<Instruction[]> {
   const owner = createNoopSigner(a.delegator);
   const create = await getCreateRecurringDelegationOverlayInstructionAsync({
     delegator: owner,
@@ -48,7 +48,7 @@ export async function buildApproveOnceIxs(a: { delegator: Address; delegatee: Ad
     tokenMint: USDC_MINT,
     amountPerPeriod: a.capRaw,
     periodLengthS: DAY,
-    startTs: now(),
+    startTs: a.startTs ?? now(), // optional so buildRelink stays pure (API Task 18)
     expiryTs: 0n,
     nonce: a.nonce,
     // One-transaction signup: the authority is initialised by the instruction before this one, so its init id is not known
