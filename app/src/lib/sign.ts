@@ -93,7 +93,8 @@ export type SignFlow =
    * Spec 7, R264: one lending position back to the wallet. receiptRaw is the position the screen showed: /api/me positions[].receiptRaw
    * (contracts 5.2), never the build response's receiptRaw (5.3), which the caller only compares with it (a mismatch stops before signing).
    */
-  | { kind: 'withdraw_klend' | 'withdraw_jlend'; user: string; asset: LendAsset; receiptRaw: string }
+  | { kind: 'withdraw_klend'; user: string; asset: LendAsset; receiptRaw: string }
+  | { kind: 'withdraw_jlend'; user: string; asset: LendAsset; receiptRaw: string }
   /** R287, contracts 6: the Seed Vault wallet (delegator == user) moves its approval to the leash; web-linked wallets re-link on the link page. */
   | { kind: 'relink'; user: string }
 
@@ -289,11 +290,14 @@ async function checkApproval(ixs: Ix[], user: string, d: Awaited<ReturnType<type
 async function checkInstructions(ixs: Ix[], flow: SignFlow): Promise<void> {
   const user = flow.user
   // The lending withdraws use none of derived()'s four PDAs (T6 review Minor 4).
-  // `in` (not the kind) so TypeScript narrows the lending member out and the switch's default can prove every kind is handled.
-  if ('receiptRaw' in flow) {
+  // Two union members (contracts 6), so the kind test narrows them out and the switch's default stays exhaustive. Each kind routes to its
+  // own venue's check by name; nothing falls through to Jupiter (T8 review Important 1).
+  if (flow.kind === 'withdraw_klend' || flow.kind === 'withdraw_jlend') {
     if (!isLend(flow.asset)) return refuse('plan')
     const amount = amountOf(flow.receiptRaw)
-    return steps(ixs, flow.kind === 'withdraw_klend' ? await klendRedeemSteps(user, flow.asset, amount, true) : await jlendRedeemSteps(user, flow.asset, amount, true))
+    if (flow.kind === 'withdraw_klend') return steps(ixs, await klendRedeemSteps(user, flow.asset, amount, true))
+    if (flow.kind === 'withdraw_jlend') return steps(ixs, await jlendRedeemSteps(user, flow.asset, amount, true))
+    return refuse('plan')
   }
   const d = await derived(user)
   switch (flow.kind) {

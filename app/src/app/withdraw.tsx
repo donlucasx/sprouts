@@ -16,7 +16,7 @@ import { useSession } from '@/lib/session'
 import { makeSigner, SignRefused } from '@/lib/sign'
 import { arrivalLine, formatSkr } from '@/lib/format'
 import { withdrawRows } from '@/lib/withdraw-list'
-import { withdrawAtTap, type WithdrawPlan, type WithdrawRequest } from '@/lib/withdraw-flow'
+import { oneAtATime, withdrawAtTap, type WithdrawPlan, type WithdrawRequest } from '@/lib/withdraw-flow'
 import { withdrawLendAtTap, WITHDRAWN_LEND_LINE, type LendWithdrawBuild } from '@/lib/lend-withdraw'
 import type { LendingPosition } from '@/lib/api'
 import { spacing, TARGET, type as ramp, useTheme } from '@/theme'
@@ -43,6 +43,8 @@ export default function Withdraw() {
   const [lendBusy, setLendBusy] = useState<string | null>(null)
   const [lendError, setLendError] = useState<{ key: string; text: string } | null>(null)
   const [lendDone, setLendDone] = useState(false)
+  // One wallet action at a time across the screen (SKR withdraw, Put it back, each lending row), checked before any await.
+  const [gate] = useState(oneAtATime)
   // The one way back to the coin list: "Back to the list", the top Back and Android's back all call it (R165).
   function backToList() {
     setPicked(null)
@@ -87,7 +89,7 @@ export default function Withdraw() {
     }
   }
   async function sign() {
-    if (!plan || !session) return
+    if (!plan || !session || !gate.enter()) return
     setBusy(true)
     setError(null)
     try {
@@ -109,11 +111,12 @@ export default function Withdraw() {
     } catch (e) {
       setError(e instanceof ApiError || e instanceof SignRefused ? e.message : 'The withdrawal did not go through. Nothing moved.')
     } finally {
+      gate.leave()
       setBusy(false)
     }
   }
   async function putBack() {
-    if (!session) return
+    if (!session || !gate.enter()) return
     setBusy(true)
     setError(null)
     try {
@@ -125,12 +128,13 @@ export default function Withdraw() {
     } catch (e) {
       setError(e instanceof ApiError || e instanceof SignRefused ? e.message : 'Could not put it back. Try again.')
     } finally {
+      gate.leave()
       setBusy(false)
     }
   }
   /** Spec 7: one tap per lending position; the Seed Vault signs only what the pinned check passes. */
   async function withdrawLend(key: string, position: LendingPosition) {
-    if (!session) return
+    if (!session || !gate.enter()) return
     setLendBusy(key)
     setLendError(null)
     setLendDone(false)
@@ -148,6 +152,7 @@ export default function Withdraw() {
     } catch (e) {
       setLendError({ key, text: e instanceof ApiError || e instanceof SignRefused ? e.message : 'The withdrawal did not go through. Nothing moved.' })
     } finally {
+      gate.leave()
       setLendBusy(null)
     }
   }
