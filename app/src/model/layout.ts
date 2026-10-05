@@ -60,16 +60,6 @@ export function gutterFit(zoom0: number, mid: number, span: { lo: number; hi: nu
   const w = width / zoom, pref = w <= width ? Math.min(Math.max(mid - w / 2, 0), width - w) : (width - w) / 2;
   return { zoom, x: Math.min(Math.max(pref, span.hi - (width + G) / zoom), span.lo + G / zoom) };
 }
-/** R355 (10-05, his eye: "the USDC plant is hidden behind the SKR tree"): the garden's layers, first drawn first. Both rows of plants,
- * then every stake, so a grown front plant (the SKR mandarin, the stORE succulent) never covers a back-row board's words; each stake
- * keeps its x and y. Amends R226's per-row order (a row's stakes in front of that row's plants only). The app (Garden.tsx) and the
- * widget (widget-svg.ts) both draw in this order. */
-export const DRAW_ORDER = [
-  { layer: "plants", row: "back" },
-  { layer: "plants", row: "front" },
-  { layer: "signs", row: "back" },
-  { layer: "signs", row: "front" },
-] as const;
 /** RG17, gen06_garden.py:59: the locked slots as fractions of the width. */
 export const SLOT_X: Record<PlantId, number> = { skr: 0.34,   // R237 (10-04): SKR from 0.30, a nudge right
   ore: 0.8, hsol: 0.09, jitosol: 0.5, jupsol: 0.67, cbbtc: 0.92 };
