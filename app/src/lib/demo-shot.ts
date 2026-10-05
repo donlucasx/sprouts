@@ -47,7 +47,7 @@ export function demoMe(real: MeResponse, now: Date = new Date()): MeResponse {
   const ago = (d: number) => new Date(now.getTime() - d * DAY).toISOString();
   // The last planting (SKR, 2 days ago) is fixed so the Last planting line reads a plain number.
   const LAST_CENTS = 312;
-  const plan: [keyof typeof DEMO, number, number][] = [["SKR", 60, putCents("SKR") - LAST_CENTS], ["stORE", 31, putCents("stORE")], ["USDC_LEND", 10, putCents("USDC_LEND")], ["SOL_LEND", 6, putCents("SOL_LEND")]];
+  const plan: [keyof typeof DEMO, number, number][] = [["SKR", 15, putCents("SKR") - LAST_CENTS], ["stORE", 31, putCents("stORE")], ["USDC_LEND", 14, putCents("USDC_LEND")], ["SOL_LEND", 6, putCents("SOL_LEND")]];
   const plantings: Planting[] = [];
   for (const [asset, n, total] of plan) {
     const sz = sizes(n, total, rnd);
