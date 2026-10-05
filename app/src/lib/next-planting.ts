@@ -56,4 +56,5 @@ export function nextPlantingFor(me: Pick<MeResponse, "nextPlanting" | "wallets">
 }
 
 /** The row as one line (the widget has no bar): "Next planting · Tomorrow, 7 AM". */
-export const nextPlantingText = (row: NextPlantingRow): string => `${row.label} · ${row.value}`;
+/** The widget's one line, short enough for a 2-cell widget (his note 10-05: "Tomorrow, 7 ..." was cut): "Next: Tomorrow, 7 AM". */
+export const nextPlantingText = (row: NextPlantingRow): string => `${row.label === "Next planting" ? "Next" : "First"}: ${row.value}`;
