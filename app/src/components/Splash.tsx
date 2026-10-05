@@ -2,6 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Animated, { runOnJS, useAnimatedStyle, useReducedMotion, useSharedValue, withTiming } from 'react-native-reanimated'
 import { Garden } from '@/garden/Garden'
 import { ThemedText } from './ThemedText'
+import { Mark } from './Mark'
+import { Wordmark } from './Lockup'
+import { View } from 'react-native'
 import { SPLASH, splashHoldMs, splashScene } from '@/lib/splash'
 import { spacing, useTheme } from '@/theme'
 
@@ -38,6 +41,11 @@ export function Splash() {
       accessibilityLabel={SPLASH.line}
       style={[{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, backgroundColor: colors.background, justifyContent: 'center', paddingHorizontal: 20, gap: spacing.lg }, fade]}
     >
+      {/* His ask 10-05: the splash carries the brand: the horizontal lockup (manual 3: mark 1.18 x the word size, gap 0.26 x) above the garden. */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Math.round(0.26 * 40) }}>
+        <Mark size={Math.round(1.18 * 40)} decorative />
+        <Wordmark size={40} />
+      </View>
       <Garden scene={scene} live={false} canReady={false} onWater={async () => false} onNudge={() => {}} row={() => null} onReady={onReady} />
       <ThemedText variant="heading" style={{ textAlign: 'center' }}>
         {SPLASH.line}
