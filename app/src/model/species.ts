@@ -8,11 +8,11 @@ export type Stage = 0 | 1 | 2 | 3;
 /** One planting as the geometry sees it: age in days, the amount band, opened or a bud, and whether it is a branch node (RG19). */
 export type ShootIn = { id: string; ageDays: number; band: Band; opened: boolean; branch: boolean };
 /** One placed thing: a sprite by name, or a vector stem by its two ends. x and y are px from the plant's foot (0, 0), y negative
- * upward, already multiplied by k; rot in degrees, SVG sense; scale multiplies the sprite's baked size (for `swelling` and `dot`
- * it is the circle's radius in px). */
+ * upward, already multiplied by k; rot in degrees, SVG sense; scale multiplies the sprite's baked size (for `dot` it is the
+ * circle's radius in px; R358: the swelling is a sprite like any other). */
 export type Placed =
-  | { kind: "sprite"; name: string; x: number; y: number; rot: number; scale: number; xScale?: number; z: number; shoot?: string; part: "leaf" | "bud" | "blade" | "tier" | "token" | "blossom" | "head" | "bell" | "pup" | "swelling" | "tip" | "dot" }
-  | { kind: "stem"; x0: number; y0: number; x1: number; y1: number; w0: number; w1: number; bend: number; color: string; z: number; shoot?: string; part: "trunk" | "twig" | "branch" | "cane" | "stalk" | "petiole" | "fan" };
+  | { kind: "sprite"; name: string; x: number; y: number; rot: number; scale: number; xScale?: number; z: number; shoot?: string; part: "leaf" | "bud" | "blade" | "tier" | "token" | "blossom" | "head" | "bell" | "pup" | "swelling" | "tip" | "dot" | "furl" }
+  | { kind: "stem"; x0: number; y0: number; x1: number; y1: number; w0: number; w1: number; bend: number; color: string; z: number; shoot?: string; part: "trunk" | "twig" | "nub" | "branch" | "cane" | "stalk" | "petiole" | "fan" };
 export type PlantLayout = { parts: Placed[]; top: number; growthPoint: { x: number; y: number }; tips: { x: number; y: number }[] };
 export type LayoutOpts = { pending: number; fruit: number; ripening: number; blossom: boolean; pups: number; head: boolean };
 
@@ -20,6 +20,8 @@ export type LayoutOpts = { pending: number; fruit: number; ripening: number; blo
 export const BAND_SCALE: Record<Band, number> = { 0: 0.78, 1: 1.0, 2: 1.28 };
 /** The generators' rise caps (gen04_garden.py:13, :74, :167, :184, :190, :152; gen06_garden.py:36, :40). */
 export const CAPS = { mandarinTrunk: 222 * 0.66, sunflower: 222, spruce: 222 * 0.9, blueberry: 190 * 0.85, snakeBlade: 64, succulent: [78, 58, 40] as const, stalk: 96 } as const;
+/** R358: the droplet bud's reach from its anchor (its base) at scale 1, up or sideways: the baked swell-* box's ay (bake.py swell_c). */
+export const SWELL_REACH = 10.1;
 /** The length each leaf-like sprite was baked at, per stage (bake.py LEAF_L and TIER_L): a placed scale times this is the part's length.
  * RG29 (gen12_ground.py:19-23): the twig species' stage 0 at twice gen01's size, 12 for the mandarin and 10.8 for the blueberry.
  * RG33 (10-02, "Never shrink"): no stage is smaller than the one before, so stage 1 rises to the sprout's length. */

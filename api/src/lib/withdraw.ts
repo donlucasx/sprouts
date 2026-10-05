@@ -17,14 +17,13 @@ export function planPick(a: { mode: "earned" | "amount"; amountRaw?: bigint; pot
   const shares = rawToShares(wanted, a.sharePrice); // floor: the plant keeps the dust
   const amountRaw = sharesToRaw(shares, a.sharePrice);
   const prunes = wanted > a.pot.skrEarnedRaw;
-  // Device round 3, item 7 (10-02): the same facts in shorter sentences (what you get, what it costs the plant, that it stops
-  // earning, 48 hours, put it back, one at a time, the fee).
+  // His note 10-05 ("very wordy- can we simplify?"): three short lines. Earning stops at signing is implied by "put it back"; one
+  // withdrawal at a time shows only when a second one is tried (the app's waiting card).
+  const head = a.mode === "earned" ? `Withdraw your earnings: ${skr(amountRaw, a.skrUsd)}.` : `Withdraw ${skr(amountRaw, a.skrUsd)}.`;
   const brief = [
-    a.mode === "earned" ? `Withdraw your earnings: ${skr(amountRaw, a.skrUsd)}.` : `Withdraw ${skr(amountRaw, a.skrUsd)}.`,
-    prunes ? `This takes ${skr(wanted - a.pot.skrEarnedRaw, a.skrUsd)} of what you put in and prunes a plant.` : "What you put in keeps earning.",
-    "It stops earning when you sign and arrives in your Seeker's wallet in 48 hours.",
-    "You can put it back until then. One withdrawal at a time.",
-    "Network fee: about $0.001.",
+    prunes ? `${head} Your SKR plant gets smaller.` : head,
+    "Arrives in your wallet in 48 hours. You can put it back until then.",
+    "Network fee about $0.001.",
   ];
   return { shares, amountRaw, prunes, brief };
 }

@@ -27,7 +27,8 @@ const fixed = (amount: number, places: number) => grouped(amount.toFixed(places)
 export function formatUsd(cents: number): string {
   const sign = cents < 0 ? "-" : "";
   const abs = Math.abs(Math.round(cents));
-  return `${sign}$${Math.floor(abs / 100)}.${String(abs % 100).padStart(2, "0")}`;
+  const dollars = String(Math.floor(abs / 100)).replace(/\B(?=(\d{3})+(?!\d))/g, ",");   // "$11,407.00" (10-05)
+  return `${sign}$${dollars}.${String(abs % 100).padStart(2, "0")}`;
 }
 
 /** SKR with its dollar value beside it (R44); the dollar part is left out only when no price is known. */
@@ -110,7 +111,7 @@ export function dayLabel(day: string): string {
   return `${MONTHS[Number(m) - 1]} ${Number(d)}`;
 }
 
-function timeOf(d: Date): string {
+export function timeOf(d: Date): string {
   const h = d.getHours();
   const m = String(d.getMinutes()).padStart(2, "0");
   return `${h % 12 === 0 ? 12 : h % 12}:${m} ${h < 12 ? "AM" : "PM"}`;

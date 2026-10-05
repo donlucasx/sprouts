@@ -43,8 +43,8 @@ describe("the frame (RG30, R167, R185: room above the tallest part max(72 dp, 60
   });
   it("a tall garden at zoom 1: the headroom is 60 percent of the content's height once that passes 72 px (day 120)", () => {
     const s = buildScene(previewInputAt(120)), f = frame(s), t = tallest(s);
-    expect(t).toBeCloseTo(88.19, 2); expect(f.zoom).toBe(1);   // R231: the content 201.8 canvas px; 60 percent of it is 121.1
-    expect(t - f.y).toBeCloseTo(0.6 * (290 - t), 6); expect(f.viewH).toBeCloseTo(322.90, 2);
+    expect(t).toBeCloseTo(85.78, 2); expect(f.zoom).toBe(1);   // R351: the top sprout's furled pair reaches 2.4 px over the old bud (88.19): the content 204.2 canvas px; 60 percent of it is 122.5
+    expect(t - f.y).toBeCloseTo(0.6 * (290 - t), 6); expect(f.viewH).toBeCloseTo(326.75, 2);   // R351: 322.90 before
   });
   it("day 240: the view grows by 60 percent of its 192.9 px content (115.7) above the canvas's top; zoomed out to 0.957 for the gutters (R187 fix round 1)", () => {
     const f = frame(buildScene(previewInputAt(240)));
@@ -95,6 +95,6 @@ describe("the frame (RG30, R167, R185: room above the tallest part max(72 dp, 60
   });
   it("the Oct 8 garden: the band above the tallest part is 60 percent of its 125.2 canvas px content (75.7 on screen), past the 72 px floor since R231", () => {
     const s = buildScene({ ...base, plantings: [p("a", 10.8), p("b", 8.4), p("c", 6), p("d", 3.6), p("e", 1.2), p("o", 9, "stORE"), p("o2", 2, "stORE"), p("h", 4, "hSOL"), p("j", 2, "USDC_LEND")] }), f = frame(s);
-    expect((tallest(s) - f.y) * f.zoom).toBeCloseTo(75.10, 2);   // R291: zoom 1.0014, so 75.20 / 1.0014; R237: 75.68 with SKR at .30 expect(f.viewH).toBeCloseTo(201.81, 2);   // 170.27 before R231, 138.3 in round 3
+    expect((tallest(s) - f.y) * f.zoom).toBeCloseTo(76.0, 2);   // R358: 76.00, the droplet bud on the SKR tip stands taller than the old circle (75.10 before); R291: zoom 1.0014, so 75.20 / 1.0014; R237: 75.68 with SKR at .30 expect(f.viewH).toBeCloseTo(201.81, 2);   // 170.27 before R231, 138.3 in round 3
   });
 });

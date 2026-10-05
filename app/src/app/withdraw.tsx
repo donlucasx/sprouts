@@ -17,8 +17,7 @@ import { makeSigner, SignRefused } from '@/lib/sign'
 import { arrivalLine, formatSkr } from '@/lib/format'
 import { withdrawRows } from '@/lib/withdraw-list'
 import { oneAtATime, withdrawAtTap, type WithdrawPlan, type WithdrawRequest } from '@/lib/withdraw-flow'
-import { withdrawLendAtTap, WITHDRAWN_LEND_LINE, type LendWithdrawBuild } from '@/lib/lend-withdraw'
-import type { LendingPosition } from '@/lib/api'
+import { LendWithdraw } from '@/components/LendWithdraw'
 import { spacing, TARGET, type as ramp, useTheme } from '@/theme'
 
 const Waiting = () => (
@@ -39,10 +38,9 @@ export default function Withdraw() {
   const [plan, setPlan] = useState<(WithdrawPlan & { request: WithdrawRequest }) | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [picked, setPicked] = useState<'SKR' | null>(null)
-  const [lendBusy, setLendBusy] = useState<string | null>(null)
-  const [lendError, setLendError] = useState<{ key: string; text: string } | null>(null)
-  const [lendDone, setLendDone] = useState(false)
+  // 'SKR' or a lending position's row key ("USDC_LEND:jupiter_lend"): every withdrawal opens its own screen (R359).
+  const [picked, setPicked] = useState<string | null>(null)
+  const [lendDone, setLendDone] = useState<string | null>(null)
   // One wallet action at a time across the screen (SKR withdraw, Put it back, each lending row), checked before any await.
   const [gate] = useState(oneAtATime)
   // The one way back to the coin list: "Back to the list", the top Back and Android's back all call it (R165).
@@ -132,38 +130,15 @@ export default function Withdraw() {
       setBusy(false)
     }
   }
-  /** Spec 7: one tap per lending position; the Seed Vault signs only what the pinned check passes. */
-  async function withdrawLend(key: string, position: LendingPosition) {
-    if (!session || !gate.enter()) return
-    setLendBusy(key)
-    setLendError(null)
-    setLendDone(false)
-    try {
-      const out = await withdrawLendAtTap({
-        user: session.pubkey,
-        position,
-        build: (body) => api<LendWithdrawBuild>('/api/lend/withdraw/build', { method: 'POST', body }),
-        sign: (flow) => makeSigner(signTransaction, flow),
-        confirm: (body) => api('/api/lend/withdraw/confirm', { method: 'POST', body }),
-      })
-      if ('stopped' in out) setLendError({ key, text: out.stopped })
-      else setLendDone(true)
-      await invalidate()
-    } catch (e) {
-      setLendError({ key, text: e instanceof ApiError || e instanceof SignRefused ? e.message : 'The withdrawal did not go through. Nothing moved.' })
-    } finally {
-      gate.leave()
-      setLendBusy(null)
-    }
-  }
-
-  if (picked === null) {
+  // A picked lending position that is gone (withdrawn in full, or moved since) shows the list.
+  const pickedGone = picked !== null && picked !== 'SKR' && !withdrawRows(me).some((r) => r.key === picked && r.position)
+  if (picked === null || pickedGone) {
     const rows = withdrawRows(me)
     return (
       <Screen back title="Withdraw">
         <Card style={{ gap: 0 }}>
           <ThemedText style={{ marginBottom: spacing.sm }}>What do you want to withdraw?</ThemedText>
-          {lendDone ? <ThemedText tone="accentText">{WITHDRAWN_LEND_LINE}</ThemedText> : null}
+          {lendDone ? <ThemedText tone="accentText">{lendDone}</ThemedText> : null}
           {rows.length === 0 ? <ThemedText tone="secondary">Nothing in your garden yet.</ThemedText> : null}
           {rows.map((r, i) => {
             const inner = (
@@ -179,21 +154,8 @@ export default function Withdraw() {
               </>
             )
             const rowStyle = { minHeight: TARGET, flexDirection: 'row' as const, alignItems: 'center' as const, gap: spacing.sm, paddingVertical: spacing.sm, borderTopWidth: i === 0 ? 0 : 1, borderTopColor: colors.hairline }
-            if (r.position) {
-              const p = r.position
-              return (
-                <View key={r.key} style={{ borderTopWidth: i === 0 ? 0 : 1, borderTopColor: colors.hairline, paddingVertical: spacing.sm, gap: spacing.xs }}>
-                  <View style={{ minHeight: TARGET, flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
-                    {inner}
-                    <Button title="Withdraw" kind="quiet" accessibilityLabel={r.label} disabled={p.poolFull || (lendBusy !== null && lendBusy !== r.key)} loading={lendBusy === r.key} onPress={() => withdrawLend(r.key, p)} />
-                  </View>
-                  {lendBusy === r.key ? <Waiting /> : null}
-                  {lendError?.key === r.key ? <ThemedText tone="error">{lendError.text}</ThemedText> : null}
-                </View>
-              )
-            }
             return r.opens ? (
-              <Pressable key={r.key} onPress={() => setPicked('SKR')} accessibilityRole="button" accessibilityLabel={r.label} style={({ pressed }) => ({ ...rowStyle, opacity: pressed ? 0.7 : 1 })}>
+              <Pressable key={r.key} onPress={() => { setLendDone(null); setPicked(r.key) }} accessibilityRole="button" accessibilityLabel={r.label} style={({ pressed }) => ({ ...rowStyle, opacity: pressed ? 0.7 : 1 })}>
                 {inner}
               </Pressable>
             ) : (
@@ -204,6 +166,32 @@ export default function Withdraw() {
           })}
         </Card>
       </Screen>
+    )
+  }
+
+  if (picked !== 'SKR') {
+    const position = withdrawRows(me).find((r) => r.key === picked)?.position
+    // The position is gone (withdrawn in full, or moved): back to the list.
+    if (!position || !session)
+      return (
+        <Screen back onBack={backToList} title="Withdraw">
+          <ThemedText tone="secondary">Loading your garden.</ThemedText>
+        </Screen>
+      )
+    return (
+      <LendWithdraw
+        key={picked}
+        position={position}
+        user={session.pubkey}
+        busy={busy}
+        setBusy={setBusy}
+        gate={gate}
+        onBack={backToList}
+        onDone={(line) => {
+          backToList()
+          setLendDone(line)
+        }}
+      />
     )
   }
 

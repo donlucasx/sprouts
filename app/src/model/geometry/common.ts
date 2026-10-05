@@ -1,4 +1,4 @@
-import { BAKED_L, BAND_SCALE, type PlantLayout, type Placed, type Stage } from "../species";
+import { BAKED_L, BAND_SCALE, SWELL_REACH, type PlantLayout, type Placed, type Species, type Stage } from "../species";
 
 /** RG3: maturity by age (gen01_garden.py:103). */
 export const stageOf = (ageDays: number): Stage => (ageDays < 3 ? 0 : ageDays < 10 ? 1 : ageDays < 30 ? 2 : 3);
@@ -45,25 +45,49 @@ export function twig(acc: Acc, leafName: string, x: number, y: number, ang: numb
   return { x: ex, y: ey };
 }
 /** The layout's reach above the foot: every stem end and every sprite's reach (a leaf or blade its baked length times scale, a safe
- * bound whatever its rotation; the head 17.6 scale; a tier reaches sideways, 4 px up; a swelling or dot its radius; the rest 8 scale). */
+ * bound whatever its rotation; the head 17.6 scale; a tier reaches sideways, 4 px up; a swelling its droplet's SWELL_REACH scale, a dot its radius; the rest 8 scale). */
 export function topOf(parts: Placed[]): number {
   let top = 0;
   for (const p of parts) {
     if (p.kind === "stem") { top = Math.max(top, -p.y0, -p.y1); continue; }
     const base = BAKED_L[p.name.replace(/-s\d$/, "").replace(/-\d$/, "")];
-    const reach = p.part === "tier" ? 4 * p.scale : base ? base[Number(p.name.match(/-s(\d)$/)?.[1] ?? 0)] * p.scale : p.part === "head" ? 17.6 * p.scale : p.part === "swelling" || p.part === "dot" ? p.scale : 8 * p.scale;
+    const reach = p.part === "tier" ? 4 * p.scale : base ? base[Number(p.name.match(/-s(\d)$/)?.[1] ?? 0)] * p.scale : p.part === "head" ? 17.6 * p.scale : p.part === "swelling" ? SWELL_REACH * p.scale : p.part === "dot" ? p.scale : 8 * p.scale;
     top = Math.max(top, -p.y + reach);
   }
   return top;
 }
 export const finish = (acc: Acc, growthPoint: { x: number; y: number }): PlantLayout => ({ parts: acc.parts, tips: acc.tips, growthPoint, top: topOf(acc.parts) });
-/** The swelling (RG9, G9): a pale translucent circle at the growth point, radius min(4.6, 2.2 + 3.2 progress), no ring. Spec 5: a
- * fresh closed bud wins the growth point; when a bud sprite sits within 7 px of the anchor the swelling rides 2 px above that bud's
- * top (the bud sprite is 9.6 px tall at scale 1, anchored at its base). Call it AFTER the species has placed its buds. */
-export function swelling(acc: Acc, x: number, y: number, pending: number, k: number) {
+/** R358 (10-05, "C droplet bud + sepals"): the swelling is a pale water-drop bud cupped by two sepals, one baked sprite per species
+ * (bake.py swell_c, gen14_swell.py option C at grow 1.1 = the art at p 0.5), anchored at the bud's base. Its scale keeps the old circle's
+ * range: min(4.6, 2.2 + 3.2 p) / 3.8, so 0.58 to 1.21 times the art. On a stem tip the base stands SWELL_LIFT scale above the tip (gen14:
+ * 1.7 s) and the stem ending there is grown on along its own curve into the bud (SWELL_TUCK past the base, under the sepals): the leader is
+ * the plant's own stem, one ribbon, so no seam where a second stem would meet it. SWELL_SEPAL: the sepals' reach below the base. */
+export const SWELL_LIFT = 1.87, SWELL_TUCK = 0.5, SWELL_SEPAL = 0.8;
+export const swellScale = (pending: number, k: number) => (Math.min(4.6, 2.2 + 3.2 * pending) / 3.8) * k;
+/** The stem `s` continued along its own quadratic to height `y` (y is linear in t, so t = T past 1): the first 1 / T of the new stem is
+ * the old one exactly, its centreline and its width (gen01's taper is linear in t) (`minW` only a guard far under any
+ * real taper: a floor that fires would fatten the old stem). */
+function grow(s: Extract<Placed, { kind: "stem" }>, y: number, minW: number) {
+  const T = (y - s.y0) / (s.y1 - s.y0); if (!(T > 1)) return;
+  const end = along(s.x0, s.y0, s.x1, s.y1, s.bend, T), cx = (1 - T) * s.x0 + T * ((s.x0 + s.x1) / 2 + s.bend);
+  s.bend = cx - (s.x0 + end.x) / 2; s.x1 = end.x; s.y1 = end.y; s.w1 = Math.max(minW, s.w0 + (s.w1 - s.w0) * T);
+}
+/** The swelling at a plant's seat (x, y): a stem tip (the trunk, the sunflower's stem, the first cane, the spruce's leader) or, with no
+ * stem ending there, the bud's base itself (the rosette, the fan). Spec 5: a fresh closed bud within 7 px of the seat wins the growth
+ * point and the droplet rides above it; R351: so it does above the mandarin's highest sprout (its node within 14 px), clear of its
+ * furled pair. `clear`: the base at least this far above the seat (the sunflower's head). Call it AFTER the species has placed its buds. */
+export function swelling(acc: Acc, species: Species, x: number, y: number, pending: number, k: number, clear = 0) {
   if (pending <= 0) return;
-  const r = Math.min(4.6, 2.2 + 3.2 * pending) * k;
+  const s = swellScale(pending, k);
+  const tip = acc.parts.find((p): p is Extract<Placed, { kind: "stem" }> => p.kind === "stem" && !p.shoot && Math.hypot(p.x1 - x, p.y1 - y) < 1e-6);
+  let base = Math.min(tip ? y - SWELL_LIFT * s : y, y - clear);
   const bud = acc.parts.find((p): p is Extract<Placed, { kind: "sprite" }> => p.kind === "sprite" && p.part === "bud" && Math.hypot(p.x - x, p.y - y) <= 7 * k);
-  sprite(acc, "swelling", "swelling", x, bud ? bud.y - 9.6 * bud.scale - 2 * k - r : y, 0, r, 4);
+  if (bud) base = Math.min(base, bud.y - 9.6 * bud.scale - 1 * k - SWELL_SEPAL * s);
+  const nub = bud ? undefined : acc.parts.filter((p): p is Extract<Placed, { kind: "stem" }> => p.kind === "stem" && p.part === "nub" && Math.hypot(p.x0 - x, p.y0 - y) <= 14 * k).sort((a, b) => a.y0 - b.y0)[0];
+  const furled = nub ? acc.parts.filter((p): p is Extract<Placed, { kind: "sprite" }> => p.kind === "sprite" && p.part === "furl" && p.shoot === nub.shoot) : [];
+  if (furled.length) base = Math.min(base, Math.min(...furled.map((p) => p.y - Math.cos(rad(p.rot)) * (BAKED_L[p.name.replace(/-s\d$/, "")]?.[Number(p.name.slice(-1))] ?? 12) * p.scale)) - 1 * k - SWELL_SEPAL * s);
+  let bx = x;
+  if (tip) { grow(tip, base - SWELL_TUCK * s, 0.4 * k); bx = alongAtY(tip.x0, tip.y0, tip.x1, tip.y1, tip.bend, base); }
+  sprite(acc, "swelling", `swell-${species}`, bx, base, 0, s, 4);
 }
 export const band = (b: 0 | 1 | 2) => BAND_SCALE[b];

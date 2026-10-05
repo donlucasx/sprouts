@@ -176,7 +176,7 @@ describe("withdraw routes", () => {
     expect(typeof b.transaction).toBe("string");
     expect(b.shares).toBe("80279232");
     expect(b.prunes).toBe(false);
-    expect(b.brief.length).toBe(5);
+    expect(b.brief.length).toBe(3);   // his note 10-05: three short lines
   });
 
   // Review Focus 3

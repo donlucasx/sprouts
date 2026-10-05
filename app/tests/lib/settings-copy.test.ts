@@ -34,7 +34,7 @@ describe('Settings > About Sprouts (spec 6.2, 11)', () => {
       'Jupiter Lend',
       '60%',
       'marginfi and Lulo',
-      'the US and UK',
+      'restricts some regions',   // R367 (10-05): softened, no named countries
       'Lending is free',
       "Sprouts' offline admin key",
       POOL_FULL_LINE,

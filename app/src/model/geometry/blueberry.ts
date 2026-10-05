@@ -24,6 +24,6 @@ export function blueberry(shoots: ShootIn[], o: LayoutOpts, k: number): PlantLay
   const tips = [...acc.tips].sort((a, b) => a.y - b.y);
   for (let q = 0; q < Math.min(o.fruit, tips.length); q++) for (const [dx, dy] of [[0, 0], [-3.4, 2.6], [3.4, 2.8]]) sprite(acc, "token", "token-jupsol", tips[q].x + dx * k, tips[q].y + 6 * k + dy * k, 0, k, 4);
   if (o.ripening > 0 && tips.length > o.fruit) sprite(acc, "bell", "bell-blueberry", tips[o.fruit].x, tips[o.fruit].y + 2 * k, 0, k * (0.6 + 0.4 * o.ripening), 4);
-  swelling(acc, firstTip.x, firstTip.y + 1.2 * k, o.pending, k);
+  swelling(acc, "blueberry", firstTip.x, firstTip.y, o.pending, k);
   return finish(acc, firstTip);
 }

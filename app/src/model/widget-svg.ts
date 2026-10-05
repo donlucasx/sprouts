@@ -5,7 +5,7 @@ import { COLORS, SOIL } from "./species";
 import { GROUND, SOIL_CLIP_ID, frameGround, soilClipPath } from "./soil-clip";
 import { plantLayouts } from "./scene-to-layout";
 import { packScene, SPREAD } from "./spread";
-import { SPRITE_META } from "@/garden/sprite-meta";
+import { GROUND_OUTLINE, SPRITE_META } from "@/garden/sprite-meta";
 import { SPRITES_B64 } from "@/garden/sprites-b64";
 
 const f = (n: number) => Number(n.toFixed(2));
@@ -21,11 +21,14 @@ export const WIDGET_SIGN_MIN_PX = 0.75;
 /** R252: a narrow widget (no stakes, no wind) draws its plants this much over the app's 1.25x, so a six-coin garden reads at that width. */
 export const WIDGET_BOOST = 1.4;
 
-export type WidgetView = { scene: Scene; x: number; y: number; w: number; h: number; zoom: number; px: number; signs: boolean };
-/** The packed scene and the canvas box the widget shows, for a garden `width` by `height` widget px: `px` widget px per canvas px. */
-export function widgetView(scene: Scene, width: number, height: number): WidgetView {
+/** `need`: the canvas box the garden itself takes (its frame or its plants' reach, by the plants and the bed's height); the view is that
+ * box widened or heightened to the widget's shape. */
+export type WidgetView = { scene: Scene; x: number; y: number; w: number; h: number; zoom: number; px: number; signs: boolean; need: { w: number; h: number } };
+/** The packed scene and the canvas box the widget shows, for a garden `width` by `height` widget px: `px` widget px per canvas px.
+ * `signs` forces the stakes decision (widgetGarden keeps the one made at the room's height). */
+export function widgetView(scene: Scene, width: number, height: number, signs?: boolean): WidgetView {
   const full = viewOf(scene, width, height, SPREAD.take);
-  if (full.px >= WIDGET_SIGN_MIN_PX) return { ...full, signs: true };
+  if (signs ?? full.px >= WIDGET_SIGN_MIN_PX) return { ...full, signs: true };
   // too narrow for legible stakes: drawn without them, so the garden packs fully (R234's whole packing) around the plants alone
   const bare: Scene = { ...scene, parts: scene.parts.filter((q) => q.kind !== "sign") };
   return { ...tightView(bare, width, height), signs: false };
@@ -39,30 +42,43 @@ function tightView(scene: Scene, width: number, height: number): Omit<WidgetView
   if (L.length === 0) return { ...viewOf(scene, width, height, 1) };
   const span = windSpan(L, WIDGET_REF), hNeed = needH(L, PLANT_SCALE * WIDGET_BOOST), minW = (span.hi - span.lo) / (1 - 2 * TIGHT_INSET);
   const w = Math.max(minW, hNeed * (width / Math.max(1, height))), h = Math.max(hNeed, w / (width / Math.max(1, height)));
-  return { scene: packed, x: (span.lo + span.hi) / 2 - w / 2, y: CANVAS.height - h, w, h, zoom: fr.zoom, px: width / w };
+  return { scene: packed, x: (span.lo + span.hi) / 2 - w / 2, y: CANVAS.height - h, w, h, zoom: fr.zoom, px: width / w, need: { w: minW, h: hNeed } };
 }
 function viewOf(scene: Scene, width: number, height: number, take: number): Omit<WidgetView, "signs"> {
   const packed = packScene(scene, WIDGET_REF, take), L = plantLayouts(packed), fr = frameFor(packed, L, WIDGET_REF);
   // R253: the widget has no room to grow into: the view is as tall as the plants and the bed, not the app's headroom
   const hNeed = needH(L, PLANT_SCALE), ar = width / Math.max(1, height);
   const w = Math.max(fr.w, hNeed * ar), h = Math.max(hNeed, w / ar);
-  return { scene: packed, x: fr.x + fr.w / 2 - w / 2, y: CANVAS.height - h, w, h, zoom: fr.zoom, px: width / w };
+  return { scene: packed, x: fr.x + fr.w / 2 - w / 2, y: CANVAS.height - h, w, h, zoom: fr.zoom, px: width / w, need: { w: fr.w, h: hNeed } };
 }
-/** The canvas height the plants (drawn at `k`) and the ground need, from the bed's bottom up, TIGHT_TOP above the tallest. */
+/** The canvas height the plants (drawn at `k`) and the ground need, from the bed's bottom up, TIGHT_TOP above the tallest. The ground's
+ * top is its painted soil's (GROUND_OUTLINE's highest point), not the sprite's box: his note 10-05, a young garden's mound under a strip
+ * of the box's empty paper read as a gap under the text. */
+const SOIL_TOP = Math.min(...GROUND_OUTLINE.map((q) => q[1]));
 function needH(L: ReturnType<typeof plantLayouts>, k: number): number {
-  const ground = CANVAS.height - (SPRITE_META["ground"]?.h ?? 86) * GROUND.sy;
-  const top = L.length ? Math.min(...L.map((p) => FOOT_Y(p.row) - p.layout.top * k)) - TIGHT_TOP : ground;
-  return CANVAS.height - Math.min(top, ground);
+  const ground = CANVAS.height - ((SPRITE_META["ground"]?.h ?? 86) - SOIL_TOP) * GROUND.sy;
+  const plants = L.length ? Math.min(...L.map((p) => FOOT_Y(p.row) - p.layout.top * k)) : ground;
+  return CANVAS.height - (Math.min(plants, ground) - TIGHT_TOP);
 }
-/** The garden's height on a widget `width` wide with at most `maxH` for it: the view's own height at that width. */
+/** The garden's height on a widget `width` wide with at most `maxH` for it: its own box (`need`) scaled to the width, at most the room.
+ * His note (10-05, a 2x3 widget): the old height was always the whole room, so a narrow widget's view grew sky above the plants (a big
+ * gap under the text); now a width-bound garden is only as tall as it draws, and a height-bound one fills the room, widened. */
 export function widgetGardenHeight(scene: Scene, width: number, maxH: number): number {
   const v = widgetView(scene, width, maxH);
-  return Math.min(maxH, Math.round(v.h * v.px));
+  return Math.max(1, Math.min(maxH, Math.round((v.need.h * width) / v.need.w)));
+}
+/** The widget's garden: `width` wide, its height from widgetGardenHeight, drawn with the stakes decision made at the room's height. */
+export function widgetGarden(scene: Scene, width: number, maxH: number): { svg: string; h: number } {
+  const h = widgetGardenHeight(scene, width, maxH);
+  return { svg: svgOf(widgetView(scene, width, h, widgetView(scene, width, maxH).signs), width, h), h };
 }
 
 /** The garden as one SVG string: the sprites the scene uses declared once in <defs> (1x PNGs) and placed with <use>; stems as paths. */
 export function widgetGardenSvg(scene0: Scene, width: number, height: number): string {
-  const v = widgetView(scene0, width, height), scene = v.scene, W = WIDGET_REF;
+  return svgOf(widgetView(scene0, width, height), width, height);
+}
+function svgOf(v: WidgetView, width: number, height: number): string {
+  const scene = v.scene, W = WIDGET_REF;
   const ground = frameGround(W, { x: v.x, w: v.w });
   const used = new Set<string>(); const body: string[] = [];
   const placeStr = (name: string, x: number, y: number, rot: number, scale: number, xScale = scale): string => {
@@ -85,7 +101,6 @@ export function widgetGardenSvg(scene0: Scene, width: number, height: number): s
       const fx = p.x * W, fy = FOOT_Y(p.row), k = PLANT_SCALE * (v.signs ? 1 : WIDGET_BOOST);   // R187: the app's 1.25x about the foot; R252: a narrow widget more
       for (const q of [...p.layout.parts].sort((a, b) => a.z - b.z)) {
         if (q.kind === "stem") body.push(stemPaths(fx + q.x0 * k, fy + q.y0 * k, fx + q.x1 * k, fy + q.y1 * k, q.w0 * k, q.w1 * k, q.bend * k, q.color).map((s) => `<path d="${s.d}" fill="${s.fill}" opacity="${s.opacity}"/>`).join(""));
-        else if (q.part === "swelling") body.push(`<circle cx="${f(fx + q.x * k)}" cy="${f(fy + q.y * k)}" r="${f(q.scale * k)}" fill="${COLORS[p.plant].light}" opacity="${f(0.4 + 0.35 * Math.min(1, (q.scale - 2.2) / 2.4))}"/>`);   // the app's formula
         else if (q.part === "dot") body.push(`<circle cx="${f(fx + q.x * k)}" cy="${f(fy + q.y * k)}" r="${f(q.scale * k)}" fill="${COLORS.ore.token}" opacity=".95"/>`);
         else place(q.name, fx + q.x * k, fy + q.y * k, q.rot, q.scale * k, (q.xScale ?? q.scale) * k);
       }

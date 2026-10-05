@@ -60,22 +60,23 @@ function covered(b: Box, front: Box[]): number {
 }
 
 describe("back-row stakes stand where no front plant covers them (R356)", () => {
-  it("where the row holds a clear spot the board takes it: both lending boards wholly clear at 372, USDC's at 353", () => {
-    for (const [width, plants] of [[372, ["jitosol", "jupsol"]], [353, ["jitosol"]]] as const) for (const scene of SCENES(width).slice(0, 2)) {
+  it("where its own stretch of the row holds a clear spot the board takes it: USDC's at 353 and 372 (the unpacked garden)", () => {
+    for (const [width, plants] of [[372, ["jitosol"]], [353, ["jitosol"]]] as const) for (const scene of SCENES(width).slice(0, 1)) {
       const { plants: pl, out } = boards(scene, width);
       const front = pl.filter((q) => q.row === "front").flatMap((q) => partBoxes(q, width));
-      for (const b of out.filter((x) => (plants as readonly string[]).includes(x.plant))) expect(front.filter((q) => hit(q, b)), `${b.plant} at ${width}`).toEqual([]);
+      for (const b of out.filter((x) => (plants as readonly string[]).includes(x.plant))) expect(covered(b, front), `${b.plant} at ${width}`).toBeLessThanOrEqual(0.5);
     }
   });
-  it("at every width a back-row board is no more covered than at its R237 spot, and less in all", () => {
+  it("at every width a back-row board is no more covered than at its R237 spot, and less in all from 320 wide", () => {
     for (const width of [280, 320, 353, 372]) for (const scene of SCENES(width)) {
       const { plants, out } = boards(scene, width);
       const front = plants.filter((pl) => pl.row === "front").flatMap((pl) => partBoxes(pl, width));
       for (const b of out.filter((x) => x.row === "back")) expect(covered(b, front), `${b.plant} at ${width}`).toBeLessThanOrEqual(covered(b.home, front) + 1e-6);
       const before = out.filter((x) => x.row === "back").reduce((t, b) => t + covered(b.home, front), 0), after = out.filter((x) => x.row === "back").reduce((t, b) => t + covered(b, front), 0);
-      expect(after, `${width}`).toBeLessThan(before);
-      // measured 10-05 (R237's spots cover 96 to 105 px of the two boards at every width): the moved boards at most this much
-      expect(after, `${width}`).toBeLessThanOrEqual(({ 280: 85, 320: 35, 353: 8, 372: 20 } as Record<number, number>)[width]);
+      expect(after, `${width}`).toBeLessThanOrEqual(before + 1e-6);
+      // measured 10-05 after R357 (R237's spots: 86 to 96 px of the two boards by the box measure, which counts a whole baked box,
+      // margins included): the boards, kept by their own plants, at most this much
+      if (width >= 320) expect(after, `${width}`).toBeLessThanOrEqual(({ 320: 80, 353: 65, 372: 55 } as Record<number, number>)[width]);
     }
   });
   it("the boards stay apart and inside the garden", () => {
@@ -93,6 +94,25 @@ describe("back-row stakes stand where no front plant covers them (R356)", () => 
       expect(skrFruit).toBeGreaterThan(0);
       expect(signs[1]).toBeLessThan(skrFruit);   // the two back-row boards (USDC, SOL) before the front row's mandarin
       expect(signs[2]).toBeGreaterThan(lastFront);   // SKR's and stORE's after it
+    }
+  });
+  // R357 (10-05, his note on the Saga: "the USDC/kamino is legible but its too far from the plant and cant tell what it belongs to"): a
+  // back-row stake stays by its own plant: its board's centre within 0.6 of a board's width past the plant's own drawn edge, either
+  // side of its stem, and never past the nearest other back-row stem.
+  it("every back-row sign stays by its own plant (R357)", () => {
+    const SIX: GardenInput = { ...GROWN, allocation: { SKR: 20, stORE: 20, USDC_LEND: 15, SOL_LEND: 15, hSOL: 15, cbBTC: 15 },
+      plantings: [...GROWN.plantings, ...many("hSOL", 6, 4), ...many("cbBTC", 6, 4)] };
+    for (const width of [280, 320, 353, 372]) for (const scene of [...SCENES(width), buildScene(SIX), packScene(buildScene(SIX))]) {
+      const { plants, out } = boards(scene, width);
+      const backFeet = out.filter((b) => b.row === "back").map((b) => ({ plant: b.plant, x: scene.parts.flatMap((q) => (q.kind === "sign" && q.plant === b.plant ? [q.x * width] : []))[0] }));
+      for (const b of out.filter((x) => x.row === "back")) {
+        const foot = backFeet.find((f) => f.plant === b.plant)!.x, own = plants.find((pl) => pl.plant === b.plant);
+        const parts = own ? partBoxes(own, width) : [], left = Math.min(foot, ...parts.map((q) => q.x0)), right = Math.max(foot, ...parts.map((q) => q.x1));
+        const c = (b.x0 + b.x1) / 2, reach = 0.6 * (b.x1 - b.x0), tag = `${b.plant} at ${width}`;
+        expect(c, tag).toBeGreaterThanOrEqual(left - reach - 1e-6);
+        expect(c, tag).toBeLessThanOrEqual(right + reach + 1e-6);
+        for (const f of backFeet) if (f.plant !== b.plant) expect(Math.sign(c - f.x), `${tag} past ${f.plant}`).toBe(Math.sign(foot - f.x));
+      }
     }
   });
   // KNOWN (R356, measured 10-05): at 280 and 320 the widest stretch of the back row no front part's box crosses, at the boards' height,
