@@ -9,7 +9,7 @@ import { capLeftCents, plantAmountCents } from "@/domain/cap";
 import { redistributeDisabled } from "@/domain/split";
 import { AUTO_VENUES, VENUE_PROTOCOL, pickVenue, venueCandidates, type AutoVenue, type Protocol } from "@/domain/venues";
 import { LEASH_PROGRAM } from "./constants";
-import { enabledLegs, leashLegOf, leashLive, LEASH_ERRORS, LEG_SPEC, type LeashConfig, type LeashLegByte } from "./leash";
+import { enabledLegs, leashLegOf, leashLive, LEASH_ERRORS, LEG_SPEC, SKR_PRICE_SOURCE, type LeashConfig, type LeashLegByte } from "./leash";
 import { klendDeliveryShortfall } from "./venues/klend";
 import { jlendDeliveryShortfall } from "./venues/jlend";
 
@@ -29,16 +29,32 @@ const GIVE_UP_AFTER_MS = 30 * 60_000;
  * snapshot, the decision and the planting itself need the rest); measured 10-04, SOL/ORE update every 50-55 s.
  */
 export const PRICE_WAIT_S = 60;
+/**
+ * Task 11 review I2 (fix round 1): with a 40 s usable window (max age 60 - 20 margin) and SOL/ORE updates every 50-55 s, a no-wait
+ * check lands in the stale tail about a quarter of the time. So, unless the feed's run-level wait failed (a dead feed fails fast):
+ * before the build the leg waits up to PRE_BUILD_WAIT_S for a price with BUILD_HEADROOM_S of freshness to spare (the builder's own
+ * no-wait read comes a moment later), and right before the send up to PRE_SEND_WAIT_S (the planting is claimed, nothing is sent
+ * yet). Both are cut to what is left of the run deadline. 20 s and 15 s cover one update gap from the stale points they start at.
+ */
+export const PRE_BUILD_WAIT_S = 20;
+export const PRE_SEND_WAIT_S = 15;
+export const BUILD_HEADROOM_S = 5;
+/**
+ * Review M1: the planting run starts no new wallet after this point, so the withdraw crank, the stake reconcile, the cleanup and the
+ * keepalive always run inside the cron's 300 s. The route passes its own start + 240 s; alone, the run allows itself 200 s.
+ */
+export const RUN_BUDGET_MS = 200_000;
 /** The leash's SettleMismatch (contracts 2.5): the receipt changed between the build's read of `pre` and the pull. */
 const SETTLE_MISMATCH = 6007;
 
 export type DelegationState = { exists: boolean; amountPerPeriodRaw: bigint; pulledInPeriodRaw: bigint; periodStartTs: bigint; periodLengthS: bigint };
 /**
- * `usdcFloat` (every leg) and `wsolFloat` (SOL lending) name the puller's pooled accounts the guards bound; both are in `watched`
- * (T9 review I2: the swap's input is bound to the pull because the puller's USDC may not fall on a swap leg).
+ * `usdcFloat`, `wsolFloat` and `skrFloat` name the puller's pooled accounts the guards bound, all in `watched`, on every leg (T9 review
+ * I2, Task 11 review I1): each may fall by at most this leg's own carry of that kind. `skrFloat` is null on an SKR leg (it is the
+ * delivery account there).
  */
 export type Built = { tx: unknown; signature: string; expectedOutRaw: bigint; minOutRaw: bigint; lookupTables: unknown[]; lastValidBlockHeight: bigint;
-  asset?: LiveAsset; venue?: AutoVenue | null; leg?: number | null; watched?: string[]; usdcFloat?: string; wsolFloat?: string | null; pullerJl?: string | null; jlLeftover?: bigint | null; cleanup?: unknown[] };
+  asset?: LiveAsset; venue?: AutoVenue | null; leg?: number | null; watched?: string[]; usdcFloat?: string; wsolFloat?: string | null; skrFloat?: string | null; pullerJl?: string | null; jlLeftover?: bigint | null; cleanup?: unknown[] };
 export type LendPosition = { asset: LendAsset; venue: AutoVenue; receiptRaw: bigint };
 export type PriceCfg = { confCapBps: number; maxAgeS: number };
 /** `delivery`: the balance of the account the planting delivers to (SKR: the puller's own SKR account; a wallet coin: the user's) right before the simulation and after it [R207 review]. */
@@ -91,9 +107,10 @@ export type Skipped = { wallet: string; reason: string };
  * Vault [A16, R141]): sequential runs take 5 to 10 s per wallet against Vercel's 300 s and Jupiter's 60 requests a minute, so the
  * free stack serves the 20 to 50 wallet beta and needs paid tiers somewhere past 100 wallets.
  */
-export async function runPlanting(a: { repo: Repo; now: Date; chain: Chain }): Promise<{ planted: Planted[]; skipped: Skipped[] }> {
+export async function runPlanting(a: { repo: Repo; now: Date; chain: Chain; deadlineMs?: number }): Promise<{ planted: Planted[]; skipped: Skipped[] }> {
   const planted: Planted[] = [];
   const skipped: Skipped[] = [];
+  const deadline = a.deadlineMs ?? Date.now() + RUN_BUDGET_MS;
 
   await reconcileSentPlantings(a);
   await resumePausedWallets(a);
@@ -107,13 +124,20 @@ export async function runPlanting(a: { repo: Repo; now: Date; chain: Chain }): P
     venueDays: await a.repo.listVenueDays(day),
     yesterday: await a.repo.listVenueDays(addDays(day, -1)),
     prices: { USDC_LEND: (await a.repo.getCoinDay(day, "USDC_LEND"))?.priceUsd ?? null, SOL_LEND: (await a.repo.getCoinDay(day, "SOL_LEND"))?.priceUsd ?? null },
-    gate: startPriceWaits(a.chain, leash, wallets.some((w) => w.linkModel === "leash")),
+    gate: startPriceWaits(a.chain, leash, wallets.some((w) => w.linkModel === "leash"), deadline),
+    deadline,
   };
+  let pastDeadline = 0;
   let buildFailures = 0;
   let stopped = false;
   const plantWallet = async (w: WalletRow) => {
     if (stopped) {
       skipped.push({ wallet: w.pubkey, reason: "run stopped" });
+      return;
+    }
+    if (Date.now() >= deadline) {
+      pastDeadline++;
+      skipped.push({ wallet: w.pubkey, reason: "run deadline" });
       return;
     }
     const outcome = await plantOne(a, w, ctx);
@@ -136,18 +160,23 @@ export async function runPlanting(a: { repo: Repo; now: Date; chain: Chain }): P
   await mapWithConcurrency([...byUser.values()], CONCURRENCY, async (group) => {
     for (const w of group) await plantWallet(w);
   });
+  if (pastDeadline) console.error(`planting run deadline reached: ${pastDeadline} wallet(s) not started (${skipped.filter((x) => x.reason === "run deadline").map((x) => x.wallet).join(", ")}); they wait for the next run`);
   return { planted, skipped };
 }
 
-type RunCtx = { leash: LeashConfig | null; venueDays: VenueDayRow[]; yesterday: VenueDayRow[]; prices: Partial<Record<LendAsset, number | null>>; gate: (leg: LeashLegByte) => Promise<void> };
+type RunCtx = { leash: LeashConfig | null; venueDays: VenueDayRow[]; yesterday: VenueDayRow[]; prices: Partial<Record<LendAsset, number | null>>; gate: (leg: LeashLegByte) => Promise<boolean>; deadline: number };
+
+/** Seconds left of `want`, cut to the run deadline. */
+const waitWithin = (want: number, deadline: number) => Math.max(0, Math.min(want, Math.floor((deadline - Date.now()) / 1000)));
 
 /**
  * T8/T9 carry: one wait per price FEED per run, every feed at once, started before the first wallet (only when a leashed wallet is
  * active). A feed's wait uses the strictest conf cap and max age among its enabled legs, so a price fresh for it is fresh for all.
- * A wait that runs out is logged, not thrown: each build re-checks with waitS 0 and the leg skips if the price is still unusable.
+ * A wait that runs out is logged, not thrown, and marks the feed dead for the run (false): its legs then check without waiting
+ * (fail fast). A live feed's legs get the bounded waits (review I2).
  */
-function startPriceWaits(chain: Chain, leash: LeashConfig | null, anyLeashed: boolean): (leg: LeashLegByte) => Promise<void> {
-  const waits = new Map<string, Promise<void>>();
+function startPriceWaits(chain: Chain, leash: LeashConfig | null, anyLeashed: boolean, deadline: number): (leg: LeashLegByte) => Promise<boolean> {
+  const waits = new Map<string, Promise<boolean>>();
   if (leash && anyLeashed) {
     const byFeed = new Map<string, { leg: LeashLegByte; cfg: PriceCfg }>();
     for (const leg of enabledLegs(leash)) {
@@ -158,10 +187,13 @@ function startPriceWaits(chain: Chain, leash: LeashConfig | null, anyLeashed: bo
       byFeed.set(feed, cur ? { leg: cur.leg, cfg: { confCapBps: Math.min(cur.cfg.confCapBps, l.confCapBps), maxAgeS: Math.min(cur.cfg.maxAgeS, l.maxAgeS) } } : { leg, cfg: { confCapBps: l.confCapBps, maxAgeS: l.maxAgeS } });
     }
     for (const [feed, { leg, cfg }] of byFeed) {
-      waits.set(feed, chain.priceFresh(leg, cfg, PRICE_WAIT_S).catch((e) => console.error(`price wait for the ${feed} feed ended unusable (${message(e)}); its legs skip unless fresh at build`)));
+      waits.set(feed, chain.priceFresh(leg, cfg, waitWithin(PRICE_WAIT_S, deadline)).then(() => true, (e) => {
+        console.error(`price wait for the ${feed} feed ended unusable (${message(e)}); its legs check without waiting this run`);
+        return false;
+      }));
     }
   }
-  return (leg) => waits.get(LEG_SPEC[leg].feed ?? "") ?? Promise.resolve();
+  return (leg) => waits.get(LEG_SPEC[leg].feed ?? "") ?? Promise.resolve(true);
 }
 
 /** A planting recorded as `sent` whose send threw: the chain decides whether it landed. */
@@ -183,14 +215,21 @@ async function reconcileSentPlantings(a: { repo: Repo; now: Date; chain: Chain }
 /** The one place a planting becomes confirmed: status, the ledger from the recorded legs, the shares it minted [A16], then what each leg landed [R141]. */
 async function bookConfirmed(repo: Repo, chain: Chain, p: PlantingRow, outBefore: bigint | null = null) {
   await repo.setPlantingStatus(p.id, "confirmed");
-  const legs = await repo.plantingLegs(p.id);
-  for (const leg of legs) await repo.bumpLedger(p.walletPubkey, leg.asset as LiveAsset, leg.usdcInCents);
-  const after = await chain.readShares(p.userPubkey);
-  const minted = p.sharesBefore === null ? await estimateMinted(chain, legs) : after - p.sharesBefore;
-  await repo.setPlantingShares(p.id, { before: p.sharesBefore, after, minted });
-  await recordLanded(repo, chain, p, legs, minted, outBefore);
-  await recordSkrSurplus(repo, chain, p, legs);
-  await recordCarrySurplus(repo, chain, p, legs);
+  let legs: PlantingLegRow[] | null = null;
+  try {
+    legs = await repo.plantingLegs(p.id);
+    for (const leg of legs) await repo.bumpLedger(p.walletPubkey, leg.asset as LiveAsset, leg.usdcInCents);
+    const after = await chain.readShares(p.userPubkey);
+    const minted = p.sharesBefore === null ? await estimateMinted(chain, legs) : after - p.sharesBefore;
+    await repo.setPlantingShares(p.id, { before: p.sharesBefore, after, minted });
+    await recordLanded(repo, chain, p, legs, minted, outBefore);
+  } finally {
+    // Review M9: the row is `confirmed` now, so the reconciler never books it again: the carry it drew stays debited, and its
+    // surplus must be credited even when a step above threw (each recorder catches its own errors).
+    const l = legs ?? (await repo.plantingLegs(p.id).catch(() => [] as PlantingLegRow[]));
+    await recordSkrSurplus(repo, chain, p, l);
+    await recordCarrySurplus(repo, chain, p, l);
+  }
 }
 
 /**
@@ -331,16 +370,27 @@ export function floatShortfall(sim: Simulation, account: string | undefined | nu
 export const wsolCarryShortfall = (sim: Simulation, built: Built, carryRaw: bigint) => floatShortfall(sim, built.wsolFloat, carryRaw, "WSOL");
 /** USDC lending draws the user's USDC carry from the pooled pull receiver; every swap leg passes 0: the swap may spend only the pull (T9 review I2). */
 export const usdcCarryShortfall = (sim: Simulation, built: Built, carryRaw: bigint) => floatShortfall(sim, built.usdcFloat, carryRaw, "USDC");
+export const skrCarryShortfall = (sim: Simulation, built: Built, carryRaw: bigint) => floatShortfall(sim, built.skrFloat, carryRaw, "SKR");
+
+/**
+ * Task 11 review I1: all three pooled floats on every leg. Each may fall by at most this leg's own carry of that kind (USDC lending:
+ * its USDC carry; SOL lending: its WSOL carry), 0 otherwise, so a route cannot spend another user's SKR or WSOL remainder as its
+ * input, nor close the wSOL. On an SKR leg the SKR float is the delivery account, bounded by deliveryShortfall.
+ */
+export function floatsShortfall(sim: Simulation, built: Built, asset: LiveAsset, carry: Partial<Record<CarryKind, bigint>>): string | null {
+  return usdcCarryShortfall(sim, built, asset === "USDC_LEND" ? (carry.USDC ?? 0n) : 0n)
+    ?? wsolCarryShortfall(sim, built, asset === "SOL_LEND" ? (carry.WSOL ?? 0n) : 0n)
+    ?? (asset === "SKR" ? null : skrCarryShortfall(sim, built, 0n));
+}
 
 /** Every leg's guard (contracts 3.3): the venue's delivery guard (or the coin / SKR one), then the floats its deposit or swap draws on. */
 export function legShortfall(sim: Simulation, built: Built, asset: LiveAsset, venue: AutoVenue | null, carry: Partial<Record<CarryKind, bigint>>): string | null {
   if (venue) {
     const d = venue === "kamino_klend" ? klendDeliveryShortfall(sim, built) : jlendDeliveryShortfall(sim, { minOutRaw: built.minOutRaw, pullerJl: (built.pullerJl ?? null) as Address | null });
     if (d) return d;
-    if (asset === "SOL_LEND") return wsolCarryShortfall(sim, built, carry.WSOL ?? 0n) ?? usdcCarryShortfall(sim, built, 0n);
-    return usdcCarryShortfall(sim, built, carry.USDC ?? 0n);
+    return floatsShortfall(sim, built, asset, carry);
   }
-  return deliveryShortfall(sim, built, asset, carry.SKR ?? 0n) ?? usdcCarryShortfall(sim, built, 0n);
+  return deliveryShortfall(sim, built, asset, carry.SKR ?? 0n) ?? floatsShortfall(sim, built, asset, carry);
 }
 
 /** The user's lending value per protocol (the 60% cap's input): receipt x the venue's exchange rate (underlying raw per receipt raw) x the underlying's price. */
@@ -366,14 +416,22 @@ export function leashErrorOf(sim: { logs: string[] }): number | null {
   return null;
 }
 
+/** A refusal by one of the money guards or checkers (a possible attack, or a builder bug), not weather: it gets an ALERT line (review M2). */
+const GUARD_REFUSAL = /fell by|under the minimum|still holds|(Planting|Jupiter response|Jupiter Lend|K-Lend|Leash) refused/;
+function alertIfGuard(w: WalletRow, asset: LiveAsset, err: string) {
+  if (GUARD_REFUSAL.test(err)) console.error(`ALERT: guard refusal on ${asset} for ${w.pubkey}: ${err}`);
+}
+
 /**
- * Spec 2 / Task 2 note: a skipped leg is logged every run but recorded at most once per user per day for the same reason (the
- * reason with its numbers masked, so a price that is 61 s and then 63 s old is one reason). A failed read records it anyway.
+ * Spec 2 / Task 2 note: a skipped leg is logged every run but recorded at most once per wallet per day for the same reason (the
+ * reason with its decimal numbers masked, so a price that is 61 s and then 63 s old is one reason; hex program error codes such as
+ * 0x1777 / 0x1778 stay distinct, review M2). A failed read records it anyway.
  */
 async function legSkipped(a: { repo: Repo; now: Date }, w: WalletRow, asset: LiveAsset, err: string, extra: Record<string, unknown> = {}) {
   console.error(`${asset} leg for ${w.pubkey} failed (${err}); skipped today`);
+  alertIfGuard(w, asset, err);
   const day = dayOf(a.now);
-  const key = `${asset}:${err.replace(/\d+/g, "#").slice(0, 160)}`;
+  const key = `${w.pubkey}:${asset}:${err.replace(/0x[0-9a-f]+|\d+/gi, (m) => (/^0x/i.test(m) ? m : "#")).slice(0, 160)}`;
   try {
     const seen = await a.repo.listEvents(w.userPubkey, ["leg_skipped"], 50);
     if (seen.some((e) => { const d = e.detail as { day?: string; key?: string } | null; return d?.day === day && d?.key === key; })) return;
@@ -480,18 +538,20 @@ async function plantOneOrThrow(a: { repo: Repo; now: Date; chain: Chain }, w: Wa
   const target = redistributeDisabled(rules.allocation, disabled);
   if (!target) return { wallet: w.pubkey, reason: "no leg enabled" };
 
-  type Attempt = { built: Built; sim: Simulation; carry: Partial<Record<CarryKind, bigint>>; venue: AutoVenue | null; leg: LeashLegByte | null; cfg: PriceCfg | null; settleMismatch: boolean };
+  type Attempt = { built: Built; sim: Simulation; carry: Partial<Record<CarryKind, bigint>>; venue: AutoVenue | null; leg: LeashLegByte | null; cfg: PriceCfg | null; feedAlive: boolean; settleMismatch: boolean };
   let asset: LiveAsset = pickAsset(w.ledgerCents, target);
   const attempt = async (asset: LiveAsset): Promise<Attempt> => {
     const venue = isLendAsset(asset) ? (venues[asset] ?? null) : null;
     const leg = leashed ? leashLegOf(asset, venue) : null;
     const lc = leg !== null && ctx.leash ? ctx.leash.legs[leg] : null;
     const cfg: PriceCfg | null = leg !== null && lc && LEG_SPEC[leg].feed !== null ? { confCapBps: lc.confCapBps, maxAgeS: lc.maxAgeS } : null;
+    let feedAlive = true;
     if (leg !== null && cfg) {
-      // T8 carry: the run's one wait for this leg's feed (all feeds started together), then the leg's own on-chain cap and age with
-      // no further wait. Carry-in 9: SKR (leg 0) has no price source (R324), so this throws and a leashed SKR leg is skipped.
-      await ctx.gate(leg);
-      await a.chain.priceFresh(leg, cfg, 0);
+      // T8 carry: the run's one wait for this leg's feed (all feeds started together). Review I2: then a bounded wait for a price
+      // with BUILD_HEADROOM_S to spare under the leg's own on-chain cap and age (none when the feed's run wait failed: fail fast).
+      // Carry-in 9: SKR (leg 0) has no price source (R324), so this throws and a leashed SKR leg is skipped.
+      feedAlive = await ctx.gate(leg);
+      await a.chain.priceFresh(leg, { ...cfg, maxAgeS: cfg.maxAgeS - BUILD_HEADROOM_S }, feedAlive ? waitWithin(PRE_BUILD_WAIT_S, ctx.deadline) : 0);
     }
     const carry = await carryFor(asset);
     const input = { delegator: w.pubkey, user: w.userPubkey, asset, venue, pullRaw, delegationPda: w.delegationPda, leashed, carryIn: carry, ...(cfg ? { priceOpts: { waitS: 0, ...cfg } } : {}) };
@@ -510,16 +570,18 @@ async function plantOneOrThrow(a: { repo: Repo; now: Date; chain: Chain }, w: Wa
       if (r2.s.ok) { built = r2.b; sim = r2.s; }
     }
     const short = sim.ok ? legShortfall(sim, built, asset, venue, carry) : null;
-    return { built, carry, venue, leg, cfg, settleMismatch, sim: short ? { ...sim, ok: false, err: { delivery: short } } : sim };
+    return { built, carry, venue, leg, cfg, feedAlive, settleMismatch, sim: short ? { ...sim, ok: false, err: { delivery: short } } : sim };
   };
   const simError = (r: Attempt) => `simulation: ${json(r.sim.err)} ${r.sim.logs.slice(-2).join(" | ")}`;
   // A leg that cannot be planted today: a lending leg, a coin leg whose SKR fallback is off for this leashed user, and (carry-in 9)
   // a leashed SKR leg are skipped; an unleashed coin leg falls back to SKR (spec 7.3); an unleashed SKR build error is "build failed".
   const fallbackOrSkip = async (failed: LiveAsset, err: string): Promise<Attempt | null> => {
-    if (isLendAsset(failed) || disabled.includes("SKR")) {
+    // Review M4: a leashed user never falls back to SKR while leg 0 has no price source (R324): it would be skipped there anyway.
+    if (isLendAsset(failed) || disabled.includes("SKR") || (leashed && !SKR_PRICE_SOURCE)) {
       await legSkipped(a, w, failed, err);
       return null;
     }
+    alertIfGuard(w, failed, err);
     console.error(`${failed} leg for ${w.pubkey} failed (${err}); planting SKR instead`);
     await a.repo.addEvent({ userPubkey: w.userPubkey, walletPubkey: w.pubkey, kind: "leg_fallback", detail: { asset: failed, err } });
     asset = "SKR";
@@ -538,7 +600,9 @@ async function plantOneOrThrow(a: { repo: Repo; now: Date; chain: Chain }, w: Wa
     if (r.settleMismatch) {
       // M4: a second SettleMismatch right after a rebuild skips the leg (no fallback); the same wallet's repeat across runs alerts.
       const before = await a.repo.listEvents(w.userPubkey, ["leg_skipped"], 50).catch(() => []);
-      const repeat = before.some((e) => e.walletPubkey === w.pubkey && (e.detail as { leashError?: string } | null)?.leashError === "SettleMismatch");
+      // Review M3: a repeat is a SettleMismatch skip of this wallet within the last 7 days (by the run's own day).
+      const since = addDays(dayOf(a.now), -7);
+      const repeat = before.some((e) => { const d = e.detail as { leashError?: string; day?: string } | null; return e.walletPubkey === w.pubkey && d?.leashError === "SettleMismatch" && !!d.day && d.day >= since && d.day <= dayOf(a.now); });
       if (repeat) console.error(`ALERT: leash SettleMismatch (6007) again for ${w.pubkey} on ${leg}: the receipt keeps moving between build and pull`);
       await legSkipped(a, w, leg, "leash SettleMismatch (6007) after one rebuild", { leashError: "SettleMismatch", alert: repeat });
       return null;
@@ -548,8 +612,9 @@ async function plantOneOrThrow(a: { repo: Repo; now: Date; chain: Chain }, w: Wa
   };
   const outcome = await tryLeg(asset);
   if (!outcome) return { wallet: w.pubkey, reason: "leg failed" };
-  const { built, sim, carry, venue, leg, cfg } = outcome;
+  const { built, sim, carry, venue, leg, cfg, feedAlive } = outcome;
   if (!sim.ok) {
+    alertIfGuard(w, asset, json(sim.err));
     const code = leashErrorOf(sim);
     const leashError = code !== null ? (LEASH_ERRORS[code] ?? null) : null;
     console.error(`planting for ${w.pubkey} failed simulation: ${json(sim.err)} ${sim.logs.slice(-2).join(" | ")}`);
@@ -596,11 +661,11 @@ async function plantOneOrThrow(a: { repo: Repo; now: Date; chain: Chain }, w: Wa
   }
   const tidy = () => a.chain.cleanup(built).catch((e) => console.error(`price cleanup for ${built.signature} failed: ${message(e)}`));
 
-  // T8 carry: the price is checked again right before the send (the build used waitS 0, and the run's one wait may be minutes old).
-  // Stale now: nothing is sent; the round-ups and the carry go back and the leg waits for the next run.
+  // T8 carry: the price is checked again right before the send (the build used waitS 0). Review I2: a live feed may wait up to
+  // PRE_SEND_WAIT_S here (claimed, nothing sent yet). Still unusable: nothing is sent; the round-ups and the carry go back.
   if (leg !== null && cfg) {
     try {
-      await a.chain.priceFresh(leg, cfg, 0);
+      await a.chain.priceFresh(leg, cfg, feedAlive ? waitWithin(PRE_SEND_WAIT_S, ctx.deadline) : 0);
     } catch (e) {
       await a.repo.releaseSwaps(planting.id);
       await a.repo.setPlantingStatus(planting.id, "failed");

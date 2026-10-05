@@ -157,9 +157,13 @@ describe("checkSwapInstructions, decoded (R207 #4)", () => {
   const withCleanup = (c: ReturnType<typeof ix>) => { const f = clone(); (f as { cleanupInstruction: unknown }).cleanupInstruction = c; return parseSwapInstructions(f); };
   const ataCreate = (owner: string, tag: number[] = [1], payer = PULLER) => ix(ATA, [acc(payer, true, payer === PULLER), acc(DEST), acc(owner, false), acc(MINT, false), acc(SYSTEM, false), acc(TOKEN, false)], tag);
 
-  it("accepts what Jupiter emits: an ATA create for the puller or the destination's owner, SyncNative and CloseAccount on the puller's wSOL", () => {
+  it("accepts what Jupiter emits: an ATA create for the puller or the destination's owner, SyncNative on the puller's wSOL", () => {
     expect(() => checkSwapInstructions(withSetup(ataCreate(PULLER), ataCreate(USER), ataCreate(PULLER, [0]), ataCreate(PULLER, []), ix(TOKEN, [acc(WSOL_ACC)], [17])), opts)).not.toThrow();
-    expect(() => checkSwapInstructions(withCleanup(ix(TOKEN, [acc(WSOL_ACC), acc(PULLER), acc(PULLER, false, true)], [9])), opts)).not.toThrow();
+  });
+
+  it("Task 11 review I1: refuses CloseAccount of the puller's wSOL even back to the puller (it pools every user's WSOL carry)", () => {
+    expect(() => checkSwapInstructions(withCleanup(ix(TOKEN, [acc(WSOL_ACC), acc(PULLER), acc(PULLER, false, true)], [9])), opts)).toThrow(/not SyncNative \(a CloseAccount of the pooled wSOL is refused\)/);
+    expect(() => checkSwapInstructions(withSetup(ix(TOKEN, [acc(WSOL_ACC), acc(PULLER), acc(PULLER, false, true)], [9])), opts)).toThrow(/CloseAccount of the pooled wSOL is refused/);
   });
 
   it("refuses a System transfer of the puller's SOL in setup or cleanup", () => {
@@ -171,15 +175,15 @@ describe("checkSwapInstructions, decoded (R207 #4)", () => {
   for (const [name, data] of [["Transfer", [3, 64, 66, 15, 0, 0, 0, 0, 0]], ["Approve", [4, 255, 255, 255, 255, 255, 255, 255, 255]], ["SetAuthority", [6, 2, 1]], ["TransferChecked", [12, 64, 66, 15, 0, 0, 0, 0, 0, 6]]] as const) {
     it(`refuses a Token ${name} on the puller's account, on Token and Token-2022`, () => {
       const t = (prog: string) => ix(prog, [acc(WSOL_ACC), acc(THIEF), acc(PULLER, false, true)], [...data]);
-      expect(() => checkSwapInstructions(withSetup(t(TOKEN)), opts)).toThrow(/not SyncNative or CloseAccount/);
-      expect(() => checkSwapInstructions(withSetup(t(TOKEN22)), opts)).toThrow(/not SyncNative or CloseAccount/);
+      expect(() => checkSwapInstructions(withSetup(t(TOKEN)), opts)).toThrow(/is not SyncNative/);
+      expect(() => checkSwapInstructions(withSetup(t(TOKEN22)), opts)).toThrow(/is not SyncNative/);
       expect(() => checkSwapInstructions(withCleanup(t(TOKEN)), opts)).toThrow(/cleanup token instruction/);
     });
   }
 
-  it("refuses CloseAccount paying anyone but the puller, and SyncNative or CloseAccount on any account but the puller's wSOL", () => {
-    expect(() => checkSwapInstructions(withCleanup(ix(TOKEN, [acc(WSOL_ACC), acc(THIEF), acc(PULLER, false, true)], [9])), opts)).toThrow(/CloseAccount pays/);
-    expect(() => checkSwapInstructions(withCleanup(ix(TOKEN, [acc(DEST), acc(PULLER), acc(PULLER, false, true)], [9])), opts)).toThrow(/not the puller's wSOL/);
+  it("refuses CloseAccount anywhere, and SyncNative on any account but the puller's wSOL", () => {
+    expect(() => checkSwapInstructions(withCleanup(ix(TOKEN, [acc(WSOL_ACC), acc(THIEF), acc(PULLER, false, true)], [9])), opts)).toThrow(/is not SyncNative/);
+    expect(() => checkSwapInstructions(withCleanup(ix(TOKEN, [acc(DEST), acc(PULLER), acc(PULLER, false, true)], [9])), opts)).toThrow(/is not SyncNative/);
     expect(() => checkSwapInstructions(withSetup(ix(TOKEN, [acc(DEST)], [17])), opts)).toThrow(/not the puller's wSOL/);
     expect(() => checkSwapInstructions(withSetup(ix(TOKEN, [acc(WSOL_ACC)], [17])), { puller: PULLER, destination: FIX_DEST })).toThrow(/not the puller's wSOL/);
   });
@@ -219,6 +223,15 @@ describe("checkSwapInstructions, decoded (R207 #4)", () => {
     expect(() => checkSwapInstructions(shared(DEST), { ...opts, destination: DEST })).not.toThrow();
     expect(() => checkSwapInstructions(shared(THIEF), { ...opts, destination: DEST })).toThrow(/delivers to/);
     expect(() => checkSwapInstructions(shared(DEST, false), { ...opts, destination: DEST })).toThrow(/delivers to/);
+  });
+
+  it("Task 11 review I1: the route must spend from the given source (plain slot 2, shared slot 3); a foreign source (the pooled SKR float) is refused", () => {
+    const SKR_FLOAT = "4HQy82s9CHTv1GsYKnANHMiHfhcqesYkK6sB3RDSYyqw";
+    expect(() => checkSwapInstructions(route(DEST, JUPITER_AGGREGATOR), { ...opts, destination: DEST, source: WSOL_ACC })).not.toThrow();   // slot 2 is WSOL_ACC in this fixture
+    expect(() => checkSwapInstructions(route(DEST, JUPITER_AGGREGATOR), { ...opts, destination: DEST, source: SKR_FLOAT })).toThrow(/spends from .*, not the puller's USDC account/);
+    const shared = (src: string) => swapWith(SHARED, [acc(TOKEN, false), acc(THIEF, false), acc(PULLER, false, true), acc(src), acc(WSOL_ACC), acc(WSOL_ACC), acc(DEST), acc(MINT, false), acc(DEST)]);
+    expect(() => checkSwapInstructions(shared(SKR_FLOAT), { ...opts, destination: DEST, source: SKR_FLOAT })).not.toThrow();
+    expect(() => checkSwapInstructions(shared(SKR_FLOAT), { ...opts, destination: DEST, source: WSOL_ACC })).toThrow(/spends from 4HQy/);
   });
 
   it("refuses a swap instruction whose layout is unknown, even with the destination writable (fail closed)", () => {

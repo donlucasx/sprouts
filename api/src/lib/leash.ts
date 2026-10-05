@@ -31,17 +31,19 @@ export function leashLegOf(asset: LiveAsset, venue: AutoVenue | null): LeashLegB
 }
 
 export type LegSpec = { asset: LiveAsset; venue: AutoVenue | null; reader: number; receiptMint: Address | null; rateAccount: Address | null; extra: Address | null;
-  feed: keyof typeof PYTH_FEED | null; decimals: number; feeBps: number; tolBps: number; maxAgeS: number; readers: Address[] };   // maxAgeS: AMEND 10-04 s20 (R324), mirrors the program's MAX_AGE_S_OF_LEG (60; cbBTC 600)
+  feed: keyof typeof PYTH_FEED | null; decimals: number; feeBps: number; tolBps: number; maxAgeS: number; readers: Address[];
+  /** Leash final review (e823503): the Config PINS the price account on legs 1, 4-7 (price.rs GUARD:P_FEED_ACCOUNT, else 6017); 0, 2, 3 stay zero. */
+  feedAccount: Address | null };   // maxAgeS: AMEND 10-04 s20 (R324), mirrors the program's MAX_AGE_S_OF_LEG (60; cbBTC 600)
 /** Contracts 2.3, 2.4, 2.7 (tolerances as amended): the per-leg constants the config, the builders and the floor share, mirrored by the program. */
 export const LEG_SPEC: Record<LeashLegByte, LegSpec> = {
-  0: { asset: "SKR", venue: null, reader: READER.SKR_STAKE, receiptMint: null, rateAccount: STAKE_CONFIG, extra: GUARDIAN_POOL, feed: "SKR", decimals: 6, feeBps: 50, tolBps: 100, maxAgeS: 60, readers: [STAKE_CONFIG] },
-  1: { asset: "stORE", venue: null, reader: READER.STORE, receiptMint: STORE_MINT, rateAccount: ORE_STAKE_ACCOUNT, extra: STORE_MINT, feed: "ORE", decimals: 11, feeBps: 50, tolBps: 100, maxAgeS: 60, readers: [ORE_STAKE_ACCOUNT, STORE_MINT] },
-  2: { asset: "USDC_LEND", venue: "kamino_klend", reader: READER.KLEND, receiptMint: KLEND.USDC_LEND.collateralMint, rateAccount: KLEND.USDC_LEND.reserve, extra: null, feed: null, decimals: 6, feeBps: 0, tolBps: 10, maxAgeS: 60, readers: [KLEND.USDC_LEND.reserve] },
-  3: { asset: "USDC_LEND", venue: "jupiter_lend", reader: READER.JLEND, receiptMint: JLEND.USDC_LEND.fTokenMint, rateAccount: JLEND.USDC_LEND.lending, extra: null, feed: null, decimals: 6, feeBps: 0, tolBps: 10, maxAgeS: 60, readers: [JLEND.USDC_LEND.lending] },
-  4: { asset: "SOL_LEND", venue: "kamino_klend", reader: READER.KLEND, receiptMint: KLEND.SOL_LEND.collateralMint, rateAccount: KLEND.SOL_LEND.reserve, extra: null, feed: "SOL", decimals: 9, feeBps: 0, tolBps: 150, maxAgeS: 60, readers: [KLEND.SOL_LEND.reserve] },
-  5: { asset: "SOL_LEND", venue: "jupiter_lend", reader: READER.JLEND, receiptMint: JLEND.SOL_LEND.fTokenMint, rateAccount: JLEND.SOL_LEND.lending, extra: null, feed: "SOL", decimals: 9, feeBps: 0, tolBps: 150, maxAgeS: 60, readers: [JLEND.SOL_LEND.lending] },
-  6: { asset: "hSOL", venue: null, reader: READER.STAKE_POOL, receiptMint: COINS.hSOL.mint, rateAccount: COINS.hSOL.pool, extra: null, feed: "SOL", decimals: 9, feeBps: 50, tolBps: 100, maxAgeS: 60, readers: [COINS.hSOL.pool as Address] },
-  7: { asset: "cbBTC", venue: null, reader: READER.TOKEN, receiptMint: COINS.cbBTC.mint, rateAccount: null, extra: null, feed: "CBBTC", decimals: 8, feeBps: 50, tolBps: 100, maxAgeS: 600, readers: [] },
+  0: { asset: "SKR", venue: null, reader: READER.SKR_STAKE, receiptMint: null, rateAccount: STAKE_CONFIG, extra: GUARDIAN_POOL, feed: "SKR", decimals: 6, feeBps: 50, tolBps: 100, maxAgeS: 60, readers: [STAKE_CONFIG], feedAccount: null },
+  1: { asset: "stORE", venue: null, reader: READER.STORE, receiptMint: STORE_MINT, rateAccount: ORE_STAKE_ACCOUNT, extra: STORE_MINT, feed: "ORE", decimals: 11, feeBps: 50, tolBps: 100, maxAgeS: 60, readers: [ORE_STAKE_ACCOUNT, STORE_MINT], feedAccount: PYTH_ACCOUNT.ORE },
+  2: { asset: "USDC_LEND", venue: "kamino_klend", reader: READER.KLEND, receiptMint: KLEND.USDC_LEND.collateralMint, rateAccount: KLEND.USDC_LEND.reserve, extra: null, feed: null, decimals: 6, feeBps: 0, tolBps: 10, maxAgeS: 60, readers: [KLEND.USDC_LEND.reserve], feedAccount: null },
+  3: { asset: "USDC_LEND", venue: "jupiter_lend", reader: READER.JLEND, receiptMint: JLEND.USDC_LEND.fTokenMint, rateAccount: JLEND.USDC_LEND.lending, extra: null, feed: null, decimals: 6, feeBps: 0, tolBps: 10, maxAgeS: 60, readers: [JLEND.USDC_LEND.lending], feedAccount: null },
+  4: { asset: "SOL_LEND", venue: "kamino_klend", reader: READER.KLEND, receiptMint: KLEND.SOL_LEND.collateralMint, rateAccount: KLEND.SOL_LEND.reserve, extra: null, feed: "SOL", decimals: 9, feeBps: 0, tolBps: 150, maxAgeS: 60, readers: [KLEND.SOL_LEND.reserve], feedAccount: PYTH_ACCOUNT.SOL },
+  5: { asset: "SOL_LEND", venue: "jupiter_lend", reader: READER.JLEND, receiptMint: JLEND.SOL_LEND.fTokenMint, rateAccount: JLEND.SOL_LEND.lending, extra: null, feed: "SOL", decimals: 9, feeBps: 0, tolBps: 150, maxAgeS: 60, readers: [JLEND.SOL_LEND.lending], feedAccount: PYTH_ACCOUNT.SOL },
+  6: { asset: "hSOL", venue: null, reader: READER.STAKE_POOL, receiptMint: COINS.hSOL.mint, rateAccount: COINS.hSOL.pool, extra: null, feed: "SOL", decimals: 9, feeBps: 50, tolBps: 100, maxAgeS: 60, readers: [COINS.hSOL.pool as Address], feedAccount: PYTH_ACCOUNT.SOL },
+  7: { asset: "cbBTC", venue: null, reader: READER.TOKEN, receiptMint: COINS.cbBTC.mint, rateAccount: null, extra: null, feed: "CBBTC", decimals: 8, feeBps: 50, tolBps: 100, maxAgeS: 600, readers: [], feedAccount: PYTH_ACCOUNT.CBBTC },
 };
 
 export { buildPriceUpdate } from "./pyth";
@@ -113,6 +115,9 @@ export function sponsoredPriceRefusal(leg: LeashLegByte, p: ParsedPrice, cfg: { 
   return age >= freshS ? `is ${age} s old (usable under ${freshS} s)` : priceRefusal(p, cfg.confCapBps ?? CONF_CAP_BPS);
 }
 
+/** Whether leg 0 (SKR) has a price source. False until a crypto-entitled Pyth key exists (R324): priceSourceFor throws for leg 0. Flip it together with the SKR plug-in point above. */
+export const SKR_PRICE_SOURCE = false;
+
 /** R297 go-live switch: new links point at the leash, old puller links stop planting. Off until the owner sets LEASH_LIVE=1. */
 export const leashLive = (): boolean => process.env.LEASH_LIVE === "1";
 
@@ -150,6 +155,8 @@ export async function legAccounts(a: { leg: LeashLegByte; user: Address; priceAc
   const spec = LEG_SPEC[a.leg];
   const receipt = a.leg === 0 ? await userStakePda(a.user) : (await findAssociatedTokenPda({ owner: a.user, mint: spec.receiptMint as Address, tokenProgram: TOKEN_PROGRAM_ADDRESS }))[0];
   if (spec.feed && !a.priceAccount) throw new Error(`leash leg ${a.leg} needs a price account`);
+  // The Config pins the price account (e823503): any other account is refused on chain with 6017, so it is refused here first.
+  if (spec.feedAccount && a.priceAccount !== spec.feedAccount) throw new Error(`leash leg ${a.leg}: price account ${a.priceAccount} is not the pinned ${spec.feedAccount}`);
   return { receipt, price: spec.feed ? (a.priceAccount as Address) : SYSTEM_PROGRAM, readers: [...spec.readers] };
 }
 
