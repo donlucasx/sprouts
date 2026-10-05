@@ -84,6 +84,17 @@ fn skr_receipt_guards() {
     }
 }
 
+// S_ADDR's real job: an ABSENT (System-owned, empty) account at the WRONG address must not read as "no receipt yet".
+// Without the guard this returns Ok(0), so the mutation goes red on a value, not on an error-variant change.
+#[test]
+fn skr_receipt_addr_guard_covers_the_absent_branch() {
+    let leg = cfg().legs[0];
+    let at = user_stake_address(&leg.rate_account, &USER, &leg.extra);
+    let system = *c::SYSTEM.as_array();
+    assert_eq!(skr_receipt(&a(&at, &system, &[]), &USER, &leg), Ok(0), "absent at the right PDA reads 0");
+    assert_eq!(skr_receipt(&a(&[5; 32], &system, &[]), &USER, &leg), Err(LeashError::BadReceipt), "S_ADDR_ABSENT");
+}
+
 #[test]
 fn reader_count_and_zero_guards() {
     let c0 = cfg();
