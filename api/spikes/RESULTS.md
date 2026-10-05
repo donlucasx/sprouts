@@ -185,7 +185,7 @@ DELTA SKR assume-alt unleashed=777 B/32 locks -> leashed(computed)=871 B/38 lock
 
 The leash adds 60 to 66 B and 4 to 7 locks per leg (94 B on SKR, whose price account would be a fresh posted account outside every table). Cross-check: the full leashed builds (`--leashed --assume-alt`, 21:24:23 PDT) gave USDC_LEND:jupiter_lend 789 B and USDC_LEND:kamino_klend 694 B, the same as the delta method. Worst projected leashed size = the worst sampled unleashed route (1,012 B, SOL on Jupiter Lend) + 66 B = about 1,078 B of 1,232 (about 154 B headroom); worst locks about 40 + 7 = 47 of 64. With NO ALT the leashed lending legs do not fit (`--leashed --size-only`, 21:24:57 PDT: SOL_LEND:jupiter_lend 1,504-1,519 B, SOL_LEND:kamino_klend 1,416 B, USDC_LEND:jupiter_lend 1,282-1,297 B; only USDC_LEND:kamino_klend fits at 1,094 B): SPROUTS_ALT is REQUIRED before go-live.
 
-Leash floor at today's routes (the API's own pre-send check, `buildPlantingTx`, no send): the leashed builds refused cbBTC (min_out 1,148-1,149 vs floor 1,150), stORE (748,904,221-748,904,224 vs floor 752,838,360-754,264,666, about 0.5% under) and once hSOL (6,876,747 vs 6,880,723; it passed in the other run at 6,886,504). The quote's minimum is the route output less 100 bps of slippage (`getQuote` default), and the floor is the oracle value less fee 50 + tol 100 bps, so any price impact or market-vs-oracle spread puts a coin leg under the floor. These legs would print `build failed: ... under the leash floor` in the owner's leashed run; nothing fails on chain.
+Leash floor at today's routes (the API's own pre-send check, `buildPlantingTx`, no send): the leashed builds refused cbBTC (min_out 1,148-1,149 vs floor 1,150), stORE (748,904,221-748,904,224 vs floor 752,838,360-754,264,666, about 0.5% under) and once hSOL (6,876,747 vs 6,880,723; it passed in the other run at 6,886,504). The quote's minimum is the route output less 100 bps of slippage (`getQuote` default), and the floor is the oracle value less fee 50 + tol 100 bps, so any price impact or market-vs-oracle spread puts a coin leg under the floor. These legs would print `build failed: ... under the leash floor` in the owner's leashed run; nothing fails on chain. SUPERSEDED by ruling A (below, 21:35 PDT): the swap minimum on a leashed coin leg is now the floor itself.
 
 CU: unleashed `units=` max 187,434 (SOL_LEND:kamino_klend). Leashed units cannot be measured until the leash is deployed, so `PLANTING_CU_LIMIT` stays the 400,000 placeholder (Task 12 Step 4 sets it from the owner's leashed lines).
 
@@ -217,10 +217,93 @@ cd /Users/lucasgarzoli/Documents/claude/seekerhackathon/build/sprouts/api && pnp
 cd /Users/lucasgarzoli/Documents/claude/seekerhackathon/build/sprouts/api && pnpm tsx --env-file=.env.local scripts/simulate-legs.ts --user DjRpjufi1BNBaYXPu5ybGQu9cHhxgpPkHJb1UJbePcTR --wallet 887dEPR85vfSZ45zFrxttJ6cLomwvnYbh5HnyGbTAXVu --delegation <NEW_PDA> --leashed --pull 1000000 SOL_LEND:jupiter_lend SOL_LEND:kamino_klend USDC_LEND:jupiter_lend USDC_LEND:kamino_klend cbBTC hSOL stORE
 ```
 
-Read each line: `ok=true` passes the leg; `leashError=StalePrice` rerun; `BelowFloor` stop and compare with Task 5's golden vectors; `LegDisabled` the flag is off; `build failed: ... under the leash floor` means today's route minimum is under the floor (see above), rerun once, then leave that leg disabled. A `jlLeftover=1` on a Jupiter Lend line means set `JL_EXPECTED_LEFTOVER` to `1n` in `src/lib/venues/jlend.ts`. Paste the lines back to Claude: the highest leashed `units=` + 55,000, rounded up to the next 10,000, becomes `PLANTING_CU_LIMIT` (Task 12 Step 4, `## CU limit`).
+Read each line: `ok=true` passes the leg; `leashError=StalePrice` rerun; `BelowFloor` stop and compare with Task 5's golden vectors; `LegDisabled` the flag is off; `build failed: ... route under floor` means the route's own expected output is under the leash floor (ruling A; see "Ruling A" below), rerun once, then leave that leg disabled. A `jlLeftover=1` on a Jupiter Lend line means set `JL_EXPECTED_LEFTOVER` to `1n` in `src/lib/venues/jlend.ts`. Paste the lines back to Claude: the highest leashed `units=` + 75,000 (the leash's measured 72.6k worst case at 3,000 users; ruling B, 10-04, supersedes the brief's +55k), rounded up to the next 10,000, becomes `PLANTING_CU_LIMIT` (Task 12 Step 4, `## CU limit`).
 
 5. Posted-price run (SKR), ONLY once SKR has a price source (a crypto-entitled Pyth key and `SKR_PRICE_SOURCE` true; not before). This one SENDS puller-paid price transactions (VAA write, verify, rent reclaim; no user funds):
 
 ```
 cd /Users/lucasgarzoli/Documents/claude/seekerhackathon/build/sprouts/api && pnpm tsx --env-file=.env.local scripts/simulate-legs.ts --user DjRpjufi1BNBaYXPu5ybGQu9cHhxgpPkHJb1UJbePcTR --wallet 887dEPR85vfSZ45zFrxttJ6cLomwvnYbh5HnyGbTAXVu --delegation <NEW_PDA> --leashed --allow-post --pull 1000000 SKR
 ```
+
+## Ruling A: the leashed coin-leg swap minimum is the leash floor (Task 12 follow-up, 2026-10-04 21:35 to 21:39 PDT by `date`)
+
+Ruling A (controller, 10-04): the guarantee is unchanged (tolBps stays, "at least 98.5%").
+
+A correction to it followed a security scan of the first draft (WIP 5caa060). That draft used the whole room above the floor, which could loosen the swap past 100 bps and open a sandwich window. Ruling A may only TIGHTEN the swap.
+
+On LEASHED coin legs only, `buildPlantingTx` computes the leash floor before the swap and:
+- skips with `route under floor` when the route's expected output is under it (no send);
+- otherwise sets `leashSwapSlippageBps(expected, floor)` = min(100, floor((expected - floor - 1) x 10,000 / expected)). Jupiter's on-chain minimum is then max(expected less 100 bps, floor + 1 raw unit), and Jupiter is re-quoted only when that is tighter than 100 bps.
+
+Jupiter's swap enforces the quote's own slippageBps, so the re-quote is the documented way; no instruction bytes are edited. SKR maps the share floor to SKR (ceil((floor + 1) x sharePrice / 1e9)). Unleashed legs and every lending leg keep one quote at 100 bps. Gate lines now print `floor=`.
+
+Unleashed, simulated (read-only), 21:35:45 PDT, unchanged behaviour:
+
+```
+LEG cbBTC unleashed size=834 ok=true units=73887 guard=null leashError=null minOut=1152 locks=25
+LEG hSOL unleashed size=1063 ok=true units=107457 guard=null leashError=null minOut=6888625 locks=37
+LEG stORE unleashed size=838 ok=true units=114051 guard=null leashError=null minOut=748904154 locks=27
+```
+
+The lines below are from the first draft (uncapped, 21:35 to 21:39 PDT). They are kept for the record; the corrected run follows them.
+
+Leashed builds, size-only. These are COMPUTED with the Sprouts ALT in memory, and the leash is not deployed, so nothing was simulated. The API's pre-send floor check runs inside each build, so a printed line means it passed. Runs at 21:35:56 and 21:36:27, then five samples from 21:37 to 21:39 PDT:
+
+```
+LEG cbBTC leashed size=804 locks=30 ok=n/a (computed with the Sprouts ALT in memory, not simulated) minOut=1156 floor=1154
+LEG hSOL leashed size=1065 locks=44 ok=n/a (computed with the Sprouts ALT in memory, not simulated) minOut=6887658 floor=6887405
+LEG stORE leashed build failed (computed with the Sprouts ALT in memory): stORE: route under floor (route 756468840 < floor 757206015); the leg skips today
+LEG cbBTC leashed size=804 locks=30 ok=n/a (computed with the Sprouts ALT in memory, not simulated) minOut=1156 floor=1154
+LEG hSOL leashed size=971 locks=44 ok=n/a (computed with the Sprouts ALT in memory, not simulated) minOut=6887996 floor=6887405
+LEG stORE leashed size=814 locks=34 ok=n/a (computed with the Sprouts ALT in memory, not simulated) minOut=754577665 floor=754507965
+samples (the ALT note trimmed):
+LEG stORE leashed size=814 locks=34 ok=n/a minOut=754577663 floor=754507965
+LEG cbBTC leashed size=804 locks=30 ok=n/a minOut=1156 floor=1154
+LEG hSOL leashed size=969 locks=41 ok=n/a minOut=6881919 floor=6881581
+LEG stORE leashed size=814 locks=34 ok=n/a minOut=754577661 floor=754507965
+LEG cbBTC leashed size=804 locks=30 ok=n/a minOut=1155 floor=1153
+LEG hSOL leashed size=1036 locks=43 ok=n/a minOut=6881670 floor=6881581
+LEG stORE leashed build failed: stORE: route under floor (route 756468831 < floor 756687366); the leg skips today
+LEG cbBTC leashed size=883 locks=35 ok=n/a minOut=1155 floor=1153
+LEG hSOL leashed size=1036 locks=43 ok=n/a minOut=6880541 floor=6879871
+LEG stORE leashed build failed: stORE: route under floor (route 756468827 < floor 756687366); the leg skips today
+LEG cbBTC leashed size=883 locks=35 ok=n/a minOut=1155 floor=1153
+LEG hSOL leashed size=1036 locks=43 ok=n/a minOut=6880522 floor=6879871
+LEG stORE leashed size=814 locks=34 ok=n/a minOut=754804594 floor=754733219
+LEG cbBTC leashed size=804 locks=30 ok=n/a minOut=1155 floor=1153
+LEG hSOL leashed size=969 locks=41 ok=n/a minOut=6884994 floor=6884850
+```
+
+Reading:
+- **cbBTC:** 7 of 7 builds now pass the pre-send floor check. The minimum is 1,155-1,156 against a floor of 1,153-1,154; before the ruling it was 1,148-1,149 against 1,150.
+- **hSOL:** 7 of 7 pass. The minimum sits 89 to 671 raw above the floor.
+- **stORE:** 4 of 7 pass. The Jupiter route for $1 is steady at about 756.47M raw. The floor moves with each ORE price update, between 754.5M and 757.2M. When the floor is above the route, the route is about 0.03% to 0.10% under the 98.5% line and the leg skips with `route under floor`. stORE's market price sits right at the guarantee's edge.
+- **Without the ALT:** hSOL leashed reached 1,310 B on one route (21:36:15). The ALT is required for coin legs too.
+
+Corrected rule, min(100, roomBps), at 21:45:22 to 21:47:25 PDT. These are read-only: the unleashed legs were simulated, the leashed ones built size-only with the ALT computed in memory (the ALT note is trimmed):
+
+```
+LEG cbBTC unleashed size=834 ok=true units=74127 guard=null leashError=null minOut=1152 locks=25
+LEG hSOL unleashed size=996 ok=true units=91549 guard=null leashError=null minOut=6885349 locks=35
+LEG stORE unleashed size=838 ok=true units=114002 guard=null leashError=null minOut=748904092 locks=27
+LEG cbBTC leashed size=804 locks=30 ok=n/a minOut=1154 floor=1152
+LEG hSOL leashed size=969 locks=41 ok=n/a minOut=6879409 floor=6873223
+LEG stORE leashed size=814 locks=34 ok=n/a minOut=755334073 floor=755303533
+LEG cbBTC leashed size=804 locks=30 ok=n/a minOut=1154 floor=1152
+LEG hSOL leashed size=971 locks=44 ok=n/a minOut=6873232 floor=6873223
+LEG stORE leashed size=814 locks=34 ok=n/a minOut=752610783 floor=752569060
+LEG cbBTC leashed size=804 locks=30 ok=n/a minOut=1153 floor=1151
+LEG hSOL leashed size=1065 locks=44 ok=n/a minOut=6873543 floor=6867060
+LEG stORE leashed size=814 locks=34 ok=n/a minOut=752610780 floor=752569060
+LEG cbBTC leashed size=871 locks=32 ok=n/a minOut=1153 floor=1151
+LEG hSOL leashed size=971 locks=44 ok=n/a minOut=6872502 floor=6867060
+LEG stORE leashed size=814 locks=34 ok=n/a minOut=752610777 floor=752570407
+LEG cbBTC leashed size=804 locks=30 ok=n/a minOut=1153 floor=1151
+LEG hSOL leashed size=969 locks=41 ok=n/a minOut=6870095 floor=6864853
+LEG stORE leashed size=814 locks=34 ok=n/a minOut=753821124 floor=753777198
+```
+
+Reading (corrected rule): all 15 leashed builds passed the pre-send floor check; none was a `route under floor` skip in this window.
+- **cbBTC:** minimum 1,153-1,154 against a floor of 1,151-1,152, two raw above it.
+- **hSOL:** 9 to 6,186 raw above the floor. When the room was above 100 bps, the 100 bps quote stood unchanged (for example 6,879,409 against 6,873,223).
+- **stORE:** 30k to 44k raw above the floor (about 0.005%). This window's ORE prices put the floor under the route; at 21:37-21:38 the floor was above the route twice, so stORE still skips when the ORE price ticks up.

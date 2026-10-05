@@ -98,7 +98,7 @@ export function sizeFromError(msg: string): number | null {
   return m ? Number(m[1]) : null;
 }
 
-export type Built = { sizeBytes: number; locks: number; minOut: bigint; cleanupCount: number };
+export type Built = { sizeBytes: number; locks: number; minOut: bigint; cleanupCount: number; floor?: bigint | null };
 export type Sim = { ok: boolean; units: number; logs: string[] };
 export type LegDeps = {
   /** The leg's live price source (leashed only; called before any build so a "post" leg is skipped before buildPlantingTx could send its VAA). */
@@ -145,13 +145,14 @@ export async function runLeg(leg: Leg, o: { leashed: boolean; noPost: boolean; s
     }
     if (o.noPost && b.cleanupCount > 0) throw new Error(`${leg.name}: the build posted a price under --no-post (cleanup ${b.cleanupCount}); stop and investigate`);
     const sizeLocks = `size=${b.sizeBytes} locks=${b.locks}`;
+    const floorText = b.floor !== undefined && b.floor !== null ? ` floor=${b.floor}` : "";
     if (o.sizeOnly) {
-      return { name: leg.name, status: "built", line: `${head} ${sizeLocks} ok=n/a (${o.assumeAlt ? "computed with the Sprouts ALT in memory" : "built"}, not simulated) minOut=${b.minOut}${jlText}`, sizeBytes: b.sizeBytes, locks: b.locks, units: null, jlLeftover: jl ?? null };
+      return { name: leg.name, status: "built", line: `${head} ${sizeLocks} ok=n/a (${o.assumeAlt ? "computed with the Sprouts ALT in memory" : "built"}, not simulated) minOut=${b.minOut}${floorText}${jlText}`, sizeBytes: b.sizeBytes, locks: b.locks, units: null, jlLeftover: jl ?? null };
     }
     const sim = await d.simulate();
     const guard = sim.ok ? d.guard(sim) : null;
     const ok = sim.ok && guard === null;
-    const line = `${head} size=${b.sizeBytes} ok=${ok} units=${sim.units} guard=${guard} leashError=${leashErrorOf(sim.logs)} minOut=${b.minOut}${jlText} locks=${b.locks}${ok ? "" : `\n  logs: ${sim.logs.slice(-4).join(" | ")}`}`;
+    const line = `${head} size=${b.sizeBytes} ok=${ok} units=${sim.units} guard=${guard} leashError=${leashErrorOf(sim.logs)} minOut=${b.minOut}${floorText}${jlText} locks=${b.locks}${ok ? "" : `\n  logs: ${sim.logs.slice(-4).join(" | ")}`}`;
     if (!o.noPost) await d.cleanup().catch((e) => d.log(`  price cleanup failed: ${e instanceof Error ? e.message : String(e)}`));
     last = { name: leg.name, status: ok ? "ok" : "fail", line, sizeBytes: b.sizeBytes, locks: b.locks, units: sim.units, jlLeftover: jl ?? null };
     if (ok) return last;

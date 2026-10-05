@@ -40,7 +40,7 @@ for (const leg of o.legs) {
     build: async (l, jlLeftover) => {
       b = null;
       b = await buildPlantingTx({ delegator: wallet, user, asset: l.asset, venue: l.venue, pullRaw: o.pullRaw, delegationPda: delegation, leashed: o.leashed, carryIn: {}, ...(jlLeftover !== undefined ? { jlLeftover } : {}), ...(measureAlt ? { measureAlt } : {}) });
-      return { sizeBytes: b.sizeBytes, locks: accountLocks(new Uint8Array(b.tx.messageBytes)), minOut: b.leashMinOutRaw ?? b.minOutRaw, cleanupCount: b.cleanup.length };
+      return { sizeBytes: b.sizeBytes, locks: accountLocks(new Uint8Array(b.tx.messageBytes)), minOut: b.leashMinOutRaw ?? b.minOutRaw, cleanupCount: b.cleanup.length, floor: b.leashFloorRaw };
     },
     simulate: async () => { sim = await simulatePlanting(b as unknown as BuiltPlanting); return sim; },
     guard: () => legShortfall(sim as unknown as Simulation, b as unknown as BuiltPlanting, leg.asset, leg.venue, {}),

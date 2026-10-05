@@ -218,3 +218,13 @@ describe("--assume-alt", () => {
     expect(calls.sim).toBe(0);
   });
 });
+
+describe("floor on the line (ruling A follow-up)", () => {
+  it("a leashed build that reports its floor prints floor= after minOut; unleashed builds print none", async () => {
+    const { d } = deps({ builds: [() => built({ minOut: 1151n, floor: 1150n })] });
+    const r = await runLeg(parseLeg("cbBTC"), { leashed: true, noPost: true, sizeOnly: true }, d);
+    expect(r.line).toBe("LEG cbBTC leashed size=1100 locks=40 ok=n/a (built, not simulated) minOut=1151 floor=1150");
+    const u = await runLeg(parseLeg("cbBTC"), unleashed, deps({ builds: [() => built({ floor: null })] }).d);
+    expect(u.line).not.toContain("floor=");
+  });
+});
