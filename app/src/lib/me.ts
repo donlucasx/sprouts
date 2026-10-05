@@ -5,6 +5,7 @@ import { refreshWidget } from "./widget-refresh";
 export { toGardenInput } from "./garden-input";
 
 import { store } from "./store";
+import { DEMO_SHOT } from "./demo-shot";
 export { store };
 const KEY = "me.last";
 
@@ -16,6 +17,7 @@ export function readLastMe(): MeResponse | null {
 }
 
 export function writeLastMe(me: MeResponse) {
+  if (DEMO_SHOT) return; // the demo garden is never saved over the real last read
   store.set(KEY, JSON.stringify(me));
 }
 
