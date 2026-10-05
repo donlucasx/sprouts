@@ -1,5 +1,6 @@
-import type { Address, Instruction } from "@solana/kit";
-import { TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
+import { createNoopSigner, type Address, type Instruction } from "@solana/kit";
+import { findAssociatedTokenPda, getCloseAccountInstruction, TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
+import { WSOL_MINT } from "../constants";
 import { buildKlendWithdrawIxs, buildKlendUserDepositIxs } from "./klend";
 import { buildJlendWithdrawIxs, buildJlendUserDepositIxs } from "./jlend";
 import { buildApproveOnceIxs, buildRevokeDelegationIx } from "../subscriptions";
@@ -17,13 +18,27 @@ export const buildJlendWithdraw = (a: { user: Address; asset: LendAsset; receipt
 export const buildLendWithdraw = (a: { user: Address; asset: LendAsset; venue: AutoVenue; receiptRaw: bigint }) =>
   a.venue === "kamino_klend" ? buildKlendWithdraw(a) : buildJlendWithdraw(a);
 
-const isClose = (ix: Instruction) => ix.programAddress === TOKEN_PROGRAM_ADDRESS && ix.data?.length === 1 && ix.data[0] === 9;
-/** Contracts 6 move_*: the redeem part is the source's withdraw minus the WSOL close; the deposit part is the target's deposit (SOL closes WSOL at the end). */
+/**
+ * Contracts 6 move_*: the redeem part is the source's withdraw with the WSOL account kept open (SOL: the deposit part spends it);
+ * the deposit part is the target's deposit, and for SOL it closes the WSOL account at its tail, so the redeem's remainder (the
+ * 0.1% the deposit leaves) comes back as plain SOL in the same transaction.
+ */
 export async function buildMove(a: { user: Address; asset: LendAsset; from: AutoVenue; to: AutoVenue; receiptRaw: bigint; depositRaw: bigint; part: "redeem" | "deposit" | "whole" }): Promise<Instruction[]> {
   if (a.from === a.to) throw new Error("a move needs two different venues");
-  const redeem = (await buildLendWithdraw({ user: a.user, asset: a.asset, venue: a.from, receiptRaw: a.receiptRaw })).filter((ix) => !isClose(ix));
+  const w = { user: a.user, asset: a.asset, receiptRaw: a.receiptRaw, keepWsolOpen: true };
+  const redeem = a.from === "kamino_klend" ? await buildKlendWithdrawIxs(w) : await buildJlendWithdrawIxs(w);
   const deposit = a.to === "kamino_klend" ? await buildKlendUserDepositIxs({ user: a.user, asset: a.asset, depositRaw: a.depositRaw }) : await buildJlendUserDepositIxs({ user: a.user, asset: a.asset, depositRaw: a.depositRaw });
   return a.part === "redeem" ? redeem : a.part === "deposit" ? deposit : [...redeem, ...deposit];
+}
+
+/**
+ * A SOL move whose redeem landed and whose deposit did not leaves the redeemed SOL wrapped in the user's WSOL account (the deposit's
+ * closing CloseAccount reverted with it). This one instruction closes that account to the user: every lamport, wrapped or rent, back
+ * as plain SOL. CloseAccount on a native account needs no zero balance.
+ */
+export async function buildUnwrapWsol(a: { user: Address }): Promise<Instruction[]> {
+  const [wsol] = await findAssociatedTokenPda({ owner: a.user, mint: WSOL_MINT, tokenProgram: TOKEN_PROGRAM_ADDRESS });
+  return [getCloseAccountInstruction({ account: wsol, destination: a.user, owner: createNoopSigner(a.user) }) as Instruction];
 }
 
 /** Contracts 5.5: [revoke the current delegation], [ATA], [init authority], create(delegatee = leashPda(user, user), $5/day, no expiry). */

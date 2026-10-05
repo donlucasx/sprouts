@@ -161,8 +161,8 @@ export function jlendDeliveryShortfall(sim: Simulation & { watched?: Record<stri
   return sim.watched[built.pullerJl].post === null ? null : `the puller's jl account still holds ${sim.watched[built.pullerJl].post} after the planting`;
 }
 
-/** Contracts 6 `withdraw_jlend`: [create the underlying ATA], redeem(receiptRaw) (18 accounts), SOL then closes WSOL to the user. */
-export async function buildJlendWithdrawIxs(a: { user: Address; asset: LendAsset; receiptRaw: bigint }): Promise<Instruction[]> {
+/** Contracts 6 `withdraw_jlend`: [create the underlying ATA], redeem(receiptRaw) (18 accounts), SOL then closes WSOL to the user unless `keepWsolOpen` (a move's redeem part). */
+export async function buildJlendWithdrawIxs(a: { user: Address; asset: LendAsset; receiptRaw: bigint; keepWsolOpen?: boolean }): Promise<Instruction[]> {
   const j = JLEND[a.asset];
   const owner = createNoopSigner(a.user);
   const underlying = await ata(a.user, j.mint);
@@ -173,7 +173,7 @@ export async function buildJlendWithdrawIxs(a: { user: Address; asset: LendAsset
     data: new Uint8Array(Buffer.concat([DISC.redeem, u64(a.receiptRaw)])),
   } as Instruction;
   const ixs: Instruction[] = [getCreateAssociatedTokenIdempotentInstruction({ payer: owner, ata: underlying, owner: a.user, mint: j.mint }), redeem];
-  if (a.asset === "SOL_LEND") ixs.push(getCloseAccountInstruction({ account: underlying, destination: a.user, owner }) as Instruction);
+  if (a.asset === "SOL_LEND" && !a.keepWsolOpen) ixs.push(getCloseAccountInstruction({ account: underlying, destination: a.user, owner }) as Instruction);
   return ixs;
 }
 

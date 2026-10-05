@@ -139,6 +139,7 @@ export type EventKind =
   | "move_proposed"
   | "move_done"
   | "move_dismissed"
+  | "move_built"   // T20: the amounts one build answered (the confirm checks against them; a done move carries basis and earned from them)
   | "relinked"
   | "terms_accepted";
 
