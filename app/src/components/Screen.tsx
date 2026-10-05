@@ -9,7 +9,7 @@ import { ThemedText } from './ThemedText'
 /**
  * Paper ground, one column, the screen edge, and the phone's insets (the status bar on an edge-to-edge Android; the bottom only
  * on a stack screen, since a tab screen ends at the tab bar). `back` adds the way home (the navigator has no header); `title`
- * sets the screen's title in the Title step.
+ * sets the screen's title in the Title step. `footer` stays fixed under the scroll (Rules' unsaved-changes bar, R348).
  */
 export function Screen({
   children,
@@ -19,6 +19,7 @@ export function Screen({
   title,
   inset = 'both',
   refreshControl,
+  footer,
 }: PropsWithChildren<{
   scroll?: boolean
   back?: boolean
@@ -27,6 +28,7 @@ export function Screen({
   title?: string
   inset?: 'both' | 'top'
   refreshControl?: ReactElement<RefreshControlProps>
+  footer?: ReactElement | null
 }>) {
   const insets = useSafeAreaInsets()
   const { colors } = useTheme()
@@ -77,6 +79,20 @@ export function Screen({
       ) : (
         body
       )}
+      {footer ? (
+        <View
+          style={{
+            paddingHorizontal: spacing.edge,
+            paddingVertical: spacing.sm,
+            gap: spacing.xs,
+            borderTopWidth: 1,
+            borderTopColor: colors.hairline,
+            backgroundColor: colors.background,
+          }}
+        >
+          {footer}
+        </View>
+      ) : null}
     </View>
   )
 }

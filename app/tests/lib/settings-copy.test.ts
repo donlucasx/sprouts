@@ -47,7 +47,7 @@ describe('Settings > About Sprouts (spec 6.2, 11)', () => {
       expect(p).not.toMatch(/JitoSOL|JupSOL|six coins/)
       expect(h + p).not.toMatch(/[–—]/)
     }
-    expect(MANAGER_LINE).toContain('Never sells what you hold.')
+    expect(MANAGER_LINE).toContain('never sells what you hold.')
   })
   it("the guarantee carries C6's web-link line from the one shared constant, right after the precise sentence", () =>
     expect(DISCLOSURES[0][1].startsWith(`${PRECISE_GUARANTEE} ${WEB_LINK_TRUST}`)).toBe(true))
