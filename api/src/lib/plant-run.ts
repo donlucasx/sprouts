@@ -3,7 +3,7 @@ import type { Repo } from "@/db/repo";
 import type { CarryKind, PlantingLegRow, PlantingRow, VenueDayRow, WalletRow } from "@/db/types";
 import { rulesRowToRules } from "@/db/types";
 import { pickAsset, type Asset } from "@/domain/allocation";
-import { ASSETS, COINS, isLendAsset, type LendAsset, type LiveAsset } from "@/domain/coins";
+import { ASSETS, COINS, LEND_ASSETS, isLendAsset, type LendAsset, type LiveAsset } from "@/domain/coins";
 import { addDays, dayOf } from "@/domain/day";
 import { capLeftCents, plantAmountCents } from "@/domain/cap";
 import { redistributeDisabled } from "@/domain/split";
@@ -512,19 +512,24 @@ async function plantOneOrThrow(a: { repo: Repo; now: Date; chain: Chain }, w: Wa
   let positionsUsd: Partial<Record<Protocol, number>> | null | undefined;
   const venues: Partial<Record<LendAsset, AutoVenue | null>> = {};
   const disabled: LiveAsset[] = [];
+  const checkLend = async (leg: LendAsset) => {
+    if (positionsUsd === undefined) positionsUsd = await a.chain.lendingPositions(w.userPubkey).then((p) => lendingUsdByProtocol(p, ctx.venueDays, ctx.prices)).catch((e) => { console.error(`lending positions of ${w.userPubkey} unreadable (${message(e)}); no lending today`); return null; });
+    const allowed = enabled ? AUTO_VENUES.filter((v) => enabled.has(leashLegOf(leg, v))) : undefined;
+    venues[leg] = positionsUsd === null ? null : pickVenue({ candidates: venueCandidates(leg, ctx.venueDays, ctx.yesterday), lendingUsdByProtocol: positionsUsd, addUsd: amount.pullCents / 100, ...(allowed ? { allowed } : {}) });
+    if (!venues[leg]) disabled.push(leg);
+  };
   for (const leg of ASSETS) {
     // PREFLIGHT 10-04 s20 (Kimi F5): a leashed user's 0% legs are checked too. When every leg with a share is disabled,
     // redistributeDisabled hands the money to a 0% leg; unchecked, that leg could be leash-disabled (LegDisabled 6015) and the
-    // "no leg enabled" test planted stORE. Unleashed users keep the skip: SKR and the coin legs are always enabled for them, so a
-    // 0% lending leg can never win the redistribution, and the lending-positions read stays off the SKR-only path.
+    // "no leg enabled" test planted stORE. Unleashed users skip their 0% legs here, so the lending-positions read stays off the
+    // SKR-only path; the pass below checks them once any leg is disabled.
     if (rules.allocation[leg] <= 0 && !enabled) continue;
-    if (isLendAsset(leg)) {
-      if (positionsUsd === undefined) positionsUsd = await a.chain.lendingPositions(w.userPubkey).then((p) => lendingUsdByProtocol(p, ctx.venueDays, ctx.prices)).catch((e) => { console.error(`lending positions of ${w.userPubkey} unreadable (${message(e)}); no lending today`); return null; });
-      const allowed = enabled ? AUTO_VENUES.filter((v) => enabled.has(leashLegOf(leg, v))) : undefined;
-      venues[leg] = positionsUsd === null ? null : pickVenue({ candidates: venueCandidates(leg, ctx.venueDays, ctx.yesterday), lendingUsdByProtocol: positionsUsd, addUsd: amount.pullCents / 100, ...(allowed ? { allowed } : {}) });
-      if (!venues[leg]) disabled.push(leg);
-    } else if (enabled && !enabled.has(leashLegOf(leg, null))) disabled.push(leg);
+    if (isLendAsset(leg)) await checkLend(leg);
+    else if (enabled && !enabled.has(leashLegOf(leg, null))) disabled.push(leg);
   }
+  // Residual N1 (10-05): the water-fill gives points to the leg with the most headroom, and a 0% lending leg has full headroom, so
+  // once any leg is disabled every lending leg needs its venue. A lending leg with no venue is itself disabled and gets no points.
+  if (disabled.length > 0) for (const leg of LEND_ASSETS) if (!(leg in venues)) await checkLend(leg);
   const target = redistributeDisabled(rules.allocation, disabled, rules.stop);
   if (!target) return { wallet: w.pubkey, reason: "no leg enabled" };
   // R336 follow-up: with USDC lending disabled and every enabled leg at its stop max, the rest of the split is left unpulled. One leg

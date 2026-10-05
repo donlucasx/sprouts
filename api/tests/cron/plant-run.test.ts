@@ -820,6 +820,32 @@ describe("venues, the leash and the carry in the run (contracts 3.2-3.4)", () =>
     expect(b2.find((b) => b.delegator === "W")).toMatchObject({ asset: "stORE", leashed: false });
   });
 
+  it("N1 (residual): an unleashed user's water-fill never hands points to a 0% lending leg with no venue; the run plants", async () => {
+    // Unmanaged pins SKR 70 / SOL_LEND 30, Careful, no venue rows: SOL_LEND is disabled and USDC_LEND (0%) has no venue either.
+    const repo = await seeded([83, 62, 70]);
+    await repo.bumpLedger("W", "SKR", 10_000);   // SKR-heavy: pickAsset would take a 0% lending leg the fill gave points to
+    await repo.saveRules("U", { stop: "careful", allocation: { SKR: 70, stORE: 0, USDC_LEND: 0, SOL_LEND: 30, hSOL: 0, cbBTC: 0 } });
+    const builds: BuildArgs[] = [];
+    const r = await runPlanting({ repo, now: NOW, chain: recording(builds) });
+    expect(builds.length).toBeGreaterThan(0);
+    expect(builds.filter((b) => b.asset === "USDC_LEND" || b.asset === "SOL_LEND")).toEqual([]);
+    expect(r.planted.length).toBe(1);
+  });
+
+  it("N1 (residual): a 0% lending leg that has a venue may take the fill's points, and plants on that venue", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await seedVenues(repo);
+    for (const venue of ["kamino_klend", "jupiter_lend"] as const) {
+      await repo.putVenueDay({ day: "2026-09-29", venue, asset: "SOL_LEND", supplyPct: 4, rewardsPct: 0, utilizationPct: 90, withdrawableUsd: 1e7, tvlUsd: 1.2e8, exchangeRate: 1, avg7Pct: 4, daysMeasured: 3, eligible: false, verdict: null, reason: null, served: null, ok: true });
+    }
+    await repo.bumpLedger("W", "SKR", 10_000);
+    await repo.saveRules("U", { stop: "careful", allocation: { SKR: 70, stORE: 0, USDC_LEND: 0, SOL_LEND: 30, hSOL: 0, cbBTC: 0 } });
+    const builds: BuildArgs[] = [];
+    const r = await runPlanting({ repo, now: NOW, chain: recording(builds) });
+    expect(builds[0]).toMatchObject({ asset: "USDC_LEND", venue: "kamino_klend" });
+    expect(r.planted.length).toBe(1);
+  });
+
   it("a leashed user plants nothing when the config cannot be read, or no leg is enabled", async () => {
     const repo = await seeded([83, 62, 70]);
     await repo.setWalletLink("W", { delegationPda: "D", linkModel: "leash" });
