@@ -4,7 +4,7 @@ import {
   assertIsTransactionWithBlockhashLifetime, sendAndConfirmTransactionFactory, createSolanaRpcSubscriptions, getSignatureFromTransaction,
   type Address, type Instruction, type TransactionSigner, type Commitment,
 } from "@solana/kit";
-import { findAssociatedTokenPda, TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
+import { findAssociatedTokenPda, TOKEN_PROGRAM_ADDRESS, getCreateAssociatedTokenIdempotentInstruction } from "@solana-program/token";
 import { getStakeInstructionAsync, getWithdrawInstructionAsync, getUnstakeInstructionAsync, getCancelUnstakeInstructionAsync, fetchMaybeUserStake, fetchStakeConfig } from "@/generated/staking";
 import { SKR_STAKING_PROGRAM, STAKE_CONFIG, STAKE_VAULT, GUARDIAN_POOL, SKR_MINT } from "./constants";
 import { rpc } from "./rpc";
@@ -70,16 +70,28 @@ export async function buildWithdrawIx(a: { user: Address }): Promise<Instruction
   });
 }
 
+/**
+ * The crank's instructions: the user's SKR account first (idempotent, the payer funds its rent), then the withdraw into it. Sprouts
+ * stakes for the user, so that account may never have existed (10-05: the Saga's 5 SKR failed with AccountNotInitialized).
+ */
+export async function buildCrankWithdrawIxs(a: { payer: TransactionSigner; user: Address }): Promise<Instruction[]> {
+  const ata = await skrAta(a.user);
+  return [
+    getCreateAssociatedTokenIdempotentInstruction({ payer: a.payer, ata, owner: a.user, mint: SKR_MINT }),
+    await buildWithdrawIx({ user: a.user }),
+  ];
+}
+
 /** The permissionless withdraw after the cooldown, sent by the puller as fee payer. Returns the signature. */
 export async function crankWithdraw(user: Address): Promise<string> {
   const puller = await pullerSigner();
   const { value: { blockhash, lastValidBlockHeight } } = await rpc().getLatestBlockhash().send();
-  const withdrawIx = await buildWithdrawIx({ user });
+  const ixs = await buildCrankWithdrawIxs({ payer: puller, user });
   const message = pipe(
     createTransactionMessage({ version: 0 }),
     (m) => setTransactionMessageFeePayerSigner(puller, m),
     (m) => setTransactionMessageLifetimeUsingBlockhash({ blockhash, lastValidBlockHeight }, m),
-    (m) => appendTransactionMessageInstructions([withdrawIx], m),
+    (m) => appendTransactionMessageInstructions(ixs, m),
   );
   const tx = await signTransactionMessageWithSigners(message);
   assertIsTransactionWithBlockhashLifetime(tx);
