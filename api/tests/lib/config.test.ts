@@ -8,7 +8,7 @@ const ALL = {
   SUPABASE_URL: "https://x.supabase.co",
   SUPABASE_SERVICE_KEY: "s",
   PULLER_SECRET_KEY: "[1,2,3]",
-  SESSION_SECRET: "sess",
+  SESSION_SECRET: "sess",   // still set here: proves a stray env var never leaks through config()
   CRON_SECRET: "cron",
   HELIUS_WEBHOOK_SECRET: "wh",
   APP_ORIGIN: "https://sprouts.money",
@@ -29,7 +29,15 @@ describe("config", () => {
     expect(JSON.stringify(c)).not.toContain("sess");
     expect(JSON.stringify(c)).not.toContain("cron");
     expect(Object.keys({ ...c })).toEqual([]);
-    expect(c.sessionSecret).toBe("sess");
+    expect(c.cronSecret).toBe("cron");
+  });
+
+  it("K-M9: SESSION_SECRET is not a setting (sessions are random tokens hashed at rest; nothing reads a secret for them)", () => {
+    Object.assign(process.env, ALL);
+    delete process.env.SESSION_SECRET;
+    const c = config() as unknown as Record<string, unknown>;
+    expect("sessionSecret" in c).toBe(false);
+    expect(config().cronSecret).toBe("cron");
   });
 
   it("reads every variable", () => {
