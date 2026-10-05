@@ -54,11 +54,10 @@
             {
               "name": "Sprouts",
               "label": "Sprouts",
-              "minWidth": "200dp",
+              "minWidth": "110dp",
               "minHeight": "110dp",
-              "targetCellWidth": 3,
+              "targetCellWidth": 2,
               "targetCellHeight": 2,
-              "maxResizeHeight": "220dp",
               "resizeMode": "horizontal|vertical",
               "description": "Your garden",
               "previewImage": "./assets/widget-preview.png",
