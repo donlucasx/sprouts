@@ -17,7 +17,7 @@ export const maxDuration = 60;
 const Body = z.object({ signedTransaction: z.string(), asset: z.enum(["USDC_LEND", "SOL_LEND"]), venue: z.enum(["kamino_klend", "jupiter_lend"]) });
 const same = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((x, i) => x === b[i]);
 
-/** Contracts 5.3: only the redeem the API would build for this user (rebuilt with the posted amount and compared byte for byte) is sent. */
+/** Contracts 5.3 (R359: a partial redeem too, up to the receipt held; `whole` records whether it took the position): only the redeem the API would build for this user (rebuilt with the posted amount and compared byte for byte) is sent. */
 export async function POST(request: Request) {
   const session = await requireSession(request);
   if (session instanceof NextResponse) return session;
@@ -41,7 +41,8 @@ export async function POST(request: Request) {
   const redeem = posted.instructions.filter((ix) => ix.program === program).at(-1);
   if (!redeem || redeem.data.length !== 16) return NextResponse.json({ error: "That is not a withdrawal." }, { status: 400 });
   const receiptRaw = Buffer.from(redeem.data).readBigUInt64LE(8);
-  if (receiptRaw === 0n || receiptRaw > (await receiptBalanceRaw(owner, asset, venue))) return NextResponse.json({ error: "That withdrawal is larger than your position." }, { status: 400 });
+  const heldRaw = await receiptBalanceRaw(owner, asset, venue);
+  if (receiptRaw === 0n || receiptRaw > heldRaw) return NextResponse.json({ error: "That withdrawal is larger than your position." }, { status: 400 });
   const expected = await buildLendWithdraw({ user: owner, asset, venue, receiptRaw });
   const want = expected.map((ix) => ({ program: ix.programAddress as string, data: Buffer.from(ix.data ?? []).toString("hex"), accounts: (ix.accounts ?? []).map((x) => x.address as string) }));
   const got = posted.instructions.map((ix) => ({ program: ix.program as string, data: Buffer.from(ix.data).toString("hex"), accounts: ix.accounts as string[] }));
@@ -71,7 +72,7 @@ export async function POST(request: Request) {
   } catch {
     underlyingRaw = null;
   }
-  const withdrawn = { asset, venue, receiptRaw: receiptRaw.toString(), underlyingRaw: underlyingRaw === null ? null : underlyingRaw.toString(), signature: posted.signature };
+  const withdrawn = { asset, venue, receiptRaw: receiptRaw.toString(), underlyingRaw: underlyingRaw === null ? null : underlyingRaw.toString(), signature: posted.signature, whole: receiptRaw === heldRaw };
   // Confirmed: the money moved. A failed record write is logged, never told to the user as "may still go through".
   try {
     await repo.addEvent({ userPubkey: user.seedVaultPubkey, walletPubkey: null, kind: "lend_withdrawn", detail: withdrawn });
