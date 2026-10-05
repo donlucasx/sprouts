@@ -268,13 +268,13 @@ export function Garden({ scene: incoming, live, canReady, onWater, onNudge, row,
     waiters.current.push(x);
   });
 
-  // `onReady` (the splash): fires once, when every sprite mounted so far has loaded (all of the first frame mount together).
-  const tally = useRef({ pending: 0, started: 0, fired: false });
+  // `onReady` (the splash): fires once, when every distinct sprite mounted so far has loaded (all of the first frame mount together).
+  const tally = useRef({ wanted: new Set<string>(), loaded: new Set<string>(), fired: false });
   const onReadyRef = useRef(onReady);
   useEffect(() => { onReadyRef.current = onReady; }, [onReady]);
   const spriteLoad = useMemo<SpriteLoad>(() => {
-    const check = () => { const t = tally.current; if (!t.fired && t.started > 0 && t.pending === 0) { t.fired = true; onReadyRef.current?.(); } };
-    return { start: () => { tally.current.pending++; tally.current.started++; }, done: () => { tally.current.pending--; check(); } };
+    const check = () => { const t = tally.current; if (!t.fired && t.wanted.size > 0 && [...t.wanted].every((n) => t.loaded.has(n))) { t.fired = true; onReadyRef.current?.(); } };
+    return { start: (name) => { tally.current.wanted.add(name); }, done: (name) => { tally.current.loaded.add(name); check(); } };
   }, []);
 
   return (

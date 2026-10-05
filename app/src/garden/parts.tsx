@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef } from "react";
+import { createContext, useContext, useEffect } from "react";
 import { G, Path, Circle, ClipPath, Defs, Image as SvgImage, Rect, Text as SvgText } from "react-native-svg";
 import { SPRITES } from "./sprites";
 import { stemPaths, spriteTransform } from "@/model/paint";
@@ -9,16 +9,16 @@ import { FONT } from "@/theme/tokens";
 
 export const INK = SOIL.ink; export const WATER = SOIL.water; export const OCHRE = SOIL.front;
 /** A baked sprite placed by its anchor; `xScale` (the succulent's slender blades, the spruce's arms) scales x apart from y. */
-/** What a sprite reports to whoever wants to know the pictures are in (the splash waits on it): one `start` when it mounts, one `done` when
- * its PNG loaded (react-native-svg's Image has no onError: a PNG that never loads is the splash's cap to cut). Outside a Garden that provides it, nothing is reported. */
-export type SpriteLoad = { start: () => void; done: () => void };
+/** What a sprite reports to whoever wants to know the pictures are in (the splash waits on it): its name on `start` when it mounts, and on `done` when
+ * its PNG loaded (the native event comes once per distinct picture, not per instance) (react-native-svg's Image has no onError: a PNG that never loads is the splash's cap to cut). Outside a Garden that provides it, nothing is reported. */
+export type SpriteLoad = { start: (name: string) => void; done: (name: string) => void };
 export const SpriteLoadContext = createContext<SpriteLoad | null>(null);
 export function SpriteAt({ name, x, y, rot = 0, scale = 1, xScale }: { name: string; x: number; y: number; rot?: number; scale?: number; xScale?: number }) {
-  const load = useContext(SpriteLoadContext), left = useRef(false);
+  const load = useContext(SpriteLoadContext);
   const m = SPRITES[name];
-  useEffect(() => { if (m) load?.start(); }, [load, m]);
+  useEffect(() => { if (m) load?.start(name); }, [load, m, name]);
   if (!m) return null;
-  const done = () => { if (!left.current) { left.current = true; load?.done(); } };
+  const done = () => load?.done(name);
   return <G transform={spriteTransform(m, x, y, rot, scale, xScale ?? scale)}><SvgImage href={m.src} width={m.w} height={m.h} onLoad={done} /></G>;
 }
 /** A painted stem: gen03's three layers as paths. */

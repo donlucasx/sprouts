@@ -28,7 +28,7 @@ export function Splash() {
     timer.current = setTimeout(fadeOut, splashHoldMs(readyAt, Date.now() - t0))
   }, [fadeOut, clear, t0])
   useEffect(() => { schedule(null); return clear }, [schedule, clear])
-  const onReady = useCallback(() => schedule(Date.now() - t0), [schedule])
+  const onReady = useCallback(() => schedule(Date.now() - t0), [schedule, t0])
   const fade = useAnimatedStyle(() => ({ opacity: opacity.value }))
   if (gone) return null
   return (
