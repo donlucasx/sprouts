@@ -53,6 +53,12 @@ const COIN_FULL_NAME: Record<LiveAsset, string> = {
 /** USDC has no painted token yet (contracts 10.6): a plain dollar glyph in USDC's blue. SOL lending shows the Solana-glyph token. */
 const USDC_BLUE = '#2775CA'
 
+/** R356 (10-05, his note on R355: tighten the gap between the value block and the garden "a bit"): the garden pulled up into the
+ * screen's gap and 8 dp into the block's bottom, about a third off the paper between them (the screen's 16 dp gap plus the garden's
+ * own headroom, 72 dp at least). Only empty sky overlaps: the garden's view has no ground of its own up there. The Relink and Terms
+ * cards stand above the block so nothing pressable sits under the pull. */
+const VALUE_PULL = spacing.xl
+
 /** R199: the Last planting row's hit slop at its bottom and sides; the row is TARGET minus this tall, so its touch target is 48 dp.
  * No slop at its top: that edge meets the garden's row, where the can's touch box ends, and a later sibling's slop would win there. */
 const RECEIPT_SLOP = spacing.sm
@@ -216,9 +222,19 @@ export default function Home() {
       {pause.shown ? (
         <PauseRow on={pause.on} line={pause.line} busy={pausing} error={pauseError} onChange={togglePaused} />
       ) : null}
+      <RelinkCard me={me} />
+      {termsNeeded(me) ? (
+        <Card>
+          <ThemedText variant="heading">Terms and Privacy</ThemedText>
+          {termsSummary().map((l) => (
+            <ThemedText key={l} tone="secondary">{`• ${l}`}</ThemedText>
+          ))}
+          <Button title="Read and agree" onPress={() => router.push('/terms')} />
+        </Card>
+      ) : null}
       {/* R355 (10-05, "Value on top", his pick): the money in one compact block right under the status line, above the garden: the
           whole garden in dollars big with "in your garden" under it, Put in and Earned small on the right (R146, R150's numbers). */}
-      <View style={{ gap: spacing.xs }}>
+      <View style={{ gap: spacing.xs, marginBottom: -VALUE_PULL }}>
         <View accessible accessibilityLabel={value.a11y} style={{ flexDirection: 'row', alignItems: 'flex-end', gap: spacing.md }}>
           <View style={{ flex: 1, minWidth: 0 }}>
             <ThemedText variant="display" numeric numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5}>
@@ -245,16 +261,6 @@ export default function Home() {
           </ThemedText>
         ) : null}
       </View>
-      <RelinkCard me={me} />
-      {termsNeeded(me) ? (
-        <Card>
-          <ThemedText variant="heading">Terms and Privacy</ThemedText>
-          {termsSummary().map((l) => (
-            <ThemedText key={l} tone="secondary">{`• ${l}`}</ThemedText>
-          ))}
-          <Button title="Read and agree" onPress={() => router.push('/terms')} />
-        </Card>
-      ) : null}
       <Garden
         scene={scene}
         labelFor={(plant, bud) => plantLabel(me, plant, bud)}
