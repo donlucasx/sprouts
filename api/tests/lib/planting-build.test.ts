@@ -18,6 +18,13 @@ const SOL_PRICE = { feedId: "ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4
 const ALT_ADDR = "AL7eJQ4GqXg6fPZ9u3vFeWwz6bKwZ2PLvcxCkV9HvVdy";
 let altContent: string[] = [];
 let altOn = true;
+// I1 (fix round 1): balances the simulation helpers read. `chainPre` = getMultipleAccounts (base64) before; `simPost` = the
+// simulation's accounts after; an address missing from a map is an absent account (null).
+const tokenAcct = (amount: bigint) => { const b = Buffer.alloc(165); b.writeBigUInt64LE(amount, 64); return b.toString("base64"); };
+const chainPre = new Map<string, bigint>();
+const simPost = new Map<string, bigint>();
+const simCalls: string[][] = [];
+const stakes: bigint[] = [];
 const postIx: Instruction = { programAddress: address("rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ"), accounts: [], data: new Uint8Array([7]) };
 
 vi.mock("@/lib/puller", () => ({ pullerSigner: vi.fn(async () => puller) }));
@@ -27,10 +34,14 @@ vi.mock("@/lib/rpc", () => ({ rpc: () => ({
   getAccountInfo: () => ({ send: async () => ({ value: null }) }),
   getMultipleAccounts: (addrs: string[], cfg?: { encoding?: string }) => ({ send: async () => ({ value: addrs.map((a) => (a === ALT_ADDR && cfg?.encoding === "jsonParsed"
     ? { data: { parsed: { info: { addresses: altContent, authority: null, deactivationSlot: "18446744073709551615", lastExtendedSlot: "0", lastExtendedSlotStartIndex: 0 }, type: "lookupTable" }, program: "address-lookup-table", space: 56n + 32n * BigInt(altContent.length) }, executable: false, lamports: 1n, owner: "AddressLookupTab1e1111111111111111111111111", space: 56n + 32n * BigInt(altContent.length) }
-    : null)) }) }),
+    : chainPre.has(a) ? { data: [tokenAcct(chainPre.get(a)!), "base64"] } : null)) }) }),
+  simulateTransaction: (_tx: string, cfg: { accounts: { addresses: string[] } }) => ({ send: async () => { simCalls.push(cfg.accounts.addresses); return { value: { err: null, logs: [], unitsConsumed: 1n, accounts: cfg.accounts.addresses.map((a) => (simPost.has(a) ? { data: [tokenAcct(simPost.get(a)!), "base64"] } : null)) } }; } }),
 }) }));
 vi.mock("@/lib/subscriptions", () => ({ buildTransferRecurringIx: vi.fn(async () => ({ programAddress: "De1egAFMkMWZSN5rYXRj9CAdheBamobVNubTsi9avR44", accounts: [], data: new Uint8Array([5]) })) }));
-vi.mock("@/lib/staking", async (orig) => ({ ...(await orig<object>()), sharePrice: vi.fn(async () => 1_149_090_094n) }));
+vi.mock("@/lib/staking", async (orig) => {
+  const real = await orig<typeof import("@/lib/staking")>();
+  return { ...real, sharePrice: vi.fn(async () => 1_149_090_094n), buildStakeIx: vi.fn(async (a: Parameters<typeof real.buildStakeIx>[0]) => { stakes.push(a.amountRaw); return real.buildStakeIx(a); }) };
+});
 vi.mock("@/lib/jupiter", async (orig) => {
   const real = await orig<typeof import("@/lib/jupiter")>();
   return {
@@ -63,7 +74,7 @@ vi.mock("@/lib/leash", async (orig) => {
   };
 });
 
-import { buildPlantingTx, tokenAmountOf } from "@/lib/planting";
+import { buildPlantingTx, simulatePlanting, tokenAmountOf } from "@/lib/planting";
 import { sproutsAltAddresses } from "@/lib/alt";
 import { getQuote, getSwapInstructions } from "@/lib/jupiter";
 import { klendMinOut } from "@/lib/venues/klend";
@@ -249,5 +260,79 @@ describe("T9 carry-ins at the composition", () => {
     delete process.env.SPROUTS_ALT;
     await expect(buildPlantingTx({ ...base, asset: "USDC_LEND", venue: "jupiter_lend", leashed: true })).rejects.toThrow(/over 1232/);
     process.env.SPROUTS_ALT = ALT_ADDR;
+  });
+});
+
+// I1 (T9 review, fix round 1): the R207 #2 / #4 tests the brief's rewrite dropped, restored on today's live unleashed path.
+describe("buildPlantingTx, unleashed SKR and wallet coins (R207 #2, #4; restored)", () => {
+  beforeEach(async () => {
+    puller = await generateKeyPairSigner(); checks.length = 0; stakes.length = 0;
+    altContent = await sproutsAltAddresses(puller.address);
+    process.env.SPROUTS_ALT = ALT_ADDR;
+  });
+  it("stakes the quote's minimum plus the carried remainder, and checks delivery into the puller's own SKR account", async () => {
+    const b = await buildPlantingTx({ ...base, asset: "SKR", venue: null, leashed: false, carryIn: { SKR: 1234n } });
+    expect(stakes).toEqual([108_196_721n + 1234n]);
+    expect(b.minOutRaw).toBe(108_196_721n);
+    expect(checks[0]).toMatchObject({ puller: puller.address, destination: await ata(puller.address, SKR_MINT), wsolAccount: await ata(puller.address, WSOL_MINT) });
+    expect(checks[0].destinationOwner).toBeUndefined();
+  });
+  it("without a carry stakes the minimum alone; another kind's carry does not leak into the stake", async () => {
+    await buildPlantingTx({ ...base, asset: "SKR", venue: null, leashed: false, carryIn: {} });
+    await buildPlantingTx({ ...base, asset: "SKR", venue: null, leashed: false, carryIn: { USDC: 99n, WSOL: 5n } });
+    expect(stakes).toEqual([108_196_721n, 108_196_721n]);
+  });
+  it("a wallet coin is checked for delivery into the user's token account, whose owner may get an account created; nothing is staked", async () => {
+    await buildPlantingTx({ ...base, asset: "hSOL", venue: null, leashed: false, carryIn: { SKR: 1234n } });
+    expect(stakes).toEqual([]);
+    expect(checks[0]).toMatchObject({ destination: await ata(USER, "he1iusmfkpAdwvxLNGV8Y1iSbj4rUy6yMhEA3fotn9A"), destinationOwner: USER });
+  });
+  it("M3: a negative carry is refused before anything is built", async () => {
+    await expect(buildPlantingTx({ ...base, asset: "SKR", venue: null, leashed: false, carryIn: { SKR: -1n } })).rejects.toThrow(/carry SKR -1 is negative/);
+    await expect(buildPlantingTx({ ...base, asset: "USDC_LEND", venue: "kamino_klend", leashed: false, carryIn: { USDC: -5n } })).rejects.toThrow(/negative/);
+    expect(stakes).toEqual([]);
+  });
+  it("M1: the fee account every coin leg's swap carries is in the Sprouts ALT", async () => {
+    await buildPlantingTx({ ...base, asset: "hSOL", venue: null, leashed: false, carryIn: {} });
+    expect(altContent).toContain(checks[0].feeAccount);
+  });
+});
+
+describe("simulatePlanting: the delivery account and every watched account, before and after (restored + watched)", () => {
+  beforeEach(async () => {
+    puller = await generateKeyPairSigner(); simCalls.length = 0; chainPre.clear(); simPost.clear();
+    altContent = await sproutsAltAddresses(puller.address);
+    process.env.SPROUTS_ALT = ALT_ADDR;
+  });
+  it("SKR: reads the puller's SKR account before and as the simulation leaves it; no watched accounts", async () => {
+    const b = await buildPlantingTx({ ...base, asset: "SKR", venue: null, leashed: false, carryIn: {} });
+    chainPre.set(b.deliveryAccount, 5_000n); simPost.set(b.deliveryAccount, 5_200n);
+    const s = await simulatePlanting(b);
+    expect(simCalls[0]).toEqual([b.deliveryAccount]);
+    expect(s.delivery).toEqual({ pre: 5_000n, post: 5_200n });
+    expect(s.watched).toEqual({});
+  });
+  it("a wallet coin's account created in the transaction starts at zero", async () => {
+    const b = await buildPlantingTx({ ...base, asset: "hSOL", venue: null, leashed: false, carryIn: {} });
+    simPost.set(b.deliveryAccount, 13_843_000n);
+    expect((await simulatePlanting(b)).delivery).toEqual({ pre: 0n, post: 13_843_000n });
+  });
+  it("SOL on Jupiter Lend: each watched account keeps its own pre/post; the closed puller jl account reads post null", async () => {
+    const b = await buildPlantingTx({ ...base, asset: "SOL_LEND", venue: "jupiter_lend", leashed: false, carryIn: {} });
+    const [wsol, jl] = b.watched;
+    expect(b.watched).toEqual([await ata(puller.address, WSOL_MINT), await ata(puller.address, JLEND.SOL_LEND.fTokenMint)]);
+    chainPre.set(wsol, 4_000n); chainPre.set(jl, 7n);             // the user's jl account is absent before (created in the tx)
+    simPost.set(b.deliveryAccount, 15_554_030n); simPost.set(wsol, 4_003n);   // jl absent after: closed
+    const s = await simulatePlanting(b);
+    expect(simCalls[0]).toEqual([b.deliveryAccount, wsol, jl]);
+    expect(s.delivery).toEqual({ pre: 0n, post: 15_554_030n });
+    expect(s.watched).toEqual({ [wsol]: { pre: 4_000n, post: 4_003n }, [jl]: { pre: 7n, post: null } });
+  });
+  it("a watched account absent before and present after reads pre null, post its amount", async () => {
+    const b = await buildPlantingTx({ ...base, asset: "USDC_LEND", venue: "jupiter_lend", leashed: false, carryIn: {} });
+    const [usdc, jl] = b.watched;
+    chainPre.set(usdc, 9n); simPost.set(usdc, 9n); simPost.set(jl, 1n);
+    const s = await simulatePlanting(b);
+    expect(s.watched).toEqual({ [usdc]: { pre: 9n, post: 9n }, [jl]: { pre: null, post: 1n } });
   });
 });

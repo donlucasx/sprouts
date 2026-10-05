@@ -48,36 +48,36 @@ describe("buildJlendDepositIxs + checkJlendDepositInstructions (contracts 3.2 st
     expect(d.readBigUInt64LE(8)).toBe(1_881_241n);
     expect(d.readBigUInt64LE(16)).toBe(2_000_000n);
     expect(ixs.map((ix) => ix.data?.[0])).toEqual([1, 1, 6, 3, 9]);   // ATA x2, mint (disc 0x06...), Transfer, CloseAccount
-    await expect(checkJlendDepositInstructions(ixs, { puller: puller.address, user: USER, asset: "USDC_LEND" })).resolves.toBeUndefined();
+    await expect(checkJlendDepositInstructions(ixs, { puller: puller.address, user: USER, asset: "USDC_LEND", depositRaw: 2_000_000n, rn: PRICE })).resolves.toBeUndefined();
   });
   it("leftover 1 (N minted): the one share left after the transfer is burned before the close", async () => {
     const { puller, ixs, minOutRaw } = await built({ leftover: 1n });
     expect(minOutRaw).toBe(1_881_240n);
     expect(ixs.map((ix) => ix.data?.[0])).toEqual([1, 1, 6, 3, 8, 9]);
     expect(Buffer.from(ixs[4].data!).readBigUInt64LE(1)).toBe(1n);
-    await expect(checkJlendDepositInstructions(ixs, { puller: puller.address, user: USER, asset: "USDC_LEND" })).resolves.toBeUndefined();
+    await expect(checkJlendDepositInstructions(ixs, { puller: puller.address, user: USER, asset: "USDC_LEND", depositRaw: 2_000_000n, rn: PRICE })).resolves.toBeUndefined();
   });
   it("foreign dust already in the puller's jl account is burned before the mint (Claude audit F9)", async () => {
     const { puller, ixs } = await built({ pullerJlBalance: 7n });
     expect(ixs.map((ix) => ix.data?.[0])).toEqual([1, 1, 8, 6, 3, 9]);
-    await expect(checkJlendDepositInstructions(ixs, { puller: puller.address, user: USER, asset: "USDC_LEND" })).resolves.toBeUndefined();
+    await expect(checkJlendDepositInstructions(ixs, { puller: puller.address, user: USER, asset: "USDC_LEND", depositRaw: 2_000_000n, rn: PRICE })).resolves.toBeUndefined();
   });
   it("refuses a burn of more than one share after the transfer (it would eat the user's shares)", async () => {
     const { puller, ixs, pullerJl } = await built({ leftover: 1n });
     const bad = ixs.map((ix, i) => (i === 4 ? getBurnInstruction({ account: pullerJl, mint: JLEND.USDC_LEND.fTokenMint, authority: puller, amount: 2n }) as Instruction : ix));
-    await expect(checkJlendDepositInstructions(bad, { puller: puller.address, user: USER, asset: "USDC_LEND" })).rejects.toThrow(/burn/);
+    await expect(checkJlendDepositInstructions(bad, { puller: puller.address, user: USER, asset: "USDC_LEND", depositRaw: 2_000_000n, rn: PRICE })).rejects.toThrow(/burn/);
   });
   it("refuses a transfer to another owner's jl account", async () => {
     const { puller, ixs, pullerJl } = await built();
     const [alias] = await findAssociatedTokenPda({ owner: OTHER, mint: JLEND.USDC_LEND.fTokenMint, tokenProgram: TOKEN_PROGRAM_ADDRESS });
     const bad = ixs.map((ix) => (ix.data?.[0] === 3 ? getTransferInstruction({ source: pullerJl, destination: alias, authority: puller, amount: 1_881_240n }) as Instruction : ix));
-    await expect(checkJlendDepositInstructions(bad, { puller: puller.address, user: USER, asset: "USDC_LEND" })).rejects.toThrow(/transfer/);
+    await expect(checkJlendDepositInstructions(bad, { puller: puller.address, user: USER, asset: "USDC_LEND", depositRaw: 2_000_000n, rn: PRICE })).rejects.toThrow(/transfer/);
   });
   it("refuses a plan with no close (the zero-residue assertion) and a second Jupiter Lend instruction", async () => {
     const { puller, ixs } = await built();
-    await expect(checkJlendDepositInstructions(ixs.filter((ix) => ix.data?.[0] !== 9), { puller: puller.address, user: USER, asset: "USDC_LEND" })).rejects.toThrow(/close/);
+    await expect(checkJlendDepositInstructions(ixs.filter((ix) => ix.data?.[0] !== 9), { puller: puller.address, user: USER, asset: "USDC_LEND", depositRaw: 2_000_000n, rn: PRICE })).rejects.toThrow(/close/);
     const mint = ixs.find((ix) => ix.programAddress === JLEND_PROGRAM)!;
-    await expect(checkJlendDepositInstructions([...ixs, mint], { puller: puller.address, user: USER, asset: "USDC_LEND" })).rejects.toThrow(/Jupiter Lend instructions/);
+    await expect(checkJlendDepositInstructions([...ixs, mint], { puller: puller.address, user: USER, asset: "USDC_LEND", depositRaw: 2_000_000n, rn: PRICE })).rejects.toThrow(/Jupiter Lend instructions/);
   });
 });
 
@@ -196,10 +196,28 @@ describe("checkJlendDepositInstructions pins, each mutation-proven (review fix r
     const puller = await generateKeyPairSigner();
     const r = await buildJlendDepositIxs({ puller, user: USER, asset: "USDC_LEND", depositRaw: 2_000_000n, rn: PRICE, pullerJlBalance: 0n, leftover });
     const [userJl] = await findAssociatedTokenPda({ owner: USER, mint: j.fTokenMint, tokenProgram: TOKEN_PROGRAM_ADDRESS });
-    const check = (ixs: Instruction[]) => checkJlendDepositInstructions(ixs, { puller: puller.address, user: USER, asset: "USDC_LEND" });
+    const check = (ixs: Instruction[]) => checkJlendDepositInstructions(ixs, { puller: puller.address, user: USER, asset: "USDC_LEND", depositRaw: 2_000_000n, rn: PRICE });
     const at = (tag: number) => r.ixs.findIndex((ix) => ix.programAddress === TOKEN_PROGRAM_ADDRESS && ix.data?.[0] === tag);
     return { puller, ...r, userJl, check, at, mintAt: r.ixs.findIndex((ix) => ix.programAddress === JLEND_PROGRAM) };
   }
+  it("T9 review I3: the mint is bound to the leg's deposit (max_assets == deposit; shares * rn <= deposit * 1e12)", async () => {
+    const p = await plan();
+    const chk = (ixs: Instruction[], depositRaw = 2_000_000n, rn = PRICE) => checkJlendDepositInstructions(ixs, { puller: p.puller.address, user: USER, asset: "USDC_LEND", depositRaw, rn });
+    await expect(chk(p.ixs)).resolves.toBeUndefined();
+    const withMint = (shares: bigint, maxAssets: bigint) => p.ixs.map((ix, i) => {
+      if (i !== p.mintAt) return ix;
+      const d = Buffer.from(ix.data!); d.writeBigUInt64LE(shares, 8); d.writeBigUInt64LE(maxAssets, 16);
+      return { ...ix, data: new Uint8Array(d) } as Instruction;
+    }).map((ix) => (ix.programAddress === TOKEN_PROGRAM_ADDRESS && ix.data?.[0] === 3 ? getTransferInstruction({ source: p.pullerJl, destination: p.userJl, authority: p.puller, amount: shares - 1n }) as Instruction : ix));
+    // over-draw: max_assets above the leg's deposit (the venue may pull up to it from the pooled puller account)
+    await expect(chk(withMint(p.shares, 3_000_000n))).rejects.toThrow(/max_assets 3000000, not the leg's deposit 2000000/);
+    await expect(chk(withMint(p.shares, 1_999_999n))).rejects.toThrow(/max_assets/);
+    // over-mint: more shares than the deposit buys at the rate read
+    const tooMany = (2_000_000n * 1_000_000_000_000n) / PRICE + 1n;
+    await expect(chk(withMint(tooMany, 2_000_000n))).rejects.toThrow(/worth more than the leg's deposit/);
+    await expect(chk(withMint(tooMany - 1n, 2_000_000n))).resolves.toBeUndefined();
+    await expect(chk(p.ixs, 0n)).rejects.toThrow(/not positive/);
+  });
   it("I1: Transfer(shares - 2) + Burn(1) + Close is refused (the transfer is bound to the minted shares - 1)", async () => {
     const p = await plan(1n);
     await expect(p.check(p.ixs)).resolves.toBeUndefined();
