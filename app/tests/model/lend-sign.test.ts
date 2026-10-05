@@ -84,7 +84,7 @@ function SCENES(): Scene[] {
 }
 /** The garden as the app draws it at `width`: packed, framed, the stakes' spots resolved. */
 function drawn(scene0: Scene, width: number) {
-  const scene = packScene(scene0, width), plants = plantLayouts(scene), f = frameFor(scene, plants, width), spots = stakeSpots(scene, plants, width, f.zoom);
+  const scene = packScene(scene0, width), plants = plantLayouts(scene), f = frameFor(scene, plants, width), spots = stakeSpots(scene, plants, width, f.zoom, { lo: 0, hi: width });   // as Garden.tsx draws (bedSpan)
   const boards = scene.parts.flatMap((q) => {
     if (q.kind !== "sign") return [];
     const a = stakeAt(q, width, f.zoom, spots), h = 15 * a.scale * a.boardX;
@@ -136,17 +136,25 @@ describe("R326: a lending stake stands where its whole board reads", () => {
         expect(Math.abs(x.a.x - x.q.x * width), `${width} ${x.q.plant}/${o.q.plant}`).toBeLessThan(Math.abs(x.a.x - o.q.x * width));
     }
   });
-  // KNOWN (fix round 2 report): in the Seeker's garden the mandarin's canopy, as drawnSpans measures it (baked boxes with their clear
-  // margins, swayed 5 degrees), spans the board's height over the whole stretch where the USDC post is nearer its own foot than the
-  // blueberry's, so no x in reach is clear by that measure. On the Seeker (t3-garden-r2.png) the words read whole, a leaf touching the
-  // board's left edge. it.fails records it; a tighter measure or a ruling turns it red.
-  it.fails("KNOWN: the Seeker's garden at 360 still hides part of the USDC face behind the mandarin", () => {
+  // Was KNOWN (fix round 2): the mandarin's canopy hid part of the USDC face within R326's 48 px reach. R356 searches the whole row
+  // (front parts measured still), so the face now clears.
+  it("R356: the Seeker's garden at 360 no longer hides the USDC face behind the mandarin", () => {
     const d = drawn(SCENES()[0], 360), x = d.boards.find((b) => b.q.plant === "jitosol")!;
     expect(faceCover(d, x, 360).front).toBe(0);
   });
-  it("one-line stakes keep R237's side at signX", () => {
-    for (const width of [320, 360]) for (const s0 of SCENES()) for (const x of drawn(s0, width).boards) if (!x.q.lines.line2) {
-      expect(x.a.side).toBe(x.q.side); expect(x.a.x).toBeCloseTo(signX(x.q.x * width, x.q.side, width, x.a.scale, x.a.boardX), 9);
+  it("one-line stakes keep R237's side at signX, unless a front plant covers a back-row one there or another board took its spot (R356)", () => {
+    for (const width of [320, 360]) for (const s0 of SCENES()) {
+      const d = drawn(s0, width);
+      for (const x of d.boards) if (!x.q.lines.line2) {
+        const home = signX(x.q.x * width, x.q.side, width, x.a.scale, x.a.boardX);
+        if (Math.abs(x.a.x - home) < 1e-9) { expect(x.a.side).toBe(x.q.side); continue; }
+        expect(x.q.row, `${width} ${x.q.plant}`).toBe("back");
+        const y = FOOT_Y("back") + 4, h = x.hi - x.a.x, still = drawnSpans(d.plants.filter((l) => l.row === "front"), width, y - 12 * x.a.scale, y - x.a.scale, [0]);
+        const crowded = d.boards.some((o) => o !== x && o.q.row === "back" && o.lo < home + h && o.hi > home - h);   // another board took its spot
+        const swayed = drawnSpans(d.plants.filter((l) => l.row === "front"), width, y - 12 * x.a.scale, y - x.a.scale);   // the steady sway too
+        const less = cover(x.lo, x.hi, still) < cover(home - h, home + h, still) || cover(x.lo, x.hi, swayed) < cover(home - h, home + h, swayed);
+        expect(crowded || less, `${width} ${x.q.plant}`).toBe(true);
+      }
     }
   });
 });
