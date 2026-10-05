@@ -114,6 +114,15 @@ export function statTiles(t: GardenTotals): { label: string; value: string }[] {
   return tiles
 }
 
+/** R355 (10-05, "Value on top"): Home's compact block right under the status line: the whole garden in dollars big with "in your
+ * garden" under it, Put in and Earned small beside it (statTiles), and the block's one spoken line. With no price known the staked
+ * SKR is the big number, as the pot card had it (R146). */
+export function valueBlock(t: GardenTotals, skrStakedRaw: bigint): { big: string; label: string; side: { label: string; value: string }[]; a11y: string } {
+  const big = t.valueUsd === null ? formatSkr(skrStakedRaw, null) : formatUsd(Math.round(t.valueUsd * 100))
+  const side = statTiles(t)
+  return { big, label: 'in your garden', side, a11y: [`${big} in your garden.`, ...side.map((s) => `${s.label} ${s.value}.`)].join(' ') }
+}
+
 /** Home's one wallets row (R150, in his words): the count of linked wallets, revoked ones aside; null when none is linked. */
 export function walletsLine(wallets: { status: string }[]): string | null {
   const n = wallets.filter((w) => w.status !== 'revoked').length
