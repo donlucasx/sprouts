@@ -1,6 +1,6 @@
 import { loadSession } from "./session";
 import { LEND_MOCK, mockAfter, mockBefore } from "./lend-mock";
-import { DEMO_SHOT, demoMe } from "./demo-shot";
+import { DEMO_SHOT, demoActivityFor, demoMe } from "./demo-shot";
 import type { Asset, AutoVenue, LendAsset, LiveAsset, Stop, Split, Pins, Venue } from "./coins";
 export { ASSETS } from "./coins";
 export type { Asset, AutoVenue, LendAsset, LiveAsset, Stop, Split, Pins, Venue } from "./coins";
@@ -54,7 +54,9 @@ export async function api<T>(path: string, init: { method?: "GET" | "POST" | "PU
   if (!res.ok) throw new ApiError(res.status, json.error ?? (res.status >= 500 ? API_UNANSWERED : `Request failed (${res.status}).`), json as Record<string, unknown>);
   const out = LEND_MOCK ? mockAfter(path, json) : json;
   // Dev only (demo/shot-420): the marketing screenshot's garden in place of the real read
-  return (DEMO_SHOT && path === "/api/me" ? demoMe(out as MeResponse) : out) as T;
+  if (DEMO_SHOT && path === "/api/me") return demoMe(out as MeResponse) as T;
+  if (DEMO_SHOT && path === "/api/activity") return demoActivityFor(out as ActivityResponse) as T;
+  return out as T;
 }
 
 // Response types the screens use. Every raw amount is a decimal string (bigint on the wire). Contracts section 5; the fields Track A

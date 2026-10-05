@@ -1,4 +1,4 @@
-import type { Holding, LendingPosition, MeResponse } from "./api";
+import type { ActivityResponse, Holding, LendingPosition, MeResponse } from "./api";
 
 /**
  * Dev only, for marketing screenshots (branch demo/shot-420, never merged): Metro started with EXPO_PUBLIC_DEMO_SHOT=1 turns the real
@@ -40,14 +40,46 @@ function sizes(n: number, total: number, rnd: () => number): number[] {
 
 type Planting = MeResponse["history"]["plantings"][number];
 
+/** A wall-clock time `days` before `now` (local), e.g. at(now, 1, 8, 14) = yesterday 8:14. */
+function at(now: Date, days: number, h: number, m: number): Date {
+  const d = new Date(now.getTime() - days * DAY);
+  d.setHours(h, m, 0, 0);
+  return d;
+}
+/** The watering: yesterday morning, but always over a day ago (no buds, no wet rings); the recent plantings all came before it. */
+function wateredFor(now: Date): Date {
+  return new Date(Math.min(at(now, 1, 9, 5).getTime(), now.getTime() - 1.05 * DAY));
+}
+/** The four latest plantings, fixed so Home's Last planting line and Activity read plain numbers: two days ago and yesterday morning. */
+function recentPlantings(now: Date): { asset: keyof typeof DEMO; cents: number; ts: Date }[] {
+  const w = wateredFor(now).getTime();
+  const before = (d: Date, minutes: number) => new Date(Math.min(d.getTime(), w - minutes * 60_000));
+  return [
+    { asset: "SKR", cents: 218, ts: before(at(now, 2, 9, 2), 1500) },
+    { asset: "USDC_LEND", cents: 240, ts: before(at(now, 2, 18, 31), 900) },
+    { asset: "stORE", cents: 205, ts: before(at(now, 1, 7, 48), 77) },
+    { asset: "SKR", cents: 312, ts: before(at(now, 1, 8, 14), 51) },
+  ];
+}
+
+/** The last demo read, so /api/activity tells the same story Home does. */
+let lastDemo: MeResponse | null = null;
+export function demoActivityFor(real: ActivityResponse): ActivityResponse {
+  return lastDemo ? demoActivity(lastDemo) : real;
+}
+
 export function demoMe(real: MeResponse, now: Date = new Date()): MeResponse {
+  return (lastDemo = buildDemoMe(real, now));
+}
+function buildDemoMe(real: MeResponse, now: Date): MeResponse {
   const skrUsd = real.pot.skrUsd ?? 0.0183;
   const storeUsd = real.pot.storeUsd ?? 73;
   const rnd = mulberry32(420);
   const ago = (d: number) => new Date(now.getTime() - d * DAY).toISOString();
-  // The last planting (SKR, 2 days ago) is fixed so the Last planting line reads a plain number.
+  const recent = recentPlantings(now);
+  const recentCents = (k: keyof typeof DEMO) => recent.filter((r) => r.asset === k).reduce((t, r) => t + r.cents, 0);
   const LAST_CENTS = 312;
-  const plan: [keyof typeof DEMO, number, number][] = [["SKR", 15, putCents("SKR") - LAST_CENTS], ["stORE", 31, putCents("stORE")], ["USDC_LEND", 14, putCents("USDC_LEND")], ["SOL_LEND", 6, putCents("SOL_LEND")]];
+  const plan: [keyof typeof DEMO, number, number][] = [["SKR", 15, putCents("SKR") - recentCents("SKR")], ["stORE", 31, putCents("stORE") - recentCents("stORE")], ["USDC_LEND", 14, putCents("USDC_LEND") - recentCents("USDC_LEND")], ["SOL_LEND", 6, putCents("SOL_LEND")]];
   const plantings: Planting[] = [];
   for (const [asset, n, total] of plan) {
     const sz = sizes(n, total, rnd);
@@ -60,10 +92,13 @@ export function demoMe(real: MeResponse, now: Date = new Date()): MeResponse {
       plantings.push({ id: `demo-${asset}-${i}`, ts: ago(day), asset, usdcInCents: c, amountOutRaw, feeCents: 0, signature: null, venue: asset === "USDC_LEND" ? "kamino_klend" : asset === "SOL_LEND" ? "jupiter_lend" : null });
     });
   }
-  const lastTs = new Date(now.getTime() - 2 * DAY);
-  lastTs.setHours(8, 14, 0, 0);
-  const lastSkrRaw = String(Math.round((LAST_CENTS / 100 / skrUsd) * 1e6));
-  plantings.push({ id: "demo-last", ts: lastTs.toISOString(), asset: "SKR", usdcInCents: LAST_CENTS, amountOutRaw: lastSkrRaw, feeCents: 0, signature: null, venue: null });
+  const rawOf = (asset: keyof typeof DEMO, c: number) =>
+    asset === "SKR" ? String(Math.round((c / 100 / skrUsd) * 1e6)) : asset === "stORE" ? String(Math.round((c / 100 / storeUsd) * 1e11)) : String(c * 10_000);
+  recent.forEach((r, i) =>
+    plantings.push({ id: i === recent.length - 1 ? "demo-last" : `demo-recent-${i}`, ts: r.ts.toISOString(), asset: r.asset, usdcInCents: r.cents, amountOutRaw: rawOf(r.asset, r.cents), feeCents: 0, signature: null, venue: r.asset === "USDC_LEND" ? "kamino_klend" : null }),
+  );
+  const lastTs = recent[recent.length - 1].ts;
+  const lastSkrRaw = rawOf("SKR", LAST_CENTS);
   plantings.sort((a, b) => a.ts.localeCompare(b.ts));
 
   const skrRaw = (usd: number) => String(Math.round((usd / skrUsd) * 1e6));
@@ -80,8 +115,9 @@ export function demoMe(real: MeResponse, now: Date = new Date()): MeResponse {
   ];
   const linked = real.wallets.filter((w) => w.status !== "revoked");
   const wallets = (linked.length > 0 ? linked : [{ pubkey: real.user.pubkey, status: "active" as const, dailyCapCents: 2000 }]).map((w) => ({ ...w, status: "active" as const, linkModel: "leash" as const }));
-  const allocation = { SKR: 55, stORE: 30, USDC_LEND: 10, SOL_LEND: 5, hSOL: 0, cbBTC: 0 };
-  const watered = new Date(lastTs.getTime() + 5 * 3_600_000);   // after the last planting, over a day ago: no buds, no wet rings
+  // Balanced (SKR at least 35, stORE at most 20); hSOL and cbBTC switched off
+  const allocation = DEMO_ALLOCATION;
+  const watered = wateredFor(now);   // after the last planting, over a day ago: no buds, no wet rings
   const termsVersion = real.terms?.currentVersion ?? "2026-10-06";
 
   return {
@@ -100,15 +136,60 @@ export function demoMe(real: MeResponse, now: Date = new Date()): MeResponse {
       USDC_LEND: { line1: "USDC", line2: "Kamino 4.4%", venue: "kamino_klend", ratePct: 4.43 },
       SOL_LEND: { line1: "SOL", line2: "Jupiter 3.9%", venue: "jupiter_lend", ratePct: 3.87 },
     },
-    manager: { ...real.manager, managed: true, legsEnabled: null, picks: { USDC_LEND: "kamino_klend", SOL_LEND: "jupiter_lend" }, stopSplit: allocation },
+    manager: { ...real.manager, managed: true, stop: "balanced", pins: DEMO_PINS, changedDay: null, undoAvailable: false, why: DEMO_WHY, fallback: null, legsEnabled: null, picks: { USDC_LEND: "kamino_klend", SOL_LEND: "jupiter_lend" }, stopSplit: allocation },
     history: { plantings, picks: [] },
     nextPlanting: { ...real.nextPlanting, pendingCents: 137, thresholdCents: 200, asset: "stORE" },
     lastReceipt: { ts: lastTs.toISOString(), usdcPulledCents: LAST_CENTS, networkFeeCents: 0, asset: "SKR", amountOutRaw: lastSkrRaw, feeCents: 0, feeAmountRaw: "0", usdPrice: skrUsd, signature: null, venue: null },
     basket: null,
     wallets,
-    rules: { ...real.rules, allocation },
+    rules: { ...real.rules, managed: true, stop: "balanced", pins: DEMO_PINS, allocation, roundupOn: true, roundupToCents: 100 },
     relink: { needed: false, wallets: [] },
     terms: { currentVersion: termsVersion, acceptedVersion: termsVersion },
     moveProposal: null,
   };
+}
+
+export const DEMO_ALLOCATION = { SKR: 45, stORE: 20, USDC_LEND: 25, SOL_LEND: 10, hSOL: 0, cbBTC: 0 };
+const DEMO_PINS = { hSOL: 0, cbBTC: 0 };
+const DEMO_WHY = "USDC lending pays 4.4% on Kamino today, more than stORE's recent pace, so more of your change goes there.";
+
+/**
+ * /api/activity for the same garden: the latest plantings from demoMe's history (the same rows Home counts), today's swaps whose
+ * change waits for the next planting ($1.37, Home's Next planting bar), yesterday's planted swaps, the AI's split change this morning,
+ * and two withdrawals (SKR, part of the USDC lending). No signatures that lead anywhere real: the planting rows carry none.
+ */
+export function demoActivity(me: MeResponse, now: Date = new Date()): ActivityResponse {
+  const skrUsd = me.pot.skrUsd ?? 0.0183;
+  const storeUsd = me.pot.storeUsd ?? 73;
+  const priceOf = (a: string) => (a === "SKR" ? skrUsd : a === "stORE" ? storeUsd : a === "SOL_LEND" ? 150 : 1);
+  const plantings = [...me.history.plantings]
+    .sort((a, b) => b.ts.localeCompare(a.ts))
+    .slice(0, 12)
+    .map((p) => ({
+      id: p.id, ts: p.ts, status: "confirmed" as const, signature: null, usdcPulledCents: p.usdcInCents, networkFeeCents: 0,
+      legs: [{ asset: p.asset, usdcInCents: p.usdcInCents, amountOutRaw: p.amountOutRaw, feeCents: 0, feeAmountRaw: "0", usdPrice: priceOf(p.asset), venue: p.venue ?? null }],
+    }));
+  const today = (h: number, m: number, minsBeforeNow: number) => new Date(Math.min(at(now, 0, h, m).getTime(), now.getTime() - minsBeforeNow * 60_000)).toISOString();
+  const recent = recentPlantings(now);
+  const sig = (n: number) => `demo${n}`.padEnd(64, "x");
+  const swaps: ActivityResponse["swaps"] = [
+    { signature: sig(1), ts: today(13, 26, 40), walletPubkey: me.user.pubkey, usdSizeCents: 1458, class: "swap", roundupCents: 42, plantingId: null },
+    { signature: sig(2), ts: today(9, 3, 150), walletPubkey: me.user.pubkey, usdSizeCents: 705, class: "swap", roundupCents: 95, plantingId: null },
+    { signature: sig(3), ts: new Date(recent[3].ts.getTime() - 3 * 60_000).toISOString(), walletPubkey: me.user.pubkey, usdSizeCents: 4688, class: "swap", roundupCents: 12, plantingId: "demo-last" },
+    { signature: sig(4), ts: new Date(recent[3].ts.getTime() - 41 * 60_000).toISOString(), walletPubkey: me.user.pubkey, usdSizeCents: 1210, class: "swap", roundupCents: 90, plantingId: "demo-last" },
+    { signature: sig(5), ts: new Date(recent[2].ts.getTime() - 25 * 60_000).toISOString(), walletPubkey: me.user.pubkey, usdSizeCents: 2335, class: "swap", roundupCents: 65, plantingId: "demo-recent-2" },
+  ];
+  const before = { SKR: 50, stORE: 25, USDC_LEND: 15, SOL_LEND: 10, hSOL: 0, cbBTC: 0 };
+  const splits: ActivityResponse["splits"] = [
+    { ts: today(6, 0, 300), by: "manager", from: before, to: DEMO_ALLOCATION, stop: "balanced", why: DEMO_WHY, fallback: null, managed: true },
+    { ts: at(now, 3, 19, 12).toISOString(), by: "you", from: { SKR: 70, stORE: 20, USDC_LEND: 10, SOL_LEND: 0, hSOL: 0, cbBTC: 0 }, to: before, stop: "balanced", why: null, fallback: null, managed: true, turnedOn: true },
+  ];
+  const skrRaw = String(Math.round((18.3 / skrUsd) * 1e6));
+  const withdrawals: ActivityResponse["withdrawals"] = [
+    { id: "demo-w1", ts: at(now, 12, 17, 40).toISOString(), asset: "SKR", source: "sprouts", amountRaw: skrRaw, principalRaw: skrRaw, unstakeSignature: null, withdrawSignature: null, cancelled: false, delivered: true },
+  ];
+  const lendWithdrawals: NonNullable<ActivityResponse["lendWithdrawals"]> = [
+    { ts: at(now, 6, 12, 5).toISOString(), asset: "USDC_LEND", venue: "kamino_klend", receiptRaw: "12450000", underlyingRaw: "15000000", signature: sig(6), whole: false },
+  ];
+  return { plantings, splits, swaps, withdrawals, lendWithdrawals, moves: [], found: [] };
 }

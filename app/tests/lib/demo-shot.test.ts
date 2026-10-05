@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { demoMe } from '@/lib/demo-shot'
+import { demoMe, demoActivity } from '@/lib/demo-shot'
+import { plantingRow, splitRow, swapRow } from '@/model/activity'
 import { gardenTotals, statTiles, coinRows, lastPlantingLine, pauseState } from '@/lib/me-state'
 import { formatUsd } from '@/lib/format'
 import { buildScene } from '@/model/garden'
@@ -30,11 +31,31 @@ describe('demo shot', () => {
   })
   it('is on, with a last planting line, no buds, no relink, terms accepted', () => {
     expect(pauseState(me.wallets).line).toBe('On. Planting your change.')
-    expect(lastPlantingLine(me.lastReceipt)).toMatch(/^Last planting Oct 3: \$3\.12 became/)
+    expect(lastPlantingLine(me.lastReceipt)).toMatch(/^Last planting Oct 4: \$3\.12 became/)
     const scene = buildScene(toGardenInput(me, now))
     expect(scene.unrevealed).toBe(0)
     expect(scene.parts.filter((p) => p.kind === 'pup').length).toBe(4)
     expect(me.relink?.needed).toBe(false)
     expect(me.terms?.acceptedVersion).toBe(me.terms?.currentVersion)
+  })
+  it('Rules: the manager on, Balanced, hSOL and cbBTC off, a split within the Balanced bounds', () => {
+    expect(me.rules.managed).toBe(true)
+    expect(me.rules.stop).toBe('balanced')
+    expect(me.rules.pins).toEqual({ hSOL: 0, cbBTC: 0 })
+    expect(Object.values(me.rules.allocation).reduce((a, b) => a + b, 0)).toBe(100)
+    expect(me.rules.allocation.SKR).toBeGreaterThanOrEqual(35)
+    expect(me.rules.allocation.stORE).toBeLessThanOrEqual(20)
+  })
+  it('Activity: plantings match the garden, today swaps wait $1.37, the AI row first', () => {
+    const a = demoActivity(me, now)
+    const rows = a.plantings.map((p) => plantingRow(p)!)
+    expect(rows[0].label).toBe('Planted SKR')
+    expect(rows[0].amount).toBe('$3.12')
+    expect(a.plantings[0].ts).toBe(me.lastReceipt!.ts)
+    const waiting = a.swaps.filter((s) => !s.plantingId)
+    expect(waiting.reduce((t, s) => t + s.roundupCents, 0)).toBe(me.nextPlanting.pendingCents)
+    for (const s of a.swaps) expect(Date.parse(s.ts)).toBeLessThan(now.getTime())
+    expect(swapRow(a.swaps[0]).amount).toBe('+$0.42')
+    expect(splitRow(a.splits[0], 0).label).toBe('AI moved your split')
   })
 })
