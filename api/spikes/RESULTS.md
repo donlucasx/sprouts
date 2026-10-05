@@ -213,7 +213,7 @@ cd /Users/lucasgarzoli/Documents/claude/seekerhackathon/build/sprouts/api && gre
 cd /Users/lucasgarzoli/Documents/claude/seekerhackathon/build/sprouts/api && pnpm tsx --env-file=.env.local scripts/simulate-legs.ts --user DjRpjufi1BNBaYXPu5ybGQu9cHhxgpPkHJb1UJbePcTR --wallet DjRpjufi1BNBaYXPu5ybGQu9cHhxgpPkHJb1UJbePcTR --delegation <OLD_PDA> --pull 1000000 SOL_LEND:jupiter_lend SOL_LEND:kamino_klend USDC_LEND:jupiter_lend USDC_LEND:kamino_klend cbBTC hSOL stORE SKR
 ```
 
-3. After D5-D6 (Config initialised with `--enable 1,2,6,7`, the Saga's Seed Vault wallet re-linked to the leash in the app), read the NEW delegation PDA (the first line prints `delegation <pda>`; the script may then stop on a missing HELIUS_WEBHOOK_ID, which is fine):
+3. After D5-D6 (Config initialised with `--enable 1,2,3,6,7` or `--enable 2,3,6,7`, the Saga's Seed Vault wallet re-linked to the leash in the app), read the NEW delegation PDA (the first line prints `delegation <pda>`; the script may then stop on a missing HELIUS_WEBHOOK_ID, which is fine):
 
 ```
 cd /Users/lucasgarzoli/Documents/claude/seekerhackathon/build/sprouts/api && pnpm tsx --env-file=.env.local spikes/db-peek.ts DjRpjufi1BNBaYXPu5ybGQu9cHhxgpPkHJb1UJbePcTR | head -1
@@ -222,12 +222,12 @@ cd /Users/lucasgarzoli/Documents/claude/seekerhackathon/build/sprouts/api && pnp
 4. Leashed, every enabled leg (put the PDA from step 3 in place of `<NEW_PDA>`; list only the legs `leash-admin.ts` enabled: Day 1 = legs 2,3,6,7, plus 1 when stORE's sample passed; leg 3's line is `USDC_LEND:jupiter_lend`). Nothing posts: SKR stays off (no price source, R324) and the priced legs read the sponsored accounts:
 
 ```
-cd /Users/lucasgarzoli/Documents/claude/seekerhackathon/build/sprouts/api && pnpm tsx --env-file=.env.local scripts/simulate-legs.ts --user DjRpjufi1BNBaYXPu5ybGQu9cHhxgpPkHJb1UJbePcTR --wallet DjRpjufi1BNBaYXPu5ybGQu9cHhxgpPkHJb1UJbePcTR --delegation <NEW_PDA> --leashed --pull 1000000 USDC_LEND:kamino_klend cbBTC hSOL stORE
+cd /Users/lucasgarzoli/Documents/claude/seekerhackathon/build/sprouts/api && pnpm tsx --env-file=.env.local scripts/simulate-legs.ts --user DjRpjufi1BNBaYXPu5ybGQu9cHhxgpPkHJb1UJbePcTR --wallet DjRpjufi1BNBaYXPu5ybGQu9cHhxgpPkHJb1UJbePcTR --delegation <NEW_PDA> --leashed --pull 1000000 USDC_LEND:kamino_klend USDC_LEND:jupiter_lend cbBTC hSOL stORE
 ```
 
 Read each line: `ok=true` passes the leg; `leashError=StalePrice` rerun; `BelowFloor` stop and compare with Task 5's golden vectors; `LegDisabled` the flag is off; `build failed: ... route under floor` means the route's own expected output is under the leash floor (ruling A; see "Ruling A" below), rerun once, then leave that leg disabled. A `jlLeftover=1` on a Jupiter Lend line means set `JL_EXPECTED_LEFTOVER` to `1n` in `src/lib/venues/jlend.ts`. Paste the lines back to Claude: the highest leashed `units=` + 75,000 (the leash's measured 72.6k worst case at 3,000 users; ruling B, 10-04, supersedes the brief's +55k), rounded up to the next 10,000, becomes `PLANTING_CU_LIMIT` (Task 12 Step 4, `## CU limit`).
 
-5. stORE's Day-1 gate (R339), the S4 price-age sample, read-only, 30 minutes. stORE (leg 1) stays enabled only if `ORE max age` is 55 s or less with `not Full/missing 0` AND its step-4 line is `ok=true`; otherwise `leash-admin.ts set --enable 2,6,7`. Paste the SOL and ORE gap lines here (Claude's final review, T11 triage: gaps over 55 s skip legs 1, 4, 5, 6):
+5. stORE's Day-1 gate (R339), the S4 price-age sample, read-only, 30 minutes. stORE (leg 1) stays enabled only if `ORE max age` is 55 s or less with `not Full/missing 0` AND its step-4 line is `ok=true`; otherwise turn it off with the exact lines in the leash runbook's C1 (the remaining list is 2,3,6,7 if leg 3 passed). Paste the SOL and ORE gap lines here (Claude's final review, T11 triage: gaps over 55 s skip legs 1, 4, 5, 6):
 
 ```
 cd /Users/lucasgarzoli/Documents/claude/seekerhackathon/build/sprouts/api && pnpm tsx --env-file=.env.local spikes/pyth-ages.ts
