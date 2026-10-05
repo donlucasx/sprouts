@@ -71,11 +71,11 @@ export function leashSwapSlippageBps(expectedRaw: bigint, floorRaw: bigint): num
 /** The placeholder lookup-table address `measureAlt` compresses against (not on chain; never sent). */
 export const MEASURE_ALT = address("SproutsA1tMeasure11111111111111111111111111");
 /**
- * PLACEHOLDER (PREFLIGHT 10-04 s20; ruling s20): 400_000 is a ceiling, not a measured number. The final limit = the highest measured
- * route units (Task 12's leashed simulation, `units=` per leg) + 75_000 for the leash (pull + settle; the leash's Task 6 measured a
- * 72.6k worst case at 3,000 users, about 2x per-user variance from the bump search). Task 12 Step 4 sets it; do not lower it before.
+ * Task 12 Step 4 (10-05, the owner's leashed run on mainnet, legs 1,2,3,6,7): the highest leashed `units=` was 146,757 (stORE);
+ * + 75_000 for the leash (pull + settle; Task 6's 72.6k worst case at 3,000 users, ruling B), rounded up to the next 10,000.
+ * Unleashed SOL_LEND measured 193,590 the same morning: re-measure before legs 4/5 go on the leash (Day 2).
  */
-export const PLANTING_CU_LIMIT = 400_000;
+export const PLANTING_CU_LIMIT = 230_000;
 
 export type BuiltPlanting = {
   tx: Awaited<ReturnType<typeof signTransactionMessageWithSigners>>;

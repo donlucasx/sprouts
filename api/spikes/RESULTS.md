@@ -321,3 +321,11 @@ Reading (corrected rule): all 15 leashed builds passed the pre-send floor check;
 - **cbBTC:** minimum 1,153-1,154 against a floor of 1,151-1,152, two raw above it.
 - **hSOL:** 9 to 6,186 raw above the floor. When the room was above 100 bps, the 100 bps quote stood unchanged (for example 6,879,409 against 6,873,223).
 - **stORE:** 30k to 44k raw above the floor (about 0.005%). This window's ORE prices put the floor under the route; at 21:37-21:38 the floor was above the route twice, so stORE still skips when the ORE price ticks up.
+
+## CU limit
+
+10-05 ~09:3x PDT, the owner's run on mainnet (pilot = the Seeker's Seed Vault 52vz..., delegation D9RP9e... after its in-app re-link; legs 1,2,3,6,7 enabled):
+- Unleashed, all eight legs `ok=true` (old delegation 4Eb8fv...): SOL_LEND:jupiter_lend 193,590 units / 949 B; SOL_LEND:kamino_klend 190,668 / 1,023 B (worst size, 48 locks); USDC_LEND jupiter 100,476 / 727; USDC_LEND kamino 84,781 / 633; cbBTC 84,118 / 744; hSOL 88,191 / 901; stORE 167,156 / 904; SKR 98,356 / 812. jlLeftover 0.
+- Leashed, five enabled legs `ok=true`: USDC_LEND kamino 94,732 / 662; USDC_LEND jupiter 106,067 / 757; cbBTC 106,117 / 772; hSOL 107,148 / 932 (worst size, 41 locks); stORE 146,757 / 782.
+- PLANTING_CU_LIMIT = 146,757 + 75,000 -> 230,000 (main, ships with the next deploy). Re-measure before legs 4/5 go on the leash.
+- stORE S4 sample (30 min, 08:41-09:11 PDT): SOL max age 56 s (gaps 51-58), cbBTC 280 s (270-271), ORE 55 s (50-56), not Full/missing 0 -> B4 line A.
