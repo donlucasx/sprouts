@@ -1,8 +1,11 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { MemoryRepo } from "@/db/memory";
 import { setRepoForTests } from "@/db/repo";
 import { issueSession } from "@/lib/session";
 import { dayOf } from "@/domain/day";
+// The user's lending receipts (the 60% cap's input, K-I5): none by default; a test sets a position.
+vi.mock("@/lib/holdings", async (orig) => ({ ...(await orig<object>()), readLendingPositions: vi.fn(async () => []) }));
+import { readLendingPositions } from "@/lib/holdings";
 import { GET as venues } from "@/app/api/venues/route";
 
 const U = "HJCJKRQLV2HVKfe3sFdTF5jjBY1xfWgnK8cLcjH7qnHd";
@@ -32,6 +35,22 @@ describe("GET /api/venues (contracts 5.1)", () => {
     expect(body.venues.find((v: { venue: string }) => v.venue === "jupiter_lend")).toMatchObject({ picked: false, verdict: "avoid", reason: "incentive_spike", rewardsPct: 0.36 });
     expect(body.venues.find((v: { venue: string }) => v.venue === "marginfi")).toMatchObject({ auto: false, note: "rate unavailable", supplyPct: null });
     expect(body.found).toEqual([{ day: body.day, project: "kamino-lend", symbol: "SOL", asset: "SOL", apyBasePct: 5.64, tvlUsd: 2.5e7, note: "Kamino SOL pool at 5.6% a year." }]);
+  });
+  it("K-I5: over the 60% cap at the stop's pick, `picked`, `picks` and `why` name where this user's money goes (here: nowhere, Jupiter is avoided)", async () => {
+    await repo.putCoinDay({ day: dayOf(new Date()), asset: "USDC_LEND", rate: null, ratePrev: null, ratePrevDays: null, priceUsd: 1, liquidityUsd: null, priceChange24h: null, tradeable: true, lastUpdateEpoch: null, ok: true });
+    vi.mocked(readLendingPositions).mockResolvedValueOnce([{ asset: "USDC_LEND", venue: "kamino_klend", receiptRaw: 100_000_000n }]);   // $120 at Kamino
+    const body = await (await get()).json();
+    expect(body.picks).toEqual({ USDC_LEND: null, SOL_LEND: null });
+    expect(body.why).toBe("Kamino already holds 60% of your lending and no other venue passed today's checks; your USDC share goes to the next leg. No lending venue passed today's checks; your SOL share goes to the next leg.");
+    expect(body.venues.find((v: { venue: string }) => v.venue === "kamino_klend").picked).toBe(false);
+  });
+  it("K-I5: the receipts unreadable: the stop's picks and sentence stand", async () => {
+    vi.mocked(readLendingPositions).mockRejectedValueOnce(new Error("rpc down"));
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    const body = await (await get()).json();
+    err.mockRestore();
+    expect(body.picks).toEqual({ USDC_LEND: "kamino_klend", SOL_LEND: null });
+    expect(body.why).toBe("Your USDC goes to Kamino, 4.4% vs Jupiter 4.2%.");
   });
   it("every row carries exactly the contracts 5.1 VenueRow keys; marginfi USDC is listed even with no row", async () => {
     const body = await (await get()).json();

@@ -12,6 +12,7 @@ import { lendSignsFor, underlyingOutRaw, receiptOutRaw } from "@/lib/lend-view";
 import { readLeashConfig, enabledLegs, LEG_SPEC, leashLive } from "@/lib/leash";
 import { TERMS_VERSION } from "@/lib/terms";
 import { carryMoves, moveCarriesFor } from "@/lib/moves";
+import { userRouting } from "@/lib/user-routing";
 import { ASSETS, COINS, type LiveAsset } from "@/domain/coins";
 import { pickAsset } from "@/domain/allocation";
 import { potInputs, potFromInputs } from "@/lib/pot";
@@ -44,10 +45,11 @@ export async function GET(request: Request) {
   // Spec 8, contracts 5.2: each lending position valued at the newest venue snapshot of the last 7 days (`latestVenueRows`):
   // underlyingRaw = receipt x that exchange rate, floored. The rate only rises, so this never overstates what a redeem returns.
   const venueRows = await latestVenueRows(repo, day);
-  const lendPositions = await readLendingPositions(owner).catch((e: unknown) => {
+  const lendRead = await readLendingPositions(owner).catch((e: unknown) => {
     console.error(`/api/me: the lending receipts could not be read (${e instanceof Error ? e.message : String(e)})`);
-    return [];
+    return null;
   });
+  const lendPositions = lendRead ?? [];
   // T20: a done move carries its basis and earned to the new venue (legs are matched by (asset, venue)); history keeps the real legs.
   const lendLegs = carryMoves(legs, await moveCarriesFor(repo, user.seedVaultPubkey));
   const positionsOut = lendingFrom({ positions: lendPositions, legs: lendLegs, rows: venueRows, prices: { USDC_LEND: days.USDC_LEND?.priceUsd ?? null, SOL_LEND: days.SOL_LEND?.priceUsd ?? null } });
@@ -82,7 +84,10 @@ export async function GET(request: Request) {
   const lastLegs = last ? legs.filter((l) => l.plantingId === last.id) : [];
   const lastAsset = lastLegs[0]?.asset ?? "SKR";
   const splitRow = (await repo.getSplitDay(day, rules.stop)) ?? (await repo.latestSplitDay(rules.stop));
-  const picks = splitRow?.venuePick ?? {};
+  // K-I5: the picks and the routing sentence after THIS user's 60% venue cap (the stored pick is the stop's, before it).
+  const prices = { USDC_LEND: days.USDC_LEND?.priceUsd ?? null, SOL_LEND: days.SOL_LEND?.priceUsd ?? null };
+  const routing = await userRouting({ repo, splitRow, positions: lendRead, prices, addUsd: Math.min(pending, rules.dailyCapCents) / 100 });
+  const picks = routing.picks;
   // Contracts 5.2: legsEnabled is null for a user with no leashed wallet; [] when the leash config cannot be read (nothing is enabled we can show).
   const leashWallets = wallets.filter((w) => w.linkModel === "leash" && w.status !== "revoked");
   let legsEnabled: LiveAsset[] | null = null;
@@ -105,7 +110,7 @@ export async function GET(request: Request) {
     lendSigns: lendSignsFor({ picks, positions: positionsOut, rows: venueRows }),
     manager: {
       managed: rules.managed, stop: rules.stop, pins: rules.pins, changedDay: rules.allocationDay, undoAvailable: rules.prevAllocation !== null,
-      why: splitRow?.why ?? null, fallback: splitRow?.fallback ?? null, stopSplit: splitRow?.split ?? STOP_DEFAULTS[rules.stop],
+      why: routing.why, fallback: splitRow?.fallback ?? null, stopSplit: splitRow?.split ?? STOP_DEFAULTS[rules.stop],
       picks, legsEnabled,
     },
     relink: { needed: leashLive() && pullerWallets.length > 0, wallets: pullerWallets.map((w) => ({ pubkey: w.pubkey, via: w.pubkey === user.seedVaultPubkey ? "app" : "link_page" })) },

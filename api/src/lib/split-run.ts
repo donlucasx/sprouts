@@ -125,8 +125,15 @@ const REASON_WORDS: Record<VetoReason, string> = {
  * Code's routing sentence for one lending leg (spec 4): where the money goes, against the other eligible auto venue; when a venue
  * with a higher 7-day average was avoided today, it says so and why (controller ruling, fix round 1). Always under 140 characters.
  */
-export function routingWhy(asset: LendAsset, pick: AutoVenue | null, rows: VenueDayRow[]): string {
+export function routingWhy(asset: LendAsset, pick: AutoVenue | null, rows: VenueDayRow[], cappedFrom: AutoVenue | null = null): string {
   const coin = asset === "USDC_LEND" ? "USDC" : "SOL";
+  // K-I5: this user's 60% venue cap moved the money off the day's pick: the sentence names where it really goes, and why.
+  if (cappedFrom) {
+    const full = `${VENUE_NAME[cappedFrom]} already holds 60% of your lending`;
+    if (!pick) return `${full} and no other venue passed today's checks; your ${coin} share goes to the next leg.`;
+    const at = rows.find((r) => r.venue === pick && r.asset === asset)?.avg7Pct ?? null;
+    return `Your ${coin} goes to ${VENUE_NAME[pick]}${at !== null ? ` at ${r1s(at)}%` : ""}: ${full}.`;
+  }
   if (!pick) return `No lending venue passed today's checks; your ${coin} share goes to the next leg.`;
   const mine = rows.find((r) => r.venue === pick && r.asset === asset);
   const pct = mine?.avg7Pct ?? null;
@@ -148,7 +155,7 @@ export function safeLine(line: string, facts: number[]): string | null {
 }
 /** A model sentence that talks about lending (a venue, USDC, SOL, lending) could contradict code's routing: it is not kept. */
 const TALKS_LENDING = /kamino|jupiter|marginfi|lulo|\bUSDC\b|\bSOL\b|\blend/i;
-const WHY_MAX = 200;
+export const WHY_MAX = 200;
 /** Review I5: the decide step's total budget, so planting (no new wallet past 240 s) always starts well in time. */
 export const DECIDE_BUDGET_MS = 90_000;
 

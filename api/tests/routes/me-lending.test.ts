@@ -46,6 +46,20 @@ describe("GET /api/me, lending (contracts 5.2)", () => {
     expect(body.wallets).toEqual([{ pubkey: "W", status: "active", dailyCapCents: 500, linkModel: "puller" }]);
     expect(body.moveProposal).toBeNull();
   });
+  it("K-I5: a user over the 60% venue cap is shown where the money really goes: picks, the routing sentence and the sign", async () => {
+    const day = dayOf(new Date());
+    await repo.putVenueDay({ day, venue: "jupiter_lend", asset: "USDC_LEND", supplyPct: 4.19, rewardsPct: 0, utilizationPct: 90, withdrawableUsd: 1e7, tvlUsd: 1.2e8, exchangeRate: 1.06, avg7Pct: 4.2, daysMeasured: 2, eligible: true, verdict: "ok", reason: null, served: null, ok: true });
+    // $120 at Kamino (100% of this user's lending, over $20): the run's pickVenue sends the next USDC to Jupiter.
+    vi.mocked(readLendingPositions).mockResolvedValueOnce([{ asset: "USDC_LEND", venue: "kamino_klend", receiptRaw: 99_585_062n }]);
+    const body = await get();
+    expect(body.manager.picks).toEqual({ USDC_LEND: "jupiter_lend", SOL_LEND: null });
+    expect(body.manager.why).toBe("Your USDC goes to Jupiter at 4.2%: Kamino already holds 60% of your lending. No lending venue passed today's checks; your SOL share goes to the next leg.");
+    expect(body.lendSigns.USDC_LEND).toMatchObject({ venue: "jupiter_lend", line2: "Jupiter 4.2%" });
+    // Under the cap ($2 at Kamino): the stop's pick and its stored sentence stand.
+    const small = await get();
+    expect(small.manager).toMatchObject({ picks: { USDC_LEND: "kamino_klend", SOL_LEND: null }, why: "w" });
+  });
+
   it("a position carries exactly the contracts 5.2 LendingPosition keys (no earnedUnderlyingRaw), bigints as strings", async () => {
     const [p] = (await get()).positions;
     expect(Object.keys(p).sort()).toEqual(["asset", "avg7Pct", "earnedUsd", "poolFull", "putInCents", "ratePct", "receiptMint", "receiptRaw", "underlyingRaw", "valueUsd", "venue", "withdrawableUsd"].sort());
