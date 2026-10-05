@@ -153,11 +153,16 @@ export async function runLeg(leg: Leg, o: { leashed: boolean; noPost: boolean; s
     if (o.sizeOnly) {
       return { name: leg.name, status: "built", line: `${head} ${sizeLocks} ok=n/a (${o.assumeAlt ? "computed with the Sprouts ALT in memory" : "built"}, not simulated) minOut=${b.minOut}${floorText}${postText}${jlText}`, sizeBytes: b.sizeBytes, locks: b.locks, units: null, jlLeftover: jl ?? null };
     }
-    const sim = await d.simulate();
+    // A posted price is reclaimed even when the simulation itself throws (review minor).
+    let sim: Sim;
+    try {
+      sim = await d.simulate();
+    } finally {
+      if (!o.noPost) await d.cleanup().catch((e) => d.log(`  price cleanup failed: ${e instanceof Error ? e.message : String(e)}`));
+    }
     const guard = sim.ok ? d.guard(sim) : null;
     const ok = sim.ok && guard === null;
     const line = `${head} size=${b.sizeBytes} ok=${ok} units=${sim.units} guard=${guard} leashError=${leashErrorOf(sim.logs)} minOut=${b.minOut}${floorText}${postText}${jlText} locks=${b.locks}${ok ? "" : `\n  logs: ${sim.logs.slice(-4).join(" | ")}`}`;
-    if (!o.noPost) await d.cleanup().catch((e) => d.log(`  price cleanup failed: ${e instanceof Error ? e.message : String(e)}`));
     last = { name: leg.name, status: ok ? "ok" : "fail", line, sizeBytes: b.sizeBytes, locks: b.locks, units: sim.units, jlLeftover: jl ?? null };
     if (ok) return last;
     if (jl !== undefined && jl !== tries[tries.length - 1]) d.log(`  ${line}`);

@@ -19,7 +19,7 @@ const cfg: { pythApiKey: string | undefined; heliusRpcUrl: string } = { pythApiK
 vi.mock("@/lib/config", () => ({ config: () => cfg }));
 
 import { parsePriceUpdate, fetchHermesUpdate, toKitInstruction, buildPriceUpdate, priceRefusal, CONF_CAP_BPS, FRESH_MARGIN_S } from "@/lib/pyth";
-import { priceSourceFor, buildPriceUpdate as reexported, LEG_SPEC, skrPriceSource } from "@/lib/leash";
+import { priceSourceFor, buildPriceUpdate as reexported, LEG_SPEC, skrPriceSource, postedPriceRefusal } from "@/lib/leash";
 import { PYTH_ACCOUNT, PYTH_FEED } from "@/lib/venues/addresses";
 
 const RECEIVER = "rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ";
@@ -258,6 +258,19 @@ function decode(tx: { messageBytes: ArrayLike<number> }) {
   return { payer: m.staticAccounts[0], signers: m.staticAccounts.slice(0, m.header.numSignerAccounts),
     ixs: m.instructions.map((i) => ({ program: m.staticAccounts[i.programAddressIndex], disc: Buffer.from(i.data ?? []).subarray(0, 8).toString("hex"), data: Buffer.from(i.data ?? []), accounts: (i.accountIndices ?? []).map((x) => m.staticAccounts[x]) })) };
 }
+
+describe("postedPriceRefusal: the re-read posted account, judged like read_price (leg 0)", () => {
+  const ok = { feedId: PYTH_FEED.SKR, price: 1_830_000n, conf: 1_216n, exponent: -8, publishTime: BigInt(NOW - 1), full: true };
+  it("null when usable; names each refusal; honours the on-chain max age and cap", () => {
+    expect(postedPriceRefusal(0, ok, {}, NOW)).toBeNull();
+    expect(postedPriceRefusal(0, { ...ok, full: false }, {}, NOW)).toMatch(/not Full/);
+    expect(postedPriceRefusal(0, { ...ok, feedId: PYTH_FEED.SOL }, {}, NOW)).toMatch(/not the pinned SKR feed/);
+    expect(postedPriceRefusal(0, { ...ok, publishTime: BigInt(NOW - 40) }, {}, NOW)).toBe("is 40 s old (usable under 40 s)");
+    expect(postedPriceRefusal(0, { ...ok, publishTime: BigInt(NOW - 40) }, { maxAgeS: 90 }, NOW)).toBeNull();
+    expect(postedPriceRefusal(0, ok, { confCapBps: 1 }, NOW)).toMatch(/confidence .* over 1 bps/);
+    expect(postedPriceRefusal(2, ok, {}, NOW)).toMatch(/no feed/);
+  });
+});
 
 describe("buildPriceUpdate: a posted SKR price (contracts 3.2 row 2b, 10 item 15; the receiver SDK 0.16.0)", () => {
   afterEach(() => { vi.unstubAllGlobals(); cfg.pythApiKey = "test-key"; blockhashReads = 0; });

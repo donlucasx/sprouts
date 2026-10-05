@@ -170,6 +170,12 @@ describe("runLeg", () => {
     expect(calls.source).toBe(0);   // the source is only asked under no-post, to skip before a build could send
     expect(calls.cleanup).toBe(1);
   });
+  it("allow-post: a simulation that THROWS still reclaims the posted price (review minor)", async () => {
+    const { d, calls } = deps({ builds: [() => built({ cleanupCount: 1, priceTxBytes: [790, 620] })] });
+    d.simulate = async () => { throw new Error("rpc 429"); };
+    await expect(runLeg(parseLeg("SKR"), { leashed: true, noPost: false, sizeOnly: false }, d)).rejects.toThrow(/rpc 429/);
+    expect(calls.cleanup).toBe(1);
+  });
   it("allow-post + size-only: the post is built dry (nothing sent) and sized; never simulated, nothing to reclaim", async () => {
     const { d, calls } = deps({ builds: [() => built({ priceTxBytes: [790, 620] })] });
     const r = await runLeg(parseLeg("SKR"), { leashed: true, noPost: false, sizeOnly: true, assumeAlt: true }, d);

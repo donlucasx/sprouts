@@ -95,7 +95,8 @@ export type Chain = {
   pullerCarryChangeRaw(signature: string, kind: "WSOL" | "USDC"): Promise<bigint>;
   /** After the planting, or for any build that is not sent: reclaim a posted price's rent (best effort; a no-op without one). */
   cleanup(built: Built): Promise<void>;
-  /** Resolves when the leg's price is usable under `cfg` (polling up to `waitS`); throws otherwise. Leg 0 (SKR) has no source and always throws. */
+  /** Resolves when the leg's price is usable under `cfg` (polling up to `waitS`); throws otherwise. Leg 0 (SKR): resolves at once when
+   *  PYTH_API_KEY is set (its price is posted in the build), else throws (no source, R324). */
   priceFresh(leg: number, cfg: PriceCfg, waitS: number): Promise<void>;
 };
 
@@ -187,7 +188,7 @@ function startPriceWaits(chain: Chain, leash: LeashConfig | null, anyLeashed: bo
     const byFeed = new Map<string, { leg: LeashLegByte; cfg: PriceCfg }>();
     for (const leg of enabledLegs(leash)) {
       const feed = LEG_SPEC[leg].feed;
-      if (!feed || feed === "SKR") continue;   // SKR has no price source (R324): nothing to wait for
+      if (!feed || feed === "SKR") continue;   // SKR is posted per planting (or has no source without a key): no account to wait for
       const l = leash.legs[leg];
       const cur = byFeed.get(feed);
       byFeed.set(feed, cur ? { leg: cur.leg, cfg: { confCapBps: Math.min(cur.cfg.confCapBps, l.confCapBps), maxAgeS: Math.min(cur.cfg.maxAgeS, l.maxAgeS) } } : { leg, cfg: { confCapBps: l.confCapBps, maxAgeS: l.maxAgeS } });
@@ -558,7 +559,8 @@ async function plantOneOrThrow(a: { repo: Repo; now: Date; chain: Chain }, w: Wa
     if (leg !== null && cfg) {
       // T8 carry: the run's one wait for this leg's feed (all feeds started together). Review I2: then a bounded wait for a price
       // with BUILD_HEADROOM_S to spare under the leg's own on-chain cap and age (none when the feed's run wait failed: fail fast).
-      // Carry-in 9: SKR (leg 0) has no price source (R324), so this throws and a leashed SKR leg is skipped.
+      // Carry-in 9: without PYTH_API_KEY SKR (leg 0) has no price source (R324), so this throws and a leashed SKR leg is skipped;
+      // with it this answers at once ("post") and the build posts and judges the price (contracts 10 item 15).
       feedAlive = await ctx.gate(leg);
       await a.chain.priceFresh(leg, { ...cfg, maxAgeS: cfg.maxAgeS - BUILD_HEADROOM_S }, feedAlive ? waitWithin(PRE_BUILD_WAIT_S, ctx.deadline) : 0);
     }
@@ -643,6 +645,11 @@ async function plantOneOrThrow(a: { repo: Repo; now: Date; chain: Chain }, w: Wa
     return { wallet: w.pubkey, reason: "simulation failed" };
   }
 
+  // Review (feat/skr-post) I2: until the send starts, a throw here (a share read, a database write) must not strand a posted price:
+  // the price account is reclaimed, then the error goes on as before. From the send on, the planting may be in flight: no reclaim.
+  let sendStarted = false;
+  try {
+  return await (async () => {
   // Record the signed transaction before it goes anywhere, then claim the round-ups in one conditional statement (review C1).
   // The share count right before the send: after confirmation the difference is what this planting minted [A16].
   const sharesBefore = await a.chain.readShares(w.userPubkey);
@@ -704,6 +711,7 @@ async function plantOneOrThrow(a: { repo: Repo; now: Date; chain: Chain }, w: Wa
 
   // From here the transaction may be on chain: an error (a database write, the confirm, the share read) is "send unknown",
   // never "build failed" (09-29), so it does not count toward the outage stop; the row stays `sent` for the next run to reconcile.
+  sendStarted = true;
   try {
     try {
       await a.chain.sendPlanting(built);
@@ -720,7 +728,7 @@ async function plantOneOrThrow(a: { repo: Repo; now: Date; chain: Chain }, w: Wa
       }
       if (status === "pending") {
         // Left as `sent` with its round-ups claimed; the next run reconciles it by signature instead of pulling again.
-        console.error(`planting for ${w.pubkey} sent but unconfirmed (${built.signature}): ${message(e)}; reconciled next run`);
+        console.error(`planting for ${w.pubkey} sent but unconfirmed (${built.signature}): ${message(e)}; reconciled next run${built.postedPrice ? "; its posted price account is NOT reclaimed (the planting may still land): reclaim it by hand from the build's cleanup" : ""}`);
         await a.repo.addEvent({ userPubkey: w.userPubkey, walletPubkey: w.pubkey, kind: "pull_failed", detail: { stage: "confirm", err: message(e), signature: built.signature } });
         return { wallet: w.pubkey, reason: "send unknown" };
       }
@@ -730,7 +738,13 @@ async function plantOneOrThrow(a: { repo: Repo; now: Date; chain: Chain }, w: Wa
     return { wallet: w.pubkey, asset, pullCents: amount.pullCents, signature: built.signature };
   } catch (e) {
     console.error(`planting for ${w.pubkey} sent (${built.signature}), booking interrupted: ${message(e)}; reconciled next run`);
+    if (built.postedPrice) await tidy();   // landed or failed, the planting no longer reads its price; tidy never throws
     return { wallet: w.pubkey, reason: "send unknown" };
+  }
+  })();
+  } catch (e) {
+    if (!sendStarted) await discard(built);
+    throw e;
   }
 }
 

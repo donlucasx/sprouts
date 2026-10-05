@@ -60,7 +60,8 @@ function realChain(): Chain {
     lendingPositions: (u) => readLendingPositions(address(u)),
     pullerCarryChangeRaw: (sig, kind) => pullerTokenChangeRaw(sig, kind === "WSOL" ? WSOL_MINT : USDC_MINT),
     cleanup: (b) => cleanupPlanting(b as BuiltPlanting),
-    // T8 carry: the run's one wait per feed (waitS 60) and the checks with no wait (before a build, before a send); leg 0 throws (R324).
+    // T8 carry: the run's one wait per feed (waitS 60) and the checks with no wait (before a build, before a send); leg 0 answers
+    // "post" with PYTH_API_KEY (its posted price is judged in the build and again before the send), else throws (R324).
     priceFresh: async (leg, cfg, waitS) => { await priceSourceFor(leg as LeashLegByte, undefined, waitS, cfg); },
   };
 }
