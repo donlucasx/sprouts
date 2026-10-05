@@ -17,6 +17,8 @@ import { makeSigner, SignRefused } from '@/lib/sign'
 import { arrivalLine, formatSkr } from '@/lib/format'
 import { withdrawRows } from '@/lib/withdraw-list'
 import { withdrawAtTap, type WithdrawPlan, type WithdrawRequest } from '@/lib/withdraw-flow'
+import { withdrawLendAtTap, WITHDRAWN_LEND_LINE, type LendWithdrawBuild } from '@/lib/lend-withdraw'
+import type { LendingPosition } from '@/lib/api'
 import { spacing, TARGET, type as ramp, useTheme } from '@/theme'
 
 const Waiting = () => (
@@ -38,6 +40,9 @@ export default function Withdraw() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [picked, setPicked] = useState<'SKR' | null>(null)
+  const [lendBusy, setLendBusy] = useState<string | null>(null)
+  const [lendError, setLendError] = useState<{ key: string; text: string } | null>(null)
+  const [lendDone, setLendDone] = useState(false)
   // The one way back to the coin list: "Back to the list", the top Back and Android's back all call it (R165).
   function backToList() {
     setPicked(null)
@@ -123,6 +128,29 @@ export default function Withdraw() {
       setBusy(false)
     }
   }
+  /** Spec 7: one tap per lending position; the Seed Vault signs only what the pinned check passes. */
+  async function withdrawLend(key: string, position: LendingPosition) {
+    if (!session) return
+    setLendBusy(key)
+    setLendError(null)
+    setLendDone(false)
+    try {
+      const out = await withdrawLendAtTap({
+        user: session.pubkey,
+        position,
+        build: (body) => api<LendWithdrawBuild>('/api/lend/withdraw/build', { method: 'POST', body }),
+        sign: (flow) => makeSigner(signTransaction, flow),
+        confirm: (body) => api('/api/lend/withdraw/confirm', { method: 'POST', body }),
+      })
+      if ('stopped' in out) setLendError({ key, text: out.stopped })
+      else setLendDone(true)
+      await invalidate()
+    } catch (e) {
+      setLendError({ key, text: e instanceof ApiError || e instanceof SignRefused ? e.message : 'The withdrawal did not go through. Nothing moved.' })
+    } finally {
+      setLendBusy(null)
+    }
+  }
 
   if (picked === null) {
     const rows = withdrawRows(me)
@@ -130,6 +158,7 @@ export default function Withdraw() {
       <Screen back title="Withdraw">
         <Card style={{ gap: 0 }}>
           <ThemedText style={{ marginBottom: spacing.sm }}>What do you want to withdraw?</ThemedText>
+          {lendDone ? <ThemedText tone="accentText">{WITHDRAWN_LEND_LINE}</ThemedText> : null}
           {rows.length === 0 ? <ThemedText tone="secondary">Nothing in your garden yet.</ThemedText> : null}
           {rows.map((r, i) => {
             const inner = (
@@ -145,12 +174,25 @@ export default function Withdraw() {
               </>
             )
             const rowStyle = { minHeight: TARGET, flexDirection: 'row' as const, alignItems: 'center' as const, gap: spacing.sm, paddingVertical: spacing.sm, borderTopWidth: i === 0 ? 0 : 1, borderTopColor: colors.hairline }
+            if (r.position) {
+              const p = r.position
+              return (
+                <View key={r.key} style={{ borderTopWidth: i === 0 ? 0 : 1, borderTopColor: colors.hairline, paddingVertical: spacing.sm, gap: spacing.xs }}>
+                  <View style={{ minHeight: TARGET, flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+                    {inner}
+                    <Button title="Withdraw" kind="quiet" accessibilityLabel={r.label} disabled={p.poolFull || (lendBusy !== null && lendBusy !== r.key)} loading={lendBusy === r.key} onPress={() => withdrawLend(r.key, p)} />
+                  </View>
+                  {lendBusy === r.key ? <Waiting /> : null}
+                  {lendError?.key === r.key ? <ThemedText tone="error">{lendError.text}</ThemedText> : null}
+                </View>
+              )
+            }
             return r.opens ? (
-              <Pressable key={r.asset} onPress={() => setPicked('SKR')} accessibilityRole="button" accessibilityLabel={r.label} style={({ pressed }) => ({ ...rowStyle, opacity: pressed ? 0.7 : 1 })}>
+              <Pressable key={r.key} onPress={() => setPicked('SKR')} accessibilityRole="button" accessibilityLabel={r.label} style={({ pressed }) => ({ ...rowStyle, opacity: pressed ? 0.7 : 1 })}>
                 {inner}
               </Pressable>
             ) : (
-              <View key={r.asset} style={rowStyle}>
+              <View key={r.key} style={rowStyle}>
                 {inner}
               </View>
             )
