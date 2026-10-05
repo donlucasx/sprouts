@@ -373,6 +373,9 @@ export class SupabaseRepo implements Repo {
     if (error) throw new Error(error.message);
     return data ? moveProposalRow(data as Row) : null;
   }
+  async listMoveProposals(userPubkey: string, status: T.MoveStatus) {
+    return this.many(this.db.from("move_proposals").select().eq("user_pubkey", userPubkey).eq("status", status).order("closed_at", { ascending: true, nullsFirst: true }).order("ts", { ascending: true }), moveProposalRow);
+  }
   async setMoveProposalStatus(moveId: string, status: T.MoveStatus, sig?: { redeem?: string; deposit?: string }) {
     const { error } = await this.db.from("move_proposals").update({
       status, ...(sig?.redeem ? { redeem_signature: sig.redeem } : {}), ...(sig?.deposit ? { deposit_signature: sig.deposit } : {}), ...(status !== "open" ? { closed_at: new Date().toISOString() } : {}),

@@ -333,6 +333,10 @@ export class MemoryRepo implements Repo {
     const r = this.moves.get(moveId);
     return r ? { ...r } : null;
   }
+  async listMoveProposals(userPubkey: string, status: T.MoveStatus) {
+    const key = (m: T.MoveProposalRow) => (m.closedAt ?? m.ts).getTime();
+    return [...this.moves.values()].filter((m) => m.userPubkey === userPubkey && m.status === status).sort((a, b) => key(a) - key(b) || a.ts.getTime() - b.ts.getTime()).map((m) => ({ ...m }));
+  }
   async setMoveProposalStatus(moveId: string, status: T.MoveStatus, sig?: { redeem?: string; deposit?: string }) {
     const m = this.moves.get(moveId);
     if (!m) return;

@@ -1,15 +1,59 @@
 import type { Repo } from "@/db/repo";
-import type { PlantingLegRow } from "@/db/types";
+import type { MoveProposalRow, PlantingLegRow } from "@/db/types";
 import { COINS, isLendAsset, type LendAsset } from "@/domain/coins";
 import { AUTO_VENUES, isAutoVenue, moveQualifies, venueCandidates, type AutoVenue } from "@/domain/venues";
 import { dayOf, addDays } from "@/domain/day";
 import type { LendPosition } from "./holdings";
+import { signatureStatus } from "./planting";
 
 const FEE_LAMPORTS = 2 * 5_000;
 const ATA_RENT_LAMPORTS = 2_039_280;
 
 /** Spec 7: lending-to-lending, same asset, Kamino <-> Jupiter Lend only; proposed when 30 days of the 7-day-average gap beat 3x the cost. */
-export async function proposeMoves(a: { repo: Repo; now: Date; positions(user: string): Promise<LendPosition[]>; solUsd: number }): Promise<{ proposed: string[]; expired: string[] }> {
+export type DepositStatus = "confirmed" | "failed" | "pending" | "expired";
+/** A deposit's blockhash comes from its build; past this age after the newest build, a signature the chain does not know can never land. */
+const BUILD_LIFETIME_MS = 5 * 60_000;
+
+/**
+ * The on-chain outcome of a card's deposit, by its stored signature (the confirm stores it before sending): "expired" once the chain
+ * does not know it and the newest build of the move is older than any blockhash it could carry.
+ */
+export async function chainDepositStatus(repo: Repo, card: MoveProposalRow, now: Date): Promise<DepositStatus> {
+  const s = await signatureStatus(card.depositSignature as string);
+  if (s !== "pending") return s;
+  const built = (await repo.listEvents(card.userPubkey, ["move_built"], 200)).find((e) => (e.detail as { id?: unknown } | null)?.id === card.id);
+  return !built || now.getTime() - built.ts.getTime() > BUILD_LIFETIME_MS ? "expired" : "pending";
+}
+
+/** A move whose deposit confirmed: done with both signatures, then the move_done event (a failed write is logged; the carry reads the card). */
+export async function finishMove(repo: Repo, card: MoveProposalRow, sig: { redeem: string; deposit: string }, receiptRaw: bigint): Promise<void> {
+  await repo.setMoveProposalStatus(card.id, "done", sig);
+  try {
+    await repo.addEvent({ userPubkey: card.userPubkey, walletPubkey: null, kind: "move_done", detail: moveDetail({ ...card, receiptRaw }, "done") });
+  } catch (e) {
+    console.error(`moves: ${card.id} is done but the move_done event was not written for ${card.userPubkey}: ${e instanceof Error ? e.message : String(e)}`);
+  }
+}
+
+/**
+ * Fix round 1 (review I1): an open card whose redeem landed is a move in flight, never a card to expire. Its deposit's signature says
+ * how it ended: confirmed -> done (+ move_done, the carry), failed or expired -> failed, still pending -> left alone. No deposit
+ * signature (cannot happen once the confirm stores both before the deposit send) -> failed.
+ */
+async function settleInFlight(repo: Repo, card: MoveProposalRow, status: (card: MoveProposalRow) => Promise<DepositStatus>): Promise<"done" | "failed" | "pending"> {
+  if (!card.depositSignature) { await repo.setMoveProposalStatus(card.id, "failed"); return "failed"; }
+  const s = await status(card);
+  if (s === "pending") return "pending";
+  if (s === "confirmed") {
+    const built = await latestMoveBuild(repo, card.userPubkey, card.id);
+    await finishMove(repo, card, { redeem: card.redeemSignature as string, deposit: card.depositSignature }, built?.receiptRaw ?? card.receiptRaw);
+    return "done";
+  }
+  await repo.setMoveProposalStatus(card.id, "failed");
+  return "failed";
+}
+
+export async function proposeMoves(a: { repo: Repo; now: Date; positions(user: string): Promise<LendPosition[]>; solUsd: number; depositStatus?(signature: string, card: MoveProposalRow): Promise<DepositStatus> }): Promise<{ proposed: string[]; expired: string[] }> {
   const day = dayOf(a.now);
   const today = await a.repo.listVenueDays(day);
   const yesterday = await a.repo.listVenueDays(addDays(day, -1));
@@ -17,9 +61,21 @@ export async function proposeMoves(a: { repo: Repo; now: Date; positions(user: s
   const proposed: string[] = [];
   const expired: string[] = [];
   for (const u of await a.repo.listUsers()) {
-    const open = await a.repo.openMoveProposal(u.seedVaultPubkey);
+    let open = await a.repo.openMoveProposal(u.seedVaultPubkey);
+    if (open?.redeemSignature) {
+      const status = (c: MoveProposalRow) => (a.depositStatus ? a.depositStatus(c.depositSignature as string, c) : chainDepositStatus(a.repo, c, a.now));
+      const settled = await settleInFlight(a.repo, open, status).catch((e: unknown) => {
+        console.error(`proposeMoves: could not settle move ${open?.id}: ${e instanceof Error ? e.message : String(e)}`);
+        return "pending" as const;
+      });
+      if (settled === "pending") continue;   // still in flight: no new card, nothing expired
+      open = null;
+    }
+    // Review minor 1: a failed read is not "no position"; the user is skipped and an open card stays as it is.
+    let positions: LendPosition[];
+    try { positions = await a.positions(u.seedVaultPubkey); } catch { continue; }
     let best: { p: LendPosition; to: (typeof AUTO_VENUES)[number]; valueUsd: number; from: number; toPct: number; gain: number } | null = null;
-    for (const p of await a.positions(u.seedVaultPubkey).catch(() => [])) {
+    for (const p of positions) {
       const c = venueCandidates(p.asset, today, yesterday);
       const from = c.find((x) => x.venue === p.venue)?.avg7Pct ?? null;
       const price = (await a.repo.getCoinDay(day, p.asset))?.priceUsd ?? null;
@@ -91,18 +147,26 @@ export async function latestMoveBuild(repo: Repo, userPubkey: string, id: string
   return null;
 }
 
-/** Every done move's carry, oldest first: for each move_done, the newest build of that move written before it. */
+/**
+ * Every done move's carry, oldest first. The done CARDS are the record (fix round 1: a lost move_done event cannot erase a carry);
+ * each takes the newest build of that move, which is the one its confirm matched (the confirm re-records an older build it matched).
+ */
 export async function moveCarriesFor(repo: Repo, userPubkey: string): Promise<MoveCarry[]> {
-  const events = (await repo.listEvents(userPubkey, ["move_built", "move_done"], 1_000)).slice().sort((p, q) => p.id - q.id);
-  const out: MoveCarry[] = [];
+  const done = await repo.listMoveProposals(userPubkey, "done");
+  if (!done.length) return [];
   const builds = new Map<string, MoveCarry>();
-  for (const e of events) {
-    if (e.kind === "move_built") { const c = parseMoveBuilt(e.detail); if (c) builds.set(c.id, c); continue; }
-    const id = (e.detail as { id?: unknown } | null)?.id;
-    const c = typeof id === "string" ? builds.get(id) : undefined;
-    if (c) out.push(c);
+  for (const e of await repo.listEvents(userPubkey, ["move_built"], 1_000)) {   // newest first: keep the first seen per id
+    const c = parseMoveBuilt(e.detail);
+    if (c && !builds.has(c.id)) builds.set(c.id, c);
   }
-  return out;
+  return done.flatMap((m) => { const c = builds.get(m.id); return c ? [c] : []; });
+}
+
+/** The recent builds of one move, newest first (the confirm accepts a signed pair from any of them: each is the server's own amounts). */
+export async function recentMoveBuilds(repo: Repo, userPubkey: string, id: string, now: Date): Promise<MoveCarry[]> {
+  return (await repo.listEvents(userPubkey, ["move_built"], 200))
+    .filter((e) => now.getTime() - e.ts.getTime() <= BUILD_LIFETIME_MS)
+    .flatMap((e) => { const c = parseMoveBuilt(e.detail); return c && c.id === id ? [c] : []; });
 }
 
 /**
