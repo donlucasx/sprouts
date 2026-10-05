@@ -14,7 +14,7 @@ import { undoSplit } from '@/lib/manager-api'
 import { spacing, TARGET, useTheme } from '@/theme'
 
 /** R362: the time column fits "11:13 AM" in the label step (47 dp measured); it grows with the phone's font scale so the time never cuts. */
-const TIME_WIDTH = 52
+const TIME_WIDTH = 60 // "10:50 AM" at label size was cut at 52 (Seeker, 10-05)
 
 /**
  * R362: ONE line (time, a short label, the amount on the right); a tap opens its details and its transaction on Solscan (a
