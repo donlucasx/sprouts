@@ -40,7 +40,7 @@ export async function readUsdcAtaExists(owner: Address): Promise<boolean> {
   return (await fetchMaybeToken(rpc(), await usdcAta(owner))).exists;
 }
 
-export async function buildApproveOnceIxs(a: { delegator: Address; delegatee: Address; capRaw: bigint; nonce: bigint; existingInitId?: bigint; createAta?: boolean }): Promise<Instruction[]> {
+export async function buildApproveOnceIxs(a: { delegator: Address; delegatee: Address; capRaw: bigint; nonce: bigint; startTs?: bigint; existingInitId?: bigint; createAta?: boolean }): Promise<Instruction[]> {
   const owner = createNoopSigner(a.delegator);
   const create = await getCreateRecurringDelegationOverlayInstructionAsync({
     delegator: owner,
@@ -48,7 +48,7 @@ export async function buildApproveOnceIxs(a: { delegator: Address; delegatee: Ad
     tokenMint: USDC_MINT,
     amountPerPeriod: a.capRaw,
     periodLengthS: DAY,
-    startTs: now(),
+    startTs: a.startTs ?? now(), // optional so buildRelink stays pure (API Task 18)
     expiryTs: 0n,
     nonce: a.nonce,
     // One-transaction signup: the authority is initialised by the instruction before this one, so its init id is not known
@@ -109,7 +109,9 @@ export async function buildRevokeIxs(a: { delegator: Address; delegationPda: Add
   ];
 }
 
-export type DelegationState = { exists: boolean; amountPerPeriodRaw: bigint; pulledInPeriodRaw: bigint; periodStartTs: bigint; periodLengthS: bigint };
+/** delegator / delegatee / expiryTs: from the account's header and terms when it exists (the re-link confirm binds them); absent otherwise. */
+export type DelegationState = { exists: boolean; amountPerPeriodRaw: bigint; pulledInPeriodRaw: bigint; periodStartTs: bigint; periodLengthS: bigint;
+  delegator?: Address; delegatee?: Address; expiryTs?: bigint; mint?: Address; subscriptionAuthority?: Address };
 
 /** Read the delegation live: what the limit is, what was pulled this period, and when the period started. */
 export async function readDelegation(pda: Address): Promise<DelegationState> {
@@ -122,5 +124,23 @@ export async function readDelegation(pda: Address): Promise<DelegationState> {
     pulledInPeriodRaw: BigInt(d.amountPulledInPeriod),
     periodStartTs: BigInt(d.currentPeriodStartTs),
     periodLengthS: BigInt(d.periodLengthS),
+    delegator: d.header.delegator,
+    delegatee: d.header.delegatee,
+    expiryTs: BigInt(d.expiryTs),
+    mint: d.mint,
+    subscriptionAuthority: d.subscriptionAuthority,
   };
+}
+
+const RETRY_MS = 2_000;
+
+/** Waits for a delegation to appear (RPC lag right after the signature), up to `waitMs`; the link and re-link confirms poll with it. */
+export async function waitForDelegation(pda: Address, waitMs: number): Promise<DelegationState> {
+  const deadline = Date.now() + waitMs;
+  for (;;) {
+    const d = await readDelegation(pda);
+    if (d.exists) return d;
+    if (Date.now() >= deadline) return d;
+    await new Promise((r) => setTimeout(r, Math.min(RETRY_MS, Math.max(0, deadline - Date.now()))));
+  }
 }

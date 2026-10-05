@@ -7,7 +7,13 @@ import { readPosition, sharePrice } from "@/lib/staking";
 import { priceUsd } from "@/lib/jupiter";
 import { storeBalanceRaw, storeRedeemRate } from "@/lib/store";
 import { readDelegation } from "@/lib/subscriptions";
-import { readHoldings, latestCoinDays, holdingsFrom, rateFacts } from "@/lib/holdings";
+import { readHoldings, latestCoinDays, holdingsFrom, rateFacts, readLendingPositions, lendingFrom, lendHoldings, latestVenueRows } from "@/lib/holdings";
+import { lendSignsFor, underlyingOutRaw, receiptOutRaw } from "@/lib/lend-view";
+import { readLeashConfig, enabledLegs, LEG_SPEC, leashLive, relinkPilot, type LeashConfig } from "@/lib/leash";
+import { TERMS_VERSION } from "@/lib/terms";
+import { carryMoves, moveCarriesFor } from "@/lib/moves";
+import { leashAllowedFor, userRouting } from "@/lib/user-routing";
+import { ASSETS, COINS, type LiveAsset } from "@/domain/coins";
 import { pickAsset } from "@/domain/allocation";
 import { potInputs, potFromInputs } from "@/lib/pot";
 import { capLeftCents } from "@/domain/cap";
@@ -36,6 +42,19 @@ export async function GET(request: Request) {
   const pot = potFromInputs(user, inputs, { position, sharePrice: price });
   const { plantings, legs, withdrawals } = inputs;
   const holdings = holdingsFrom({ held, legs, days, facts });
+  // Spec 8, contracts 5.2: each lending position valued at the newest venue snapshot of the last 7 days (`latestVenueRows`):
+  // underlyingRaw = receipt x that exchange rate, floored. The rate only rises, so this never overstates what a redeem returns.
+  const venueRows = await latestVenueRows(repo, day);
+  const lendRead = await readLendingPositions(owner).catch((e: unknown) => {
+    console.error(`/api/me: the lending receipts could not be read (${e instanceof Error ? e.message : String(e)})`);
+    return null;
+  });
+  const lendPositions = lendRead ?? [];
+  // T20: a done move carries its basis and earned to the new venue (legs are matched by (asset, venue)); history keeps the real legs.
+  const lendLegs = carryMoves(legs, await moveCarriesFor(repo, user.seedVaultPubkey));
+  const positionsOut = lendingFrom({ positions: lendPositions, legs: lendLegs, rows: venueRows, prices: { USDC_LEND: days.USDC_LEND?.priceUsd ?? null, SOL_LEND: days.SOL_LEND?.priceUsd ?? null } });
+  // Live coins only (R281, R321: a retired coin's value never reaches a total); one aggregated row per lending leg.
+  const allHoldings = [...holdings.filter((h) => COINS[h.asset].live), ...lendHoldings(positionsOut)].sort((p, q) => ASSETS.indexOf(p.asset as LiveAsset) - ASSETS.indexOf(q.asset as LiveAsset));
   const storePlantedRaw = legs.filter((l) => l.asset === "stORE").reduce((s, l) => s + l.amountOutRaw, 0n);
   const storePutInRaw = storeRaw < storePlantedRaw ? storeRaw : storePlantedRaw;   // R159: what left takes its share of the basis
   const storeEarnedRaw = holdings.find((h) => h.asset === "stORE")?.earnedUnderlyingRaw ?? 0n;
@@ -58,10 +77,35 @@ export async function GET(request: Request) {
       // the chain could not be read just now: the rule's limit stands, as before
     }
   }
-  const last = plantings[plantings.length - 1] ?? null; // the newest confirmed planting, never one in flight or failed [A20]
+  // R281: a retired coin's planting is history the app hides; Home's rows and receipt come from live legs only.
+  const legOf = (id: string) => legs.find((x) => x.plantingId === id);
+  const livePlantings = plantings.filter((p) => { const l = legOf(p.id); return !l || COINS[l.asset].live; });
+  const last = livePlantings[livePlantings.length - 1] ?? null; // the newest confirmed live planting, never one in flight or failed [A20]
   const lastLegs = last ? legs.filter((l) => l.plantingId === last.id) : [];
   const lastAsset = lastLegs[0]?.asset ?? "SKR";
   const splitRow = (await repo.getSplitDay(day, rules.stop)) ?? (await repo.latestSplitDay(rules.stop));
+  // K-I5: the picks and the routing sentence after THIS user's 60% venue cap (the stored pick is the stop's, before it).
+  const prices = { USDC_LEND: days.USDC_LEND?.priceUsd ?? null, SOL_LEND: days.SOL_LEND?.priceUsd ?? null };
+  // Contracts 5.2: legsEnabled is null for a user with no leashed wallet; [] when the leash config cannot be read (nothing is enabled we can show).
+  const leashWallets = wallets.filter((w) => w.linkModel === "leash" && w.status !== "revoked");
+  let legsEnabled: LiveAsset[] | null = null;
+  let leashCfg: LeashConfig | null = null;
+  if (leashWallets.length) {
+    leashCfg = await readLeashConfig().catch(() => null);
+    legsEnabled = leashCfg ? [...new Set(enabledLegs(leashCfg).map((b) => LEG_SPEC[b].asset))] : [];
+  }
+  // Residual O2: a leashed user is shown only venues the leash allows (the run's set).
+  const routing = await userRouting({ repo, splitRow, positions: lendRead, prices, addUsd: Math.min(pending, rules.dailyCapCents) / 100, leash: leashAllowedFor(leashWallets.length > 0, leashCfg) });
+  const picks = routing.picks;
+  // Re-link (contracts 5.5, R287): this user's wallets still on the puller; a wallet on the leash or revoked never needs it.
+  const pullerWallets = wallets.filter((w) => w.linkModel === "puller" && w.status !== "revoked");
+  const open = await repo.openMoveProposal(user.seedVaultPubkey);
+  // R339 pilot: before go-live (LEASH_LIVE unset) a Seed Vault listed in RELINK_PILOT is asked to re-link its OWN wallet in the app
+  // (the one leash proof, runbook D6); never a web wallet, whose link page still names the puller before go-live.
+  const seedOnPuller = pullerWallets.filter((w) => w.pubkey === user.seedVaultPubkey);
+  const pilot = !leashLive() && relinkPilot().includes(user.seedVaultPubkey) && seedOnPuller.length > 0;
+  const asked = pilot ? seedOnPuller : pullerWallets;
+  const relinkBlock = { needed: pilot || (leashLive() && pullerWallets.length > 0), wallets: asked.map((w) => ({ pubkey: w.pubkey, via: w.pubkey === user.seedVaultPubkey ? "app" : "link_page" })) };
 
   return NextResponse.json(str({
     user: { pubkey: user.seedVaultPubkey, skrName: user.skrName, joinedAt: user.createdAt, wateredAt: user.wateredAt },
@@ -69,23 +113,36 @@ export async function GET(request: Request) {
       ...pot, storeRaw, storePutInRaw, storeEarnedRaw, storeRedeemRate: storePutInRaw > 0n ? await storeRedeemRate().catch(() => null) : null,
       skrUsd, storeUsd, asOf: new Date(),
     },
-    holdings,
+    holdings: allHoldings,
+    positions: positionsOut.map(({ earnedUnderlyingRaw: _e, ...p }) => p),
+    lendSigns: lendSignsFor({ picks, positions: positionsOut, rows: venueRows }),
     manager: {
       managed: rules.managed, stop: rules.stop, pins: rules.pins, changedDay: rules.allocationDay, undoAvailable: rules.prevAllocation !== null,
-      why: splitRow?.why ?? null, fallback: splitRow?.fallback ?? null, stopSplit: splitRow?.split ?? STOP_DEFAULTS[rules.stop],
+      why: routing.why, fallback: splitRow?.fallback ?? null, stopSplit: splitRow?.split ?? STOP_DEFAULTS[rules.stop],
+      picks, legsEnabled,
     },
+    relink: relinkBlock,
+    terms: { currentVersion: TERMS_VERSION, acceptedVersion: user.termsVersion },
+    moveProposal: open
+      ? { id: open.id, ts: open.ts, asset: open.asset, from: open.fromVenue, to: open.toVenue, receiptRaw: open.receiptRaw, valueUsd: open.valueUsd,
+          fromAvg7Pct: open.fromAvg7Pct, toAvg7Pct: open.toAvg7Pct, gain30dUsd: open.gain30dUsd, costUsd: open.costUsd,
+          // C-I2 4: a stored redeem signature is a move on its way: the app shows it as such, and build and dismiss refuse it (409).
+          inFlight: open.redeemSignature !== null }
+      : null,
     history: {
-      plantings: plantings.map((p) => {
-        const l = legs.find((x) => x.plantingId === p.id);
-        return { id: p.id, ts: p.ts, asset: l?.asset ?? "SKR", usdcInCents: l?.usdcInCents ?? 0, amountOutRaw: l?.amountOutRaw ?? 0n, feeCents: l?.feeCents ?? 0, signature: p.signature };
+      plantings: livePlantings.map((p) => {
+        const l = legOf(p.id);
+        return { id: p.id, ts: p.ts, asset: l?.asset ?? "SKR", usdcInCents: l?.usdcInCents ?? 0, amountOutRaw: l?.amountOutRaw ?? 0n, feeCents: l?.feeCents ?? 0, signature: p.signature,
+          venue: l?.venue ?? null, receiptOutRaw: l ? receiptOutRaw(l) : null, underlyingOutRaw: l ? underlyingOutRaw(l) : null };
       }),
-      picks: withdrawals.filter((w) => w.cancelSignature === null).map((w) => ({ ts: w.unstakeTs, asset: w.asset, amountRaw: w.amountRaw ?? 0n })),
+      picks: withdrawals.filter((w) => w.cancelSignature === null && COINS[w.asset].live).map((w) => ({ ts: w.unstakeTs, asset: w.asset, amountRaw: w.amountRaw ?? 0n })),
     },
     nextPlanting: { pendingCents: pending, thresholdCents: rules.plantThresholdCents, capLeftCents: capLeft, asset: nextAsset },
     lastReceipt: last
       ? { ts: last.ts, usdcPulledCents: last.usdcPulledCents, networkFeeCents: last.networkFeeCents, asset: lastAsset, amountOutRaw: lastLegs[0]?.amountOutRaw ?? 0n, feeCents: lastLegs[0]?.feeCents ?? 0,
           feeAmountRaw: lastLegs[0]?.feeAmountRaw ?? 0n, // R139: "0" on a new leg (the fee was in USDC and rounds to zero), so the app says "fee under 1 cent" as on Activity
           signature: last.signature,
+          venue: lastLegs[0]?.venue ?? null, receiptOutRaw: lastLegs[0] ? receiptOutRaw(lastLegs[0]) : null, underlyingOutRaw: lastLegs[0] ? underlyingOutRaw(lastLegs[0]) : null,
           usdPrice: lastAsset === "SKR" ? skrUsd : (days[lastAsset]?.priceUsd ?? (lastAsset === "stORE" ? storeUsd : null)) }
       : null,
     basket: pendingBasket
@@ -94,7 +151,7 @@ export async function GET(request: Request) {
           readyAt: pot.skrUnstakeReadyAt ?? new Date(pendingBasket.unstakeTs.getTime() + COOLDOWN_MS), delivered: false, deliveredSignature: null,
         }
       : null,
-    wallets: wallets.map((w) => ({ pubkey: w.pubkey, status: w.status, dailyCapCents: w.dailyCapCents })),
+    wallets: wallets.map((w) => ({ pubkey: w.pubkey, status: w.status, dailyCapCents: w.dailyCapCents, linkModel: w.linkModel })),
     rules: rulesRowToRules(rules),
   }));
 }

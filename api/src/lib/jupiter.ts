@@ -15,6 +15,9 @@ export type SwapInstructionsResponse = {
 
 export type Quote = { inputMint: string; outputMint: string; inAmount: string; outAmount: string; otherAmountThreshold: string; priceImpactPct: string; routePlan: unknown[] };
 
+/** T21 minor (final review): every Jupiter call stops at 10 s, as the venue reads do (venues/rates.ts getJson). */
+const timeout = () => AbortSignal.timeout(10_000);
+
 function headers(): Record<string, string> {
   return { "x-api-key": config().jupiterApiKey, "content-type": "application/json" };
 }
@@ -38,9 +41,12 @@ export const JUPITER_AGGREGATOR = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4";
 const ATA_PROGRAM = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL";
 const TOKEN_PROGRAMS = new Set<string>(["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"]);
 const COMPUTE_BUDGET = "ComputeBudget111111111111111111111111111111";
-/** Token instruction tags Jupiter's setup and cleanup legitimately use: SyncNative (17) and CloseAccount (9), both on wSOL. */
+/**
+ * The one Token instruction Jupiter's setup or cleanup may carry: SyncNative (17) on the puller's wSOL. CloseAccount (9) is REFUSED
+ * (Task 11 review I1): the puller's wSOL account pools every user's WSOL carry, and with `wrapAndUnwrapSol: false` Jupiter never
+ * needs to close it; a close would unwrap the other users' carry into the puller's lamports.
+ */
 const SYNC_NATIVE = 17;
-const CLOSE_ACCOUNT = 9;
 
 /**
  * Where each Jupiter v6 route instruction puts its output, by Anchor discriminator (sha256("global:<name>")[0..8]). The plain
@@ -50,13 +56,15 @@ const CLOSE_ACCOUNT = 9;
  * Live responses on 2026-10-03 (all six coins, 2 USDC) used only `route` (SKR, cbBTC, stORE) and `shared_accounts_route`
  * (hSOL, JitoSOL, JupSOL).
  */
-const OUTPUT_SLOTS: Record<string, { user: number; custom: number } | { shared: number }> = {
-  e517cb977ae3ad2a: { user: 3, custom: 4 }, // route
-  "96564774a75d0e68": { user: 3, custom: 4 }, // route_with_token_ledger
-  d033ef977b2bed5c: { user: 3, custom: 4 }, // exact_out_route
-  c1209b3341d69c81: { shared: 6 }, // shared_accounts_route
-  e6798f50779f6aaa: { shared: 6 }, // shared_accounts_route_with_token_ledger
-  b0d169a89a7d453e: { shared: 6 }, // shared_accounts_exact_out_route
+// `source` (Task 11 review I1): where the route takes its input, `user_source_token_account` at 2 in the plain routes and
+// `source_token_account` at 3 in the shared-accounts routes (Jupiter v6 IDL).
+const OUTPUT_SLOTS: Record<string, ({ user: number; custom: number } | { shared: number }) & { source: number }> = {
+  e517cb977ae3ad2a: { user: 3, custom: 4, source: 2 }, // route
+  "96564774a75d0e68": { user: 3, custom: 4, source: 2 }, // route_with_token_ledger
+  d033ef977b2bed5c: { user: 3, custom: 4, source: 2 }, // exact_out_route
+  c1209b3341d69c81: { shared: 6, source: 3 }, // shared_accounts_route
+  e6798f50779f6aaa: { shared: 6, source: 3 }, // shared_accounts_route_with_token_ledger
+  b0d169a89a7d453e: { shared: 6, source: 3 }, // shared_accounts_exact_out_route
 };
 
 export type ParsedSwap = ReturnType<typeof parseSwapInstructions>;
@@ -86,9 +94,8 @@ function checkHelperInstruction(kind: string, ix: KitIx, a: { puller: string; de
     return;
   }
   if (TOKEN_PROGRAMS.has(prog)) {
-    if (data.length !== 1 || (data[0] !== SYNC_NATIVE && data[0] !== CLOSE_ACCOUNT)) refuse(`${kind} token instruction ${data[0]} is not SyncNative or CloseAccount`);
+    if (data.length !== 1 || data[0] !== SYNC_NATIVE) refuse(`${kind} token instruction ${data[0]} is not SyncNative (a CloseAccount of the pooled wSOL is refused)`);
     if (!a.wsolAccount || acc(0) !== a.wsolAccount) refuse(`${kind} token instruction on ${acc(0)}, not the puller's wSOL account`);
-    if (data[0] === CLOSE_ACCOUNT && (acc(1) !== a.puller || acc(2) !== a.puller)) refuse(`${kind} CloseAccount pays ${acc(1)}, not the puller`);
     return;
   }
   refuse(`${kind} program ${prog} is not allowed`);
@@ -121,7 +128,7 @@ function checkOutput(swap: KitIx, destination: string): void {
  * must be compute budget, nobody but the puller may be a signer, the fee account must appear in the swap, and the swap must deliver
  * to `destination` (the user's token account for a wallet coin, the puller's SKR account for SKR) in its output position.
  */
-export function checkSwapInstructions(p: ParsedSwap, a: { puller: string; feeAccount?: string; destination?: string; destinationOwner?: string; wsolAccount?: string }): void {
+export function checkSwapInstructions(p: ParsedSwap, a: { puller: string; feeAccount?: string; destination: string; destinationOwner?: string; wsolAccount?: string; source?: string }): void {
   if (p.swap.programAddress !== JUPITER_AGGREGATOR) refuse(`swap program is ${p.swap.programAddress}`);
   const { disc, slots } = swapLayout(p.swap);
   if (!slots) refuse(`swap instruction ${disc} is not a known route layout`);
@@ -137,7 +144,15 @@ export function checkSwapInstructions(p: ParsedSwap, a: { puller: string; feeAcc
   }
   const swapAccounts = new Set((p.swap.accounts ?? []).map((x) => x.address as string));
   if (a.feeAccount && !swapAccounts.has(a.feeAccount)) refuse("the fee account is missing from the swap");
-  if (a.destination) checkOutput(p.swap, a.destination);
+  // Step 0 (T9, security scan): a destination is mandatory. Without one the output position went unchecked, so a lending leg that
+  // reached the coin-swap path could be routed anywhere; every caller pins where the swap must deliver.
+  if (!a.destination) refuse("no pinned destination: the swap's output position cannot be checked");
+  checkOutput(p.swap, a.destination);
+  // Task 11 review I1: the route must spend from `source` (the puller's USDC pull receiver), never another pooled float (its SKR, its wSOL).
+  if (a.source !== undefined) {
+    const at = (p.swap.accounts ?? [])[slots!.source]?.address as string | undefined;
+    if (at !== a.source) refuse(`the swap spends from ${at}, not the puller's USDC account`);
+  }
 }
 
 /** The quote's mints against the registry's (spec 7.3): the only place a wrong coin could enter is Jupiter's answer, so it is checked before anything is signed. */
@@ -182,7 +197,7 @@ export async function getQuote(a: {
     maxAccounts: String(a.maxAccounts ?? 24), onlyDirectRoutes: String(a.onlyDirectRoutes ?? false), restrictIntermediateTokens: "true",
     ...(a.platformFeeBps ? { platformFeeBps: String(a.platformFeeBps) } : {}),
   });
-  const res = await fetch(`${BASE}/swap/v1/quote?${q}`, { headers: headers() });
+  const res = await fetch(`${BASE}/swap/v1/quote?${q}`, { headers: headers(), signal: timeout() });
   if (!res.ok) throw new Error(`Jupiter quote failed: ${res.status} ${(await res.text()).slice(0, 200)}`);
   const quote = (await res.json()) as Quote;
   // Every caller gets a quote whose minimum matches the slippage it asked for (R207 #4).
@@ -195,6 +210,7 @@ export async function getSwapInstructions(a: { quote: Quote; userPublicKey: Addr
   const res = await fetch(`${BASE}/swap/v1/swap-instructions`, {
     method: "POST",
     headers: headers(),
+    signal: timeout(),
     body: JSON.stringify({
       quoteResponse: a.quote, userPublicKey: a.userPublicKey, wrapAndUnwrapSol: false, dynamicComputeUnitLimit: true,
       ...(a.destinationTokenAccount ? { destinationTokenAccount: a.destinationTokenAccount } : {}),
@@ -208,7 +224,7 @@ export async function getSwapInstructions(a: { quote: Quote; userPublicKey: Addr
 /** Current USD price of a mint from Jupiter's price API, or null when unknown. */
 export async function priceUsd(mint: string): Promise<number | null> {
   try {
-    const res = await fetch(`${BASE}/price/v3?ids=${mint}`, { headers: headers() });
+    const res = await fetch(`${BASE}/price/v3?ids=${mint}`, { headers: headers(), signal: timeout() });
     if (!res.ok) return null;
     const j = (await res.json()) as Record<string, { usdPrice?: number } | undefined>;
     const p = j[mint]?.usdPrice;
@@ -222,7 +238,7 @@ export type PriceInfo = { usdPrice: number; liquidity: number | null; priceChang
 
 /** Several mints' prices in one call (the daily snapshot, spec 5.2); a mint the API does not know is simply absent. Throws on a failed call so the snapshot marks the day. */
 export async function pricesUsd(mints: string[]): Promise<Record<string, PriceInfo>> {
-  const res = await fetch(`${BASE}/price/v3?ids=${mints.join(",")}`, { headers: headers() });
+  const res = await fetch(`${BASE}/price/v3?ids=${mints.join(",")}`, { headers: headers(), signal: timeout() });
   if (!res.ok) throw new Error(`Jupiter price failed: ${res.status}`);
   const j = (await res.json()) as Record<string, { usdPrice?: number; liquidity?: number; priceChange24h?: number; decimals?: number } | undefined>;
   const out: Record<string, PriceInfo> = {};

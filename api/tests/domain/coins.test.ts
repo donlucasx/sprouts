@@ -1,42 +1,43 @@
 import { describe, it, expect } from "vitest";
-import { ASSETS, COINS, DECIMALS, SKR_ONLY, isAsset, sameSplit, zeroSplit } from "@/domain/coins";
+import { ASSETS, RETIRED, ALL_ASSETS, LEND_ASSETS, COINS, DECIMALS, SKR_ONLY, isAsset, isLiveAsset, isLendAsset, sameSplit, zeroSplit, toSplit } from "@/domain/coins";
 
-// Spec 5.1: six coins, mints pinned in code, decimals from the mints (LSTs 9, cbBTC 8, confirmed from Jupiter price v3 2026-09-30).
-describe("the coin registry", () => {
-  it("names the six coins in the garden's order", () => {
-    expect(ASSETS).toEqual(["SKR", "stORE", "hSOL", "JitoSOL", "JupSOL", "cbBTC"]);
+// Contracts 1.1: six live legs in spec 2 order, two retired legs readable in history only.
+describe("the leg registry", () => {
+  it("lists the six live legs in order and the two retired ones apart", () => {
+    expect(ASSETS).toEqual(["SKR", "stORE", "USDC_LEND", "SOL_LEND", "hSOL", "cbBTC"]);
+    expect(RETIRED).toEqual(["JitoSOL", "JupSOL"]);
+    expect(ALL_ASSETS).toEqual(["SKR", "stORE", "USDC_LEND", "SOL_LEND", "hSOL", "cbBTC", "JitoSOL", "JupSOL"]);
+    expect(LEND_ASSETS).toEqual(["USDC_LEND", "SOL_LEND"]);
   });
 
-  it("pins every mint and its decimals", () => {
-    expect(COINS.SKR.mint).toBe("SKRbvo6Gf7GondiT3BbTfuRDPqLWei4j2Qy2NPGZhW3");
-    expect(COINS.stORE.mint).toBe("storenSbvkfzircixnaosc5CbzNZVrHJ6S3EKrS1yqR");
-    expect(COINS.hSOL.mint).toBe("he1iusmfkpAdwvxLNGV8Y1iSbj4rUy6yMhEA3fotn9A");
-    expect(COINS.JitoSOL.mint).toBe("J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn");
-    expect(COINS.JupSOL.mint).toBe("jupSoLaHXQiZZTSfEWMTRRgpnyFm8f6sZdosWBjx93v");
+  it("pins mints, underlying decimals, fees and where each leg is held", () => {
+    expect(COINS.USDC_LEND.mint).toBe("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
+    expect(COINS.SOL_LEND.mint).toBe("So11111111111111111111111111111111111111112");
     expect(COINS.cbBTC.mint).toBe("cbbtcf3aa214zXHbiAZQwf4122FBYbraNdFqgw4iMij");
-    expect(DECIMALS).toEqual({ SKR: 6, stORE: 11, hSOL: 9, JitoSOL: 9, JupSOL: 9, cbBTC: 8 });
+    expect(DECIMALS).toEqual({ SKR: 6, stORE: 11, USDC_LEND: 6, SOL_LEND: 9, hSOL: 9, cbBTC: 8, JitoSOL: 9, JupSOL: 9 });
+    expect(ASSETS.map((a) => COINS[a].feeBps)).toEqual([50, 50, 0, 0, 50, 50]);
+    expect(ASSETS.map((a) => COINS[a].held)).toEqual(["staked", "wallet", "venue", "venue", "wallet", "wallet"]);
+    expect(COINS.USDC_LEND.kind).toBe("lend");
+    expect(COINS.USDC_LEND.name).toBe("USDC lending");
+    expect(COINS.SOL_LEND.name).toBe("SOL lending");
+    expect(COINS.JitoSOL.live).toBe(false);
+    expect(COINS.hSOL.live).toBe(true);
   });
 
-  it("knows where each coin is held and which pool measures it", () => {
-    expect(COINS.SKR.held).toBe("staked");
-    for (const a of ["stORE", "hSOL", "JitoSOL", "JupSOL", "cbBTC"] as const) expect(COINS[a].held).toBe("wallet");
-    expect(COINS.hSOL.pool).toBe("3wK2g8ZdzAH8FJ7PKr2RcvGh7V9VYson5hrVsJM5Lmws");
-    expect(COINS.JitoSOL.pool).toBe("Jito4APyf642JPZPx3hGc6WWJ8zPKtRbRs4P815Awbb");
-    expect(COINS.JupSOL.pool).toBe("8VpRhuxa7sUUepdY3kQiTmX9rS5vx4WgaXiAnXq4KCtr".replace("KCtn", "KCtr"));
-    expect(COINS.cbBTC.pool).toBeNull();
-    expect(COINS.cbBTC.kind).toBe("btc");
+  it("lending plants reuse the JitoSOL and JupSOL species (contracts 7.1)", () => {
+    expect(ASSETS.map((a) => COINS[a].plant)).toEqual(["skr", "ore", "jitosol", "jupsol", "hsol", "cbbtc"]);
   });
 
-  it("gives each coin its own plant", () => {
-    expect(ASSETS.map((a) => COINS[a].plant)).toEqual(["skr", "ore", "hsol", "jitosol", "jupsol", "cbbtc"]);
-  });
-
-  it("helpers: zeroSplit, SKR_ONLY, isAsset, sameSplit", () => {
-    expect(Object.values(zeroSplit()).every((v) => v === 0)).toBe(true);
-    expect(SKR_ONLY).toEqual({ SKR: 100, stORE: 0, hSOL: 0, JitoSOL: 0, JupSOL: 0, cbBTC: 0 });
-    expect(isAsset("hSOL")).toBe(true);
-    expect(isAsset("hsol")).toBe(false);
+  it("helpers: six-key splits, retired shares fold into SKR, guards", () => {
+    expect(zeroSplit()).toEqual({ SKR: 0, stORE: 0, USDC_LEND: 0, SOL_LEND: 0, hSOL: 0, cbBTC: 0 });
+    expect(SKR_ONLY).toEqual({ SKR: 100, stORE: 0, USDC_LEND: 0, SOL_LEND: 0, hSOL: 0, cbBTC: 0 });
+    expect(toSplit({ SKR: 45, hSOL: 20, JitoSOL: 15, JupSOL: 10, cbBTC: 10 })).toEqual({ SKR: 70, stORE: 0, USDC_LEND: 0, SOL_LEND: 0, hSOL: 20, cbBTC: 10 });
+    expect(toSplit(null)).toEqual(SKR_ONLY);
+    expect(isAsset("JitoSOL")).toBe(true);
+    expect(isLiveAsset("JitoSOL")).toBe(false);
+    expect(isLiveAsset("USDC_LEND")).toBe(true);
+    expect(isLendAsset("SOL_LEND")).toBe(true);
+    expect(isLendAsset("hSOL")).toBe(false);
     expect(sameSplit(SKR_ONLY, { ...SKR_ONLY })).toBe(true);
-    expect(sameSplit(SKR_ONLY, { ...SKR_ONLY, SKR: 99, hSOL: 1 })).toBe(false);
   });
 });

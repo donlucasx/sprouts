@@ -13,7 +13,7 @@ vi.mock("@/lib/staking", () => ({
 }));
 vi.mock("@/lib/jupiter", () => ({ priceUsd: vi.fn(async () => 0.0183) }));
 vi.mock("@/lib/store", () => ({ storeBalanceRaw: vi.fn(async () => 0n), storeRedeemRate: vi.fn(async () => 1_049_600_000n) }));
-vi.mock("@/lib/holdings", async (orig) => ({ ...(await orig<object>()), readHoldings: vi.fn(async () => ({ hSOL: 2_000_000_000n, cbBTC: 0n })) }));
+vi.mock("@/lib/holdings", async (orig) => ({ ...(await orig<object>()), readHoldings: vi.fn(async () => ({ hSOL: 2_000_000_000n, cbBTC: 0n })), readLendingPositions: vi.fn(async () => []) }));
 vi.mock("@/lib/subscriptions", () => ({ readDelegation: vi.fn(async () => ({ exists: true, amountPerPeriodRaw: 5_000_000n, pulledInPeriodRaw: 2_180_000n, periodStartTs: BigInt(Math.floor(Date.now() / 1000) - 600), periodLengthS: 86_400n })) }));
 
 import { GET as me } from "@/app/api/me/route";
@@ -30,12 +30,12 @@ describe("GET /api/me with the Yield Manager (spec 7.7)", () => {
     await repo.addWallet({ pubkey: "W", userPubkey: U, delegationPda: U, dailyCapCents: 500 }); // a real address: the route validates it before reading the delegation
     await repo.bumpLedger("W", "SKR", 200);
     const p = await repo.insertPlanting({ userPubkey: U, walletPubkey: "W", signature: "sig", usdcPulledCents: 203, networkFeeCents: 3, status: "confirmed", aiLine: null },
-      [{ asset: "hSOL", usdcInCents: 200, amountOutRaw: 1_000_000_000n, staked: false, feeAmountRaw: 0n, feeCents: 1, rateAtPlanting: 1.18 }]);
+      [{ asset: "hSOL", usdcInCents: 200, amountOutRaw: 1_000_000_000n, staked: false, feeAmountRaw: 0n, feeCents: 1, rateAtPlanting: 1.18, venue: null }]);
     await repo.setPlantingShares(p.id, { before: 0n, after: 0n, minted: 0n });
     const today = new Date().toISOString().slice(0, 10);
     await repo.putCoinDay({ day: today, asset: "hSOL", rate: 1.2, ratePrev: null, ratePrevDays: null, priceUsd: 168, liquidityUsd: 1e8, priceChange24h: 0, tradeable: true, lastUpdateEpoch: 1047, ok: true });
-    await repo.putSplitDay({ day: today, stop: "balanced", split: split({ SKR: 40, stORE: 5, hSOL: 25, JitoSOL: 15, JupSOL: 10, cbBTC: 5 }), modelAnswer: null, why: "hSOL grew the most.", fallback: null, callId: 1 });
-    await repo.saveRules(U, { managed: true, stop: "balanced", allocation: split({ SKR: 40, stORE: 5, hSOL: 25, JitoSOL: 15, JupSOL: 10, cbBTC: 5 }), prevAllocation: split({ SKR: 100 }), allocationDay: today });
+    await repo.putSplitDay({ day: today, stop: "balanced", split: split({ SKR: 40, stORE: 5, hSOL: 25, USDC_LEND: 15, SOL_LEND: 10, cbBTC: 5 }), modelAnswer: null, why: "hSOL grew the most.", fallback: null, callId: 1, venuePick: null });
+    await repo.saveRules(U, { managed: true, stop: "balanced", allocation: split({ SKR: 40, stORE: 5, hSOL: 25, USDC_LEND: 15, SOL_LEND: 10, cbBTC: 5 }), prevAllocation: split({ SKR: 100 }), allocationDay: today });
   });
 
   it("serves holdings with earned, the manager block, a real cap left, and the receipt's price", async () => {

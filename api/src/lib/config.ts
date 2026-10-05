@@ -1,3 +1,4 @@
+/** K-M9 (10-04): no SESSION_SECRET: sessions are opaque random tokens stored as SHA-256 hashes (lib/session.ts); nothing signs with a secret. */
 export type Config = {
   heliusApiKey: string;
   heliusRpcUrl: string;
@@ -5,13 +6,14 @@ export type Config = {
   supabaseUrl: string;
   supabaseServiceKey: string;
   pullerSecretKey: string;
-  sessionSecret: string;
   cronSecret: string;
   heliusWebhookSecret: string;
   appOrigin: string;
   feeWallet: string;
   heliusWebhookId: string;
   anthropicApiKey: string;
+  /** Optional since R324 (10-04 s20): nothing posts a Pyth price, so nothing reads it but the deferred Hermes path (lib/pyth.ts). */
+  pythApiKey: string | undefined;
 };
 
 const MAP: Record<keyof Config, string> = {
@@ -21,14 +23,17 @@ const MAP: Record<keyof Config, string> = {
   supabaseUrl: "SUPABASE_URL",
   supabaseServiceKey: "SUPABASE_SERVICE_KEY",
   pullerSecretKey: "PULLER_SECRET_KEY",
-  sessionSecret: "SESSION_SECRET",
   cronSecret: "CRON_SECRET",
   heliusWebhookSecret: "HELIUS_WEBHOOK_SECRET",
   appOrigin: "APP_ORIGIN",
   feeWallet: "FEE_WALLET",
   heliusWebhookId: "HELIUS_WEBHOOK_ID",
   anthropicApiKey: "ANTHROPIC_API_KEY",
+  pythApiKey: "PYTH_API_KEY",
 };
+
+/** Settings that may be absent: reading one returns undefined instead of throwing. */
+const OPTIONAL: ReadonlySet<keyof Config> = new Set(["pythApiKey"]);
 
 let cached: Config | null = null;
 
@@ -42,7 +47,10 @@ export function config(): Config {
       enumerable: false,
       get() {
         const value = process.env[MAP[key]];
-        if (!value) throw new Error(`Missing env: ${MAP[key]}`);
+        if (!value) {
+          if (OPTIONAL.has(key)) return undefined;
+          throw new Error(`Missing env: ${MAP[key]}`);
+        }
         return value;
       },
     });

@@ -6,6 +6,7 @@ import { getRepo } from "@/db/repo";
 import { clientIp, rateLimited } from "@/lib/auth-guard";
 import { buildApproveOnceIxs, buildRevokeDelegationIx, delegationPda, readDelegation, readSubscriptionAuthority, readUsdcAtaExists } from "@/lib/subscriptions";
 import { pullerSigner } from "@/lib/puller";
+import { leashLive, leashPda } from "@/lib/leash";
 import { rpc } from "@/lib/rpc";
 import { ownerLabel } from "@/lib/owner-label";
 
@@ -49,12 +50,18 @@ export async function GET(request: Request, ctx: { params: Promise<{ code: strin
   }
 
   const puller = (await pullerSigner()).address;
-  const pda = await delegationPda({ delegator: wallet, delegatee: puller, nonce: link.nonce });
+  // R297 / contracts 3.4: after go-live new links point at the leash PDA of (this wallet, this garden); before, at the puller.
+  const delegatee = leashLive() ? await leashPda(wallet, address(link.userPubkey)) : puller;
+  const pda = await delegationPda({ delegator: wallet, delegatee, nonce: link.nonce });
+  if (link.walletPubkey && link.delegationPda && link.delegationPda !== pda) {
+    // Bound before the go-live switch flipped (or the puller rotated): the confirm would look for the old delegation, so stop here.
+    return NextResponse.json({ error: "This code was made before Sprouts changed how links work. Get a new code in the app, then try again." }, { status: 409 });
+  }
 
   // A wallet that linked before already has its USDC authority on chain: re-init would fail, so the create carries its init id.
   // A wallet with no USDC account yet gets it created in the same approval (the init needs it).
   const [authority, ataExists] = await Promise.all([readSubscriptionAuthority(wallet), readUsdcAtaExists(wallet)]);
-  const ixs = await buildApproveOnceIxs({ delegator: wallet, delegatee: puller, capRaw: DAILY_CAP_RAW, nonce: link.nonce, existingInitId: authority.exists ? authority.initId : undefined, createAta: !ataExists });
+  const ixs = await buildApproveOnceIxs({ delegator: wallet, delegatee, capRaw: DAILY_CAP_RAW, nonce: link.nonce, existingInitId: authority.exists ? authority.initId : undefined, createAta: !ataExists });
   // One delegation per wallet: if the previous one is still live, the same approval revokes it first (review I4).
   let revokes: string | null = null;
   if (existing && existing.delegationPda !== pda && (await readDelegation(address(existing.delegationPda))).exists) {
@@ -75,7 +82,7 @@ export async function GET(request: Request, ctx: { params: Promise<{ code: strin
   if (sim.value.err) return NextResponse.json({ error: simulationError(sim.value.err, sim.value.logs ?? []) }, { status: 400 });
   if (!link.walletPubkey) await repo.bindLinkCode(link.code, wallet, pda);
   const owner = ownerLabel(await repo.getUser(link.userPubkey), link.userPubkey);
-  return NextResponse.json({ transaction, cap: DAILY_CAP_CENTS, puller, delegationPda: pda, revokes, owner });
+  return NextResponse.json({ transaction, cap: DAILY_CAP_CENTS, puller, delegatee, delegationPda: pda, revokes, owner });
 }
 
 /** A failed simulation in the words the user needs: no SOL for the rent and fee, or a failure that would happen on chain. */

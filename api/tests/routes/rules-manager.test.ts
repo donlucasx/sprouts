@@ -26,12 +26,12 @@ beforeEach(async () => {
 // Spec 3.1 and 4.2: the switch, the stop and the pins are saved with the rest, never a raise; the split is recomputed at once.
 describe("PUT /api/rules with the Yield Manager", () => {
   it("turning it on takes the stop's latest split at once and records the change as yours", async () => {
-    await repo.putSplitDay({ day: "2026-10-01", stop: "balanced", split: split({ SKR: 40, stORE: 5, hSOL: 25, JitoSOL: 15, JupSOL: 10, cbBTC: 5 }), modelAnswer: null, why: "w", fallback: null, callId: 1 });
+    await repo.putSplitDay({ day: "2026-10-01", stop: "balanced", split: split({ SKR: 40, stORE: 5, hSOL: 25, USDC_LEND: 15, SOL_LEND: 10, cbBTC: 5 }), modelAnswer: null, why: "w", fallback: null, callId: 1, venuePick: null });
     const res = await put({ managed: true, stop: "balanced" });
     expect(res.status).toBe(200);
     const body = (await res.json()) as { managed: boolean; stop: string; allocation: Split };
     expect(body.managed).toBe(true);
-    expect(body.allocation).toEqual(split({ SKR: 40, stORE: 5, hSOL: 25, JitoSOL: 15, JupSOL: 10, cbBTC: 5 }));
+    expect(body.allocation).toEqual(split({ SKR: 40, stORE: 5, hSOL: 25, USDC_LEND: 15, SOL_LEND: 10, cbBTC: 5 }));
     const ev = repo.events.find((e) => e.kind === "split_changed")!;
     expect((ev.detail as { by: string }).by).toBe("you");
     expect((ev.detail as { managed: boolean; managedWas: boolean }).managedWas).toBe(false); // the switch moved off to on by this save
@@ -90,7 +90,7 @@ describe("PUT /api/rules with the Yield Manager", () => {
 
   it("after an undo, turning the manager back on drops the pins the undo made (R137)", async () => {
     const prior = split({ SKR: 60, hSOL: 20, cbBTC: 20 });
-    await repo.saveRules(U, { managed: true, stop: "balanced", allocation: split({ SKR: 45, hSOL: 25, JitoSOL: 15, JupSOL: 10, cbBTC: 5 }), prevAllocation: prior, allocationDay: "2026-10-02" });
+    await repo.saveRules(U, { managed: true, stop: "balanced", allocation: split({ SKR: 45, hSOL: 25, USDC_LEND: 15, SOL_LEND: 10, cbBTC: 5 }), prevAllocation: prior, allocationDay: "2026-10-02" });
     const undone = (await (await undoNow()).json()) as { pins: Record<string, number>; managed: boolean };
     expect(undone.pins).toEqual({ hSOL: 20, cbBTC: 20 });
     expect((await repo.getRules(U)).pinsByUndo).toBe(true);
@@ -102,7 +102,7 @@ describe("PUT /api/rules with the Yield Manager", () => {
   });
 
   it("a pin set by hand after the undo survives the flip back on (R137)", async () => {
-    await repo.saveRules(U, { managed: true, stop: "balanced", allocation: split({ SKR: 45, hSOL: 25, JitoSOL: 15, JupSOL: 10, cbBTC: 5 }), prevAllocation: split({ SKR: 60, hSOL: 20, cbBTC: 20 }), allocationDay: "2026-10-02" });
+    await repo.saveRules(U, { managed: true, stop: "balanced", allocation: split({ SKR: 45, hSOL: 25, USDC_LEND: 15, SOL_LEND: 10, cbBTC: 5 }), prevAllocation: split({ SKR: 60, hSOL: 20, cbBTC: 20 }), allocationDay: "2026-10-02" });
     await undoNow();
     const mine = (await (await put({ pins: { cbBTC: 10 } })).json()) as { pins: Record<string, number> };
     expect(mine.pins).toEqual({ cbBTC: 10 });
@@ -113,7 +113,7 @@ describe("PUT /api/rules with the Yield Manager", () => {
   });
 
   it("a save that turns the manager on AND carries pins after an undo keeps the pins it carries (R137, review M6)", async () => {
-    await repo.saveRules(U, { managed: true, stop: "balanced", allocation: split({ SKR: 45, hSOL: 25, JitoSOL: 15, JupSOL: 10, cbBTC: 5 }), prevAllocation: split({ SKR: 60, hSOL: 20, cbBTC: 20 }), allocationDay: "2026-10-02" });
+    await repo.saveRules(U, { managed: true, stop: "balanced", allocation: split({ SKR: 45, hSOL: 25, USDC_LEND: 15, SOL_LEND: 10, cbBTC: 5 }), prevAllocation: split({ SKR: 60, hSOL: 20, cbBTC: 20 }), allocationDay: "2026-10-02" });
     await undoNow();
     const on = (await (await put({ managed: true, pins: { cbBTC: 10 } })).json()) as { pins: Record<string, number>; allocation: Split };
     expect(on.pins).toEqual({ cbBTC: 10 });
@@ -152,14 +152,14 @@ describe("PUT /api/rules with the Yield Manager", () => {
 
 describe("POST /api/rules/undo (spec 4.5, R122)", () => {
   it("puts yesterday's split back as pins, turns the manager off, and records it", async () => {
-    const yesterday = split({ SKR: 45, stORE: 5, hSOL: 18, JitoSOL: 14, JupSOL: 9, cbBTC: 9 });
-    await repo.saveRules(U, { managed: true, stop: "balanced", allocation: split({ SKR: 40, stORE: 5, hSOL: 25, JitoSOL: 15, JupSOL: 10, cbBTC: 5 }), prevAllocation: yesterday, allocationDay: "2026-10-02" });
+    const yesterday = split({ SKR: 45, stORE: 5, hSOL: 18, USDC_LEND: 14, SOL_LEND: 9, cbBTC: 9 });
+    await repo.saveRules(U, { managed: true, stop: "balanced", allocation: split({ SKR: 40, stORE: 5, hSOL: 25, USDC_LEND: 15, SOL_LEND: 10, cbBTC: 5 }), prevAllocation: yesterday, allocationDay: "2026-10-02" });
     const res = await undoNow();
     expect(res.status).toBe(200);
     const body = (await res.json()) as { managed: boolean; pins: Record<string, number>; allocation: Split };
     expect(body.managed).toBe(false);
     expect(body.allocation).toEqual(yesterday);
-    expect(body.pins).toEqual({ stORE: 5, hSOL: 18, JitoSOL: 14, JupSOL: 9, cbBTC: 9 });
+    expect(body.pins).toEqual({ stORE: 5, hSOL: 18, USDC_LEND: 14, SOL_LEND: 9, cbBTC: 9 });
     expect(repo.events.some((e) => e.kind === "split_undone")).toBe(true);
     expect((await repo.getRules(U)).prevAllocation).toBeNull();
     expect((await undoNow()).status).toBe(409);

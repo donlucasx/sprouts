@@ -2,12 +2,14 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getRepo } from "@/db/repo";
 import { config } from "@/lib/config";
+import { redactError } from "@/lib/redact";
 import { verifySignIn, type SignInInput } from "@/lib/siws";
 import { verifyAnyGenesisHolder } from "@/lib/genesis";
 import { skrNameOf } from "@/lib/skr";
 import { issueSession } from "@/lib/session";
 import { readPosition, sharePrice } from "@/lib/staking";
 import { address } from "@solana/kit";
+import { TERMS_VERSION } from "@/lib/terms";
 
 export const runtime = "nodejs";
 
@@ -19,6 +21,8 @@ const Body = z.object({
   output: z.object({ address: z.string().min(32).max(44), signedMessage: z.string(), signature: z.string() }),
   /** The client's own installation id (R84: one live session per wallet per device); a client that names none shares one slot. */
   device: z.string().min(4).max(64).optional(),
+  /** R283, contracts 5.6: the Terms version the person accepted on the sign-in screen; only the current one is recorded. */
+  termsVersion: z.string().max(32).optional(),
 });
 
 /**
@@ -41,16 +45,22 @@ export async function POST(request: Request) {
   if (!(await repo.useNonce(input.nonce, output.address))) return NextResponse.json({ error: "This sign-in request expired. Try again." }, { status: 401 });
 
   const rpcUrl = config().heliusRpcUrl;
-  const genesis = await verifyAnyGenesisHolder(rpcUrl, output.address);
+  // K-M10: these two take the URL itself (web3.js Connection, a raw fetch); an error that quotes it is redacted before it propagates.
+  const genesis = await verifyAnyGenesisHolder(rpcUrl, output.address).catch((e: unknown) => { throw redactError(e); });
   if (!genesis) return NextResponse.json({ error: "This wallet holds no Genesis Token. The vault needs a Seeker or a Saga." }, { status: 403 });
 
-  const skrName = await skrNameOf(rpcUrl, output.address);
+  const skrName = await skrNameOf(rpcUrl, output.address).catch((e: unknown) => { throw redactError(e); });
   let created: boolean;
   try {
     ({ created } = await repo.upsertUser({ seedVaultPubkey: output.address, sgtMint: genesis.mint, skrName }));
   } catch (e) {
     if (e instanceof Error && e.message === "This phone is already registered.") return NextResponse.json({ error: e.message }, { status: 409 });
     throw e;
+  }
+  // The first acceptance of this version stands: a later sign-in neither moves its time nor adds an event.
+  if (parsed.data.termsVersion === TERMS_VERSION && (await repo.getUser(output.address))?.termsVersion !== TERMS_VERSION) {
+    await repo.setTermsAccepted(output.address, TERMS_VERSION, new Date());
+    await repo.addEvent({ userPubkey: output.address, walletPubkey: null, kind: "terms_accepted", detail: { version: TERMS_VERSION, at: "sign-in" } });
   }
   if (created) {
     // R61: what the Seeker already holds today is put in, never earned; the pot and the reconciliation count from here.
