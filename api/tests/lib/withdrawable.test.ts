@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { jupiterWithdrawableRaw } from "@/lib/venues/withdrawable";
+import { jupiterWithdrawableRaw } from "@/lib/venues/rates";
 
 const EARN = [
   { address: "9BEcn9aPEmhSPbPQeFGjidRiEKki46fVQDyPpSQXPA2D", liquiditySupplyData: { withdrawable: "123456789" } },
