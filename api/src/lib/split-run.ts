@@ -1,12 +1,14 @@
 import { z } from "zod";
 import type { Repo } from "@/db/repo";
-import type { SplitDayRow } from "@/db/types";
-import { ASSETS, STOP_ORDER, sameSplit, zeroSplit, type LiveAsset, type Split, type Stop } from "@/domain/coins";
+import type { FoundVenueRow, SplitDayRow, VenueDayRow } from "@/db/types";
+import { ASSETS, LEND_ASSETS, STOP_ORDER, isLendAsset, sameSplit, zeroSplit, type LendAsset, type LiveAsset, type Split, type Stop } from "@/domain/coins";
+import { VENUES, VENUE_NAME, isAutoVenue, pickVenue, venueCandidates, type AutoVenue, type Venue, type VetoReason } from "@/domain/venues";
 import { STOPS, STOP_DEFAULTS, STOP_LABEL, stopMax, clampSplit, fallbackSplit, checkWhy, templateWhy, effectiveSplit } from "@/domain/split";
 import { dayOf, addDays } from "@/domain/day";
 import { growth, priceChange } from "./coin-data";
 import { costMicrocents, MONTH_CAP_MICROCENTS } from "./watcher";
-import type { ModelCall, Usage } from "./anthropic";
+import { runToolLoop, type ConversationCall } from "./anthropic";
+import { getVenueRates, type FoundPool } from "./venues/rates";
 
 /**
  * The daily decision (spec section 6, R113): one forced tool call per risk stop, the answer clamped to the stop's table and the
@@ -18,22 +20,30 @@ export type CoinFacts = { asset: LiveAsset; growthPct: number | null; days: numb
 
 const Int = z.number().int().min(0).max(100);
 const SUM_MESSAGE = "the six numbers must sum to 100";
-const Answer = z.object({ SKR: Int, stORE: Int, USDC_LEND: Int, SOL_LEND: Int, hSOL: Int, cbBTC: Int, why: z.string().min(1).max(200) }).strict()
-  .refine((o) => ASSETS.reduce((s, a) => s + o[a], 0) === 100, { message: SUM_MESSAGE });
 const badSum = (e: z.ZodError) => e.issues.some((i) => i.message === SUM_MESSAGE);
 
-const TOOL = {
+const Verdict = z.object({ venue: z.enum(["kamino_klend", "jupiter_lend"]), asset: z.enum(["USDC_LEND", "SOL_LEND"]), verdict: z.enum(["ok", "avoid"]), reason: z.enum(["incentive_spike", "near_full", "deposits_fleeing", "data_suspect"]).optional() }).strict()
+  .refine((v) => (v.verdict === "avoid") === (v.reason !== undefined), { message: "an avoid needs exactly one reason" });
+const Found = z.object({ poolId: z.string().min(1).max(64), note: z.string().min(1).max(140) }).strict();
+const Answer = z.object({ SKR: Int, stORE: Int, USDC_LEND: Int, SOL_LEND: Int, hSOL: Int, cbBTC: Int, verdicts: z.array(Verdict).max(4).default([]), found: z.array(Found).max(5).default([]), why: z.string().min(1).max(200) }).strict()
+  .refine((o) => ASSETS.reduce((s, a) => s + o[a], 0) === 100, { message: SUM_MESSAGE });
+
+const SET_SPLIT = {
   name: "set_split",
-  description: "Today's split of new round-ups across the six coins, in whole percents summing to 100, and one line saying why.",
+  description: "Today's split of new round-ups across the six legs in whole percents summing to 100, a verdict per auto venue and asset, the scout's pools worth a human look, and one line saying why.",
   input_schema: {
     type: "object",
     properties: {
       SKR: { type: "integer" }, stORE: { type: "integer" }, USDC_LEND: { type: "integer" }, SOL_LEND: { type: "integer" }, hSOL: { type: "integer" }, cbBTC: { type: "integer" },
-      why: { type: "string", description: "One line, under 25 words, second person, plain words, no advice, no exclamation marks, quoting only numbers from the table, saying why today's split leans where it does." },
+      verdicts: { type: "array", items: { type: "object", properties: { venue: { enum: ["kamino_klend", "jupiter_lend"] }, asset: { enum: ["USDC_LEND", "SOL_LEND"] }, verdict: { enum: ["ok", "avoid"] }, reason: { enum: ["incentive_spike", "near_full", "deposits_fleeing", "data_suspect"] } }, required: ["venue", "asset", "verdict"] } },
+      found: { type: "array", items: { type: "object", properties: { poolId: { type: "string" }, note: { type: "string" } }, required: ["poolId", "note"] } },
+      why: { type: "string", description: "One line, under 25 words, second person, plain words, no advice, no exclamation marks, quoting only numbers you were given. When USDC lending gets a share, say where it goes, as in 'Your USDC goes to Kamino, 4.4% vs Jupiter 4.2%'." },
     },
-    required: ["SKR", "stORE", "USDC_LEND", "SOL_LEND", "hSOL", "cbBTC", "why"],
+    required: ["SKR", "stORE", "USDC_LEND", "SOL_LEND", "hSOL", "cbBTC", "verdicts", "found", "why"],
   },
 };
+const GET_VENUE_RATES = { name: "get_venue_rates", description: "Today's measured numbers for one lending venue: supply rate (actual), rewards share, utilization, withdrawable, TVL, and our own 7-day average.", input_schema: { type: "object", properties: { venue: { enum: ["kamino_klend", "jupiter_lend", "kamino_sm_vault", "marginfi", "lulo_protected"] } }, required: ["venue"] } };
+const SCOUT_YIELDS = { name: "scout_yields", description: "Single-asset USDC and SOL pools on Solana above $10M TVL from a public yield feed (labels unreliable; display only, money never goes there).", input_schema: { type: "object", properties: {} } };
 
 const system = (stop: Stop) => [
   `You choose how Sprouts splits new round-ups across six coins for its ${STOP_LABEL[stop]} setting. Every number you are given was measured by code.`,
@@ -42,6 +52,9 @@ const system = (stop: Stop) => [
   'Say "your coins", "your split": the line speaks to the person whose round-ups these are.',
   // R177: stORE's growth has a source the other coins lack; the line names it when the split leans to stORE.
   'stORE grows from ORE mining fees. When today\'s split leans to stORE, say where its growth comes from, as in "stORE pays the most this week, from ORE mining fees".',
+  "Two legs lend: USDC lending and SOL lending. Before you answer, call get_venue_rates for kamino_klend and jupiter_lend (the table-only venues kamino_sm_vault, marginfi and lulo_protected are optional), and scout_yields once if it is offered.",
+  "For each auto venue and asset give a verdict: ok, or avoid with one reason: incentive_spike (most of the rate is rewards, or it jumped), near_full (utilization above 90%), deposits_fleeing (TVL falling fast), data_suspect (numbers that disagree). Code picks the venue: the highest 7-day average among eligible venues you did not avoid.",
+  "found: up to 5 pool ids from scout_yields worth a human look, each with a short note quoting only its numbers. Money never goes to a found pool.",
 ].join("\n");
 
 const r1 = (n: number) => Math.round(n * 10) / 10;
@@ -49,7 +62,14 @@ const r1 = (n: number) => Math.round(n * 10) / 10;
 /** Every coin's measured facts for the day, from our own rows (spec 5.4): numbers only. */
 export async function readFacts(repo: Repo, day: string): Promise<CoinFacts[]> {
   const out: CoinFacts[] = [];
+  const venueRows = await repo.listVenueDays(day);
   for (const asset of ASSETS) {
+    // Task 1 review: a lending leg's growth is the best eligible, non-vetoed auto venue's own 7-day average (venue_days), never coin_days.
+    if (isLendAsset(asset)) {
+      const best = venueRows.filter((r) => r.asset === asset && isAutoVenue(r.venue) && r.eligible && r.verdict !== "avoid" && r.avg7Pct !== null).sort((p, q) => (q.avg7Pct as number) - (p.avg7Pct as number))[0];
+      out.push({ asset, growthPct: best?.avg7Pct ?? null, days: best?.daysMeasured ?? 0, pricePct: null, priceDays: 0, tradeable: true, noData: !best });
+      continue;
+    }
     const rows = await repo.listCoinDays(asset, addDays(day, -7));
     const today = rows.find((r) => r.day === day) ?? null;
     const g = asset === "cbBTC" ? { pct: 0, days: 0 } : growth(rows);
@@ -92,8 +112,27 @@ function topCoin(facts: CoinFacts[]): { asset: LiveAsset; pct: number } | null {
 
 const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
-/** One row per stop for the day. A row that already exists is reused, so a second run the same day calls no model (spec 6.1). */
-export async function decideSplits(a: { repo: Repo; now: Date; model: ModelCall | null }): Promise<SplitDayRow[]> {
+const numbersIn = (v: unknown): number[] => (typeof v === "number" ? [v] : Array.isArray(v) ? v.flatMap(numbersIn) : v && typeof v === "object" ? Object.values(v).flatMap(numbersIn) : []);
+const r1s = (n: number) => (Math.round(n * 10) / 10).toFixed(1);
+/** Code's routing line (spec 4): where the routed lending money goes, against the other eligible auto venue (an avoided one included: the brief's tests pin "Kamino, 4.4% vs Jupiter 4.2%" with Jupiter avoided). */
+function routingWhy(asset: LendAsset, pick: AutoVenue | null, rows: VenueDayRow[]): string {
+  const coin = asset === "USDC_LEND" ? "USDC" : "SOL";
+  if (!pick) return `No lending venue passed today's checks; your ${coin} share goes to the next leg.`;
+  const mine = rows.find((r) => r.venue === pick && r.asset === asset);
+  const other = rows.find((r) => r.venue !== pick && isAutoVenue(r.venue) && r.asset === asset && r.eligible && r.avg7Pct !== null);
+  const pct = mine?.avg7Pct ?? null;
+  if (pct === null) return `Your ${coin} goes to ${VENUE_NAME[pick]}.`;
+  return other ? `Your ${coin} goes to ${VENUE_NAME[pick]}, ${r1s(pct)}% vs ${VENUE_NAME[other.venue]} ${r1s(other.avg7Pct as number)}%.` : `Your ${coin} goes to ${VENUE_NAME[pick]} at ${r1s(pct)}%.`;
+}
+
+/**
+ * One row per stop for the day. A row that already exists is reused, so a second run the same day calls no model (spec 6.1).
+ * Phase 1 asks each stop (a tool loop: the model reads the venues itself, R276/R278); phase 2 writes the day's verdicts and what was
+ * served, lets code pick the venue, and settles each why line against every number served.
+ * Verdicts are fail-open on silence [decision, Task 4 review]: a venue no stop judged (the model down, a fallback, no verdict given)
+ * keeps a null verdict and stays pickable on code's eligibility alone; only an explicit avoid removes it, and any stop's avoid holds.
+ */
+export async function decideSplits(a: { repo: Repo; now: Date; model: ConversationCall | null; scout?: () => Promise<FoundPool[]> }): Promise<SplitDayRow[]> {
   const day = dayOf(a.now);
   const facts = await readFacts(a.repo, day);
   const noData = facts.filter((f) => f.noData).map((f) => f.asset);
@@ -103,6 +142,13 @@ export async function decideSplits(a: { repo: Repo; now: Date; model: ModelCall 
   const monthStart = new Date(Date.UTC(a.now.getUTCFullYear(), a.now.getUTCMonth(), 1));
   const overBudget = (await a.repo.watcherSpendMicrocents(monthStart)) >= MONTH_CAP_MICROCENTS;
   const out: SplitDayRow[] = [];
+  const servedByVenue = new Map<Venue, unknown>();
+  const scouted = new Map<string, FoundPool>();
+  const vetoes: { venue: AutoVenue; asset: LendAsset; reason: VetoReason }[] = [];
+  const oks: { venue: AutoVenue; asset: LendAsset }[] = [];
+  const foundRows: FoundVenueRow[] = [];
+  const pending: { row: SplitDayRow; modelWhy: string | null; facts: number[] }[] = [];
+  const servedNumbers: number[] = [];
   for (const stop of STOP_ORDER) {
     const existing = await a.repo.getSplitDay(day, stop);
     if (existing) {
@@ -111,6 +157,7 @@ export async function decideSplits(a: { repo: Repo; now: Date; model: ModelCall 
     }
     const yesterday = (await a.repo.latestSplitDay(stop, day))?.split ?? null;
     const row: SplitDayRow = { day, stop, split: zeroSplit(), modelAnswer: null, why: null, fallback: null, callId: null, venuePick: null };
+    let modelWhy: string | null = null;
     const byRule = (reason: string) => {
       row.split = fallbackSplit({ stop, growth: growthMap, noData, yesterday });
       row.fallback = reason;
@@ -124,19 +171,37 @@ export async function decideSplits(a: { repo: Repo; now: Date; model: ModelCall 
     else if (overBudget) byRule("budget");
     else {
       const model = a.model;
-      const prompt = { system: system(stop), user: factsTable(facts, stop, yesterday), tool: TOOL, maxTokens: 200 };
-      // One call: recorded against the budget and kept raw beside the row, whatever the answer; null when the model was not reached.
+      const tools = [GET_VENUE_RATES, ...(a.scout && process.env.SCOUT_ENABLED !== "false" ? [SCOUT_YIELDS] : []), SET_SPLIT];
+      const run = async (name: string, input: unknown) => {
+        if (name === "get_venue_rates") {
+          const venue = (input as { venue?: string })?.venue;
+          if (!venue || !(VENUES as readonly string[]).includes(venue)) throw new Error(`unknown venue ${venue}`);
+          const out = await getVenueRates(a.repo, day, venue as Venue);
+          servedByVenue.set(venue as Venue, out);
+          return out;
+        }
+        if (name === "scout_yields" && a.scout && process.env.SCOUT_ENABLED !== "false") {
+          const out = await a.scout();
+          for (const p of out) scouted.set(p.poolId, p);
+          return out;
+        }
+        throw new Error(`unknown tool ${name}`);
+      };
+      // One tool loop: recorded against the budget and kept raw beside the row, whatever the answer; null when the model was not
+      // reached or never called set_split within the turn limit.
       const ask = async () => {
-        let raw: { input: unknown; usage: Usage };
+        let raw: Awaited<ReturnType<typeof runToolLoop>>;
         try {
-          raw = await model(prompt);
+          raw = await runToolLoop({ call: model, system: system(stop), user: factsTable(facts, stop, yesterday), tools, finalTool: "set_split", maxTurns: 6, maxTokens: 600, run });
         } catch (e) {
           console.error(`split ${stop}: the model could not be reached: ${msg(e)}`);
           return null;
         }
         row.callId = await a.repo.addWatcherCall({ userPubkey: null, kind: "split", inputTokens: raw.usage.inputTokens, outputTokens: raw.usage.outputTokens, costMicrocents: costMicrocents(raw.usage) });
-        row.modelAnswer = raw.input;
-        return Answer.safeParse(raw.input);
+        servedNumbers.push(...numbersIn(raw.served.map((x) => x.output)));
+        if (raw.final === null) return null;
+        row.modelAnswer = raw.final;
+        return Answer.safeParse(raw.final);
       };
       let parsed = await ask();
       if (parsed && !parsed.success && badSum(parsed.error)) {
@@ -146,24 +211,57 @@ export async function decideSplits(a: { repo: Repo; now: Date; model: ModelCall 
         parsed = (await ask()) ?? parsed;
       }
       if (!parsed) byRule("model");
+      else if (!parsed.success) byRule("schema");
       else {
-        if (!parsed.success) byRule("schema");
+        const { why, verdicts, found, ...numbers } = parsed.data;
+        for (const v of verdicts) {
+          if (v.verdict === "avoid") vetoes.push({ venue: v.venue, asset: v.asset, reason: v.reason as VetoReason });
+          else oks.push({ venue: v.venue, asset: v.asset });
+        }
+        for (const f of found) {
+          const pool = scouted.get(f.poolId);
+          if (pool) foundRows.push({ day, poolId: pool.poolId, project: pool.project, symbol: pool.symbol, asset: pool.asset, apyBasePct: pool.apyBasePct, tvlUsd: pool.tvlUsd, note: f.note });
+        }
+        const clamped = clampSplit({ stop, proposed: numbers as Split, noData, yesterday });
+        if (!clamped) byRule("bounds");
         else {
-          const { why, ...numbers } = parsed.data;
-          const clamped = clampSplit({ stop, proposed: numbers as Split, noData, yesterday });
-          if (!clamped) byRule("bounds");
-          else {
-            row.split = clamped;
-            row.why = checkWhy(why, factsNumbers(facts, stop, yesterday, clamped));
-          }
+          row.split = clamped;
+          modelWhy = why;
         }
       }
     }
-    if (row.why === null) row.why = templateWhy({ stop, top: topCoin(facts) });
-    await a.repo.putSplitDay(row);
-    out.push(row);
+    pending.push({ row, modelWhy, facts: factsNumbers(facts, stop, yesterday, row.split) });
   }
-  return out;
+
+  // Verdicts: an avoid from any stop holds for the day [decision: fail-safe]; an ok is recorded only where nobody avoided.
+  const today = await a.repo.listVenueDays(day);
+  for (const r of today) {
+    if (!isAutoVenue(r.venue)) {
+      if (servedByVenue.has(r.venue)) await a.repo.putVenueDay({ ...r, served: servedByVenue.get(r.venue) ?? null });
+      continue;
+    }
+    const veto = vetoes.find((v) => v.venue === r.venue && v.asset === r.asset);
+    const ok = oks.some((v) => v.venue === r.venue && v.asset === r.asset);
+    await a.repo.putVenueDay({ ...r, verdict: veto ? "avoid" : ok ? "ok" : r.verdict, reason: veto ? veto.reason : r.verdict === "avoid" ? r.reason : null, served: servedByVenue.get(r.venue) ?? r.served });
+  }
+  const after = await a.repo.listVenueDays(day);
+  const yesterdayRows = await a.repo.listVenueDays(addDays(day, -1));
+  // Code's pick before the per-user 60% cap (the planting run applies the cap with each user's positions).
+  const venuePick: Partial<Record<LendAsset, AutoVenue | null>> = {};
+  for (const asset of LEND_ASSETS) venuePick[asset] = pickVenue({ candidates: venueCandidates(asset, after, yesterdayRows), lendingUsdByProtocol: {}, addUsd: 0 });
+  const allFacts = (f: number[]) => [...f, ...servedNumbers];
+  for (const p of pending) {
+    p.row.venuePick = venuePick;
+    const routed: LendAsset | null = p.row.split.USDC_LEND > 0 ? "USDC_LEND" : p.row.split.SOL_LEND > 0 ? "SOL_LEND" : null;
+    const checked = p.modelWhy === null ? null : checkWhy(p.modelWhy, allFacts(p.facts));
+    const namesRoute = !routed || (checked !== null && venuePick[routed] !== null && checked.includes(VENUE_NAME[venuePick[routed] as AutoVenue]));
+    p.row.why = checked !== null && namesRoute ? checked : routed ? routingWhy(routed, venuePick[routed] ?? null, after) : (checked ?? templateWhy({ stop: p.row.stop, top: topCoin(facts) }));
+    await a.repo.putSplitDay(p.row);
+    out.push(p.row);
+  }
+  const notes = foundRows.filter((f) => f.note !== null && checkWhy(f.note, [...servedNumbers]) !== null);
+  await a.repo.putFoundVenues([...new Map(notes.map((f) => [f.poolId, f])).values()]);
+  return STOP_ORDER.map((s) => out.find((r) => r.stop === s) as SplitDayRow);
 }
 
 /** Every managed user's split from their stop's row and their pins (spec 6.6); unchanged users get no event. */
