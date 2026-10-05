@@ -155,3 +155,11 @@ describe("thousands separators on coin amounts", () => {
     expect(potHeadline(12_980_460_000n, null)).toEqual({ big: "12,980.46 SKR", small: null });
   });
 });
+
+describe("formatUsd thousands (10-05: the widget showed $11407.00)", () => {
+  it("groups thousands", () => {
+    expect(formatUsd(1140700)).toBe("$11,407.00");
+    expect(formatUsd(42069)).toBe("$420.69");
+    expect(formatUsd(-123456789)).toBe("-$1,234,567.89");
+  });
+});

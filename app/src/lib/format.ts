@@ -27,7 +27,8 @@ const fixed = (amount: number, places: number) => grouped(amount.toFixed(places)
 export function formatUsd(cents: number): string {
   const sign = cents < 0 ? "-" : "";
   const abs = Math.abs(Math.round(cents));
-  return `${sign}$${Math.floor(abs / 100)}.${String(abs % 100).padStart(2, "0")}`;
+  const dollars = String(Math.floor(abs / 100)).replace(/\B(?=(\d{3})+(?!\d))/g, ",");   // "$11,407.00" (10-05)
+  return `${sign}$${dollars}.${String(abs % 100).padStart(2, "0")}`;
 }
 
 /** SKR with its dollar value beside it (R44); the dollar part is left out only when no price is known. */
