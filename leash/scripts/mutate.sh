@@ -11,7 +11,7 @@ restore() { find program/src -name '*.mutbak' -print0 | while IFS= read -r -d ''
 trap restore EXIT
 trap 'restore; exit 130' INT
 trap 'restore; exit 143' TERM
-build() { sbf_build program/Cargo.toml target/mutate-build.log quiet; }
+build() { leash_build target/mutate-build.log quiet; } # the release toolchain (docker) unless LEASH_LOCAL_SBF=1
 rows() { if [ $# -eq 0 ]; then grep -v '^#' "$TSV" | grep -v '^[[:space:]]*$'; else for g in "$@"; do awk -v g="$g" '$1==g' "$TSV"; done; fi; }
 # the CPI wrapper (cpi.rs rows) is never mutated; build it once so those rows never run a stale or missing .so
 if [ -d tests/cpi-wrapper ]; then sbf_build tests/cpi-wrapper/Cargo.toml target/build-cpi-wrapper.log quiet || exit 1; fi
