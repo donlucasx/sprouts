@@ -1353,6 +1353,18 @@ describe("SKR posted (leg 0, contracts 10 item 15): the run with a Pyth key", ()
     expect(cleaned2).toEqual(["sig1", "sig2"]);   // the discarded first build at once, the sent one after the planting
   });
 
+  it("review I2: a throw between the build and the send (a share read, the planting insert) reclaims the posted price, then propagates", async () => {
+    const repo = await leashedRepo();
+    const cleaned: string[] = [];
+    await expect(withKey(() => runPlanting({ repo, now: NOW, chain: postingChain({ builds: [], cleaned, over: { readShares: async () => { throw new Error("rpc down"); } } }) }))).resolves.toBeDefined();
+    expect(cleaned).toEqual(["sig1"]);
+    const repo2 = await leashedRepo();
+    repo2.insertPlanting = async () => { throw new Error("db down"); };
+    const cleaned2: string[] = [];
+    await withKey(() => runPlanting({ repo: repo2, now: NOW, chain: postingChain({ builds: [], cleaned: cleaned2 }) }));
+    expect(cleaned2).toEqual(["sig1"]);
+  });
+
   it("with a key, a leashed coin leg that fails falls back to SKR (it has a source now); without one it is skipped as before (review M4)", async () => {
     const repo = await leashedRepo({ ...skrOnly, SKR: 0, hSOL: 100 });
     const builds: BuildArgs[] = [], cleaned: string[] = [];

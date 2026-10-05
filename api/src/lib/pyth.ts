@@ -76,12 +76,15 @@ export async function readPostedPrice(account: Address): Promise<ParsedPrice> {
   return r.price;
 }
 
+/** A hung Hermes answer must not eat the cron's 300 s budget (review minor): the leg skips instead. */
+const HERMES_TIMEOUT_MS = 10_000;
+
 /** Hermes latest update for one feed (base64 VAAs + the parsed price). Bearer auth; a 401/403 throws and the leg skips the day.
  *  The SKR source (contracts 10 item 15); the key is optional, so a missing PYTH_API_KEY throws here, never at config(). */
 export async function fetchHermesUpdate(feedId: string): Promise<{ data: string[]; price: ParsedPrice }> {
   const key = config().pythApiKey;
   if (!key) throw new Error("PYTH_API_KEY is not set: no Hermes price to post (R324)");
-  const res = await fetch(`${PYTH_HERMES}/v2/updates/price/latest?ids[]=${feedId}&encoding=base64&parsed=true`, { headers: { authorization: `Bearer ${key}` } });
+  const res = await fetch(`${PYTH_HERMES}/v2/updates/price/latest?ids[]=${feedId}&encoding=base64&parsed=true`, { headers: { authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(HERMES_TIMEOUT_MS) });
   if (!res.ok) throw new Error(`Hermes answered ${res.status} for feed ${feedId.slice(0, 8)}: ${(await res.text()).slice(0, 80)}`);
   const body = (await res.json()) as { binary: { data: string[] }; parsed: { id: string; price: { price: string; conf: string; expo: number; publish_time: number } }[] };
   const p = body.parsed[0].price;
@@ -113,6 +116,8 @@ const MAX_TX_BYTES = 1232;
  * that posts (a leashed SKR planting), never on the routes that merely import lib/leash. Through `require` (its CJS build), because
  * its ESM build cannot load: @pythnetwork/solana-utils 0.6.0's jito.mjs imports `jito-ts/dist/sdk/block-engine/types` without an
  * extension (ERR_MODULE_NOT_FOUND under Node ESM, measured 10-05). The type comes from the package's own declarations.
+ * `next build` BUNDLES it (webpack resolves createRequire(import.meta.url) to its own module id; nothing is required from disk at
+ * run time): checked 10-05 by loading the built cron route's chunk and building the post instructions from the bundled SDK.
  */
 const loadReceiverSdk = (): typeof import("@pythnetwork/pyth-solana-receiver") => createRequire(import.meta.url)("@pythnetwork/pyth-solana-receiver");
 /** Legs 0-6's max_age_s (the program's MAX_AGE_S_OF_LEG ceiling); the caller passes the leg's on-chain value when it has it. */
