@@ -91,7 +91,7 @@ export function signX(x: number, side: -1 | 1, width: number, scale: number, boa
   const half = 15 * scale * boardX;
   return Math.min(Math.max(x + side * (half + SIGN_GAP), half + 1), width - half - 1);
 }
-/** R232 (10-04, "the JitoSOL stake should move left a bit as to not cover the sprout"): the board stands wholly beside its plant's
+/** R232 (10-04, "the JitoSOL stake should move left a bit as to not cover the sprout"; that stake is now USDC lending's): the board stands wholly beside its plant's
  * foot, its near edge SIGN_GAP px off it (gen06's 14 plus a fifth of the half width overlapped a young sprout). */
 export const SIGN_GAP = 3;
 /** R181 (RG32): the post's foot from the sign's anchor, in the board's 1x units before its scale (bake.py: the contact mark reaches 9.4
@@ -106,13 +106,47 @@ export function signStand(x: number, want: number, scale: number, soilBottom: (x
 }
 /** The app's stake for a sign part, at the garden's width: its anchor, its drawn scale and its board's widening. */
 /** R234: `zoom` is the frame's; the stake's drawn scale is signScale over it, so a stake keeps one size on screen while the plants zoom. */
-export function signPlacement(s: { x: number; side: -1 | 1; row: "front" | "back"; lines?: SignLines }, width: number, zoom = 1, ground: GroundPlace = appGround(width)) {
-  const scale = signScale(s.row) / zoom, boardX = boardXOf(s.lines), x = signX(s.x * width, s.side, width, scale, boardX), g = ground;
-  return { x, y: signStand(x, FOOT_Y(s.row) + 4, scale, (px) => soilBottomAt(px, g)), scale, boardX };
+/** `sides`: stakeSides of the scene being drawn (a two-line stake's side after its flip); absent, the scene's own side. */
+export function signPlacement(s: StakeOf, width: number, zoom = 1, ground: GroundPlace = appGround(width), sides?: ReadonlyMap<PlantId, -1 | 1>) {
+  const { x, scale, boardX, side } = stakeAt(s, width, zoom, sides), g = ground;
+  return { x, y: signStand(x, FOOT_Y(s.row) + 4, scale, (px) => soilBottomAt(px, g)), scale, boardX, side };
+}
+type StakeOf = { plant?: PlantId; x: number; side: -1 | 1; row: "front" | "back"; lines?: SignLines };
+/** A stake's x, drawn scale (stakeScale over the zoom), board widening and side: the one place every caller (signPlacement, frameAt,
+ * the packing) reads them from. */
+export function stakeAt(s: StakeOf, width: number, zoom: number, sides?: ReadonlyMap<PlantId, -1 | 1>) {
+  const scale = stakeScale(s.row, s.lines) / zoom, boardX = boardXOf(s.lines), side = (s.plant && sides?.get(s.plant)) || s.side;
+  return { x: signX(s.x * width, side, width, scale, boardX), scale, boardX, side };
+}
+/**
+ * BUILD-INVENTED RULE (fix round 1 of lending Task 3, 10-04; NOT Lucas's ruling: it narrows R237 and waits for his): a two-line
+ * (lending) back-row stake whose board would be covered takes the other side of its plant, when that side is clear and its board fits
+ * inside the canvas unclamped; otherwise it keeps R237's side. "Covered" and "clear" mean: the board overlaps a present front-row
+ * plant's trunk band (its foot x +/- STAKE_TRUNK canvas px: the mandarin's trunk and its lowest branch base; R226 draws the front row
+ * over the back stakes, and R237 stopped counting front plants for a back stake's side), or another back-row stake's board (at its
+ * own side, the flips taken left to right). Why: on the Seeker the USDC stake's "Kamino 4.4%" sat behind the SKR mandarin's trunk.
+ * One-line stakes are untouched. Returns each stake's side by plant.
+ */
+export const STAKE_TRUNK = 10;
+export function stakeSides(scene: Scene, width: number, zoom: number): Map<PlantId, -1 | 1> {
+  const signs = scene.parts.flatMap((q) => (q.kind === "sign" ? [q] : [])).sort((a, b) => a.x - b.x);
+  const out = new Map<PlantId, -1 | 1>(signs.map((q) => [q.plant, q.side]));
+  const trunks = scene.parts.flatMap((q) => (q.kind === "plant" && q.row === "front" ? [q.x * width] : []));
+  const span = (q: (typeof signs)[number], side: -1 | 1) => { const a = stakeAt({ ...q, side }, width, zoom), h = 15 * a.scale * a.boardX; return [a.x - h, a.x + h] as const; };
+  const covered = (q: (typeof signs)[number], [lo, hi]: readonly [number, number]) =>
+    trunks.some((f) => f + STAKE_TRUNK > lo && f - STAKE_TRUNK < hi) ||
+    signs.some((o) => o !== q && o.row === "back" && (([l, h]) => h > lo && l < hi)(span(o, out.get(o.plant)!)));
+  for (const q of signs) {
+    if (!q.lines.line2 || q.row !== "back" || !covered(q, span(q, q.side))) continue;
+    const other = -q.side as -1 | 1, a = stakeAt(q, width, zoom), h = 15 * a.scale * a.boardX, c = q.x * width + other * (h + SIGN_GAP);
+    if (c - h >= 1 && c + h <= width - 1 && !covered(q, span(q, other))) out.set(q.plant, other);
+  }
+  return out;
 }
 /** R168 (10-02): the word on a stake, drawn as crisp type over the one blank baked board (`sign`), in the board's own frame: the anchor
  * at (0, 0) before the sign's scale (signScale: 1.35 front, 1.08 back), the board 30 by 11 from y -12 to -1, leaning -4 degrees (gen01_garden.py
- * sign()). 6.8 px fits the longest label, "JitoSOL" (3.62 em in Albert Sans Medium, 24.6 px), with 2.7 px a side; the baseline at
+ * sign()). 6.8 px was sized for the retired "JitoSOL" (3.62 em in Albert Sans Medium, 24.6 px, 2.7 px a side); today's longest one-line
+ * label, "cbBTC", is narrower; the baseline at
  * -4.1 centres the 0.70 em capitals on the face (its centre at -6.5). */
 export const SIGN_TEXT = { size: 6.8, y: -4.1, rot: -4 } as const;
 /** The words: the ORE stake reads stORE (RG7); the lending plants read their asset (contracts 7.2). */
@@ -134,6 +168,13 @@ export function signLabel(plant: PlantId, lend: LendSignLines | null | undefined
 }
 /** A two-line stake's board is LEND_SIGN.boardX wide; every other board 1. */
 export const boardXOf = (lines?: SignLines) => (lines?.line2 ? LEND_SIGN.boardX : 1);
+/** Fix round 1 (R262, "legible on the phone"): a two-line stake is drawn LEND_STAKE_K times larger as a whole (its board's own geometry,
+ * LEND_SIGN, unchanged): line two 7.3 canvas px in the back row (5.0 x 1.08 x 1.35), line one 8.7. The review proposed 1.5; at 1.5 the
+ * SOL stake's board and cbBTC's overlap by up to 23 px at 320 wide (the reviewer's fallback, 1.35, still overlaps them by up to 24 px in
+ * a packed six-coin garden, and by 4 px even at 1.0: the SOL to cbBTC gap is 80 px at 320; see the report's fix round 1). */
+export const LEND_STAKE_K = 1.35;
+/** A stake's drawn scale at zoom 1: signScale, times LEND_STAKE_K for a two-line stake. */
+export const stakeScale = (row: "front" | "back", lines?: SignLines) => signScale(row) * (lines?.line2 ? LEND_STAKE_K : 1);
 /** RG30 (10-02): the garden frames what is planted; 2x is the cap the 3x bakes hold; Garden.tsx eases each change over easeMs.
  * R167 (10-02): the view's HEIGHT follows the content, never shorter than the ground band plus `aboveGround`. */
 export const FRAME = { maxZoom: 2, footInset: 0.12, pad: 20, easeMs: 1200, aboveGround: 40 } as const;   // R231: pad from 16, the 1.3x front row's sway
@@ -164,15 +205,28 @@ export const MAX_VIEW_H = 380;   // R231: from 320, for the deeper ground
  * (the headroom gives way first); frame.y goes above the canvas's top (negative) when the headroom reaches past it, the paper showing
  * there. The frame is centred on the box's breadth and clamped inside the bed. R167: the view's height floors at the soil band plus 40
  * and always holds the whole ground sprite; only the empty top is cropped, so the ground and the grain keep their anchor on the soil
- * line. Bare signs and seeds do not widen it; with no plant it is the whole breadth at the floor. `room` is the headroom rule (tests
+ * line. Bare signs and seeds do not widen it, except a bare stake the frame would cut (fix round 1, below); with no plant it is the whole breadth at the floor. `room` is the headroom rule (tests
  * pass none to show the zoom does not depend on it). */
 export function frameFor(scene: Scene, plants: PlantOnStage[], width: number, room: { share: number; minPx: number } = HEADROOM): Frame {
   // R234: the stakes keep one size on screen (signScale over the zoom), so the box depends on the zoom it sets: three passes settle it
-  let f = frameAt(scene, plants, width, room, 1);
-  for (let i = 0; i < 3; i++) f = frameAt(scene, plants, width, room, f.zoom);
+  // Fix round 1 (minor 3, the mock's cbBTC stake cut at the screen's edge): a bare stake (a share, no plant yet) still does not widen
+  // the frame, unless part of it shows: the view draws SIDE_GUTTER past the frame's sides (the plants' spill), so a stake reaching into
+  // that band was cut by the screen's edge. Then the frame takes all of it. One wholly past the band stays out (RG30's day 1 zoom)
+  const bare = new Set<PlantId>(), present = new Set(plants.map((p) => p.plant));
+  let f = frameAt(scene, plants, width, room, 1, bare);
+  for (let i = 0; i < 3; i++) f = frameAt(scene, plants, width, room, f.zoom, bare);
+  for (let j = 0; j < 3; j++) {
+    let grew = false;
+    for (const q of scene.parts) if (q.kind === "sign" && !present.has(q.plant) && !bare.has(q.plant)) {
+      const a = stakeAt(q, width, f.zoom, stakeSides(scene, width, f.zoom)), h = 15 * a.scale * a.boardX, lo = a.x - h, hi = a.x + h, g = SIDE_GUTTER / f.zoom;
+      if (hi > f.x - g && lo < f.x + f.w + g && (lo < f.x || hi > f.x + f.w)) { bare.add(q.plant); grew = true; }
+    }
+    if (!grew) break;
+    for (let i = 0; i < 3; i++) f = frameAt(scene, plants, width, room, f.zoom, bare);
+  }
   return f;
 }
-function frameAt(scene: Scene, plants: PlantOnStage[], width: number, room: { share: number; minPx: number }, signZoom: number): Frame {
+function frameAt(scene: Scene, plants: PlantOnStage[], width: number, room: { share: number; minPx: number }, signZoom: number, bare: ReadonlySet<PlantId>): Frame {
   const floor = Math.max(MIN_VIEW_H, groundH());
   if (plants.length === 0) return { x: 0, y: CANVAS.height - floor, w: width, h: floor, zoom: 1, viewH: floor };
   const signs = new Map(scene.parts.flatMap((q) => (q.kind === "sign" ? [[q.plant, q] as const] : [])));
@@ -180,14 +234,15 @@ function frameAt(scene: Scene, plants: PlantOnStage[], width: number, room: { sh
   for (const p of plants) {
     const fx = p.x * width, reach = Math.max(0, ...p.layout.parts.map(sideReach));
     x0 = Math.min(x0, fx - reach); x1 = Math.max(x1, fx + reach); y0 = Math.min(y0, FOOT_Y(p.row) - p.layout.top);
-    const s = signs.get(p.plant);
-    if (s) { const sc = signScale(s.row) / signZoom, bx = boardXOf(s.lines), sx = signX(s.x * width, s.side, width, sc, bx); x0 = Math.min(x0, sx - 15 * sc * bx); x1 = Math.max(x1, sx + 15 * sc * bx); }
   }
+  // each present plant's stake, and the bare stakes frameFor found the frame cutting (fix round 1)
+  const sides = stakeSides(scene, width, signZoom), stakes = [...signs.values()].filter((s) => bare.has(s.plant) || plants.some((p) => p.plant === s.plant)).map((s) => stakeAt(s, width, signZoom, sides));
+  for (const a of stakes) { const h = 15 * a.scale * a.boardX; x0 = Math.min(x0, a.x - h); x1 = Math.max(x1, a.x + h); }
   x0 -= FRAME.pad; x1 += FRAME.pad;
   // R242 (10-04, "hsol and cbBTC plants are on the very edge- they should be sitting within/on the soil"): the ground spans the frame
   // (R238) and R241's mound thins toward its ends, so every foot and stake post keeps FRAME.footInset of the frame's breadth from either
   // side, where the mound is full: the box widens about the feet when it must
-  const feet = [...plants.map((p) => p.x * width), ...plants.flatMap((p) => { const s = signs.get(p.plant); return s ? [signX(s.x * width, s.side, width, signScale(s.row) / signZoom, boardXOf(s.lines))] : []; })];
+  const feet = [...plants.map((p) => p.x * width), ...stakes.map((a) => a.x)];
   const f0 = Math.min(...feet), f1 = Math.max(...feet), need = (f1 - f0) / (1 - 2 * FRAME.footInset);
   if (f0 - x0 < FRAME.footInset * need) x0 = f0 - FRAME.footInset * Math.max(need, x1 - x0);
   if (x1 - f1 < FRAME.footInset * need) x1 = f1 + FRAME.footInset * Math.max(need, x1 - x0);
