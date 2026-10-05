@@ -22,6 +22,7 @@ import { canSlot } from '@/model/can'
 import { nextPlantingRow } from '@/lib/next-planting'
 import { PauseRow } from '@/components/PauseRow'
 import { RelinkCard } from '@/components/RelinkCard'
+import { termsNeeded, termsSummary } from '@/lib/terms'
 import { arrivalLine, formatUsd, formatSkr, formatAsOf } from '@/lib/format'
 import { useSession } from '@/lib/session'
 import { gardenTotals, pauseState, coinRows, statTiles, walletsLine, lastPlantingLine } from '@/lib/me-state'
@@ -188,6 +189,15 @@ export default function Home() {
         <PauseRow on={pause.on} line={pause.line} busy={pausing} error={pauseError} onChange={togglePaused} />
       ) : null}
       <RelinkCard me={me} />
+      {termsNeeded(me) ? (
+        <Card>
+          <ThemedText variant="heading">Terms and Privacy</ThemedText>
+          {termsSummary().map((l) => (
+            <ThemedText key={l} tone="secondary">{`• ${l}`}</ThemedText>
+          ))}
+          <Button title="Read and agree" onPress={() => router.push('/terms')} />
+        </Card>
+      ) : null}
       <Garden
         scene={scene}
         labelFor={(plant, bud) => plantLabel(me, plant, bud)}

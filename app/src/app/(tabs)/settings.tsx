@@ -236,6 +236,7 @@ export default function Settings() {
           </Disclosure>
         ))}
       </Card>
+      <Button title="Terms and Privacy" kind="quiet" onPress={() => router.push('/terms')} />
       <Button title="Sign out" kind="quiet" disabled={busy} onPress={() => signOut(false)} />
       <Button title="Sign out of all devices" kind="quiet" disabled={busy} onPress={() => signOut(true)} />
       <ThemedText variant="caption" tone="secondary">
