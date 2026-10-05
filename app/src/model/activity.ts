@@ -73,7 +73,7 @@ export function lendWithdrawalRow(w: LendWithdrawal): ActivityRow {
 /** Spec 7: a move the user approved or turned down; an open or expired proposal is the card's, not a row. */
 export function moveRow(m: Move): ActivityRow | null {
   const coin = COIN_NAME[m.asset], from = VENUE_NAME[m.from], to = VENUE_NAME[m.to]
-  const base = { key: `mv-${m.ts}`, ts: m.ts, amount: null, signature: null }
+  const base = { key: `mv-${m.ts}-${m.asset}-${m.from}`, ts: m.ts, amount: null, signature: null }
   if (m.status === 'done') return { ...base, label: `Moved ${coin}`, details: [`${from} to ${to}.`] }
   if (m.status === 'failed') {
     const where = m.asset === 'SOL_LEND' ? 'Your SOL is in your wallet. If it shows as wrapped SOL, unwrap it in your wallet.' : `Your ${coin} is back in your wallet.`

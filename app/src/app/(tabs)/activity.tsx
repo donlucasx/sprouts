@@ -99,8 +99,8 @@ function Section({ title, sub, rows, empty, render }: { title: string; sub: stri
         {sub}
       </ThemedText>
       {rows.length === 0 ? <ThemedText tone="secondary">{empty}</ThemedText> : null}
-      {groupByDay(shown).map((day) => (
-        <View key={day.key}>
+      {groupByDay(shown).map((day, d) => (
+        <View key={`${day.key}-${d}`}>
           <ThemedText variant="caption" tone="secondary" accessibilityRole="header" style={{ textTransform: 'uppercase', letterSpacing: 0.6, paddingTop: spacing.xs }}>
             {day.header}
           </ThemedText>
@@ -148,7 +148,7 @@ export default function Activity() {
     ? [
         ...a.withdrawals.map((w) => ({ row: withdrawalRow(w, skrUsd, me?.basket?.id === w.id ? me.basket.readyAt : undefined), wallet: true })),
         ...(a.lendWithdrawals ?? []).map((w) => ({ row: lendWithdrawalRow(w), wallet: false })),
-      ].sort((x, y) => (x.row.ts < y.row.ts ? 1 : x.row.ts > y.row.ts ? -1 : 0))
+      ].sort((x, y) => Date.parse(y.row.ts) - Date.parse(x.row.ts))
     : []
   const walletRows = new Set(withdrawals.filter((w) => w.wallet).map((w) => w.row.key))
   const moves = a?.moves ? a.moves.flatMap((m) => { const r = moveRow(m); return r ? [r] : [] }) : []
