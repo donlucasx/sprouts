@@ -173,7 +173,7 @@ describe('pauseState', () => {
     expect(pauseState([w('paused'), w('revoked')])).toEqual({
       shown: true,
       on: false,
-      line: 'Paused. Nothing moves; your garden keeps earning.',
+      line: 'Paused. Round-ups are off.',
     })
   })
 })

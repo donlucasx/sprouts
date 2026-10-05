@@ -164,6 +164,7 @@ export default function Home() {
     thresholdCents: me.nextPlanting.thresholdCents,
     hasPlant: scene.parts.some((p) => p.kind === 'plant'),
     now,
+    paused: pause.shown && !pause.on,
   })
   const wallets = me.wallets.filter((w) => w.status !== 'revoked')
   const receiptLine = lastPlantingLine(me.lastReceipt)

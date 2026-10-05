@@ -5,7 +5,7 @@ const RUN_HOUR_UTC = 14;
 
 export type NextPlantingRow = {
   /** The amount axis: nothing saved, saving toward the threshold, or threshold reached. */
-  state: "empty" | "saving" | "reached";
+  state: "empty" | "saving" | "reached" | "paused";
   label: "First planting" | "Next planting";
   value: string;
   /** 0 to 1, how far the saved change is toward the threshold. */
@@ -28,9 +28,11 @@ export function nextRunLabel(now: Date): string {
 }
 
 /** Home's progress row (R164). Two independent axes: the label follows whether any planting exists; the value and bar follow the amount saved. */
-export function nextPlantingRow(p: { pendingCents: number; thresholdCents: number; hasPlant: boolean; now: Date }): NextPlantingRow {
+export function nextPlantingRow(p: { pendingCents: number; thresholdCents: number; hasPlant: boolean; now: Date; paused?: boolean }): NextPlantingRow {
   const { pendingCents: pending, thresholdCents: threshold } = p;
   const label = p.hasPlant ? "Next planting" : "First planting";
+  // His note 10-05: paused, the row says so instead of a run time; the bar keeps what was saved, dimmed (NextPlanting).
+  if (p.paused) return { state: "paused", label, value: "Paused", fraction: Math.min(1, Math.max(0, pending) / Math.max(1, threshold)) };
   if (pending >= threshold) return { state: "reached", label, value: nextRunLabel(p.now), fraction: 1 };
   const of = `${formatUsd(Math.max(0, pending))} of ${formatUsd(threshold)}`;
   if (pending <= 0) return { state: "empty", label, value: of, fraction: 0 };
