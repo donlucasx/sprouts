@@ -169,6 +169,32 @@ export default function Home() {
   const receiptLine = lastPlantingLine(me.lastReceipt)
   const walletsRow = walletsLine(wallets)
 
+  // R199: the last planting closes the garden section: straight under the garden (the screen's gap taken back), its row 40 dp plus an
+  // 8 dp slop below, so its touch target stays 48 dp while the block stays tight. With no status line it is the row tucked into the
+  // paper under the bar beside the can (10-05, his device note: an empty gap there until a tap brought a line).
+  const receipt = (tuck?: { room: number; slot: number }) =>
+    receiptLine ? (
+          <Pressable
+            onPress={() => router.push('/activity')}
+            accessibilityRole="button"
+            accessibilityLabel={`${receiptLine}. Opens Activity.`}
+            hitSlop={{ top: 0, bottom: RECEIPT_SLOP, left: RECEIPT_SLOP, right: RECEIPT_SLOP }}
+            style={({ pressed }) => ({
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: spacing.xs,
+              minHeight: TARGET - RECEIPT_SLOP,
+              marginTop: tuck ? -Math.max(0, tuck.room - spacing.sm) : -spacing.lg,
+              paddingRight: tuck ? tuck.slot : 0,
+              opacity: pressed ? 0.6 : 1,
+            })}
+          >
+            <ThemedText variant="caption" tone="secondary" style={{ flex: 1 }}>
+              {receiptLine}
+            </ThemedText>
+            <MaterialCommunityIcons name="chevron-right" size={18} color={colors.textSecondary} />
+          </Pressable>
+    ) : null
   return (
     <Screen
       inset="top"
@@ -215,33 +241,15 @@ export default function Home() {
               thresholdCents={me.nextPlanting.thresholdCents}
               can={can}
             />
-            {watcher.line ? <WatcherLine text={watcher.line} tuck={{ room: roomUnderBar(can.s), slot: canSlot(can.s) }} /> : null}
+            {watcher.line ? (
+              <WatcherLine text={watcher.line} tuck={{ room: roomUnderBar(can.s), slot: canSlot(can.s) }} />
+            ) : (
+              receipt({ room: roomUnderBar(can.s), slot: canSlot(can.s) })
+            )}
           </>
         )}
       />
-      {/* R199: the last planting closes the garden section: it sits straight under the garden (the screen's gap taken back), its row
-          40 dp plus an 8 dp slop below, so its touch target stays 48 dp while the block stays tight. */}
-      {receiptLine ? (
-        <Pressable
-          onPress={() => router.push('/activity')}
-          accessibilityRole="button"
-          accessibilityLabel={`${receiptLine}. Opens Activity.`}
-          hitSlop={{ top: 0, bottom: RECEIPT_SLOP, left: RECEIPT_SLOP, right: RECEIPT_SLOP }}
-          style={({ pressed }) => ({
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: spacing.xs,
-            minHeight: TARGET - RECEIPT_SLOP,
-            marginTop: -spacing.lg,
-            opacity: pressed ? 0.6 : 1,
-          })}
-        >
-          <ThemedText variant="caption" tone="secondary" style={{ flex: 1 }}>
-            {receiptLine}
-          </ThemedText>
-          <MaterialCommunityIcons name="chevron-right" size={18} color={colors.textSecondary} />
-        </Pressable>
-      ) : null}
+      {watcher.line ? receipt() : null}
       {/* R199: one small step more than the screen's gap before the pot card, so the garden section reads as one block above it. */}
       {/* R236 (10-04, his note): closer under the Last planting row; the row's own touch height already leaves room */}
       <Card style={{ marginTop: -spacing.xs }}>
