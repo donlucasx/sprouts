@@ -45,6 +45,17 @@ describe("config", () => {
     expect(() => config().cronSecret).toThrow("Missing env: CRON_SECRET");
   });
 
+  it("PYTH_API_KEY is optional (R324): absent reads undefined, no throw; present reads the value", () => {
+    Object.assign(process.env, ALL);
+    delete process.env.PYTH_API_KEY;
+    expect(() => config()).not.toThrow();
+    expect(config().pythApiKey).toBeUndefined();
+    expect(config().jupiterApiKey).toBe("j");
+    process.env.PYTH_API_KEY = "pk";
+    expect(config().pythApiKey).toBe("pk");
+    delete process.env.PYTH_API_KEY;
+  });
+
   it("reads a present variable even while another is missing", () => {
     Object.assign(process.env, ALL);
     delete process.env.CRON_SECRET;
