@@ -8,6 +8,7 @@ import {
   type Address,
   type Transaction,
 } from '@solana/kit'
+import { isLend, type LendAsset } from './coins'
 
 /**
  * Security R207 #3 (10-03): the API builds every transaction and the Seed Vault key signs it, so a compromised API (or its domain)
@@ -29,6 +30,34 @@ export const SUBSCRIPTIONS_PROGRAM = 'De1egAFMkMWZSN5rYXRj9CAdheBamobVNubTsi9avR
 export const ATA_PROGRAM = 'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL'
 const TOKEN_PROGRAM = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA'
 const SYSTEM_PROGRAM = '11111111111111111111111111111111'
+
+/** Contracts 1.4 and 6: the lending venues' accounts, copied (never fetched; the app never takes an address from the API). Venue program
+ * ids are app-release-coupled: a venue upgrade that moves an account needs an app update, or its Withdraw is refused. */
+export const LEASH_PROGRAM = 'GyBmDLN72kg6xwAnZfj9c7fjeaJ3GvhkHNhFns83f8f7' // LEASH_PROGRAM_ID (contracts 10, Track L Task 0)
+export const WSOL_MINT = 'So11111111111111111111111111111111111111112'
+export const SYSVAR_INSTRUCTIONS = 'Sysvar1nstructions1111111111111111111111111'
+export const KLEND_PROGRAM = 'KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD'
+export const KLEND_MARKET = '7u3HeHxYDLhnCoErrtycNokbQYbWGzLs6JSDqGAv5PfF'
+export const KLEND_LMA = '9DrvZvyWh1HuAoZxvYWMvkf2XCzryCpGgHqrMjyDWpmo'
+export const KLEND_SCOPE_PRICES = '3t4JZcueEzTbVP6kLxXrL3VpWx45jDer4eqysweBchNH'
+/** The PINNED reserves (spec 3: never "the best reserve in the market"). */
+export const KLEND_RESERVE: Record<LendAsset, { reserve: string; liquidityMint: string; supplyVault: string; collateralMint: string }> = {
+  USDC_LEND: { reserve: 'D6q6wuQSrifJKZYpR1M8R4YawnLDtDsMmWM1NbBmgJ59', liquidityMint: USDC_MINT, supplyVault: 'Bgq7trRgVMeq33yt235zM2onQ4bRDBsY5EWiTetF4qw6', collateralMint: 'B8V6WVjPxW1UGwVDfxH2d2r8SyT4cqn7dQRK6XneVa7D' },
+  SOL_LEND: { reserve: 'd4A2prbA2whesmvHaL88BH6Ewn5N4bTSU2Ze8P6Bc4Q', liquidityMint: WSOL_MINT, supplyVault: 'GafNuUXj9rxGLn4y79dPu6MHSuPWeJR6UtTWuexpGh3U', collateralMint: '2UywZrUdyqs5vDchy7fKQJKau2RVyuzBev2XKGPDSiX1' },
+}
+export const JLEND_PROGRAM = 'jup3YeL8QhtSx1e253b2FDvsMNC87fDrgQZivbrndc9'
+export const JLEND_LIQUIDITY_PROGRAM = 'jupeiUmn818Jg1ekPURTpr4mFo29p46vygyykFJ3wZC'
+export const JLEND_LENDING_ADMIN = '5nmGjA4s7ATzpBQXC5RNceRpaJ7pYw2wKsNBWyuSAZV6'
+export const JLEND_LIQUIDITY = '7s1da8DduuBFqGra5bJBjpnvL5E9mGzCuMk1Qkh4or2Z'
+export const JLEND: Record<LendAsset, { lending: string; mint: string; fTokenMint: string; strl: string; lspol: string; rateModel: string; vault: string; rewardsRateModel: string; claimAccount: string }> = {
+  USDC_LEND: { lending: '2vVYHYM8VYnvZqQWpTJSj8o8DBf1wM8pVs3bsTgYZiqJ', mint: USDC_MINT, fTokenMint: '9BEcn9aPEmhSPbPQeFGjidRiEKki46fVQDyPpSQXPA2D', strl: '94vK29npVbyRHXH63rRcTiSr26SFhrQTzbpNJuhQEDu', lspol: 'Hf9gtkM4dpVBahVSzEXSVCAPpKzBsBcns3s8As3z77oF', rateModel: '5pjzT5dFTsXcwixoab1QDLvZQvpYJxJeBphkyfHGn688', vault: 'BmkUoKMFYBxNSzWXyUjyMJjMAaVz4d8ZnxwwmhDCUXFB', rewardsRateModel: '5xSPBiD3TibamAnwHDhZABdB4z4F9dcj5PnbteroBTTd', claimAccount: 'HN1r4VfkDn53xQQfeGDYrNuDKFdemAhZsHYRwBrFhsW' },
+  SOL_LEND: { lending: 'BeAqbxfrcXmzEYT2Ra62oW2MqkuFDHaCtps47Mzg6Zj3', mint: WSOL_MINT, fTokenMint: '2uQsyo1fXXQkDtcpXnLofWy88PxcvnfH2L8FPSE62FVU', strl: '4Y66HtUEqbbbpZdENGtFdVhUMS3tnagffn3M4do59Nfy', lspol: '4SkEYxmiRgQ4VYyvh9VB4k39M49BpqazyzDUFDzJhXQm', rateModel: 'Acvyi9HBGmqh3Exe1N4PjBVyY8fokq2AdC6fSLqV6KSo', vault: '5JP5zgYCb9W37QQLgAHRHuinFLrKt87akDY1CgZoTPzr', rewardsRateModel: 'CkeQGDRsgMZcCaU8cZEdC2aFAohia4jLzL36RaLcUDsR', claimAccount: '6AQGR8zK4KTVZfZ9UZaRzyEL5ynvwVaF5ywVdmtJT24N' },
+}
+// Anchor discriminators sha256("global:<name>")[0..8] (contracts 6, recomputed 10-04); Token CloseAccount is tag 9.
+const KLEND_REFRESH = [2, 218, 138, 235, 79, 201, 25, 102]
+const KLEND_REDEEM = [234, 117, 181, 125, 185, 142, 220, 29]
+const JLEND_REDEEM = [184, 12, 86, 149, 70, 196, 97, 225]
+const TOKEN_CLOSE_ACCOUNT = 9
 
 /**
  * The production puller (RESUME: "Puller HJCJ... funded"), the ONLY delegatee an approval from this app may name: without it pinned,
@@ -58,6 +87,8 @@ export type SignFlow =
   | { kind: 'cancel'; user: string }
   | { kind: 'link'; user: string }
   | { kind: 'revoke'; user: string }
+  /** Spec 7, R264: one lending position back to the wallet; receiptRaw is the position the screen showed (/api/me positions). */
+  | { kind: 'withdraw_klend' | 'withdraw_jlend'; user: string; asset: LendAsset; receiptRaw: string }
 
 /** The sentences a refusal shows; each ends "Nothing was signed." so the screen needs no wording of its own. */
 export const REFUSED = {
@@ -127,6 +158,64 @@ function oneStakingIx(ixs: Ix[], discriminator: readonly number[], dataLength: n
   return ix
 }
 
+/** The user's canonical associated token account (classic SPL Token), derived on the phone. */
+const ata = (owner: string, mint: string) => pda(ATA_PROGRAM, [key(owner), key(TOKEN_PROGRAM), key(mint)])
+/** A raw amount the screen showed, as the u64 the instruction must carry; anything else refuses. */
+const amountOf = (s: string): bigint => (/^\d+$/.test(s) && BigInt(s) > 0n && BigInt(s) <= 0xffff_ffff_ffff_ffffn ? BigInt(s) : refuse('plan'))
+
+/** One expected instruction: its program, discriminator, total data length, full account list, the u64 after the discriminator. */
+type Step = { program: string; data: readonly number[]; length: number; accounts: readonly (string | null)[]; amount?: bigint; optional?: boolean }
+/**
+ * The transaction's instructions are exactly `want`, in order (an optional step may be absent). A program outside the flow's set is
+ * 'program'; anything else that differs (order, data, an account, the amount, a missing or extra instruction) is 'plan'.
+ */
+function steps(ixs: Ix[], want: Step[]): void {
+  const programs = new Set(want.map((s) => s.program))
+  if (ixs.some((ix) => !programs.has(ix.program))) refuse('program')
+  let i = 0
+  for (const s of want) {
+    const ix = ixs[i]
+    if (!ix || ix.program !== s.program || !startsWith(ix.data, s.data)) {
+      if (!s.optional) return refuse('plan')
+      continue
+    }
+    if (ix.data.length !== s.length) refuse('plan')
+    accountsAre(ix, s.accounts)
+    if (s.amount !== undefined && u64At(ix.data, s.data.length) !== s.amount) refuse('plan')
+    i++
+  }
+  if (i !== ixs.length) refuse('plan')
+}
+const ataCreate = (user: string, account: string, mint: string, optional: boolean): Step =>
+  ({ program: ATA_PROGRAM, data: [ATA_CREATE_IDEMPOTENT], length: 1, accounts: [user, account, user, mint, SYSTEM_PROGRAM, TOKEN_PROGRAM], optional })
+/** Unwraps: the WSOL account closes back to the user, its lamports to the user. */
+const closeWsol = (wsolAta: string, user: string): Step => ({ program: TOKEN_PROGRAM, data: [TOKEN_CLOSE_ACCOUNT], length: 1, accounts: [wsolAta, user, user] })
+const klendRefresh = (asset: LendAsset): Step =>
+  ({ program: KLEND_PROGRAM, data: KLEND_REFRESH, length: 8, accounts: [KLEND_RESERVE[asset].reserve, KLEND_MARKET, KLEND_PROGRAM, KLEND_PROGRAM, KLEND_PROGRAM, KLEND_SCOPE_PRICES] })
+/** Contracts 6 withdraw_klend: [create the underlying ATA; required for SOL], refresh, redeem the position into the user's own ATA, [SOL: close]. */
+async function klendRedeemSteps(user: string, asset: LendAsset, amount: bigint, close: boolean): Promise<Step[]> {
+  const r = KLEND_RESERVE[asset]
+  const [und, k] = await Promise.all([ata(user, r.liquidityMint), ata(user, r.collateralMint)])
+  return [
+    ataCreate(user, und, r.liquidityMint, asset === 'USDC_LEND'),
+    klendRefresh(asset),
+    { program: KLEND_PROGRAM, data: KLEND_REDEEM, length: 16, amount,
+      accounts: [user, KLEND_MARKET, r.reserve, KLEND_LMA, r.liquidityMint, r.collateralMint, r.supplyVault, k, und, TOKEN_PROGRAM, TOKEN_PROGRAM, SYSVAR_INSTRUCTIONS] },
+    ...(asset === 'SOL_LEND' && close ? [closeWsol(und, user)] : []),
+  ]
+}
+/** Contracts 6 withdraw_jlend: [create the underlying ATA], redeem the shares (18 accounts), [SOL: close]. */
+async function jlendRedeemSteps(user: string, asset: LendAsset, amount: bigint, close: boolean): Promise<Step[]> {
+  const j = JLEND[asset]
+  const [und, f] = await Promise.all([ata(user, j.mint), ata(user, j.fTokenMint)])
+  return [
+    ataCreate(user, und, j.mint, true),
+    { program: JLEND_PROGRAM, data: JLEND_REDEEM, length: 16, amount,
+      accounts: [user, f, und, JLEND_LENDING_ADMIN, j.lending, j.mint, j.fTokenMint, j.strl, j.lspol, j.rateModel, j.vault, j.claimAccount, JLEND_LIQUIDITY, JLEND_LIQUIDITY_PROGRAM, j.rewardsRateModel, TOKEN_PROGRAM, ATA_PROGRAM, SYSTEM_PROGRAM] },
+    ...(asset === 'SOL_LEND' && close ? [closeWsol(und, user)] : []),
+  ]
+}
+
 /**
  * Per flow, what the API's builder puts in (api/src/lib/staking.ts, subscriptions.ts, app/api/link/[code]); nothing else passes. Every
  * account list is pinned in full, in the generated builders' order (unstake: userStake, stakeConfig, guardianPool, user, stakeVault,
@@ -191,6 +280,12 @@ async function checkInstructions(ixs: Ix[], flow: SignFlow): Promise<void> {
       if (creates !== 1) refuse('plan')
       return
     }
+    case 'withdraw_klend':
+      if (!isLend(flow.asset)) return refuse('plan')
+      return steps(ixs, await klendRedeemSteps(user, flow.asset, amountOf(flow.receiptRaw), true))
+    case 'withdraw_jlend':
+      if (!isLend(flow.asset)) return refuse('plan')
+      return steps(ixs, await jlendRedeemSteps(user, flow.asset, amountOf(flow.receiptRaw), true))
   }
 }
 
