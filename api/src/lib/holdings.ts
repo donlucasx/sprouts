@@ -132,7 +132,11 @@ export function lendingFrom(a: { positions: LendPosition[]; legs: PlantingLegRow
     const legs = a.legs.filter((l) => l.asset === p.asset && l.venue === p.venue);
     const planted = legs.reduce((s, l) => s + l.amountOutRaw, 0n);
     const kept = planted > 0n ? Math.min(1, Number(p.receiptRaw) / Number(planted)) : 1;
-    const underlying = rate === null ? 0 : Math.floor(Number(p.receiptRaw) * rate);   // whole raw units: value and underlyingRaw agree
+    // No rated snapshot in 7 days: the highest rate any of this position's legs was planted at (rates only rise, so this still
+    // understates and is never zero for a funded position); value stays null, no dollar claim on a stale rate. No such leg: 0.
+    const plantedRates = legs.map((l) => l.rateAtPlanting).filter((r): r is number => r !== null);
+    const amountRate = rate ?? (plantedRates.length ? Math.max(...plantedRates) : null);
+    const underlying = amountRate === null ? 0 : Math.floor(Number(p.receiptRaw) * amountRate);   // whole raw units: value and underlyingRaw agree
     const earnedUnderlying = rate === null ? null : kept * legs.reduce((s, l) => (l.rateAtPlanting === null ? s : s + Number(l.amountOutRaw) * Math.max(0, rate - l.rateAtPlanting)), 0);
     const valueUsd = rate !== null && price !== null ? (underlying / scale) * price : null;
     return {
@@ -165,9 +169,11 @@ export function lendHoldings(ps: LendingPositionOut[]): Holding[] {
  * one (a failed snapshot today never hides yesterday's rate; the same rule as `latestCoinDays`).
  */
 export async function latestVenueRows(repo: Repo, day: string): Promise<VenueDayRow[]> {
+  const keys = VENUES.flatMap((venue) => LEND_ASSETS.map((asset) => ({ venue, asset })));
+  const all = await Promise.all(keys.map(({ venue, asset }) => repo.listVenueHistory(venue, asset, addDays(day, -7))));
   const out: VenueDayRow[] = [];
-  for (const venue of VENUES) for (const asset of LEND_ASSETS) {
-    const rows = (await repo.listVenueHistory(venue, asset, addDays(day, -7))).filter((r) => r.day <= day && (r.exchangeRate !== null || r.supplyPct !== null));
+  for (const history of all) {
+    const rows = history.filter((r) => r.day <= day && (r.exchangeRate !== null || r.supplyPct !== null));
     if (!rows.length) continue;
     const base = rows[rows.length - 1];
     const rated = [...rows].reverse().find((r) => r.exchangeRate !== null) ?? null;

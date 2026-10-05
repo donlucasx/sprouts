@@ -56,6 +56,13 @@ describe("GET /api/venues (contracts 5.1)", () => {
     expect(body.day).toBe(y);
     expect(body.venues.find((v: { venue: string }) => v.venue === "kamino_klend")).toMatchObject({ asset: "SOL_LEND", supplyPct: 5.1 });
   });
+  it("a venue that failed today shows its newest row of the last 7 days beside today's rows (M1)", async () => {
+    const { addDays } = await import("@/domain/day");
+    await repo.putVenueDay({ day: addDays(dayOf(new Date()), -1), venue: "kamino_klend", asset: "SOL_LEND", supplyPct: 5.1, rewardsPct: 0, utilizationPct: 80, withdrawableUsd: 1e7, tvlUsd: 1e8, exchangeRate: 1100, avg7Pct: 5, daysMeasured: 3, eligible: true, verdict: "ok", reason: null, served: null, ok: true });
+    const body = await (await get()).json();
+    expect(body.day).toBe(dayOf(new Date()));
+    expect(body.venues.filter((v: { venue: string }) => v.venue === "kamino_klend").map((v: { asset: string; supplyPct: number }) => [v.asset, v.supplyPct])).toEqual([["USDC_LEND", 4.43], ["SOL_LEND", 5.1]]);
+  });
   it("401 without a session", async () => {
     expect((await venues(new Request("http://x/api/venues"))).status).toBe(401);
   });

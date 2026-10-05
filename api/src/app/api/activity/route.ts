@@ -6,6 +6,9 @@ import { requireSession } from "@/lib/auth-guard";
 import { priceUsd } from "@/lib/jupiter";
 import { latestCoinDays } from "@/lib/holdings";
 import { underlyingOutRaw, receiptOutRaw } from "@/lib/lend-view";
+import { isLendAsset } from "@/domain/coins";
+import { isAutoVenue } from "@/domain/venues";
+import type { EventKind, MoveStatus } from "@/db/types";
 import { SKR_MINT, STORE_MINT } from "@/lib/constants";
 
 export const runtime = "nodejs";
@@ -46,18 +49,25 @@ export async function GET(request: Request) {
   // Contracts 5.7: a lending position back to the wallet (underlyingRaw = what came back, from the confirmed tx; null when unknown),
   // the moves the user approved or turned down, and the scout's finds of the last 7 days.
   const lendEvents = await repo.listEvents(session.pubkey, ["lend_withdrawn", "move_proposed", "move_done", "move_dismissed"], LIMIT);
-  type LendDetail = { asset: string; venue: string; receiptRaw: string; underlyingRaw?: string | null; signature: string };
-  type MoveDetail = { asset?: string; from?: string; to?: string; receiptRaw?: string; status?: string };
-  // No route writes a move_* event yet (Tasks 18/19 own moves); its status reads from the event kind when the detail carries none.
-  const MOVE_STATUS: Record<string, string> = { move_proposed: "open", move_done: "done", move_dismissed: "dismissed" };
-  const lendWithdrawals = lendEvents.filter((e) => e.kind === "lend_withdrawn").map((e) => {
-    const d = e.detail as LendDetail;
-    return { ts: e.ts, asset: d.asset, venue: d.venue, receiptRaw: d.receiptRaw, underlyingRaw: d.underlyingRaw ?? null, signature: d.signature };
+  // Event details are validated, never cast through: a malformed row is skipped rather than served with undefined fields.
+  type EvDetail = Record<string, unknown>;
+  const digits = (v: unknown): v is string => typeof v === "string" && /^\d+$/.test(v);
+  const str_ = (v: unknown): v is string => typeof v === "string" && v.length > 0;
+  // No route writes a move_* event yet (Tasks 18/19 own moves); a status outside MoveStatus reads from the event kind.
+  const MOVE_STATUS: Partial<Record<EventKind, MoveStatus>> = { move_proposed: "open", move_done: "done", move_dismissed: "dismissed" };
+  const MOVE_STATUSES: readonly MoveStatus[] = ["open", "dismissed", "expired", "done", "failed"];
+  const lendWithdrawals = lendEvents.filter((e) => e.kind === "lend_withdrawn").flatMap((e) => {
+    const d = (e.detail ?? {}) as EvDetail;
+    if (!str_(d.asset) || !isLendAsset(d.asset) || !str_(d.venue) || !isAutoVenue(d.venue) || !digits(d.receiptRaw) || !str_(d.signature)) return [];
+    return [{ ts: e.ts, asset: d.asset, venue: d.venue, receiptRaw: d.receiptRaw, underlyingRaw: digits(d.underlyingRaw) ? d.underlyingRaw : null, signature: d.signature }];
   });
   const moves = lendEvents.filter((e) => e.kind !== "lend_withdrawn").flatMap((e) => {
-    const d = (e.detail ?? {}) as MoveDetail;
-    if (!d.asset || !d.from || !d.to) return [];
-    return [{ ts: e.ts, asset: d.asset, from: d.from, to: d.to, receiptRaw: d.receiptRaw ?? "0", status: d.status ?? MOVE_STATUS[e.kind] }];
+    const d = (e.detail ?? {}) as EvDetail;
+    if (!str_(d.asset) || !isLendAsset(d.asset) || !str_(d.from) || !isAutoVenue(d.from) || !str_(d.to) || !isAutoVenue(d.to)) return [];
+    if (d.receiptRaw !== undefined && !digits(d.receiptRaw)) return [];
+    const status = MOVE_STATUSES.includes(d.status as MoveStatus) ? (d.status as MoveStatus) : MOVE_STATUS[e.kind];
+    if (!status) return [];
+    return [{ ts: e.ts, asset: d.asset, from: d.from, to: d.to, receiptRaw: digits(d.receiptRaw) ? d.receiptRaw : "0", status }];
   });
   const found = (await repo.listFoundVenues(addDays(dayOf(new Date()), -7), 20)).map((f) => ({ day: f.day, project: f.project, symbol: f.symbol, asset: f.asset, apyBasePct: f.apyBasePct, tvlUsd: f.tvlUsd, note: f.note }));
   return NextResponse.json(str({

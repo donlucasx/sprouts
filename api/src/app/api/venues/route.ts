@@ -24,8 +24,9 @@ export async function GET(request: Request) {
   const user = await repo.getUser(session.pubkey);
   if (!user) return NextResponse.json({ error: "Sign in first." }, { status: 401 });
   const today = dayOf(new Date());
-  let rows: VenueDayRow[] = await repo.listVenueDays(today);
-  if (!rows.length) rows = await latestVenueRows(repo, today);
+  // Today's rows, and for a (venue, asset) with no row today (its snapshot failed) its newest rated row of the last 7 days.
+  const [todays, latest] = await Promise.all([repo.listVenueDays(today), latestVenueRows(repo, today)]);
+  const rows: VenueDayRow[] = [...todays, ...latest.filter((l) => !todays.some((t) => t.venue === l.venue && t.asset === l.asset))];
   const day = rows.reduce((m, r) => (r.day > m ? r.day : m), rows[0]?.day ?? today);
   const rules = await repo.getRules(user.seedVaultPubkey);
   const split = (await repo.getSplitDay(today, rules.stop)) ?? (await repo.latestSplitDay(rules.stop));

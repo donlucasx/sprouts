@@ -42,4 +42,16 @@ describe("GET /api/activity, lending (contracts 5.7)", () => {
     expect(body.moves).toEqual([{ ts: expect.any(String), asset: "USDC_LEND", from: "kamino_klend", to: "jupiter_lend", receiptRaw: "1661072", status: "done" }]);
     expect(body.found).toEqual([{ day: dayOf(new Date()), project: "kamino-lend", symbol: "SOL", asset: "SOL", apyBasePct: 5.64, tvlUsd: 2.5e7, note: null }]);
   });
+  it("malformed lend and move events are skipped; a status outside MoveStatus reads from the event kind (M4)", async () => {
+    await repo.addEvent({ userPubkey: U, walletPubkey: null, kind: "lend_withdrawn", detail: { asset: "JitoSOL", venue: "kamino_klend", receiptRaw: "1", signature: "bad-asset" } });
+    await repo.addEvent({ userPubkey: U, walletPubkey: null, kind: "lend_withdrawn", detail: { asset: "USDC_LEND", venue: "marginfi", receiptRaw: "1", signature: "bad-venue" } });
+    await repo.addEvent({ userPubkey: U, walletPubkey: null, kind: "lend_withdrawn", detail: { asset: "USDC_LEND", venue: "kamino_klend", receiptRaw: "1.5", signature: "bad-raw" } });
+    await repo.addEvent({ userPubkey: U, walletPubkey: null, kind: "lend_withdrawn", detail: null });
+    await repo.addEvent({ userPubkey: U, walletPubkey: null, kind: "lend_withdrawn", detail: { asset: "USDC_LEND", venue: "kamino_klend", receiptRaw: "7", underlyingRaw: "x", signature: "ok" } });
+    await repo.addEvent({ userPubkey: U, walletPubkey: null, kind: "move_dismissed", detail: { asset: "USDC_LEND", from: "kamino_klend", to: "jupiter_lend", receiptRaw: "1", status: "hacked" } });
+    await repo.addEvent({ userPubkey: U, walletPubkey: null, kind: "move_done", detail: { asset: "USDC_LEND", from: "kamino_klend", to: "nowhere" } });
+    const body = await get();
+    expect(body.lendWithdrawals).toEqual([{ ts: expect.any(String), asset: "USDC_LEND", venue: "kamino_klend", receiptRaw: "7", underlyingRaw: null, signature: "ok" }]);
+    expect(body.moves).toEqual([{ ts: expect.any(String), asset: "USDC_LEND", from: "kamino_klend", to: "jupiter_lend", receiptRaw: "1", status: "dismissed" }]);
+  });
 });
