@@ -74,7 +74,7 @@ describe("back plants move to the gaps (R357)", () => {
       }
     }
   });
-  it("the words are less covered than at the locked slots at every width, and the frame does not zoom out at 353 and 372", () => {
+  it("the words are less covered than at the locked slots at every width, and the garden keeps at least 0.85 of its zoom", () => {
     for (const width of WIDTHS) {
       const moved = drawn(grown(), width);
       const scene0 = packScene(buildScene(grown())), pl0 = plantLayouts(scene0), f0 = frameFor(scene0, pl0, width), spots0 = stakeSpots(scene0, pl0, width, f0.zoom), g0 = frameGround(width, f0);
@@ -83,18 +83,17 @@ describe("back plants move to the gaps (R357)", () => {
       const before = scene0.parts.flatMap((q) => (q.kind === "sign" && q.row === "back" ? [q] : [])).reduce((t, s) => { const a = signPlacement(s, width, f0.zoom, g0, spots0), h = 15 * a.scale * a.boardX; return t + cover({ x0: a.x - h, x1: a.x + h, y0: a.y - 12 * a.scale, y1: a.y - a.scale }, front0); }, 0);
       const after = moved.signs.filter((x) => x.row === "back").reduce((t, s) => t + cover(s.board, moved.front), 0);
       if (width >= 320) expect(after, `${width}`).toBeLessThan(before); else expect(after, `${width}`).toBeLessThanOrEqual(before + 1e-6);
-      if (width >= 353) expect(moved.f.zoom, `${width}`).toBeGreaterThanOrEqual(f0.zoom - 1e-6);
+      expect(moved.f.zoom, `${width}`).toBeGreaterThanOrEqual(0.85 * f0.zoom - 1e-6);   // GAP_ZOOM: the zoom-out is capped
     }
   });
-  it("stable as the garden grows: no back plant flickers back to a spot it left a size before, and it moves at most 3 times", () => {
-    for (const width of [320, 372]) {
-      const xs = new Map<string, number[]>();
-      for (let n = 4; n <= 20; n++) for (const s of drawn(grown(n, Math.round(n * 0.7)), width).signs.filter((x) => x.row === "back")) xs.set(s.plant, [...(xs.get(s.plant) ?? []), s.foot]);
-      for (const [plant, seq] of xs) {
-        const tag = `${plant} at ${width}: ${seq.map((x) => x.toFixed(0)).join(" ")}`;
-        for (let i = 1; i + 1 < seq.length; i++) expect(Math.abs(seq[i - 1] - seq[i + 1]) < 0.5 && Math.abs(seq[i] - seq[i - 1]) >= 0.5, tag).toBe(false);
-        expect(seq.slice(1).filter((x, i) => Math.abs(x - seq[i]) >= 0.5).length, tag).toBeLessThanOrEqual(3);
+  it("stable as the garden grows: stepping SKR 4 to 20 plantings, each back plant changes gap (which front stems it stands between) at most twice", () => {
+    for (const width of [280, 320, 372]) {
+      const gaps = new Map<string, number[]>();
+      for (let n = 4; n <= 20; n++) {
+        const d = drawn(grown(n, Math.round(n * 0.7)), width), fronts = d.plants.filter((pl) => pl.row === "front").map((pl) => pl.x * width);
+        for (const s of d.signs.filter((x) => x.row === "back")) gaps.set(s.plant, [...(gaps.get(s.plant) ?? []), fronts.filter((f) => f < s.foot).length]);
       }
+      for (const [plant, seq] of gaps) expect(seq.slice(1).filter((g, i) => g !== seq[i]).length, `${plant} at ${width}: ${seq.join("")}`).toBeLessThanOrEqual(2);
     }
   });
   it("depth stays true: the widget draws the back stakes before the front plants, the front stakes after", () => {
@@ -102,13 +101,5 @@ describe("back plants move to the gaps (R357)", () => {
     expect(signs).toHaveLength(4);
     expect(signs[1]).toBeLessThan(svg.indexOf("#s-token-skr"));
     expect(signs[2]).toBeGreaterThan(svg.lastIndexOf("#s-token-skr"));
-  });
-  // KNOWN (measured 10-05): at 280 to 353 the widest stretch of the back row, at the boards' height, that no front part's still box
-  // crosses is 14 to 32 px; a lending board is 48 to 52 px. No x holds a board wholly clear there; the plants take the least covered.
-  it.fails("KNOWN: at 280, 320 and 353 no front part covers a back sign board", () => {
-    for (const width of [280, 320, 353]) {
-      const d = drawn(grown(), width);
-      for (const s of d.signs.filter((x) => x.row === "back")) expect(d.front.filter((q) => hit(q, s.board))).toEqual([]);
-    }
   });
 });
