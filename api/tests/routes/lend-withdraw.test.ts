@@ -171,7 +171,7 @@ describe("Withdraw a lending position (contracts 5.3, R264)", () => {
   });
   const appSign = "/Users/lucasgarzoli/Documents/claude/seekerhackathon/build/sprouts-lend-app/app/src/lib/sign.ts";
   // Skipped (shown as skipped in the run) when the app worktree is not on this machine: the vendored copy was then not compared.
-  it.skipIf(!existsSync(appSign))("the vendored copy of the app's sign.ts equals the app's file byte for byte, bar the one documented import edit (skipped: app worktree sprouts-lend-app absent)", () => {
+  it.skipIf(!existsSync(appSign))("the vendored copy of the app's sign.ts equals the app's file byte for byte, bar the one documented import edit (skipped only when the app worktree sprouts-lend-app is absent)", () => {
     // The vendored header says what was changed: the app's `import { isLend, type LendAsset } from './coins'` is inlined as two lines
     // (and a comment). Undo exactly that edit, then every other byte must match.
     const vendored = readFileSync(new URL("../fixtures/app/sign.ts", import.meta.url), "utf8");

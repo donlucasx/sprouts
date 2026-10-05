@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { address, getBase64Encoder, getTransactionDecoder, getCompiledTransactionMessageDecoder, type Address, type Instruction } from "@solana/kit";
-import { buildLendWithdraw, buildMove, buildRelink } from "@/lib/venues/user-builders";
+import { buildLendWithdraw, buildMove, buildRelink, buildUnwrapWsol } from "@/lib/venues/user-builders";
 import { buildUserTransaction } from "@/lib/user-tx";
 import { delegationPda } from "@/lib/subscriptions";
 import { leashPda } from "@/lib/leash";
@@ -64,6 +64,14 @@ describe("the app's sign.ts accepts what the API builds (contracts 6; AMEND s20 
       expect(programsOf(tx)).not.toContain(COMPUTE_BUDGET);
     }
     expect(await leashPda(USER, USER)).not.toBe("HJCJKRQLV2HVKfe3sFdTF5jjBY1xfWgnK8cLcjH7qnHd" as Address);
+  });
+
+  it("unwrap_wsol (the SOL move's 409 partial): buildUnwrapWsol is accepted by the app's 'unwrap_wsol' check; another user's flow is refused", async () => {
+    const tx = await wire(await buildUnwrapWsol({ user: USER }));
+    await expect(checkBeforeSigning(tx, { kind: "unwrap_wsol", user: USER })).resolves.toBeUndefined();
+    expect(programsOf(tx)).not.toContain(COMPUTE_BUDGET);
+    // Not vacuous: a withdraw flow on the same bytes refuses.
+    await expect(checkBeforeSigning(tx, withdrawFlow("SOL_LEND", "kamino_klend", RECEIPT))).rejects.toBeInstanceOf(SignRefused);
   });
 
   it("a ComputeBudget instruction in a withdraw is refused by the app (why the builders never add one)", async () => {

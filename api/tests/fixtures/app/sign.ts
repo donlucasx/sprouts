@@ -8,7 +8,7 @@ import {
   type Address,
   type Transaction,
 } from '@solana/kit'
-// VENDORED (API Task 18): app/src/lib/sign.ts byte for byte from the app worktree (feat lending, app HEAD 3dc245c, file last changed 1ed1156),
+// VENDORED (API Task 18): app/src/lib/sign.ts byte for byte from the app worktree (lend/app HEAD 077bc9c, file last changed f569fa6),
 // except this import: app/src/lib/coins.ts's two lines, inlined. Refresh with `cp` + this one edit when the app's sign.ts changes.
 type LendAsset = 'USDC_LEND' | 'SOL_LEND'
 const isLend = (a: string): a is LendAsset => a === 'USDC_LEND' || a === 'SOL_LEND'
@@ -113,6 +113,8 @@ export type SignFlow =
   | { kind: 'move_jlend_to_klend'; user: string; asset: LendAsset; receiptRaw: string; depositRaw: string; depositCapRaw: string; part: MovePart }
   /** R287, contracts 6: the Seed Vault wallet (delegator == user) moves its approval to the leash; web-linked wallets re-link on the link page. */
   | { kind: 'relink'; user: string }
+  /** The 409 partial's `unwrapTransaction` (moves/confirm): one Token CloseAccount of the user's WSOL account, its lamports to the user. */
+  | { kind: 'unwrap_wsol'; user: string }
 
 export type MovePart = 'redeem' | 'deposit' | 'whole'
 
@@ -365,6 +367,8 @@ async function checkInstructions(ixs: Ix[], flow: SignFlow): Promise<void> {
       return movePart(ixs, flow.part, await jlendRedeemSteps(user, flow.asset, receipt, false), await klendDepositSteps(user, flow.asset, deposit))
     return refuse('plan')
   }
+  // The unwrap: exactly the one close, nothing else (no ComputeBudget); it touches none of derived()'s PDAs either.
+  if (flow.kind === 'unwrap_wsol') return steps(ixs, [closeWsol(await ata(user, WSOL_MINT), user)])
   const d = await derived(user)
   switch (flow.kind) {
     case 'withdraw': {
