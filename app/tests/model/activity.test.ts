@@ -57,7 +57,7 @@ describe('lending withdrawals, moves and found venues', () => {
     const m = { ts: '2026-10-05T19:00:00Z', asset: 'USDC_LEND' as const, from: 'jupiter_lend' as const, to: 'kamino_klend' as const, receiptRaw: '940000' }
     expect(keep(moveRow('Oct 5', { ...m, status: 'done' }))?.line).toBe('Oct 5, moved your USDC from Jupiter to Kamino')
     expect(keep(moveRow('Oct 5', { ...m, status: 'failed' }))).toMatchObject({ line: "Oct 5, moving your USDC didn't finish. It is back in your wallet.", details: ['Jupiter to Kamino.'] })
-    expect(keep(moveRow('Oct 5', { ...m, asset: 'SOL_LEND', status: 'failed' }))?.line).toBe("Oct 5, moving your SOL didn't finish. It is back in your wallet.")
+    expect(keep(moveRow('Oct 5', { ...m, asset: 'SOL_LEND', status: 'failed' }))?.line).toBe("Oct 5, moving your SOL didn't finish. Your SOL is in your wallet. If it shows as wrapped SOL, unwrap it in your wallet.")
     expect(keep(moveRow('Oct 5', { ...m, status: 'dismissed' }))?.line).toBe('Oct 5, you kept your USDC on Jupiter')
     expect(moveRow('Oct 5', { ...m, status: 'open' })).toBeNull()
     expect(moveRow('Oct 5', { ...m, status: 'expired' })).toBeNull()
