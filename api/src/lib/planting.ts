@@ -50,6 +50,8 @@ export async function swapFeeParams(asset: LiveAsset): Promise<{ platformFeeBps?
 
 export const SWAP_MAX_ACCOUNTS: Record<LiveAsset, number> = { SKR: 24, stORE: 24, USDC_LEND: 24, SOL_LEND: 24, hSOL: 24, cbBTC: 24 };   // SOL_LEND PROVISIONAL(S1)
 const MAX_TX_BYTES = 1232;
+/** The placeholder lookup-table address `measureAlt` compresses against (not on chain; never sent). */
+export const MEASURE_ALT = address("SproutsA1tMeasure11111111111111111111111111");
 /**
  * PLACEHOLDER (PREFLIGHT 10-04 s20; ruling s20): 400_000 is a ceiling, not a measured number. The final limit = the highest measured
  * route units (Task 12's leashed simulation, `units=` per leg) + 75_000 for the leash (pull + settle; the leash's Task 6 measured a
@@ -82,7 +84,7 @@ const ataOf = async (owner: Address, mint: Address) => (await findAssociatedToke
  * pull goes in (the 3-cent network fee is not withheld). Nothing from the network is signed unchecked: the Jupiter response, the
  * venue instructions and the leash pair are each checked; a leash min_out under the program's floor is refused here (no send).
  */
-export async function buildPlantingTx(a: { delegator: Address; user: Address; asset: LiveAsset; venue: AutoVenue | null; pullRaw: bigint; delegationPda: Address; leashed: boolean; carryIn: Partial<Record<CarryKind, bigint>>; jlLeftover?: 0n | 1n; priceOpts?: { waitS?: number; confCapBps?: number; maxAgeS?: number } }): Promise<BuiltPlanting> {
+export async function buildPlantingTx(a: { delegator: Address; user: Address; asset: LiveAsset; venue: AutoVenue | null; pullRaw: bigint; delegationPda: Address; leashed: boolean; carryIn: Partial<Record<CarryKind, bigint>>; jlLeftover?: 0n | 1n; priceOpts?: { waitS?: number; confCapBps?: number; maxAgeS?: number }; measureAlt?: Address[] }): Promise<BuiltPlanting> {
   const lend = isLendAsset(a.asset);
   if (lend !== (a.venue !== null)) throw new Error(`${a.asset} with venue ${a.venue}: a lending leg needs a venue and a coin leg takes none`);
   const puller = await pullerSigner();
@@ -223,9 +225,13 @@ export async function buildPlantingTx(a: { delegator: Address; user: Address; as
   if (a.venue === "jupiter_lend") await checkJlendDepositInstructions(ixs, { puller: puller.address, user: a.user, asset: a.asset as LendAsset, depositRaw, rn: jlRn as bigint });
 
   if (preTxs.length) await sendPriceTxs(preTxs);   // the VAA write + verify move no funds; post_update needs them landed
-  const alt = process.env.SPROUTS_ALT;
+  // `measureAlt` (Task 12, the go-live gate's --assume-alt, MEASUREMENT ONLY): compress with these addresses as an in-memory Sprouts
+  // ALT at a placeholder table address instead of SPROUTS_ALT, to size a planting before the owner creates the ALT. The result
+  // references a table that is not on chain: it can be neither sent nor simulated. The run never passes it.
+  const alt = a.measureAlt ? undefined : process.env.SPROUTS_ALT;
   const tableAddrs = [...lookupTables, ...(alt ? [address(alt)] : [])];
   const tables = await fetchAddressesForLookupTables(tableAddrs, rpc());
+  if (a.measureAlt) { tables[MEASURE_ALT] = a.measureAlt; tableAddrs.push(MEASURE_ALT); }
   const { value: { blockhash, lastValidBlockHeight } } = await rpc().getLatestBlockhash().send();
   const message = pipe(
     createTransactionMessage({ version: 0 }),
@@ -301,7 +307,13 @@ export function checkPlantingInstructions(ixs: readonly Instruction[], a: { pull
 export async function simulatePlanting(b: BuiltPlanting): Promise<Simulation> {
   const addrs = [b.deliveryAccount, ...b.watched];
   const before = await rpc().getMultipleAccounts(addrs, { encoding: "base64", commitment: "confirmed" }).send();
-  const amount = (v: { data: [string, string] } | null | undefined) => (v ? tokenAmountOf(new Uint8Array(Buffer.from(v.data[0], "base64"))) : null);
+  // Task 12 (measured on mainnet 10-04): an account the transaction closes comes back from simulateTransaction as lamports 0,
+  // System-owned, 0 data bytes, not null; it reads as absent (null). Any other short buffer still throws (not a token account).
+  const amount = (v: { data: [string, string] } | null | undefined) => {
+    if (!v) return null;
+    const bytes = new Uint8Array(Buffer.from(v.data[0], "base64"));
+    return bytes.length === 0 ? null : tokenAmountOf(bytes);
+  };
   const pre = before.value.map((v) => amount(v as never));
   const res = await rpc().simulateTransaction(getBase64EncodedWireTransaction(b.tx), {
     encoding: "base64", sigVerify: false, replaceRecentBlockhash: true, commitment: "confirmed", accounts: { encoding: "base64", addresses: addrs },

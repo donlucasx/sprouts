@@ -24,6 +24,8 @@ let altOn = true;
 const tokenAcct = (amount: bigint) => { const b = Buffer.alloc(165); b.writeBigUInt64LE(amount, 64); return b.toString("base64"); };
 const chainPre = new Map<string, bigint>();
 const simPost = new Map<string, bigint>();
+/** Task 12 (measured on mainnet 10-04): an account the transaction CLOSES comes back from simulateTransaction as lamports 0, System-owned, 0 data bytes, not null. */
+const simClosed = new Set<string>();
 const simCalls: string[][] = [];
 const stakes: bigint[] = [];
 const postIx: Instruction = { programAddress: address("rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ"), accounts: [], data: new Uint8Array([7]) };
@@ -36,7 +38,7 @@ vi.mock("@/lib/rpc", () => ({ rpc: () => ({
   getMultipleAccounts: (addrs: string[], cfg?: { encoding?: string }) => ({ send: async () => ({ value: addrs.map((a) => (a === ALT_ADDR && cfg?.encoding === "jsonParsed"
     ? { data: { parsed: { info: { addresses: altContent, authority: null, deactivationSlot: "18446744073709551615", lastExtendedSlot: "0", lastExtendedSlotStartIndex: 0 }, type: "lookupTable" }, program: "address-lookup-table", space: 56n + 32n * BigInt(altContent.length) }, executable: false, lamports: 1n, owner: "AddressLookupTab1e1111111111111111111111111", space: 56n + 32n * BigInt(altContent.length) }
     : chainPre.has(a) ? { data: [tokenAcct(chainPre.get(a)!), "base64"] } : null)) }) }),
-  simulateTransaction: (_tx: string, cfg: { accounts: { addresses: string[] } }) => ({ send: async () => { simCalls.push(cfg.accounts.addresses); return { value: { err: null, logs: [], unitsConsumed: 1n, accounts: cfg.accounts.addresses.map((a) => (simPost.has(a) ? { data: [tokenAcct(simPost.get(a)!), "base64"] } : null)) } }; } }),
+  simulateTransaction: (_tx: string, cfg: { accounts: { addresses: string[] } }) => ({ send: async () => { simCalls.push(cfg.accounts.addresses); return { value: { err: null, logs: [], unitsConsumed: 1n, accounts: cfg.accounts.addresses.map((a) => (simClosed.has(a) ? { lamports: 0n, owner: "11111111111111111111111111111111", data: ["", "base64"] } : simPost.has(a) ? { data: [tokenAcct(simPost.get(a)!), "base64"] } : null)) } }; } }),
 }) }));
 vi.mock("@/lib/subscriptions", () => ({ buildTransferRecurringIx: vi.fn(async () => ({ programAddress: "De1egAFMkMWZSN5rYXRj9CAdheBamobVNubTsi9avR44", accounts: [], data: new Uint8Array([5]) })) }));
 vi.mock("@/lib/staking", async (orig) => {
@@ -75,7 +77,7 @@ vi.mock("@/lib/leash", async (orig) => {
   };
 });
 
-import { buildPlantingTx, simulatePlanting, tokenAmountOf } from "@/lib/planting";
+import { buildPlantingTx, simulatePlanting, tokenAmountOf, MEASURE_ALT } from "@/lib/planting";
 import { sproutsAltAddresses } from "@/lib/alt";
 import { getQuote, getSwapInstructions } from "@/lib/jupiter";
 import { klendMinOut } from "@/lib/venues/klend";
@@ -301,7 +303,7 @@ describe("buildPlantingTx, unleashed SKR and wallet coins (R207 #2, #4; restored
 
 describe("simulatePlanting: the delivery account and every watched account, before and after (restored + watched)", () => {
   beforeEach(async () => {
-    puller = await generateKeyPairSigner(); simCalls.length = 0; chainPre.clear(); simPost.clear();
+    puller = await generateKeyPairSigner(); simCalls.length = 0; chainPre.clear(); simPost.clear(); simClosed.clear();
     altContent = await sproutsAltAddresses(puller.address);
     process.env.SPROUTS_ALT = ALT_ADDR;
   });
@@ -334,6 +336,25 @@ describe("simulatePlanting: the delivery account and every watched account, befo
     // T7 carry: the user's jl account (the delivery account, created by this tx) reads 0 before, not "missing".
     expect(s.delivery).toEqual({ pre: 0n, post: 15_554_030n });
     expect(s.watched).toEqual({ [usdc]: { pre: 9n, post: 9n }, [wsol]: { pre: 4_000n, post: 4_003n }, [skr]: { pre: null, post: null }, [jl]: { pre: 7n, post: null } });
+  });
+  it("Task 12 measureAlt: the in-memory ALT sizes a planting exactly as the same addresses on chain at SPROUTS_ALT do, and never reads SPROUTS_ALT", async () => {
+    const onChain = await buildPlantingTx({ ...base, asset: "SOL_LEND", venue: "jupiter_lend", leashed: true, carryIn: {} });
+    delete process.env.SPROUTS_ALT;
+    await expect(buildPlantingTx({ ...base, asset: "SOL_LEND", venue: "jupiter_lend", leashed: true, carryIn: {} })).rejects.toThrow(/over 1232/);   // without any ALT
+    const measured = await buildPlantingTx({ ...base, asset: "SOL_LEND", venue: "jupiter_lend", leashed: true, carryIn: {}, measureAlt: altContent as never });
+    expect(measured.sizeBytes).toBe(onChain.sizeBytes);
+    expect(measured.lookupTables).toEqual([MEASURE_ALT]);
+    process.env.SPROUTS_ALT = ALT_ADDR;
+    const ignoresEnv = await buildPlantingTx({ ...base, asset: "SOL_LEND", venue: "jupiter_lend", leashed: true, carryIn: {}, measureAlt: altContent as never });
+    expect(ignoresEnv.lookupTables).toEqual([MEASURE_ALT]);
+  });
+  it("Task 12: a jl account the transaction closes comes back as a 0-byte System account (mainnet RPC) and reads post null, not a throw", async () => {
+    const b = await buildPlantingTx({ ...base, asset: "USDC_LEND", venue: "jupiter_lend", leashed: false, carryIn: {} });
+    const [usdc, , , jl] = b.watched;
+    chainPre.set(usdc, 9n); simPost.set(usdc, 9n); chainPre.set(jl, 0n); simClosed.add(jl); simPost.set(b.deliveryAccount, 830_000n);
+    const s = await simulatePlanting(b);
+    expect(s.watched?.[jl]).toEqual({ pre: 0n, post: null });
+    expect(s.delivery).toEqual({ pre: 0n, post: 830_000n });
   });
   it("a watched account absent before and present after reads pre null, post its amount", async () => {
     const b = await buildPlantingTx({ ...base, asset: "USDC_LEND", venue: "jupiter_lend", leashed: false, carryIn: {} });
