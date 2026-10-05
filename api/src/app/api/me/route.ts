@@ -11,6 +11,7 @@ import { readHoldings, latestCoinDays, holdingsFrom, rateFacts, readLendingPosit
 import { lendSignsFor, underlyingOutRaw, receiptOutRaw } from "@/lib/lend-view";
 import { readLeashConfig, enabledLegs, LEG_SPEC, leashLive } from "@/lib/leash";
 import { TERMS_VERSION } from "@/lib/terms";
+import { carryMoves, moveCarriesFor } from "@/lib/moves";
 import { ASSETS, COINS, type LiveAsset } from "@/domain/coins";
 import { pickAsset } from "@/domain/allocation";
 import { potInputs, potFromInputs } from "@/lib/pot";
@@ -47,7 +48,9 @@ export async function GET(request: Request) {
     console.error(`/api/me: the lending receipts could not be read (${e instanceof Error ? e.message : String(e)})`);
     return [];
   });
-  const positionsOut = lendingFrom({ positions: lendPositions, legs, rows: venueRows, prices: { USDC_LEND: days.USDC_LEND?.priceUsd ?? null, SOL_LEND: days.SOL_LEND?.priceUsd ?? null } });
+  // T20: a done move carries its basis and earned to the new venue (legs are matched by (asset, venue)); history keeps the real legs.
+  const lendLegs = carryMoves(legs, await moveCarriesFor(repo, user.seedVaultPubkey));
+  const positionsOut = lendingFrom({ positions: lendPositions, legs: lendLegs, rows: venueRows, prices: { USDC_LEND: days.USDC_LEND?.priceUsd ?? null, SOL_LEND: days.SOL_LEND?.priceUsd ?? null } });
   // Live coins only (R281, R321: a retired coin's value never reaches a total); one aggregated row per lending leg.
   const allHoldings = [...holdings.filter((h) => COINS[h.asset].live), ...lendHoldings(positionsOut)].sort((p, q) => ASSETS.indexOf(p.asset as LiveAsset) - ASSETS.indexOf(q.asset as LiveAsset));
   const storePlantedRaw = legs.filter((l) => l.asset === "stORE").reduce((s, l) => s + l.amountOutRaw, 0n);

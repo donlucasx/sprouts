@@ -96,6 +96,17 @@ describe("GET /api/me, lending (contracts 5.2)", () => {
     vi.mocked(readLeashConfig).mockResolvedValueOnce({ legs } as LeashConfig);
     expect((await get()).manager.legsEnabled).toEqual(["SKR", "USDC_LEND"]);
   });
+  it("a done move keeps the position's basis and earned so far at the new venue (legs are matched by (asset, venue))", async () => {
+    const before = (await get()).positions[0];
+    expect(before.earnedUsd).toBeGreaterThan(0);
+    await repo.putVenueDay({ day: dayOf(new Date()), venue: "jupiter_lend", asset: "USDC_LEND", supplyPct: 4.6, rewardsPct: 0, utilizationPct: 91, withdrawableUsd: 1e7, tvlUsd: 1.2e8, exchangeRate: 1.1, avg7Pct: 4.6, daysMeasured: 2, eligible: true, verdict: "ok", reason: null, served: null, ok: true });
+    await repo.addEvent({ userPubkey: U, walletPubkey: null, kind: "move_built", detail: { id: "m1", asset: "USDC_LEND", from: "kamino_klend", to: "jupiter_lend", receiptRaw: "1661072", sourceReceiptRaw: "1661072", depositRaw: "1999589", toReceiptRaw: "1817808", fromRate: 1.205, toRate: 1.1 } });
+    await repo.addEvent({ userPubkey: U, walletPubkey: null, kind: "move_done", detail: { id: "m1", asset: "USDC_LEND", from: "kamino_klend", to: "jupiter_lend", receiptRaw: "1661072", status: "done" } });
+    vi.mocked(readLendingPositions).mockResolvedValueOnce([{ asset: "USDC_LEND", venue: "jupiter_lend", receiptRaw: 1_817_808n }]);
+    const after = (await get()).positions[0];
+    expect(after).toMatchObject({ venue: "jupiter_lend", putInCents: before.putInCents });
+    expect(after.earnedUsd).toBeCloseTo(before.earnedUsd, 9);
+  });
   it("the open move proposal, as contracts 5.4", async () => {
     await repo.insertMoveProposal({ userPubkey: U, asset: "USDC_LEND", fromVenue: "kamino_klend", toVenue: "jupiter_lend", receiptRaw: 1_661_072n, valueUsd: 2, fromAvg7Pct: 4, toAvg7Pct: 9, gain30dUsd: 0.5, costUsd: 0.01 });
     const { moveProposal } = await get();
