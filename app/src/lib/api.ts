@@ -8,10 +8,14 @@ export type { Asset, AutoVenue, LendAsset, LiveAsset, Stop, Split, Pins, Venue }
 export const API_ORIGIN = process.env.EXPO_PUBLIC_API_ORIGIN ?? "https://sprouts.money";
 
 export class ApiError extends Error {
-  constructor(public status: number, message: string) {
+  /** `body` is the route's parsed JSON when it had one (the move's 409 carries `partial` and `unwrapTransaction`). */
+  constructor(public status: number, message: string, public body?: Record<string, unknown>) {
     super(message);
   }
 }
+
+/** A reply that is not JSON (a gateway timeout page, an empty 5xx): whether anything moved is not known, so it never says "Nothing moved." */
+export const API_UNANSWERED = "Sprouts didn't answer. Check Home in a minute.";
 
 /** One fetch for every call: JSON in, JSON out, the session bearer when there is one, the API's own sentence on failure. */
 export async function api<T>(path: string, init: { method?: "GET" | "POST" | "PUT"; body?: unknown; auth?: boolean; signal?: AbortSignal } = {}): Promise<T> {
@@ -25,10 +29,25 @@ export async function api<T>(path: string, init: { method?: "GET" | "POST" | "PU
     const s = await loadSession();
     if (s) headers.authorization = `Bearer ${s.token}`;
   }
-  const res = await fetch(`${API_ORIGIN}${path}`, { method: init.method ?? "GET", headers, body: init.body === undefined ? undefined : JSON.stringify(init.body), signal: init.signal });
-  const text = await res.text();
-  const json = text ? (JSON.parse(text) as { error?: string }) : {};
-  if (!res.ok) throw new ApiError(res.status, json.error ?? `Request failed (${res.status}).`);
+  let res: Response;
+  let text: string;
+  try {
+    res = await fetch(`${API_ORIGIN}${path}`, { method: init.method ?? "GET", headers, body: init.body === undefined ? undefined : JSON.stringify(init.body), signal: init.signal });
+    text = await res.text();
+  } catch (e) {
+    // A dropped connection can land after the request was sent: the outcome is unknown, so it is never "Nothing moved." (an abort is the caller's own).
+    if (init.signal?.aborted) throw e;
+    throw new ApiError(0, API_UNANSWERED);
+  }
+  let json: { error?: string } = {};
+  if (text) {
+    try {
+      json = JSON.parse(text) as { error?: string };
+    } catch {
+      throw new ApiError(res.status, API_UNANSWERED);
+    }
+  }
+  if (!res.ok) throw new ApiError(res.status, json.error ?? (res.status >= 500 ? API_UNANSWERED : `Request failed (${res.status}).`), json as Record<string, unknown>);
   return (LEND_MOCK ? mockAfter(path, json) : json) as T;
 }
 
