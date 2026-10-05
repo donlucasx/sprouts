@@ -3,7 +3,8 @@ import { previewInputAt } from "@/model/fixtures/median-year";
 import { SLOGAN } from "@/lib/slogan";
 
 /** R282 ("Short splash on every load", Hammer: "super clear (for non English speakers)"): one painted picture, one line, about 1.5 s. R319: the line is the slogan. */
-export const SPLASH = { ms: 1500, fadeMs: 250, capMs: 3000, day: 240, line: SLOGAN } as const;
+export const SPLASH = { ms: 2500, fadeMs: 250, capMs: 4000,   // his note 10-05: "another beat" (R282's ~1.5 s was too quick)
+  day: 240, line: SLOGAN } as const;
 
 /** The picture: the preview year's garden at SPLASH.day, every bud open, without stakes, seeds, swelling or rings (nothing to tap). */
 export function splashScene(): Scene {

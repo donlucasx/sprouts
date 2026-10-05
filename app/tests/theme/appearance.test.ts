@@ -7,10 +7,11 @@ describe('appearance (R153: an in-app choice over the phone setting)', () => {
     expect(schemeFor('light')).toBe('light')
     expect(schemeFor('system')).toBe('unspecified')
   })
-  it('parseAppearance: only the three words; anything else is system', () => {
+  it('parseAppearance: only the three words; anything else is light, the default (his note 10-05)', () => {
     expect(parseAppearance('dark')).toBe('dark')
     expect(parseAppearance('light')).toBe('light')
-    expect(parseAppearance(undefined)).toBe('system')
-    expect(parseAppearance('blue')).toBe('system')
+    expect(parseAppearance(undefined)).toBe('light')
+    expect(parseAppearance('blue')).toBe('light')
+    expect(parseAppearance('system')).toBe('system')
   })
 })

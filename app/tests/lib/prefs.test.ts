@@ -12,10 +12,12 @@ import { readAppearance, writeAppearance, readNotify, writeNotify } from '@/lib/
 
 describe('prefs (R153)', () => {
   beforeEach(() => mem.clear())
-  it('appearance defaults to system and round-trips', () => {
-    expect(readAppearance()).toBe('system')
+  it('appearance defaults to light (his note 10-05) and round-trips', () => {
+    expect(readAppearance()).toBe('light')
     writeAppearance('dark')
     expect(readAppearance()).toBe('dark')
+    writeAppearance('system')
+    expect(readAppearance()).toBe('system')
   })
   it('every notice defaults to on and round-trips on its own (R161)', () => {
     for (const k of ['plantings', 'withdrawals', 'manager', 'limit'] as const) expect(readNotify(k)).toBe(true)
