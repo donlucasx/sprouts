@@ -12,7 +12,8 @@ export type Config = {
   feeWallet: string;
   heliusWebhookId: string;
   anthropicApiKey: string;
-  pythApiKey: string;
+  /** Optional since R324 (10-04 s20): nothing posts a Pyth price, so nothing reads it but the deferred Hermes path (lib/pyth.ts). */
+  pythApiKey: string | undefined;
 };
 
 const MAP: Record<keyof Config, string> = {
@@ -32,6 +33,9 @@ const MAP: Record<keyof Config, string> = {
   pythApiKey: "PYTH_API_KEY",
 };
 
+/** Settings that may be absent: reading one returns undefined instead of throwing. */
+const OPTIONAL: ReadonlySet<keyof Config> = new Set(["pythApiKey"]);
+
 let cached: Config | null = null;
 
 /** Each setting is validated when it is first read, so a script that needs only the RPC URL runs without the rest. */
@@ -44,7 +48,10 @@ export function config(): Config {
       enumerable: false,
       get() {
         const value = process.env[MAP[key]];
-        if (!value) throw new Error(`Missing env: ${MAP[key]}`);
+        if (!value) {
+          if (OPTIONAL.has(key)) return undefined;
+          throw new Error(`Missing env: ${MAP[key]}`);
+        }
         return value;
       },
     });

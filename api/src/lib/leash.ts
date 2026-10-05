@@ -2,7 +2,8 @@ import { AccountRole, type AccountSignerMeta, getAddressDecoder, getAddressEncod
 import { findAssociatedTokenPda, TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
 import { findEventAuthorityPda, findSubscriptionAuthorityPda } from "@solana/subscriptions";
 import { GUARDIAN_POOL, LEASH_PROGRAM, ORE_STAKE_ACCOUNT, STAKE_CONFIG, STORE_MINT, SUBSCRIPTIONS_PROGRAM, SYSTEM_PROGRAM, SYSVAR_INSTRUCTIONS, USDC_MINT } from "./constants";
-import { JLEND, KLEND, PYTH_FEED } from "./venues/addresses";
+import { JLEND, KLEND, PYTH_ACCOUNT, PYTH_FEED } from "./venues/addresses";
+import { readPriceAccount, priceRefusal, FRESH_MARGIN_S } from "./pyth";
 import { userStakePda } from "./staking";
 import { rpc } from "./rpc";
 import { COINS, type LiveAsset } from "@/domain/coins";
@@ -38,6 +39,41 @@ export const LEG_SPEC: Record<LeashLegByte, LegSpec> = {
   6: { asset: "hSOL", venue: null, reader: READER.STAKE_POOL, receiptMint: COINS.hSOL.mint, rateAccount: COINS.hSOL.pool, extra: null, feed: "SOL", decimals: 9, feeBps: 50, tolBps: 100, maxAgeS: 60, readers: [COINS.hSOL.pool as Address] },
   7: { asset: "cbBTC", venue: null, reader: READER.TOKEN, receiptMint: COINS.cbBTC.mint, rateAccount: null, extra: null, feed: "CBBTC", decimals: 8, feeBps: 50, tolBps: 100, maxAgeS: 600, readers: [] },
 };
+
+export { buildPriceUpdate } from "./pyth";
+
+export type PriceSource = { kind: "none" } | { kind: "sponsored"; account: Address } | { kind: "post"; feedId: string };
+/**
+ * Contracts 1.4 feed rule, AMEND 10-04 s20 (R324): sponsored only, never "post". Legs 2/3: no price. SOL, ORE, cbBTC: the sponsored
+ * account, checked the way the program's read_price (price.rs) will check it at pull: receiver-owned, 134-byte PriceUpdateV2, Full,
+ * the leg's pinned feed id (these fail at once: the next update will not fix them), then younger than LEG_SPEC[leg].maxAgeS -
+ * FRESH_MARGIN_S (40 s; cbBTC 580 s) and the value checks (price > 0, exponent, the conf cap, p_low > 0). A stale or refused price is
+ * polled every 2 s for up to `waitS` (measured 10-04: SOL/ORE update every 50-55 s, so a read at 40-55 s waits up to ~16 s), then
+ * this throws and the leg skips the run (`leg_skipped`). `nowS` (tests) disables the wait. SKR (leg 0): no source, throws.
+ */
+export async function priceSourceFor(leg: LeashLegByte, nowS?: number, waitS = 60): Promise<PriceSource> {
+  const feed = LEG_SPEC[leg].feed;
+  if (!feed) return { kind: "none" };
+  if (feed === "SKR") {
+    // SKR PRICE PLUG-IN POINT (contracts 10 item 15): the ONE place an SKR source goes. Today there is none: SKR has no sponsored
+    // account and posting is deferred (R324, the key is 403 for crypto feeds). When a crypto-entitled Pyth key exists, re-implement
+    // buildPriceUpdate (lib/pyth.ts) and return { kind: "post", feedId: PYTH_FEED.SKR } here; planting's dormant "post" branch
+    // then posts it (the program's read_price checks a posted account exactly like a sponsored one).
+    throw new Error("leg 0 (SKR) has no price source: posting is deferred (R324) and SKR has no sponsored account (contracts 10 item 15)");
+  }
+  const account = PYTH_ACCOUNT[feed];
+  const freshS = LEG_SPEC[leg].maxAgeS - FRESH_MARGIN_S;
+  const deadline = Date.now() + waitS * 1000;
+  for (;;) {
+    const p = await readPriceAccount(account);
+    if (!p || !p.full || p.feedId !== PYTH_FEED[feed]) throw new Error(`sponsored ${feed} account ${account} is not a Full ${feed} PriceUpdateV2 (leg ${leg} skips this run)`);
+    const age = (nowS ?? Math.floor(Date.now() / 1000)) - Number(p.publishTime);
+    const why = age >= freshS ? `is ${age} s old (usable under ${freshS} s)` : priceRefusal(p);
+    if (why === null) return { kind: "sponsored", account };
+    if (nowS !== undefined || Date.now() + 2_000 > deadline) throw new Error(`sponsored ${feed} price ${why}: leg ${leg} skips this run`);
+    await new Promise((r) => setTimeout(r, 2_000));
+  }
+}
 
 /** R297 go-live switch: new links point at the leash, old puller links stop planting. Off until the owner sets LEASH_LIVE=1. */
 export const leashLive = (): boolean => process.env.LEASH_LIVE === "1";
