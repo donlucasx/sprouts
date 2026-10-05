@@ -85,12 +85,19 @@ describe("effectiveSplit (spec 4.3)", () => {
     expect(sum(s)).toBe(100);
     for (const a of ASSETS) if (a !== "SKR") expect(s[a]).toBeLessThanOrEqual(STOPS.careful.max[a]);
   });
-  it("a pinned SKR is a floor: what the free coins cannot hold goes to SKR, not all of the rest", () => {
+  it("a pinned SKR with room around it: the free coins water-fill what one coin cannot hold", () => {
     const s = effectiveSplit({ managed: true, stop: "careful", pins: { SKR: 50, stORE: 0, cbBTC: 0 }, stopSplit: STOP_DEFAULTS.careful });
     // By hand (careful maxes hSOL 15, USDC_LEND 30, SOL_LEND 15; weights 10/10/0 over R=50 give 25/25/0): hSOL caps at 15, its 10 excess
     // pours over the room left (USDC_LEND 5, SOL_LEND 15) as 2.5 and 7.5, so x = 15 / 27.5 / 7.5; roundTo100 floors to 99 and the first
     // tied .5 remainder in ASSETS order (USDC_LEND) takes the last point: 28 / 7. SKR stays at its pin of 50.
     expect(s).toEqual({ SKR: 50, hSOL: 15, USDC_LEND: 28, SOL_LEND: 7, stORE: 0, cbBTC: 0 });
+  });
+  it("a pinned SKR is a floor: what the free coins cannot hold goes to SKR, not all of the rest", () => {
+    // By hand: careful, pins SKR 50, stORE 0, cbBTC 0, USDC_LEND 0 leave hSOL and SOL_LEND free over R=50. Weights 10/0 give hSOL 50,
+    // SOL_LEND 0. Caps are hSOL 15, SOL_LEND 15: hSOL caps at 15 (excess 35), SOL_LEND takes its whole room of 15, and the 20 left
+    // that no free coin can hold goes to SKR: 50 + 20 = 70. Sum 70 + 15 + 15 = 100.
+    const s = effectiveSplit({ managed: true, stop: "careful", pins: { SKR: 50, stORE: 0, cbBTC: 0, USDC_LEND: 0 }, stopSplit: STOP_DEFAULTS.careful });
+    expect(s).toEqual({ SKR: 70, hSOL: 15, USDC_LEND: 0, SOL_LEND: 15, stORE: 0, cbBTC: 0 });
   });
   it("a pinned SKR the free coins can fill around stays exactly at its pin (positive control)", () => {
     const s = effectiveSplit({ managed: true, stop: "balanced", pins: { SKR: 40 }, stopSplit: BAL });
