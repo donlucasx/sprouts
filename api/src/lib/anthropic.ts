@@ -20,18 +20,15 @@ type MessagesResponse = {
  * (never the body as a whole, which could echo our prompt): "credit balance is too low" and "invalid x-api-key" are then readable in the log.
  */
 export const callTool: ModelCall = async (req) => {
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: { "content-type": "application/json", "x-api-key": config().anthropicApiKey, "anthropic-version": "2023-06-01" },
-    body: JSON.stringify({
-      model: MODEL,
-      max_tokens: req.maxTokens,
-      system: req.system,
-      messages: [{ role: "user", content: req.user }],
-      tools: [req.tool],
-      tool_choice: { type: "tool", name: req.tool.name },
-    }),
-  });
+  // K-M5: the same per-call timeout and single 529 retry as callConversation (the watcher's compile holds a budget row meanwhile).
+  const res = await postMessages(JSON.stringify({
+    model: MODEL,
+    max_tokens: req.maxTokens,
+    system: req.system,
+    messages: [{ role: "user", content: req.user }],
+    tools: [req.tool],
+    tool_choice: { type: "tool", name: req.tool.name },
+  }));
   if (!res.ok) throw new Error(`Anthropic answered ${res.status}${await errorDetail(res)}.`);
   const body = (await res.json()) as MessagesResponse;
   const block = body.content.find((c) => c.type === "tool_use" && c.name === req.tool.name);
@@ -58,8 +55,8 @@ export const CALL_TIMEOUT_MS = 20_000;
 export const OVERLOADED_RETRY_MS = 250;
 
 /** One Messages call that must use a tool (any of them): the tool loop's single step. */
-export const callConversation: ConversationCall = async (req) => {
-  const body = JSON.stringify({ model: MODEL, max_tokens: req.maxTokens, system: req.system, messages: req.messages, tools: req.tools, tool_choice: { type: "any" } });
+/** One POST to the Messages API: CALL_TIMEOUT_MS per try, and a 529 (overloaded) tried exactly once more. */
+async function postMessages(body: string): Promise<Response> {
   const send = () => fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: { "content-type": "application/json", "x-api-key": config().anthropicApiKey, "anthropic-version": "2023-06-01" },
@@ -72,6 +69,11 @@ export const callConversation: ConversationCall = async (req) => {
     await new Promise((r) => setTimeout(r, OVERLOADED_RETRY_MS));
     res = await send();
   }
+  return res;
+}
+
+export const callConversation: ConversationCall = async (req) => {
+  const res = await postMessages(JSON.stringify({ model: MODEL, max_tokens: req.maxTokens, system: req.system, messages: req.messages, tools: req.tools, tool_choice: { type: "any" } }));
   if (!res.ok) throw new Error(`Anthropic answered ${res.status}${await errorDetail(res)}.`);
   const out = (await res.json()) as { content: { type: string; id?: string; name?: string; input?: unknown }[]; usage: { input_tokens: number; output_tokens: number } };
   return { toolUses: out.content.filter((c) => c.type === "tool_use").map((c) => ({ id: String(c.id), name: String(c.name), input: c.input })), usage: { inputTokens: out.usage.input_tokens, outputTokens: out.usage.output_tokens } };

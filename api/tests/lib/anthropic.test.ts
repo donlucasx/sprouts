@@ -24,6 +24,21 @@ describe("callTool errors", () => {
     reply(200, { content: [{ type: "tool_use", name: "t", input: { a: 1 } }], usage: { input_tokens: 5, output_tokens: 2 } });
     await expect(callTool(req)).resolves.toEqual({ input: { a: 1 }, usage: { inputTokens: 5, outputTokens: 2 } });
   });
+
+  it("K-M5: the same timeout signal and one 529 retry as callConversation; a second 529 throws", async () => {
+    const r = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+    const over = { error: { type: "overloaded_error", message: "Overloaded" } };
+    const f = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(r(529, over)).mockResolvedValueOnce(r(200, { content: [{ type: "tool_use", name: "t", input: { a: 1 } }], usage: { input_tokens: 5, output_tokens: 2 } }));
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    await expect(callTool(req)).resolves.toEqual({ input: { a: 1 }, usage: { inputTokens: 5, outputTokens: 2 } });
+    expect(f).toHaveBeenCalledTimes(2);
+    expect((f.mock.calls[0][1] as RequestInit).signal).toBeInstanceOf(AbortSignal);
+    f.mockReset();
+    f.mockImplementation(async () => r(529, over));
+    await expect(callTool(req)).rejects.toThrow("Anthropic answered 529 (overloaded_error: Overloaded).");
+    expect(f).toHaveBeenCalledTimes(2);
+    err.mockRestore();
+  });
 });
 
 import { runToolLoop, callConversation, type ConversationCall } from "@/lib/anthropic";
