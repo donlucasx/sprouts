@@ -50,6 +50,24 @@ export async function swapFeeParams(asset: LiveAsset): Promise<{ platformFeeBps?
 
 export const SWAP_MAX_ACCOUNTS: Record<LiveAsset, number> = { SKR: 24, stORE: 24, USDC_LEND: 24, SOL_LEND: 24, hSOL: 24, cbBTC: 24 };   // SOL_LEND PROVISIONAL(S1)
 const MAX_TX_BYTES = 1232;
+/** The swap slippage every leg asks Jupiter for; ruling A may only tighten it on a leashed coin leg, never loosen it. */
+export const SWAP_SLIPPAGE_BPS = 100;
+
+/**
+ * Ruling A as corrected (Task 12, security scan of 5caa060): the swap slippage of a leashed coin leg, so its on-chain minimum is
+ * max(expected less 100 bps, floor + 1). Null when the route's expected output is under the floor (the leg skips: "route under
+ * floor"). Otherwise min(100, roomBps), roomBps = floor((expected - floor - 1) x 10_000 / expected), at least 0. Capped at 100 so the
+ * floor can only TIGHTEN the swap: more than 100 bps would open a sandwich window down to the floor. With roomBps,
+ * floor(expected x (10_000 - bps) / 10_000) >= floor + 1 (one raw unit above the floor absorbs Jupiter's rounding of
+ * otherAmountThreshold, which checkQuoteSlippage allows 1 below), and never above expected.
+ */
+export function leashSwapSlippageBps(expectedRaw: bigint, floorRaw: bigint): number | null {
+  if (expectedRaw <= 0n || expectedRaw < floorRaw) return null;
+  const room = expectedRaw - floorRaw - 1n;
+  const roomBps = room <= 0n ? 0 : Number((room * 10_000n) / expectedRaw);
+  return Math.min(SWAP_SLIPPAGE_BPS, roomBps);
+}
+
 /** The placeholder lookup-table address `measureAlt` compresses against (not on chain; never sent). */
 export const MEASURE_ALT = address("SproutsA1tMeasure11111111111111111111111111");
 /**
@@ -73,7 +91,10 @@ export type BuiltPlanting = {
    */
   usdcFloat: Address; wsolFloat: Address; skrFloat: Address | null;
   asset: LiveAsset; venue: AutoVenue | null; leg: LeashLegByte | null; preRaw: bigint | null;
-  leashMinOutRaw: bigint | null; pullerJl: Address | null; jlLeftover: 0n | 1n | null; cleanup: Instruction[]; carryIn: Partial<Record<CarryKind, bigint>>; sizeBytes: number;
+  leashMinOutRaw: bigint | null;
+  /** The leash floor this build was checked against (leashed legs), in the leg's receipt units; null unleashed. */
+  leashFloorRaw: bigint | null;
+  pullerJl: Address | null; jlLeftover: 0n | 1n | null; cleanup: Instruction[]; carryIn: Partial<Record<CarryKind, bigint>>; sizeBytes: number;
 };
 
 const ataOf = async (owner: Address, mint: Address) => (await findAssociatedTokenPda({ owner, mint, tokenProgram: TOKEN_PROGRAM_ADDRESS }))[0];
@@ -117,6 +138,20 @@ export async function buildPlantingTx(a: { delegator: Address; user: Address; as
     if (src.kind === "post") { const u = await buildPriceUpdate({ puller, feedId: src.feedId }); priceAccount = u.account; price = u.price; postIx = u.postIx; cleanup = u.closeIxs; preTxs = u.preTxs; }
   }
 
+  // The leash floor (contracts 2.8), computed BEFORE the swap: a leashed coin leg's swap minimum is derived from it (ruling A, Task 12).
+  let floor: bigint | null = null;
+  let skrSharePrice: bigint | null = null;
+  if (leg !== null) {
+    const spec = LEG_SPEC[leg];
+    const { rn, rd } = await legRate(leg);
+    if (leg === 0) skrSharePrice = rn;   // legRate(0) = { rn: sharePrice(), rd: 1e9 }: one read for the floor and the shares
+    floor = floorRaw({ leg, amountRaw: a.pullRaw, rn, rd, priceLow: price ? price.price - price.conf : null, exponent: price ? price.exponent : null, feeBps: spec.feeBps, tolBps: spec.tolBps, underlyingDecimals: spec.decimals });
+  }
+  // The floor in the swap's own output units (leashed coin legs only; lending legs keep the 100 bps swap, their floor is on the deposit).
+  // Wallet coins: the receipt IS the swap output. SKR: leash min_out = out x 1e9 / sharePrice - 1 >= floor  <=>  out >= ceil((floor + 1) x sharePrice / 1e9).
+  const swapFloor: bigint | null = floor === null || isLendAsset(a.asset) ? null
+    : a.asset === "SKR" ? ((floor + 1n) * (skrSharePrice as bigint) + 999_999_999n) / 1_000_000_000n : floor;   // ceil, written inline: a ceilDiv helper here broke next build's page-data step (minifier), 10-04
+
   const atas: Instruction[] = [...(await coinAccountInstructions({ asset: a.asset, payer: puller, user: a.user }))];
   if (a.asset === "SOL_LEND") atas.push(getCreateAssociatedTokenIdempotentInstruction({ payer: puller, ata: pullerWsol, owner: puller.address, mint: WSOL_MINT }));
   const body: Instruction[] = [];
@@ -139,8 +174,21 @@ export async function buildPlantingTx(a: { delegator: Address; user: Address; as
     // A venue-held leg swaps only as SOL_LEND (into the puller's WSOL, then the venue deposit); any other venue-held leg is refused.
     const destination = coin.held === "wallet" ? await ataOf(a.user, coin.mint) : coin.held === "staked" ? await skrAta(puller.address)
       : a.asset === "SOL_LEND" ? pullerWsol : (() => { throw new Error(`${a.asset}: a venue-held leg other than SOL lending never swaps`); })();
-    const quote = await getQuote({ inputMint: USDC_MINT, outputMint: coin.mint, amountRaw: a.pullRaw, maxAccounts: SWAP_MAX_ACCOUNTS[a.asset], onlyDirectRoutes: a.asset === "SKR", ...(fee.platformFeeBps ? { platformFeeBps: fee.platformFeeBps } : {}) });
+    const quoteArgs = { inputMint: USDC_MINT, outputMint: coin.mint, amountRaw: a.pullRaw, maxAccounts: SWAP_MAX_ACCOUNTS[a.asset], onlyDirectRoutes: a.asset === "SKR", ...(fee.platformFeeBps ? { platformFeeBps: fee.platformFeeBps } : {}) };
+    let quote = await getQuote(quoteArgs);
     checkQuoteMints(quote, { inputMint: USDC_MINT, outputMint: coin.mint });
+    // Ruling A as corrected (Task 12): on a LEASHED coin leg the swap's minimum is max(route less 100 bps, floor + 1). The route under
+    // the floor skips; when 100 bps would land under the floor, re-quote at the tighter slippage (Jupiter's swap enforces the quote's
+    // own slippageBps, so a re-quote is the documented way; no instruction bytes are edited). Never looser than 100 bps.
+    if (swapFloor !== null) {
+      const bps = leashSwapSlippageBps(BigInt(quote.outAmount), swapFloor);
+      if (bps === null) throw new Error(`${a.asset}: route under floor (route ${quote.outAmount} < floor ${swapFloor}); the leg skips today`);
+      if (bps !== SWAP_SLIPPAGE_BPS) {
+        quote = await getQuote({ ...quoteArgs, slippageBps: bps });
+        checkQuoteMints(quote, { inputMint: USDC_MINT, outputMint: coin.mint });
+      }
+      if (BigInt(quote.otherAmountThreshold) < swapFloor) throw new Error(`${a.asset}: route under floor (minimum ${quote.otherAmountThreshold} < floor ${swapFloor} after re-quote at ${bps} bps); the leg skips today`);
+    }
     const swap = await getSwapInstructions({ quote, userPublicKey: puller.address, ...(fee.feeAccount ? { feeAccount: fee.feeAccount } : {}), ...(a.asset === "SKR" ? {} : { destinationTokenAccount: destination }) });
     checkSwapInstructions(swap, { puller: puller.address, ...(fee.feeAccount ? { feeAccount: fee.feeAccount } : {}), wsolAccount: pullerWsol, destination, source: pullerUsdc, ...(coin.held === "wallet" ? { destinationOwner: a.user } : {}) });
     body.push(...swap.setup, swap.swap, ...(swap.cleanup ? [swap.cleanup] : []));
@@ -183,7 +231,7 @@ export async function buildPlantingTx(a: { delegator: Address; user: Address; as
     minOutRaw = swapMin;
     body.push(await buildStakeIx({ payer: puller, user: a.user, amountRaw: minOutRaw + carry("SKR") }));
     deliveryAccount = await skrAta(puller.address);
-    if (leg !== null) leashMinOutRaw = (minOutRaw * 1_000_000_000n) / (await sharePrice()) - 1n;
+    if (leg !== null) leashMinOutRaw = (minOutRaw * 1_000_000_000n) / (skrSharePrice ?? (await sharePrice())) - 1n;
   } else {
     minOutRaw = swapMin;
     deliveryAccount = await ataOf(a.user, coin.mint);
@@ -200,10 +248,7 @@ export async function buildPlantingTx(a: { delegator: Address; user: Address; as
   let preRaw: bigint | null = null;
   if (leg !== null) {
     const la = await legAccounts({ leg, user: a.user, ...(priceAccount ? { priceAccount } : {}) });
-    const spec = LEG_SPEC[leg];
-    const { rn, rd } = await legRate(leg);
-    const floor = floorRaw({ leg, amountRaw: a.pullRaw, rn, rd, priceLow: price ? price.price - price.conf : null, exponent: price ? price.exponent : null, feeBps: spec.feeBps, tolBps: spec.tolBps, underlyingDecimals: spec.decimals });
-    if ((leashMinOutRaw as bigint) < floor) throw new Error(`${a.asset}: min_out ${leashMinOutRaw} is under the leash floor ${floor}; the leg skips today`);
+    if ((leashMinOutRaw as bigint) < (floor as bigint)) throw new Error(`${a.asset}: min_out ${leashMinOutRaw} is under the leash floor ${floor}; the leg skips today`);
     preRaw = await readReceipt({ leg, receipt: la.receipt });
     pull = await buildPullIx({ puller, delegator: a.delegator, user: a.user, leg, amountRaw: a.pullRaw, minOutRaw: leashMinOutRaw as bigint, delegationPda: a.delegationPda, legAccounts: la });
     settle = await buildSettleIx({ user: a.user, leg, preRaw, minOutRaw: leashMinOutRaw as bigint, amountRaw: a.pullRaw, legAccounts: la });
@@ -245,7 +290,7 @@ export async function buildPlantingTx(a: { delegator: Address; user: Address; as
   if (sizeBytes > MAX_TX_BYTES) throw new Error(`${a.asset} planting is ${sizeBytes} bytes, over ${MAX_TX_BYTES}`);
   return {
     tx, signature: getSignatureFromTransaction(tx), expectedOutRaw, minOutRaw, lookupTables: tableAddrs, lastValidBlockHeight, deliveryAccount, watched, usdcFloat: pullerUsdc, wsolFloat: pullerWsol, skrFloat: a.asset === "SKR" ? null : pullerSkr,
-    asset: a.asset, venue: a.venue, leg, preRaw, leashMinOutRaw, pullerJl, jlLeftover, cleanup, carryIn: a.carryIn, sizeBytes,
+    asset: a.asset, venue: a.venue, leg, preRaw, leashMinOutRaw, leashFloorRaw: floor, pullerJl, jlLeftover, cleanup, carryIn: a.carryIn, sizeBytes,
   };
 }
 

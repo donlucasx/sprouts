@@ -49,7 +49,8 @@ vi.mock("@/lib/jupiter", async (orig) => {
   const real = await orig<typeof import("@/lib/jupiter")>();
   return {
     ...real,
-    getQuote: vi.fn(async (a: { outputMint: string }) => ({ inputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", outputMint: a.outputMint, inAmount: "2000000", outAmount: QUOTES[a.outputMint][0], otherAmountThreshold: QUOTES[a.outputMint][1], priceImpactPct: "0", routePlan: [] })),
+    getQuote: vi.fn(async (a: { outputMint: string; slippageBps?: number }) => ({ inputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", outputMint: a.outputMint, inAmount: "2000000", outAmount: QUOTES[a.outputMint][0],
+      otherAmountThreshold: a.slippageBps === undefined ? QUOTES[a.outputMint][1] : String((BigInt(QUOTES[a.outputMint][0]) * BigInt(10_000 - a.slippageBps)) / 10_000n), priceImpactPct: "0", routePlan: [] })),
     getSwapInstructions: vi.fn(async () => ({ computeBudget: [], setup: [], swap: { programAddress: real.JUPITER_AGGREGATOR, accounts: [], data: new Uint8Array([229]) }, cleanup: null, lookupTables: [] })),
     checkSwapInstructions: vi.fn((_p: unknown, a: Record<string, unknown>) => { checks.push(a); }),
   };
@@ -77,7 +78,7 @@ vi.mock("@/lib/leash", async (orig) => {
   };
 });
 
-import { buildPlantingTx, simulatePlanting, tokenAmountOf, MEASURE_ALT } from "@/lib/planting";
+import { buildPlantingTx, simulatePlanting, tokenAmountOf, leashSwapSlippageBps, MEASURE_ALT } from "@/lib/planting";
 import { sproutsAltAddresses } from "@/lib/alt";
 import { getQuote, getSwapInstructions } from "@/lib/jupiter";
 import { klendMinOut } from "@/lib/venues/klend";
@@ -130,27 +131,79 @@ describe("buildPlantingTx: one v0 tx, one pull/settle pair (contracts 3.2)", () 
     expect(b.deliveryAccount).toBe(await ata(USER, JLEND.SOL_LEND.fTokenMint));
   });
 
-  it("hSOL, leashed: the coin leg pays 50 bps; leash min_out = the quote minimum; refused under the leash floor", async () => {
+  it("hSOL, leashed: the coin leg pays 50 bps; ruling A (corrected): room above 100 bps keeps the 100 bps quote; 100 bps under the floor tightens; a route under the floor skips", async () => {
     const b = await buildPlantingTx({ ...base, asset: "hSOL", venue: null, leashed: true });
     expect(vi.mocked(getQuote).mock.calls[0][0]).toMatchObject({ platformFeeBps: 50 });
     expect(checks[0]).toHaveProperty("feeAccount");
-    expect(b.leashMinOutRaw).toBe(13_705_000n);   // the floor at these numbers is 13_646_678
-    QUOTES.he1iusmfkpAdwvxLNGV8Y1iSbj4rUy6yMhEA3fotn9A = ["13843000", "13600000"];
-    await expect(buildPlantingTx({ ...base, asset: "hSOL", venue: null, leashed: true })).rejects.toThrow(/leash floor/);
+    expect(b.leashFloorRaw).toBe(13_646_678n);
+    // roomBps = (13_843_000 - 13_646_678 - 1) x 10_000 / 13_843_000 = 141 > 100: capped at 100, so the first quote stands (no re-quote)
+    // and Jupiter's minimum stays expected x 0.99 = 13_704_570 (the fixture's 13_705_000), never loosened toward the floor.
+    expect(getQuote).toHaveBeenCalledTimes(1);
+    expect(b.leashMinOutRaw).toBe(13_705_000n);
+    expect(b.minOutRaw).toBe(13_705_000n);
+    // A route at 13_700_000: 100 bps (13_563_000) would be under the floor, so it re-quotes at roomBps 38 -> 13_700_000 x 9_962 / 10_000 = 13_647_940.
+    QUOTES.he1iusmfkpAdwvxLNGV8Y1iSbj4rUy6yMhEA3fotn9A = ["13700000", "13563000"];
+    vi.mocked(getQuote).mockClear();
+    const tight = await buildPlantingTx({ ...base, asset: "hSOL", venue: null, leashed: true });
+    expect(vi.mocked(getQuote).mock.calls[1][0]).toMatchObject({ slippageBps: 38, platformFeeBps: 50 });
+    expect(tight.leashMinOutRaw).toBe(13_647_940n);
+    // The route itself under the floor: skip, no second quote.
+    QUOTES.he1iusmfkpAdwvxLNGV8Y1iSbj4rUy6yMhEA3fotn9A = ["13646000", "13510000"];
+    vi.mocked(getQuote).mockClear();
+    await expect(buildPlantingTx({ ...base, asset: "hSOL", venue: null, leashed: true })).rejects.toThrow(/hSOL: route under floor \(route 13646000 < floor 13646678\)/);
+    expect(getQuote).toHaveBeenCalledTimes(1);
     QUOTES.he1iusmfkpAdwvxLNGV8Y1iSbj4rUy6yMhEA3fotn9A = ["13843000", "13705000"];
+  });
+
+  it("ruling A, cbBTC-like: expected 1_162 vs floor 1_150 builds with a minimum >= 1_150; expected 1_148 skips 'route under floor'", async () => {
+    QUOTES.cbbtcf3aa214zXHbiAZQwf4122FBYbraNdFqgw4iMij = ["3225", "3193"];
+    const floor = (await buildPlantingTx({ ...base, asset: "cbBTC", venue: null, leashed: true })).leashFloorRaw as bigint;
+    expect(floor).toBe(3_178n);
+    // Scale the route around the real floor: +12 raw (the 1_162 vs 1_150 case) and -2 raw (the 1_148 vs 1_150 case).
+    QUOTES.cbbtcf3aa214zXHbiAZQwf4122FBYbraNdFqgw4iMij = [String(floor + 12n), String(floor - 20n)];
+    const ok = await buildPlantingTx({ ...base, asset: "cbBTC", venue: null, leashed: true });
+    expect(ok.leashMinOutRaw as bigint).toBeGreaterThanOrEqual(floor);
+    expect(ok.leashMinOutRaw as bigint).toBeLessThanOrEqual(floor + 12n);
+    QUOTES.cbbtcf3aa214zXHbiAZQwf4122FBYbraNdFqgw4iMij = [String(floor - 2n), String(floor - 34n)];
+    await expect(buildPlantingTx({ ...base, asset: "cbBTC", venue: null, leashed: true })).rejects.toThrow(/route under floor/);
+    QUOTES.cbbtcf3aa214zXHbiAZQwf4122FBYbraNdFqgw4iMij = ["3225", "3193"];
+  });
+
+  it("ruling A: a re-quote whose minimum still lands under the floor (the route moved) skips; an unleashed coin leg keeps one quote at 100 bps", async () => {
+    vi.mocked(getQuote).mockImplementationOnce(async (a) => ({ inputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", outputMint: a.outputMint, inAmount: "2000000", outAmount: "13700000", otherAmountThreshold: "13563000", priceImpactPct: "0", routePlan: [] }) as never)
+      .mockImplementationOnce(async (a) => ({ inputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", outputMint: a.outputMint, inAmount: "2000000", outAmount: "13700000", otherAmountThreshold: "13506000", priceImpactPct: "0", routePlan: [] }) as never);
+    await expect(buildPlantingTx({ ...base, asset: "hSOL", venue: null, leashed: true })).rejects.toThrow(/route under floor \(minimum 13506000 < floor 13646678 after re-quote at 38 bps\)/);
+    vi.mocked(getQuote).mockClear();
+    const u = await buildPlantingTx({ ...base, asset: "hSOL", venue: null, leashed: false });
+    expect(getQuote).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(getQuote).mock.calls[0][0]).not.toHaveProperty("slippageBps");
+    expect(u.minOutRaw).toBe(13_705_000n);
+    expect(u.leashFloorRaw).toBeNull();
+  });
+
+  it("ruling A: lending legs keep today's swap (one quote, 100 bps) even leashed", async () => {
+    await buildPlantingTx({ ...base, asset: "SOL_LEND", venue: "jupiter_lend", leashed: true });
+    expect(getQuote).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(getQuote).mock.calls[0][0]).not.toHaveProperty("slippageBps");
   });
 
   it("cbBTC, leashed, posted price: the pre-txs go out first and the rent cleanup is returned", async () => {
     const b = await buildPlantingTx({ ...base, asset: "cbBTC", venue: null, leashed: true });
     expect(sentPre).toEqual([{ pre: 1 }]);
     expect(b.cleanup).toEqual([postIx]);
-    expect(b.leashMinOutRaw).toBe(3_193n);   // the floor is 3_178
+    expect(b.leashFloorRaw).toBe(3_178n);
+    expect(b.leashMinOutRaw).toBe(3_193n);   // ruling A (corrected): roomBps 142 > 100, so the 100 bps minimum stands (3_225 x 0.99)
   });
 
   it("SKR, leashed: the delivery check stays on the puller's SKR float; leash min_out is shares", async () => {
     const b = await buildPlantingTx({ ...base, asset: "SKR", venue: null, leashed: true, carryIn: { SKR: 1234n } });
     expect(b.deliveryAccount).toBe(await ata(puller.address, SKR_MINT));
+    // Ruling A (corrected): the SKR floor maps to SKR as ceil((floor + 1) x sharePrice / 1e9). This fixture's posted price (a BTC-sized
+    // price on the SKR feed) makes the floor 28 shares, far under the route: roomBps 9_999 is capped at 100, so the 100 bps quote stands.
+    expect(b.leashFloorRaw).toBe(28n);
+    expect(getQuote).toHaveBeenCalledTimes(1);
     expect(b.leashMinOutRaw).toBe(94_158_604n);   // 108_196_721 x 1e9 / 1_149_090_094 - 1
+    expect(b.leashMinOutRaw).toBe((b.minOutRaw * 1_000_000_000n) / 1_149_090_094n - 1n);
   });
 
   it("unleashed (today's links): transferRecurring in the pull slot, no leash instruction, no leg", async () => {
@@ -475,5 +528,40 @@ describe("Task 11 fix round 1 at the builder (review I1; leash e823503 feed pins
     const { priceSourceFor } = await import("@/lib/leash");
     vi.mocked(priceSourceFor).mockResolvedValueOnce({ kind: "sponsored", account: address(BTC) });   // a sponsored source on the wrong account
     await expect(buildPlantingTx({ ...base, asset: "hSOL", venue: null, leashed: true })).rejects.toThrow(/not the pinned/);
+  });
+});
+
+describe("leashSwapSlippageBps (ruling A, Task 12)", () => {
+  const minAt = (out: bigint, bps: number) => (out * BigInt(10_000 - bps)) / 10_000n;
+  it("room above 100 bps: capped at 100, so the minimum is expected x 0.99 (never loosened toward the floor)", () => {
+    expect(leashSwapSlippageBps(10_000n, 9_000n)).toBe(100);   // roomBps 999
+    expect(minAt(10_000n, 100)).toBe(9_900n);
+    expect(leashSwapSlippageBps(13_843_000n, 13_646_678n)).toBe(100);   // roomBps 141
+  });
+  it("never more than 100 bps, for any expected >= floor", () => {
+    for (let out = 1n; out <= 5_000n; out += 3n) for (let f = 0n; f <= out; f += out / 37n + 1n) expect(leashSwapSlippageBps(out, f) as number).toBeLessThanOrEqual(100);
+    expect(leashSwapSlippageBps(10n ** 18n, 1n)).toBe(100);
+  });
+  it("expected 1_162 vs floor 1_150: a slippage whose minimum is >= 1_150 and <= 1_162", () => {
+    const bps = leashSwapSlippageBps(1_162n, 1_150n) as number;
+    expect(bps).toBe(94);   // (1_162 - 1_151) x 10_000 / 1_162 = 94.6
+    expect(minAt(1_162n, bps)).toBe(1_151n);   // 1_162 x 9_906 / 10_000 = 1_151.07: the floor plus the one-unit margin
+    expect(minAt(1_162n, bps + 1)).toBeGreaterThanOrEqual(1_150n);   // the one-unit margin
+  });
+  it("expected under the floor: null (route under floor)", () => {
+    expect(leashSwapSlippageBps(1_148n, 1_150n)).toBeNull();
+    expect(leashSwapSlippageBps(0n, 0n)).toBeNull();
+  });
+  it("expected at or one above the floor: 0 bps (the minimum is the route itself)", () => {
+    expect(leashSwapSlippageBps(1_150n, 1_150n)).toBe(0);
+    expect(leashSwapSlippageBps(1_151n, 1_150n)).toBe(0);
+  });
+  it("the minimum is never under the floor nor under expected less 100 bps, across a sweep", () => {
+    for (let out = 1_000n; out <= 3_000n; out += 7n) for (const f of [out / 2n, (out * 985n) / 1000n, out - 2n, out]) {
+      const bps = leashSwapSlippageBps(out, f) as number;
+      expect(minAt(out, bps)).toBeGreaterThanOrEqual(f);
+      expect(minAt(out, bps)).toBeGreaterThanOrEqual(minAt(out, 100));
+      expect(minAt(out, bps)).toBeLessThanOrEqual(out);
+    }
   });
 });
