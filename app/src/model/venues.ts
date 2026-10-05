@@ -3,10 +3,10 @@ import { VENUE_NAME } from '@/lib/coins'
 
 /** R275: the AI's reason for skipping a venue for the day, in plain words. A reason this build does not know reads plainly too. */
 const REASON: Record<string, string> = {
-  incentive_spike: 'Skipped today: most of the rate is a short-term reward',
-  near_full: 'Skipped today: the pool is nearly fully lent out',
-  deposits_fleeing: 'Skipped today: money is leaving it fast',
-  data_suspect: 'Skipped today: its numbers look wrong',
+  incentive_spike: 'Skipped today: mostly a short-term bonus',
+  near_full: 'Skipped today: almost fully lent out',
+  deposits_fleeing: 'Skipped today: money is leaving fast',
+  data_suspect: 'Skipped today: its numbers look off',
 }
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 const pct = (n: number) => `${n.toFixed(2)}%`

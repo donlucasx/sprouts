@@ -7,10 +7,10 @@ export const PRECISE_GUARANTEE =
   "Once you re-link, Sprouts' server can only pull through the Sprouts program: at most your $5 daily limit, and only in a transaction that leaves at least 98.5% of that value (99.9% for USDC lending), at a live oracle price, in the coins Sprouts has enabled, lending positions or SKR stake; otherwise it reverts. The server still chooses when, which leg and how much up to the limit; rounding remainders carry to your next planting. Only Sprouts' offline admin key can change these rules or replace the program; your $5-a-day limit still holds."
 
 /** Contracts 2.6 and R324: where the program's prices come from and cbBTC's looser age. Build-written copy, awaiting his ruling. The SKR price line waits on contracts 10 item 15 (fix round 1, I1). */
-export const PRICE_LINE = "Prices come from Pyth's free price accounts; cbBTC is priced at most 10 minutes ago."
+export const PRICE_LINE = "Prices come from Pyth. cbBTC's price can be up to 10 minutes old."
 
 /** R299, build-written (awaiting his ruling): where the admin key lives. Goes stale when the key moves to Squads. */
-export const ADMIN_KEY_LINE = "The admin key is kept on the owner's laptop, never on the server."
+export const ADMIN_KEY_LINE = "The admin key lives on the owner's laptop, not the server."
 
 /** Settings > About Sprouts, the disclosures (spec 3.5 and 9; R60; RECONCILED rules 10 to 12; R81; R84; the lending build, spec 6.2 and 11). */
 export const DISCLOSURES: [string, string][] = [
