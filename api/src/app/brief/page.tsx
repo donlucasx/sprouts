@@ -61,7 +61,7 @@ export default function Brief() {
             <h2>How it works</h2>
             <ol className="feat">
               <li><strong>Savings that fill themselves.</strong> Every swap rounds up. Each day the change is planted into SKR, stORE and lending.</li>
-              <li><strong>AI Yield Manager</strong> (optional, Pro, free at launch). Built on top: each morning it reads live rates and tilts your split toward what pays more. It never sells what you hold.</li>
+              <li><strong>AI Yield Manager</strong> (optional, Pro, free during launch). Built on top: each morning it reads live rates and tilts your split toward what pays more. It never sells what you hold.</li>
             </ol>
           </section>
           <section>
