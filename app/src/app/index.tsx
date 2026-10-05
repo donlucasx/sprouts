@@ -12,9 +12,7 @@ import { useSession } from '@/lib/session'
 import { signInWithSeeker } from '@/lib/signin'
 import { ApiError } from '@/lib/api'
 import { spacing } from '@/theme'
-
-/** The slogan (RB21), the one sentence used everywhere a sentence fits. */
-const SLOGAN = 'Round-ups into SKR that your Seeker keeps and a yield manager grows.'
+import { SLOGAN } from '@/lib/slogan'
 
 function isCanceled(e: unknown) {
   const code = e !== null && typeof e === 'object' && 'code' in e ? String((e as { code: unknown }).code) : ''
