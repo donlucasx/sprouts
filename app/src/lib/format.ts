@@ -110,7 +110,7 @@ export function dayLabel(day: string): string {
   return `${MONTHS[Number(m) - 1]} ${Number(d)}`;
 }
 
-function timeOf(d: Date): string {
+export function timeOf(d: Date): string {
   const h = d.getHours();
   const m = String(d.getMinutes()).padStart(2, "0");
   return `${h % 12 === 0 ? 12 : h % 12}:${m} ${h < 12 ? "AM" : "PM"}`;
