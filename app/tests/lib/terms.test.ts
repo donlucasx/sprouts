@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { existsSync, readFileSync } from 'node:fs'
 import { TERMS_MD } from '@/lib/terms-text'
-import { TERMS_VERSION, termsBlocks, termsNeeded, termsSummary } from '@/lib/terms'
+import { TERMS_VERSION, termsAction, termsBlocks, termsNeeded, termsSummary, withAccepted } from '@/lib/terms'
 
 const FINAL = '/Users/lucasgarzoli/Documents/claude/seekerhackathon/docs/legal/2026-10-06-terms-draft.md'
 
@@ -31,5 +31,20 @@ describe('Terms + Privacy (R283; the final text of 10-04)', () => {
     expect(termsNeeded({ terms: { currentVersion: '2026-10-06', acceptedVersion: null } })).toBe(true)
     expect(termsNeeded({ terms: { currentVersion: '2026-10-06', acceptedVersion: '2026-09-01' } })).toBe(true)
     expect(termsNeeded({ terms: { currentVersion: '2026-10-06', acceptedVersion: '2026-10-06' } })).toBe(false)
+  })
+  it('offers "agree" only when the API asks for the bundled version; a newer one says update the app', () => {
+    expect(termsAction(undefined)).toBe(null)
+    expect(termsAction({ terms: { currentVersion: '2026-10-06', acceptedVersion: '2026-10-06' } })).toBe(null)
+    expect(termsAction({ terms: { currentVersion: '2026-10-06', acceptedVersion: null } })).toBe('agree')
+    expect(termsAction({ terms: { currentVersion: '2026-11-01', acceptedVersion: '2026-10-06' } })).toBe('update')
+    expect(termsAction({ terms: { currentVersion: '2026-11-01', acceptedVersion: null } })).toBe('update')
+  })
+  it('the accepted version goes into the read at once, and the card drops', () => {
+    const me = { terms: { currentVersion: '2026-10-06', acceptedVersion: null } }
+    const after = withAccepted(me, '2026-10-06')
+    expect(after.terms.acceptedVersion).toBe('2026-10-06')
+    expect(termsNeeded(after)).toBe(false)
+    expect(me.terms.acceptedVersion).toBe(null)
+    expect(withAccepted({}, '2026-10-06')).toEqual({})
   })
 })

@@ -25,3 +25,13 @@ export function termsSummary(md: string = TERMS_MD): string[] {
 export function termsNeeded(me: Pick<MeResponse, "terms"> | null | undefined): boolean {
   return !!me?.terms && me.terms.acceptedVersion !== me.terms.currentVersion;
 }
+
+/** What the Terms page offers a signed-in user: "agree" when the page's bundled text is the version the API asks for, "update" when the API has moved on (the text shown would not be the one accepted), null when nothing is owed. */
+export function termsAction(me: Pick<MeResponse, "terms"> | null | undefined): "agree" | "update" | null {
+  if (!termsNeeded(me)) return null;
+  return me?.terms?.currentVersion === TERMS_VERSION ? "agree" : "update";
+}
+/** The cached read with the accepted version filled in from the POST's answer, so Home drops its card at once. */
+export function withAccepted<T extends { terms?: MeResponse["terms"] }>(me: T, version: string): T {
+  return me.terms ? { ...me, terms: { ...me.terms, acceptedVersion: version } } : me;
+}
