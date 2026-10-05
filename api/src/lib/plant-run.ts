@@ -449,7 +449,7 @@ async function plantOneOrThrow(a: { repo: Repo; now: Date; chain: Chain }, w: Wa
   const pending = swaps.reduce((sum, s) => sum + s.roundupCents, 0);
   const rules = rulesRowToRules(await a.repo.getRules(w.userPubkey));
   const oldestMs = swaps.length ? Math.min(...swaps.map((s) => s.ts.getTime())) : a.now.getTime();
-  const forced = a.now.getTime() - oldestMs >= rules.plantMaxDays * 86_400_000;
+  let forced = a.now.getTime() - oldestMs >= rules.plantMaxDays * 86_400_000;
   if (pending <= 0 || (!forced && pending < rules.plantThresholdCents)) return { wallet: w.pubkey, reason: "below threshold" };
   const leashed = w.linkModel === "leash";
   // R297: from go-live the API refuses to plant on old puller-key links (the app shows "Re-link to keep planting"); nothing is read or pulled.
@@ -480,7 +480,9 @@ async function plantOneOrThrow(a: { repo: Repo; now: Date; chain: Chain }, w: Wa
 
   // An RPC error here throws to plantOne ("build failed"); only a successful read that comes up short changes the planting.
   // R361 (owner 10-05, "Carry the rest to a later planting"): when the wallet's USDC (whole cents, rounded down) cannot cover the
-  // pull the cap allows, the planting takes the round-ups it covers, whole and oldest first, and claims only those; the rest stay
+  // pull the cap allows, the planting takes the round-ups it covers, whole, oldest first (one that does not fit is skipped), and
+  // claims only those. The 7-day minimum of zero holds only when a round-up past plantMaxDays is among them, so an old round-up
+  // bigger than the balance does not let new cents drip in under the threshold, a fee each day. The rest stay
   // unplanted and plant on a later run, after a top-up. The pull (their sum + the fee) never exceeds the balance. With nothing that
   // reaches the minimum covered: a balance under threshold + fee pauses (the resume ends it at threshold + fee, so the two
   // converge); a balance at or above it (one round-up bigger than the balance) waits active, since the resume would undo a pause.
@@ -495,6 +497,7 @@ async function plantOneOrThrow(a: { repo: Repo; now: Date; chain: Chain }, w: Wa
     claim = [];
     covered = 0;
     for (const s of swaps) if (covered + s.roundupCents <= room) { claim.push(s); covered += s.roundupCents; }
+    forced = claim.some((s) => a.now.getTime() - s.ts.getTime() >= rules.plantMaxDays * 86_400_000);
     amount = plantAmountCents({ pendingCents: covered, capLeftCents: left, feeCents: NETWORK_FEE_CENTS, minCents: forced ? 0 : rules.plantThresholdCents });
     if (amount.pullCents === 0) {
       if (balanceCents >= rules.plantThresholdCents + NETWORK_FEE_CENTS) return { wallet: w.pubkey, reason: "no usdc" };
