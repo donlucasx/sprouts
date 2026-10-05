@@ -27,3 +27,17 @@ export async function withdrawAtTap(a: {
   await a.confirm(await a.sign(fresh)(fresh.transaction))
   return { done: true }
 }
+
+/**
+ * A synchronous in-flight flag for the screen's wallet actions (T8 review Minor 2): React's `busy` state only disables a button after the
+ * next render, so two presses in one frame would both start. `enter()` is true for the first caller only, until `leave()`.
+ */
+export function oneAtATime() {
+  let busy = false
+  return {
+    enter: (): boolean => (busy ? false : (busy = true)),
+    leave: (): void => {
+      busy = false
+    },
+  }
+}

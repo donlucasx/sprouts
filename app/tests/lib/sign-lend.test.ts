@@ -171,3 +171,11 @@ describe('the pinned venue tables cannot be loosened at runtime (T6 review Minor
     await signed(wire(await kUsdc()), kFlow('USDC_LEND', '1661200'))
   })
 })
+
+describe('a lending-shaped flow of a kind the check does not know (T8 review Important 1)', () => {
+  it('carrying asset and receiptRaw, against a valid Jupiter Lend redeem, is refused, not checked as Jupiter', async () => {
+    const tx = wire(await jlendWithdrawIxs({ asset: 'USDC_LEND', amount: 940000n }))
+    await signed(tx, jFlow('USDC_LEND', '940000'))   // the same transaction signs under its own kind
+    await refused(tx, { kind: 'move_klend_to_jlend', user: USER, asset: 'USDC_LEND', receiptRaw: '940000' } as unknown as SignFlow, 'plan')
+  })
+})
