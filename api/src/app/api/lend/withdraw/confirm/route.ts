@@ -56,22 +56,27 @@ export async function POST(request: Request) {
     }
     const settled = status === "pending" ? await settleUnconfirmed(posted) : status;
     if (settled !== "confirmed") return NextResponse.json({ error: settled === "failed" ? "The withdrawal failed on chain. Nothing moved." : settled === "expired" ? "It did not go through. Nothing moved. Try again." : STILL_WAITING.withdraw }, { status: 409 });
-    // What came back in the underlying's units: the redeemed receipt at the venue's rate now [estimate: for SOL the WSOL account is created
-    // and closed in the same tx, so the delivery is not in its token balances]. The money already moved: a failed rate read records null
-    // (contracts 5.7: the app shows the line without an amount), never a 500 that skips the event.
-    let underlyingRaw: bigint | null = null;
-    try {
-      const r = venue === "kamino_klend" ? await klendRate(asset) : await jlendRate(asset);
-      underlyingRaw = (receiptRaw * r.rn) / r.rd;
-    } catch {
-      underlyingRaw = null;
-    }
-    const withdrawn = { asset, venue, receiptRaw: receiptRaw.toString(), underlyingRaw: underlyingRaw === null ? null : underlyingRaw.toString(), signature: posted.signature };
-    await repo.addEvent({ userPubkey: user.seedVaultPubkey, walletPubkey: null, kind: "lend_withdrawn", detail: withdrawn });
-    return NextResponse.json(json({ withdrawn }));
   } catch (e) {
-    // The send may have gone out: whatever threw after it, the answer is the "may still go through" one, never a bare 500.
-    console.error(`lend withdraw confirm: failed after the send for ${user.seedVaultPubkey}: ${e instanceof Error ? e.message : String(e)}`);
+    // The send may have gone out: whatever threw while sending or confirming, the answer is the "may still go through" one, never a bare 500.
+    console.error(`lend withdraw confirm: failed during the send for ${user.seedVaultPubkey}: ${e instanceof Error ? e.message : String(e)}`);
     return NextResponse.json({ error: STILL_WAITING.withdraw }, { status: 409 });
   }
+  // What came back in the underlying's units: the redeemed receipt at the venue's rate now [estimate: for SOL the WSOL account is created
+  // and closed in the same tx, so the delivery is not in its token balances]. The money already moved: a failed rate read records null
+  // (contracts 5.7: the app shows the line without an amount), never a 500 that skips the event.
+  let underlyingRaw: bigint | null = null;
+  try {
+    const r = venue === "kamino_klend" ? await klendRate(asset) : await jlendRate(asset);
+    underlyingRaw = (receiptRaw * r.rn) / r.rd;
+  } catch {
+    underlyingRaw = null;
+  }
+  const withdrawn = { asset, venue, receiptRaw: receiptRaw.toString(), underlyingRaw: underlyingRaw === null ? null : underlyingRaw.toString(), signature: posted.signature };
+  // Confirmed: the money moved. A failed record write is logged, never told to the user as "may still go through".
+  try {
+    await repo.addEvent({ userPubkey: user.seedVaultPubkey, walletPubkey: null, kind: "lend_withdrawn", detail: withdrawn });
+  } catch (e) {
+    console.error(`lend withdraw confirm: CONFIRMED ${posted.signature} but the lend_withdrawn event was not written for ${user.seedVaultPubkey}: ${e instanceof Error ? e.message : String(e)}`);
+  }
+  return NextResponse.json(json({ withdrawn }));
 }

@@ -101,6 +101,18 @@ describe("Withdraw a lending position (contracts 5.3, R264)", () => {
     expect(error).toBe("Could not read the venue just now. Try again in a minute.");
     expect(error).not.toMatch(/Nothing moved|secret|rpc/);
   });
+  it("build: the Jupiter Lend read failing (rate or withdrawable) is the same plain 503", async () => {
+    const { jlendRate } = await import("@/lib/venues/jlend");
+    const { jupiterWithdrawableRaw } = await import("@/lib/venues/rates");
+    vi.mocked(jlendRate).mockRejectedValueOnce(new Error("jup 500 at /secret/path.ts:9"));
+    let res = await call(build, { asset: "USDC_LEND", venue: "jupiter_lend" });
+    expect(res.status).toBe(503);
+    expect((await res.json()).error).toBe("Could not read the venue just now. Try again in a minute.");
+    vi.mocked(jupiterWithdrawableRaw).mockRejectedValueOnce(new Error("earn answered 429"));
+    res = await call(build, { asset: "SOL_LEND", venue: "jupiter_lend" });
+    expect(res.status).toBe(503);
+    expect(JSON.stringify(await res.json())).not.toMatch(/429|secret|Nothing moved/);
+  });
   it("confirm: a withdrawal larger than the position is refused (400), nothing sent", async () => {
     const body = await confirmBody(await built());
     receipt = 1_000n;
@@ -139,21 +151,27 @@ describe("Withdraw a lending position (contracts 5.3, R264)", () => {
     }
     expect(repo.events.some((e) => e.kind === "lend_withdrawn")).toBe(false);
   });
-  it("confirm: a throw after the send (confirmation poll, then the event write) is the 'may still go through' 409, never a 500", async () => {
+  it("confirm: a throw while sending or confirming is the 'may still go through' 409, never a 500", async () => {
     const body = await confirmBody(await built());
     vi.mocked(sendPosted).mockRejectedValueOnce(new Error("socket hang up"));
     vi.mocked(waitConfirmed).mockRejectedValueOnce(new Error("rpc down"));
-    let res = await call(confirm, body);
-    expect(res.status).toBe(409);
-    expect((await res.json()).error).toBe(STILL_WAITING.withdraw);
-    vi.spyOn(repo, "addEvent").mockRejectedValueOnce(new Error("db down"));
-    res = await call(confirm, body);
+    const res = await call(confirm, body);
     expect(res.status).toBe(409);
     expect((await res.json()).error).toBe(STILL_WAITING.withdraw);
   });
-  it("the vendored copy of the app's sign.ts equals the app's file byte for byte, bar the one documented import edit", () => {
-    const appSign = "/Users/lucasgarzoli/Documents/claude/seekerhackathon/build/sprouts-lend-app/app/src/lib/sign.ts";
-    if (!existsSync(appSign)) { console.warn(`SKIPPED: ${appSign} does not exist on this machine, so the vendored copy was not compared`); return; }
+  it("confirm: an event write that throws after the withdrawal confirmed is still a 200 with the withdrawn body, and logged", async () => {
+    const body = await confirmBody(await built());
+    vi.spyOn(repo, "addEvent").mockRejectedValueOnce(new Error("db down"));
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = await call(confirm, body);
+    expect(res.status).toBe(200);
+    expect((await res.json()).withdrawn).toMatchObject({ asset: "USDC_LEND", venue: "kamino_klend", receiptRaw: "1661072" });
+    expect(log.mock.calls.some((c) => String(c[0]).includes("event was not written") && String(c[0]).includes("db down"))).toBe(true);
+    log.mockRestore();
+  });
+  const appSign = "/Users/lucasgarzoli/Documents/claude/seekerhackathon/build/sprouts-lend-app/app/src/lib/sign.ts";
+  // Skipped (shown as skipped in the run) when the app worktree is not on this machine: the vendored copy was then not compared.
+  it.skipIf(!existsSync(appSign))("the vendored copy of the app's sign.ts equals the app's file byte for byte, bar the one documented import edit (skipped: app worktree sprouts-lend-app absent)", () => {
     // The vendored header says what was changed: the app's `import { isLend, type LendAsset } from './coins'` is inlined as two lines
     // (and a comment). Undo exactly that edit, then every other byte must match.
     const vendored = readFileSync(new URL("../fixtures/app/sign.ts", import.meta.url), "utf8");
