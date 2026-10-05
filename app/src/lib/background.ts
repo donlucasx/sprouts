@@ -8,11 +8,14 @@ import { normalizeMe } from "./me-state";
 import { noticesFor } from "./notices";
 import { readNotify } from "./prefs";
 import { coalesce } from "./coalesce";
+import { DEMO_SHOT } from "./demo-shot";
 
 const TASK = "sprouts-refresh";
 
 /** Every 15 minutes or so (Android decides): read the pot; say what changed since the last read (R161: plantings, a delivered withdrawal, the manager's move, the daily limit) and refresh the widget. */
 TaskManager.defineTask(TASK, coalesce(async () => {
+  // Dev only (demo/shot-420): the demo garden never reaches notices, the saved read or the widget from the background
+  if (DEMO_SHOT) return BackgroundTask.BackgroundTaskResult.Success;
   try {
     const before = readLastMe();
     const me = normalizeMe(await api<MeResponse>("/api/me"));
