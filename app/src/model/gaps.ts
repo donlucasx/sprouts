@@ -1,6 +1,6 @@
 import type { Part, PlantId, Scene } from "./garden";
 import { plantLayouts, type PlantOnStage } from "./scene-to-layout";
-import { FOOT_Y, PLANT_SCALE, frameFor, signX, stakeScale, boardXOf } from "./layout";
+import { FOOT_Y, FRAME, PLANT_SCALE, frameFor, signX, stakeScale, boardXOf } from "./layout";
 import { SPRITE_META } from "@/garden/sprite-meta";
 
 /**
@@ -9,9 +9,10 @@ import { SPRITE_META } from "@/garden/sprite-meta";
  * together. Each back-row occupant (a plant with its stake, or a bare stake) takes the nearest x to its slot, on a GAP_STEP grid, whose
  * board (at its usual offset beside its own stem, R237's side or the other) no front plant part covers, ranked in order:
  *   1. its board over another back-row board or stem, or the back row out of its order (never: they stay apart and in order);
- *   2. outside the garden's frame (the frame would widen and the garden zoom out);
- *   3. a board no front part covers before one a part covers; among clear spots the nearest to its slot; with none clear, the words'
- *      cover in GAP_GRAIN grains plus a grain for each GAP_WALK px walked;
+ *   2. a clear board (no front part over it) inside the frame, the nearest to its slot; else a clear board past the frame whose
+ *      widening leaves the garden at least GAP_ZOOM of its zoom, the nearest; else the words' cover in GAP_GRAIN grains plus a grain
+ *      for each GAP_WALK px walked (the least covered near its own place);
+ * Candidates run along the whole row: between the front canopies and past either outer one (the coordinator's reading of R357).
  *   4. front parts over its own stem's foot (a back plant not standing straight behind a front one), in grains;
  *   5. the distance from its slot, then R237's side before the other.
  * Measured on the scene with every bud open (R247: a watering never moves a slot), with the parts' baked boxes held still (a sway is
@@ -24,12 +25,13 @@ export const GAP_CLEAR = 1.5;
 /** How close another back-row stem may come to a stem (canvas px). */
 export const GAP_STEMS = 14;
 /** Cover is counted in grains of this many canvas px, so a canopy growing a little does not move a plant to a spot a hair less covered. */
-export const GAP_GRAIN = 6;
+export const GAP_GRAIN = 12;
 /** With no clear spot, a plant walks GAP_WALK canvas px from its slot for each grain of its words it uncovers (a sign kept by its
  * plant's place in the composition over one a little clearer far away). */
-export const GAP_WALK = 12;
-/** How far (canvas px) a back plant may slide from its slot: past this it would stand at another plant's place in the composition. */
-export const GAP_REACH = 90;
+export const GAP_WALK = 8;
+/** The coordinator's reading of R357 (option 3): a clear spot past the frame may widen it, the garden zooming out to no less than
+ * GAP_ZOOM of its zoom before the move. */
+export const GAP_ZOOM = 0.85;
 
 type Box = { x0: number; x1: number; y0: number; y1: number };
 /** Each part's still box (canvas px, at PLANT_SCALE about its foot); a stem's ends padded by its half width. */
@@ -66,7 +68,7 @@ const opened = (scene: Scene): Scene => ({ ...scene, parts: scene.parts.map((q):
 const less = (u: number[], v: number[]) => { for (let i = 0; i < u.length; i++) if (Math.abs(u[i] - v[i]) > 1e-9) return u[i] < v[i]; return false; };
 
 type FrameBox = { x: number; w: number; zoom: number };
-function placeOnce(scene: Scene, width: number, f: FrameBox): Scene {
+function placeOnce(scene: Scene, width: number, f: FrameBox, z0: number): Scene {
   const L = plantLayouts(opened(scene));
   const front = L.filter((p) => p.row === "front").flatMap((p) => partBoxes(p, width));
   const back = scene.parts.flatMap((q) => (q.kind === "sign" && q.row === "back" ? [q] : [])).sort((a, b) => a.x - b.x);
@@ -76,7 +78,7 @@ function placeOnce(scene: Scene, width: number, f: FrameBox): Scene {
     const slot = s.x * width;
     const stemY0 = FOOT_Y("back") - 12, stemY1 = FOOT_Y("back");
     let best: { cost: number[]; x: number; side: -1 | 1 } | null = null;
-    const reach = Math.ceil(GAP_REACH / GAP_STEP);
+    const reach = Math.ceil(width / GAP_STEP);   // the whole row: between the front canopies and past either outer one
     for (let k = -reach; k <= reach; k++) {
       const x = slot + k * GAP_STEP;
       if (x < 1 || x > width - 1) continue;
@@ -89,10 +91,12 @@ function placeOnce(scene: Scene, width: number, f: FrameBox): Scene {
           + Math.max(0, Math.min(o.board.x1 + GAP_CLEAR, x + 3) - Math.max(o.board.x0 - GAP_CLEAR, x - 3)), 0);
         const words = coverOf(b.x0 - GAP_CLEAR, b.x1 + GAP_CLEAR, b.y0, b.y1, front);
         const stem = coverOf(x - 3, x + 3, stemY0, stemY1, front);
-        const outside = b.x0 < f.x || b.x1 > f.x + f.w ? 1 : 0;
+        // past the frame the frame widens about the board (FRAME.pad each side): the zoom it would leave, estimated
+        const lo = Math.min(f.x, b.x0 - FRAME.pad), hi = Math.max(f.x + f.w, b.x1 + FRAME.pad), zoomed = f.zoom * Math.min(1, f.w / (hi - lo));
+        const tier = words > 0 ? 2 : b.x0 >= f.x && b.x1 <= f.x + f.w ? 0 : zoomed >= GAP_ZOOM * z0 - 1e-9 ? 1 : 2;
         const order = placed.some((o) => o.foot >= x) ? 1 : 0;   // the back row keeps its order (left to right as its slots)
         const grains = Math.ceil(words / GAP_GRAIN - 1e-9), far = Math.abs(x - slot);
-        const cost = [clash + order, outside, grains > 0 ? 1 : 0, grains > 0 ? grains + far / GAP_WALK : far, Math.ceil(stem / GAP_GRAIN - 1e-9), far, side === s.side ? 0 : 1];
+        const cost = [clash + order, tier, tier === 2 ? grains + far / GAP_WALK : far, Math.ceil(stem / GAP_GRAIN - 1e-9), far, side === s.side ? 0 : 1];
         if (!best || less(cost, best.cost)) best = { cost, x, side };
       }
     }
@@ -113,8 +117,8 @@ function placeOnce(scene: Scene, width: number, f: FrameBox): Scene {
 /** R357: the back row moved into the front canopies' gaps. The boards' size follows the frame's zoom, and the frame follows the moved
  * garden: a second pass measures at the first pass's frame when its zoom differs. */
 export function gapScene(scene: Scene, width: number): Scene {
-  const once = placeOnce(scene, width, frameFor(scene, plantLayouts(scene), width));
+  const f0 = frameFor(scene, plantLayouts(scene), width), once = placeOnce(scene, width, f0, f0.zoom);
   if (once === scene) return scene;
-  const f0 = frameFor(scene, plantLayouts(scene), width), f1 = frameFor(once, plantLayouts(once), width);
-  return Math.abs(f1.zoom - f0.zoom) < 1e-6 ? once : placeOnce(scene, width, f1);
+  const f1 = frameFor(once, plantLayouts(once), width);
+  return Math.abs(f1.zoom - f0.zoom) < 1e-6 ? once : placeOnce(scene, width, f1, f0.zoom);
 }
