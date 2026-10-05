@@ -6,7 +6,8 @@ import { AccountRole, compileTransaction, createKeyPairSignerFromBytes, createNo
   type Address, type Blockhash, type Instruction, type KeyPairSigner, type TransactionSigner } from "@solana/kit";
 import { getSetComputeUnitLimitInstruction, getSetComputeUnitPriceInstruction } from "@solana-program/compute-budget";
 import { findAssociatedTokenPda, TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
-import { LEG_BYTES, LEG_SPEC, leashConfigPda, encodeConfig, encodeHeader, encodeLeg, initConfigData, setHeaderData, setLegData, type LeashConfig, type LeashLegByte } from "../src/lib/leash";
+import { LEG_BYTES, LEG_SPEC, leashConfigPda, encodeConfig, encodeHeader, encodeLeg, initConfigData, setHeaderData, setLegData, skrPriceSource, type LeashConfig, type LeashLegByte } from "../src/lib/leash";
+import { fetchHermesUpdate } from "../src/lib/pyth";
 import { PYTH_FEED } from "../src/lib/venues/addresses";
 import { LEASH_ADMIN, LEASH_PROGRAM, SYSTEM_PROGRAM, USDC_MINT } from "../src/lib/constants";
 
@@ -77,12 +78,30 @@ export function parseLegs(s: string): LeashLegByte[] {
 }
 
 /**
- * R324: leg 0 (SKR) has no price source, so a Config with leg 0 enabled is never an install target (leash/config/README: only
- * mainnet-day1.hex is installable; the all-legs file is an encoder test vector). Refused unless the owner passes SKR_OVERRIDE_FLAG.
+ * R324: a Config with leg 0 (SKR) enabled is refused while SKR has no price source. Contracts 10 item 15 (10-05): SKR is posted
+ * with the crypto-entitled Pyth key, so `allowSkr` is true when skrPriceProof answered (the key is in this shell's env AND Hermes
+ * served the SKR feed with it), or the owner passed SKR_OVERRIDE_FLAG.
  */
 export function assertInstallable(want: LeashConfig, allowSkr: boolean): void {
   if (want.legs[0]?.enabled && !allowSkr)
-    throw new Error(`refusing a Config with leg 0 (SKR) enabled: SKR has no price source (R324). Nothing was sent. (Override, only if the coordinator says so: ${SKR_OVERRIDE_FLAG})`);
+    throw new Error(`refusing a Config with leg 0 (SKR) enabled: SKR has no price source here (no PYTH_API_KEY in this shell: run with --env-file=.env.local; R324). Nothing was sent. (Override, only if the coordinator says so: ${SKR_OVERRIDE_FLAG})`);
+}
+
+/**
+ * Before leg 0 is enabled: proof that SKR can be priced the way the API will price it (one read-only Hermes GET with the key). Null
+ * when no key is set (the caller then refuses, offline); throws when the key is set but Hermes refuses the SKR feed (a 401/403:
+ * an expired or unentitled key would make every leashed SKR planting skip). The text is printed for the owner.
+ */
+export async function skrPriceProof(d: { hasKey: () => boolean; fetchSkr: () => Promise<{ price: { price: bigint; exponent: number; publishTime: bigint } }>; nowS?: number } = { hasKey: skrPriceSource, fetchSkr: () => fetchHermesUpdate(PYTH_FEED.SKR) }): Promise<string | null> {
+  if (!d.hasKey()) return null;
+  let p: { price: bigint; exponent: number; publishTime: bigint };
+  try {
+    ({ price: p } = await d.fetchSkr());
+  } catch (e) {
+    throw new Error(`refusing leg 0 (SKR): PYTH_API_KEY is set but Hermes refused the SKR feed (${e instanceof Error ? e.message : String(e)}). Nothing was sent.`);
+  }
+  const age = (d.nowS ?? Math.floor(Date.now() / 1000)) - Number(p.publishTime);
+  return `SKR price source OK: Hermes served the SKR feed with PYTH_API_KEY (price ${p.price}e${p.exponent}, ${age} s old); leg 0 is posted (contracts 10 item 15)`;
 }
 
 /** One admin instruction per tx (contracts 2.5, R325). */
