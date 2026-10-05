@@ -46,14 +46,14 @@ describe("stORE amounts", () => {
 // Spec 3.3, 3.5: six coins format with their own decimals; the SOL coins and stORE show 4 places, cbBTC 8 (spec 5.1), SKR keeps 2.
 describe("six coins", () => {
   it("names and decimals in the registry's order", () => {
-    expect(Object.keys(DECIMALS)).toEqual(["SKR", "stORE", "hSOL", "JitoSOL", "JupSOL", "cbBTC"]);
-    expect(DECIMALS).toEqual({ SKR: 6, stORE: 11, hSOL: 9, JitoSOL: 9, JupSOL: 9, cbBTC: 8 });
-    expect(COIN_NAME.JitoSOL).toBe("JitoSOL");
+    expect(Object.keys(DECIMALS)).toEqual(["SKR", "stORE", "USDC_LEND", "SOL_LEND", "hSOL", "cbBTC"]);
+    expect(DECIMALS).toEqual({ SKR: 6, stORE: 11, USDC_LEND: 6, SOL_LEND: 9, hSOL: 9, cbBTC: 8 });
+    expect(COIN_NAME.USDC_LEND).toBe("USDC");
   });
 
   it("formatAmount keeps SKR and stORE as before and formats the four new coins with a dollar beside", () => {
     expect(formatAmount("hSOL", 14_181_944n, 168)).toBe("0.0142 hSOL ($2.38)");
-    expect(formatAmount("JitoSOL", 12_939_970n, null)).toBe("0.0129 JitoSOL");
+    expect(formatAmount("SOL_LEND", 12_939_970n, null)).toBe("0.0129 SOL");
     expect(formatAmount("cbBTC", 2_352n, 83_600)).toBe("0.00002352 cbBTC ($1.97)");
     expect(formatAmount("SKR", 5_256_186n, null)).toBe(formatSkr(5_256_186n, null));
     expect(formatAmount("stORE", 122_495_137n, null)).toBe(formatStore(122_495_137n, null));

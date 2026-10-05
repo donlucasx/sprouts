@@ -1,4 +1,4 @@
-import type { Asset, Split } from "@/lib/coins";
+import type { LiveAsset, Split } from "@/lib/coins";
 import { ROW_OF, signSide, slotsFor } from "./layout";
 import { branchFlags, pupsByCount, stageOf } from "./plant-geometry";
 import { PLANT_SPECIES, type Band, type PlantId, type Species, type Stage } from "./species";
@@ -9,21 +9,21 @@ export type GardenInput = {
   /** R249: the plants the last watering opened (the app records them as it waters, lib/last-watering.ts); absent (another phone's
    * watering, the widget before a record), the plants planted in the week before it stand for them (a bud seldom waits longer). */
   wateredPlants?: PlantId[] | null;
-  plantings: { id: string; ts: Date; asset: Asset; amountOutRaw: bigint; usdcInCents: number }[];
-  picks: { ts: Date; asset: Asset; amountRaw: bigint }[];
+  plantings: { id: string; ts: Date; asset: LiveAsset; amountOutRaw: bigint; usdcInCents: number }[];
+  picks: { ts: Date; asset: LiveAsset; amountRaw: bigint }[];
   skrPutInRaw: bigint; skrEarnedRaw: bigint; skrPickedRaw: bigint; skrPrincipalPickedRaw: bigint;   // principal withdrawn prunes; fruit picked does not [A13]
   pendingCents: number;              // change waiting: seeds beside the next coin's sign before its first planting, then the swelling on its plant (RG9)
   thresholdCents: number;
-  nextAsset?: Asset;                 // the coin the next planting buys (/api/me nextPlanting.asset)
+  nextAsset?: LiveAsset;                 // the coin the next planting buys (/api/me nextPlanting.asset)
   allocation: Split;                 // today's split, rules.allocation in both manager modes (spec 5): a coin with a share gets a sign
-  earned: Partial<Record<Asset, { count: number; progress: number }>>;   // token-fruit per coin (RG16): the count on the ladder and the next one's progress
+  earned: Partial<Record<LiveAsset, { count: number; progress: number }>>;   // token-fruit per coin (RG16): the count on the ladder and the next one's progress
   storePutInRaw: bigint; joinedValueRaw: bigint;
   basket: { amountRaw: bigint; readyAt: Date } | null;
 };
 
 export const PLANT_ORDER: readonly PlantId[] = ["skr", "ore", "hsol", "jitosol", "jupsol", "cbbtc"] as const;
-export const PLANT_OF: Record<Asset, PlantId> = { SKR: "skr", stORE: "ore", hSOL: "hsol", JitoSOL: "jitosol", JupSOL: "jupsol", cbBTC: "cbbtc" };
-export const ASSET_OF: Record<PlantId, Asset> = { skr: "SKR", ore: "stORE", hsol: "hSOL", jitosol: "JitoSOL", jupsol: "JupSOL", cbbtc: "cbBTC" };
+export const PLANT_OF: Record<LiveAsset, PlantId> = { SKR: "skr", stORE: "ore", USDC_LEND: "jitosol", SOL_LEND: "jupsol", hSOL: "hsol", cbBTC: "cbbtc" };
+export const ASSET_OF: Record<PlantId, LiveAsset> = { skr: "SKR", ore: "stORE", hsol: "hSOL", jitosol: "USDC_LEND", jupsol: "SOL_LEND", cbbtc: "cbBTC" };
 
 /** RG4: small under $1, usual $1 to $5, large over $5; a 0 (a legacy row with no leg) reads usual, never small. */
 export const bandOf = (usdcInCents: number): Band => (usdcInCents <= 0 ? 1 : usdcInCents < 100 ? 0 : usdcInCents <= 500 ? 1 : 2);
@@ -85,7 +85,7 @@ export function buildScene(g: GardenInput): Scene {
   const kept = new Set(skrPlantings.slice(0, skrPlantings.length - prune).map((p) => p.id));
   if (prune > 0) parts.push({ kind: "pruned", count: prune });
 
-  const coin = (a: Asset): PlantId => PLANT_OF[a];
+  const coin = (a: LiveAsset): PlantId => PLANT_OF[a];
   const fullOf = (c: PlantId) => sorted.filter((p) => coin(p.asset) === c);                       // the full history (RG19's flags)
   const keptOf = (c: PlantId) => fullOf(c).filter((p) => p.asset !== "SKR" || kept.has(p.id));     // what is drawn
   const present = PLANT_ORDER.filter((c) => keptOf(c).length > 0 || (c === "skr" && g.joinedValueRaw > 0n));

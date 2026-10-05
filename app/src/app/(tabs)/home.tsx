@@ -28,23 +28,23 @@ import { setPaused } from '@/lib/pause-api'
 import { freshWalletSignIn } from '@/lib/reauth'
 import { identity } from '@/lib/identity'
 import { FONT, radius, spacing, TARGET, useTheme } from '@/theme'
-import type { Asset } from '@/lib/coins'
+import type { LiveAsset } from '@/lib/coins'
 
 /** R230: each row of Home's coin list leads with the coin's painted token (the garden's fruit) and its full name, portfolio style. */
-const COIN_ICON: Record<Asset, number> = {
+const COIN_ICON: Record<LiveAsset, number> = {
   SKR: SPRITES['token-skr'].src,
   stORE: SPRITES['token-ore'].src,
+  USDC_LEND: SPRITES['token-jitosol'].src,
+  SOL_LEND: SPRITES['token-jitosol'].src,
   hSOL: SPRITES['token-hsol'].src,
-  JitoSOL: SPRITES['token-jitosol'].src,
-  JupSOL: SPRITES['token-jupsol'].src,
   cbBTC: SPRITES['token-cbbtc'].src,
 }
-const COIN_FULL_NAME: Record<Asset, string> = {
+const COIN_FULL_NAME: Record<LiveAsset, string> = {
   SKR: 'Seeker',
   stORE: 'Staked ORE',
+  USDC_LEND: 'USDC lending',
+  SOL_LEND: 'SOL lending',
   hSOL: 'Helius Staked SOL',
-  JitoSOL: 'Jito Staked SOL',
-  JupSOL: 'Jupiter Staked SOL',
   cbBTC: 'Coinbase Wrapped BTC',
 }
 

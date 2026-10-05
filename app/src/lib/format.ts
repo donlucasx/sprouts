@@ -1,11 +1,17 @@
-import type { Asset } from "./coins";
+import { VENUE_NAME, type AutoVenue, type LiveAsset } from "./coins";
 import type { Holding } from "./api";
 
-/** Display decimals per coin (the mints', read on chain; stORE is 11, not 9). Never money math: the API computes, the app formats. */
-export const DECIMALS: Record<Asset, number> = { SKR: 6, stORE: 11, hSOL: 9, JitoSOL: 9, JupSOL: 9, cbBTC: 8 };
-export const COIN_NAME: Record<Asset, string> = { SKR: "SKR", stORE: "stORE", hSOL: "hSOL", JitoSOL: "JitoSOL", JupSOL: "JupSOL", cbBTC: "cbBTC" };
-/** Places shown per coin. */
-const SHOWN: Record<Asset, number> = { SKR: 2, stORE: 4, hSOL: 4, JitoSOL: 4, JupSOL: 4, cbBTC: 8 };
+/** Display decimals per leg (the mints', read on chain; stORE is 11; lending legs show the UNDERLYING, USDC 6 and SOL 9, never the receipt). Never money math: the API computes, the app formats. */
+export const DECIMALS: Record<LiveAsset, number> = { SKR: 6, stORE: 11, USDC_LEND: 6, SOL_LEND: 9, hSOL: 9, cbBTC: 8 };
+export const COIN_NAME: Record<LiveAsset, string> = { SKR: "SKR", stORE: "stORE", USDC_LEND: "USDC", SOL_LEND: "SOL", hSOL: "hSOL", cbBTC: "cbBTC" };
+/** Contracts 1.1 / 5.7: the names a list or a sentence uses ("USDC lending"). */
+export const COIN_NAME_LONG: Record<LiveAsset, string> = { SKR: "SKR", stORE: "stORE", USDC_LEND: "USDC lending", SOL_LEND: "SOL lending", hSOL: "hSOL", cbBTC: "cbBTC" };
+/** Places shown per leg. */
+const SHOWN: Record<LiveAsset, number> = { SKR: 2, stORE: 4, USDC_LEND: 2, SOL_LEND: 4, hSOL: 4, cbBTC: 8 };
+/** Contracts 5.7, R284: the leg as Activity names it, e.g. "USDC lending (Kamino)". */
+export function legLabel(asset: LiveAsset, venue?: AutoVenue | null): string {
+  return `${COIN_NAME_LONG[asset]}${venue ? ` (${VENUE_NAME[venue]})` : ""}`;
+}
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const SKR_DECIMALS = DECIMALS.SKR;
 
@@ -38,7 +44,7 @@ export function formatStore(raw: bigint, storeUsd: number | null): string {
 }
 
 /** A coin amount with its dollar value beside it when a price is known. SKR and stORE keep their own formatters. */
-export function formatAmount(asset: Asset, raw: bigint, usd: number | null): string {
+export function formatAmount(asset: LiveAsset, raw: bigint, usd: number | null): string {
   if (asset === "SKR") return formatSkr(raw, usd);
   if (asset === "stORE") return formatStore(raw, usd);
   const amount = Number(raw) / 10 ** DECIMALS[asset];
@@ -54,7 +60,7 @@ export function feeClause(feeCents: number, feeAmountRaw?: string): string {
 }
 
 /** The line under a pin (the ORE plan's finding 9, generalised): what a share of each dollar grows. */
-export function shareLine(asset: Asset, pct: number): string {
+export function shareLine(asset: LiveAsset, pct: number): string {
   if (pct <= 0) return "Every planting grows SKR.";
   return `About ${pct} cents of every dollar grows ${COIN_NAME[asset]}.`;
 }
@@ -70,7 +76,7 @@ export function holdingAmount(h: Holding): string {
 export const HOLDINGS_NOTE = "These sit in your Seeker wallet, not locked. Sprouts cannot sell them for you.";
 
 /** A planting in one clause, dollars first (manual 5 and 6): what the change became, with the fee clause as ruled (R139). */
-export function plantedLine(p: { usdcInCents: number; asset: Asset; amountOutRaw: string; usdPrice: number | null; feeCents: number; feeAmountRaw?: string }): string {
+export function plantedLine(p: { usdcInCents: number; asset: LiveAsset; amountOutRaw: string; usdPrice: number | null; feeCents: number; feeAmountRaw?: string }): string {
   return `${formatUsd(p.usdcInCents)} became ${formatAmount(p.asset, BigInt(p.amountOutRaw), p.usdPrice)}${feeClause(p.feeCents, p.feeAmountRaw)}`;
 }
 

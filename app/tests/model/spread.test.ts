@@ -6,7 +6,7 @@ import { previewInputAt } from "@/model/fixtures/median-year";
 import { packScene, clearIn } from "@/model/spread";
 
 const now = new Date("2026-10-02T14:30:00-07:00"), d = (id: string, asset: GardenInput["plantings"][number]["asset"], iso: string, c: number) => ({ id, ts: new Date(iso), asset, amountOutRaw: 1n, usdcInCents: c });
-const saga = buildScene({ ...previewInputAt(1), now, wateredAt: now, pendingCents: 0, earned: {}, plantings: [d("s", "SKR", "2026-09-29T14:00:00-07:00", 65), d("o", "stORE", "2026-09-30T11:40:00-07:00", 10), d("h", "hSOL", "2026-10-01T19:00:00-07:00", 103), d("j", "JitoSOL", "2026-10-01T16:00:00-07:00", 25), d("u", "JupSOL", "2026-10-01T16:30:00-07:00", 25), d("c", "cbBTC", "2026-10-01T17:00:00-07:00", 25)] });
+const saga = buildScene({ ...previewInputAt(1), now, wateredAt: now, pendingCents: 0, earned: {}, plantings: [d("s", "SKR", "2026-09-29T14:00:00-07:00", 65), d("o", "stORE", "2026-09-30T11:40:00-07:00", 10), d("h", "hSOL", "2026-10-01T19:00:00-07:00", 103), d("j", "USDC_LEND", "2026-10-01T16:00:00-07:00", 25), d("u", "SOL_LEND", "2026-10-01T16:30:00-07:00", 25), d("c", "cbBTC", "2026-10-01T17:00:00-07:00", 25)] });
 const slots = (s: Scene) => s.parts.flatMap((q) => (q.kind === "plant" || q.kind === "sign" ? [[q.kind, q.plant, q.x] as const] : []));
 const zoom = (s: Scene) => frameFor(s, plantLayouts(s), 320).zoom;
 
@@ -33,7 +33,7 @@ describe("R234: adaptive spacing, the young garden packed together", () => {
     for (const day of [120, 240, 365]) { const s = buildScene(previewInputAt(day)); expect(zoom(packScene(s))).toBeGreaterThanOrEqual(zoom(s) - 1e-9); }
   });
   it("one occupant is left where it is", () => {
-    const lone = buildScene({ ...previewInputAt(1), now, wateredAt: now, pendingCents: 0, earned: {}, allocation: { SKR: 100, stORE: 0, hSOL: 0, JitoSOL: 0, JupSOL: 0, cbBTC: 0 }, plantings: [d("s", "SKR", "2026-09-29T14:00:00-07:00", 65)] });
+    const lone = buildScene({ ...previewInputAt(1), now, wateredAt: now, pendingCents: 0, earned: {}, allocation: { SKR: 100, stORE: 0, hSOL: 0, USDC_LEND: 0, SOL_LEND: 0, cbBTC: 0 }, plantings: [d("s", "SKR", "2026-09-29T14:00:00-07:00", 65)] });
     expect(packScene(lone)).toBe(lone);
   });
 });

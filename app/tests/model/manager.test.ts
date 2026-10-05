@@ -5,16 +5,16 @@ import {
   splitRows, modeWord, togglePin, stepPin, canStepUp, undoLine, changeSummary, splitRowLine, pinsForOn,
 } from "@/model/manager";
 
-const split = (p: Partial<Split>): Split => ({ SKR: 0, stORE: 0, hSOL: 0, JitoSOL: 0, JupSOL: 0, cbBTC: 0, ...p });
+const split = (p: Partial<Split>): Split => ({ SKR: 0, stORE: 0, hSOL: 0, USDC_LEND: 0, SOL_LEND: 0, cbBTC: 0, ...p });
 const rules = (p: Partial<Parameters<typeof splitRows>[0]>) => ({ managed: false, stop: "balanced" as const, pins: {}, allocation: split({ SKR: 100 }), ...p });
 
 // Spec 4.1 mirrored for labels and stepper bounds; the API is the authority.
 describe("the tables", () => {
   it("floors, maxes, pin maxes and the step", () => {
     expect(STOP_FLOOR).toEqual({ careful: 50, balanced: 35, bold: 25 });
-    expect(STOP_MAX.careful).toEqual({ stORE: 10, hSOL: 15, JitoSOL: 15, JupSOL: 15, cbBTC: 30 });
+    expect(STOP_MAX.careful).toEqual({ stORE: 10, USDC_LEND: 30, SOL_LEND: 15, hSOL: 15, cbBTC: 30 });
     expect(STOP_MAX.bold.cbBTC).toBe(20);
-    expect(PIN_MAX).toEqual({ SKR: 100, stORE: 50, hSOL: 75, JitoSOL: 75, JupSOL: 75, cbBTC: 75 });
+    expect(PIN_MAX).toEqual({ SKR: 100, stORE: 50, hSOL: 75, USDC_LEND: 75, SOL_LEND: 75, cbBTC: 75 });
     expect(PIN_STEP).toBe(5);
     expect(MANAGER_LINE).toBe("Moves new change toward the coins paying more. Never sells what you hold.");
     expect(STOP_LINE).toBe("Careful keeps at least 50% in SKR, Balanced 35%, Bold 25%.");
@@ -29,7 +29,7 @@ describe("splitRows (spec 3.1)", () => {
     expect(rows.map((r) => r.asset)).toEqual([...ASSETS]);
     expect(rows[0]).toEqual({ asset: "SKR", pct: 50, mode: "the rest", bound: null });
     expect(rows[1]).toEqual({ asset: "stORE", pct: 50, mode: "pinned", bound: null });
-    expect(rows[2]).toEqual({ asset: "hSOL", pct: 0, mode: "pinned", bound: null });
+    expect(rows[4]).toEqual({ asset: "hSOL", pct: 0, mode: "pinned", bound: null });
   });
 
   it("off with no pins: SKR 100 the rest", () => {
@@ -37,7 +37,7 @@ describe("splitRows (spec 3.1)", () => {
   });
 
   it("on with no pins: every row auto, SKR with its floor, the others with their max", () => {
-    const rows = splitRows(rules({ managed: true, stop: "balanced", allocation: split({ SKR: 45, stORE: 5, hSOL: 20, JitoSOL: 10, JupSOL: 10, cbBTC: 10 }) }));
+    const rows = splitRows(rules({ managed: true, stop: "balanced", allocation: split({ SKR: 45, stORE: 5, hSOL: 20, USDC_LEND: 10, SOL_LEND: 10, cbBTC: 10 }) }));
     expect(rows[0]).toEqual({ asset: "SKR", pct: 45, mode: "auto", bound: "at least 35%" });
     expect(rows[1]).toEqual({ asset: "stORE", pct: 5, mode: "auto", bound: "at most 20%" });   // R251
     expect(rows[5]).toEqual({ asset: "cbBTC", pct: 10, mode: "auto", bound: "at most 25%" });
@@ -45,28 +45,28 @@ describe("splitRows (spec 3.1)", () => {
 
   // Review Focus 2: a pin above the stop's max is the user's authority.
   it("on: a pin above the stop max keeps its row; the pinned value is the pin, not the allocation", () => {
-    const rows = splitRows(rules({ managed: true, stop: "balanced", pins: { stORE: 50 }, allocation: split({ SKR: 35, stORE: 50, hSOL: 8, JitoSOL: 4, JupSOL: 2, cbBTC: 1 }) }));
+    const rows = splitRows(rules({ managed: true, stop: "balanced", pins: { stORE: 50 }, allocation: split({ SKR: 35, stORE: 50, hSOL: 8, USDC_LEND: 4, SOL_LEND: 2, cbBTC: 1 }) }));
     expect(rows[1]).toEqual({ asset: "stORE", pct: 50, mode: "pinned", bound: null });
     expect(rows[0].mode).toBe("auto");
   });
 
   it("on with SKR pinned: SKR reads pinned with no bound", () => {
-    const rows = splitRows(rules({ managed: true, stop: "careful", pins: { SKR: 70 }, allocation: split({ SKR: 70, hSOL: 10, JitoSOL: 10, JupSOL: 10 }) }));
+    const rows = splitRows(rules({ managed: true, stop: "careful", pins: { SKR: 70 }, allocation: split({ SKR: 70, hSOL: 10, USDC_LEND: 10, SOL_LEND: 10 }) }));
     expect(rows[0]).toEqual({ asset: "SKR", pct: 70, mode: "pinned", bound: null });
   });
 
   // Audit fix F1: the unsaved ON draft reads the stop's split, not the saved OFF allocation.
-  const preview = split({ SKR: 45, stORE: 5, hSOL: 20, JitoSOL: 10, JupSOL: 10, cbBTC: 10 });
+  const preview = split({ SKR: 45, stORE: 5, hSOL: 20, USDC_LEND: 10, SOL_LEND: 10, cbBTC: 10 });
   it("on with a preview and no pins: every row reads the preview, with the bounds", () => {
     const rows = splitRows(rules({ managed: true, stop: "balanced" }), preview);
-    expect(rows.map((r) => r.pct)).toEqual([45, 5, 20, 10, 10, 10]);
+    expect(rows.map((r) => r.pct)).toEqual([45, 5, 10, 10, 20, 10]);
     expect(rows[0]).toEqual({ asset: "SKR", pct: 45, mode: "auto", bound: "at least 35%" });
-    expect(rows[2]).toEqual({ asset: "hSOL", pct: 20, mode: "auto", bound: "at most 25%" });
+    expect(rows[4]).toEqual({ asset: "hSOL", pct: 20, mode: "auto", bound: "at most 25%" });
   });
   it("on with a preview: a pinned row keeps its pin", () => {
     const rows = splitRows(rules({ managed: true, stop: "balanced", pins: { stORE: 50 } }), preview);
     expect(rows[1]).toEqual({ asset: "stORE", pct: 50, mode: "pinned", bound: null });
-    expect(rows[2].pct).toBe(20);
+    expect(rows[4].pct).toBe(20);
   });
   it("off ignores the preview", () => {
     expect(splitRows(rules({}), preview)[0]).toEqual({ asset: "SKR", pct: 100, mode: "the rest", bound: null });
@@ -112,15 +112,17 @@ describe("the sentence, the undo line, Activity's rows", () => {
   });
 
   it("changeSummary names each coin that moved, in the registry's order", () => {
-    const from = split({ SKR: 45, hSOL: 15, JitoSOL: 15, JupSOL: 15, cbBTC: 10 });
-    const to = split({ SKR: 45, hSOL: 20, JitoSOL: 15, JupSOL: 15, cbBTC: 5 });
+    const from = split({ SKR: 45, hSOL: 15, USDC_LEND: 15, SOL_LEND: 15, cbBTC: 10 });
+    const to = split({ SKR: 45, hSOL: 20, USDC_LEND: 15, SOL_LEND: 15, cbBTC: 5 });
     expect(changeSummary(from, to)).toBe("hSOL 15 to 20, cbBTC 10 to 5");
     expect(changeSummary(from, from)).toBe("");
+    expect(changeSummary({ SKR: 45, USDC_LEND: 10, hSOL: 20 }, { SKR: 45, USDC_LEND: 15, hSOL: 15 })).toBe("USDC lending 10 to 15, hSOL 20 to 15");
+    expect(changeSummary({ SKR: 40, JitoSOL: 10 }, { SKR: 50, JitoSOL: 0 })).toBe("SKR 40 to 50");   // an old row's retired key is not named
   });
 
   it("splitRowLine: the manager with a why, a fallback day, your change, an undo (spec 3.2)", () => {
-    const from = split({ SKR: 45, hSOL: 15, JitoSOL: 15, JupSOL: 15, cbBTC: 10 });
-    const to = split({ SKR: 45, hSOL: 20, JitoSOL: 15, JupSOL: 15, cbBTC: 5 });
+    const from = split({ SKR: 45, hSOL: 15, USDC_LEND: 15, SOL_LEND: 15, cbBTC: 10 });
+    const to = split({ SKR: 45, hSOL: 20, USDC_LEND: 15, SOL_LEND: 15, cbBTC: 5 });
     const ts = "2026-10-03T14:00:00.000Z";
     expect(splitRowLine({ ts, by: "manager", from, to, stop: "balanced", why: "hSOL grew at 7.2% a year over the past week, the most of your coins.", fallback: null }))
       .toBe("Oct 3, hSOL 15 to 20, cbBTC 10 to 5. hSOL grew at 7.2% a year over the past week, the most of your coins.");

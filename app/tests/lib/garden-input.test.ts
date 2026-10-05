@@ -7,11 +7,11 @@ const me = {
   user: { pubkey: "U", skrName: null, joinedAt: "2026-09-25T00:00:00.000Z", wateredAt: null },
   pot: { skrStakedRaw: "0", skrPutInRaw: "0", skrEarnedRaw: "0", skrPickedRaw: "0", skrPrincipalPickedRaw: "0", joinedValueRaw: "0", fruit: 0, nextFruitProgress: 0, skrUnstakingRaw: "0", skrUnstakeReadyAt: null, storeRaw: "0", storePutInRaw: "100000000000", storeEarnedRaw: "0", storeRedeemRate: null, skrUsd: null, storeUsd: null, asOf: "2026-10-01T00:00:00.000Z" },
   holdings: [{ asset: "stORE", heldRaw: "100000000000", putInCents: 200, valueUsd: 2.1, earnedUsd: 0.025, earnedUnderlyingRaw: "1" }],
-  manager: { managed: false, stop: "balanced", pins: {}, changedDay: null, undoAvailable: false, why: null, fallback: null, stopSplit: { SKR: 45, stORE: 0, hSOL: 20, JitoSOL: 15, JupSOL: 10, cbBTC: 10 } },
+  manager: { managed: false, stop: "balanced", pins: {}, changedDay: null, undoAvailable: false, why: null, fallback: null, stopSplit: { SKR: 45, stORE: 0, hSOL: 20, USDC_LEND: 15, SOL_LEND: 10, cbBTC: 10 } },
   history: { plantings: [], picks: [] },
-  nextPlanting: { pendingCents: 0, thresholdCents: 200, capLeftCents: 500, asset: "JupSOL" },
+  nextPlanting: { pendingCents: 0, thresholdCents: 200, capLeftCents: 500, asset: "SOL_LEND" },
   lastReceipt: null, basket: null, wallets: [],
-  rules: { roundupOn: true, roundupToCents: 100, pctOn: true, pctBps: 100, pctThresholdCents: 10000, plantThresholdCents: 200, plantMaxDays: 7, dailyCapCents: 500, managed: false, stop: "balanced", pins: {}, allocation: { SKR: 100, stORE: 0, hSOL: 0, JitoSOL: 0, JupSOL: 0, cbBTC: 0 } },
+  rules: { roundupOn: true, roundupToCents: 100, pctOn: true, pctBps: 100, pctThresholdCents: 10000, plantThresholdCents: 200, plantMaxDays: 7, dailyCapCents: 500, managed: false, stop: "balanced", pins: {}, allocation: { SKR: 100, stORE: 0, hSOL: 0, USDC_LEND: 0, SOL_LEND: 0, cbBTC: 0 } },
 } as unknown as MeResponse;
 
 describe("toGardenInput", () => {
@@ -19,7 +19,7 @@ describe("toGardenInput", () => {
     const g = toGardenInput(me, new Date("2026-10-01T12:00:00-07:00"));
     expect(g.earned.stORE?.count).toBe(2);   // 0.025 / 2.00 = 1.25%: the first at 0.25%, one more at 1.25%
     expect(g.earned.stORE?.progress).toBeCloseTo(0, 6);
-    expect(g.nextAsset).toBe("JupSOL");
+    expect(g.nextAsset).toBe("SOL_LEND");
   });
   it("no stORE holding means no stORE earned", () => {
     const g = toGardenInput({ ...me, holdings: [] }, new Date());
@@ -32,7 +32,7 @@ describe("the garden's new inputs (spec 5, 10)", () => {
     const withOne = { ...me, history: { ...me.history, plantings: [{ id: "p1", ts: "2026-10-01T10:00:00.000Z", asset: "SKR", usdcInCents: 230, amountOutRaw: "1000", feeCents: 1, signature: null }] } } as unknown as MeResponse;
     const g = toGardenInput(withOne, new Date("2026-10-01T12:00:00-07:00"));
     expect(g.plantings[0].usdcInCents).toBe(230);
-    expect(g.allocation).toEqual({ SKR: 100, stORE: 0, hSOL: 0, JitoSOL: 0, JupSOL: 0, cbBTC: 0 });   // rules.allocation, not manager.stopSplit (which the fixture sets to Balanced)
+    expect(g.allocation).toEqual({ SKR: 100, stORE: 0, hSOL: 0, USDC_LEND: 0, SOL_LEND: 0, cbBTC: 0 });   // rules.allocation, not manager.stopSplit (which the fixture sets to Balanced)
   });
   it("earned per coin: SKR from the pot, the others from their holding's ladder, null earned is none", () => {
     const g = toGardenInput({ ...me, pot: { ...me.pot, fruit: 2, nextFruitProgress: 0.4 }, holdings: [...me.holdings, { asset: "cbBTC", heldRaw: "1", putInCents: 300, valueUsd: null, earnedUsd: null, earnedUnderlyingRaw: null }] } as unknown as MeResponse, new Date());
