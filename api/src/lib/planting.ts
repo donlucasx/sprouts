@@ -353,13 +353,16 @@ export async function simulatePlanting(b: BuiltPlanting): Promise<Simulation> {
   const addrs = [b.deliveryAccount, ...b.watched];
   const before = await rpc().getMultipleAccounts(addrs, { encoding: "base64", commitment: "confirmed" }).send();
   // Task 12 (measured on mainnet 10-04): an account the transaction closes comes back from simulateTransaction as lamports 0,
-  // System-owned, 0 data bytes, not null; it reads as absent (null). Any other short buffer still throws (not a token account).
-  const amount = (v: { data: [string, string] } | null | undefined) => {
+  // System-owned, 0 data bytes, not null; it reads as absent (null). Review M1: that holds ONLY for the puller's jl account (the one
+  // account a planting closes) and only with lamports 0; any other 0-byte or short buffer still throws (never read as "absent",
+  // which would pass a float guard).
+  const amount = (v: { data: [string, string]; lamports?: bigint | number } | null | undefined, at: Address) => {
     if (!v) return null;
     const bytes = new Uint8Array(Buffer.from(v.data[0], "base64"));
-    return bytes.length === 0 ? null : tokenAmountOf(bytes);
+    if (bytes.length === 0 && b.pullerJl !== null && at === b.pullerJl && BigInt(v.lamports ?? -1) === 0n) return null;
+    return tokenAmountOf(bytes);
   };
-  const pre = before.value.map((v) => amount(v as never));
+  const pre = before.value.map((v, i) => amount(v as never, addrs[i]));
   const res = await rpc().simulateTransaction(getBase64EncodedWireTransaction(b.tx), {
     encoding: "base64", sigVerify: false, replaceRecentBlockhash: true, commitment: "confirmed", accounts: { encoding: "base64", addresses: addrs },
   }).send();
@@ -367,8 +370,8 @@ export async function simulatePlanting(b: BuiltPlanting): Promise<Simulation> {
   const ok = !res.value.err;
   const out: Simulation = { ok, err: res.value.err, logs: [...(res.value.logs ?? [])], units: Number(res.value.unitsConsumed ?? 0) };
   if (ok) {
-    out.delivery = { pre: pre[0] ?? 0n, post: amount(after[0] as never) ?? 0n };
-    out.watched = Object.fromEntries(b.watched.map((w, i) => [w, { pre: pre[i + 1], post: amount(after[i + 1] as never) }]));
+    out.delivery = { pre: pre[0] ?? 0n, post: amount(after[0] as never, addrs[0]) ?? 0n };
+    out.watched = Object.fromEntries(b.watched.map((w, i) => [w, { pre: pre[i + 1], post: amount(after[i + 1] as never, addrs[i + 1]) }]));
   }
   return out;
 }
