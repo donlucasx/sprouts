@@ -449,7 +449,7 @@ async function plantOneOrThrow(a: { repo: Repo; now: Date; chain: Chain }, w: Wa
   const pending = swaps.reduce((sum, s) => sum + s.roundupCents, 0);
   const rules = rulesRowToRules(await a.repo.getRules(w.userPubkey));
   const oldestMs = swaps.length ? Math.min(...swaps.map((s) => s.ts.getTime())) : a.now.getTime();
-  const forced = a.now.getTime() - oldestMs >= rules.plantMaxDays * 86_400_000;
+  let forced = a.now.getTime() - oldestMs >= rules.plantMaxDays * 86_400_000;
   if (pending <= 0 || (!forced && pending < rules.plantThresholdCents)) return { wallet: w.pubkey, reason: "below threshold" };
   const leashed = w.linkModel === "leash";
   // R297: from go-live the API refuses to plant on old puller-key links (the app shows "Re-link to keep planting"); nothing is read or pulled.
@@ -466,7 +466,7 @@ async function plantOneOrThrow(a: { repo: Repo; now: Date; chain: Chain }, w: Wa
   const pulledThisPeriod = a.now.getTime() < periodEndMs ? Number(delegation.pulledInPeriodRaw / USDC_PER_CENT) : 0;
   // The lowest of the user's own limit (rules, adjustable in the app), the wallet's recorded cap and the on-chain allowance.
   const cap = Math.min(rules.dailyCapCents, w.dailyCapCents, Number(delegation.amountPerPeriodRaw / USDC_PER_CENT));
-  const left = capLeftCents(cap, pulledThisPeriod);
+  let left = capLeftCents(cap, pulledThisPeriod);
   let amount = plantAmountCents({ pendingCents: pending, capLeftCents: left, feeCents: NETWORK_FEE_CENTS, minCents: forced ? 0 : rules.plantThresholdCents });
   if (amount.pullCents === 0) return { wallet: w.pubkey, reason: left === 0 ? "cap reached" : "below threshold" };
 
@@ -478,11 +478,33 @@ async function plantOneOrThrow(a: { repo: Repo; now: Date; chain: Chain }, w: Wa
     return { wallet: w.pubkey, reason: "paused" };
   }
 
-  // An RPC error here throws to plantOne ("build failed"); only a successful read that comes up short pauses the wallet.
-  if ((await a.chain.usdcBalanceRaw(w.pubkey)) < BigInt(amount.pullCents) * USDC_PER_CENT) {
-    await a.repo.setWalletStatus(w.pubkey, "paused");
-    await a.repo.addEvent({ userPubkey: w.userPubkey, walletPubkey: w.pubkey, kind: "paused_no_usdc", detail: { needCents: amount.pullCents } });
-    return { wallet: w.pubkey, reason: "no usdc" };
+  // An RPC error here throws to plantOne ("build failed"); only a successful read that comes up short changes the planting.
+  // R361 (owner 10-05, "Carry the rest to a later planting"): when the wallet's USDC (whole cents, rounded down) cannot cover the
+  // pull the cap allows, the planting takes the round-ups it covers, whole, oldest first (one that does not fit is skipped), and
+  // claims only those. The 7-day minimum of zero holds only when a round-up past plantMaxDays is among them, so an old round-up
+  // bigger than the balance does not let new cents drip in under the threshold, a fee each day. The rest stay
+  // unplanted and plant on a later run, after a top-up. The pull (their sum + the fee) never exceeds the balance. With nothing that
+  // reaches the minimum covered: a balance under threshold + fee pauses (the resume ends it at threshold + fee, so the two
+  // converge); a balance at or above it (one round-up bigger than the balance) waits active, since the resume would undo a pause.
+  // A cap-bounded planting keeps its own rule: it claims every pending round-up (the cap is the user's own daily limit).
+  let claim = swaps;
+  let covered = pending;
+  const balanceCents = Number((await a.chain.usdcBalanceRaw(w.pubkey)) / USDC_PER_CENT);
+  if (balanceCents < amount.pullCents) {
+    const wanted = amount.pullCents;
+    left = Math.min(left, balanceCents);
+    const room = left - NETWORK_FEE_CENTS;
+    claim = [];
+    covered = 0;
+    for (const s of swaps) if (covered + s.roundupCents <= room) { claim.push(s); covered += s.roundupCents; }
+    forced = claim.some((s) => a.now.getTime() - s.ts.getTime() >= rules.plantMaxDays * 86_400_000);
+    amount = plantAmountCents({ pendingCents: covered, capLeftCents: left, feeCents: NETWORK_FEE_CENTS, minCents: forced ? 0 : rules.plantThresholdCents });
+    if (amount.pullCents === 0) {
+      if (balanceCents >= rules.plantThresholdCents + NETWORK_FEE_CENTS) return { wallet: w.pubkey, reason: "no usdc" };
+      await a.repo.setWalletStatus(w.pubkey, "paused");
+      await a.repo.addEvent({ userPubkey: w.userPubkey, walletPubkey: w.pubkey, kind: "paused_no_usdc", detail: { needCents: wanted } });
+      return { wallet: w.pubkey, reason: "no usdc" };
+    }
   }
 
   // R207 #2 generalised (R295): each kind's remainder rides on the next planting of the same kind. T9 carry: the carry is exactly
@@ -534,10 +556,10 @@ async function plantOneOrThrow(a: { repo: Repo; now: Date; chain: Chain }, w: Wa
   if (!target) return { wallet: w.pubkey, reason: "no leg enabled" };
   // R336 follow-up: with USDC lending disabled and every enabled leg at its stop max, the rest of the split is left unpulled. One leg
   // takes each planting, so "unpulled" is the pull itself: only the target's share of the change is pulled (the USDC stays in the
-  // wallet; the round-ups are all claimed by this planting). The venue check above used the larger amount (the stricter 60% test).
+  // wallet; the round-ups are all claimed by this planting). The venue check above used the larger amount (the stricter 60% test); both are already bounded by the cap and the USDC balance.
   const share = ASSETS.reduce((sum, leg) => sum + target[leg], 0);
   if (share < 100 - 1e-9) {
-    amount = plantAmountCents({ pendingCents: Math.floor((pending * share) / 100), capLeftCents: left, feeCents: NETWORK_FEE_CENTS, minCents: forced ? 0 : rules.plantThresholdCents });
+    amount = plantAmountCents({ pendingCents: Math.floor((covered * share) / 100), capLeftCents: left, feeCents: NETWORK_FEE_CENTS, minCents: forced ? 0 : rules.plantThresholdCents });
     if (amount.pullCents === 0) return { wallet: w.pubkey, reason: "below threshold" };
     pullRaw = BigInt(amount.pullCents) * USDC_PER_CENT;
   }
@@ -656,8 +678,8 @@ async function plantOneOrThrow(a: { repo: Repo; now: Date; chain: Chain }, w: Wa
       return { wallet: w.pubkey, reason: "claimed elsewhere" };
     }
   }
-  const claimed = await a.repo.claimSwaps(swaps.map((s) => s.signature), planting.id);
-  if (claimed !== swaps.length) {
+  const claimed = await a.repo.claimSwaps(claim.map((s) => s.signature), planting.id);
+  if (claimed !== claim.length) {
     // Another run got there first: give back whatever this one took and let that run finish.
     await a.repo.releaseSwaps(planting.id);
     await a.repo.setPlantingStatus(planting.id, "failed");
