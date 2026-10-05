@@ -9,12 +9,16 @@ import { leashPda } from "@/lib/leash";
 import { heliusAddAddress } from "@/lib/helius";
 import { verifyPostedTransaction } from "@/lib/verify-tx";
 import { rpc } from "@/lib/rpc";
-import { SUBSCRIPTIONS_PROGRAM } from "@/lib/constants";
+import { SUBSCRIPTIONS_PROGRAM, USDC_MINT } from "@/lib/constants";
+import { findSubscriptionAuthorityPda } from "@solana/subscriptions";
 import { ASSOCIATED_TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
 
 export const runtime = "nodejs";
 export const maxDuration = 60; // the delegation poll (up to 10 s) plus the send
 
+/** The approve-once terms link/[code] builds (buildApproveOnceIxs): $5 a day, a one-day period, no expiry. */
+const DAILY_CAP_RAW = 5_000_000n;
+const DAY_S = 86_400n;
 const Body = z.object({ code: z.string().length(6), wallet: z.string().min(32).max(44), waitMs: z.number().int().min(0).max(10_000).optional(), signedTransaction: z.string().optional() });
 /** The delegation a leash link for (wallet, garden) names, or null when the garden id is not an address. */
 async function leashDelegationPda(wallet: Address, garden: string, nonce: bigint): Promise<Address | null> {
@@ -72,6 +76,18 @@ export async function POST(request: Request) {
 
   const delegation = await waitForDelegation(address(link.delegationPda), parsed.data.waitMs ?? 10_000);
   if (!delegation.exists) return NextResponse.json({ error: "No delegation found for this wallet yet. Sign the approval first." }, { status: 409 });
+  // K-M4 (like relink/confirm): the chain must show the terms the link page built: this wallet as delegator, a delegatee that derives
+  // the bound PDA, $5 a day, a one-day period, no expiry, on USDC, under this wallet's USDC subscription authority. Anything else
+  // records nothing and leaves the code unburned (fails closed).
+  const [authority] = await findSubscriptionAuthorityPda({ user: wallet, tokenMint: USDC_MINT });
+  const termsOk = delegation.delegator === wallet && !!delegation.delegatee
+    && (await delegationPda({ delegator: wallet, delegatee: delegation.delegatee, nonce: link.nonce })) === link.delegationPda
+    && delegation.amountPerPeriodRaw === DAILY_CAP_RAW && delegation.periodLengthS === DAY_S && delegation.expiryTs === 0n
+    && delegation.mint === USDC_MINT && delegation.subscriptionAuthority === authority;
+  if (!termsOk) {
+    console.error(`link confirm: the delegation at ${link.delegationPda} is not the approve-once Sprouts built for ${wallet}`);
+    return NextResponse.json({ error: "This approval is not the one Sprouts asked for. Nothing was linked; get a new code in the app." }, { status: 409 });
+  }
 
   const taken = await repo.takeLinkCode(code, wallet);
   if (!taken) return NextResponse.json({ error: "This code is unknown, expired or already used." }, { status: 404 });
