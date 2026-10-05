@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, beforeAll, vi } from "vitest";
-import { generateKeyPairSigner, getBase64Encoder, getTransactionDecoder, getCompiledTransactionMessageDecoder, decompileTransactionMessage, compileTransaction, signTransaction, getBase64EncodedWireTransaction, address, type KeyPairSigner } from "@solana/kit";
+import { generateKeyPairSigner, getBase64Encoder, getTransactionDecoder, getCompiledTransactionMessageDecoder, decompileTransactionMessage, compileTransaction, signTransaction, getBase64EncodedWireTransaction, address, type Address, type KeyPairSigner } from "@solana/kit";
 import { MemoryRepo } from "@/db/memory";
 import { setRepoForTests } from "@/db/repo";
+import { findSubscriptionAuthorityPda } from "@solana/subscriptions";
 import { issueSession } from "@/lib/session";
 
 /**
@@ -11,8 +12,9 @@ import { issueSession } from "@/lib/session";
  */
 const { simulateMock, chain } = vi.hoisted(() => ({
   simulateMock: vi.fn(async () => ({ value: { err: null as unknown, logs: [] as string[] } })),
-  chain: { oldLive: true, sendLands: true, landed: false, sent: 0, user: "", leash: "", created: null as null | Record<string, unknown> },
+  chain: { authority: "", oldLive: true, sendLands: true, landed: false, sent: 0, user: "", leash: "", created: null as null | Record<string, unknown> },
 }));
+const USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 const NONE = { exists: false, amountPerPeriodRaw: 0n, pulledInPeriodRaw: 0n, periodStartTs: 0n, periodLengthS: 0n };
 vi.mock("@/lib/subscriptions", async (orig) => ({
   ...(await orig<object>()),
@@ -23,7 +25,7 @@ vi.mock("@/lib/subscriptions", async (orig) => ({
   readUsdcAtaExists: vi.fn(async () => true),
   waitForDelegation: vi.fn(async () => (!chain.landed
     ? { exists: false, amountPerPeriodRaw: 0n, pulledInPeriodRaw: 0n, periodStartTs: 0n, periodLengthS: 0n }
-    : chain.created ?? { exists: true, amountPerPeriodRaw: 5_000_000n, pulledInPeriodRaw: 0n, periodStartTs: 0n, periodLengthS: 86_400n, delegator: chain.user, delegatee: chain.leash, expiryTs: 0n })),
+    : chain.created ?? { exists: true, amountPerPeriodRaw: 5_000_000n, pulledInPeriodRaw: 0n, periodStartTs: 0n, periodLengthS: 86_400n, delegator: chain.user, delegatee: chain.leash, expiryTs: 0n, mint: USDC, subscriptionAuthority: chain.authority })),
 }));
 vi.mock("@/lib/rpc", () => ({ rpc: () => ({
   getLatestBlockhash: () => ({ send: async () => ({ value: { blockhash: "GHtXQBsoZHVnNFa9YevAzFr17DJjgHXk3ycTKD5xD3Zi", lastValidBlockHeight: 1n } }) }),
@@ -51,6 +53,7 @@ beforeAll(async () => {
   user = await generateKeyPairSigner();
   chain.user = user.address;
   chain.leash = await leashPda(user.address, user.address);
+  chain.authority = (await findSubscriptionAuthorityPda({ user: user.address, tokenMint: USDC as Address })).at(0) as string;
 });
 
 const OLD = "ADaL11LqTrsaqMh5XkyVGV6nE2wPdvPaR7GgFSvvJWuD";
@@ -189,6 +192,18 @@ describe("re-link the Seed Vault wallet to the leash (contracts 5.5, R287)", () 
       Object.assign(chain, { oldLive: true, landed: false, created });
       expect((await call(confirm, { signedTransaction: wire })).status).toBe(400);
       expect((await repo.getWallet(user.address))!.linkModel).toBe("puller");
+    }
+  });
+  it("Task 19 re-review: a leash-shaped delegation on another mint, or under another authority, records nothing (409)", async () => {
+    const built = await (await call(build, {})).json();
+    const wire = await sign(built.transaction);
+    const other = (await generateKeyPairSigner()).address;
+    for (const patch of [{ mint: other }, { subscriptionAuthority: other }]) {
+      Object.assign(chain, { oldLive: true, landed: false, created: { exists: true, amountPerPeriodRaw: 5_000_000n, pulledInPeriodRaw: 0n, periodStartTs: 0n, periodLengthS: 86_400n, delegator: user.address, delegatee: chain.leash, expiryTs: 0n, mint: USDC, subscriptionAuthority: chain.authority, ...patch } });
+      const res = await call(confirm, { signedTransaction: wire });
+      expect(res.status).toBe(409);
+      expect((await repo.getWallet(user.address))!.linkModel).toBe("puller");
+      expect(repo.events.map((e) => e.kind)).not.toContain("relinked");
     }
   });
   it("I2: with the old delegation live, a re-link that does not revoke it is refused before sending", async () => {

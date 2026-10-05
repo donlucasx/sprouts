@@ -17,6 +17,7 @@ const Body = z.object({ signedTransaction: z.string() });
 const CAP_RAW = 5_000_000n;
 const DAY_S = 86_400n;
 const NOT_RELINK = "This approval is not the Sprouts re-link.";
+const WRONG_MINT = "The approval on chain is not for USDC, so nothing was recorded. Start the re-link again.";
 const LATE = "No re-link found on chain yet. Check again in a minute.";
 const u64At = (d: Uint8Array, at: number) => new DataView(d.buffer, d.byteOffset, d.byteLength).getBigUint64(at, true);
 const i64At = (d: Uint8Array, at: number) => new DataView(d.buffer, d.byteOffset, d.byteLength).getBigInt64(at, true);
@@ -69,6 +70,11 @@ export async function POST(request: Request) {
   if (d.delegator !== me || d.delegatee !== leash || d.amountPerPeriodRaw !== CAP_RAW || d.periodLengthS !== DAY_S || d.expiryTs !== 0n) {
     console.error(`relink confirm: the delegation at ${pda} is not the leash delegation for ${me}`);
     return NextResponse.json({ error: NOT_RELINK }, { status: 400 });
+  }
+  // Task 19 re-review: the delegation must be for USDC and sit under this user's USDC subscription authority.
+  if (d.mint !== USDC_MINT || d.subscriptionAuthority !== authority) {
+    console.error(`relink confirm: the delegation at ${pda} is not on the USDC mint / this user's authority for ${me}`);
+    return NextResponse.json({ error: WRONG_MINT }, { status: 409 });
   }
   if (old !== pda && (await readDelegation(old)).exists) return NextResponse.json({ error: LATE }, { status: 409 });
   await repo.setWalletLink(me, { delegationPda: pda, linkModel: "leash", dailyCapCents: Number(d.amountPerPeriodRaw / 10_000n) });
