@@ -19,6 +19,7 @@ function fakeReads(over: Partial<CoinReads> = {}): CoinReads {
     currentEpoch: async () => 1046n,
     prices: async (mints) => Object.fromEntries(mints.map((m) => [m, { usdPrice: 100, liquidity: 1e8, priceChange24h: 0.5, decimals: 9 }])),
     quoteOk: async () => true,
+    lendOk: async () => true,
     ...over,
   };
 }
@@ -107,5 +108,15 @@ describe("priceChange", () => {
     expect(p.days).toBe(3);
     expect(p.pct).toBeCloseTo(5, 6);
     expect(priceChange([row("2026-10-02", 1, { priceUsd: 147 })])).toEqual({ pct: null, days: 0 });
+  });
+});
+
+describe("lending rows in coin_days (contracts 4)", () => {
+  it("a lending row holds the underlying's price, no rate, and is ok only when an auto venue was measured today", async () => {
+    const repo = new MemoryRepo();
+    const rows = await snapshotCoins({ repo, now: NOW, reads: fakeReads({ lendOk: async (a) => a === "USDC_LEND" }) });
+    const by = Object.fromEntries(rows.map((r) => [r.asset, r]));
+    expect(by.USDC_LEND).toMatchObject({ rate: null, priceUsd: 100, ok: true, tradeable: true });
+    expect(by.SOL_LEND).toMatchObject({ rate: null, ok: false });
   });
 });

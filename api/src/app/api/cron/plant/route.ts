@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { timingSafeEqual } from "node:crypto";
 import { address } from "@solana/kit";
-import { getRepo } from "@/db/repo";
+import { getRepo, type Repo } from "@/db/repo";
 import { config } from "@/lib/config";
 import { rpc } from "@/lib/rpc";
 import { runPlanting, type Chain } from "@/lib/plant-run";
@@ -13,11 +13,13 @@ import { readPosition, crankWithdraw, sharePrice } from "@/lib/staking";
 import { reconcileOwnStakes } from "@/lib/reconcile";
 import { snapshotCoins, IMPACT_LIMIT_PCT, type CoinReads } from "@/lib/coin-data";
 import { decideSplits, applyToUsers } from "@/lib/split-run";
-import { callTool } from "@/lib/anthropic";
+import { callConversation } from "@/lib/anthropic";
 import { getQuote, pricesUsd } from "@/lib/jupiter";
 import { storeRedeemRate } from "@/lib/store";
 import { assetBalanceRaw, receiptBalanceRaw, readLendingPositions } from "@/lib/holdings";
 import { COINS, type Asset, type LendAsset } from "@/domain/coins";
+import { dayOf } from "@/domain/day";
+import { isAutoVenue } from "@/domain/venues";
 import { USDC_MINT, WSOL_MINT } from "@/lib/constants";
 
 export const runtime = "nodejs";
@@ -58,8 +60,8 @@ function realChain(): Chain {
   };
 }
 
-/** The real reads behind the snapshot (spec 5.2): account bytes, the two share prices, the epoch, Jupiter's prices and a $2 quote. */
-function realCoinReads(): CoinReads {
+/** The real reads behind the snapshot (spec 5.2): account bytes, the two share prices, the epoch, Jupiter's prices and a $2 quote; lending legs from today's venue rows (contracts 4). */
+function realCoinReads(repo: Repo, now: Date): CoinReads {
   return {
     accountData: async (addr) => {
       const info = await rpc().getAccountInfo(address(addr), { encoding: "base64" }).send();
@@ -74,6 +76,8 @@ function realCoinReads(): CoinReads {
       const q = await getQuote({ inputMint: USDC_MINT, outputMint: COINS[asset].mint, amountRaw: 2_000_000n, maxAccounts: 24, onlyDirectRoutes: asset === "SKR" });
       return Number(q.priceImpactPct) < IMPACT_LIMIT_PCT;
     },
+    // Task 21 runs snapshotVenues before snapshotCoins; until then no venue row exists and the lending legs are no data.
+    lendOk: async (asset) => (await repo.listVenueDays(dayOf(now))).some((r) => r.asset === asset && isAutoVenue(r.venue) && r.ok),
   };
 }
 
@@ -98,8 +102,8 @@ export async function GET(request: Request) {
     const repo = await getRepo();
     const now = new Date();
     // The Yield Manager's three steps before the planting run (spec 6.1): snapshot the coins, decide each stop's split, apply to users.
-    const coins = await step("snapshot", () => snapshotCoins({ repo, now, reads: realCoinReads() }));
-    const splits = await step("decide", () => decideSplits({ repo, now, model: process.env.ANTHROPIC_API_KEY ? callTool : null }));
+    const coins = await step("snapshot", () => snapshotCoins({ repo, now, reads: realCoinReads(repo, now) }));
+    const splits = await step("decide", () => decideSplits({ repo, now, model: process.env.ANTHROPIC_API_KEY ? callConversation : null }));
     const applied = await step("apply", () => applyToUsers({ repo, now }));
     const planting = await runPlanting({ repo, now, chain: realChain(), deadlineMs: startedMs + 240_000 });
     const withdrawals = await runWithdrawCrank({ repo, now, chain: { readPosition: (u) => readPosition(address(u)), crankWithdraw: (u) => crankWithdraw(address(u)) } });
