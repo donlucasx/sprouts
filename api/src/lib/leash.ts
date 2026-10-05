@@ -11,7 +11,7 @@ import { klendRate } from "./venues/klend";
 import { jlendRate } from "./venues/jlend";
 import { rpc } from "./rpc";
 import { COINS, type LendAsset, type LiveAsset } from "@/domain/coins";
-import type { AutoVenue } from "@/domain/venues";
+import { AUTO_VENUES, type AutoVenue } from "@/domain/venues";
 
 const enc = getAddressEncoder();
 const dec = getAddressDecoder();
@@ -20,6 +20,11 @@ export type LeashLegByte = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;
 export const LEASH_LEG = { SKR: 0, stORE: 1, "USDC_LEND:kamino_klend": 2, "USDC_LEND:jupiter_lend": 3, "SOL_LEND:kamino_klend": 4, "SOL_LEND:jupiter_lend": 5, hSOL: 6, cbBTC: 7 } as const;
 export const LEG_BYTES: readonly LeashLegByte[] = [0, 1, 2, 3, 4, 5, 6, 7];
 export const READER = { TOKEN: 0, SKR_STAKE: 1, STAKE_POOL: 2, KLEND: 3, JLEND: 4, STORE: 5 } as const;
+
+/** The auto venues a leashed wallet may lend `asset` on: those whose leash leg is enabled. The planting run and the routing shown in /api/me and /api/venues use this one set. */
+export function leashAllowedVenues(enabled: ReadonlySet<number>, asset: LendAsset): AutoVenue[] {
+  return AUTO_VENUES.filter((v) => enabled.has(leashLegOf(asset, v)));
+}
 
 export function leashLegOf(asset: LiveAsset, venue: AutoVenue | null): LeashLegByte {
   if (asset === "USDC_LEND" || asset === "SOL_LEND") {

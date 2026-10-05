@@ -10,9 +10,9 @@ import { redistributeDisabled } from "@/domain/split";
 import { lendingUsdByProtocol } from "./user-routing";
 import { errorText } from "./redact";
 export { lendingUsdByProtocol } from "./user-routing";
-import { AUTO_VENUES, VENUE_PROTOCOL, pickVenue, venueCandidates, type AutoVenue, type Protocol } from "@/domain/venues";
+import { VENUE_PROTOCOL, pickVenue, venueCandidates, type AutoVenue, type Protocol } from "@/domain/venues";
 import { LEASH_PROGRAM } from "./constants";
-import { enabledLegs, leashLegOf, leashLive, LEASH_ERRORS, LEG_SPEC, SKR_PRICE_SOURCE, type LeashConfig, type LeashLegByte } from "./leash";
+import { enabledLegs, leashAllowedVenues, leashLegOf, leashLive, LEASH_ERRORS, LEG_SPEC, SKR_PRICE_SOURCE, type LeashConfig, type LeashLegByte } from "./leash";
 import { klendDeliveryShortfall } from "./venues/klend";
 import { jlendDeliveryShortfall } from "./venues/jlend";
 
@@ -514,7 +514,7 @@ async function plantOneOrThrow(a: { repo: Repo; now: Date; chain: Chain }, w: Wa
   const disabled: LiveAsset[] = [];
   const checkLend = async (leg: LendAsset) => {
     if (positionsUsd === undefined) positionsUsd = await a.chain.lendingPositions(w.userPubkey).then((p) => lendingUsdByProtocol(p, ctx.venueDays, ctx.prices)).catch((e) => { console.error(`lending positions of ${w.userPubkey} unreadable (${message(e)}); no lending today`); return null; });
-    const allowed = enabled ? AUTO_VENUES.filter((v) => enabled.has(leashLegOf(leg, v))) : undefined;
+    const allowed = enabled ? leashAllowedVenues(enabled, leg) : undefined;
     venues[leg] = positionsUsd === null ? null : pickVenue({ candidates: venueCandidates(leg, ctx.venueDays, ctx.yesterday), lendingUsdByProtocol: positionsUsd, addUsd: amount.pullCents / 100, ...(allowed ? { allowed } : {}) });
     if (!venues[leg]) disabled.push(leg);
   };

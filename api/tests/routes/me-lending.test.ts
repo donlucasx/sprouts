@@ -103,6 +103,22 @@ describe("GET /api/me, lending (contracts 5.2)", () => {
       expect((await get()).relink).toEqual({ needed: false, wallets: [] });
     } finally { delete process.env.LEASH_LIVE; }
   });
+  it("residual O2: a leashed user is shown a venue the leash allows (the run's allowed set), and the sentence says why", async () => {
+    const day = dayOf(new Date());
+    await repo.putVenueDay({ day, venue: "jupiter_lend", asset: "USDC_LEND", supplyPct: 4.19, rewardsPct: 0, utilizationPct: 90, withdrawableUsd: 1e7, tvlUsd: 1.2e8, exchangeRate: 1.06, avg7Pct: 4.2, daysMeasured: 2, eligible: true, verdict: "ok", reason: null, served: null, ok: true });
+    await repo.setWalletLink("W", { delegationPda: "D5", linkModel: "leash" });
+    // Day 1 without K-Lend: SKR (0) and USDC on Jupiter Lend (3) only. The stop picked Kamino; the leash run plants on Jupiter.
+    const legs = LEG_BYTES.map((b) => ({ enabled: b === 0 || b === 3, reader: 0, feeBps: 0, tolBps: 0 })) as unknown as LeashConfig["legs"];
+    vi.mocked(readLeashConfig).mockResolvedValueOnce({ legs } as LeashConfig);
+    const body = await get();
+    expect(body.manager.picks).toEqual({ USDC_LEND: "jupiter_lend", SOL_LEND: null });
+    expect(body.manager.why).toBe("Your USDC goes to Jupiter at 4.2%: your wallet's leash does not take USDC to Kamino yet. No lending venue passed today's checks; your SOL share goes to the next leg.");
+    expect(body.lendSigns.USDC_LEND).toMatchObject({ venue: "jupiter_lend" });
+    // Kamino's leash leg enabled: the stop's pick and its stored sentence stand.
+    const both = LEG_BYTES.map((b) => ({ enabled: b === 0 || b === 2 || b === 3, reader: 0, feeBps: 0, tolBps: 0 })) as unknown as LeashConfig["legs"];
+    vi.mocked(readLeashConfig).mockResolvedValueOnce({ legs: both } as LeashConfig);
+    expect((await get()).manager).toMatchObject({ picks: { USDC_LEND: "kamino_klend", SOL_LEND: null }, why: "w" });
+  });
   it("legsEnabled: the leash config's enabled legs once a wallet is leashed; [] when the config cannot be read", async () => {
     await repo.setWalletLink("W", { delegationPda: "D5", linkModel: "leash" });
     expect((await get()).manager.legsEnabled).toEqual([]);
