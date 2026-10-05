@@ -76,3 +76,13 @@ describe("signWith checks the approval's delegate (contracts 5.5: the link page 
     expect(asked).toBe(1);
   });
 });
+
+describe("signWith refuses a server-built priority fee (T19 fix round 1, minor 2)", () => {
+  it("a ComputeBudget instruction in the built approval is refused without asking the wallet", async () => {
+    let asked = false;
+    const w = wallet("Phantom", { features: { [CONNECT]: {}, [SIGN]: { signTransaction: async () => { asked = true; return []; } } } });
+    const fee = new TransactionInstruction({ programId: new PublicKey("ComputeBudget111111111111111111111111111111"), keys: [], data: Buffer.from([3, 0x10, 0x27, 0, 0, 0, 0, 0, 0]) });
+    await expect(signWith(w, { address: payer.toBase58() }, tx(fee))).rejects.toThrow("touches a program Sprouts does not use");
+    expect(asked).toBe(false);
+  });
+});

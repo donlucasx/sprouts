@@ -158,7 +158,7 @@ export interface Repo {
   /** Written once per (planting, kind); creates the row when the planting carried nothing in. */
   setPlantingSurplus(plantingId: string, kind: Exclude<T.CarryKind, "SKR">, surplusRaw: bigint): Promise<void>;
   // links and terms
-  setWalletLink(pubkey: string, l: { delegationPda: string; linkModel: T.LinkModel }): Promise<void>;
+  setWalletLink(pubkey: string, l: { delegationPda: string; linkModel: T.LinkModel; dailyCapCents?: number }): Promise<void>;   // the cap refreshed from the new delegation on a re-link
   setTermsAccepted(userPubkey: string, version: string, at: Date): Promise<void>;
 }
 
