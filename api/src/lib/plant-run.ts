@@ -8,6 +8,7 @@ import { addDays, dayOf } from "@/domain/day";
 import { capLeftCents, plantAmountCents } from "@/domain/cap";
 import { redistributeDisabled } from "@/domain/split";
 import { lendingUsdByProtocol } from "./user-routing";
+import { errorText } from "./redact";
 export { lendingUsdByProtocol } from "./user-routing";
 import { AUTO_VENUES, VENUE_PROTOCOL, pickVenue, venueCandidates, type AutoVenue, type Protocol } from "@/domain/venues";
 import { LEASH_PROGRAM } from "./constants";
@@ -705,11 +706,9 @@ async function plantOneOrThrow(a: { repo: Repo; now: Date; chain: Chain }, w: Wa
   }
 }
 
-/** The error's message, plus its cause when it has one: Node's "fetch failed" keeps the host and the reason only in the cause. */
+/** The error's message, plus its cause when it has one (Node's "fetch failed" keeps the host and the reason only in the cause); redacted (K-M10). */
 function message(e: unknown): string {
-  if (!(e instanceof Error)) return String(e);
-  const cause = e.cause instanceof Error ? e.cause.message : e.cause !== undefined ? String(e.cause) : "";
-  return cause ? `${e.message} (${cause})` : e.message;
+  return errorText(e);
 }
 
 async function mapWithConcurrency<T>(items: T[], limit: number, fn: (item: T) => Promise<void>) {

@@ -1,3 +1,4 @@
+import { errorText } from "./redact";
 import type { Repo } from "@/db/repo";
 import type { Position } from "./staking";
 
@@ -35,8 +36,8 @@ export async function runWithdrawCrank(a: { repo: Repo; now: Date; chain: Withdr
       cranked.push(w.id);
     } catch (e) {
       failed.push(w.id);
-      console.error(`withdraw crank for ${w.userPubkey} failed: ${e instanceof Error ? e.message : String(e)}`);
-      await a.repo.addEvent({ userPubkey: w.userPubkey, walletPubkey: null, kind: "withdraw_failed", detail: { withdrawal: w.id, err: e instanceof Error ? e.message : String(e) } });
+      console.error(`withdraw crank for ${w.userPubkey} failed: ${errorText(e)}`);
+      await a.repo.addEvent({ userPubkey: w.userPubkey, walletPubkey: null, kind: "withdraw_failed", detail: { withdrawal: w.id, err: errorText(e) } });
     }
   }
   return { cranked, failed, skipped };
