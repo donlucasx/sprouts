@@ -9,6 +9,10 @@ import { leashPda, type SignFlow } from './sign'
  */
 export const WEB_LINK_TRUST = "Web-linked wallets trust the link page at link time; your Seeker's own wallet does not."
 
+/** R300's public promise verbatim (the controller's one sentence plus its three-word close): the re-link card and Settings (Task 13). */
+export const PUBLIC_GUARANTEE =
+  'Even if our server is hacked, it can only move your daily round-up (max $5) into your own savings. Never anywhere else.'
+
 /**
  * R287 (in-app card, one Seed Vault signature), R300 (the public promise, verbatim), spec 6.5 (the old approval stays exposed until
  * revoked), C6. T9 fix round 1 (controller ruling, "too much text, simplify"): closed, the card is the title, ONE guarantee sentence and
@@ -16,8 +20,7 @@ export const WEB_LINK_TRUST = "Web-linked wallets trust the link page at link ti
  */
 export const RELINK = {
   title: 'Re-link to keep planting',
-  // R300's promise verbatim: the controller's one sentence plus its three-word close, which the brief's test pins
-  body: 'Even if our server is hacked, it can only move your daily round-up (max $5) into your own savings. Never anywhere else.',
+  body: PUBLIC_GUARANTEE,
   button: 'Re-link',
   waiting: 'Waiting for your Seeker.',
   /** After the signature returned, while the confirm (and its retries) runs: the Seeker is done. */
