@@ -59,7 +59,7 @@ export async function GET(request: Request) {
   const lendWithdrawals = lendEvents.filter((e) => e.kind === "lend_withdrawn").flatMap((e) => {
     const d = (e.detail ?? {}) as EvDetail;
     if (!str_(d.asset) || !isLendAsset(d.asset) || !str_(d.venue) || !isAutoVenue(d.venue) || !digits(d.receiptRaw) || !str_(d.signature)) return [];
-    return [{ ts: e.ts, asset: d.asset, venue: d.venue, receiptRaw: d.receiptRaw, underlyingRaw: digits(d.underlyingRaw) ? d.underlyingRaw : null, signature: d.signature }];
+    return [{ ts: e.ts, asset: d.asset, venue: d.venue, receiptRaw: d.receiptRaw, underlyingRaw: digits(d.underlyingRaw) ? d.underlyingRaw : null, signature: d.signature, ...(typeof d.whole === "boolean" ? { whole: d.whole } : {}) }];
   });
   const moves = lendEvents.filter((e) => e.kind !== "lend_withdrawn").flatMap((e) => {
     const d = (e.detail ?? {}) as EvDetail;

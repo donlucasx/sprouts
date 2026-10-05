@@ -124,7 +124,8 @@ export type ActivityResponse = {
     unstakeSignature: string | null; withdrawSignature: string | null; cancelled: boolean; delivered: boolean;
   }[];
   /** underlyingRaw: string | null on the API (null when the amount is not known); null or absent, the line names the coin and no amount. */
-  lendWithdrawals?: { ts: string; asset: LendAsset; venue: AutoVenue; receiptRaw: string; underlyingRaw?: string | null; signature: string }[];
+  /** R359: `whole` false = part of the position (the rest keeps earning); absent on rows from before it. */
+  lendWithdrawals?: { ts: string; asset: LendAsset; venue: AutoVenue; receiptRaw: string; underlyingRaw?: string | null; signature: string; whole?: boolean }[];
   moves?: { ts: string; asset: LendAsset; from: AutoVenue; to: AutoVenue; receiptRaw: string; status: MoveStatus }[];
   found?: FoundVenue[];
 };
