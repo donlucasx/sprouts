@@ -8,7 +8,7 @@ import { ThemedText } from './ThemedText'
 import { api, ApiError, type MeResponse } from '@/lib/api'
 import { makeBatchSigner, SignRefused } from '@/lib/sign'
 import { useInvalidateMe } from '@/lib/me'
-import { MOVE_FAILED, MOVED_LINE, moveAtTap, moveCopy, MoveSent, type MoveBuild } from '@/lib/moves'
+import { isMoveInFlight, MOVE_FAILED, MOVE_IN_FLIGHT, MOVED_LINE, moveAtTap, moveCopy, MoveSent, type MoveBuild } from '@/lib/moves'
 import { partialUnwrap, UNWRAP_BUTTON, UNWRAP_DONE, UNWRAP_FAILED, UNWRAP_SENT, unwrapAfterError, unwrapAtTap, wsolAccount } from '@/lib/unwrap'
 import { oneAtATime } from '@/lib/withdraw-flow'
 import { spacing } from '@/theme'
@@ -52,7 +52,7 @@ export function MoveCard({ me }: { me: MeResponse }) {
       const u = partialUnwrap(e)
       setUnwrap(u)
       setUnwrapAt(Date.now())
-      setLine({ text: e instanceof ApiError || e instanceof SignRefused || e instanceof MoveSent ? e.message : MOVE_FAILED, error: true })
+      setLine({ text: isMoveInFlight(e) ? MOVE_IN_FLIGHT : e instanceof ApiError || e instanceof SignRefused || e instanceof MoveSent ? e.message : MOVE_FAILED, error: true })
     } finally {
       setPhase(null)
       gate.leave()
@@ -104,7 +104,7 @@ export function MoveCard({ me }: { me: MeResponse }) {
       setGone(p.id)
       void invalidate()
     } catch (e) {
-      setLine({ text: e instanceof ApiError ? e.message : 'Could not dismiss it. Try again.', error: true })
+      setLine({ text: isMoveInFlight(e) ? MOVE_IN_FLIGHT : e instanceof ApiError ? e.message : 'Could not dismiss it. Try again.', error: true })
     } finally {
       setPhase(null)
       gate.leave()
@@ -119,6 +119,13 @@ export function MoveCard({ me }: { me: MeResponse }) {
       </View>
     ) : null
   const c = moveCopy(p)
+  if (p.inFlight)
+    return (
+      <Card>
+        <ThemedText variant="heading">{c.title}</ThemedText>
+        <ThemedText tone="secondary">{MOVE_IN_FLIGHT}</ThemedText>
+      </Card>
+    )
   return (
     <Card>
       <ThemedText variant="heading">{c.title}</ThemedText>
