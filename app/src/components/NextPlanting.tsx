@@ -61,7 +61,7 @@ export function NextPlanting({ row, pendingCents, thresholdCents, can }: { row: 
         {width > 0 && track ? stroke(track, dark ? DARK_TRACK_OPACITY : 1) : null}
         {width > 0 && fill ? (
           <View style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${Math.round(row.fraction * 100)}%`, overflow: 'hidden' }}>
-            {stroke(fill)}
+            {stroke(fill, row.state === 'paused' ? 0.35 : 1)}
           </View>
         ) : null}
       </View>

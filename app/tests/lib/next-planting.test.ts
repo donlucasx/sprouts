@@ -47,4 +47,8 @@ describe("nextRunLabel", () => {
     process.env.TZ = "Asia/Kolkata";
     expect(nextRunLabel(new Date("2026-10-02T09:00:00Z"))).toBe("Today, 7:30 PM");
   });
+  it("paused: the row says Paused and keeps the saved fraction (his note 10-05)", () => {
+    expect(nextPlantingRow({ ...base, pendingCents: 350, paused: true })).toMatchObject({ state: "paused", value: "Paused", fraction: 1 });
+    expect(nextPlantingRow({ ...base, pendingCents: 0, paused: true })).toMatchObject({ state: "paused", value: "Paused", fraction: 0 });
+  });
 });
