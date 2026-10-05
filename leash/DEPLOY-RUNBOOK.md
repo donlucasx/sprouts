@@ -44,8 +44,10 @@ have edited `leash/GATES.md`; then `git status` shows ` M leash/GATES.md`. That 
 cd ~/Documents/claude/seekerhackathon/build/sprouts/leash && colima start && mkdir -p target && bash -c '. scripts/sbf.sh && verify_build target/build-leash.log quiet' && cargo test -q -p leash-tests --test golden 2>&1 | grep -E '^test result|FAILED'
 ```
 Expected: colima's start lines (or that it is already running), then `test result: ok. 4 passed; 0 failed; 2 ignored; ...`.
-The build runs `solana-verify build` in the pinned Agave 3.1.11 image (about a minute the first time). A3 then checks that
-the rebuilt file is the tested one. If it says `VERIFY BUILD`: docker or solana-verify is missing; stop and send the output.
+The build runs `solana-verify build` in the pinned Agave 3.1.11 image. Measured on this Mac: about 15 seconds (13 s on
+2026-10-04), with the image already downloaded (it is). It prints NOTHING while it builds (the output goes to
+`target/build-leash.log`), so a quiet line for up to a minute is normal; only then the golden test line appears. If the image
+were missing, docker would first download it (1.4 GB, several minutes). A3 then checks that the rebuilt file is the tested one. If it says `VERIFY BUILD`: docker or solana-verify is missing; stop and send the output.
 
 **A3. Pre-check (read-only: sends nothing)**
 ```
@@ -182,7 +184,9 @@ Then the old puller secret is removed from the server and destroyed (Kimi #10), 
 
 **C4. After the deploy: check the verifiable build against the chain (read-only)**
 
-Only after A5 passed, and after the coordinator has pushed the deployed commit (the one A1 printed) to GitHub. It clones
+Only after A5 passed. `<COMMIT>` below is the commit A1 printed (the first word of its `git log` line, the commit you deployed).
+That commit must be on GitHub first: the coordinator pushes it (check: https://github.com/donlucasx/sprouts/commit/<COMMIT>
+opens). If it is not pushed, the line stops with `Git checkout failed for commit hash`. It clones
 the public repo at that commit, rebuilds `leash/` in the same pinned docker image, and compares the result with the
 program on mainnet. `--current-dir` makes it clone into a temporary folder under `sprouts/` (removed when it ends):
 colima only shares your home folder with docker, so the default clone in `/tmp` fails with `chdir to cwd ("/build//program/")`.
@@ -229,7 +233,10 @@ data on chain: answer `n` (that upload is a transaction from ADMIN, a separate d
   build (3b80a294...65e5) is the same size but other bytes and is NOT deployed. The full suite (114 passed, 3 ignored),
   the fork gate and the mutation sweep ran against the verified bytes (GATES.md "Release"); A3 checks the hash.
   C4 was rehearsed on a local test validator holding the verified .so at the program id (2026-10-04): `Program hash
-  matches`, then `n` at the upload prompt (`Exiting without uploading the program.`).
+  matches`, then `n` at the upload prompt (`Exiting without uploading the program.`). Fix round 1 repeated it with the
+  real deploy's padding (`solana program deploy --max-len 70000` on the local validator, Data Length 70000): the chain
+  hash is still b124e7bf..., `Program hash matches`. solana-verify 0.5.2 strips trailing zero bytes on both sides before
+  hashing (`get_binary_hash`, main.rs line 768), so the --max-len padding never changes the hash.
   On this Mac docker is colima (`colima start`); solana-verify is `~/.cargo/bin/solana-verify`. Keep no clone of the repo
   under `leash/` (for example in `target/`): `solana-verify build` builds the first crate named `leash` it finds, and
   `verify_build` stops if that is not `leash/program`.

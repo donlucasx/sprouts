@@ -39,4 +39,5 @@ done < <(rows "$@")
 build || { echo "BUILDFAIL restored program (target/mutate-build.log)"; fail=1; }
 if [ -n "$(git status --porcelain -- program)" ]; then echo "TREE DIRTY after mutation run"; git status --porcelain -- program; fail=1; fi
 echo "mutation rows RED: $red / $total"
+local_sbf_warning
 exit $fail
