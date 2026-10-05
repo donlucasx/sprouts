@@ -56,14 +56,14 @@ If you see `STOP:`:
 
 **A4. Deploy (spends about 0.357 SOL)**
 
-This line runs A3 again first and deploys only if it passes. It sends through your Helius RPC: the address is copied from
-`api/.env.local` into a private temporary settings file (never typed, never shown), any echo of it in the output is
-replaced by `HIDDEN`, and the file is deleted at the end.
+This line runs A3 again first and deploys only if it passes. It sends through your Helius RPC: the address goes from
+`api/.env.local` straight into the solana command as an in-memory settings stream (never typed, never shown, never written
+to disk), and any echo of it in the output is replaced by `HIDDEN`.
 ```
-cd ~/Documents/claude/seekerhackathon/build/sprouts/leash && ./scripts/deploy-check.sh pre && (umask 077; grep -m1 '^HELIUS_RPC_URL=https' ../api/.env.local | sed 's/^HELIUS_RPC_URL=/json_rpc_url: /' > target/helius-cli.yml) && [ -s target/helius-cli.yml ] && solana -C target/helius-cli.yml program deploy target/deploy/leash.so --program-id ~/.config/solana/sprouts-leash-program.json --keypair ~/.config/solana/sprouts-admin.json --upgrade-authority ~/.config/solana/sprouts-admin.json --max-len 70000 --use-rpc --with-compute-unit-price 20000 --max-sign-attempts 50 2>&1 | sed -l -e 's#helius-rpc\.com/[^ )]*#helius-rpc.com/HIDDEN#g' -e 's/api-key=[^ )&]*/api-key=HIDDEN/g'; rm -f target/helius-cli.yml
+cd ~/Documents/claude/seekerhackathon/build/sprouts/leash && grep -q '^HELIUS_RPC_URL=https' ../api/.env.local && ./scripts/deploy-check.sh pre && solana -C <({ printf -- "---\n"; grep -m1 '^HELIUS_RPC_URL=https' ../api/.env.local | sed 's/^HELIUS_RPC_URL=/json_rpc_url: /'; printf "websocket_url: ''\nkeypair_path: $HOME/.config/solana/sprouts-admin.json\naddress_labels: {}\ncommitment: confirmed\n"; }) program deploy target/deploy/leash.so --program-id ~/.config/solana/sprouts-leash-program.json --keypair ~/.config/solana/sprouts-admin.json --upgrade-authority ~/.config/solana/sprouts-admin.json --max-len 70000 --use-rpc --with-compute-unit-price 20000 --max-sign-attempts 50 2>&1 | sed -l -e 's#helius-rpc\.com/[^ )]*#helius-rpc.com/HIDDEN#g' -e 's/api-key=[^ )&]*/api-key=HIDDEN/g'
 ```
 Expected (a minute or a few): `PRE-CHECK PASSED`, then `Program Id: GyBmDLN72kg6xwAnZfj9c7fjeaJ3GvhkHNhFns83f8f7` and
-`Signature: <sig>`. Copy the signature for A6. If nothing follows `PRE-CHECK PASSED`, `api/.env.local` has no
+`Signature: <sig>`. Copy the signature for A6. If the line prints nothing at all, `api/.env.local` has no
 `HELIUS_RPC_URL`: stop and tell the coordinator.
 
 **If A4 stops with an error (part-way):**
@@ -175,16 +175,21 @@ Expected: one `step 1/1 set_header confirmed <sig>` line, then `on-chain Config 
 
 ## Notes for the coordinator
 
-- **RPC for A4 (review I1):** Helius with `--use-rpc`. The URL goes by pipeline (`grep | sed`) from `api/.env.local` into a
-  0600 CLI config file `leash/target/helius-cli.yml` (git-ignored, deleted at the end of the same line) read by
-  `solana -C`. Not `--url "$(grep ... | cut ...)"`: this machine's secret hook blocks reading a .env value into a command
-  substitution (a captured value once leaked when a program echoed its raw input), and the solana CLI cannot read the URL
-  from stdin. Tested read-only: `solana -C <that file> balance` and `block-height` answered through Helius, nothing secret
-  printed. Why Helius: the public `api.mainnet-beta` RPC limits requests per IP per 10 s and `--use-rpc` sends all ~70 buffer writes
+- **RPC for A4 (review I1, fix round 2):** Helius with `--use-rpc`. The URL goes by pipeline (`grep | sed`) from
+  `api/.env.local` into a full CLI config document fed to `solana -C` by process substitution `<( ... )`: nothing on disk,
+  so there is no file to clean up after Ctrl-C or a closed window. The config must carry every field (`json_rpc_url`,
+  `websocket_url`, `keypair_path`, `address_labels`, `commitment`): measured, a config holding only `json_rpc_url` is
+  silently ignored and the CLI falls back to the public RPC (a bogus `json_rpc_url` alone still answered `0.6 SOL`; the full
+  form with the bogus URL errors). Proof it reaches Helius, read-only: the full form with the real line answered
+  `balance` = `0.6 SOL`, and the same form with the key deliberately broken answered
+  `401 Unauthorized for url (https://mainnet.helius-rpc.com/HIDDEN)` (redaction proven on a real error). Not
+  `--url "$(grep ... | cut ...)"`: this machine's secret hook blocks a .env value in a command substitution, and the CLI
+  cannot read the URL on stdin. `grep -q` up front makes a missing `HELIUS_RPC_URL` stop the line instead of silently
+  falling back. Why Helius: the public `api.mainnet-beta` RPC limits requests per IP per 10 s and `--use-rpc` sends all ~70 buffer writes
   there; the TPU path (no `--use-rpc`) sends unstaked QUIC from a home connection, which leaders drop first under load.
   Leak guard: measured on this CLI, a transport error prints the full URL (`error sending request for url (...?api-key=...)`),
   so the output is piped through `sed` that rewrites `helius-rpc.com/...` and `api-key=...` to `HIDDEN` (tested on that
-  error text). The URL is never in the process arguments (only the file path is). The pipe hides the
+  error text). The URL is never in the process arguments (only a `/dev/fd/N` path is). The pipe hides the
   CLI's exit code, which is why A5 is the judge of success. Fallback (A4 step 5): the public route on the TPU path. The
   Helius plan's sendTransaction rate limit is not measured; throttled writes are re-sent (`--max-sign-attempts 50`).
   `deploy-check.sh` and `leash-admin.ts` stay on the public RPC (a few reads; 9-12 sequential txs).
