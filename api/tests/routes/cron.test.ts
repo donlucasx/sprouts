@@ -7,11 +7,23 @@ vi.mock("@/lib/staking", () => ({ readPosition: vi.fn(), crankWithdraw: vi.fn(),
 vi.mock("@/lib/reconcile", () => ({ reconcileOwnStakes: vi.fn(async () => ({ adjusted: [], skipped: [], deferred: [] })) }));
 vi.mock("@/lib/planting", () => ({ buildPlantingTx: vi.fn(), simulatePlanting: vi.fn(), sendPlanting: vi.fn(), signatureStatus: vi.fn() }));
 vi.mock("@/lib/subscriptions", () => ({ readDelegation: vi.fn(), usdcAta: vi.fn() }));
-const { snapshotMock, decideMock, applyMock } = vi.hoisted(() => ({
-  snapshotMock: vi.fn(async () => [{ asset: "SKR", ok: true }, { asset: "hSOL", ok: true }, { asset: "cbBTC", ok: false }]),
-  decideMock: vi.fn(async () => [{ stop: "careful", fallback: null }, { stop: "balanced", fallback: null }, { stop: "bold", fallback: "model" }]),
-  applyMock: vi.fn(async () => ({ changed: ["U"] })),
-}));
+const { order, snapshotMock, decideMock, applyMock, venuesMock, movesMock } = vi.hoisted(() => {
+  const order: string[] = [];
+  return {
+    order,
+    snapshotMock: vi.fn(async () => { order.push("coins"); return [{ asset: "SKR", ok: true }, { asset: "hSOL", ok: true }, { asset: "cbBTC", ok: false }]; }),
+    decideMock: vi.fn(async (_a: unknown) => { order.push("decide"); return [{ stop: "careful", fallback: null }, { stop: "balanced", fallback: null }, { stop: "bold", fallback: "model" }]; }),
+    applyMock: vi.fn(async () => { order.push("apply"); return { changed: ["U"] }; }),
+    venuesMock: vi.fn(async () => { order.push("venues"); return [{ ok: true }, { ok: false }]; }),
+    movesMock: vi.fn(async (_a: unknown) => { order.push("moves"); return { proposed: ["U"], expired: [] }; }),
+  };
+});
+vi.mock("@/lib/venues/rates", () => ({ snapshotVenues: venuesMock, scoutYields: vi.fn(async () => []), realVenueReads: vi.fn(() => ({})) }));
+vi.mock("@/lib/moves", () => ({ proposeMoves: movesMock }));
+vi.mock("@/lib/plant-run", async (orig) => {
+  const actual = await orig<typeof import("@/lib/plant-run")>();
+  return { ...actual, runPlanting: vi.fn(async (a: Parameters<typeof actual.runPlanting>[0]) => { order.push("plant"); return actual.runPlanting(a); }) };
+});
 vi.mock("@/lib/coin-data", () => ({ snapshotCoins: snapshotMock, IMPACT_LIMIT_PCT: 1 }));
 vi.mock("@/lib/split-run", () => ({ decideSplits: decideMock, applyToUsers: applyMock }));
 vi.mock("@/lib/jupiter", () => ({ getQuote: vi.fn(), pricesUsd: vi.fn() }));
@@ -30,6 +42,8 @@ describe("cron route", () => {
   let repo: MemoryRepo;
 
   beforeEach(() => {
+    order.length = 0;
+    delete process.env.MOVES_ENABLED;
     repo = new MemoryRepo();
     setRepoForTests(repo);
   });
@@ -58,6 +72,49 @@ describe("cron route", () => {
     expect(body.applied).toBe(1);
     expect(snapshotMock.mock.invocationCallOrder[0]).toBeLessThan(decideMock.mock.invocationCallOrder[0]);
     expect(decideMock.mock.invocationCallOrder[0]).toBeLessThan(applyMock.mock.invocationCallOrder[0]);
+  });
+
+  const get = () => GET(new Request("http://x/api/cron/plant", { headers: { authorization: `Bearer ${SECRET}` } }));
+
+  it("runs venues, coins, decide, apply, moves, then plant, and reports venues and moves", async () => {
+    const res = await get();
+    expect(order).toEqual(["venues", "coins", "decide", "apply", "moves", "plant"]);
+    const body = (await res.json()) as { venues: number; moves: number };
+    expect(body.venues).toBe(1);
+    expect(body.moves).toBe(1);
+  });
+
+  it("skips the moves step when MOVES_ENABLED is false", async () => {
+    process.env.MOVES_ENABLED = "false";
+    const body = (await (await get()).json()) as { moves: number | null };
+    expect(order).toEqual(["venues", "coins", "decide", "apply", "plant"]);
+    expect(body.moves).toBeNull();
+  });
+
+  it("a failed venues or moves step is logged and the planting still runs", async () => {
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    venuesMock.mockRejectedValueOnce(new Error("JUPITER_API_KEY is not set"));
+    movesMock.mockRejectedValueOnce(new Error("moves boom"));
+    const res = await get();
+    expect(res.status).toBe(200);
+    expect(order).toContain("plant");
+    const logged = err.mock.calls.map((c) => String(c[0])).join("\n");
+    expect(logged).toContain("venues failed: JUPITER_API_KEY is not set");
+    expect(logged).toContain("moves failed: moves boom");
+    const body = (await res.json()) as { venues: number | null; moves: number | null };
+    expect(body.venues).toBeNull();
+    expect(body.moves).toBeNull();
+    err.mockRestore();
+  });
+
+  it("the moves step reads positions only inside its deadline, and the decide step gets the scout", async () => {
+    await get();
+    const a = movesMock.mock.calls.at(-1)![0] as { positions(u: string): Promise<unknown>; solUsd: number };
+    expect(typeof a.solUsd).toBe("number");
+    expect(typeof (decideMock.mock.calls.at(-1)![0] as { scout: unknown }).scout).toBe("function");
+    const real = Date.now;
+    Date.now = () => real() + 10 * 60_000;
+    try { await expect(a.positions("U")).rejects.toThrow(/deadline/); } finally { Date.now = real; }
   });
 
   it("a failed snapshot never stops the planting run", async () => {
