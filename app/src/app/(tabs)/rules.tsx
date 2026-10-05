@@ -11,7 +11,7 @@ import { useMe, useInvalidateMe, useApplyRules } from '@/lib/me'
 import { freshSignIn } from '@/lib/signin'
 import { freshWalletSignIn } from '@/lib/reauth'
 import { identity } from '@/lib/identity'
-import { formatUsd, COIN_NAME } from '@/lib/format'
+import { formatUsd, COIN_NAME_LONG } from '@/lib/format'
 import { undoSplit } from '@/lib/manager-api'
 import {
   splitRows,
@@ -262,7 +262,7 @@ export default function Rules() {
           >
             {/* The coin on one line; stORE's note on its own line under it (10-01 device check: it wrapped to three lines). */}
             <View style={{ flex: 1 }}>
-              <ThemedText>{COIN_NAME[row.asset]}</ThemedText>
+              <ThemedText>{COIN_NAME_LONG[row.asset]}</ThemedText>
               {row.asset === 'stORE' ? (
                 <ThemedText variant="caption" tone="secondary">
                   {STORE_ROW_NOTE}
@@ -280,14 +280,14 @@ export default function Rules() {
             {r.managed && (
               <Switch
                 {...toggle}
-                accessibilityLabel={`Pin ${COIN_NAME[row.asset]}`}
+                accessibilityLabel={`Pin ${COIN_NAME_LONG[row.asset]}`}
                 value={row.mode === 'pinned'}
                 onValueChange={(on) => edit({ pins: togglePin(r.pins, row.asset, on, row.pct) })}
               />
             )}
             {row.mode === 'pinned' && (
               <StepButtons
-                what={COIN_NAME[row.asset]}
+                what={COIN_NAME_LONG[row.asset]}
                 onLess={() => edit({ pins: stepPin(r.pins, row.asset, -1) })}
                 onMore={() => edit({ pins: stepPin(r.pins, row.asset, 1) })}
                 lessDisabled={busy || row.pct <= 0}

@@ -1,24 +1,24 @@
-import { ASSETS, type Asset, type Pins, type Split, type Stop } from "@/lib/coins";
+import { ASSETS, type LiveAsset, type Pins, type Split, type Stop } from "@/lib/coins";
 import type { SplitRow } from "@/lib/api";
-import { dayLabel } from "@/lib/format";
+import { COIN_NAME_LONG, dayLabel } from "@/lib/format";
 
 /**
  * The Yield Manager as the app shows it (spec 3.1, 3.2). Pure. The tables mirror spec 4.1 for labels and stepper bounds only:
  * the API enforces them and answers with its own copy when a save breaks one.
  */
-type NonSkr = Exclude<Asset, "SKR">;
-const NON_SKR: readonly NonSkr[] = ["stORE", "hSOL", "JitoSOL", "JupSOL", "cbBTC"] as const;
+type NonSkr = Exclude<LiveAsset, "SKR">;
+const NON_SKR: readonly NonSkr[] = ["stORE", "USDC_LEND", "SOL_LEND", "hSOL", "cbBTC"] as const;
 
 export const STOP_LABEL: Record<Stop, string> = { careful: "Careful", balanced: "Balanced", bold: "Bold" };
 export const STOP_FLOOR: Record<Stop, number> = { careful: 50, balanced: 35, bold: 25 };
-// R251 (10-04): stORE 10 / 20 / 30 (from 5 / 10 / 20), the API's STOPS (api/src/domain/split.ts)
+// Spec 9 (lending build, 10-04), the API's STOPS (api/src/domain/split.ts)
 export const STOP_MAX: Record<Stop, Record<NonSkr, number>> = {
-  careful: { stORE: 10, hSOL: 15, JitoSOL: 15, JupSOL: 15, cbBTC: 30 },
-  balanced: { stORE: 20, hSOL: 25, JitoSOL: 25, JupSOL: 25, cbBTC: 25 },
-  bold: { stORE: 30, hSOL: 35, JitoSOL: 35, JupSOL: 35, cbBTC: 20 },
+  careful: { stORE: 10, USDC_LEND: 30, SOL_LEND: 15, hSOL: 15, cbBTC: 30 },
+  balanced: { stORE: 20, USDC_LEND: 30, SOL_LEND: 25, hSOL: 25, cbBTC: 25 },
+  bold: { stORE: 30, USDC_LEND: 20, SOL_LEND: 35, hSOL: 35, cbBTC: 20 },
 };
 export const MANUAL_FLOOR = 25;
-export const PIN_MAX: Record<Asset, number> = { SKR: 100, stORE: 50, hSOL: 75, JitoSOL: 75, JupSOL: 75, cbBTC: 75 };
+export const PIN_MAX: Record<LiveAsset, number> = { SKR: 100, stORE: 50, USDC_LEND: 75, SOL_LEND: 75, hSOL: 75, cbBTC: 75 };
 export const PIN_STEP = 5;
 
 export const SWITCH_LABEL = "Yield Manager";
@@ -29,7 +29,7 @@ export const UNDONE_TEXT = "Yesterday's split is back. The Yield Manager is off 
 export const SPLIT_SECTION = { title: "Your split", sub: "Each time the split changed, by the Yield Manager or by you.", empty: "No change yet." } as const;
 export const STORE_ROW_NOTE = "ORE staked in ORE's program";
 
-export type Row = { asset: Asset; pct: number; mode: "auto" | "pinned" | "the rest"; bound: string | null };
+export type Row = { asset: LiveAsset; pct: number; mode: "auto" | "pinned" | "the rest"; bound: string | null };
 export type RulesView = { managed: boolean; stop: Stop; pins: Pins; allocation: Split };
 
 /** One row per coin. Off: pins are the split and SKR is the rest. On: pinned rows show the pin, free rows show the allocation with the stop's bound,
@@ -57,7 +57,7 @@ export function modeWord(row: { mode: string; bound: string | null }, managed: b
 }
 
 /** Pin a coin at the percent its row shows, or release it. */
-export function togglePin(pins: Pins, asset: Asset, on: boolean, currentPct: number): Pins {
+export function togglePin(pins: Pins, asset: LiveAsset, on: boolean, currentPct: number): Pins {
   const next: Pins = { ...pins };
   if (on) next[asset] = currentPct;
   else delete next[asset];
@@ -65,7 +65,7 @@ export function togglePin(pins: Pins, asset: Asset, on: boolean, currentPct: num
 }
 
 /** Move a pin by PIN_STEP inside 0 and the coin's pin max. */
-export function stepPin(pins: Pins, asset: Asset, dir: 1 | -1): Pins {
+export function stepPin(pins: Pins, asset: LiveAsset, dir: 1 | -1): Pins {
   const current = pins[asset] ?? 0;
   const next = Math.max(0, Math.min(PIN_MAX[asset], current + dir * PIN_STEP));
   return { ...pins, [asset]: next };
@@ -73,7 +73,7 @@ export function stepPin(pins: Pins, asset: Asset, dir: 1 | -1): Pins {
 
 /** Whether a pin's "+" may move it up by PIN_STEP, mirroring the API's validatePins in both modes: the coin's pin max; with SKR pinned, a total of at most 100;
  * else the pins must leave SKR its floor (the stop's when on, MANUAL_FLOOR when off). */
-export function canStepUp(r: RulesView, asset: Asset): boolean {
+export function canStepUp(r: RulesView, asset: LiveAsset): boolean {
   const current = r.pins[asset] ?? 0;
   if (current + PIN_STEP > PIN_MAX[asset]) return false;
   const floor = r.managed ? STOP_FLOOR[r.stop] : MANUAL_FLOOR;
@@ -86,7 +86,7 @@ export function canStepUp(r: RulesView, asset: Asset): boolean {
 /** The pins to carry when the switch flips on: a 0 pin while off meant "nothing" (SKR was the rest), and carried into on-mode it would stop the manager from ever buying that coin. */
 export function pinsForOn(pins: Pins): Pins {
   const next: Pins = {};
-  for (const [a, v] of Object.entries(pins) as [Asset, number][]) if (v > 0) next[a] = v;
+  for (const [a, v] of Object.entries(pins) as [LiveAsset, number][]) if (v > 0) next[a] = v;
   return next;
 }
 
@@ -95,9 +95,9 @@ export function undoLine(changedDay: string | null): string | null {
   return changedDay ? `Changed ${dayLabel(changedDay)}.` : null;
 }
 
-/** "hSOL 15 to 20, cbBTC 10 to 5": every coin that moved, in the registry's order. */
-export function changeSummary(from: Split, to: Split): string {
-  return ASSETS.filter((a) => from[a] !== to[a]).map((a) => `${a} ${from[a]} to ${to[a]}`).join(", ");
+/** "USDC lending 10 to 15, hSOL 20 to 15": every live leg that moved, in the spec's order; old rows' retired keys are not named (R281). */
+export function changeSummary(from: Partial<Record<string, number>>, to: Partial<Record<string, number>>): string {
+  return ASSETS.filter((a) => (from[a] ?? 0) !== (to[a] ?? 0)).map((a) => `${COIN_NAME_LONG[a]} ${from[a] ?? 0} to ${to[a] ?? 0}`).join(", ");
 }
 
 /** One Activity row (spec 3.2), dated by the API's UTC day so it agrees with the Rules card's "Changed {Mon D}." */

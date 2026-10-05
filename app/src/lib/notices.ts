@@ -1,11 +1,11 @@
-import { formatUsd, formatAmount, formatSkr, COIN_NAME } from "./format";
-import { ASSETS, type Asset, type Split } from "./coins";
+import { formatUsd, formatAmount, formatSkr, COIN_NAME_LONG } from "./format";
+import { ASSETS, isRetired, type LiveAsset, type Split } from "./coins";
 import type { MeResponse } from "./api";
 
 /** The planting push (R172, 10-02): one line, the change and what it became, with the coin's value. The "where it sits" and "a new
  * sprout is waiting" clauses are gone: they ran past one line, and he picked the plain line over "a new sprout grows". */
 export function plantingNotice(
-  p: { asset: Asset; usdcInCents: number; amountOutRaw: string },
+  p: { asset: LiveAsset; usdcInCents: number; amountOutRaw: string },
   pot: { skrUsd: number | null; storeUsd: number | null },
 ): string {
   const amount = formatAmount(p.asset, BigInt(p.amountOutRaw), p.asset === "SKR" ? pot.skrUsd : p.asset === "stORE" ? pot.storeUsd : null);
@@ -18,7 +18,7 @@ export type Notice = { kind: NoticeKind; title: string; body: string };
 
 /** "60% SKR, 40% stORE": the coins with a share, in the app's coin order. */
 function splitLine(s: Split): string {
-  return ASSETS.filter((a) => s[a] > 0).map((a) => `${s[a]}% ${COIN_NAME[a]}`).join(", ");
+  return ASSETS.filter((a) => s[a] > 0).map((a) => `${s[a]}% ${COIN_NAME_LONG[a]}`).join(", ");
 }
 
 /**
@@ -28,7 +28,7 @@ function splitLine(s: Split): string {
 export function noticesFor(before: MeResponse | null, me: MeResponse, on: (k: NoticeKind) => boolean): Notice[] {
   if (!before) return [];
   const out: Notice[] = [];
-  const landed = me.history.plantings.filter((p) => !before.history.plantings.some((q) => q.id === p.id));
+  const landed = me.history.plantings.filter((p) => !isRetired(p.asset) && !before.history.plantings.some((q) => q.id === p.id)) as (MeResponse["history"]["plantings"][number] & { asset: LiveAsset })[];
   for (const p of landed)
     out.push({ kind: "plantings", title: "Planted", body: plantingNotice(p, me.pot) });
   // A basket also leaves on a cancel, which drops its pick (cancelSignature set); only a basket whose pick stays was delivered.

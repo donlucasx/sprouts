@@ -1,5 +1,6 @@
 import type { ActivityResponse } from '@/lib/api'
 import { arrivalLine, formatSkr, formatUsd, plantedLine } from '@/lib/format'
+import { isRetired } from '@/lib/coins'
 
 /** Activity's rows (spec 3.2, 7.7), pure, in the manual's words: a planting is what the change became; nothing is "pulled". */
 type Planting = Pick<ActivityResponse['plantings'][number], 'status' | 'usdcPulledCents' | 'legs'>
@@ -9,6 +10,7 @@ type Withdrawal = Pick<ActivityResponse['withdrawals'][number], 'amountRaw' | 'c
 export function plantingRowLine(day: string, p: Planting): string {
   const leg = p.legs[0]
   if (p.status === 'confirmed' && leg) {
+    if (isRetired(leg.asset)) return `${day}, planted`   // an old row's retired coin is not named (R281)
     return `${day}, ${plantedLine({ usdcInCents: leg.usdcInCents, asset: leg.asset, amountOutRaw: leg.amountOutRaw, usdPrice: leg.usdPrice ?? null, feeCents: leg.feeCents, feeAmountRaw: leg.feeAmountRaw })}`
   }
   return p.status === 'failed' ? `${day}, did not land, nothing moved` : `${day}, in flight`

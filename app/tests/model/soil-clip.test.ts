@@ -5,7 +5,7 @@ import { soilClipPath, SOIL_CLIP_ID } from "@/model/soil-clip";
 import { SPRITE_META, GROUND_OUTLINE } from "@/garden/sprite-meta";
 import { buildScene, type GardenInput } from "@/model/garden";
 const NOW = new Date("2026-10-08T12:00:00-07:00");
-const base: GardenInput = { now: NOW, wateredAt: NOW, plantings: [], picks: [], skrPutInRaw: 0n, skrEarnedRaw: 0n, skrPickedRaw: 0n, skrPrincipalPickedRaw: 0n, pendingCents: 0, thresholdCents: 200, allocation: { SKR: 50, stORE: 10, hSOL: 10, JitoSOL: 10, JupSOL: 10, cbBTC: 10 }, earned: {}, storePutInRaw: 0n, joinedValueRaw: 0n, basket: null };
+const base: GardenInput = { now: NOW, wateredAt: NOW, plantings: [], picks: [], skrPutInRaw: 0n, skrEarnedRaw: 0n, skrPickedRaw: 0n, skrPrincipalPickedRaw: 0n, pendingCents: 0, thresholdCents: 200, allocation: { SKR: 50, stORE: 10, hSOL: 10, USDC_LEND: 10, SOL_LEND: 10, cbBTC: 10 }, earned: {}, storePutInRaw: 0n, joinedValueRaw: 0n, basket: null };
 const pl = (id: string, d: number, asset: GardenInput["plantings"][number]["asset"]) => ({ id, ts: new Date(NOW.getTime() - d * 86_400_000), asset, amountOutRaw: 1n, usdcInCents: 200 });
 const scene = buildScene({ ...base, plantings: [pl("a", 3, "SKR"), pl("o", 2, "stORE"), pl("c", 2, "cbBTC"), pl("h", 2, "hSOL")] });
 const nums = (d: string) => [...d.matchAll(/(-?[\d.]+) (-?[\d.]+)/g)].map((m) => [Number(m[1]), Number(m[2])] as [number, number]);

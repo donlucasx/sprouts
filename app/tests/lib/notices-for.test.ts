@@ -3,7 +3,7 @@ import { noticesFor, type NoticeKind } from "@/lib/notices";
 import type { MeResponse } from "@/lib/api";
 
 // R161: four local notices from two consecutive background reads, each behind its own switch.
-const split = (skr: number, store: number) => ({ SKR: skr, stORE: store, hSOL: 0, JitoSOL: 0, JupSOL: 0, cbBTC: 0 });
+const split = (skr: number, store: number) => ({ SKR: skr, stORE: store, hSOL: 0, USDC_LEND: 0, SOL_LEND: 0, cbBTC: 0 });
 function me(o: { plantings?: string[]; basket?: boolean; picked?: boolean; changedDay?: string | null; why?: string | null; skr?: number; capLeft?: number; cap?: number; fee?: number } = {}): MeResponse {
   return {
     pot: { skrUsd: 0.02, storeUsd: 70 },
