@@ -1,0 +1,87 @@
+import { useState } from 'react'
+import { View } from 'react-native'
+import type { Transaction } from '@solana/kit'
+import { useMobileWallet } from '@wallet-ui/react-native-kit'
+import { Card } from './Card'
+import { Button } from './Button'
+import { ThemedText } from './ThemedText'
+import { api, ApiError, type MeResponse } from '@/lib/api'
+import { makeBatchSigner, SignRefused } from '@/lib/sign'
+import { useInvalidateMe } from '@/lib/me'
+import { MOVE_FAILED, MOVED_LINE, moveAtTap, moveCopy, type MoveBuild } from '@/lib/moves'
+import { oneAtATime } from '@/lib/withdraw-flow'
+import { spacing } from '@/theme'
+
+/** R258, R280: at most one move card, only when the API proposes one (no faked card, spec 7); one approval for both transactions (S3). */
+export function MoveCard({ me }: { me: MeResponse }) {
+  const p = me.moveProposal ?? null
+  const { signTransactions } = useMobileWallet()
+  const invalidate = useInvalidateMe()
+  const [gate] = useState(oneAtATime)
+  // The Move tap's phase: the Seeker is asked, then (signatures back) the API sends both and waits.
+  const [phase, setPhase] = useState<null | 'seeker' | 'chain' | 'dismiss'>(null)
+  const [line, setLine] = useState<{ text: string; error: boolean } | null>(null)
+  // The proposal this card is done with (moved or dismissed): hidden at once, before the refetch drops it.
+  const [gone, setGone] = useState<string | null>(null)
+
+  async function move() {
+    if (!p || !gate.enter()) return
+    setPhase('seeker')
+    setLine(null)
+    try {
+      const out = await moveAtTap({
+        user: me.user.pubkey,
+        proposal: p,
+        build: (id) => api<MoveBuild>('/api/moves/build', { method: 'POST', body: { id } }),
+        signAll: (flows) => makeBatchSigner((txs) => signTransactions(txs) as Promise<Transaction[]>, flows),
+        confirm: (body) => api('/api/moves/confirm', { method: 'POST', body }),
+        onSigned: () => setPhase('chain'),
+      })
+      if ('stopped' in out) setLine({ text: out.stopped, error: true })
+      else {
+        setGone(p.id)
+        setLine({ text: MOVED_LINE, error: false })
+      }
+    } catch (e) {
+      setLine({ text: e instanceof ApiError || e instanceof SignRefused ? e.message : MOVE_FAILED, error: true })
+    } finally {
+      setPhase(null)
+      gate.leave()
+      void invalidate()
+    }
+  }
+  async function dismiss() {
+    if (!p || !gate.enter()) return
+    setPhase('dismiss')
+    setLine(null)
+    try {
+      await api('/api/moves/dismiss', { method: 'POST', body: { id: p.id } })
+      setGone(p.id)
+      void invalidate()
+    } catch (e) {
+      setLine({ text: e instanceof ApiError ? e.message : 'Could not dismiss it. Try again.', error: true })
+    } finally {
+      setPhase(null)
+      gate.leave()
+    }
+  }
+
+  if (!p || p.id === gone) return line ? <ThemedText tone={line.error ? 'error' : 'accentText'}>{line.text}</ThemedText> : null
+  const c = moveCopy(p)
+  return (
+    <Card>
+      <ThemedText variant="heading">{c.title}</ThemedText>
+      <ThemedText tone="secondary">{c.line}</ThemedText>
+      <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+        <Button title="Move" loading={phase === 'seeker' || phase === 'chain'} disabled={phase !== null} onPress={move} />
+        <Button title="Not now" kind="quiet" loading={phase === 'dismiss'} disabled={phase !== null} onPress={dismiss} />
+      </View>
+      {phase === 'seeker' || phase === 'chain' ? (
+        <ThemedText variant="caption" tone="secondary">
+          {phase === 'seeker' ? 'Waiting for your Seeker.' : 'Moving. This can take a minute.'}
+        </ThemedText>
+      ) : null}
+      {line ? <ThemedText tone={line.error ? 'error' : 'accentText'}>{line.text}</ThemedText> : null}
+    </Card>
+  )
+}
