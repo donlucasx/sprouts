@@ -21,3 +21,10 @@ export async function refreshWidget(me: MeResponse | null) {
     widgetNotFound: () => {},
   });
 }
+
+/** Dev only (demo/shot-420): the dev menu's "Demo: draw the widget" puts the demo garden on the placed widget for the store shot. The
+ * real app's next read (or the widget's own 30-minute update from the saved real read) draws it back; nothing is saved. */
+export async function drawDemoWidget(me: MeResponse | null) {
+  if (!DEMO_SHOT) return;
+  await requestWidgetUpdate({ widgetName: "Sprouts", renderWidget: (info) => widgetFor(me, info), widgetNotFound: () => {} });
+}
