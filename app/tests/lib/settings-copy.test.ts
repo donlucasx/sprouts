@@ -22,7 +22,7 @@ describe('Settings > About Sprouts (spec 6.2, 11)', () => {
     ]))
   it('How Sprouts holds your money opens with the precise sentence, verbatim, and says what an old approval still allows', () => {
     expect(PRECISE_GUARANTEE).toBe(
-      "Once you re-link, Sprouts' server can only pull through the Sprouts program: at most your $5 daily limit, and only in a transaction that leaves at least 98.5% of that value (99.9% for USDC lending), at a live oracle price, in your own allowed coins, lending positions or SKR stake; otherwise it reverts. The server still chooses when, which leg and how much up to the limit; rounding remainders carry to your next planting. Only Sprouts' offline admin key can change these rules.",
+      "Once you re-link, Sprouts' server can only pull through the Sprouts program: at most your $5 daily limit, and only in a transaction that leaves at least 98.5% of that value (99.9% for USDC lending), at a live oracle price, in the coins Sprouts has enabled, lending positions or SKR stake; otherwise it reverts. The server still chooses when, which leg and how much up to the limit; rounding remainders carry to your next planting. Only Sprouts' offline admin key can change these rules or replace the program; your $5-a-day limit still holds.",
     )
     expect(DISCLOSURES[0][1].startsWith(PRECISE_GUARANTEE)).toBe(true)
     expect(DISCLOSURES[0][1]).toContain('stays on chain under the old rules until you re-link or revoke it')
