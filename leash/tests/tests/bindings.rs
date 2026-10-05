@@ -177,3 +177,17 @@ fn standalone_settle_guards() {
     // SETTLE_FLOOR: nothing delivered, min_out 0, but $5 claimed: the settle-time floor (7577) catches it
     assert_eq!(run_f(vec![settle_ix(&f.w, &user, &g, 0, 0, 5_000_000)], &mut f), custom(0, 6009), "SETTLE_FLOOR");
 }
+
+/// SETTLE_LEN on behaviour (Task 6 review minor 1): a 35-byte settle (the 34 valid bytes + one trailing 0) claiming $5 with
+/// nothing delivered. With the guard: BadData 6010. Without it the first 34 bytes parse cleanly and the settle-time floor
+/// answers Underdelivered 6009, so the mutation row is red on a different answer, not on an out-of-bounds panic.
+#[test]
+fn settle_len_extra_byte() {
+    let mut f = fx(cbbtc_leg);
+    let g = f.g.clone();
+    let user = f.l.user;
+    let mut s = settle_ix(&f.w, &user, &g, 0, 0, 5_000_000);
+    s.data.push(0);
+    assert_eq!(s.data.len(), 35);
+    assert_eq!(run_f(vec![s], &mut f), custom(0, 6010), "SETTLE_LEN: 35 bytes");
+}
