@@ -9,7 +9,8 @@ on the Day-1 legs. None of this moves anyone's money.
 ## Before you start
 
 - **Where:** every line runs from `~/Documents/claude/seekerhackathon/build/sprouts` (main), after the coordinator has merged
-  the leash branch and the API branch (with `leash-admin.ts`) into main. Not from any `sprouts-*` worktree.
+  the leash branch and the API branch (with `leash-admin.ts`) into main, and `pnpm install` has run in `api/` on main (API D0;
+  without it B0 stops with a module error). Not from any `sprouts-*` worktree.
 - **Keys** are used by path only. No line prints a key file. `solana-keygen pubkey` prints only the public key.
   - ADMIN (pays, upgrade authority, Config admin): `~/.config/solana/sprouts-admin.json` = `GrHSwzYpgiFzuTpwR6539NpNXktXNEUfVU9UYvHdDKLY`
   - Program address (used once, by the deploy): `~/.config/solana/sprouts-leash-program.json` = `GyBmDLN72kg6xwAnZfj9c7fjeaJ3GvhkHNhFns83f8f7`
@@ -96,7 +97,8 @@ In `leash/GATES.md`, "Mainnet deploy record": the A4 signature and the A5 block.
 cd ~/Documents/claude/seekerhackathon/build/sprouts/api && pnpm vitest run tests/scripts/leash-admin.test.ts 2>&1 | tail -4
 ```
 Expected: the `Tests` line says only `passed` (no `failed`, no `skipped`). A skipped test means the golden Config
-comparison did not run: stop.
+comparison did not run: stop. A failure naming `mainnet-day1.hex`, `mainnet-init.hex` or `set_leg_1/4/5/6/7` means the API's
+leg spec does not yet pin the sponsored price accounts that the golden files pin (final review I1): stop and tell the coordinator.
 
 **B1. Create the Config, every leg OFF (9 transactions)**
 ```
@@ -117,7 +119,8 @@ Expected: `chain enabled legs []; config/mainnet-init.hex enabled legs []` and
 
 **B3. Which legs turn on today: 2 (USDC on K-Lend), 6 (hSOL), 7 (cbBTC)**
 
-This is `config/mainnet-day1.hex`. All three passed their gates in `leash/GATES.md` (cbBTC also its price-age sample:
+This is `config/mainnet-day1.hex`. Every priced leg in it reads only its sponsored Pyth price account (pinned in the Config).
+All three passed their gates in `leash/GATES.md` (cbBTC also its price-age sample:
 280 s at most, under the 600 s limit). Legs 0, 1, 3, 4, 5 stay off. If the coordinator tells you one of 2, 6, 7 failed a
 gate, leave it out of B4 (for example `--enable 2,6`) and in B5 run `./scripts/check-config.sh legs 2,6` instead of `day1`.
 
@@ -165,11 +168,20 @@ The list is the full list that should be on. Expected: one `set_leg 1 confirmed`
 `on-chain Config OK: legs [1, 2, 6, 7] enabled, ...` and `test result: ok. 1 passed`. Leg 0 (SKR) is never in the list.
 
 **C3. Go-live only (after D7 is green for every enabled leg): new puller (one transaction)**
+
+Before this line: the new puller's USDC account (its USDC ATA) must exist (API D8 creates it). Until it does, every pull
+fails closed with BadReceiver 6012.
 ```
 cd ~/Documents/claude/seekerhackathon/build/sprouts/api && pnpm tsx scripts/leash-admin.ts set --enable <current list> --puller <NEW_PULLER_PUBKEY> --admin ~/.config/solana/sprouts-admin.json
 cd ~/Documents/claude/seekerhackathon/build/sprouts/leash && ./scripts/check-config.sh legs <current list> <NEW_PULLER_PUBKEY>
 ```
 Expected: one `step 1/1 set_header confirmed <sig>` line, then `on-chain Config OK: legs [...] enabled, puller <NEW>`.
+Then the old puller secret is removed from the server and destroyed (Kimi #10), per API D8.
+
+**C4. Later, not for Oct 6: a verifiable build (Kimi F5 / final review I3).** A `solana-verify build` runs in docker and
+gives different bytes from this machine's build, so publishing a verified build means a program upgrade. It goes with the
+Squads migration after Oct 8 (owner ruling pending): rebuild with `solana-verify build`, upgrade, then
+`solana-verify verify-from-repo` and record its output in `leash/GATES.md`. Nothing in Parts A-C changes for it.
 
 ---
 

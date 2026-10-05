@@ -165,26 +165,26 @@ pub fn run(ixs: Vec<Instruction>, w: &mut World) -> Result<u64, String> {
     send(&mut w.svm, &payer, &ixs)
 }
 
-/// cbBTC (leg 7): $65,000.00000000 posted at a fresh address, conf 0; the user's canonical cbBTC ATA.
+/// cbBTC (leg 7): $65,000.00000000 at the pinned sponsored account (7oqYpv5..., FEED_ACCOUNT_OF_LEG), conf 0; the user's canonical cbBTC ATA.
 pub fn cbbtc_leg(w: &mut World, user: &Pubkey) -> Leg {
     let mint = b58(addr::CBBTC);
     let receipt = ata(user, &mint);
     put(&mut w.svm, receipt, token_program(), token_data(&mint, user, 0));
-    let price = Pubkey::new_unique();
+    let price = b58(addr::PYTH_CBBTC);
     let t = w.svm.get_sysvar::<Clock>().unix_timestamp;
     put(&mut w.svm, price, pk(&c::PYTH_RECEIVER), price_data(c::FEED_CBBTC, 6_500_000_000_000, 0, -8, t - 5, true));
     let puller = w.puller;
     let stock = new_token(&mut w.svm, mint, puller, 1_000_000_000_000);
     Leg { leg: 7, receipt, price, readers: vec![], stock }
 }
-/// hSOL (leg 6): a 1.25 SOL/hSOL pool at the pinned pool address, SOL $150 conf 0.
+/// hSOL (leg 6): a 1.25 SOL/hSOL pool at the pinned pool address, SOL $150 conf 0 at the pinned sponsored account (7UVimff...).
 pub fn hsol_leg(w: &mut World, user: &Pubkey) -> Leg {
     let mint = b58(addr::HSOL);
     let receipt = ata(user, &mint);
     put(&mut w.svm, receipt, token_program(), token_data(&mint, user, 0));
     let epoch = w.svm.get_sysvar::<Clock>().epoch;
     put(&mut w.svm, b58(addr::HSOL_POOL), pk(&c::STAKE_POOL_PROGRAM), stake_pool_data(&mint.to_bytes(), 1_250_000_000, 1_000_000_000, epoch));
-    let price = Pubkey::new_unique();
+    let price = b58(addr::PYTH_SOL);
     let t = w.svm.get_sysvar::<Clock>().unix_timestamp;
     put(&mut w.svm, price, pk(&c::PYTH_RECEIVER), price_data(c::FEED_SOL, 15_000_000_000, 0, -8, t - 5, true));
     let puller = w.puller;

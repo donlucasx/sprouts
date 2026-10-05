@@ -84,9 +84,9 @@ fn token_2022_receipt() {
     expect_custom(run_f(ixs.to_vec(), &mut f), 0, 6016);
 }
 
+/// Rewrites the leg's (pinned) price account in place: the pull reads only that address (final review I1).
 fn with_price(f: &mut Fx, data: Vec<u8>) -> Leg {
-    let mut g = f.g.clone();
-    g.price = Pubkey::new_unique();
+    let g = f.g.clone();
     put(&mut f.w.svm, g.price, pk(&c::PYTH_RECEIVER), data);
     g
 }
@@ -128,13 +128,34 @@ fn price_conf_too_wide() {
     expect_custom(run_f(planting(&f, &g, 5_000_000, CBBTC_FLOOR_5USD, CBBTC_FLOOR_5USD), &mut f), 0, 6019);
 }
 
+/// Final review I1: the mainnet Config pins each priced leg's sponsored account, so a valid, fresh, Full update for the right
+/// feed is refused (BadPriceAccount 6017) at any other address, on every priced leg (1, 4, 5, 6, 7), through leash.so.
+/// The same bytes at the pinned address get past the price read (no readers are passed, so legs 1, 4, 5, 6 then stop at
+/// BadReader 6020; leg 7 has no reader and stops at the floor, BelowFloor 6008): the address is the only difference.
 #[test]
-fn posted_price_at_any_address_passes() {
-    // cbbtc_leg already posts at a fresh address; the sponsored account 7oqYpv5... is never required (feed_account zero)
-    let mut f = fx(cbbtc_leg);
-    assert_ne!(f.g.price, b58(addr::PYTH_CBBTC));
-    let g = f.g.clone();
-    run_f(planting(&f, &g, 5_000_000, CBBTC_FLOOR_5USD, CBBTC_FLOOR_5USD), &mut f).expect("a posted account at a non-sponsored address");
+fn price_account_other_than_the_pinned_one_is_refused() {
+    let mut w = world(ALL);
+    let user = Pubkey::new_unique();
+    let l = link(&mut w, user, user);
+    let cfg = decode_account(&w.svm.get_account(&w.config).unwrap().data).unwrap();
+    let now = w.svm.get_sysvar::<Clock>().unix_timestamp;
+    for (leg, feed, past_price) in [(1usize, c::FEED_ORE, 6020), (4, c::FEED_SOL, 6020), (5, c::FEED_SOL, 6020), (6, c::FEED_SOL, 6020), (7, c::FEED_CBBTC, 6008)] {
+        let pinned = b58(FEED_ACCOUNT_OF_LEG[leg]);
+        assert_eq!(cfg.legs[leg].feed_account, pinned.to_bytes(), "leg {leg}: the installed Config pins {pinned}");
+        let mint = Pubkey::new_from_array(cfg.legs[leg].receipt_mint);
+        let receipt = ata(&user, &mint);
+        put(&mut w.svm, receipt, token_program(), token_data(&mint, &user, 0));
+        let data = price_data(feed, 1_000_000_000, 0, -8, now - 1, true);
+        let other = Pubkey::new_unique();
+        put(&mut w.svm, other, pk(&c::PYTH_RECEIVER), data.clone());
+        put(&mut w.svm, pinned, pk(&c::PYTH_RECEIVER), data);
+        for (price, want) in [(other, 6017), (pinned, past_price)] {
+            let g = Leg { leg: leg as u8, receipt, price, readers: vec![], stock: Pubkey::default() };
+            let ixs = [pull_ix(&w, &l, &g, 1_000_000, 1), settle_ix(&w, &user, &g, 0, 1, 1_000_000)];
+            let payer = w.puller;
+            assert_eq!(send(&mut w.svm, &payer, &ixs), custom(0, want), "leg {leg}, price account {price}");
+        }
+    }
 }
 
 #[test]

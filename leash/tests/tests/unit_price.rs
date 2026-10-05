@@ -1,12 +1,11 @@
 use leash_tests::*;
 
-const KEY: [u8; 32] = [7; 32];
-
 fn sol_leg() -> LegConfig {
     mainnet_config(&Pubkey::new_unique(), &Pubkey::new_unique(), [true; 8]).legs[4]
 }
 fn read(owner: &[u8; 32], data: &[u8], leg: &LegConfig, now: i64) -> Result<(u64, i32), LeashError> {
-    price::read_price(&KEY, owner, data, leg, now)
+    // leg 4 pins the sponsored SOL account (final review I1); read it at that address
+    price::read_price(&bytes(addr::PYTH_SOL), owner, data, leg, now)
 }
 
 #[test]
@@ -56,4 +55,6 @@ fn read_price_guards() {
     for (name, owner, data, l, err) in cases {
         assert_eq!(read(&owner, &data, &l, NOW), Err(err), "{name}");
     }
+    // the mainnet pin itself (final review I1): the same good update at any other address is refused
+    assert_eq!(price::read_price(&[7; 32], &recv, &good, &leg, NOW), Err(BadPriceAccount), "P_FEED_ACCOUNT: mainnet pin");
 }
