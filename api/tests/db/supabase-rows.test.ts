@@ -41,3 +41,17 @@ describe("supabase row mappers", () => {
     expect(s.fallback).toBe("model");
   });
 });
+
+import { venueDayRow, moveProposalRow } from "@/db/supabase";
+
+describe("0008 row mappers", () => {
+  it("venue_days and move_proposals map snake to camel with numbers and bigints", () => {
+    const v = venueDayRow({ day: "2026-10-05", venue: "kamino_klend", asset: "USDC_LEND", supply_pct: "4.43", rewards_pct: "0", utilization_pct: "91.1", withdrawable_usd: "10700000", tvl_usd: "120900000", exchange_rate: "1.2038", avg7_pct: "4.43", days_measured: 1, eligible: true, verdict: null, reason: null, served: { a: 1 }, ok: true });
+    expect(v).toEqual({ day: "2026-10-05", venue: "kamino_klend", asset: "USDC_LEND", supplyPct: 4.43, rewardsPct: 0, utilizationPct: 91.1, withdrawableUsd: 10_700_000, tvlUsd: 120_900_000, exchangeRate: 1.2038, avg7Pct: 4.43, daysMeasured: 1, eligible: true, verdict: null, reason: null, served: { a: 1 }, ok: true });
+    const m = moveProposalRow({ id: "i", user_pubkey: "U", ts: "2026-10-05T00:00:00Z", asset: "SOL_LEND", from_venue: "jupiter_lend", to_venue: "kamino_klend", receipt_raw: "123", value_usd: "10", from_avg7_pct: "3.9", to_avg7_pct: "5.6", gain_30d_usd: "0.014", cost_usd: "0.001", status: "open", redeem_signature: null, deposit_signature: null, closed_at: null });
+    expect(m.receiptRaw).toBe(123n);
+    expect(m.gain30dUsd).toBe(0.014);
+    expect(legRow({ planting_id: "p", asset: "USDC_LEND", usdc_in_cents: 200, amount_out_raw: "1661072", staked: false, fee_amount_raw: "0", fee_cents: 0, rate_at_planting: "1.2038", venue: "kamino_klend" }).venue).toBe("kamino_klend");
+    expect(legRow({ planting_id: "p", asset: "SKR", usdc_in_cents: 200, amount_out_raw: "1", staked: true, fee_amount_raw: "0", fee_cents: 1, rate_at_planting: null }).venue).toBeNull();
+  });
+});

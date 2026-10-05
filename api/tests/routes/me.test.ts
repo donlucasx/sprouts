@@ -34,7 +34,7 @@ describe("GET /api/me", () => {
     await repo.setJoinedPosition(U, { shares: 0n, sharePrice: SP });
     await repo.addWallet({ pubkey: "W", userPubkey: U, delegationPda: "D", dailyCapCents: 500 });
     const p = await repo.insertPlanting({ userPubkey: U, walletPubkey: "W", signature: "sig", usdcPulledCents: 23, networkFeeCents: 3, status: "confirmed", aiLine: null },
-      [{ asset: "SKR", usdcInCents: 20, amountOutRaw: 1_100_000_000n, staked: true, feeAmountRaw: 5_500_000n, feeCents: 0, rateAtPlanting: null }]);
+      [{ asset: "SKR", usdcInCents: 20, amountOutRaw: 1_100_000_000n, staked: true, feeAmountRaw: 5_500_000n, feeCents: 0, rateAtPlanting: null, venue: null }]);
     await repo.setPlantingShares(p.id, { before: 0n, after: 1_000_000_000n, minted: 1_000_000_000n });
     await repo.insertSwap({ signature: "s1", walletPubkey: "W", ts: new Date(), inMint: "a", inAmount: 1, outMint: "b", outAmount: 1, usdSizeCents: 80, class: "major", roundupCents: 20 });
   });
@@ -58,7 +58,7 @@ describe("GET /api/me", () => {
   // Plan v2 (audits/ore-plan, finding 2): the stORE rate read fails today; Home must not fail with it.
   it("answers with a null stORE rate when the rate read fails, instead of failing the request", async () => {
     await repo.insertPlanting({ userPubkey: U, walletPubkey: "W", signature: "sig2", usdcPulledCents: 23, networkFeeCents: 3, status: "confirmed", aiLine: null },
-      [{ asset: "stORE", usdcInCents: 20, amountOutRaw: 24_000_000_000n, staked: false, feeAmountRaw: 120_000_000n, feeCents: 0, rateAtPlanting: null }]);
+      [{ asset: "stORE", usdcInCents: 20, amountOutRaw: 24_000_000_000n, staked: false, feeAmountRaw: 120_000_000n, feeCents: 0, rateAtPlanting: null, venue: null }]);
     vi.mocked(storeRedeemRate).mockRejectedValueOnce(new Error("Invalid param: not a Token account"));
     const res = await me(new Request("http://x/api/me", bearer(await issueSession(U, "M"))));
     expect(res.status).toBe(200);
@@ -86,7 +86,7 @@ describe("GET /api/me", () => {
   // R159: stORE sold from the wallet app takes its share of the basis; nothing in Sprouts moves it.
   it("stORE's put in follows what is still held: half the planted amount when half is left, the planted amount when more is held", async () => {
     await repo.insertPlanting({ userPubkey: U, walletPubkey: "W", signature: "sig-ore", usdcPulledCents: 203, networkFeeCents: 3, status: "confirmed", aiLine: null },
-      [{ asset: "stORE", usdcInCents: 200, amountOutRaw: 2_000_000_000n, staked: false, feeAmountRaw: 0n, feeCents: 1, rateAtPlanting: 1.0 }]);
+      [{ asset: "stORE", usdcInCents: 200, amountOutRaw: 2_000_000_000n, staked: false, feeAmountRaw: 0n, feeCents: 1, rateAtPlanting: 1.0, venue: null }]);
     vi.mocked(storeBalanceRaw).mockResolvedValueOnce(1_000_000_000n);
     let body = await (await me(new Request("http://x/api/me", bearer(await issueSession(U, "M"))))).json();
     expect(body.pot.storeRaw).toBe("1000000000");

@@ -40,7 +40,7 @@ describe("GET /api/activity splits (spec 3.2)", () => {
     const ts = new Date("2026-10-02T14:00:00Z");
     await repo.putCoinDay({ day: "2026-10-02", asset: "hSOL", rate: 1.2, ratePrev: null, ratePrevDays: null, priceUsd: 168, liquidityUsd: 1e8, priceChange24h: 0, tradeable: true, lastUpdateEpoch: 1047, ok: true });
     const base = { userPubkey: U, walletPubkey: "W", usdcPulledCents: 203, networkFeeCents: 3, status: "confirmed" as const, aiLine: null, ts };
-    const leg = { usdcInCents: 200, amountOutRaw: 1_000_000_000n, feeAmountRaw: 0n, feeCents: 1, rateAtPlanting: null };
+    const leg = { usdcInCents: 200, amountOutRaw: 1_000_000_000n, feeAmountRaw: 0n, feeCents: 1, rateAtPlanting: null, venue: null };
     await repo.insertPlanting({ ...base, signature: "s1" }, [{ ...leg, asset: "hSOL", staked: false }]);
     await repo.insertPlanting({ ...base, signature: "s2" }, [{ ...leg, asset: "SKR", staked: true }]);
     await repo.insertPlanting({ ...base, signature: "s3" }, [{ ...leg, asset: "cbBTC", staked: false }]);
@@ -52,7 +52,7 @@ describe("GET /api/activity splits (spec 3.2)", () => {
 
   it("reads the day prices in parallel: ten plantings on ten days cost one round trip, not ten (review I2)", async () => {
     const base = { userPubkey: U, walletPubkey: "W", usdcPulledCents: 203, networkFeeCents: 3, status: "confirmed" as const, aiLine: null };
-    const leg = { asset: "hSOL" as const, usdcInCents: 200, amountOutRaw: 1_000_000_000n, staked: false, feeAmountRaw: 0n, feeCents: 1, rateAtPlanting: null };
+    const leg = { asset: "hSOL" as const, usdcInCents: 200, amountOutRaw: 1_000_000_000n, staked: false, feeAmountRaw: 0n, feeCents: 1, rateAtPlanting: null, venue: null };
     for (let i = 0; i < 10; i++) {
       const day = `2026-09-${String(10 + i).padStart(2, "0")}`;
       await repo.putCoinDay({ day, asset: "hSOL", rate: 1.2, ratePrev: null, ratePrevDays: null, priceUsd: 100 + i, liquidityUsd: 1e8, priceChange24h: 0, tradeable: true, lastUpdateEpoch: 1047, ok: true });
@@ -72,7 +72,7 @@ describe("GET /api/activity splits (spec 3.2)", () => {
     const today = new Date().toISOString().slice(0, 10);
     const twoDaysAgo = new Date(Date.now() - 2 * 86_400_000);
     const base = { userPubkey: U, walletPubkey: "W", usdcPulledCents: 203, networkFeeCents: 3, status: "confirmed" as const, aiLine: null, ts: twoDaysAgo };
-    const leg = { usdcInCents: 200, amountOutRaw: 1_000_000_000n, staked: false, feeAmountRaw: 0n, feeCents: 1, rateAtPlanting: null };
+    const leg = { usdcInCents: 200, amountOutRaw: 1_000_000_000n, staked: false, feeAmountRaw: 0n, feeCents: 1, rateAtPlanting: null, venue: null };
     await repo.putCoinDay({ day: today, asset: "hSOL", rate: 1.2, ratePrev: null, ratePrevDays: null, priceUsd: 168, liquidityUsd: 1e8, priceChange24h: 0, tradeable: true, lastUpdateEpoch: 1047, ok: true });
     await repo.insertPlanting({ ...base, signature: "s1" }, [{ ...leg, asset: "hSOL" }]);    // no row on its day: the week's latest
     await repo.insertPlanting({ ...base, signature: "s2" }, [{ ...leg, asset: "stORE" }]);   // no row at all: the live stORE price
@@ -84,7 +84,7 @@ describe("GET /api/activity splits (spec 3.2)", () => {
 
   it("serves each planting leg's USDC fee in cents (spec 7.4)", async () => {
     await repo.insertPlanting({ userPubkey: U, walletPubkey: "W", signature: "sig", usdcPulledCents: 203, networkFeeCents: 3, status: "confirmed", aiLine: null },
-      [{ asset: "hSOL", usdcInCents: 200, amountOutRaw: 1_000_000_000n, staked: false, feeAmountRaw: 0n, feeCents: 1, rateAtPlanting: 1.18 }]);
+      [{ asset: "hSOL", usdcInCents: 200, amountOutRaw: 1_000_000_000n, staked: false, feeAmountRaw: 0n, feeCents: 1, rateAtPlanting: 1.18, venue: null }]);
     const res = await activity(new Request("http://x/api/activity", { headers: { authorization: `Bearer ${await issueSession(U, "M")}` } }));
     const body = (await res.json()) as { plantings: { legs: { asset: string; feeCents: number; feeAmountRaw: string }[] }[] };
     expect(body.plantings[0].legs[0].feeCents).toBe(1);

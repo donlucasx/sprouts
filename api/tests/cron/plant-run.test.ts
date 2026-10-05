@@ -436,7 +436,7 @@ describe("runPlanting", () => {
   it("a sent planting booked late without a before-read estimates its minted shares from the leg and the share price", async () => {
     const repo = await seeded([]);
     const p = await repo.insertPlanting({ userPubkey: "U", walletPubkey: "W", signature: "old", usdcPulledCents: 218, networkFeeCents: 3, status: "sent", aiLine: null },
-      [{ asset: "SKR", usdcInCents: 215, amountOutRaw: 1_146_000_000n, staked: true, feeAmountRaw: 0n, feeCents: 1, rateAtPlanting: null }]);
+      [{ asset: "SKR", usdcInCents: 215, amountOutRaw: 1_146_000_000n, staked: true, feeAmountRaw: 0n, feeCents: 1, rateAtPlanting: null, venue: null }]);
     p.ts = new Date(NOW.getTime() - 10 * 60_000);
     await runPlanting({ repo, now: NOW, chain: fakeChain({ signatureStatus: async () => "confirmed", readShares: async () => 5_000_000_000n }) });
     const row = repo.plantings.get(p.id)!;

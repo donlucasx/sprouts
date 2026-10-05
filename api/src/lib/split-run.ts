@@ -110,7 +110,7 @@ export async function decideSplits(a: { repo: Repo; now: Date; model: ModelCall 
       continue;
     }
     const yesterday = (await a.repo.latestSplitDay(stop, day))?.split ?? null;
-    const row: SplitDayRow = { day, stop, split: zeroSplit(), modelAnswer: null, why: null, fallback: null, callId: null };
+    const row: SplitDayRow = { day, stop, split: zeroSplit(), modelAnswer: null, why: null, fallback: null, callId: null, venuePick: null };
     const byRule = (reason: string) => {
       row.split = fallbackSplit({ stop, growth: growthMap, noData, yesterday });
       row.fallback = reason;

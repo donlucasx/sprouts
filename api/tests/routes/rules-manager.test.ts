@@ -26,7 +26,7 @@ beforeEach(async () => {
 // Spec 3.1 and 4.2: the switch, the stop and the pins are saved with the rest, never a raise; the split is recomputed at once.
 describe("PUT /api/rules with the Yield Manager", () => {
   it("turning it on takes the stop's latest split at once and records the change as yours", async () => {
-    await repo.putSplitDay({ day: "2026-10-01", stop: "balanced", split: split({ SKR: 40, stORE: 5, hSOL: 25, USDC_LEND: 15, SOL_LEND: 10, cbBTC: 5 }), modelAnswer: null, why: "w", fallback: null, callId: 1 });
+    await repo.putSplitDay({ day: "2026-10-01", stop: "balanced", split: split({ SKR: 40, stORE: 5, hSOL: 25, USDC_LEND: 15, SOL_LEND: 10, cbBTC: 5 }), modelAnswer: null, why: "w", fallback: null, callId: 1, venuePick: null });
     const res = await put({ managed: true, stop: "balanced" });
     expect(res.status).toBe(200);
     const body = (await res.json()) as { managed: boolean; stop: string; allocation: Split };

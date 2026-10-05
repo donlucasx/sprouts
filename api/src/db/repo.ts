@@ -1,9 +1,12 @@
 import type * as T from "./types";
-import type { Asset, Stop } from "@/domain/coins";
+import type { Asset, LiveAsset, LendAsset, Stop } from "@/domain/coins";
+import type { Venue } from "@/domain/venues";
 
 /** A planting as the run records it; the share columns are filled in by the run and the confirmation [A16]. */
 /** `ts` is the run's own clock (the reconciliation measures age against it); left out, the store stamps the row itself. */
-export type NewPlanting = Omit<T.PlantingRow, "id" | "ts" | "sharesBefore" | "sharesAfter" | "sharesMinted" | "skrCarryInRaw" | "skrSurplusRaw"> & { sharesBefore?: bigint | null; ts?: Date; skrCarryInRaw?: bigint };
+export type NewPlanting = Omit<T.PlantingRow, "id" | "ts" | "sharesBefore" | "sharesAfter" | "sharesMinted" | "skrCarryInRaw" | "skrSurplusRaw"> & {
+  sharesBefore?: bigint | null; ts?: Date; skrCarryInRaw?: bigint; carryIn?: Partial<Record<Exclude<T.CarryKind, "SKR">, bigint>>;
+};
 
 export type NewWatcherCall = Omit<T.WatcherCallRow, "id" | "ts"> & { ts?: Date };
 export type NewWithdrawal = { userPubkey: string; asset: Asset; source: T.WithdrawalSource; unstakeSignature: string | null; sharesUnstaked: bigint; amountRaw: bigint; principalRaw: bigint };
@@ -23,14 +26,14 @@ export interface Repo {
   /** Every user whose Yield Manager is on, for the daily apply (spec 6.6). */
   listManagedRules(): Promise<T.RulesRow[]>;
 
-  addWallet(w: { pubkey: string; userPubkey: string; delegationPda: string; dailyCapCents: number; webhookAdded?: boolean }): Promise<T.WalletRow>;
+  addWallet(w: { pubkey: string; userPubkey: string; delegationPda: string; dailyCapCents: number; webhookAdded?: boolean; linkModel?: T.LinkModel }): Promise<T.WalletRow>;
   getWallet(pubkey: string): Promise<T.WalletRow | null>;
   listActiveWallets(): Promise<T.WalletRow[]>;
   listPausedWallets(): Promise<T.WalletRow[]>;
   /** Every status, so a revoked wallet stays visible in the app [A20]. */
   listWalletsOf(userPubkey: string): Promise<T.WalletRow[]>;
   setWalletStatus(pubkey: string, status: T.WalletStatus): Promise<void>;
-  bumpLedger(pubkey: string, asset: Asset, cents: number): Promise<void>;
+  bumpLedger(pubkey: string, asset: LiveAsset, cents: number): Promise<void>;
 
   /** False when the signature is already booked. */
   insertSwap(s: Omit<T.SwapRow, "plantingId" | "createdAt">): Promise<boolean>;
@@ -46,7 +49,7 @@ export interface Repo {
   setPlantingStatus(id: string, status: T.PlantingStatus, signature?: string): Promise<void>;
   setPlantingShares(plantingId: string, p: { before: bigint | null; after: bigint; minted: bigint }): Promise<void>;
   /** R141: the leg's amount becomes what landed, once read after confirmation. */
-  setLegAmountOut(plantingId: string, asset: Asset, amountOutRaw: bigint): Promise<void>;
+  setLegAmountOut(plantingId: string, asset: LiveAsset, amountOutRaw: bigint): Promise<void>;
   /**
    * R207 #2: the user's SKR remainder still in the puller's account, = the surplus of their confirmed plantings minus the carry of
    * their sent and confirmed ones. Only this user's rows count; a failed planting's carry is given back.
@@ -116,13 +119,35 @@ export interface Repo {
 
   // The Yield Manager's tables (spec 5.2, 6.7).
   putCoinDay(row: T.CoinDayRow): Promise<void>;
-  getCoinDay(day: string, asset: Asset): Promise<T.CoinDayRow | null>;
+  getCoinDay(day: string, asset: LiveAsset): Promise<T.CoinDayRow | null>;
   /** One asset's rows from `sinceDay` on, oldest first. */
-  listCoinDays(asset: Asset, sinceDay: string): Promise<T.CoinDayRow[]>;
+  listCoinDays(asset: LiveAsset, sinceDay: string): Promise<T.CoinDayRow[]>;
   putSplitDay(row: T.SplitDayRow): Promise<void>;
   getSplitDay(day: string, stop: Stop): Promise<T.SplitDayRow | null>;
   /** The newest row for the stop, or the newest strictly before `beforeDay` when given. */
   latestSplitDay(stop: Stop, beforeDay?: string): Promise<T.SplitDayRow | null>;
+
+  // 0008: venues and the scout (contracts 4)
+  putVenueDay(row: T.VenueDayRow): Promise<void>;
+  listVenueDays(day: string): Promise<T.VenueDayRow[]>;
+  /** Oldest first. */
+  listVenueHistory(venue: Venue, asset: LendAsset, sinceDay: string): Promise<T.VenueDayRow[]>;
+  putFoundVenues(rows: T.FoundVenueRow[]): Promise<void>;
+  /** Newest first. */
+  listFoundVenues(sinceDay: string, limit: number): Promise<T.FoundVenueRow[]>;
+  // moves
+  /** Null when one is already open for the user (unique index move_proposals_one_open). */
+  insertMoveProposal(p: Omit<T.MoveProposalRow, "id" | "ts" | "status" | "redeemSignature" | "depositSignature" | "closedAt">): Promise<T.MoveProposalRow | null>;
+  openMoveProposal(userPubkey: string): Promise<T.MoveProposalRow | null>;
+  getMoveProposal(id: string): Promise<T.MoveProposalRow | null>;
+  setMoveProposalStatus(id: string, status: T.MoveStatus, sig?: { redeem?: string; deposit?: string }): Promise<void>;
+  // carry (SKR keeps skrCreditRaw / setPlantingSkrSurplus / skrCarryInRaw unchanged)
+  carryCreditRaw(userPubkey: string, kind: T.CarryKind): Promise<bigint>;
+  /** Written once per (planting, kind); creates the row when the planting carried nothing in. */
+  setPlantingSurplus(plantingId: string, kind: Exclude<T.CarryKind, "SKR">, surplusRaw: bigint): Promise<void>;
+  // links and terms
+  setWalletLink(pubkey: string, l: { delegationPda: string; linkModel: T.LinkModel }): Promise<void>;
+  setTermsAccepted(userPubkey: string, version: string, at: Date): Promise<void>;
 }
 
 let forTests: Repo | null = null;

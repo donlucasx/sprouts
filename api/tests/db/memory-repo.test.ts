@@ -45,7 +45,7 @@ describe("MemoryRepo", () => {
     await r.insertSwap(swap("s", 100));
     const p = await r.insertPlanting(
       { userPubkey: "U", walletPubkey: "W", signature: "sig", usdcPulledCents: 103, networkFeeCents: 3, status: "sent", aiLine: null },
-      [{ asset: "SKR", usdcInCents: 100, amountOutRaw: 4_800_000n, staked: true, feeAmountRaw: 24_000n, feeCents: 0, rateAtPlanting: null }],
+      [{ asset: "SKR", usdcInCents: 100, amountOutRaw: 4_800_000n, staked: true, feeAmountRaw: 24_000n, feeCents: 0, rateAtPlanting: null, venue: null }],
     );
     expect(await r.claimSwaps(["s"], p.id)).toBe(1);
     expect(await r.claimSwaps(["s"], "another")).toBe(0);
@@ -141,8 +141,8 @@ describe("the Yield Manager's rows (spec 8)", () => {
     expect((await repo.getCoinDay("2026-10-01", "hSOL"))?.rate).toBe(1.18);
     expect(await repo.getCoinDay("2026-10-01", "cbBTC")).toBeNull();
 
-    await repo.putSplitDay({ day: "2026-10-01", stop: "balanced", split: SKR_ONLY, modelAnswer: null, why: null, fallback: "no data", callId: null });
-    await repo.putSplitDay({ day: "2026-10-02", stop: "balanced", split: { ...SKR_ONLY, SKR: 90, hSOL: 10 }, modelAnswer: { SKR: 90 }, why: "w", fallback: null, callId: 7 });
+    await repo.putSplitDay({ day: "2026-10-01", stop: "balanced", split: SKR_ONLY, modelAnswer: null, why: null, fallback: "no data", callId: null, venuePick: null });
+    await repo.putSplitDay({ day: "2026-10-02", stop: "balanced", split: { ...SKR_ONLY, SKR: 90, hSOL: 10 }, modelAnswer: { SKR: 90 }, why: "w", fallback: null, callId: 7, venuePick: null });
     expect((await repo.getSplitDay("2026-10-02", "balanced"))?.split.hSOL).toBe(10);
     expect((await repo.latestSplitDay("balanced"))?.day).toBe("2026-10-02");
     expect((await repo.latestSplitDay("balanced", "2026-10-02"))?.day).toBe("2026-10-01");
@@ -154,7 +154,7 @@ describe("the Yield Manager's rows (spec 8)", () => {
     await repo.upsertUser({ seedVaultPubkey: "U", sgtMint: "M", skrName: null });
     await repo.addWallet({ pubkey: "W", userPubkey: "U", delegationPda: "D", dailyCapCents: 500 });
     const p = await repo.insertPlanting({ userPubkey: "U", walletPubkey: "W", signature: "s", usdcPulledCents: 203, networkFeeCents: 3, status: "sent", aiLine: null },
-      [{ asset: "hSOL", usdcInCents: 200, amountOutRaw: 14_000_000n, staked: false, feeAmountRaw: 0n, feeCents: 1, rateAtPlanting: 1.1889 }]);
+      [{ asset: "hSOL", usdcInCents: 200, amountOutRaw: 14_000_000n, staked: false, feeAmountRaw: 0n, feeCents: 1, rateAtPlanting: 1.1889, venue: null }]);
     const [leg] = await repo.plantingLegs(p.id);
     expect(leg.feeCents).toBe(1);
     expect(leg.rateAtPlanting).toBe(1.1889);
@@ -172,5 +172,75 @@ describe("the Yield Manager's rows (spec 8)", () => {
     const rows = await repo.listEvents("U", ["split_changed", "split_undone"], 10);
     expect(rows.map((e) => e.kind)).toEqual(["split_undone", "split_changed"]);
     expect((await repo.listEvents("U", ["split_changed", "split_undone"], 1)).length).toBe(1);
+  });
+});
+
+import type { VenueDayRow } from "@/db/types";
+
+describe("0008: venues, carry, moves, links, terms (memory repo)", () => {
+  const vd = (day: string, venue: VenueDayRow["venue"], supplyPct: number): VenueDayRow => ({
+    day, venue, asset: "USDC_LEND", supplyPct, rewardsPct: 0, utilizationPct: 90, withdrawableUsd: 1e7, tvlUsd: 1.2e8, exchangeRate: 1.2038,
+    avg7Pct: supplyPct, daysMeasured: 1, eligible: true, verdict: null, reason: null, served: null, ok: true,
+  });
+
+  it("venue days upsert on (day, venue, asset); history is oldest first from a day on", async () => {
+    const repo = new MemoryRepo();
+    await repo.putVenueDay(vd("2026-10-04", "kamino_klend", 4.4));
+    await repo.putVenueDay(vd("2026-10-05", "kamino_klend", 4.5));
+    await repo.putVenueDay({ ...vd("2026-10-05", "kamino_klend", 4.6), verdict: "avoid", reason: "near_full" });
+    await repo.putVenueDay(vd("2026-10-05", "jupiter_lend", 4.2));
+    expect((await repo.listVenueDays("2026-10-05")).length).toBe(2);
+    expect((await repo.listVenueHistory("kamino_klend", "USDC_LEND", "2026-10-01")).map((r) => r.supplyPct)).toEqual([4.4, 4.6]);
+    expect((await repo.listVenueDays("2026-10-05")).find((r) => r.venue === "kamino_klend")!.reason).toBe("near_full");
+  });
+
+  it("found venues: newest first, limited", async () => {
+    const repo = new MemoryRepo();
+    await repo.putFoundVenues([{ day: "2026-10-04", poolId: "a", project: "kamino-lend", symbol: "SOL", asset: "SOL", apyBasePct: 5.6, tvlUsd: 2.5e7, note: null }]);
+    await repo.putFoundVenues([{ day: "2026-10-05", poolId: "b", project: "credix", symbol: "USDC", asset: "USDC", apyBasePct: 0.07, tvlUsd: 1.3e7, note: "x" }]);
+    expect((await repo.listFoundVenues("2026-10-01", 1)).map((r) => r.poolId)).toEqual(["b"]);
+  });
+
+  it("carry per user per kind: surplus of confirmed plantings minus carry of sent and confirmed ones; a failed planting gives its carry back", async () => {
+    const repo = new MemoryRepo();
+    await repo.upsertUser({ seedVaultPubkey: "U", sgtMint: "M", skrName: null });
+    await repo.addWallet({ pubkey: "W", userPubkey: "U", delegationPda: "D", dailyCapCents: 500 });
+    const base = { userPubkey: "U", walletPubkey: "W", usdcPulledCents: 203, networkFeeCents: 3, aiLine: null };
+    const a = await repo.insertPlanting({ ...base, signature: "a", status: "sent" }, []);
+    await repo.setPlantingStatus(a.id, "confirmed");
+    await repo.setPlantingSurplus(a.id, "WSOL", 500n);
+    await repo.setPlantingSurplus(a.id, "WSOL", 900n);           // written once
+    expect(await repo.carryCreditRaw("U", "WSOL")).toBe(500n);
+    expect(await repo.carryCreditRaw("U", "USDC")).toBe(0n);
+    const b = await repo.insertPlanting({ ...base, signature: "b", status: "sent", carryIn: { WSOL: 500n } }, []);
+    expect(await repo.carryCreditRaw("U", "WSOL")).toBe(0n);
+    await repo.setPlantingStatus(b.id, "failed");
+    expect(await repo.carryCreditRaw("U", "WSOL")).toBe(500n);
+    expect(await repo.carryCreditRaw("U", "SKR")).toBe(await repo.skrCreditRaw("U"));
+  });
+
+  it("move proposals: at most one open per user; status closes it", async () => {
+    const repo = new MemoryRepo();
+    const p = { userPubkey: "U", asset: "USDC_LEND" as const, fromVenue: "jupiter_lend" as const, toVenue: "kamino_klend" as const, receiptRaw: 9_000_000n, valueUsd: 1000, fromAvg7Pct: 4.19, toAvg7Pct: 4.43, gain30dUsd: 0.1973, costUsd: 0.01 };
+    const first = await repo.insertMoveProposal(p);
+    expect(first?.status).toBe("open");
+    expect(await repo.insertMoveProposal(p)).toBeNull();
+    expect((await repo.openMoveProposal("U"))?.id).toBe(first!.id);
+    await repo.setMoveProposalStatus(first!.id, "done", { redeem: "r", deposit: "d" });
+    const done = await repo.getMoveProposal(first!.id);
+    expect(done).toMatchObject({ status: "done", redeemSignature: "r", depositSignature: "d" });
+    expect(done!.closedAt).not.toBeNull();
+    expect(await repo.openMoveProposal("U")).toBeNull();
+  });
+
+  it("links and terms", async () => {
+    const repo = new MemoryRepo();
+    await repo.upsertUser({ seedVaultPubkey: "U", sgtMint: "M", skrName: null });
+    await repo.addWallet({ pubkey: "W", userPubkey: "U", delegationPda: "D", dailyCapCents: 500 });
+    expect((await repo.getWallet("W"))!.linkModel).toBe("puller");
+    await repo.setWalletLink("W", { delegationPda: "D2", linkModel: "leash" });
+    expect(await repo.getWallet("W")).toMatchObject({ delegationPda: "D2", linkModel: "leash" });
+    await repo.setTermsAccepted("U", "2026-10-06", new Date("2026-10-06T10:00:00Z"));
+    expect(await repo.getUser("U")).toMatchObject({ termsVersion: "2026-10-06" });
   });
 });

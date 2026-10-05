@@ -4,7 +4,7 @@ import { holdingsFrom, latestCoinDays, rateFacts } from "@/lib/holdings";
 import type { CoinDayRow, PlantingLegRow } from "@/db/types";
 
 const day = (asset: CoinDayRow["asset"], rate: number | null, priceUsd: number): CoinDayRow => ({ day: "2026-10-04", asset, rate, ratePrev: null, ratePrevDays: null, priceUsd, liquidityUsd: null, priceChange24h: null, tradeable: true, lastUpdateEpoch: 1047, ok: true });
-const leg = (asset: PlantingLegRow["asset"], usdcInCents: number, amountOutRaw: bigint, rateAtPlanting: number | null): PlantingLegRow => ({ plantingId: "p", asset, usdcInCents, amountOutRaw, staked: false, feeAmountRaw: 0n, feeCents: 1, rateAtPlanting });
+const leg = (asset: PlantingLegRow["asset"], usdcInCents: number, amountOutRaw: bigint, rateAtPlanting: number | null): PlantingLegRow => ({ plantingId: "p", asset, usdcInCents, amountOutRaw, staked: false, feeAmountRaw: 0n, feeCents: 1, rateAtPlanting, venue: null });
 
 // Spec 7.6: value from the balance and today's price; earned from each leg's amount times the rate's rise since planting, in the
 // coin's underlying (SOL or ORE), priced at today's underlying price derived from the coin's own price over its rate.
