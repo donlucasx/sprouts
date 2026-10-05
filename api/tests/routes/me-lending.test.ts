@@ -112,12 +112,21 @@ describe("GET /api/me, lending (contracts 5.2)", () => {
     vi.mocked(readLeashConfig).mockResolvedValueOnce({ legs } as LeashConfig);
     const body = await get();
     expect(body.manager.picks).toEqual({ USDC_LEND: "jupiter_lend", SOL_LEND: null });
-    expect(body.manager.why).toBe("Your USDC goes to Jupiter at 4.2%: your wallet's leash does not take USDC to Kamino yet. No lending venue passed today's checks; your SOL share goes to the next leg.");
+    // R344: the leash adds no sentence of its own; the plain one an unleashed wallet gets when its pick is simply the venue it plants to.
+    expect(body.manager.why).toBe("Your USDC goes to Jupiter at 4.2%. No lending venue passed today's checks; your SOL share goes to the next leg.");
+    expect(body.manager.why).not.toMatch(/leash/i);
     expect(body.lendSigns.USDC_LEND).toMatchObject({ venue: "jupiter_lend" });
     // Kamino's leash leg enabled: the stop's pick and its stored sentence stand.
     const both = LEG_BYTES.map((b) => ({ enabled: b === 0 || b === 2 || b === 3, reader: 0, feeBps: 0, tolBps: 0 })) as unknown as LeashConfig["legs"];
     vi.mocked(readLeashConfig).mockResolvedValueOnce({ legs: both } as LeashConfig);
     expect((await get()).manager).toMatchObject({ picks: { USDC_LEND: "kamino_klend", SOL_LEND: null }, why: "w" });
+    // R344: no allowed venue qualifies for USDC: no lending sentence at all (never the leash words, never a stale name of the disallowed pick).
+    await repo.putVenueDay({ day, venue: "jupiter_lend", asset: "USDC_LEND", supplyPct: 4.19, rewardsPct: 0, utilizationPct: 90, withdrawableUsd: 1e7, tvlUsd: 1.2e8, exchangeRate: 1.06, avg7Pct: 4.2, daysMeasured: 2, eligible: false, verdict: "avoid", reason: "near_full", served: null, ok: true });
+    vi.mocked(readLeashConfig).mockResolvedValueOnce({ legs } as LeashConfig);
+    const none = (await get()).manager;
+    expect(none.picks.USDC_LEND).toBeNull();
+    // (the SOL sentence is the unchanged non-leash one: SOL's own pick is null in the stop's row.)
+    expect(none.why ?? "").not.toMatch(/leash|Kamino|Jupiter|USDC/i);
   });
   it("legsEnabled: the leash config's enabled legs once a wallet is leashed; [] when the config cannot be read", async () => {
     await repo.setWalletLink("W", { delegationPda: "D5", linkModel: "leash" });

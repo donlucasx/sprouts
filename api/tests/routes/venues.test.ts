@@ -46,13 +46,15 @@ describe("GET /api/venues (contracts 5.1)", () => {
     expect(body.why).toBe("Kamino already holds 60% of your lending and no other venue passed today's checks; your USDC share goes to the next leg. No lending venue passed today's checks; your SOL share goes to the next leg.");
     expect(body.venues.find((v: { venue: string }) => v.venue === "kamino_klend").picked).toBe(false);
   });
-  it("residual O2: a leashed user's picks are the venues the leash allows; with none allowed the sentence says the leash", async () => {
+  it("residual O2: a leashed user's picks are the venues the leash allows; with none allowed there is no USDC sentence and no leash wording", async () => {
     await repo.addWallet({ pubkey: "W", userPubkey: U, delegationPda: "D", dailyCapCents: 500, linkModel: "leash" });
     const legs = LEG_BYTES.map((b) => ({ enabled: b === 0 || b === 3, reader: 0, feeBps: 0, tolBps: 0 })) as unknown as LeashConfig["legs"];
     vi.mocked(readLeashConfig).mockResolvedValueOnce({ legs } as LeashConfig);   // USDC on Jupiter only, and Jupiter is avoided today
     const body = await (await get()).json();
     expect(body.picks).toEqual({ USDC_LEND: null, SOL_LEND: null });
-    expect(body.why).toBe("Your wallet's leash does not take USDC to Kamino yet and no venue it allows passed today's checks; your USDC share goes to the next leg.");   // the SOL sentence would pass WHY_MAX
+    // R344: nothing about USDC (no leash wording, no stale venue); the SOL sentence is the unchanged non-leash one.
+    expect(body.why).toBe("No lending venue passed today's checks; your SOL share goes to the next leg.");
+    expect(body.why).not.toMatch(/leash|USDC/i);
     expect(body.venues.find((v: { venue: string }) => v.venue === "kamino_klend").picked).toBe(false);
   });
   it("K-I5: the receipts unreadable: the stop's picks and sentence stand", async () => {
