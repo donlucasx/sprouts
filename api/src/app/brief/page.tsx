@@ -7,7 +7,7 @@ const outfit = Outfit({ subsets: ["latin"], weight: ["500", "600"], variable: "-
 const albert = Albert_Sans({ subsets: ["latin"], weight: ["400", "600"], variable: "--font-body" });
 
 const LEAD =
-  "Sprouts rounds up every swap you make on your Seeker and plants the spare change each day into SKR staking plus the coins and lending venues the AI Yield Manager picks, all landing in your own wallet. You watch it grow as a painted garden, and you can withdraw any time.";
+  "Your Seeker's spare change, planted. Every swap rounds up into SKR and stORE that only your Seed Vault can unlock, and an AI yield manager grows the rest in lending. Watch your garden grow. Withdraw any time."; // R354
 
 export const metadata: Metadata = {
   title: "Sprouts brief",

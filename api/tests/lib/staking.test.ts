@@ -1,8 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { address, createNoopSigner, AccountRole } from "@solana/kit";
-import { userStakePda, buildStakeIx, buildWithdrawIx, buildUnstakeIx, buildCancelUnstakeIx } from "@/lib/staking";
+import { userStakePda, buildStakeIx, buildWithdrawIx, buildCrankWithdrawIxs, buildUnstakeIx, buildCancelUnstakeIx } from "@/lib/staking";
 import { getUnstakeInstructionDataDecoder, UNSTAKE_DISCRIMINATOR, CANCEL_UNSTAKE_DISCRIMINATOR } from "@/generated/staking";
-import { STAKE_CONFIG, GUARDIAN_POOL, SKR_STAKING_PROGRAM } from "@/lib/constants";
+import { STAKE_CONFIG, GUARDIAN_POOL, SKR_STAKING_PROGRAM, SKR_MINT } from "@/lib/constants";
+import { ASSOCIATED_TOKEN_PROGRAM_ADDRESS, findAssociatedTokenPda, TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
 
 const user = address("DdpHknAJvVsG8HYTAN3ZmSLLiPh2GfXP2pMoJJFa1p9m");
 const payerAddress = address("ADaL11LqTrsaqMh5XkyVGV6nE2wPdvPaR7GgFSvvJWuD");
@@ -28,6 +29,19 @@ describe("staking helpers", () => {
     const ix = await buildWithdrawIx({ user });
     expect(ix.accounts!.some((a) => isSigner(a.role))).toBe(false);
     expect(ix.accounts!.map((a) => a.address)).toContain(user);
+  });
+
+  // 10-05 (the Saga's 5 SKR, failed twice with AccountNotInitialized on user_token_account): Sprouts stakes for the user, so their
+  // SKR account may never exist; the crank creates it first (idempotent, the puller pays), then withdraws into it.
+  it("the crank creates the user's SKR account before the withdraw, paid by the puller", async () => {
+    const [ata] = await findAssociatedTokenPda({ owner: user, mint: SKR_MINT, tokenProgram: TOKEN_PROGRAM_ADDRESS });
+    const [create, withdraw] = await buildCrankWithdrawIxs({ payer: createNoopSigner(payerAddress), user });
+    expect(create.programAddress).toBe(ASSOCIATED_TOKEN_PROGRAM_ADDRESS);
+    expect(create.data![0]).toBe(1); // CreateIdempotent: an existing account is left alone
+    expect(create.accounts!.map((a) => a.address)).toEqual(expect.arrayContaining([payerAddress, ata, user, SKR_MINT]));
+    expect(create.accounts!.filter((a) => isSigner(a.role)).map((a) => a.address)).toEqual([payerAddress]);
+    expect(withdraw.programAddress).toBe(SKR_STAKING_PROGRAM);
+    expect(withdraw.accounts!.map((a) => a.address)).toContain(ata);
   });
 
   // Task 7: the unstake is the one act only the Seeker's key can do; its shares are read back from the data the wallet signs.
