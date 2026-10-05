@@ -466,17 +466,17 @@ describe("runPlanting", () => {
 
   it("a leg records the USDC fee in cents and the coin's rate from today's snapshot, null before the first snapshot", async () => {
     const repo = await seeded([215]);
-    await repo.saveRules("U", { allocation: { ...SKR_ONLY, SKR: 0, JupSOL: 100 } });
+    await repo.saveRules("U", { allocation: { ...SKR_ONLY, SKR: 0, SOL_LEND: 100 } });
     const a = await runPlanting({ repo, now: NOW, chain: fakeChain() });
-    expect(a.planted[0].asset).toBe("JupSOL");
+    expect(a.planted[0].asset).toBe("SOL_LEND");
     const legA = (await repo.plantingLegs([...repo.plantings.values()][0].id))[0];
     expect(legA.feeCents).toBe(1);          // 0.5% of $2.18, rounded
     expect(legA.rateAtPlanting).toBeNull();
     expect(legA.feeAmountRaw).toBe(0n);
     await repo.insertSwap({ signature: "s9", walletPubkey: "W", ts: NOW, inMint: "a", inAmount: 1, outMint: "b", outAmount: 1, usdSizeCents: 100, class: "major", roundupCents: 215 });
-    await repo.putCoinDay({ day: "2026-09-30", asset: "JupSOL", rate: 1.21199, ratePrev: null, ratePrevDays: null, priceUsd: 143, liquidityUsd: 6e8, priceChange24h: 0, tradeable: true, lastUpdateEpoch: 1046, ok: true });
+    await repo.putCoinDay({ day: "2026-09-30", asset: "SOL_LEND", rate: 1.21199, ratePrev: null, ratePrevDays: null, priceUsd: 143, liquidityUsd: 6e8, priceChange24h: 0, tradeable: true, lastUpdateEpoch: 1046, ok: true });
     const b = await runPlanting({ repo, now: new Date(NOW.getTime() + 86_400_000), chain: fakeChain() });
-    expect(b.planted[0].asset).toBe("JupSOL");
+    expect(b.planted[0].asset).toBe("SOL_LEND");
     const legB = (await repo.plantingLegs([...repo.plantings.values()][1].id))[0];
     expect(legB.rateAtPlanting).toBeCloseTo(1.21199, 5);
   });

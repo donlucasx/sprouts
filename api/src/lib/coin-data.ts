@@ -1,6 +1,6 @@
 import type { Repo } from "@/db/repo";
 import type { CoinDayRow } from "@/db/types";
-import { ASSETS, COINS, type Asset } from "@/domain/coins";
+import { ASSETS, COINS, type Asset, type LiveAsset } from "@/domain/coins";
 import { dayOf, daysBetween } from "@/domain/day";
 import { parseStakePool, solPerToken } from "./stake-pool";
 import type { PriceInfo } from "./jupiter";
@@ -14,7 +14,7 @@ export type CoinReads = {
   currentEpoch(): Promise<bigint>;
   prices(mints: string[]): Promise<Record<string, PriceInfo>>;
   /** A $2 quote with the planting's own settings lands with price impact under the limit. */
-  quoteOk(asset: Asset): Promise<boolean>;
+  quoteOk(asset: LiveAsset): Promise<boolean>;
 };
 
 /** A Solana epoch is about two days: the span of the day-one seed from a pool's last-epoch pair. */
@@ -50,7 +50,7 @@ export async function snapshotCoins(a: { repo: Repo; now: Date; reads: CoinReads
     }
     try {
       await readRate(asset, row, a.reads, epoch);
-      row.tradeable = asset === "SKR" ? true : await a.reads.quoteOk(asset);
+      row.tradeable = asset === "SKR" || asset === "USDC_LEND" ? true : await a.reads.quoteOk(asset);
       row.ok = true;
     } catch (e) {
       console.error(`snapshot: ${asset} is no data today: ${msg(e)}`);
@@ -81,7 +81,7 @@ async function readRate(asset: Asset, row: CoinDayRow, reads: CoinReads, epoch: 
   } else if (coin.kind === "store") {
     row.rate = Number(await reads.storeRate()) / 1e9;
   }
-  if (coin.kind !== "btc" && !(row.rate !== null && row.rate > 0)) throw new Error("no rate");
+  if (coin.kind !== "btc" && coin.kind !== "lend" && !(row.rate !== null && row.rate > 0)) throw new Error("no rate");
 }
 
 export const annualisedPct = (ratio: number, days: number): number => (Math.pow(ratio, 365 / days) - 1) * 100;

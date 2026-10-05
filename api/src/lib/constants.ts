@@ -7,6 +7,7 @@ export const STAKE_VAULT = address("8isViKbwhuhFhsv2t8vaFL74pKCqaFPQXo1KkeQwZbB8
 export const GUARDIAN_POOL = address("DPJ58trLsF9yPrBa2pk6UaRkvqW8hWUYjawe788WBuqr");
 export const SUBSCRIPTIONS_PROGRAM = address("De1egAFMkMWZSN5rYXRj9CAdheBamobVNubTsi9avR44");
 export const USDC_MINT = address("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
+export const WSOL_MINT = address("So11111111111111111111111111111111111111112");
 export const STORE_MINT = address("storenSbvkfzircixnaosc5CbzNZVrHJ6S3EKrS1yqR");
 export const GENESIS_GROUP = address("GT22s89nU4iWFkNXj1Bw6uYhJJWDRPpShHt4Bk8f99Te");
 

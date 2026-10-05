@@ -20,7 +20,7 @@ describe("GET /api/activity splits (spec 3.2)", () => {
   });
 
   it("lists the manager's changes, yours and undos, newest first, from the events", async () => {
-    const to = { ...SKR_ONLY, SKR: 45, hSOL: 20, JitoSOL: 15, JupSOL: 10, cbBTC: 10 };
+    const to = { ...SKR_ONLY, SKR: 45, hSOL: 20, USDC_LEND: 15, SOL_LEND: 10, cbBTC: 10 };
     await repo.addEvent({ userPubkey: U, walletPubkey: null, kind: "split_changed", detail: { by: "you", from: SKR_ONLY, to, stop: "balanced", managed: true, day: "2026-10-02" } });
     await repo.addEvent({ userPubkey: U, walletPubkey: null, kind: "split_changed", detail: { by: "manager", from: to, to: { ...to, hSOL: 25, cbBTC: 5 }, stop: "balanced", why: "hSOL grew the most.", fallback: null, day: "2026-10-03" } });
     await repo.addEvent({ userPubkey: U, walletPubkey: null, kind: "split_undone", detail: { from: { ...to, hSOL: 25, cbBTC: 5 }, to, day: "2026-10-03" } });

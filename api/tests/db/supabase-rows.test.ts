@@ -7,7 +7,7 @@ describe("supabase row mappers", () => {
 
   it("rulesRow reads a two-key allocation from before 0005 as six keys, and the manager's fields from their defaults", () => {
     const r = rulesRow({ ...base, allocation: { SKR: 80, stORE: 20 }, managed: false, stop: "balanced", pins: { stORE: 20 }, prev_allocation: null, allocation_day: null });
-    expect(r.allocation).toEqual({ SKR: 80, stORE: 20, hSOL: 0, JitoSOL: 0, JupSOL: 0, cbBTC: 0 });
+    expect(r.allocation).toEqual({ SKR: 80, stORE: 20, USDC_LEND: 0, SOL_LEND: 0, hSOL: 0, cbBTC: 0 });
     expect(r.pins).toEqual({ stORE: 20 });
     expect(r.managed).toBe(false);
     expect(r.allocationDay).toBeNull();
@@ -16,9 +16,9 @@ describe("supabase row mappers", () => {
 
   it("rulesRow reads a six-key allocation, a previous one and the day", () => {
     const r = rulesRow({ ...base, allocation: { SKR: 45, stORE: 0, hSOL: 20, JitoSOL: 15, JupSOL: 10, cbBTC: 10 }, managed: true, stop: "bold", pins: {}, prev_allocation: { SKR: 100 }, allocation_day: "2026-10-02", pins_by_undo: true });
-    expect(r.allocation.hSOL).toBe(20);
+    expect(r.allocation).toEqual({ SKR: 70, stORE: 0, USDC_LEND: 0, SOL_LEND: 0, hSOL: 20, cbBTC: 10 }); // legacy JitoSOL 15 + JupSOL 10 fold into SKR
     expect(r.pinsByUndo).toBe(true);
-    expect(r.prevAllocation).toEqual({ SKR: 100, stORE: 0, hSOL: 0, JitoSOL: 0, JupSOL: 0, cbBTC: 0 });
+    expect(r.prevAllocation).toEqual({ SKR: 100, stORE: 0, USDC_LEND: 0, SOL_LEND: 0, hSOL: 0, cbBTC: 0 });
     expect(r.allocationDay).toBe("2026-10-02");
   });
 
@@ -37,7 +37,7 @@ describe("supabase row mappers", () => {
     expect(c.rate).toBeCloseTo(1.1889, 4);
     expect(c.lastUpdateEpoch).toBe(1046);
     const s = splitDayRow({ day: "2026-10-01", stop: "careful", split: { SKR: 60, cbBTC: 20, hSOL: 10, JitoSOL: 10 }, model_answer: null, why: null, fallback: "model", call_id: null });
-    expect(s.split).toEqual({ SKR: 60, stORE: 0, hSOL: 10, JitoSOL: 10, JupSOL: 0, cbBTC: 20 });
+    expect(s.split).toEqual({ SKR: 70, stORE: 0, USDC_LEND: 0, SOL_LEND: 0, hSOL: 10, cbBTC: 20 });
     expect(s.fallback).toBe("model");
   });
 });

@@ -12,10 +12,9 @@ import { buildStakeIx, skrAta } from "./staking";
 import { pullerSigner } from "./puller";
 import { rpc } from "./rpc";
 import { config } from "./config";
-import { USDC_MINT, SKR_MINT } from "./constants";
+import { USDC_MINT, SKR_MINT, WSOL_MINT } from "./constants";
 import { COINS, type Asset } from "@/domain/coins";
 
-const WSOL_MINT = address("So11111111111111111111111111111111111111112");
 
 export type BuiltPlanting = {
   tx: Awaited<ReturnType<typeof signTransactionMessageWithSigners>>;

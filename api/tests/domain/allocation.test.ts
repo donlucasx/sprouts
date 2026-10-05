@@ -15,8 +15,8 @@ describe("pickAsset", () => {
   it("70/30 after 700 SKR and 0 stORE picks stORE", () => expect(pickAsset({ SKR: 700, stORE: 0 }, split({ SKR: 70, stORE: 30 }))).toBe("stORE"));
 
   it("from an empty ledger, the largest target wins and SKR takes ties", () => {
-    expect(pickAsset({}, split({ SKR: 45, hSOL: 20, JitoSOL: 20, cbBTC: 15 }))).toBe("SKR");
-    expect(pickAsset({}, split({ SKR: 30, hSOL: 35, JitoSOL: 35 }))).toBe("hSOL");
+    expect(pickAsset({}, split({ SKR: 45, hSOL: 20, USDC_LEND: 20, cbBTC: 15 }))).toBe("SKR");
+    expect(pickAsset({}, split({ SKR: 30, hSOL: 35, USDC_LEND: 35 }))).toBe("USDC_LEND"); // a tie between two non-SKR legs goes to the first in ASSETS order, and USDC_LEND now precedes hSOL
   });
 
   it("a coin whose target is 0 is never picked, even with an empty ledger entry", () => {
@@ -26,12 +26,12 @@ describe("pickAsset", () => {
 
   it("converges: twenty $2 plantings at 45/20/20/15 give 9/4/4/3", () => {
     const ledger: Record<string, number> = {};
-    const target = split({ SKR: 45, hSOL: 20, JitoSOL: 20, cbBTC: 15 });
+    const target = split({ SKR: 45, hSOL: 20, USDC_LEND: 20, cbBTC: 15 });
     for (let i = 0; i < 20; i++) {
       const a = pickAsset(ledger, target);
       ledger[a] = (ledger[a] ?? 0) + 200;
     }
-    expect(ledger).toEqual({ SKR: 1800, hSOL: 800, JitoSOL: 800, cbBTC: 600 });
+    expect(ledger).toEqual({ SKR: 1800, hSOL: 800, USDC_LEND: 800, cbBTC: 600 });
   });
 
   it("a legacy two-key ledger still works", () => {
@@ -41,7 +41,7 @@ describe("pickAsset", () => {
 
 describe("DECIMALS", () => {
   it("names each asset's decimals from the mint", () => {
-    expect(DECIMALS).toEqual({ SKR: 6, stORE: 11, hSOL: 9, JitoSOL: 9, JupSOL: 9, cbBTC: 8 });
+    expect(DECIMALS).toEqual({ SKR: 6, stORE: 11, USDC_LEND: 6, SOL_LEND: 9, hSOL: 9, cbBTC: 8, JitoSOL: 9, JupSOL: 9 });
     expect(Number(122_495_137n) / 10 ** DECIMALS.stORE).toBeCloseTo(0.00122, 4);
   });
 });

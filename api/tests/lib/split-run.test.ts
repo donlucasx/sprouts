@@ -17,14 +17,14 @@ function day(asset: CoinDayRow["asset"], d: string, rate: number | null, over: P
 /** Two days of snapshots so every coin has a measured number: hSOL grows fastest. */
 async function seededRepo() {
   const repo = new MemoryRepo();
-  for (const [asset, r1, r2] of [["SKR", 1.1470, 1.1473], ["stORE", 1.0496, 1.0498], ["hSOL", 1.1889, 1.1894], ["JitoSOL", 1.3039, 1.3042], ["JupSOL", 1.2119, 1.2122], ["cbBTC", null, null]] as const) {
+  for (const [asset, r1, r2] of [["SKR", 1.1470, 1.1473], ["stORE", 1.0496, 1.0498], ["hSOL", 1.1889, 1.1894], ["USDC_LEND", 1.3039, 1.3042], ["SOL_LEND", 1.2119, 1.2122], ["cbBTC", null, null]] as const) {
     await repo.putCoinDay(day(asset, "2026-10-01", r1));
     await repo.putCoinDay(day(asset, DAY, r2));
   }
   return repo;
 }
 const answers = (input: unknown): ModelCall => async () => ({ input, usage: { inputTokens: 600, outputTokens: 80 } });
-const good = { SKR: 40, stORE: 5, hSOL: 25, JitoSOL: 15, JupSOL: 10, cbBTC: 5, why: "hSOL grew the most of your SOL coins over the past week." };
+const good = { SKR: 40, stORE: 5, hSOL: 25, USDC_LEND: 15, SOL_LEND: 10, cbBTC: 5, why: "hSOL grew the most of your SOL coins over the past week." };
 
 describe("readFacts and factsTable", () => {
   it("measures every coin and renders numbers only", async () => {
@@ -52,7 +52,7 @@ describe("decideSplits (spec 6.2 to 6.5)", () => {
     expect(bal.fallback).toBeNull();
     expect(bal.why).toBe(good.why);
     expect(bal.modelAnswer).toEqual(good);
-    expect(bal.split).toEqual(split({ SKR: 40, stORE: 5, hSOL: 25, JitoSOL: 15, JupSOL: 10, cbBTC: 5 }));
+    expect(bal.split).toEqual(split({ SKR: 40, stORE: 5, hSOL: 25, USDC_LEND: 15, SOL_LEND: 10, cbBTC: 5 }));
     expect(bal.callId).toBe(2);
     const careful = rows[0];
     expect(careful.split.SKR).toBeGreaterThanOrEqual(50);          // clamped to Careful's floor
@@ -95,7 +95,7 @@ describe("decideSplits (spec 6.2 to 6.5)", () => {
     expect(prompts[0]).toBe(prompts[1]);                                 // the same prompt, nothing added
     expect(rows[1].fallback).toBeNull();
     expect(rows[1].modelAnswer).toEqual(good);                            // the answer applied is the retry's
-    expect(rows[1].split).toEqual(split({ SKR: 40, stORE: 5, hSOL: 25, JitoSOL: 15, JupSOL: 10, cbBTC: 5 }));
+    expect(rows[1].split).toEqual(split({ SKR: 40, stORE: 5, hSOL: 25, USDC_LEND: 15, SOL_LEND: 10, cbBTC: 5 }));
     expect((await repo.listWatcherCalls()).length).toBe(6);              // the retry counts against the budget
   });
 
@@ -122,30 +122,30 @@ describe("decideSplits (spec 6.2 to 6.5)", () => {
   it("an answer is held to the move limit against yesterday's row for the stop", async () => {
     const repo = await seededRepo();
     await repo.putSplitDay({ day: "2026-10-01", stop: "bold", split: STOP_DEFAULTS.bold, modelAnswer: null, why: null, fallback: null, callId: null });
-    const rows = await decideSplits({ repo, now: NOW, model: answers({ SKR: 25, stORE: 0, hSOL: 35, JitoSOL: 35, JupSOL: 5, cbBTC: 0, why: "hSOL and JitoSOL lead." }) });
+    const rows = await decideSplits({ repo, now: NOW, model: answers({ SKR: 25, stORE: 0, hSOL: 35, USDC_LEND: 5, SOL_LEND: 35, cbBTC: 0, why: "hSOL and SOL_LEND lead." }) });
     const bold = rows[2];
     expect(bold.split.hSOL).toBe(STOP_DEFAULTS.bold.hSOL + MOVE_LIMIT);
-    expect(bold.split.JitoSOL).toBe(STOP_DEFAULTS.bold.JitoSOL + MOVE_LIMIT);
+    expect(bold.split.SOL_LEND).toBe(STOP_DEFAULTS.bold.SOL_LEND + MOVE_LIMIT); // USDC_LEND sits at its bold max of 20, so the +10 moves SOL_LEND (max 35)
     expect(sum(bold.split)).toBe(100);
   });
 
   it("a coin with no data today is excluded and told to the model", async () => {
     const repo = await seededRepo();
-    await repo.putCoinDay(day("JupSOL", DAY, null, { ok: false, tradeable: false }));
+    await repo.putCoinDay(day("SOL_LEND", DAY, null, { ok: false, tradeable: false }));
     let table = "";
     let system = "";
     const rows = await decideSplits({ repo, now: NOW, model: async (req) => { table = req.user; system = req.system; return { input: good, usage: { inputTokens: 1, outputTokens: 1 } }; } });
-    expect(table).toMatch(/JupSOL.*no data/);
+    expect(table).toMatch(/SOL_LEND.*no data/);
     expect(system).toMatch(/no data or not tradeable keeps yesterday's share/); // R132: the model is told what the clamp enforces
     expect(system).toMatch(/"your coins"/);                                     // R133: the second-person nudge
-    expect(rows.every((r) => r.split.JupSOL === 0)).toBe(true);
+    expect(rows.every((r) => r.split.SOL_LEND === 0)).toBe(true);
   });
 
   it("an every-coin-no-data day holds yesterday's split as no data and calls no model (spec 5.5)", async () => {
     const repo = await seededRepo();
-    const prior = split({ SKR: 50, hSOL: 20, JitoSOL: 10, JupSOL: 10, cbBTC: 10 });
+    const prior = split({ SKR: 50, hSOL: 20, USDC_LEND: 10, SOL_LEND: 10, cbBTC: 10 });
     await repo.putSplitDay({ day: "2026-10-01", stop: "balanced", split: prior, modelAnswer: null, why: null, fallback: null, callId: null });
-    for (const a of ["stORE", "hSOL", "JitoSOL", "JupSOL", "cbBTC"] as const) await repo.putCoinDay(day(a, DAY, null, { ok: false, tradeable: false }));
+    for (const a of ["stORE", "hSOL", "USDC_LEND", "SOL_LEND", "cbBTC"] as const) await repo.putCoinDay(day(a, DAY, null, { ok: false, tradeable: false }));
     let calls = 0;
     const rows = await decideSplits({ repo, now: NOW, model: async () => { calls++; return { input: good, usage: { inputTokens: 1, outputTokens: 1 } }; } });
     expect(calls).toBe(0);
@@ -154,7 +154,7 @@ describe("decideSplits (spec 6.2 to 6.5)", () => {
     expect(rows[0].split).toEqual(STOP_DEFAULTS.careful);          // no yesterday: the stop default
     const repo2 = await seededRepo();                                // no model key: the same day still holds, as no data
     await repo2.putSplitDay({ day: "2026-10-01", stop: "balanced", split: prior, modelAnswer: null, why: null, fallback: null, callId: null });
-    for (const a of ["stORE", "hSOL", "JitoSOL", "JupSOL", "cbBTC"] as const) await repo2.putCoinDay(day(a, DAY, null, { ok: false, tradeable: false }));
+    for (const a of ["stORE", "hSOL", "USDC_LEND", "SOL_LEND", "cbBTC"] as const) await repo2.putCoinDay(day(a, DAY, null, { ok: false, tradeable: false }));
     const keyless = await decideSplits({ repo: repo2, now: NOW, model: null });
     expect(keyless.every((r) => r.fallback === "no data")).toBe(true);
     expect(keyless[1].split).toEqual(prior);
@@ -162,7 +162,7 @@ describe("decideSplits (spec 6.2 to 6.5)", () => {
 
   it("a fallback day skips coins with no measured span: cbBTC's 0 is not a measured growth (spec 6.5)", async () => {
     const repo = await seededRepo();
-    for (const a of ["hSOL", "JitoSOL", "JupSOL"] as const) await repo.putCoinDay(day(a, DAY, null, { ok: false, tradeable: false }));
+    for (const a of ["hSOL", "USDC_LEND", "SOL_LEND"] as const) await repo.putCoinDay(day(a, DAY, null, { ok: false, tradeable: false }));
     const [careful] = await decideSplits({ repo, now: NOW, model: null });
     expect(careful.fallback).toBe("model");
     expect(careful.split.cbBTC).toBe(0);
@@ -194,7 +194,7 @@ describe("applyToUsers (spec 6.6)", () => {
     const r = await applyToUsers({ repo, now: NOW });
     expect(r.changed.sort()).toEqual(["ON", "PINNED"]);
     const on = await repo.getRules("ON");
-    expect(on.allocation).toEqual(split({ SKR: 40, stORE: 5, hSOL: 25, JitoSOL: 15, JupSOL: 10, cbBTC: 5 }));
+    expect(on.allocation).toEqual(split({ SKR: 40, stORE: 5, hSOL: 25, USDC_LEND: 15, SOL_LEND: 10, cbBTC: 5 }));
     expect(on.prevAllocation).toEqual(SKR_ONLY);
     expect(on.allocationDay).toBe(DAY);
     const pinned = await repo.getRules("PINNED");

@@ -22,14 +22,14 @@ describe("holdingsFrom", () => {
     expect(h.earnedUsd).toBeCloseTo(2.8, 6);                             // 0.02 SOL at 140
   });
   it("cbBTC has value but no earned; a coin without a price has neither; zero balances are omitted", () => {
-    const rows = holdingsFrom({ held: { cbBTC: 2389n, JupSOL: 14_000_000n, stORE: 0n }, legs: [leg("cbBTC", 200, 2389n, null)], days: { cbBTC: day("cbBTC", null, 83600) } });
-    expect(rows.map((r) => r.asset)).toEqual(["JupSOL", "cbBTC"]);
+    const rows = holdingsFrom({ held: { cbBTC: 2389n, hSOL: 14_000_000n, stORE: 0n }, legs: [leg("cbBTC", 200, 2389n, null)], days: { cbBTC: day("cbBTC", null, 83600) } });
+    expect(rows.map((r) => r.asset)).toEqual(["hSOL", "cbBTC"]);
     const btc = rows.find((r) => r.asset === "cbBTC")!;
     expect(btc.valueUsd).toBeCloseTo(1.997, 2);
     expect(btc.earnedUsd).toBeNull();
-    const jup = rows.find((r) => r.asset === "JupSOL")!;
-    expect(jup.valueUsd).toBeNull();
-    expect(jup.earnedUsd).toBeNull();
+    const sol = rows.find((r) => r.asset === "hSOL")!;
+    expect(sol.valueUsd).toBeNull();
+    expect(sol.earnedUsd).toBeNull();
   });
   it("a coin half sold keeps half its basis (R159): put in and earned follow the fraction still held; more than planted caps at 1", () => {
     const legs = [leg("hSOL", 200, 1_000_000_000n, 1.18), leg("hSOL", 200, 1_000_000_000n, 1.18)];
@@ -50,13 +50,13 @@ describe("latestCoinDays", () => {
     const repo = new MemoryRepo();
     await repo.putCoinDay({ ...day("hSOL", 1.2, 168), day: "2026-10-03" });
     await repo.putCoinDay({ ...day("hSOL", null, 170), day: "2026-10-04", ok: false, tradeable: false });
-    await repo.putCoinDay({ ...day("JitoSOL", 1.3, 180), day: "2026-10-03" });
-    await repo.putCoinDay({ ...day("JitoSOL", null, 0), priceUsd: null, day: "2026-10-04", ok: false });
+    await repo.putCoinDay({ ...day("stORE", 1.3, 180), day: "2026-10-03" });
+    await repo.putCoinDay({ ...day("stORE", null, 0), priceUsd: null, day: "2026-10-04", ok: false });
     const d = await latestCoinDays(repo, "2026-10-04");
     expect(d.hSOL?.rate).toBe(1.2);
     expect(d.hSOL?.priceUsd).toBe(170);
-    expect(d.JitoSOL?.rate).toBe(1.3);
-    expect(d.JitoSOL?.priceUsd).toBe(180);
+    expect(d.stORE?.rate).toBe(1.3);
+    expect(d.stORE?.priceUsd).toBe(180);
     const [h] = holdingsFrom({ held: { hSOL: 1_000_000_000n }, legs: [leg("hSOL", 200, 1_000_000_000n, 1.18)], days: d });
     expect(h.earnedUsd).not.toBeNull();
   });
