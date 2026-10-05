@@ -3,10 +3,14 @@ import { findAssociatedTokenPda, TOKEN_PROGRAM_ADDRESS } from "@solana-program/t
 import { findEventAuthorityPda, findSubscriptionAuthorityPda } from "@solana/subscriptions";
 import { GUARDIAN_POOL, LEASH_PROGRAM, ORE_STAKE_ACCOUNT, STAKE_CONFIG, STORE_MINT, SUBSCRIPTIONS_PROGRAM, SYSTEM_PROGRAM, SYSVAR_INSTRUCTIONS, USDC_MINT } from "./constants";
 import { JLEND, KLEND, PYTH_ACCOUNT, PYTH_FEED } from "./venues/addresses";
-import { readPriceAccount, priceRefusal, FRESH_MARGIN_S } from "./pyth";
-import { userStakePda } from "./staking";
+import { readPriceAccountOrWhy, priceRefusal, FRESH_MARGIN_S, CONF_CAP_BPS } from "./pyth";
+import { sharePrice, userStakePda } from "./staking";
+import { parseStakePool } from "./stake-pool";
+import { storeRedeemRate } from "./store";
+import { klendRate } from "./venues/klend";
+import { jlendRate } from "./venues/jlend";
 import { rpc } from "./rpc";
-import { COINS, type LiveAsset } from "@/domain/coins";
+import { COINS, type LendAsset, type LiveAsset } from "@/domain/coins";
 import type { AutoVenue } from "@/domain/venues";
 
 const enc = getAddressEncoder();
@@ -50,8 +54,15 @@ export type PriceSource = { kind: "none" } | { kind: "sponsored"; account: Addre
  * FRESH_MARGIN_S (40 s; cbBTC 580 s) and the value checks (price > 0, exponent, the conf cap, p_low > 0). A stale or refused price is
  * polled every 2 s for up to `waitS` (measured 10-04: SOL/ORE update every 50-55 s, so a read at 40-55 s waits up to ~16 s), then
  * this throws and the leg skips the run (`leg_skipped`). `nowS` (tests) disables the wait. SKR (leg 0): no source, throws.
+ *
+ * T8 review carry (taken in T9): `cfg` takes the leg's ON-CHAIN `conf_cap_bps` and `max_age_s` (readLeashConfig().legs[leg], read
+ * once per run): set_leg can change them, and the API must judge a price exactly as the program will. Absent, the shipped
+ * defaults (CONF_CAP_BPS, LEG_SPEC.maxAgeS) apply. The run-level part of that carry (wait at most once per FEED per run, feeds
+ * concurrently, a total wait budget inside the cron's maxDuration 300, freshness re-checked right before each send) belongs to
+ * the run (Task 11); a build after the run's wait passes `waitS: 0`.
+ * Refusal messages are distinct per cause: an RPC error, a missing account, another owner, not Full, another feed, stale, refused value.
  */
-export async function priceSourceFor(leg: LeashLegByte, nowS?: number, waitS = 60): Promise<PriceSource> {
+export async function priceSourceFor(leg: LeashLegByte, nowS?: number, waitS = 60, cfg: { confCapBps?: number; maxAgeS?: number } = {}): Promise<PriceSource> {
   const feed = LEG_SPEC[leg].feed;
   if (!feed) return { kind: "none" };
   if (feed === "SKR") {
@@ -62,13 +73,25 @@ export async function priceSourceFor(leg: LeashLegByte, nowS?: number, waitS = 6
     throw new Error("leg 0 (SKR) has no price source: posting is deferred (R324) and SKR has no sponsored account (contracts 10 item 15)");
   }
   const account = PYTH_ACCOUNT[feed];
-  const freshS = LEG_SPEC[leg].maxAgeS - FRESH_MARGIN_S;
+  const freshS = (cfg.maxAgeS ?? LEG_SPEC[leg].maxAgeS) - FRESH_MARGIN_S;
+  const capBps = cfg.confCapBps ?? CONF_CAP_BPS;
   const deadline = Date.now() + waitS * 1000;
   for (;;) {
-    const p = await readPriceAccount(account);
-    if (!p || !p.full || p.feedId !== PYTH_FEED[feed]) throw new Error(`sponsored ${feed} account ${account} is not a Full ${feed} PriceUpdateV2 (leg ${leg} skips this run)`);
+    let r: Awaited<ReturnType<typeof readPriceAccountOrWhy>>;
+    try {
+      r = await readPriceAccountOrWhy(account);
+    } catch (e) {
+      // A layout refusal (receiver-owned, wrong length or discriminator) keeps its own message; anything else is the RPC failing.
+      const msg = (e as Error).message;
+      if (/^price update refused/.test(msg)) throw new Error(`sponsored ${feed} account ${account}: ${msg} (leg ${leg} skips this run)`);
+      throw new Error(`RPC error reading the sponsored ${feed} account ${account}: ${msg} (leg ${leg} skips this run)`);
+    }
+    if ("why" in r) throw new Error(`sponsored ${feed} account ${account} ${r.why} (leg ${leg} skips this run)`);
+    const p = r.price;
+    if (!p.full) throw new Error(`sponsored ${feed} account ${account} is not Full (partial verification) (leg ${leg} skips this run)`);
+    if (p.feedId !== PYTH_FEED[feed]) throw new Error(`sponsored ${feed} account ${account} holds feed ${p.feedId.slice(0, 8)}, not the pinned ${feed} feed (leg ${leg} skips this run)`);
     const age = (nowS ?? Math.floor(Date.now() / 1000)) - Number(p.publishTime);
-    const why = age >= freshS ? `is ${age} s old (usable under ${freshS} s)` : priceRefusal(p);
+    const why = age >= freshS ? `is ${age} s old (usable under ${freshS} s)` : priceRefusal(p, capBps);
     if (why === null) return { kind: "sponsored", account };
     if (nowS !== undefined || Date.now() + 2_000 > deadline) throw new Error(`sponsored ${feed} price ${why}: leg ${leg} skips this run`);
     await new Promise((r) => setTimeout(r, 2_000));
@@ -85,6 +108,25 @@ export async function leashPda(delegator: Address, user: Address): Promise<Addre
 export async function leashConfigPda(): Promise<Address> {
   const [pda] = await getProgramDerivedAddress({ programAddress: LEASH_PROGRAM, seeds: ["config"] });
   return pda;
+}
+
+/** The leg's reader rate rn / rd (underlying raw per receipt raw) as the API reads it (contracts 2.7), for floorRaw before the send. */
+export async function legRate(leg: LeashLegByte): Promise<{ rn: bigint; rd: bigint }> {
+  const spec = LEG_SPEC[leg];
+  switch (spec.reader) {
+    case READER.TOKEN: return { rn: 1n, rd: 1n };
+    case READER.SKR_STAKE: return { rn: await sharePrice(), rd: 1_000_000_000n };
+    case READER.STORE: return { rn: await storeRedeemRate(), rd: 1_000_000_000n };
+    case READER.KLEND: { const r = await klendRate(spec.asset as LendAsset); return { rn: r.rn, rd: r.rd }; }
+    case READER.JLEND: return jlendRate(spec.asset as LendAsset);
+    case READER.STAKE_POOL: {
+      const info = await rpc().getAccountInfo(spec.rateAccount as Address, { encoding: "base64", commitment: "confirmed" }).send();
+      if (!info.value) throw new Error(`stake pool ${spec.rateAccount} missing`);
+      const t = parseStakePool(new Uint8Array(Buffer.from(info.value.data[0], "base64")));
+      return { rn: t.totalLamports, rd: t.poolTokenSupply };
+    }
+    default: throw new Error(`leg ${leg} has no reader`);
+  }
 }
 
 export type LegAccounts = { receipt: Address; price: Address; readers: Address[] };
@@ -225,7 +267,7 @@ export function decodeConfig(data: Uint8Array): LeashConfig {
 
 /** The cron reads the enabled flags from chain, never from env (contracts 3.1). Throws when the config account is missing. */
 export async function readLeashConfig(): Promise<LeashConfig> {
-  const info = await rpc().getAccountInfo(await leashConfigPda(), { encoding: "base64" }).send();
+  const info = await rpc().getAccountInfo(await leashConfigPda(), { encoding: "base64", commitment: "confirmed" }).send();
   if (!info.value) throw new Error("leash config is not initialised");
   if (info.value.owner !== LEASH_PROGRAM) throw new Error(`leash config owner is ${info.value.owner}`);
   return decodeConfig(new Uint8Array(Buffer.from(info.value.data[0], "base64")));
@@ -270,7 +312,7 @@ export function floorRaw(a: { leg: LeashLegByte; amountRaw: bigint; rn: bigint; 
 
 /** What pull will record as `pre`: token amount u64 @64, UserStake shares u128 @105; a missing account is 0 (a first SKR stake). */
 export async function readReceipt(a: { leg: LeashLegByte; receipt: Address }): Promise<bigint> {
-  const info = await rpc().getAccountInfo(a.receipt, { encoding: "base64" }).send();
+  const info = await rpc().getAccountInfo(a.receipt, { encoding: "base64", commitment: "confirmed" }).send();
   if (!info.value) return 0n;
   const b = Buffer.from(info.value.data[0], "base64");
   if (a.leg === 0) return b.readBigUInt64LE(105) + (b.readBigUInt64LE(113) << 64n);

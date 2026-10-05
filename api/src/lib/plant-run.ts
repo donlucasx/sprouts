@@ -20,7 +20,7 @@ const GIVE_UP_AFTER_MS = 30 * 60_000;
 export type DelegationState = { exists: boolean; amountPerPeriodRaw: bigint; pulledInPeriodRaw: bigint; periodStartTs: bigint; periodLengthS: bigint };
 export type Built = { tx: unknown; signature: string; expectedOutRaw: bigint; minOutRaw: bigint; lookupTables: unknown[]; lastValidBlockHeight: bigint };
 /** `delivery`: the balance of the account the planting delivers to (SKR: the puller's own SKR account; a wallet coin: the user's) right before the simulation and after it [R207 review]. */
-export type Simulation = { ok: boolean; err: unknown; logs: string[]; units: number; delivery?: { pre: bigint; post: bigint } };
+export type Simulation = { ok: boolean; err: unknown; logs: string[]; units: number; delivery?: { pre: bigint; post: bigint }; watched?: Record<string, { pre: bigint | null; post: bigint | null }> };
 export type SignatureStatus = "confirmed" | "failed" | "pending";
 
 /** Everything the run needs from the chain, injected so the run is unit-tested with fakes. */

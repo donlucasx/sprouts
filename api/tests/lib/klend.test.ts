@@ -64,31 +64,39 @@ describe("checkKlendDepositInstructions (contracts 3.3), mutation-proven", () =>
     const k = ixs.filter((ix) => ix.programAddress === KLEND_PROGRAM);
     expect(k.length).toBe(2);
     expect(Buffer.from(k[1].data!).subarray(8).readBigUInt64LE(0)).toBe(2_000_000n);
-    await expect(checkKlendDepositInstructions(ixs, { puller: puller.address, user: USER, asset: "USDC_LEND" })).resolves.toBeUndefined();
+    await expect(checkKlendDepositInstructions(ixs, { puller: puller.address, user: USER, asset: "USDC_LEND", amountRaw: 2_000_000n })).resolves.toBeUndefined();
+  });
+  it("binds the deposit amount to the leg's own (T6 carry: the puller's source account is pooled)", async () => {
+    const { puller, ixs } = await built();
+    const chk = (amountRaw: bigint) => checkKlendDepositInstructions(ixs, { puller: puller.address, user: USER, asset: "USDC_LEND", amountRaw });
+    await expect(chk(2_000_000n)).resolves.toBeUndefined();
+    await expect(chk(1_999_999n)).rejects.toThrow(/deposit of 2000000, not the leg's 1999999/);
+    await expect(chk(2_000_001n)).rejects.toThrow(/not the leg's 2000001/);
+    await expect(chk(0n)).rejects.toThrow(/not positive/);
   });
   it("refuses a deposit into another owner's kToken account", async () => {
     const { puller, ixs } = await built();
     const [alias] = await findAssociatedTokenPda({ owner: OTHER, mint: KLEND.USDC_LEND.collateralMint, tokenProgram: TOKEN_PROGRAM_ADDRESS });
     const [src] = await findAssociatedTokenPda({ owner: puller.address, mint: USDC_MINT, tokenProgram: TOKEN_PROGRAM_ADDRESS });
     const bad = ixs.map((ix) => (ix.data?.[0] === 169 ? klendDepositIx({ owner: puller, asset: "USDC_LEND", source: src, destination: alias, amountRaw: 2_000_000n }) : ix));
-    await expect(checkKlendDepositInstructions(bad, { puller: puller.address, user: USER, asset: "USDC_LEND" })).rejects.toThrow(/accounts/);
+    await expect(checkKlendDepositInstructions(bad, { puller: puller.address, user: USER, asset: "USDC_LEND", amountRaw: 2_000_000n })).rejects.toThrow(/accounts/);
   });
   it("refuses a deposit drawn from another source account", async () => {
     const { puller, ixs } = await built();
     const [dest] = await findAssociatedTokenPda({ owner: USER, mint: KLEND.USDC_LEND.collateralMint, tokenProgram: TOKEN_PROGRAM_ADDRESS });
     const [foreign] = await findAssociatedTokenPda({ owner: OTHER, mint: USDC_MINT, tokenProgram: TOKEN_PROGRAM_ADDRESS });
     const bad = ixs.map((ix) => (ix.data?.[0] === 169 ? klendDepositIx({ owner: puller, asset: "USDC_LEND", source: foreign, destination: dest, amountRaw: 2_000_000n }) : ix));
-    await expect(checkKlendDepositInstructions(bad, { puller: puller.address, user: USER, asset: "USDC_LEND" })).rejects.toThrow(/accounts/);
+    await expect(checkKlendDepositInstructions(bad, { puller: puller.address, user: USER, asset: "USDC_LEND", amountRaw: 2_000_000n })).rejects.toThrow(/accounts/);
   });
   it("refuses the junk reserve, an extra K-Lend instruction, and deposit-before-refresh", async () => {
     const { puller, ixs } = await built();
     const junkRefresh: Instruction = { ...klendRefreshIx("USDC_LEND"), accounts: klendRefreshIx("USDC_LEND").accounts!.map((a, i) => (i === 0 ? { ...a, address: KLEND_JUNK_USDC_RESERVE.reserve } : a)) };
-    await expect(checkKlendDepositInstructions(ixs.map((ix) => (ix.data?.[0] === 2 ? junkRefresh : ix)), { puller: puller.address, user: USER, asset: "USDC_LEND" })).rejects.toThrow(/accounts/);
+    await expect(checkKlendDepositInstructions(ixs.map((ix) => (ix.data?.[0] === 2 ? junkRefresh : ix)), { puller: puller.address, user: USER, asset: "USDC_LEND", amountRaw: 2_000_000n })).rejects.toThrow(/accounts/);
     const [src] = await findAssociatedTokenPda({ owner: USER, mint: KLEND.USDC_LEND.collateralMint, tokenProgram: TOKEN_PROGRAM_ADDRESS });
     const extra = klendRedeemIx({ owner: puller, asset: "USDC_LEND", source: src, destination: src, amountRaw: 1n });
-    await expect(checkKlendDepositInstructions([...ixs, extra], { puller: puller.address, user: USER, asset: "USDC_LEND" })).rejects.toThrow(/K-Lend instructions/);
+    await expect(checkKlendDepositInstructions([...ixs, extra], { puller: puller.address, user: USER, asset: "USDC_LEND", amountRaw: 2_000_000n })).rejects.toThrow(/K-Lend instructions/);
     const k = ixs.filter((ix) => ix.programAddress === KLEND_PROGRAM);
-    await expect(checkKlendDepositInstructions([k[1], k[0]], { puller: puller.address, user: USER, asset: "USDC_LEND" })).rejects.toThrow(/refresh/);
+    await expect(checkKlendDepositInstructions([k[1], k[0]], { puller: puller.address, user: USER, asset: "USDC_LEND", amountRaw: 2_000_000n })).rejects.toThrow(/refresh/);
   });
 });
 
