@@ -57,7 +57,7 @@ describe("R360: the garden shows only what you hold now (a coin at zero loses it
   const pos = (asset: string, venue: string, receiptRaw: string, valueUsd: number | null) => ({ asset, venue, receiptMint: "M", receiptRaw, underlyingRaw: receiptRaw, valueUsd, ratePct: 4, avg7Pct: 4, earnedUsd: 0, putInCents: 100, withdrawableUsd: null, poolFull: false });
   const base = {
     ...me,
-    pot: { ...me.pot, skrStakedRaw: "5000000", skrUsd: 0.02 },
+    pot: { ...me.pot, skrStakedRaw: "5000000", skrUsd: 0.02, asOf: "2026-10-05T12:00:00.000Z" },
     holdings: [{ asset: "stORE", heldRaw: "100000000000", putInCents: 200, valueUsd: 2.1, earnedUsd: 0, earnedUnderlyingRaw: "0" }, { asset: "USDC_LEND", heldRaw: "650000", putInCents: 65, valueUsd: 0.65, earnedUsd: 0, earnedUnderlyingRaw: "0" }],
     positions: [pos("USDC_LEND", "jupiter_lend", "610000", 0.65)],
     positionsRead: "ok",
@@ -114,6 +114,9 @@ describe("R360: the garden shows only what you hold now (a coin at zero loses it
     // an API before the read flag: the zero still hides the plant, but no mark is written on it
     expect(nextZeroMarks({ ...gone, positionsRead: undefined } as MeResponse, {})).toEqual({});
     expect(nextZeroMarks(gone, { USDC_LEND: T("4") })).toEqual({ USDC_LEND: T("4") });
+    // a planting booked minutes before the read may not show in the balance yet: never marked on it (review)
+    const fresh = { ...gone, pot: { ...gone.pot, asOf: "2026-10-03T10:05:00.000Z" } } as MeResponse;
+    expect(nextZeroMarks(fresh, {})).toEqual({});
     // a coin with no planting at all is never marked
     expect(nextZeroMarks({ ...gone, history: { plantings: [], picks: [] } } as MeResponse, {})).toEqual({});
   });

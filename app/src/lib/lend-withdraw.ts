@@ -54,7 +54,10 @@ export function lendMaxText(p: Pick<LendingPosition, 'asset' | 'underlyingRaw'>)
 export function lendRequest(choice: 'all' | 'amount', text: string, p: Pick<LendingPosition, 'asset' | 'underlyingRaw'>): LendRequest | null {
   if (choice === 'all') return {}
   if (lendAmountProblem(text, p) !== null) return null
-  return { amountRaw: String(parseCoinAmount(text, DECIMALS[p.asset])) }
+  const raw = parseCoinAmount(text, DECIMALS[p.asset])!
+  // Review I3: the whole shown value (Max) is All. The screen's value is at the newest snapshot's rate, under the venue's live one, so as
+  // an amount it would leave the difference behind.
+  return raw === BigInt(p.underlyingRaw) ? {} : { amountRaw: String(raw) }
 }
 
 /** The lending withdraw screen's fixed lines (R359, mirroring SKR's): the title, the value, the venue line, the honest notes. */
@@ -87,9 +90,16 @@ function buildProblem(p: Position, request: LendRequest, b: LendWithdrawBuild): 
   if (all === null) return PARTIAL_NOT_YET
   if (!/^\d+$/.test(b.receiptRaw)) return POSITION_CHANGED
   const r = BigInt(b.receiptRaw), held = BigInt(p.receiptRaw)
-  if (all) return r === held ? null : POSITION_CHANGED
+  const shown = BigInt(p.underlyingRaw)
+  if (all) {
+    if (r !== held) return POSITION_CHANGED
+    // Review I2: an amount answered with the whole position only when the rest is dust (under the smallest withdrawal; at the screen's
+    // rate, which is at or under the venue's, so a true dust rest always passes, with a 1% margin).
+    if (request.amountRaw !== undefined && (shown - BigInt(request.amountRaw)) * 100n >= LEND_MIN_RAW[p.asset] * 101n) return POSITION_CHANGED
+    return null
+  }
   if (request.amountRaw === undefined) return POSITION_CHANGED   // All asked, a part answered
-  const amount = BigInt(request.amountRaw), shown = BigInt(p.underlyingRaw)
+  const amount = BigInt(request.amountRaw)
   if (r <= 0n || r >= held || shown <= 0n) return POSITION_CHANGED
   return r * shown * 100n <= held * amount * 101n + shown * 100n ? null : POSITION_CHANGED
 }
