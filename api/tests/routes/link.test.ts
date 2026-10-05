@@ -4,10 +4,23 @@ import { setRepoForTests } from "@/db/repo";
 import { issueSession } from "@/lib/session";
 import { getBase64Encoder, getCompiledTransactionMessageDecoder, getTransactionDecoder, getBase64EncodedWireTransaction, generateKeyPairSigner, signTransaction, decompileTransactionMessage, prependTransactionMessageInstructions, compileTransaction, address, type KeyPairSigner } from "@solana/kit";
 
+// K-M4: the confirm reads the delegation's terms back. The chain here answers each delegation with the header its PDA was derived
+// from (recorded whenever delegationPda runs) and the approve-once terms: $5 a day, one day, no expiry, USDC, the wallet's authority.
+const { chainHeaders, onChain } = vi.hoisted(() => ({ chainHeaders: new Map<string, { delegator: string; delegatee: string }>(), onChain: { override: {} as Record<string, unknown> } }));
 vi.mock("@/lib/subscriptions", async (orig) => {
-  const readDelegation = vi.fn(async (_pda?: unknown) => ({ exists: true, amountPerPeriodRaw: 5_000_000n, pulledInPeriodRaw: 0n, periodStartTs: 0n, periodLengthS: 86_400n }));
+  const real = await orig<typeof import("@/lib/subscriptions")>();
+  const { findSubscriptionAuthorityPda } = await import("@solana/subscriptions");
+  const { USDC_MINT } = await import("@/lib/constants");
+  const chainRead = async (pda?: unknown) => {
+    const h = chainHeaders.get(String(pda));
+    const authority = h ? (await findSubscriptionAuthorityPda({ user: h.delegator as never, tokenMint: USDC_MINT }))[0] : undefined;
+    return { exists: true, amountPerPeriodRaw: 5_000_000n, pulledInPeriodRaw: 0n, periodStartTs: 0n, periodLengthS: 86_400n, expiryTs: 0n, mint: USDC_MINT, subscriptionAuthority: authority, ...(h ?? {}), ...onChain.override };
+  };
+  const readDelegation = vi.fn(chainRead);
   return {
-    ...(await orig<object>()),
+    ...real,
+    chainRead,
+    delegationPda: async (a: Parameters<typeof real.delegationPda>[0]) => { const p = await real.delegationPda(a); chainHeaders.set(p, { delegator: a.delegator, delegatee: a.delegatee }); return p; },
     readDelegation,
     // The confirm's poll now lives in lib/subscriptions (Task 19) and calls readDelegation inside the module, past this mock;
     // it answers what the mocked read says, so the tests below keep steering it through readDelegation.
@@ -251,7 +264,27 @@ describe("link flow", () => {
     expect(r.status).toBe(409);
     expect((await r.json()).error).toBe("No delegation found for this wallet yet. Sign the approval first.");
     expect(await repo.peekLinkCode(c.code)).not.toBeNull();
-    (readDelegation as unknown as { mockResolvedValue: (v: unknown) => void }).mockResolvedValue({ exists: true, amountPerPeriodRaw: 5_000_000n, pulledInPeriodRaw: 0n, periodStartTs: 0n, periodLengthS: 86_400n });
+    const { chainRead } = (await import("@/lib/subscriptions")) as unknown as { chainRead: (p?: unknown) => Promise<unknown> };
+    (readDelegation as unknown as { mockImplementation: (v: unknown) => void }).mockImplementation(chainRead);
+  });
+
+  it("K-M4: confirm reads the delegation's terms back (amount, period, expiry, mint, authority, delegator, delegatee) and fails closed", async () => {
+    const { USDC_MINT } = await import("@/lib/constants");
+    for (const bad of [{ amountPerPeriodRaw: 50_000_000n }, { periodLengthS: 3_600n }, { expiryTs: 1n }, { mint: "So11111111111111111111111111111111111111112" }, { subscriptionAuthority: OTHER }, { delegator: OTHER }, { delegatee: OTHER }, { mint: undefined }]) {
+      onChain.override = bad;
+      const c = await mintCode(repo);
+      await getTx(new Request(`http://x/api/link/${c.code}?wallet=${WALLET}`), { params: Promise.resolve({ code: c.code }) });
+      const r = await confirm(new Request("http://x/api/link/confirm", { method: "POST", body: JSON.stringify({ code: c.code, wallet: WALLET, waitMs: 0 }) }));
+      expect(r.status).toBe(409);
+      expect((await r.json()).error).toBe("This approval is not the one Sprouts asked for. Nothing was linked; get a new code in the app.");
+      expect(await repo.getWallet(WALLET)).toBeNull();
+      expect(await repo.peekLinkCode(c.code)).not.toBeNull();   // the code is not burned
+    }
+    onChain.override = { mint: USDC_MINT };   // positive control
+    const c = await mintCode(repo);
+    await getTx(new Request(`http://x/api/link/${c.code}?wallet=${WALLET}`), { params: Promise.resolve({ code: c.code }) });
+    expect((await confirm(new Request("http://x/api/link/confirm", { method: "POST", body: JSON.stringify({ code: c.code, wallet: WALLET, waitMs: 0 }) }))).status).toBe(200);
+    onChain.override = {};
   });
 
   it("refuses an unknown or used code", async () => {
