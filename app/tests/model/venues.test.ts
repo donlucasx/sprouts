@@ -14,7 +14,7 @@ describe('the venue card (R275, R276, R278: the rates the AI reads, its verdicts
       {
         key: 'kamino_klend:SOL_LEND',
         title: 'SOL on Kamino',
-        detail: '5.62%, 7-day 5.50%. Skipped today: the pool is nearly fully lent out.',
+        detail: '5.62%, 7-day 5.50%. Skipped today: almost fully lent out.',
       },
       { key: 'jupiter_lend:SOL_LEND', title: 'SOL on Jupiter', detail: "3.87%, 7-day 3.90%. Today's pick." },
       {
@@ -34,13 +34,13 @@ describe('the venue card (R275, R276, R278: the rates the AI reads, its verdicts
     const one = (o: Partial<(typeof FIXTURE_VENUES.venues)[number]>) =>
       venueLines({ ...FIXTURE_VENUES, venues: [{ ...FIXTURE_VENUES.venues[0], picked: false, ...o }] })[0].detail
     expect(one({ verdict: 'avoid', reason: 'incentive_spike' })).toBe(
-      '4.43%, 7-day 4.41%. Skipped today: most of the rate is a short-term reward.',
+      '4.43%, 7-day 4.41%. Skipped today: mostly a short-term bonus.',
     )
     expect(one({ verdict: 'avoid', reason: 'deposits_fleeing' })).toBe(
-      '4.43%, 7-day 4.41%. Skipped today: money is leaving it fast.',
+      '4.43%, 7-day 4.41%. Skipped today: money is leaving fast.',
     )
     expect(one({ verdict: 'avoid', reason: 'data_suspect' })).toBe(
-      '4.43%, 7-day 4.41%. Skipped today: its numbers look wrong.',
+      '4.43%, 7-day 4.41%. Skipped today: its numbers look off.',
     )
     expect(one({ eligible: false, verdict: null })).toBe('4.43%, 7-day 4.41%. Not used today.')
   })

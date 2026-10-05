@@ -52,8 +52,8 @@ describe('Settings > About Sprouts (spec 6.2, 11)', () => {
   it("the guarantee carries C6's web-link line from the one shared constant, right after the precise sentence", () =>
     expect(DISCLOSURES[0][1].startsWith(`${PRECISE_GUARANTEE} ${WEB_LINK_TRUST}`)).toBe(true))
   it('price honesty (contracts 2.6, R324) and the admin key (R299) sit in their own row, not in the guarantee; no SKR price line yet (fix round 1, I1)', () => {
-    expect(PRICE_LINE).toBe("Prices come from Pyth's free price accounts; cbBTC is priced at most 10 minutes ago.")
-    expect(ADMIN_KEY_LINE).toBe("The admin key is kept on the owner's laptop, never on the server.")
+    expect(PRICE_LINE).toBe("Prices come from Pyth. cbBTC's price can be up to 10 minutes old.")
+    expect(ADMIN_KEY_LINE).toBe("The admin key lives on the owner's laptop, not the server.")
     expect(DISCLOSURES[1]).toEqual(['Prices and keys', `${PRICE_LINE} ${ADMIN_KEY_LINE}`])
     expect(DISCLOSURES[0][1]).not.toContain(PRICE_LINE)
     expect(DISCLOSURES[0][1]).not.toContain(ADMIN_KEY_LINE)
