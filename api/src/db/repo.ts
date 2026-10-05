@@ -152,7 +152,16 @@ export interface Repo {
   getMoveProposal(id: string): Promise<T.MoveProposalRow | null>;
   /** One user's proposals in one status, oldest closed first (closed_at, then ts): a done move's carry reads these, not the events. */
   listMoveProposals(userPubkey: string, status: T.MoveStatus): Promise<T.MoveProposalRow[]>;
-  setMoveProposalStatus(id: string, status: T.MoveStatus, sig?: { redeem?: string; deposit?: string }): Promise<void>;
+  /**
+   * Compare-and-set (C-I2, K-I1..K-I3): the card moves from `from` to `to` only while its status is still `from` and, with `notInFlight`,
+   * no redeem signature is stored (an in-flight move is never dismissed or expired). True when the row changed; false means someone
+   * else's write won, and the caller re-reads. Never writes a signature.
+   */
+  transitionMoveProposal(id: string, from: T.MoveStatus, to: T.MoveStatus, opts?: { notInFlight?: boolean }): Promise<boolean>;
+  /** Compare-and-set: both signatures onto an OPEN card that has none yet (stored before the redeem is sent); a stored one is never overwritten. */
+  storeMoveSignatures(id: string, sig: { redeem: string; deposit: string }): Promise<boolean>;
+  /** Compare-and-set: an OPEN card whose stored redeem is `redeem` (it never landed: nothing moved) goes back to no signatures. */
+  clearMoveSignatures(id: string, redeem: string): Promise<boolean>;
   // carry (SKR keeps skrCreditRaw / setPlantingSkrSurplus / skrCarryInRaw unchanged)
   carryCreditRaw(userPubkey: string, kind: T.CarryKind): Promise<bigint>;
   /** The carry a planting drew (kind -> carry_in_raw), so a late booking can compute its surplus. */

@@ -16,7 +16,9 @@ export async function GET(request: Request) {
   return NextResponse.json(json({
     proposal: open
       ? { id: open.id, ts: open.ts, asset: open.asset, from: open.fromVenue, to: open.toVenue, receiptRaw: open.receiptRaw, valueUsd: open.valueUsd,
-          fromAvg7Pct: open.fromAvg7Pct, toAvg7Pct: open.toAvg7Pct, gain30dUsd: open.gain30dUsd, costUsd: open.costUsd }
+          fromAvg7Pct: open.fromAvg7Pct, toAvg7Pct: open.toAvg7Pct, gain30dUsd: open.gain30dUsd, costUsd: open.costUsd,
+          // C-I2 4: a stored redeem signature is a move on its way: the app shows it as such, and build and dismiss refuse it (409).
+          inFlight: open.redeemSignature !== null }
       : null,
   }));
 }

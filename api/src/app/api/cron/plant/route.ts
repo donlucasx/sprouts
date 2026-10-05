@@ -13,7 +13,7 @@ import { readPosition, crankWithdraw, sharePrice } from "@/lib/staking";
 import { reconcileOwnStakes } from "@/lib/reconcile";
 import { snapshotCoins, IMPACT_LIMIT_PCT, type CoinReads } from "@/lib/coin-data";
 import { snapshotVenues, scoutYields, realVenueReads } from "@/lib/venues/rates";
-import { proposeMoves } from "@/lib/moves";
+import { chainTxStatus, movesEnabled, proposeMoves } from "@/lib/moves";
 import { decideSplits, applyToUsers } from "@/lib/split-run";
 import { callConversation } from "@/lib/anthropic";
 import { getQuote, pricesUsd } from "@/lib/jupiter";
@@ -114,7 +114,9 @@ export async function GET(request: Request) {
     const splits = await step("decide", () => decideSplits({ repo, now, model: process.env.ANTHROPIC_API_KEY ? callConversation : null, scout: () => scoutYields(realVenueReads()) }));
     const applied = await step("apply", () => applyToUsers({ repo, now }));
     const movesDeadlineMs = startedMs + MOVES_DEADLINE_MS;
-    const moves = process.env.MOVES_ENABLED === "false" ? null : await step("moves", async () => {
+    // R337: moves are OFF unless MOVES_ENABLED is exactly "true" (unset = off); switched on after one real move works on a phone.
+    const movesOn = movesEnabled();
+    const moves = !movesOn ? null : await step("moves", async () => {
       // A move's cost is priced in SOL; with no SOL price today a zero would make every move look free, so the step is skipped (logged).
       const solUsd = (await repo.getCoinDay(dayOf(now), "SOL_LEND"))?.priceUsd;
       if (!solUsd || solUsd <= 0) throw new Error("no SOL price today, moves skipped");
@@ -127,6 +129,11 @@ export async function GET(request: Request) {
           return readLendingPositions(address(u));
         },
         solUsd,
+        // T21 minor: an in-flight card's chain reads stop at the same deadline (a throw leaves the card in flight for tomorrow).
+        txStatus: async (sig, card) => {
+          if (Date.now() >= movesDeadlineMs) throw new Error("moves deadline passed");
+          return chainTxStatus(repo, card, sig, now);
+        },
       });
     });
     const planting = await runPlanting({ repo, now, chain: realChain(), deadlineMs: startedMs + 240_000 });
@@ -138,7 +145,9 @@ export async function GET(request: Request) {
     // rules -> users foreign key. The keepalive is now a read that needs no row.
     await repo.keepalive();
     const summary = { coins: coins ? coins.filter((c) => c.ok).length : null, splits: splits ? splits.map((s) => ({ stop: s.stop, fallback: s.fallback })) : null, applied: applied ? applied.changed.length : null, venues: venues ? venues.filter((v) => v.ok).length : null, moves: moves ? moves.proposed.length : null };
-    console.log(`cron: venues ${summary.venues ?? "failed"}, coins ${summary.coins ?? "failed"}, splits ${summary.splits ? summary.splits.map((s) => `${s.stop}${s.fallback ? `(${s.fallback})` : ""}`).join(" ") : "failed"}, applied ${summary.applied ?? "failed"}, moves ${moves ? moves.proposed.length : process.env.MOVES_ENABLED === "false" ? "off" : "failed"}, planted ${planting.planted.length}, skipped ${planting.skipped.length}, cranked ${withdrawals.cranked.length}, failed ${withdrawals.failed.length}, closed ${withdrawals.skipped.length}, reconciled ${reconciled.adjusted.length} (skipped ${reconciled.skipped.length}, deferred ${reconciled.deferred.length})`);
+    // Review M8: expired and settled cards are logged too, so a move stuck in flight shows in the log.
+    const movesLine = moves ? `${moves.proposed.length} (expired ${moves.expired.length}, settled ${moves.settled.length ? moves.settled.join(" ") : 0})` : movesOn ? "failed" : "off";
+    console.log(`cron: venues ${summary.venues ?? "failed"}, coins ${summary.coins ?? "failed"}, splits ${summary.splits ? summary.splits.map((s) => `${s.stop}${s.fallback ? `(${s.fallback})` : ""}`).join(" ") : "failed"}, applied ${summary.applied ?? "failed"}, moves ${movesLine}, planted ${planting.planted.length}, skipped ${planting.skipped.length}, cranked ${withdrawals.cranked.length}, failed ${withdrawals.failed.length}, closed ${withdrawals.skipped.length}, reconciled ${reconciled.adjusted.length} (skipped ${reconciled.skipped.length}, deferred ${reconciled.deferred.length})`);
     return NextResponse.json(json({ ...summary, planting, withdrawals, reconciled }));
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);

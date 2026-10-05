@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { address, type Instruction } from "@solana/kit";
 import { TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
 import { MemoryRepo } from "@/db/memory";
@@ -50,47 +50,84 @@ describe("proposeMoves settles a card whose redeem landed instead of expiring it
     await proposeMoves({ repo, now: NOW, positions: async () => [{ asset: "USDC_LEND", venue: "jupiter_lend", receiptRaw: 4_716_981_132n }], solUsd: 121.47 });
     const card = (await repo.openMoveProposal("U"))!;
     await repo.addEvent({ userPubkey: "U", walletPubkey: null, kind: "move_built", detail: moveBuiltDetail({ id: card.id, asset: "USDC_LEND", from: "jupiter_lend", to: "kamino_klend", receiptRaw: 4_716_981_132n, sourceReceiptRaw: 4_716_981_132n, depositRaw: 4_995_000_000n, fromRate: 1.06, toRate: 1.2, toReceiptRaw: 4_162_500_000n }) });
-    await repo.setMoveProposalStatus(card.id, "open", sigs);
+    // Straight into the row: a lone redeem signature cannot be stored through the repo (storeMoveSignatures takes both).
+    Object.assign(repo.moves.get(card.id)!, { redeemSignature: sigs.redeem ?? null, depositSignature: sigs.deposit ?? null });
     return { repo, card };
   }
   it("the deposit landed: done, the move_done event, the carry intact; not expired", async () => {
     const { repo, card } = await inFlight({ redeem: "R", deposit: "D" });
     const asked: string[] = [];
-    const r = await proposeMoves({ repo, now: NOW, positions: POS, solUsd: 121.47, depositStatus: async (sig) => { asked.push(sig); return "confirmed"; } });
+    const r = await proposeMoves({ repo, now: NOW, positions: POS, solUsd: 121.47, txStatus: async (sig) => { asked.push(sig); return "confirmed"; } });
     expect(asked).toEqual(["D"]);
     expect(r.expired).toEqual([]);
+    expect(r.settled).toEqual([`${card.id}:done`]);
     expect(await repo.getMoveProposal(card.id)).toMatchObject({ status: "done", redeemSignature: "R", depositSignature: "D" });
     expect(repo.events.find((e) => e.kind === "move_done")?.detail).toEqual({ id: card.id, asset: "USDC_LEND", from: "jupiter_lend", to: "kamino_klend", receiptRaw: "4716981132", status: "done" });
     expect((await moveCarriesFor(repo, "U")).map((c) => c.depositRaw)).toEqual([4_995_000_000n]);
   });
-  it("the deposit can no longer land (failed or expired): failed, not expired", async () => {
+  it("the redeem landed and the deposit can no longer land (failed or expired): failed + move_failed, not expired", async () => {
     for (const s of ["failed", "expired"] as const) {
       const { repo, card } = await inFlight({ redeem: "R", deposit: "D" });
-      const r = await proposeMoves({ repo, now: NOW, positions: POS, solUsd: 121.47, depositStatus: async () => s });
+      const r = await proposeMoves({ repo, now: NOW, positions: POS, solUsd: 121.47, txStatus: async (sig) => (sig === "R" ? "confirmed" : s) });
       expect(r.expired).toEqual([]);
       expect((await repo.getMoveProposal(card.id))?.status).toBe("failed");
+      expect(repo.events.filter((e) => e.kind === "move_failed").map((e) => e.detail)).toEqual([{ id: card.id, asset: "USDC_LEND", from: "jupiter_lend", to: "kamino_klend", receiptRaw: "4716981132", status: "failed" }]);
       expect(await moveCarriesFor(repo, "U")).toEqual([]);
     }
   });
-  it("still pending: the card is left as it is; a redeem with no deposit signature is failed", async () => {
-    const pending = await inFlight({ redeem: "R", deposit: "D" });
-    await proposeMoves({ repo: pending.repo, now: NOW, positions: POS, solUsd: 121.47, depositStatus: async () => "pending" });
-    expect((await pending.repo.getMoveProposal(pending.card.id))?.status).toBe("open");
+  it("neither landed (the redeem failed or expired): nothing moved, the signatures are cleared and the card is judged like any open card", async () => {
+    for (const s of ["failed", "expired"] as const) {
+      // Still the best move: it stays open, no longer in flight, and no event says it failed.
+      const kept = await inFlight({ redeem: "R", deposit: "D" });
+      const r = await proposeMoves({ repo: kept.repo, now: NOW, positions: async () => [{ asset: "USDC_LEND", venue: "jupiter_lend", receiptRaw: 4_716_981_132n }], solUsd: 121.47, txStatus: async () => s });
+      expect(r.settled).toEqual([`${kept.card.id}:cleared`]);
+      expect(await kept.repo.getMoveProposal(kept.card.id)).toMatchObject({ status: "open", redeemSignature: null, depositSignature: null });
+      expect(kept.repo.events.some((e) => e.kind === "move_failed")).toBe(false);
+      // No longer the best (the money reads at the target): it expires as an ordinary card.
+      const gone = await inFlight({ redeem: "R", deposit: "D" });
+      expect((await proposeMoves({ repo: gone.repo, now: NOW, positions: POS, solUsd: 121.47, txStatus: async () => s })).expired).toEqual([gone.card.id]);
+    }
+  });
+  it("still pending (either one): the card is left as it is; a redeem with no deposit signature is failed", async () => {
+    for (const st of [async () => "pending" as const, async (sig: string) => (sig === "R" ? "pending" as const : "expired" as const)]) {
+      const pending = await inFlight({ redeem: "R", deposit: "D" });
+      await proposeMoves({ repo: pending.repo, now: NOW, positions: POS, solUsd: 121.47, txStatus: st });
+      expect(await pending.repo.getMoveProposal(pending.card.id)).toMatchObject({ status: "open", redeemSignature: "R", depositSignature: "D" });
+    }
     const lone = await inFlight({ redeem: "R" });
-    await proposeMoves({ repo: lone.repo, now: NOW, positions: POS, solUsd: 121.47, depositStatus: async () => "confirmed" });
+    await proposeMoves({ repo: lone.repo, now: NOW, positions: POS, solUsd: 121.47, txStatus: async () => "confirmed" });
     expect((await lone.repo.getMoveProposal(lone.card.id))?.status).toBe("failed");
+  });
+  it("a status read that throws (the cron's moves deadline) leaves the card in flight for the next run (T21 minor)", async () => {
+    const { repo, card } = await inFlight({ redeem: "R", deposit: "D" });
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    const r = await proposeMoves({ repo, now: NOW, positions: POS, solUsd: 121.47, txStatus: async () => { throw new Error("moves deadline passed"); } });
+    err.mockRestore();
+    expect(r).toEqual({ proposed: [], expired: [], settled: [] });
+    expect(await repo.getMoveProposal(card.id)).toMatchObject({ status: "open", redeemSignature: "R" });
+  });
+  it("the expiry is a compare-and-set: a confirm that stored its signatures after the cron read the card wins; no new card (C-I2 c)", async () => {
+    const repo = await repoWith(4.43, 4.19);
+    await proposeMoves({ repo, now: NOW, positions: async () => [{ asset: "USDC_LEND", venue: "jupiter_lend", receiptRaw: 4_716_981_132n }], solUsd: 121.47 });
+    const card = (await repo.openMoveProposal("U"))!;
+    // The cron reads the card with no signatures; the confirm stores its pair before the expiry is written.
+    const read = repo.openMoveProposal.bind(repo);
+    repo.openMoveProposal = async (u: string) => { const c = await read(u); await repo.storeMoveSignatures(card.id, { redeem: "R", deposit: "D" }); return c; };
+    const r = await proposeMoves({ repo, now: NOW, positions: async () => [{ asset: "SOL_LEND", venue: "jupiter_lend", receiptRaw: 0n }], solUsd: 121.47 });
+    expect(r.expired).toEqual([]);
+    expect(await repo.getMoveProposal(card.id)).toMatchObject({ status: "open", redeemSignature: "R" });
   });
   it("a positions read failure skips the user: the open card is untouched (review minor 1)", async () => {
     const repo = await repoWith(4.43, 4.19);
     await proposeMoves({ repo, now: NOW, positions: async () => [{ asset: "USDC_LEND", venue: "jupiter_lend", receiptRaw: 4_716_981_132n }], solUsd: 121.47 });
     const card = (await repo.openMoveProposal("U"))!;
     const r = await proposeMoves({ repo, now: NOW, positions: async () => { throw new Error("rpc down"); }, solUsd: 121.47 });
-    expect(r).toEqual({ proposed: [], expired: [] });
+    expect(r).toEqual({ proposed: [], expired: [], settled: [] });
     expect((await repo.openMoveProposal("U"))?.id).toBe(card.id);
   });
   it("the carry reads done proposals, so a lost move_done event cannot erase it", async () => {
     const { repo, card } = await inFlight({ redeem: "R", deposit: "D" });
-    await repo.setMoveProposalStatus(card.id, "done", { redeem: "R", deposit: "D" });
+    await repo.transitionMoveProposal(card.id, "open", "done");
     expect(repo.events.some((e) => e.kind === "move_done")).toBe(false);
     expect((await moveCarriesFor(repo, "U")).map((c) => c.id)).toEqual([card.id]);
   });

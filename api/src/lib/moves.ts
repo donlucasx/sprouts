@@ -7,6 +7,10 @@ import type { LendPosition } from "./holdings";
 import { signatureStatus } from "./planting";
 
 const FEE_LAMPORTS = 2 * 5_000;
+/** C-I2 / K-I1 / K-I2: what build and dismiss answer for a move whose redeem signature is stored (served as `inFlight: true`). */
+/** R337: the moves step runs only when MOVES_ENABLED is exactly "true"; unset (or anything else) is off. */
+export const movesEnabled = (): boolean => process.env.MOVES_ENABLED === "true";
+export const IN_FLIGHT = "This move is on its way. Check Home in a minute.";
 const ATA_RENT_LAMPORTS = 2_039_280;
 
 /** Spec 7: lending-to-lending, same asset, Kamino <-> Jupiter Lend only; proposed when 30 days of the 7-day-average gap beat 3x the cost. */
@@ -15,61 +19,87 @@ export type DepositStatus = "confirmed" | "failed" | "pending" | "expired";
 const BUILD_LIFETIME_MS = 5 * 60_000;
 
 /**
- * The on-chain outcome of a card's deposit, by its stored signature (the confirm stores it before sending): "expired" once the chain
- * does not know it and the newest build of the move is older than any blockhash it could carry.
+ * The on-chain outcome of one of a card's two transactions, by its stored signature (the confirm stores both before the redeem is
+ * sent): "expired" once the chain does not know it and the newest build of the move is older than any blockhash it could carry.
  */
-export async function chainDepositStatus(repo: Repo, card: MoveProposalRow, now: Date): Promise<DepositStatus> {
-  const s = await signatureStatus(card.depositSignature as string);
+export async function chainTxStatus(repo: Repo, card: MoveProposalRow, signature: string, now: Date): Promise<DepositStatus> {
+  const s = await signatureStatus(signature);
   if (s !== "pending") return s;
   const built = (await repo.listEvents(card.userPubkey, ["move_built"], 200)).find((e) => (e.detail as { id?: unknown } | null)?.id === card.id);
   return !built || now.getTime() - built.ts.getTime() > BUILD_LIFETIME_MS ? "expired" : "pending";
 }
 
-/** A move whose deposit confirmed: done with both signatures, then the move_done event (a failed write is logged; the carry reads the card). */
-export async function finishMove(repo: Repo, card: MoveProposalRow, sig: { redeem: string; deposit: string }, receiptRaw: bigint): Promise<void> {
-  await repo.setMoveProposalStatus(card.id, "done", sig);
+/**
+ * A move whose deposit confirmed: open -> done (compare-and-set), then the move_done event by the writer that won (a failed write is
+ * logged; the carry reads the card). False when the card was no longer open: the caller re-reads and answers from that state.
+ */
+export async function finishMove(repo: Repo, card: MoveProposalRow, receiptRaw: bigint): Promise<boolean> {
+  if (!(await repo.transitionMoveProposal(card.id, "open", "done"))) return false;
   try {
     await repo.addEvent({ userPubkey: card.userPubkey, walletPubkey: null, kind: "move_done", detail: moveDetail({ ...card, receiptRaw }, "done") });
   } catch (e) {
     console.error(`moves: ${card.id} is done but the move_done event was not written for ${card.userPubkey}: ${e instanceof Error ? e.message : String(e)}`);
   }
+  return true;
+}
+
+/** The redeem landed and the deposit cannot: open -> failed (compare-and-set), then move_failed (Activity: the money is back in the wallet). */
+export async function failMove(repo: Repo, card: MoveProposalRow): Promise<boolean> {
+  if (!(await repo.transitionMoveProposal(card.id, "open", "failed"))) return false;
+  try {
+    await repo.addEvent({ userPubkey: card.userPubkey, walletPubkey: null, kind: "move_failed", detail: moveDetail(card, "failed") });
+  } catch (e) {
+    console.error(`moves: ${card.id} failed but the move_failed event was not written for ${card.userPubkey}: ${e instanceof Error ? e.message : String(e)}`);
+  }
+  return true;
 }
 
 /**
- * Fix round 1 (review I1): an open card whose redeem landed is a move in flight, never a card to expire. Its deposit's signature says
- * how it ended: confirmed -> done (+ move_done, the carry), failed or expired -> failed, still pending -> left alone. No deposit
- * signature (cannot happen once the confirm stores both before the deposit send) -> failed.
+ * An open card with a stored redeem signature is a move in flight, never a card to expire, dismiss or rebuild. Its signatures say how
+ * it ended: the deposit confirmed -> done (+ move_done, the carry); the deposit can no longer land -> the redeem decides: it landed ->
+ * failed (+ move_failed), it never did -> nothing moved, the signatures are cleared and the card is an ordinary open card again
+ * ("cleared"); anything still pending -> left alone. Every write is a compare-and-set, so a confirm racing this settles once.
  */
-async function settleInFlight(repo: Repo, card: MoveProposalRow, status: (card: MoveProposalRow) => Promise<DepositStatus>): Promise<"done" | "failed" | "pending"> {
-  if (!card.depositSignature) { await repo.setMoveProposalStatus(card.id, "failed"); return "failed"; }
-  const s = await status(card);
-  if (s === "pending") return "pending";
-  if (s === "confirmed") {
-    const built = await latestMoveBuild(repo, card.userPubkey, card.id);
-    await finishMove(repo, card, { redeem: card.redeemSignature as string, deposit: card.depositSignature }, built?.receiptRaw ?? card.receiptRaw);
-    return "done";
+async function settleInFlight(repo: Repo, card: MoveProposalRow, status: (sig: string, card: MoveProposalRow) => Promise<DepositStatus>): Promise<"done" | "failed" | "cleared" | "pending"> {
+  const redeem = card.redeemSignature as string;
+  if (!card.depositSignature) return (await failMove(repo, card)) ? "failed" : "pending";
+  const d = await status(card.depositSignature, card);
+  if (d === "pending") return "pending";
+  if (d === "confirmed") {
+    const built = await latestMoveBuild(repo, card.userPubkey, card.id, redeem);
+    return (await finishMove(repo, card, built?.receiptRaw ?? card.receiptRaw)) ? "done" : "pending";
   }
-  await repo.setMoveProposalStatus(card.id, "failed");
-  return "failed";
+  const r = await status(redeem, card);
+  if (r === "pending") return "pending";
+  if (r === "confirmed") return (await failMove(repo, card)) ? "failed" : "pending";
+  return (await repo.clearMoveSignatures(card.id, redeem)) ? "cleared" : "pending";
 }
 
-export async function proposeMoves(a: { repo: Repo; now: Date; positions(user: string): Promise<LendPosition[]>; solUsd: number; depositStatus?(signature: string, card: MoveProposalRow): Promise<DepositStatus> }): Promise<{ proposed: string[]; expired: string[] }> {
+/**
+ * `txStatus` reads one stored signature's outcome (default chainTxStatus); the cron passes one that throws past its moves deadline,
+ * which leaves the card in flight for the next run (T21 minor: no chain read outside the deadline).
+ */
+export async function proposeMoves(a: { repo: Repo; now: Date; positions(user: string): Promise<LendPosition[]>; solUsd: number; txStatus?(signature: string, card: MoveProposalRow): Promise<DepositStatus> }): Promise<{ proposed: string[]; expired: string[]; settled: string[] }> {
   const day = dayOf(a.now);
   const today = await a.repo.listVenueDays(day);
   const yesterday = await a.repo.listVenueDays(addDays(day, -1));
   const costUsd = ((FEE_LAMPORTS + ATA_RENT_LAMPORTS) / 1e9) * a.solUsd;
   const proposed: string[] = [];
   const expired: string[] = [];
+  const settled: string[] = [];
+  const status = (sig: string, c: MoveProposalRow) => (a.txStatus ? a.txStatus(sig, c) : chainTxStatus(a.repo, c, sig, a.now));
   for (const u of await a.repo.listUsers()) {
     let open = await a.repo.openMoveProposal(u.seedVaultPubkey);
     if (open?.redeemSignature) {
-      const status = (c: MoveProposalRow) => (a.depositStatus ? a.depositStatus(c.depositSignature as string, c) : chainDepositStatus(a.repo, c, a.now));
-      const settled = await settleInFlight(a.repo, open, status).catch((e: unknown) => {
-        console.error(`proposeMoves: could not settle move ${open?.id}: ${e instanceof Error ? e.message : String(e)}`);
+      const card = open;
+      const outcome = await settleInFlight(a.repo, card, status).catch((e: unknown) => {
+        console.error(`proposeMoves: could not settle move ${card.id}: ${e instanceof Error ? e.message : String(e)}`);
         return "pending" as const;
       });
-      if (settled === "pending") continue;   // still in flight: no new card, nothing expired
-      open = null;
+      if (outcome === "pending") continue;   // still in flight (or another writer won): no new card, nothing expired
+      settled.push(`${card.id}:${outcome}`);
+      // Cleared: nothing moved, the card is an ordinary open card again and is judged below like any other.
+      open = outcome === "cleared" ? { ...card, redeemSignature: null, depositSignature: null } : null;
     }
     // Review minor 1: a failed read is not "no position"; the user is skipped and an open card stays as it is.
     let positions: LendPosition[];
@@ -89,7 +119,8 @@ export async function proposeMoves(a: { repo: Repo; now: Date; positions(user: s
       }
     }
     if (open && (!best || best.p.asset !== open.asset || best.p.venue !== open.fromVenue || best.to !== open.toVenue)) {
-      await a.repo.setMoveProposalStatus(open.id, "expired");
+      // Compare-and-set, and never a card in flight: a confirm that stored its signatures meanwhile wins, and no new card is offered.
+      if (!(await a.repo.transitionMoveProposal(open.id, "open", "expired", { notInFlight: true }))) continue;
       expired.push(open.id);
     }
     if (best && !(open && best.p.asset === open.asset && best.p.venue === open.fromVenue && best.to === open.toVenue)) {
@@ -100,11 +131,11 @@ export async function proposeMoves(a: { repo: Repo; now: Date; positions(user: s
       }
     }
   }
-  return { proposed, expired };
+  return { proposed, expired, settled };
 }
 
-/** The detail every move_proposed / move_done / move_dismissed event carries (Activity reads it, contracts 5.7). */
-export const moveDetail = (m: { id: string; asset: LendAsset; fromVenue: AutoVenue; toVenue: AutoVenue; receiptRaw: bigint }, status: "open" | "done" | "dismissed") =>
+/** The detail every move_proposed / move_done / move_dismissed / move_failed event carries (Activity reads it, contracts 5.7). */
+export const moveDetail = (m: { id: string; asset: LendAsset; fromVenue: AutoVenue; toVenue: AutoVenue; receiptRaw: bigint }, status: "open" | "done" | "dismissed" | "failed") =>
   ({ id: m.id, asset: m.asset, from: m.fromVenue, to: m.toVenue, receiptRaw: m.receiptRaw.toString(), status });
 
 /**
@@ -122,11 +153,13 @@ export const moveDepositRaw = (a: { expectedOutRaw: bigint; servedUnderlyingRaw:
  * basis and earned with them. Rates are underlying per receipt unit, as `venue_days.exchange_rate` holds them (what /api/me values
  * with); `toReceiptRaw` is the target receipt the deposit should mint at the target's live rate.
  */
-export type MoveCarry = { id: string; asset: LendAsset; from: AutoVenue; to: AutoVenue; receiptRaw: bigint; sourceReceiptRaw: bigint; depositRaw: bigint; fromRate: number; toRate: number; toReceiptRaw: bigint };
+export type MoveCarry = { id: string; asset: LendAsset; from: AutoVenue; to: AutoVenue; receiptRaw: bigint; sourceReceiptRaw: bigint; depositRaw: bigint; fromRate: number; toRate: number; toReceiptRaw: bigint;
+  /** Set on the build the confirm matched and is about to send (C-I2/K-I2): that build is the carry's, whatever is built later. */
+  redeemSignature?: string };
 
 export const moveBuiltDetail = (c: MoveCarry) => ({
   id: c.id, asset: c.asset, from: c.from, to: c.to, receiptRaw: c.receiptRaw.toString(), sourceReceiptRaw: c.sourceReceiptRaw.toString(), depositRaw: c.depositRaw.toString(),
-  toReceiptRaw: c.toReceiptRaw.toString(), fromRate: c.fromRate, toRate: c.toRate,
+  toReceiptRaw: c.toReceiptRaw.toString(), fromRate: c.fromRate, toRate: c.toRate, ...(c.redeemSignature ? { redeemSignature: c.redeemSignature } : {}),
 });
 
 const digits = (v: unknown): v is string => typeof v === "string" && /^\d+$/.test(v);
@@ -135,16 +168,24 @@ export function parseMoveBuilt(detail: unknown): MoveCarry | null {
   const d = (detail ?? {}) as Record<string, unknown>;
   if (typeof d.id !== "string" || typeof d.asset !== "string" || !isLendAsset(d.asset) || typeof d.from !== "string" || !isAutoVenue(d.from) || typeof d.to !== "string" || !isAutoVenue(d.to)) return null;
   if (!digits(d.receiptRaw) || !digits(d.sourceReceiptRaw) || !digits(d.depositRaw) || !digits(d.toReceiptRaw) || !finite(d.fromRate) || !finite(d.toRate)) return null;
-  return { id: d.id, asset: d.asset, from: d.from, to: d.to, receiptRaw: BigInt(d.receiptRaw), sourceReceiptRaw: BigInt(d.sourceReceiptRaw), depositRaw: BigInt(d.depositRaw), toReceiptRaw: BigInt(d.toReceiptRaw), fromRate: d.fromRate, toRate: d.toRate };
+  return { id: d.id, asset: d.asset, from: d.from, to: d.to, receiptRaw: BigInt(d.receiptRaw), sourceReceiptRaw: BigInt(d.sourceReceiptRaw), depositRaw: BigInt(d.depositRaw), toReceiptRaw: BigInt(d.toReceiptRaw), fromRate: d.fromRate, toRate: d.toRate,
+    ...(typeof d.redeemSignature === "string" && d.redeemSignature ? { redeemSignature: d.redeemSignature } : {}) };
 }
 
-/** The newest build of one move (the confirm checks the posted transactions against exactly this one). */
-export async function latestMoveBuild(repo: Repo, userPubkey: string, id: string): Promise<MoveCarry | null> {
+/**
+ * The newest build of one move; with `redeemSignature` (a move in flight or done), the build the confirm pinned to that signature
+ * first, so a build made after the signatures were stored can never change the carry.
+ */
+export async function latestMoveBuild(repo: Repo, userPubkey: string, id: string, redeemSignature?: string | null): Promise<MoveCarry | null> {
+  let newest: MoveCarry | null = null;
   for (const e of await repo.listEvents(userPubkey, ["move_built"], 200)) {
     const c = parseMoveBuilt(e.detail);
-    if (c && c.id === id) return c;
+    if (!c || c.id !== id) continue;
+    if (!redeemSignature) return c;
+    if (c.redeemSignature === redeemSignature) return c;
+    newest ??= c;
   }
-  return null;
+  return newest;
 }
 
 /**
@@ -155,11 +196,14 @@ export async function moveCarriesFor(repo: Repo, userPubkey: string): Promise<Mo
   const done = await repo.listMoveProposals(userPubkey, "done");
   if (!done.length) return [];
   const builds = new Map<string, MoveCarry>();
+  const pinned = new Map<string, MoveCarry>();   // `${id}|${redeemSignature}`: the build the confirm sent
   for (const e of await repo.listEvents(userPubkey, ["move_built"], 1_000)) {   // newest first: keep the first seen per id
     const c = parseMoveBuilt(e.detail);
-    if (c && !builds.has(c.id)) builds.set(c.id, c);
+    if (!c) continue;
+    if (!builds.has(c.id)) builds.set(c.id, c);
+    if (c.redeemSignature && !pinned.has(`${c.id}|${c.redeemSignature}`)) pinned.set(`${c.id}|${c.redeemSignature}`, c);
   }
-  return done.flatMap((m) => { const c = builds.get(m.id); return c ? [c] : []; });
+  return done.flatMap((m) => { const c = pinned.get(`${m.id}|${m.redeemSignature}`) ?? builds.get(m.id); return c ? [c] : []; });
 }
 
 /** The recent builds of one move, newest first (the confirm accepts a signed pair from any of them: each is the server's own amounts). */
