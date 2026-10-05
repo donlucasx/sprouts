@@ -54,6 +54,18 @@ describe("buildPlantingTx (R207 #2, #4)", () => {
     expect(checks[0].destinationOwner).toBeUndefined();
   });
 
+  it("Step 0 (T9): refuses both lending legs before any quote, and every coin leg's check gets a pinned destination", async () => {
+    const { getQuote } = await import("@/lib/jupiter");
+    vi.mocked(getQuote).mockClear();
+    await expect(buildPlantingTx({ ...base, asset: "USDC_LEND" })).rejects.toThrow(/lending leg/);
+    await expect(buildPlantingTx({ ...base, asset: "SOL_LEND" })).rejects.toThrow(/lending leg/);
+    expect(getQuote).not.toHaveBeenCalled();
+    expect(checks).toEqual([]);
+    for (const asset of ["SKR", "stORE", "hSOL", "cbBTC"] as const) await buildPlantingTx({ ...base, asset });
+    expect(checks.length).toBe(4);
+    for (const c of checks) expect(typeof c.destination === "string" && (c.destination as string).length > 0).toBe(true);
+  });
+
   it("without a carry stakes the minimum alone", async () => {
     await buildPlantingTx({ ...base, asset: "SKR" });
     expect(stakes).toEqual([990_000n]);

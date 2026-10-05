@@ -121,7 +121,7 @@ function checkOutput(swap: KitIx, destination: string): void {
  * must be compute budget, nobody but the puller may be a signer, the fee account must appear in the swap, and the swap must deliver
  * to `destination` (the user's token account for a wallet coin, the puller's SKR account for SKR) in its output position.
  */
-export function checkSwapInstructions(p: ParsedSwap, a: { puller: string; feeAccount?: string; destination?: string; destinationOwner?: string; wsolAccount?: string }): void {
+export function checkSwapInstructions(p: ParsedSwap, a: { puller: string; feeAccount?: string; destination: string; destinationOwner?: string; wsolAccount?: string }): void {
   if (p.swap.programAddress !== JUPITER_AGGREGATOR) refuse(`swap program is ${p.swap.programAddress}`);
   const { disc, slots } = swapLayout(p.swap);
   if (!slots) refuse(`swap instruction ${disc} is not a known route layout`);
@@ -137,7 +137,10 @@ export function checkSwapInstructions(p: ParsedSwap, a: { puller: string; feeAcc
   }
   const swapAccounts = new Set((p.swap.accounts ?? []).map((x) => x.address as string));
   if (a.feeAccount && !swapAccounts.has(a.feeAccount)) refuse("the fee account is missing from the swap");
-  if (a.destination) checkOutput(p.swap, a.destination);
+  // Step 0 (T9, security scan): a destination is mandatory. Without one the output position went unchecked, so a lending leg that
+  // reached the coin-swap path could be routed anywhere; every caller pins where the swap must deliver.
+  if (!a.destination) refuse("no pinned destination: the swap's output position cannot be checked");
+  checkOutput(p.swap, a.destination);
 }
 
 /** The quote's mints against the registry's (spec 7.3): the only place a wrong coin could enter is Jupiter's answer, so it is checked before anything is signed. */

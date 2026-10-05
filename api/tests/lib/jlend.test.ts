@@ -90,6 +90,11 @@ describe("jlendDeliveryShortfall (contracts 3.3)", () => {
     expect(jlendDeliveryShortfall(sim(1_881_239n, null), { minOutRaw: 1_881_240n, pullerJl: P })).toMatch(/under the minimum/);
     expect(jlendDeliveryShortfall({ ok: true, err: null, logs: [], units: 1, delivery: { pre: 0n, post: 1_881_240n } }, { minOutRaw: 1_881_240n, pullerJl: P })).toMatch(/watched/);
   });
+  it("refuses a min_out of zero or below even with the puller's jl account closed", () => {
+    const sim = { ok: true, err: null, logs: [], units: 1, delivery: { pre: 0n, post: 0n }, watched: { [P]: { pre: null, post: null } } };
+    expect(jlendDeliveryShortfall(sim, { minOutRaw: 0n, pullerJl: P })).toMatch(/not positive/);
+    expect(jlendDeliveryShortfall(sim, { minOutRaw: -1n, pullerJl: P })).toMatch(/not positive/);
+  });
 });
 
 describe("user-signed Jupiter Lend withdraw (contracts 6 withdraw_jlend)", () => {

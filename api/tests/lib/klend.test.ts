@@ -9,7 +9,7 @@ const enc = getAddressEncoder();
 const USER = address("52vzF8A1qEL7qTY7HiRnvTrXSMN4FkTANZ1DYKQBiF6e");
 const OTHER = address("DdpHknAJvVsG8HYTAN3ZmSLLiPh2GfXP2pMoJJFa1p9m");
 
-function reserve(over: { market?: string; collateralMint?: string; disc?: string; available?: bigint; borrowedSf?: bigint; protocolFeesSf?: bigint; supply?: bigint; len?: number } = {}) {
+function reserve(over: { market?: string; collateralMint?: string; disc?: string; available?: bigint; borrowedSf?: bigint; protocolFeesSf?: bigint; referrerFeesSf?: bigint; pendingReferrerFeesSf?: bigint; supply?: bigint; len?: number } = {}) {
   const b = Buffer.alloc(over.len ?? RESERVE_LEN);
   Buffer.from(over.disc ?? "2bf2ccca1af73b7f", "hex").copy(b, 0);
   Buffer.from(enc.encode(address(over.market ?? KLEND_MARKET))).copy(b, 32);
@@ -19,6 +19,10 @@ function reserve(over: { market?: string; collateralMint?: string; disc?: string
   b.writeBigUInt64LE(sf & 0xffff_ffff_ffff_ffffn, 232); b.writeBigUInt64LE(sf >> 64n, 240);
   const pf = over.protocolFeesSf ?? 0n;
   b.writeBigUInt64LE(pf & 0xffff_ffff_ffff_ffffn, 344); b.writeBigUInt64LE(pf >> 64n, 352);
+  const rf = over.referrerFeesSf ?? 0n;
+  b.writeBigUInt64LE(rf & 0xffff_ffff_ffff_ffffn, 360); b.writeBigUInt64LE(rf >> 64n, 368);
+  const pr = over.pendingReferrerFeesSf ?? 0n;
+  b.writeBigUInt64LE(pr & 0xffff_ffff_ffff_ffffn, 376); b.writeBigUInt64LE(pr >> 64n, 384);
   Buffer.from(enc.encode(address(over.collateralMint ?? KLEND.USDC_LEND.collateralMint))).copy(b, 2560);
   b.writeBigUInt64LE(over.supply ?? 5_000_000n, 2592);
   return new Uint8Array(b);
@@ -28,6 +32,15 @@ describe("readKlendRate (contracts 2.7 KLEND reader; rd = the reserve's own coll
   it("rn = available + (borrowed_sf - fees_sf) >> 60, rd = the reserve's collateral supply @2592", () => {
     expect(readKlendRate(reserve(), "USDC_LEND")).toEqual({ rn: 6_000_000n, rd: 5_000_000n, availableRaw: 1_000_000n });
     expect(readKlendRate(reserve({ protocolFeesSf: 1_000_000n << 60n }), "USDC_LEND").rn).toBe(5_000_000n);
+  });
+  it("the referrer fees @360 and the pending referrer fees @376 each lower the numerator (readers.rs klend_rate)", () => {
+    expect(readKlendRate(reserve({ referrerFeesSf: 700_000n << 60n }), "USDC_LEND").rn).toBe(5_300_000n);
+    expect(readKlendRate(reserve({ pendingReferrerFeesSf: 300_000n << 60n }), "USDC_LEND").rn).toBe(5_700_000n);
+    expect(readKlendRate(reserve({ protocolFeesSf: 1_000_000n << 60n, referrerFeesSf: 700_000n << 60n, pendingReferrerFeesSf: 300_000n << 60n }), "USDC_LEND").rn).toBe(4_000_000n);
+  });
+  it("refuses fees above borrowed (readers.rs GUARD:K_FEES = BadReader), and fees equal to borrowed reads available only", () => {
+    expect(() => readKlendRate(reserve({ borrowedSf: 5n << 60n, referrerFeesSf: 3n << 60n, pendingReferrerFeesSf: (2n << 60n) + 1n }), "USDC_LEND")).toThrow(/fees .* above borrowed/);
+    expect(readKlendRate(reserve({ borrowedSf: 5n << 60n, protocolFeesSf: 5n << 60n }), "USDC_LEND").rn).toBe(1_000_000n);
   });
   it("refuses another market, the junk reserve's collateral mint, a wrong discriminator or length", () => {
     expect(() => readKlendRate(reserve({ market: OTHER }), "USDC_LEND")).toThrow(/market/);
@@ -85,6 +98,11 @@ describe("klendDeliveryShortfall (contracts 3.3 delivery guard)", () => {
     expect(klendDeliveryShortfall(sim(0n, 1_661_072n), { minOutRaw: 1_661_072n })).toBeNull();
     expect(klendDeliveryShortfall(sim(0n, 1_661_071n), { minOutRaw: 1_661_072n })).toMatch(/under the minimum/);
     expect(klendDeliveryShortfall({ ok: true, err: null, logs: [], units: 1 }, { minOutRaw: 1n })).toMatch(/no delivery/);
+  });
+  it("refuses a min_out of zero or below even when the balance did not move", () => {
+    const sim = { ok: true, err: null, logs: [], units: 1, delivery: { pre: 5n, post: 5n } };
+    expect(klendDeliveryShortfall(sim, { minOutRaw: 0n })).toMatch(/not positive/);
+    expect(klendDeliveryShortfall(sim, { minOutRaw: -1n })).toMatch(/not positive/);
   });
 });
 
