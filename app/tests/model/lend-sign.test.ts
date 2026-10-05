@@ -84,7 +84,7 @@ function SCENES(): Scene[] {
 }
 /** The garden as the app draws it at `width`: packed, framed, the stakes' spots resolved. */
 function drawn(scene0: Scene, width: number) {
-  const scene = packScene(scene0, width), plants = plantLayouts(scene), f = frameFor(scene, plants, width), spots = stakeSpots(scene, plants, width, f.zoom);
+  const scene = packScene(scene0, width), plants = plantLayouts(scene), f = frameFor(scene, plants, width), spots = stakeSpots(scene, plants, width, f.zoom, { lo: 0, hi: width });   // as Garden.tsx draws (bedSpan)
   const boards = scene.parts.flatMap((q) => {
     if (q.kind !== "sign") return [];
     const a = stakeAt(q, width, f.zoom, spots), h = 15 * a.scale * a.boardX;

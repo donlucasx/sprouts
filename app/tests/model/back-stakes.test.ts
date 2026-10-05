@@ -5,6 +5,7 @@ import { plantLayouts, type PlantOnStage } from "@/model/scene-to-layout";
 import { buildScene, type GardenInput, type Scene } from "@/model/garden";
 import { frameGround } from "@/model/soil-clip";
 import { SPRITE_META } from "@/garden/sprite-meta";
+import { widgetGardenSvg } from "@/model/widget-svg";
 
 // R356 (10-05, his words: "the USDC Kamino stake should not be over the SKR plant (its behind), so maybe nudge it around so its not
 // covered by it? same with the SOL Jupiter stake.. should not be in front of the stORE"): depth stays true (a back-row stake draws
@@ -40,7 +41,7 @@ function partBoxes(pl: PlantOnStage, width: number): Box[] {
   });
 }
 function boards(scene: Scene, width: number) {
-  const plants = plantLayouts(scene), f = frameFor(scene, plants, width), spots = stakeSpots(scene, plants, width, f.zoom), ground = frameGround(width, f);
+  const plants = plantLayouts(scene), f = frameFor(scene, plants, width), spots = stakeSpots(scene, plants, width, f.zoom, { lo: 0, hi: width }), ground = frameGround(width, f);
   const out = scene.parts.flatMap((q) => (q.kind === "sign" ? [q] : [])).map((s) => {
     const a = signPlacement(s, width, f.zoom, ground, spots), h = 15 * a.scale * a.boardX;
     const home = signX(s.x * width, s.side, width, a.scale, a.boardX);   // R237's spot, before any move
@@ -73,6 +74,8 @@ describe("back-row stakes stand where no front plant covers them (R356)", () => 
       for (const b of out.filter((x) => x.row === "back")) expect(covered(b, front), `${b.plant} at ${width}`).toBeLessThanOrEqual(covered(b.home, front) + 1e-6);
       const before = out.filter((x) => x.row === "back").reduce((t, b) => t + covered(b.home, front), 0), after = out.filter((x) => x.row === "back").reduce((t, b) => t + covered(b, front), 0);
       expect(after, `${width}`).toBeLessThan(before);
+      // measured 10-05 (R237's spots cover 96 to 105 px of the two boards at every width): the moved boards at most this much
+      expect(after, `${width}`).toBeLessThanOrEqual(({ 280: 85, 320: 35, 353: 8, 372: 20 } as Record<number, number>)[width]);
     }
   });
   it("the boards stay apart and inside the garden", () => {
@@ -80,6 +83,16 @@ describe("back-row stakes stand where no front plant covers them (R356)", () => 
       const { out } = boards(scene, width);
       for (const b of out) { expect(b.x0).toBeGreaterThanOrEqual(0); expect(b.x1).toBeLessThanOrEqual(width); }
       for (let i = 0; i < out.length; i++) for (let j = i + 1; j < out.length; j++) expect(hit(out[i], out[j]), `${out[i].plant} and ${out[j].plant} at ${width}`).toBe(false);
+    }
+  });
+  it("depth stays true: the widget draws the back-row stakes before any front plant, the front stakes after them", () => {
+    for (const width of [300, 340, 380]) {
+      const svg = widgetGardenSvg(buildScene(GROWN), width, 260);
+      const signs = [...svg.matchAll(/#s-sign"/g)].map((m) => m.index!), skrFruit = svg.indexOf("#s-token-skr"), lastFront = svg.lastIndexOf("#s-token-skr");
+      expect(signs).toHaveLength(4);
+      expect(skrFruit).toBeGreaterThan(0);
+      expect(signs[1]).toBeLessThan(skrFruit);   // the two back-row boards (USDC, SOL) before the front row's mandarin
+      expect(signs[2]).toBeGreaterThan(lastFront);   // SKR's and stORE's after it
     }
   });
   // KNOWN (R356, measured 10-05): at 280 and 320 the widest stretch of the back row no front part's box crosses, at the boards' height,
