@@ -34,6 +34,7 @@ ENABLE PRECONDITIONS BEYOND THIS TABLE (Task 7 review, Important 1). Task 8's mu
 SKR stake rounding (S2): 0 share(s) below floor(skr * 1e9 / share_price) at 2026-10-04; the API builder's min_out = expected - 1 is safe.
 
 Release (Task 8, 2026-10-04, program/src as of 38ea620, built by scripts/sbf.sh `sbf_build`, Agave 3.1.11): leash.so sha256 = 3b80a2942c10089880574b857eeffa25a58489f88688197f411ed7e86dbe65e5, size = 65928 B, rent = 0.33579308 SOL (`solana rent 65973`), mutation rows RED = 152 / 152 (140 guard markers, each exactly once, every one with a row; no MUTATED string in the .so; two builds gave the same hash). NOT deployed (Task 9 runbook).
+NEVER INSTALL config/TEST-VECTOR-all-legs-NEVER-INSTALL.hex (leg 0 SKR ON, no price source, R324): config/mainnet-day1.hex is the only installable Config.
 Mutation sweep cells: the sweep is program-wide (every guard, every leg), so the same PASS goes in each row; it never enables a leg on its own (see ENABLE PRECONDITIONS above).
 
 S2 notes (Task 0, 2026-10-04): "+ pyth" = `s2_pyth_accounts_layout` also PASS for that leg's feed account (SOL, cbBTC, ORE; USDC checked as a control).

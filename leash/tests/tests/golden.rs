@@ -5,7 +5,15 @@
 use base64::Engine as _;
 use leash_tests::*;
 
-const VARIANTS: [(&str, &[usize]); 3] = [("init", &[]), ("day1", &[2, 6, 7]), ("all", &[0, 1, 2, 3, 4, 5, 6, 7])];
+/// (file under config/, enabled legs). Only `mainnet-day1.hex` is an installable Config (via the golden path's set_legs);
+/// `mainnet-init.hex` is the header-only state right after init_config (every leg disabled).
+const VARIANTS: [(&str, &[usize]); 3] = [
+    ("mainnet-init.hex", &[]),
+    ("mainnet-day1.hex", &[2, 6, 7]),
+    // TEST VECTOR ONLY, NEVER INSTALL: every leg ON, including leg 0 (SKR), which has no price source (R324) and must
+    // stay off on chain. It exists so the API's encoder is checked with every `enabled` byte set.
+    ("TEST-VECTOR-all-legs-NEVER-INSTALL.hex", &[0, 1, 2, 3, 4, 5, 6, 7]),
+];
 
 fn golden_config(puller: &Pubkey, legs: &[usize]) -> Config {
     let mut e = [false; 8];
@@ -37,7 +45,7 @@ fn puller_usdc_is_the_pullers_ata() {
 #[test]
 fn golden_bodies_match_files() {
     for (name, legs) in VARIANTS {
-        let path = root().join(format!("config/mainnet-{name}.hex"));
+        let path = root().join("config").join(name);
         let want = body_hex(&b58(addr::PULLER_MAINNET), legs);
         check_file(&path, &want);
         validate(&decode_body(&unhex(&want)).unwrap()).unwrap();
