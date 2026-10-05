@@ -38,7 +38,7 @@ export const DISCLOSURES: [string, string][] = [
   ],
   [
     'Kamino and where you live',
-    "Kamino blocks users in the US and UK on its own website. Sprouts deposits on-chain for you, so you can hold a Kamino position even where Kamino's site is blocked, and you withdraw it in Sprouts. Follow the rules where you live.",
+    "Kamino restricts some regions on its own website. Sprouts deposits on-chain for you and you withdraw in Sprouts; check that using lending is allowed where you live.",
   ],
   [
     'Signed in',
