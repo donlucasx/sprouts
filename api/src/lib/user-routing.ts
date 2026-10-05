@@ -53,21 +53,23 @@ export async function userRouting(a: { repo: Repo; splitRow: SplitDayRow | null;
   const byProtocol = capKnown ? lendingUsdByProtocol(a.positions!, rows, a.prices) : {};
   const picks: Picks = { ...stored };
   const moved: LendAsset[] = [];
-  const because: Partial<Record<LendAsset, "cap" | "leash">> = {};
+  const leashed = new Set<LendAsset>();
   for (const asset of LEND_ASSETS) {
     const s = stored[asset];
     if (!s) continue;
     const allowed = a.leash?.[asset];
     const capped = pickVenue({ candidates: venueCandidates(asset, rows, yesterday), lendingUsdByProtocol: byProtocol, addUsd: a.addUsd, ...(allowed ? { allowed } : {}) });
-    if (capped !== s) { picks[asset] = capped; moved.push(asset); because[asset] = allowed && !allowed.includes(s) ? "leash" : "cap"; }
+    if (capped !== s) { picks[asset] = capped; moved.push(asset); if (allowed && !allowed.includes(s)) leashed.add(asset); }
   }
   if (!moved.length) return { picks, why: a.splitRow.why };
   // The capped legs' sentences first; the other routed legs' (code's, as split-run writes them) while the whole stays within WHY_MAX.
   const split = a.splitRow.split;
-  let why = moved.map((l) => routingWhy(l, picks[l] ?? null, rows, stored[l] ?? null, because[l])).join(" ");
+  // R344: a leash-moved leg gets the plain sentence for the venue it plants to, or none when no allowed venue qualifies (compared only against venues the leash allows).
+  const one = (l: LendAsset) => (leashed.has(l) ? (picks[l] ? routingWhy(l, picks[l] ?? null, rows.filter((r) => r.asset !== l || (a.leash?.[l] ?? []).includes(r.venue as never))) : "") : routingWhy(l, picks[l] ?? null, rows, stored[l] ?? null));
+  let why = moved.map(one).filter(Boolean).join(" ");
   for (const l of LEND_ASSETS.filter((x) => split[x] > 0 && !moved.includes(x))) {
     const more = routingWhy(l, picks[l] ?? null, rows);
-    if (why.length + 1 + more.length <= WHY_MAX) why = `${why} ${more}`;
+    if (why.length + (why ? 1 : 0) + more.length <= WHY_MAX) why = why ? `${why} ${more}` : more;
   }
-  return { picks, why };
+  return { picks, why: why || null };
 }
