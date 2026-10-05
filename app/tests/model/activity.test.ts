@@ -96,7 +96,7 @@ describe('R362: withdrawals', () => {
 describe('moves and found venues', () => {
   const m = { ts: '2026-10-05T19:00:00Z', asset: 'USDC_LEND' as const, from: 'jupiter_lend' as const, to: 'kamino_klend' as const, receiptRaw: '940000' }
   it('a move: done, did not finish, kept; an open or expired proposal is not a row', () => {
-    expect(keep(moveRow({ ...m, status: 'done' }))).toMatchObject({ ts: m.ts, label: 'Moved USDC', amount: null, details: ['Jupiter to Kamino.'] })
+    expect(keep(moveRow({ ...m, status: 'done' }))).toMatchObject({ key: `mv-${m.ts}-USDC_LEND-jupiter_lend`, ts: m.ts, label: 'Moved USDC', amount: null, details: ['Jupiter to Kamino.'] })
     expect(keep(moveRow({ ...m, status: 'failed' }))).toMatchObject({ label: "Move didn't finish", details: ['Your USDC is back in your wallet.', 'Jupiter to Kamino.'] })
     expect(keep(moveRow({ ...m, asset: 'SOL_LEND', status: 'failed' }))?.details).toEqual(['Your SOL is in your wallet. If it shows as wrapped SOL, unwrap it in your wallet.', 'Jupiter to Kamino.'])
     expect(keep(moveRow({ ...m, status: 'dismissed' }))).toMatchObject({ label: 'Kept USDC on Jupiter', details: ['Not moved to Kamino.'] })
