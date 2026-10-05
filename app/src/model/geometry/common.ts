@@ -64,6 +64,11 @@ export function swelling(acc: Acc, x: number, y: number, pending: number, k: num
   if (pending <= 0) return;
   const r = Math.min(4.6, 2.2 + 3.2 * pending) * k;
   const bud = acc.parts.find((p): p is Extract<Placed, { kind: "sprite" }> => p.kind === "sprite" && p.part === "bud" && Math.hypot(p.x - x, p.y - y) <= 7 * k);
-  sprite(acc, "swelling", "swelling", x, bud ? bud.y - 9.6 * bud.scale - 2 * k - r : y, 0, r, 4);
+  // R351: the mandarin's highest sprout, its node within 14 px (its furled pair reaches up past the node): ride 2 px above its leaves'
+  // highest tip when they reach the swelling, so the circle never sits on the sprout
+  const nub = bud ? undefined : acc.parts.filter((p): p is Extract<Placed, { kind: "stem" }> => p.kind === "stem" && p.part === "nub" && Math.hypot(p.x0 - x, p.y0 - y) <= 14 * k).sort((a, b) => a.y0 - b.y0)[0];
+  const furled = nub ? acc.parts.filter((p): p is Extract<Placed, { kind: "sprite" }> => p.kind === "sprite" && p.part === "furl" && p.shoot === nub.shoot) : [];
+  const sproutTop = furled.length ? Math.min(...furled.map((p) => p.y - Math.cos(rad(p.rot)) * (BAKED_L[p.name.replace(/-s\d$/, "")]?.[Number(p.name.slice(-1))] ?? 12) * p.scale)) : null;
+  sprite(acc, "swelling", "swelling", x, bud ? bud.y - 9.6 * bud.scale - 2 * k - r : sproutTop !== null ? Math.min(y, sproutTop - 2 * k - r) : y, 0, r, 4);
 }
 export const band = (b: 0 | 1 | 2) => BAND_SCALE[b];

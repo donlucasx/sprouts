@@ -17,7 +17,8 @@ describe("the mandarin (spec 4, gen04:70-110)", () => {
     const l = mandarin(shoots([10.8, 8.4, 6, 3.6, 1.2], 1), O, 1);
     expect(stems(l).filter((s) => s.part === "branch")).toHaveLength(2);
     expect(stems(l).find((s) => s.part === "trunk")).toMatchObject({ x1: 1.5, y1: -(16 + 10 * 5), bend: -2, color: "#236F47" });
-    expect(sprites(l).filter((s) => s.part === "bud")).toHaveLength(1);
+    expect(sprites(l).filter((s) => s.part === "bud")).toHaveLength(0);   // R351: the bud is a sprout on a nub
+    expect(stems(l).filter((s) => s.part === "nub")).toHaveLength(1); expect(sprites(l).filter((s) => s.part === "furl")).toHaveLength(2);
     expect(l.growthPoint).toEqual({ x: 1.5, y: -66 });
   });
   it("a trunk of twelve nodes caps at 146.52 and goes woody past eight shoots", () => {
@@ -26,7 +27,7 @@ describe("the mandarin (spec 4, gen04:70-110)", () => {
   });
   it("overflow past the eighth branch's fifteenth twig returns to the trunk; nothing is dropped (Review Focus 2)", () => {
     const l = mandarin(shoots(Array.from({ length: 140 }, (_, i) => 400 - i * 2)), O, 1);
-    expect(sprites(l).filter((s) => s.part === "leaf" || s.part === "bud").map((s) => s.shoot).filter((v, i, a) => a.indexOf(v) === i)).toHaveLength(140);
+    expect(sprites(l).filter((s) => s.part === "leaf" || s.part === "furl").map((s) => s.shoot).filter((v, i, a) => a.indexOf(v) === i)).toHaveLength(140);
     expect(stems(l).filter((s) => s.part === "branch").length).toBeGreaterThanOrEqual(8);
     expect(l.top).toBeLessThan(240);
   });
@@ -34,7 +35,7 @@ describe("the mandarin (spec 4, gen04:70-110)", () => {
     const sh = shoots(Array.from({ length: 14 }, (_, i) => 60 - i * 4)); sh[0] = { ...sh[0], opened: false, branch: false };
     for (let i = 1; i < 12; i++) sh[i] = { ...sh[i], branch: false };
     const l = mandarin(sh, O, 1);
-    expect(sprites(l).filter((s) => s.part === "leaf" || s.part === "bud").map((s) => s.shoot).filter((v, i, a) => a.indexOf(v) === i)).toHaveLength(14);
+    expect(sprites(l).filter((s) => s.part === "leaf" || s.part === "furl").map((s) => s.shoot).filter((v, i, a) => a.indexOf(v) === i)).toHaveLength(14);
     expect(stems(l).filter((s) => s.part === "branch")).toHaveLength(0);
   });
   it("tokens hang on 4 px stalks at the highest twig tips, the blossom last; the swelling sits on the trunk's tip", () => {

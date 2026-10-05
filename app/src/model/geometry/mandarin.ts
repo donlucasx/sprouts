@@ -1,5 +1,6 @@
 import { CAPS, COLORS, SOIL, type LayoutOpts, type PlantLayout, type ShootIn } from "../species";
-import { type Acc, along, alongAtY, band, finish, rad, sprite, stageOf, stem, swelling, twig } from "./common";
+import { type Acc, along, alongAtY, band, finish, rad, stageOf, stem, sprite, swelling, twig } from "./common";
+import { unfurlParts } from "../sprout";
 
 /** RG14, gen04_garden.py:70-110 with RG19's trigger (gen09) and G10's seating. The trunk shows 12 nodes; shoots 13 and later go
  * round-robin to at most 8 branch nodes; a branch shows 5 twigs then two sub-branches; past that, and with no branch node, shoots
@@ -16,6 +17,13 @@ export function mandarin(shoots: ShootIn[], o: LayoutOpts, k: number): PlantLayo
   const on = new Map<number, ShootIn[]>(brNodes.map((i) => [i, []]));
   const overflow: ShootIn[] = [];
   extra.forEach((s, j) => { if (brNodes.length === 0) overflow.push(s); else on.get(brNodes[j % brNodes.length])!.push(s); });
+  /** R351: a closed shoot is the twig it will become (a pair, at its stage), folded: the nub and the furled pair at the twig's node,
+   * so the sprout sits on the trunk or branch and opens in place (model/sprout.ts). No tip: tokens hang on open twigs only. */
+  const sprout = (x: number, y: number, ang: number, L: number, sz: number, st: ReturnType<typeof stageOf>, id: string) => {
+    const tmp: Acc = { parts: [], tips: [] };
+    twig(tmp, "leaf-mandarin", x, y, ang, L, sz, 2, st, k, c.deep, id);
+    acc.parts.push(...unfurlParts(tmp.parts, 0));
+  };
   const nodeY = (i: number) => -8 * k - step * (i + 0.5);
   const branch = (bx: number, by: number, side: number, lvs: ShootIn[], L: number, ang: number, depth: number) => {
     const ex = bx + side * Math.sin(rad(ang)) * L, ey = by - Math.cos(rad(ang)) * L, bend = side * 2;
@@ -24,15 +32,16 @@ export function mandarin(shoots: ShootIn[], o: LayoutOpts, k: number): PlantLayo
     const shown = lvs.slice(0, 5), rest = lvs.slice(5);
     shown.forEach((lf, q) => {
       const { x: lx, y: ly } = on((q + 1) / (shown.length + 0.6)), st = stageOf(lf.ageDays), sz = band(lf.band) * k * 0.9;
-      if (!lf.opened) { sprite(acc, "bud", "bud-mandarin", lx, ly, side * 40, 0.9 * sz, 2, lf.id); return; }
-      acc.tips.push(twig(acc, "leaf-mandarin", lx, ly, side * (ang + (q % 2 ? -35 : 25)), 8 * k, sz, st <= 1 ? 2 : st === 2 ? 3 : 4, st, k, c.deep, lf.id));
+      const tang = side * (ang + (q % 2 ? -35 : 25));
+      if (!lf.opened) { sprout(lx, ly, tang, 8 * k, sz, st, lf.id); return; }
+      acc.tips.push(twig(acc, "leaf-mandarin", lx, ly, tang, 8 * k, sz, st <= 1 ? 2 : st === 2 ? 3 : 4, st, k, c.deep, lf.id));
     });
     if (rest.length === 0) return;
     if (depth < 2) branch(on(0.6).x, on(0.6).y, side, rest, L * 0.7, ang - 18, depth + 1); else overflow.push(...rest);
   };
   main.forEach((s, i) => {
     const ny = nodeY(i), side = i % 2 === 0 ? -1 : 1, st = stageOf(s.ageDays), sz = band(s.band) * k, tx = trunkX(ny);
-    if (!s.opened) { sprite(acc, "bud", "bud-mandarin", tx + side * 3 * k, ny, side * 35, 0.9 * sz, 2, s.id); return; }   // RG19: a branch node is opened by definition, so a bud never carries shoots
+    if (!s.opened) { sprout(tx, ny, side * 58, 7 * k, sz, st, s.id); return; }   // RG19: a branch node is opened by definition, so a bud never carries shoots
     if (on.has(i)) {
       const bi = brNodes.indexOf(i), bside = bi % 2 === 0 ? -1 : 1, lvs = on.get(i)!;
       const L = (18 + 5 * Math.min(8, lvs.length + 1)) * k * (1 + 0.05 * bi);
@@ -41,7 +50,7 @@ export function mandarin(shoots: ShootIn[], o: LayoutOpts, k: number): PlantLayo
   });
   overflow.forEach((s, j) => {
     const side = j % 2 === 0 ? 1 : -1, st = stageOf(s.ageDays), sz = band(s.band) * k * 0.9, ny = -trunkH + 3 * k * (1 + Math.floor(j / 2)), tx = trunkX(ny);
-    if (!s.opened) sprite(acc, "bud", "bud-mandarin", tx + side * 3 * k, ny, side * 35, 0.9 * sz, 2, s.id);
+    if (!s.opened) sprout(tx, ny, side * 58, 7 * k, sz, st, s.id);
     else acc.tips.push(twig(acc, "leaf-mandarin", tx, ny, side * 58, 7 * k, sz, st <= 1 ? 2 : 3, st, k, c.deep, s.id));
   });
   // RG16, R97: tokens on 4 px stalks at the highest twig tips (deterministic: the generator sampled them); the blossom is the next one

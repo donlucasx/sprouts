@@ -43,8 +43,8 @@ describe("the frame (RG30, R167, R185: room above the tallest part max(72 dp, 60
   });
   it("a tall garden at zoom 1: the headroom is 60 percent of the content's height once that passes 72 px (day 120)", () => {
     const s = buildScene(previewInputAt(120)), f = frame(s), t = tallest(s);
-    expect(t).toBeCloseTo(88.19, 2); expect(f.zoom).toBe(1);   // R231: the content 201.8 canvas px; 60 percent of it is 121.1
-    expect(t - f.y).toBeCloseTo(0.6 * (290 - t), 6); expect(f.viewH).toBeCloseTo(322.90, 2);
+    expect(t).toBeCloseTo(85.78, 2); expect(f.zoom).toBe(1);   // R351: the top sprout's furled pair reaches 2.4 px over the old bud (88.19): the content 204.2 canvas px; 60 percent of it is 122.5
+    expect(t - f.y).toBeCloseTo(0.6 * (290 - t), 6); expect(f.viewH).toBeCloseTo(326.75, 2);   // R351: 322.90 before
   });
   it("day 240: the view grows by 60 percent of its 192.9 px content (115.7) above the canvas's top; zoomed out to 0.957 for the gutters (R187 fix round 1)", () => {
     const f = frame(buildScene(previewInputAt(240)));

@@ -11,8 +11,8 @@ export type ShootIn = { id: string; ageDays: number; band: Band; opened: boolean
  * upward, already multiplied by k; rot in degrees, SVG sense; scale multiplies the sprite's baked size (for `swelling` and `dot`
  * it is the circle's radius in px). */
 export type Placed =
-  | { kind: "sprite"; name: string; x: number; y: number; rot: number; scale: number; xScale?: number; z: number; shoot?: string; part: "leaf" | "bud" | "blade" | "tier" | "token" | "blossom" | "head" | "bell" | "pup" | "swelling" | "tip" | "dot" }
-  | { kind: "stem"; x0: number; y0: number; x1: number; y1: number; w0: number; w1: number; bend: number; color: string; z: number; shoot?: string; part: "trunk" | "twig" | "branch" | "cane" | "stalk" | "petiole" | "fan" };
+  | { kind: "sprite"; name: string; x: number; y: number; rot: number; scale: number; xScale?: number; z: number; shoot?: string; part: "leaf" | "bud" | "blade" | "tier" | "token" | "blossom" | "head" | "bell" | "pup" | "swelling" | "tip" | "dot" | "furl" }
+  | { kind: "stem"; x0: number; y0: number; x1: number; y1: number; w0: number; w1: number; bend: number; color: string; z: number; shoot?: string; part: "trunk" | "twig" | "nub" | "branch" | "cane" | "stalk" | "petiole" | "fan" };
 export type PlantLayout = { parts: Placed[]; top: number; growthPoint: { x: number; y: number }; tips: { x: number; y: number }[] };
 export type LayoutOpts = { pending: number; fruit: number; ripening: number; blossom: boolean; pups: number; head: boolean };
 
