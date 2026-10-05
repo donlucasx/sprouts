@@ -55,6 +55,6 @@ describe("signInWithSeeker (R283: the Terms are accepted at sign-in)", () => {
   it("sends the Terms version with the verify call", async () => {
     await signInWithSeeker(async () => ({ account: { address: "DjRp" }, signedMessage: message, signature: sig }));
     const verify = vi.mocked(api).mock.calls.find((c) => c[0] === "/api/auth/verify");
-    expect((verify?.[1] as { body: { termsVersion?: string } }).body.termsVersion).toBe("2026-10-06");
+    expect((verify?.[1] as { body: { termsVersion?: string } }).body.termsVersion).toBe("2026-10-07");
   });
 });
