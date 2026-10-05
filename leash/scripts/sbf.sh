@@ -61,3 +61,12 @@ verify_build() {
 leash_build() {
   if [ -n "${LEASH_LOCAL_SBF:-}" ]; then sbf_build program/Cargo.toml "$@"; else verify_build "$@"; fi
 }
+
+# local_sbf_warning: one loud line when LEASH_LOCAL_SBF is set (printed when this file is sourced and again at the end of
+# test.sh and mutate.sh), because those runs test this Mac's bytes, not the release. It changes nothing else.
+local_sbf_warning() {
+  if [ -n "${LEASH_LOCAL_SBF:-}" ]; then
+    echo "WARNING: LEASH_LOCAL_SBF is set: leash.so was built by this Mac's cargo-build-sbf, NOT the release (verifiable) bytes. Nothing from this run counts as a gate result." >&2
+  fi
+}
+local_sbf_warning

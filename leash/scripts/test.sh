@@ -8,4 +8,7 @@ mkdir -p target
 . scripts/sbf.sh
 leash_build target/build-leash.log
 if [ -d tests/cpi-wrapper ]; then sbf_build tests/cpi-wrapper/Cargo.toml target/build-cpi-wrapper.log; fi
-cargo test -p leash-tests "$@"
+rc=0
+cargo test -p leash-tests "$@" || rc=$?
+local_sbf_warning
+exit $rc
