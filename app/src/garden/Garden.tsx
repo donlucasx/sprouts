@@ -6,7 +6,7 @@ import Animated, { Easing, FadeIn, FadeOut, cancelAnimation, runOnJS, useAnimate
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Svg, { G } from "react-native-svg";
 import { PLANT_ORDER, type Scene, type Part, type PlantId } from "@/model/garden";
-import { CANVAS, FOOT_Y, FRAME, PLANT_SCALE, bedSpan, frameFor, stakeSpots, plantUnder, SIDE_GUTTER, signPlacement } from "@/model/layout";
+import { CANVAS, FOOT_Y, FRAME, PLANT_SCALE, frameFor, stakeSpots, plantUnder, SIDE_GUTTER, signPlacement } from "@/model/layout";
 import { plantLayouts } from "@/model/scene-to-layout";
 import { SOIL_CLIP_ID } from "@/model/soil-clip";
 import { diffScenes, gateDiff, sceneKey, NO_CHANGE, type Diff } from "@/lib/scene-diff";
@@ -87,7 +87,7 @@ export function Garden({ scene: incoming, live, canReady, onWater, onNudge, row,
   // canvas point p lands at (p - frame) * zoom and the frame fills the view; x and zoom ease linearly, and since the frame's right
   // limit (width - width / zoom) is concave in a linearly eased zoom, a frame inside the bed at both ends stays inside it throughout.
   const target = frameFor(scene, plants, w);
-  const spots = stakeSpots(scene, plants, w, target.zoom, bedSpan(w));   // R326, R327, R356: each stake's side and x (layout.ts), as the frame was sized
+  const spots = stakeSpots(scene, plants, w, target.zoom);   // R326, R327: a two-line stake's side and x (layout.ts)
   const ground = frameGround(w, target);   // R238: the soil spans the frame, its rounded painted ends always in view
   const fx = useSharedValue(target.x), fy = useSharedValue(target.y), z = useSharedValue(target.zoom), vh = useSharedValue(target.viewH);
   useEffect(() => {
