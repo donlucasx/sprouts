@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { Keypair } from "@solana/web3.js";
 import { address, AccountRole, generateKeyPairSigner, getTransactionDecoder, getBase64Encoder, getCompiledTransactionMessageDecoder, type Instruction, type Blockhash } from "@solana/kit";
-import { loadAdmin, legConfigFor, configFor, parseLegs, planAdminSteps, adminIx, adminIxData, adminTxSize, stepName, assertInstallable, assertInitSafe, configAccountBytes, runAdminSteps,
+import { loadAdmin, legConfigFor, configFor, parseLegs, planAdminSteps, adminIx, adminIxData, adminTxSize, stepName, assertInstallable, assertInitSafe, configAccountBytes, runAdminSteps, skrPriceProof,
   PULLER_MAINNET, MAX_TX_BYTES, SKR_OVERRIDE_FLAG, type AdminChain } from "../../scripts/leash-admin-lib";
 import { encodeConfig, encodeHeader, encodeLeg, leashConfigPda, LEG_BYTES } from "@/lib/leash";
 import { LEASH_PROGRAM } from "@/lib/constants";
@@ -70,10 +70,19 @@ describe("leash-admin helpers", () => {
     expect(() => assertInstallable(day1, false)).not.toThrow();
     expect(SKR_OVERRIDE_FLAG).toMatch(/DANGER/);
   });
+  it("skrPriceProof (contracts 10 item 15): no key -> null (refused offline); a key Hermes serves -> the proof; a key Hermes refuses -> throws", async () => {
+    const price = { price: 1_830_000n, exponent: -8, publishTime: 1_000n };
+    let fetched = 0;
+    expect(await skrPriceProof({ hasKey: () => false, fetchSkr: async () => { fetched++; return { price }; } })).toBeNull();
+    expect(fetched).toBe(0);
+    expect(await skrPriceProof({ hasKey: () => true, fetchSkr: async () => ({ price }), nowS: 1_002 })).toBe("SKR price source OK: Hermes served the SKR feed with PYTH_API_KEY (price 1830000e-8, 2 s old); leg 0 is posted (contracts 10 item 15)");
+    await expect(skrPriceProof({ hasKey: () => true, fetchSkr: async () => { throw new Error("Hermes answered 403 for feed 38846ec4: Not entitled"); } })).rejects.toThrow(/refusing leg 0 \(SKR\): PYTH_API_KEY is set but Hermes refused the SKR feed \(Hermes answered 403/);
+  });
   it("the CLI refuses --enable with leg 0 offline, before the key is read; with the flag it reaches the key check (still offline)", () => {
     const key = throwawayKeyFile();
     const run = (args: string[]) => {
-      try { execFileSync(path.resolve(__dirname, "../../node_modules/.bin/tsx"), ["scripts/leash-admin.ts", ...args], { cwd: path.resolve(__dirname, "../.."), encoding: "utf8", stdio: "pipe", env: { ...process.env, HELIUS_RPC_URL: "" } }); return { code: 0, err: "" }; }
+      // PYTH_API_KEY "": no key in this shell, so leg 0 is refused offline (with a key, skrPriceProof would ask Hermes).
+      try { execFileSync(path.resolve(__dirname, "../../node_modules/.bin/tsx"), ["scripts/leash-admin.ts", ...args], { cwd: path.resolve(__dirname, "../.."), encoding: "utf8", stdio: "pipe", env: { ...process.env, HELIUS_RPC_URL: "", PYTH_API_KEY: "" } }); return { code: 0, err: "" }; }
       catch (e) { const x = e as { status: number; stderr: string }; return { code: x.status, err: x.stderr }; }
     };
     // --rpc points at a closed local port: nothing can reach mainnet even if a guard were missing

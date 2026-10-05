@@ -4,7 +4,7 @@
 import { getCompiledTransactionMessageDecoder } from "@solana/kit";
 import { isLiveAsset, type LiveAsset } from "@/domain/coins";
 import { isAutoVenue, type AutoVenue } from "@/domain/venues";
-import { LEASH_ERRORS, LEG_SPEC, SKR_PRICE_SOURCE, leashLegOf } from "@/lib/leash";
+import { LEASH_ERRORS, LEG_SPEC, leashLegOf } from "@/lib/leash";
 
 /** Solana's packet limit for a serialized transaction, and the per-transaction account-lock limit. */
 export const MAX_TX_BYTES = 1232;
@@ -72,11 +72,12 @@ export function parseLeg(name: string): Leg {
 
 /**
  * Whether a leg cannot run without POSTING a price (a puller-paid send). Unleashed: never (no price is read). Leashed: SKR (leg 0)
- * while it has no source (R324, SKR_PRICE_SOURCE false), or any leg whose live price source answered "post".
+ * always (it has no sponsored account: with PYTH_API_KEY it is posted, contracts 10 item 15; without, it has no source at all and
+ * its build fails), or any leg whose live price source answered "post".
  */
 export function needsPost(leg: Leg, leashed: boolean, liveSource?: "none" | "sponsored" | "post"): boolean {
   if (!leashed) return false;
-  if (LEG_SPEC[leashLegOf(leg.asset, leg.venue)].feed === "SKR" && !SKR_PRICE_SOURCE) return true;
+  if (LEG_SPEC[leashLegOf(leg.asset, leg.venue)].feed === "SKR") return true;
   return liveSource === "post";
 }
 
@@ -98,7 +99,9 @@ export function sizeFromError(msg: string): number | null {
   return m ? Number(m[1]) : null;
 }
 
-export type Built = { sizeBytes: number; locks: number; minOut: bigint; cleanupCount: number; floor?: bigint | null };
+export type Built = { sizeBytes: number; locks: number; minOut: bigint; cleanupCount: number; floor?: bigint | null;
+  /** A posted price's pre-tx sizes (VAA write + verify, post_update, VAA close); absent or empty when nothing was posted. */
+  priceTxBytes?: number[] };
 export type Sim = { ok: boolean; units: number; logs: string[] };
 export type LegDeps = {
   /** The leg's live price source (leashed only; called before any build so a "post" leg is skipped before buildPlantingTx could send its VAA). */
@@ -146,13 +149,14 @@ export async function runLeg(leg: Leg, o: { leashed: boolean; noPost: boolean; s
     if (o.noPost && b.cleanupCount > 0) throw new Error(`${leg.name}: the build posted a price under --no-post (cleanup ${b.cleanupCount}); stop and investigate`);
     const sizeLocks = `size=${b.sizeBytes} locks=${b.locks}`;
     const floorText = b.floor !== undefined && b.floor !== null ? ` floor=${b.floor}` : "";
+    const postText = b.priceTxBytes?.length ? ` priceTxs=${b.priceTxBytes.join(",")}${o.sizeOnly ? " (built, not sent)" : ""}` : "";
     if (o.sizeOnly) {
-      return { name: leg.name, status: "built", line: `${head} ${sizeLocks} ok=n/a (${o.assumeAlt ? "computed with the Sprouts ALT in memory" : "built"}, not simulated) minOut=${b.minOut}${floorText}${jlText}`, sizeBytes: b.sizeBytes, locks: b.locks, units: null, jlLeftover: jl ?? null };
+      return { name: leg.name, status: "built", line: `${head} ${sizeLocks} ok=n/a (${o.assumeAlt ? "computed with the Sprouts ALT in memory" : "built"}, not simulated) minOut=${b.minOut}${floorText}${postText}${jlText}`, sizeBytes: b.sizeBytes, locks: b.locks, units: null, jlLeftover: jl ?? null };
     }
     const sim = await d.simulate();
     const guard = sim.ok ? d.guard(sim) : null;
     const ok = sim.ok && guard === null;
-    const line = `${head} size=${b.sizeBytes} ok=${ok} units=${sim.units} guard=${guard} leashError=${leashErrorOf(sim.logs)} minOut=${b.minOut}${floorText}${jlText} locks=${b.locks}${ok ? "" : `\n  logs: ${sim.logs.slice(-4).join(" | ")}`}`;
+    const line = `${head} size=${b.sizeBytes} ok=${ok} units=${sim.units} guard=${guard} leashError=${leashErrorOf(sim.logs)} minOut=${b.minOut}${floorText}${postText}${jlText} locks=${b.locks}${ok ? "" : `\n  logs: ${sim.logs.slice(-4).join(" | ")}`}`;
     if (!o.noPost) await d.cleanup().catch((e) => d.log(`  price cleanup failed: ${e instanceof Error ? e.message : String(e)}`));
     last = { name: leg.name, status: ok ? "ok" : "fail", line, sizeBytes: b.sizeBytes, locks: b.locks, units: sim.units, jlLeftover: jl ?? null };
     if (ok) return last;

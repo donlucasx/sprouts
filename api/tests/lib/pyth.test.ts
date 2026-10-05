@@ -1,17 +1,25 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { address, AccountRole, generateKeyPairSigner, type Address } from "@solana/kit";
+import { address, AccountRole, generateKeyPairSigner, getCompiledTransactionMessageDecoder, getTransactionEncoder, type Address } from "@solana/kit";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { createHash } from "node:crypto";
 import { Keypair, PublicKey, TransactionInstruction } from "@solana/web3.js";
 
 const accounts = new Map<string, { data: Buffer; owner: string } | null>();
 /** Optional per-account generator: the account as it is at the (possibly fake) current time. Wins over `accounts`. */
 const live = new Map<string, () => { data: Buffer; owner: string } | null>();
 let reads = 0;
-vi.mock("@/lib/rpc", () => ({ rpc: () => ({ getAccountInfo: (a: string) => ({ send: async () => { reads++; const g = live.get(a); const v = g ? g() : accounts.get(a) ?? null; return { value: v ? { data: [v.data.toString("base64"), "base64"], owner: v.owner } : null }; } }) }) }));
+let blockhashReads = 0;
+vi.mock("@/lib/rpc", () => ({ rpc: () => ({
+  getAccountInfo: (a: string) => ({ send: async () => { reads++; const g = live.get(a); const v = g ? g() : accounts.get(a) ?? null; return { value: v ? { data: [v.data.toString("base64"), "base64"], owner: v.owner } : null }; } }),
+  getLatestBlockhash: () => ({ send: async () => { blockhashReads++; return { value: { blockhash: "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG", lastValidBlockHeight: 100n } }; } }),
+  getMinimumBalanceForRentExemption: (bytes: bigint) => ({ send: async () => (bytes + 128n) * 6_960n }),
+}) }));
 const cfg: { pythApiKey: string | undefined; heliusRpcUrl: string } = { pythApiKey: "test-key", heliusRpcUrl: "https://x" };
 vi.mock("@/lib/config", () => ({ config: () => cfg }));
 
 import { parsePriceUpdate, fetchHermesUpdate, toKitInstruction, buildPriceUpdate, priceRefusal, CONF_CAP_BPS, FRESH_MARGIN_S } from "@/lib/pyth";
-import { priceSourceFor, buildPriceUpdate as reexported, LEG_SPEC } from "@/lib/leash";
+import { priceSourceFor, buildPriceUpdate as reexported, LEG_SPEC, skrPriceSource } from "@/lib/leash";
 import { PYTH_ACCOUNT, PYTH_FEED } from "@/lib/venues/addresses";
 
 const RECEIVER = "rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ";
@@ -38,10 +46,16 @@ describe("PriceUpdateV2 (contracts 2.6 layout)", () => {
 
 describe("priceSourceFor: the feed rule (contracts 1.4, AMEND 10-04 s20 R324: sponsored only, never post)", () => {
   afterEach(() => { accounts.clear(); live.clear(); });
-  it("USDC lending has no price; SKR has no source and throws", async () => {
+  it("USDC lending has no price; SKR without PYTH_API_KEY has no source and throws, with it posts (contracts 10 item 15)", async () => {
     expect(await priceSourceFor(2, NOW)).toEqual({ kind: "none" });
     expect(await priceSourceFor(3, NOW)).toEqual({ kind: "none" });
-    await expect(priceSourceFor(0, NOW)).rejects.toThrow(/SKR/);
+    cfg.pythApiKey = undefined;
+    await expect(priceSourceFor(0, NOW)).rejects.toThrow(/leg 0 \(SKR\) has no price source: PYTH_API_KEY is not set/);
+    expect(skrPriceSource()).toBe(false);
+    cfg.pythApiKey = "test-key";
+    expect(skrPriceSource()).toBe(true);
+    expect(await priceSourceFor(0, NOW)).toEqual({ kind: "post", feedId: PYTH_FEED.SKR });
+    expect(reads).toBe(0);   // a post leg reads no sponsored account
   });
   it("SOL uses the sponsored account under 40 s; older, Partial, another feed or another owner throws (no post)", async () => {
     accounts.set(PYTH_ACCOUNT.SOL, { data: priceUpdate({ feedId: PYTH_FEED.SOL, price: 1n, conf: 0n, exponent: -8, publishTime: NOW - 39 }), owner: RECEIVER });
@@ -229,10 +243,93 @@ describe("priceSourceFor: waiting for the next sponsored update (measured gaps)"
   });
 });
 
-describe("posting is deferred (R324)", () => {
-  it("buildPriceUpdate throws, and leash re-exports the same function", async () => {
+// A real Hermes answer for SKR, recorded 10-05 with the crypto-entitled key (spikes/hermes-fixture.ts): a 292-byte VAA with 3
+// signatures from guardian set 1, one price update with a 12-hash proof.
+const HERMES_SKR = JSON.parse(readFileSync(path.resolve(__dirname, "../fixtures/hermes-skr-update.json"), "utf8")) as { binary: { data: string[] }; parsed: { id: string; price: { price: string; conf: string; expo: number; publish_time: number } }[] };
+const SKR_PUBLISH = HERMES_SKR.parsed[0].price.publish_time;
+const WORMHOLE = "HDwcJBJXjL9FpJ7UBsYBtaDjsBUhuLCUYoz3zr8SWWaQ";
+const SYSTEM = "11111111111111111111111111111111";
+const COMPUTE_BUDGET = "ComputeBudget111111111111111111111111111111";
+const anchorDisc = (name: string) => createHash("sha256").update(`global:${name}`).digest().subarray(0, 8).toString("hex");
+const hermesWith = (over: Partial<{ price: string; conf: string }> = {}) => vi.fn(async () => new Response(JSON.stringify({ ...HERMES_SKR, parsed: [{ ...HERMES_SKR.parsed[0], price: { ...HERMES_SKR.parsed[0].price, ...over } }] })));
+/** Each signed pre-tx decompiled: its fee payer, signers, and per instruction the program, the data's first 8 bytes and the accounts. */
+function decode(tx: { messageBytes: ArrayLike<number> }) {
+  const m = getCompiledTransactionMessageDecoder().decode(Uint8Array.from(tx.messageBytes)) as unknown as { header: { numSignerAccounts: number }; staticAccounts: string[]; instructions: { programAddressIndex: number; accountIndices?: number[]; data?: Uint8Array }[] };
+  return { payer: m.staticAccounts[0], signers: m.staticAccounts.slice(0, m.header.numSignerAccounts),
+    ixs: m.instructions.map((i) => ({ program: m.staticAccounts[i.programAddressIndex], disc: Buffer.from(i.data ?? []).subarray(0, 8).toString("hex"), data: Buffer.from(i.data ?? []), accounts: (i.accountIndices ?? []).map((x) => m.staticAccounts[x]) })) };
+}
+
+describe("buildPriceUpdate: a posted SKR price (contracts 3.2 row 2b, 10 item 15; the receiver SDK 0.16.0)", () => {
+  afterEach(() => { vi.unstubAllGlobals(); cfg.pythApiKey = "test-key"; blockhashReads = 0; });
+  it("the VAA write + verify, then post_update into a fresh account and the VAA's close, in puller-signed pre-txs under 1,232 B", async () => {
+    vi.stubGlobal("fetch", hermesWith());
     const puller = await generateKeyPairSigner();
-    await expect(buildPriceUpdate({ puller, feedId: PYTH_FEED.SKR })).rejects.toThrow(/deferred/);
+    const u = await buildPriceUpdate({ puller, feedId: PYTH_FEED.SKR, nowS: SKR_PUBLISH + 1 });
+    // The price is Hermes's parse; the planting re-reads the posted account before it trusts it.
+    const p = HERMES_SKR.parsed[0].price;
+    expect(u.price).toEqual({ feedId: PYTH_FEED.SKR, price: BigInt(p.price), conf: BigInt(p.conf), exponent: p.expo, publishTime: BigInt(p.publish_time), full: true });
+    // Measured (10-05): post_update does not fit in the leashed SKR planting (about 871 B + 64 B signature + 96 B accounts + ~340 B data), so it rides the pre-txs.
+    expect(u.postIx).toBeNull();
+    expect(u.preTxs.length).toBe(2);
+    expect(u.preTxBytes).toEqual(u.preTxs.map((t) => getTransactionEncoder().encode(t).length));
+    for (const n of u.preTxBytes) expect(n).toBeLessThanOrEqual(1232);
+    const txs = u.preTxs.map(decode);
+    for (const t of txs) expect(t.payer).toBe(puller.address);
+    for (const t of u.preTxs) for (const sig of Object.values(t.signatures)) expect(sig).not.toBeNull();   // every signer signed
+    const flat = txs.flatMap((t) => t.ixs.filter((i) => i.program !== COMPUTE_BUDGET));
+    expect(flat.map((i) => i.program === SYSTEM ? "create" : `${i.program === WORMHOLE ? "wormhole" : i.program === RECEIVER ? "receiver" : i.program}:${i.disc}`)).toEqual([
+      "create", `wormhole:${anchorDisc("init_encoded_vaa")}`, `wormhole:${anchorDisc("write_encoded_vaa")}`, `wormhole:${anchorDisc("verify_encoded_vaa_v1")}`,
+      `receiver:${anchorDisc("post_update")}`, `wormhole:${anchorDisc("close_encoded_vaa")}`,
+    ]);
+    const [create, , , verify, post, closeVaa] = flat;
+    const encodedVaa = create.accounts[1];
+    // Full verification: verify_encoded_vaa_v1 against the guardian set the VAA names, then post_update reads that verified account.
+    expect(verify.accounts).toContain(encodedVaa);
+    expect(post.accounts).toContain(encodedVaa);
+    expect(post.accounts).toContain(u.account);
+    expect(post.accounts[0]).toBe(puller.address);   // the puller pays and is the write authority
+    expect(post.data[post.data.length - 1]).toBe(0);   // treasury 0 (DEFAULT_TREASURY_ID): one stable address, never random
+    expect(closeVaa.accounts).toContain(encodedVaa);
+    // Each tx's CU limit covers its instructions' budgets (verify alone is 350k).
+    const verifyTx = txs.find((t) => t.ixs.some((i) => i.disc === anchorDisc("verify_encoded_vaa_v1")))!;
+    const cuLimit = verifyTx.ixs.find((i) => i.program === COMPUTE_BUDGET && i.data[0] === 2)!.data.readUInt32LE(1);
+    expect(cuLimit).toBeGreaterThanOrEqual(350_000);
+    // The fresh price account signs its own creation; the VAA account signs its own; nothing else but the puller.
+    expect(txs.flatMap((t) => t.signers).sort()).toEqual([puller.address, puller.address, encodedVaa, u.account].sort());
+    // After the planting: reclaim the price account's rent (the VAA is already closed in the pre-txs).
+    expect(u.closeIxs.map((i) => [i.programAddress, Buffer.from(i.data!).subarray(0, 8).toString("hex")])).toEqual([[RECEIVER, anchorDisc("reclaim_rent")]]);
+    expect(u.closeIxs[0].accounts!.map((a) => a.address)).toContain(u.account);
+    // If a pre-tx fails midway: close the VAA account and reclaim the price account, each on its own (either may not exist).
+    expect(u.rescueIxs.map((i) => Buffer.from(i.data!).subarray(0, 8).toString("hex"))).toEqual([anchorDisc("close_encoded_vaa"), anchorDisc("reclaim_rent")]);
+  });
+  it("a price that is already maxAgeS - FRESH_MARGIN_S old is refused before anything is built (no blockhash read)", async () => {
+    vi.stubGlobal("fetch", hermesWith());
+    const puller = await generateKeyPairSigner();
+    await expect(buildPriceUpdate({ puller, feedId: PYTH_FEED.SKR, nowS: SKR_PUBLISH + 60 - FRESH_MARGIN_S })).rejects.toThrow(/Hermes SKR price is 40 s old \(usable under 40 s\)/);
+    expect((await buildPriceUpdate({ puller, feedId: PYTH_FEED.SKR, nowS: SKR_PUBLISH + 39 })).preTxs.length).toBe(2);
+    // the on-chain max_age_s is honoured when given
+    await expect(buildPriceUpdate({ puller, feedId: PYTH_FEED.SKR, nowS: SKR_PUBLISH + 25, maxAgeS: 45 })).rejects.toThrow(/25 s old \(usable under 25 s\)/);
+    blockhashReads = 0;
+    await expect(buildPriceUpdate({ puller, feedId: PYTH_FEED.SKR, nowS: SKR_PUBLISH + 50 })).rejects.toThrow(/old/);
+    expect(blockhashReads).toBe(0);
+  });
+  it("a price the program would refuse (the conf cap) is refused before anything is built", async () => {
+    vi.stubGlobal("fetch", hermesWith({ conf: String(BigInt(HERMES_SKR.parsed[0].price.price) / 50n) }));   // 200 bps > 100
+    const puller = await generateKeyPairSigner();
+    await expect(buildPriceUpdate({ puller, feedId: PYTH_FEED.SKR, nowS: SKR_PUBLISH + 1 })).rejects.toThrow(/confidence .* is over 100 bps/);
+    await expect(buildPriceUpdate({ puller, feedId: PYTH_FEED.SKR, nowS: SKR_PUBLISH + 1, confCapBps: 300 })).resolves.toBeDefined();
+  });
+  it("an answer for another feed is refused (the leg pins its feed id)", async () => {
+    vi.stubGlobal("fetch", hermesWith());
+    const puller = await generateKeyPairSigner();
+    await expect(buildPriceUpdate({ puller, feedId: PYTH_FEED.CBBTC, nowS: SKR_PUBLISH + 1 })).rejects.toThrow(/Hermes answered feed 38846ec4 for 2817d7bf/);
+  });
+  it("without PYTH_API_KEY nothing is fetched; leash re-exports the same function", async () => {
+    cfg.pythApiKey = undefined;
+    const f = vi.fn();
+    vi.stubGlobal("fetch", f);
+    await expect(buildPriceUpdate({ puller: await generateKeyPairSigner(), feedId: PYTH_FEED.SKR })).rejects.toThrow(/PYTH_API_KEY/);
+    expect(f).not.toHaveBeenCalled();
     expect(reexported).toBe(buildPriceUpdate);
   });
 });

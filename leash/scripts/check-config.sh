@@ -69,7 +69,8 @@ PY
 legs)
   LEGS="${2:-}"
   [ -n "$LEGS" ] || { echo "usage: scripts/check-config.sh legs <list, e.g. 1,2,6,7> [PULLER]" >&2; exit 2; }
-  case ",$LEGS," in *,0,*) echo "STOP: leg 0 (SKR) has no price source and is never enabled (R324)" >&2; exit 1;; esac
+  # Leg 0 (SKR) may be in the list since 10-05: the API posts its Pyth price with the crypto-entitled key (contracts 10 item 15),
+  # and leash-admin.ts enables it only after Hermes served the SKR feed with that key. This script only reads and compares.
   if [ -n "${3:-}" ]; then
     LEASH_ONCHAIN_CONFIG="$JSON" LEASH_EXPECT_LEGS="$LEGS" LEASH_EXPECT_PULLER="$3" \
       cargo test -q -p leash-tests --test golden -- --ignored onchain_config_matches --nocapture

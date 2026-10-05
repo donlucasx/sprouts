@@ -12,8 +12,8 @@ import { buildStakeIx, sharePrice, skrAta } from "./staking";
 import { klendRate, klendMinOut, buildKlendDepositIxs, checkKlendDepositInstructions } from "./venues/klend";
 import { jlendRate, buildJlendDepositIxs, checkJlendDepositInstructions, JL_EXPECTED_LEFTOVER } from "./venues/jlend";
 import { KLEND, JLEND } from "./venues/addresses";
-import { leashLegOf, legAccounts, legRate, readReceipt, buildPullIx, buildSettleIx, checkLeashInstructions, floorRaw, LEG_SPEC, priceSourceFor, sponsoredPriceRefusal, type LeashLegByte } from "./leash";
-import { buildPriceUpdate, readSponsoredPrice, sendPriceTxs, type ParsedPrice, type SignedTx } from "./pyth";
+import { leashLegOf, legAccounts, legRate, readReceipt, buildPullIx, buildSettleIx, checkLeashInstructions, floorRaw, LEG_SPEC, priceSourceFor, sponsoredPriceRefusal, postedPriceRefusal, type LeashLegByte } from "./leash";
+import { buildPriceUpdate, readPostedPrice, readSponsoredPrice, sendPriceTxs, CONF_CAP_BPS, type ParsedPrice } from "./pyth";
 import type { Simulation } from "./plant-run";
 import { pullerSigner } from "./puller";
 import { rpc } from "./rpc";
@@ -95,17 +95,39 @@ export type BuiltPlanting = {
   /** The leash floor this build was checked against (leashed legs), in the leg's receipt units; null unleashed. */
   leashFloorRaw: bigint | null;
   pullerJl: Address | null; jlLeftover: 0n | 1n | null; cleanup: Instruction[]; carryIn: Partial<Record<CarryKind, bigint>>; sizeBytes: number;
+  /** A posted price's pre-tx sizes (the go-live gate prints them); empty when nothing was posted. */
+  priceTxBytes: number[];
+  /** The posted account as re-read after the pre-txs landed (the run re-checks its age right before the send); null when nothing landed. */
+  postedPrice: ParsedPrice | null;
 };
 
 const ataOf = async (owner: Address, mint: Address) => (await findAssociatedTokenPda({ owner, mint, tokenProgram: TOKEN_PROGRAM_ADDRESS }))[0];
+
+export type PlantingInput = { delegator: Address; user: Address; asset: LiveAsset; venue: AutoVenue | null; pullRaw: bigint; delegationPda: Address; leashed: boolean; carryIn: Partial<Record<CarryKind, bigint>>; jlLeftover?: 0n | 1n; priceOpts?: { waitS?: number; confCapBps?: number; maxAgeS?: number }; measureAlt?: Address[];
+  /** The go-live gate's --size-only: a posted price is built and sized but NOT sent (no account exists, so the result cannot be simulated). measureAlt implies it. */
+  dryPost?: boolean };
 
 /**
  * Contracts 3.2: one v0 transaction the puller signs alone. Order: compute budget, every ATA create, [Pyth post_update], the leash
  * pull (or today's transferRecurring for an old link), [Jupiter swap], [venue deposit], [SKR stake], [the leash settle]. The whole
  * pull goes in (the 3-cent network fee is not withheld). Nothing from the network is signed unchecked: the Jupiter response, the
  * venue instructions and the leash pair are each checked; a leash min_out under the program's floor is refused here (no send).
+ *
+ * A posted price (SKR, contracts 10 item 15) is the one thing sent during a build: its puller-paid pre-txs land before the floor is
+ * computed. From then on any refusal reclaims the fresh price account (best effort) before it throws, so a skipped leg leaves no rent
+ * behind; on success the reclaim is `cleanup`, sent after the planting (cleanupPlanting).
  */
-export async function buildPlantingTx(a: { delegator: Address; user: Address; asset: LiveAsset; venue: AutoVenue | null; pullRaw: bigint; delegationPda: Address; leashed: boolean; carryIn: Partial<Record<CarryKind, bigint>>; jlLeftover?: 0n | 1n; priceOpts?: { waitS?: number; confCapBps?: number; maxAgeS?: number }; measureAlt?: Address[] }): Promise<BuiltPlanting> {
+export async function buildPlantingTx(a: PlantingInput): Promise<BuiltPlanting> {
+  const posted: { reclaim: Instruction[] } = { reclaim: [] };
+  try {
+    return await composePlanting(a, posted);
+  } catch (e) {
+    if (posted.reclaim.length) await sendPullerIxs(posted.reclaim, "reclaim of the posted price after a refused build");
+    throw e;
+  }
+}
+
+async function composePlanting(a: PlantingInput, posted: { reclaim: Instruction[] }): Promise<BuiltPlanting> {
   const lend = isLendAsset(a.asset);
   if (lend !== (a.venue !== null)) throw new Error(`${a.asset} with venue ${a.venue}: a lending leg needs a venue and a coin leg takes none`);
   const puller = await pullerSigner();
@@ -117,13 +139,14 @@ export async function buildPlantingTx(a: { delegator: Address; user: Address; as
   const pullerWsol = await ataOf(puller.address, WSOL_MINT);
   const leg = a.leashed ? leashLegOf(a.asset, a.venue) : null;
 
-  // 2b. The price the leash reads (leashed priced legs only): the sponsored account while fresh, else a fresh post.
-  // AMEND 10-04 s20 (R324): priceSourceFor never answers "post" (it throws when no fresh sponsored price, and for SKR), so the post branch is dormant.
+  // 2b. The price the leash reads (leashed priced legs only): the leg's sponsored account while fresh, else (SKR, the only "post"
+  // answer since 10-05, contracts 10 item 15) a fresh post.
   let price: ParsedPrice | null = null;
   let priceAccount: Address | undefined;
   let postIx: Instruction | null = null;
   let cleanup: Instruction[] = [];
-  let preTxs: SignedTx[] = [];
+  let priceTxBytes: number[] = [];
+  let postedPrice: ParsedPrice | null = null;
   if (leg !== null) {
     // `priceOpts` (additive, T8 carry): the run passes the leg's on-chain conf_cap_bps / max_age_s from its one readLeashConfig() and
     // waitS 0 once it has waited for the feed itself (once per feed per run, Task 11). Absent: the shipped defaults and a 60 s wait.
@@ -135,7 +158,32 @@ export async function buildPlantingTx(a: { delegator: Address; user: Address; as
       const why = sponsoredPriceRefusal(leg, price, { ...(a.priceOpts?.confCapBps !== undefined ? { confCapBps: a.priceOpts.confCapBps } : {}), ...(a.priceOpts?.maxAgeS !== undefined ? { maxAgeS: a.priceOpts.maxAgeS } : {}) });
       if (why) throw new Error(`${a.asset}: the sponsored price read for the floor ${why}; the leg skips today`);
     }
-    if (src.kind === "post") { const u = await buildPriceUpdate({ puller, feedId: src.feedId }); priceAccount = u.account; price = u.price; postIx = u.postIx; cleanup = u.closeIxs; preTxs = u.preTxs; }
+    if (src.kind === "post") {
+      // Judged on Hermes's answer under the leg's on-chain age and cap BEFORE anything is sent (buildPriceUpdate refuses a stale or
+      // over-cap price), then landed, then the account itself re-read and judged again: the floor below is computed from that read.
+      const cfg = { maxAgeS: a.priceOpts?.maxAgeS ?? LEG_SPEC[leg].maxAgeS, confCapBps: a.priceOpts?.confCapBps ?? CONF_CAP_BPS };
+      const u = await buildPriceUpdate({ puller, feedId: src.feedId, ...cfg });
+      priceAccount = u.account;
+      postIx = u.postIx;
+      priceTxBytes = u.preTxBytes;
+      if (a.dryPost || a.measureAlt) {
+        price = u.price;   // sizing only: nothing is sent, so no account exists and there is nothing to reclaim
+      } else {
+        try {
+          await sendPriceTxs(u.preTxs);
+        } catch (e) {
+          // A pre-tx failed after an earlier one may have landed: close the VAA account and reclaim the price account, each alone.
+          for (const ix of u.rescueIxs) await sendPullerIxs([ix], "rescue of a half-posted price");
+          throw new Error(`${a.asset}: posting the price failed: ${e instanceof Error ? e.message : String(e)}; the leg skips today`);
+        }
+        posted.reclaim = u.closeIxs;
+        cleanup = u.closeIxs;
+        price = await readPostedPrice(u.account);
+        const why = postedPriceRefusal(leg, price, cfg);
+        if (why) throw new Error(`${a.asset}: the posted price ${why}; the leg skips today`);
+        postedPrice = price;
+      }
+    }
   }
 
   // The leash floor (contracts 2.8), computed BEFORE the swap: a leashed coin leg's swap minimum is derived from it (ruling A, Task 12).
@@ -269,7 +317,6 @@ export async function buildPlantingTx(a: { delegator: Address; user: Address; as
   if (a.venue === "kamino_klend") await checkKlendDepositInstructions(ixs, { puller: puller.address, user: a.user, asset: a.asset as LendAsset, amountRaw: depositRaw });
   if (a.venue === "jupiter_lend") await checkJlendDepositInstructions(ixs, { puller: puller.address, user: a.user, asset: a.asset as LendAsset, depositRaw, rn: jlRn as bigint });
 
-  if (preTxs.length) await sendPriceTxs(preTxs);   // the VAA write + verify move no funds; post_update needs them landed
   // `measureAlt` (Task 12, the go-live gate's --assume-alt, MEASUREMENT ONLY): compress with these addresses as an in-memory Sprouts
   // ALT at a placeholder table address instead of SPROUTS_ALT, to size a planting before the owner creates the ALT. The result
   // references a table that is not on chain: it can be neither sent nor simulated. The run never passes it.
@@ -290,7 +337,7 @@ export async function buildPlantingTx(a: { delegator: Address; user: Address; as
   if (sizeBytes > MAX_TX_BYTES) throw new Error(`${a.asset} planting is ${sizeBytes} bytes, over ${MAX_TX_BYTES}`);
   return {
     tx, signature: getSignatureFromTransaction(tx), expectedOutRaw, minOutRaw, lookupTables: tableAddrs, lastValidBlockHeight, deliveryAccount, watched, usdcFloat: pullerUsdc, wsolFloat: pullerWsol, skrFloat: a.asset === "SKR" ? null : pullerSkr,
-    asset: a.asset, venue: a.venue, leg, preRaw, leashMinOutRaw, leashFloorRaw: floor, pullerJl, jlLeftover, cleanup, carryIn: a.carryIn, sizeBytes,
+    asset: a.asset, venue: a.venue, leg, preRaw, leashMinOutRaw, leashFloorRaw: floor, pullerJl, jlLeftover, cleanup, carryIn: a.carryIn, sizeBytes, priceTxBytes, postedPrice,
   };
 }
 
@@ -413,13 +460,26 @@ export async function pullerTokenChangeRaw(signature: string, mint: Address): Pr
   return sum(mine(meta.postTokenBalances)) - sum(mine(meta.preTokenBalances));
 }
 
-/** After the planting: reclaim the posted price's rent (best effort, puller only, no funds). Dormant while posting is deferred (R324). */
+/** After the planting: reclaim the posted price's rent (puller only, no funds). Throws on a failed send: the run logs it (tidy). */
 export async function cleanupPlanting(b: BuiltPlanting): Promise<void> {
   if (!b.cleanup.length) return;
+  await sendPullerTx(b.cleanup);
+}
+
+/** One puller-signed tx holding `ixs`, sent and confirmed. */
+async function sendPullerTx(ixs: Instruction[]): Promise<void> {
   const puller = await pullerSigner();
   const { value: { blockhash, lastValidBlockHeight } } = await rpc().getLatestBlockhash().send();
-  const tx = await signTransactionMessageWithSigners(pipe(createTransactionMessage({ version: 0 }), (m) => setTransactionMessageFeePayerSigner(puller, m), (m) => setTransactionMessageLifetimeUsingBlockhash({ blockhash, lastValidBlockHeight }, m), (m) => appendTransactionMessageInstructions(b.cleanup, m)));
+  const tx = await signTransactionMessageWithSigners(pipe(createTransactionMessage({ version: 0 }), (m) => setTransactionMessageFeePayerSigner(puller, m), (m) => setTransactionMessageLifetimeUsingBlockhash({ blockhash, lastValidBlockHeight }, m), (m) => appendTransactionMessageInstructions(ixs, m)));
   await sendPriceTxs([tx]);
+}
+/** Best effort (a reclaim or a rescue on a path that is already failing): a failure is logged, never thrown over the real reason. */
+async function sendPullerIxs(ixs: Instruction[], what: string): Promise<void> {
+  try {
+    await sendPullerTx(ixs);
+  } catch (e) {
+    console.error(`${what} failed: ${e instanceof Error ? e.message : String(e)}`);
+  }
 }
 
 /** An SPL token account's amount (u64 little-endian at byte 64); no account is zero. */
