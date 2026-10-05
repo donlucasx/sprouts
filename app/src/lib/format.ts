@@ -15,6 +15,15 @@ export function legLabel(asset: LiveAsset, venue?: AutoVenue | null): string {
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const SKR_DECIMALS = DECIMALS.SKR;
 
+/** R355 (10-05): a coin amount's whole part grouped by thousands, "12980.46" as "12,980.46"; the decimals untouched. */
+export function grouped(n: string): string {
+  const [whole, frac] = n.split(".");
+  const g = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return frac === undefined ? g : `${g}.${frac}`;
+}
+/** A coin amount at `places` decimals, grouped (R355). */
+const fixed = (amount: number, places: number) => grouped(amount.toFixed(places));
+
 export function formatUsd(cents: number): string {
   const sign = cents < 0 ? "-" : "";
   const abs = Math.abs(Math.round(cents));
@@ -26,7 +35,7 @@ export function formatSkr(raw: bigint, skrUsd: number | null): string {
   const whole = raw / 10n ** BigInt(SKR_DECIMALS);
   const frac = raw % 10n ** BigInt(SKR_DECIMALS);
   const hundredths = Number(frac / 10_000n);
-  const skr = `${whole}.${String(hundredths).padStart(2, "0")} SKR`;
+  const skr = `${grouped(String(whole))}.${String(hundredths).padStart(2, "0")} SKR`;
   if (skrUsd === null) return skr;
   const cents = Math.round((Number(raw) / 10 ** SKR_DECIMALS) * skrUsd * 100);
   return `${skr} (${formatUsd(cents)})`;
@@ -37,7 +46,7 @@ export function formatStore(raw: bigint, storeUsd: number | null): string {
   const unit = 10n ** BigInt(DECIMALS.stORE);
   const whole = raw / unit;
   const tenThousandths = Number((raw % unit) / 10n ** BigInt(DECIMALS.stORE - 4));
-  const store = `${whole}.${String(tenThousandths).padStart(4, "0")} stORE`;
+  const store = `${grouped(String(whole))}.${String(tenThousandths).padStart(4, "0")} stORE`;
   if (storeUsd === null) return store;
   const cents = Math.round((Number(raw) / 10 ** DECIMALS.stORE) * storeUsd * 100);
   return `${store} (${formatUsd(cents)})`;
@@ -48,7 +57,7 @@ export function formatAmount(asset: LiveAsset, raw: bigint, usd: number | null):
   if (asset === "SKR") return formatSkr(raw, usd);
   if (asset === "stORE") return formatStore(raw, usd);
   const amount = Number(raw) / 10 ** DECIMALS[asset];
-  const text = `${amount.toFixed(SHOWN[asset])} ${COIN_NAME[asset]}`;
+  const text = `${fixed(amount, SHOWN[asset])} ${COIN_NAME[asset]}`;
   return usd === null ? text : `${text} (${formatUsd(Math.round(amount * usd * 100))})`;
 }
 
@@ -70,7 +79,7 @@ export function holdingAmount(h: Holding): string {
   const raw = BigInt(h.heldRaw);
   const amount = Number(raw) / 10 ** DECIMALS[h.asset];
   const value = h.valueUsd === null ? "" : ` (${formatUsd(Math.round(h.valueUsd * 100))})`;
-  return `${amount.toFixed(SHOWN[h.asset])} ${COIN_NAME[h.asset]}${value}`;
+  return `${fixed(amount, SHOWN[h.asset])} ${COIN_NAME[h.asset]}${value}`;
 }
 /** Under Home's holdings (spec 3.3, said once): the wallet coins are not locked and Sprouts cannot sell them. */
 export const HOLDINGS_NOTE = "These sit in your Seeker wallet, not locked. Sprouts cannot sell them for you.";
@@ -149,7 +158,7 @@ export function formatWallet(w: { pubkey: string; status: string; dailyCapCents:
 
 /** A lending position in UNDERLYING units with its value: "2.00 USDC ($2.00)" (contracts 5.2: underlyingRaw is USDC 6 / SOL 9). */
 export function positionAmount(p: LendingPosition): string {
-  const amount = (Number(p.underlyingRaw) / 10 ** DECIMALS[p.asset]).toFixed(SHOWN[p.asset]);
+  const amount = fixed(Number(p.underlyingRaw) / 10 ** DECIMALS[p.asset], SHOWN[p.asset]);
   return `${amount} ${COIN_NAME[p.asset]}${p.valueUsd === null ? "" : ` (${formatUsd(Math.round(p.valueUsd * 100))})`}`;
 }
 /** The row's status under the dollars: the venue and today's rate, then what it earned once that is a cent. */
@@ -160,5 +169,5 @@ export function positionNote(p: LendingPosition): string {
 
 /** An underlying amount of a lending leg, "0.0010 SOL" (USDC 6 / SOL 9 decimals). */
 export function underlyingAmount(asset: LendAsset, raw: string): string {
-  return `${(Number(raw) / 10 ** DECIMALS[asset]).toFixed(SHOWN[asset])} ${COIN_NAME[asset]}`;
+  return `${fixed(Number(raw) / 10 ** DECIMALS[asset], SHOWN[asset])} ${COIN_NAME[asset]}`;
 }
