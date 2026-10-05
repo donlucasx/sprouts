@@ -289,7 +289,8 @@ async function checkApproval(ixs: Ix[], user: string, d: Awaited<ReturnType<type
 async function checkInstructions(ixs: Ix[], flow: SignFlow): Promise<void> {
   const user = flow.user
   // The lending withdraws use none of derived()'s four PDAs (T6 review Minor 4).
-  if (flow.kind === 'withdraw_klend' || flow.kind === 'withdraw_jlend') {
+  // `in` (not the kind) so TypeScript narrows the lending member out and the switch's default can prove every kind is handled.
+  if ('receiptRaw' in flow) {
     if (!isLend(flow.asset)) return refuse('plan')
     const amount = amountOf(flow.receiptRaw)
     return steps(ixs, flow.kind === 'withdraw_klend' ? await klendRedeemSteps(user, flow.asset, amount, true) : await jlendRedeemSteps(user, flow.asset, amount, true))
@@ -319,10 +320,17 @@ async function checkInstructions(ixs: Ix[], flow: SignFlow): Promise<void> {
       return
     case 'link':
       // Before go-live the puller; after it, new links name this wallet's leash PDA (spec 6.5). Nothing else.
-      return checkApproval(ixs, user, d, [PULLER, await leashPda(user, user)], Infinity)
+      // At most one revoke: the link page only ever prepends one (T7 review ruling).
+      return checkApproval(ixs, user, d, [PULLER, await leashPda(user, user)], 1)
     case 'relink':
       // Contracts 6: as link, but only to the leash PDA (delegator and user both this key), never the puller, at most one revoke.
       return checkApproval(ixs, user, d, [await leashPda(user, user)], 1)
+    default: {
+      // A flow kind this check does not know signs nothing (T7 review).
+      const unknown: never = flow
+      void unknown
+      return refuse('plan')
+    }
   }
 }
 

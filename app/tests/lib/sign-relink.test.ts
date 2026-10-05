@@ -147,3 +147,14 @@ describe('every single-account substitution in every relink shape is refused', (
     expect(free).toBe(4)
   })
 })
+
+describe('link and unknown flows (T7 review)', () => {
+  it('link refuses two revokes (the link page only ever adds one)', async () => {
+    const ixs = await linkIxs({ revokeOld: true })
+    ixs.unshift(buildRevokeDelegationIx({ delegator: USER, delegationPda: await delegationPda({ delegator: USER, delegatee: PULLER, nonce: 8n }) }) as Instruction)
+    await refused(wire(ixs), link, 'plan')
+  })
+  it('link with one revoke still signs', async () => signed(wire(await linkIxs({ revokeOld: true })), link))
+  it('a flow kind the check does not know is refused', async () =>
+    refused(wire(await linkIxs()), { kind: 'mystery', user: USER } as unknown as SignFlow, 'plan'))
+})
