@@ -49,6 +49,23 @@ export function parseLulo(json: unknown): VenueRate {
   return typeof pct === "number" ? { venue: "lulo_protected", asset: "USDC_LEND", supplyPct: pct, rewardsPct: null, utilizationPct: null, withdrawableUsd: null, tvlUsd: null, note: null } : blank("lulo_protected", "USDC_LEND", "rate unavailable");
 }
 
+/** Review M1: a field that is not a finite number (missing, "", NaN, Infinity) is no number at all, never a NaN row marked ok. */
+const finiteOrNull = (v: number | null): number | null => (v !== null && Number.isFinite(v) ? v : null);
+const finiteRate = (r: VenueRate): VenueRate => {
+  const c = { ...r, supplyPct: finiteOrNull(r.supplyPct), rewardsPct: finiteOrNull(r.rewardsPct), utilizationPct: finiteOrNull(r.utilizationPct), withdrawableUsd: finiteOrNull(r.withdrawableUsd), tvlUsd: finiteOrNull(r.tvlUsd) };
+  return c.supplyPct === null && r.supplyPct !== null ? { ...c, note: "rate unreadable" } : c;
+};
+/** Review I4: a body of the wrong shape (a 200 with an error object) marks only that venue's row no data, never the whole snapshot. */
+const parsedOr = (venue: Venue, asset: LendAsset, json: unknown, parse: (j: unknown) => VenueRate): VenueRate => {
+  if (json === null) return blank(venue, asset, "API failed");
+  try {
+    return finiteRate(parse(json));
+  } catch (e) {
+    console.error(`venue parse failed (${venue} ${asset}): ${e instanceof Error ? e.message : String(e)}`);
+    return blank(venue, asset, "API shape changed");
+  }
+};
+
 const safe = async <T>(fn: () => Promise<T>): Promise<T | null> => { try { return await fn(); } catch (e) { console.error(`venue read failed: ${e instanceof Error ? e.message : String(e)}`); return null; } };
 
 /** Spec 3/4: today's numbers per venue per asset, our own 7-day average, code eligibility. Run before the coin snapshot and the manager. */
@@ -57,17 +74,18 @@ export async function snapshotVenues(a: { repo: Repo; now: Date; reads: VenueRea
   const [kamino, jup, vault, lulo] = await Promise.all([safe(a.reads.kaminoReserves), safe(a.reads.jupiterEarn), safe(a.reads.kaminoVault), safe(a.reads.luloRates)]);
   const rates: VenueRate[] = [];
   for (const asset of ["USDC_LEND", "SOL_LEND"] as const) {
-    rates.push(kamino ? parseKaminoReserves(kamino, asset) : blank("kamino_klend", asset, "API failed"));
-    rates.push(jup ? parseJupiterEarn(jup, asset) : blank("jupiter_lend", asset, "API failed"));
+    rates.push(parsedOr("kamino_klend", asset, kamino, (j) => parseKaminoReserves(j, asset)));
+    rates.push(parsedOr("jupiter_lend", asset, jup, (j) => parseJupiterEarn(j, asset)));
   }
-  rates.push(vault ? parseKaminoVault(vault) : blank("kamino_sm_vault", "USDC_LEND", "API failed"));
+  rates.push(parsedOr("kamino_sm_vault", "USDC_LEND", vault, parseKaminoVault));
   rates.push(blank("marginfi", "USDC_LEND", "rate unavailable"));
-  rates.push(lulo ? parseLulo(lulo) : blank("lulo_protected", "USDC_LEND", "API failed"));
+  rates.push(parsedOr("lulo_protected", "USDC_LEND", lulo, parseLulo));
   const existing = await a.repo.listVenueDays(day);
   const out: VenueDayRow[] = [];
   for (const r of rates) {
     const ok = r.supplyPct !== null;
-    const exchangeRate = isAutoVenue(r.venue) && ok ? await safe(() => a.reads.exchangeRate(r.venue as AutoVenue, r.asset)) : null;
+    const rawRate = isAutoVenue(r.venue) && ok ? await safe(() => a.reads.exchangeRate(r.venue as AutoVenue, r.asset)) : null;
+    const exchangeRate = rawRate !== null && Number.isFinite(rawRate) && rawRate > 0 ? rawRate : null;
     const history = (await a.repo.listVenueHistory(r.venue, r.asset, addDays(day, -6))).filter((h) => h.day !== day);
     const { avg7Pct, daysMeasured } = avg7([...history, { supplyPct: r.supplyPct, ok }]);
     const prev = existing.find((e) => e.venue === r.venue && e.asset === r.asset);

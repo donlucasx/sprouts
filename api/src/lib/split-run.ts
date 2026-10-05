@@ -114,16 +114,43 @@ const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 const numbersIn = (v: unknown): number[] => (typeof v === "number" ? [v] : Array.isArray(v) ? v.flatMap(numbersIn) : v && typeof v === "object" ? Object.values(v).flatMap(numbersIn) : []);
 const r1s = (n: number) => (Math.round(n * 10) / 10).toFixed(1);
-/** Code's routing line (spec 4): where the routed lending money goes, against the other eligible auto venue (an avoided one included: the brief's tests pin "Kamino, 4.4% vs Jupiter 4.2%" with Jupiter avoided). */
-function routingWhy(asset: LendAsset, pick: AutoVenue | null, rows: VenueDayRow[]): string {
+/** Controller ruling (fix round 1): the plain words for each veto reason, used when a higher-rate venue was set aside today. */
+const REASON_WORDS: Record<VetoReason, string> = {
+  incentive_spike: "most of its rate is temporary rewards",
+  near_full: "it is nearly full",
+  deposits_fleeing: "deposits are leaving it fast",
+  data_suspect: "its numbers disagree today",
+};
+/**
+ * Code's routing sentence for one lending leg (spec 4): where the money goes, against the other eligible auto venue; when a venue
+ * with a higher 7-day average was avoided today, it says so and why (controller ruling, fix round 1). Always under 140 characters.
+ */
+export function routingWhy(asset: LendAsset, pick: AutoVenue | null, rows: VenueDayRow[]): string {
   const coin = asset === "USDC_LEND" ? "USDC" : "SOL";
   if (!pick) return `No lending venue passed today's checks; your ${coin} share goes to the next leg.`;
   const mine = rows.find((r) => r.venue === pick && r.asset === asset);
-  const other = rows.find((r) => r.venue !== pick && isAutoVenue(r.venue) && r.asset === asset && r.eligible && r.avg7Pct !== null);
   const pct = mine?.avg7Pct ?? null;
   if (pct === null) return `Your ${coin} goes to ${VENUE_NAME[pick]}.`;
+  const avoided = rows.find((r) => r.venue !== pick && isAutoVenue(r.venue) && r.asset === asset && r.verdict === "avoid" && r.reason !== null && r.avg7Pct !== null && r.avg7Pct > pct);
+  if (avoided) return `Your ${coin} goes to ${VENUE_NAME[pick]} at ${r1s(pct)}%; ${VENUE_NAME[avoided.venue]}'s ${r1s(avoided.avg7Pct as number)}% was set aside today: ${REASON_WORDS[avoided.reason as VetoReason]}.`;
+  const other = rows.find((r) => r.venue !== pick && isAutoVenue(r.venue) && r.asset === asset && r.eligible && r.avg7Pct !== null);
   return other ? `Your ${coin} goes to ${VENUE_NAME[pick]}, ${r1s(pct)}% vs ${VENUE_NAME[other.venue]} ${r1s(other.avg7Pct as number)}%.` : `Your ${coin} goes to ${VENUE_NAME[pick]} at ${r1s(pct)}%.`;
 }
+
+/** Review I3: what may be stored for display: plain letters, digits and basic punctuation, no domain-shaped word. */
+const SAFE_CHARS = /^[A-Za-z0-9 .,;:'%()/+$-]+$/;
+const DOMAIN_SHAPED = /\b[a-z0-9-]+\.[a-z]{2,}\b/i;
+/** checkWhy (URLs stripped, whitespace and newlines collapsed, numbers in the facts) plus the allowlist; returns what to STORE. */
+export function safeLine(line: string, facts: number[]): string | null {
+  const s = checkWhy(line, facts);
+  if (s === null || !SAFE_CHARS.test(s) || DOMAIN_SHAPED.test(s)) return null;
+  return s;
+}
+/** A model sentence that talks about lending (a venue, USDC, SOL, lending) could contradict code's routing: it is not kept. */
+const TALKS_LENDING = /kamino|jupiter|marginfi|lulo|\bUSDC\b|\bSOL\b|\blend/i;
+const WHY_MAX = 200;
+/** Review I5: the decide step's total budget, so planting (no new wallet past 240 s) always starts well in time. */
+export const DECIDE_BUDGET_MS = 90_000;
 
 /**
  * One row per stop for the day. A row that already exists is reused, so a second run the same day calls no model (spec 6.1).
@@ -132,8 +159,9 @@ function routingWhy(asset: LendAsset, pick: AutoVenue | null, rows: VenueDayRow[
  * Verdicts are fail-open on silence [decision, Task 4 review]: a venue no stop judged (the model down, a fallback, no verdict given)
  * keeps a null verdict and stays pickable on code's eligibility alone; only an explicit avoid removes it, and any stop's avoid holds.
  */
-export async function decideSplits(a: { repo: Repo; now: Date; model: ConversationCall | null; scout?: () => Promise<FoundPool[]> }): Promise<SplitDayRow[]> {
+export async function decideSplits(a: { repo: Repo; now: Date; model: ConversationCall | null; scout?: () => Promise<FoundPool[]>; budgetMs?: number }): Promise<SplitDayRow[]> {
   const day = dayOf(a.now);
+  const deadlineMs = Date.now() + (a.budgetMs ?? DECIDE_BUDGET_MS);
   const facts = await readFacts(a.repo, day);
   const noData = facts.filter((f) => f.noData).map((f) => f.asset);
   // A coin with no measured span (cbBTC's constant 0, a collecting coin) is not a measured growth: the fallback skips it (spec 6.5).
@@ -191,8 +219,12 @@ export async function decideSplits(a: { repo: Repo; now: Date; model: Conversati
       // reached or never called set_split within the turn limit.
       const ask = async () => {
         let raw: Awaited<ReturnType<typeof runToolLoop>>;
+        if (Date.now() >= deadlineMs) {
+          console.error(`split ${stop}: the decide step's ${a.budgetMs ?? DECIDE_BUDGET_MS} ms budget is spent; falling back by rule`);
+          return null;
+        }
         try {
-          raw = await runToolLoop({ call: model, system: system(stop), user: factsTable(facts, stop, yesterday), tools, finalTool: "set_split", maxTurns: 6, maxTokens: 600, run });
+          raw = await runToolLoop({ call: model, system: system(stop), user: factsTable(facts, stop, yesterday), tools, finalTool: "set_split", maxTurns: 6, maxTokens: 600, run, deadlineMs });
         } catch (e) {
           console.error(`split ${stop}: the model could not be reached: ${msg(e)}`);
           return null;
@@ -252,14 +284,21 @@ export async function decideSplits(a: { repo: Repo; now: Date; model: Conversati
   const allFacts = (f: number[]) => [...f, ...servedNumbers];
   for (const p of pending) {
     p.row.venuePick = venuePick;
-    const routed: LendAsset | null = p.row.split.USDC_LEND > 0 ? "USDC_LEND" : p.row.split.SOL_LEND > 0 ? "SOL_LEND" : null;
-    const checked = p.modelWhy === null ? null : checkWhy(p.modelWhy, allFacts(p.facts));
-    const namesRoute = !routed || (checked !== null && venuePick[routed] !== null && checked.includes(VENUE_NAME[venuePick[routed] as AutoVenue]));
-    p.row.why = checked !== null && namesRoute ? checked : routed ? routingWhy(routed, venuePick[routed] ?? null, after) : (checked ?? templateWhy({ stop: p.row.stop, top: topCoin(facts) }));
+    // Controller ruling (fix round 1, review I1/I2): CODE owns the routing whenever lending gets a share; the model's line may only
+    // add a sentence that says nothing about lending, checked as before.
+    const routed = LEND_ASSETS.filter((l) => p.row.split[l] > 0);
+    const checked = p.modelWhy === null ? null : safeLine(p.modelWhy, allFacts(p.facts));
+    if (!routed.length) p.row.why = checked ?? templateWhy({ stop: p.row.stop, top: topCoin(facts) });
+    else {
+      const routing = routed.map((l) => routingWhy(l, venuePick[l] ?? null, after)).join(" ");
+      const extra = checked !== null && !TALKS_LENDING.test(checked) ? checked : null;
+      p.row.why = extra !== null && routing.length + 1 + extra.length <= WHY_MAX ? `${routing} ${extra}` : routing;
+    }
     await a.repo.putSplitDay(p.row);
     out.push(p.row);
   }
-  const notes = foundRows.filter((f) => f.note !== null && checkWhy(f.note, [...servedNumbers]) !== null);
+  // Review I3: a note is stored as the checked string (URLs stripped, one line, allowlisted), never the raw model text.
+  const notes = foundRows.flatMap((f) => { const note = f.note === null ? null : safeLine(f.note, servedNumbers); return note === null ? [] : [{ ...f, note }]; });
   await a.repo.putFoundVenues([...new Map(notes.map((f) => [f.poolId, f])).values()]);
   return STOP_ORDER.map((s) => out.find((r) => r.stop === s) as SplitDayRow);
 }
