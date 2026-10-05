@@ -125,8 +125,11 @@ export function klendDeliveryShortfall(sim: Simulation, built: { minOutRaw: bigi
   return change >= built.minOutRaw ? null : `the kToken account gained ${change}, under the minimum ${built.minOutRaw}`;
 }
 
-/** Contracts 6 `withdraw_klend`: [create the user's underlying ATA], refresh, redeem(receiptRaw); SOL then closes the WSOL account to the user. */
-export async function buildKlendWithdrawIxs(a: { user: Address; asset: LendAsset; receiptRaw: bigint }): Promise<Instruction[]> {
+/**
+ * Contracts 6 `withdraw_klend`: [create the user's underlying ATA], refresh, redeem(receiptRaw); SOL then closes the WSOL account to the
+ * user, unless `keepWsolOpen` (a move's redeem part: the deposit part spends the WSOL and closes it).
+ */
+export async function buildKlendWithdrawIxs(a: { user: Address; asset: LendAsset; receiptRaw: bigint; keepWsolOpen?: boolean }): Promise<Instruction[]> {
   const k = KLEND[a.asset];
   const owner = createNoopSigner(a.user);
   const underlying = await ata(a.user, k.liquidityMint);
@@ -135,7 +138,7 @@ export async function buildKlendWithdrawIxs(a: { user: Address; asset: LendAsset
     klendRefreshIx(a.asset),
     klendRedeemIx({ owner, asset: a.asset, source: await ata(a.user, k.collateralMint), destination: underlying, amountRaw: a.receiptRaw }),
   ];
-  if (a.asset === "SOL_LEND") ixs.push(getCloseAccountInstruction({ account: underlying, destination: a.user, owner }) as Instruction);
+  if (a.asset === "SOL_LEND" && !a.keepWsolOpen) ixs.push(getCloseAccountInstruction({ account: underlying, destination: a.user, owner }) as Instruction);
   return ixs;
 }
 
