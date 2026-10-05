@@ -431,9 +431,16 @@ export class MemoryRepo implements Repo {
   }
 
   async insertWithdrawal(w: NewWithdrawal): Promise<T.WithdrawalRow> {
+    // Mirrors withdrawals_unstake_signature_once (0009): the same signature answers the row already there.
+    const had = w.unstakeSignature !== null ? await this.withdrawalBySignature(w.unstakeSignature) : null;
+    if (had) return had;
     const row: T.WithdrawalRow = { ...w, id: id(), unstakeTs: new Date(), withdrawSignature: null, cancelSignature: null, amountOutRaw: null, rewardDeltaRaw: null, skippedAt: null };
     this.withdrawals.set(row.id, row);
     return row;
+  }
+
+  async withdrawalBySignature(unstakeSignature: string) {
+    return [...this.withdrawals.values()].find((w) => w.unstakeSignature === unstakeSignature) ?? null;
   }
 
   /** Open rows: not delivered, not cancelled, not skipped. */

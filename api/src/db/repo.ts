@@ -94,7 +94,9 @@ export interface Repo {
   /** Consumes the code for the wallet it is bound to, only after the chain confirmed the delegation. */
   takeLinkCode(code: string, walletPubkey: string): Promise<T.LinkCodeRow | null>;
 
+  /** K-I4: a signature already recorded (unique index 0009) answers the existing row, never a second one. */
   insertWithdrawal(w: NewWithdrawal): Promise<T.WithdrawalRow>;
+  withdrawalBySignature(unstakeSignature: string): Promise<T.WithdrawalRow | null>;
   /** Not delivered, not cancelled, not skipped, either source: the basket (a cooldown the wallet started is one too, review I2). */
   pendingWithdrawal(userPubkey: string): Promise<T.WithdrawalRow | null>;
   /** Newest first. */
