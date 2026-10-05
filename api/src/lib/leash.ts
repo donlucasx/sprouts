@@ -80,7 +80,7 @@ export async function buildPullIx(a: { puller: TransactionSigner; delegator: Add
       ro(a.legAccounts.receipt), ro(a.legAccounts.price), ...a.legAccounts.readers.map(ro),
     ],
     data: new Uint8Array(Buffer.concat([Buffer.from([0, a.leg]), u64(a.amountRaw), u64(a.minOutRaw)])),
-  } as Instruction;
+  };
 }
 
 export async function buildSettleIx(a: { user: Address; leg: LeashLegByte; preRaw: bigint; minOutRaw: bigint; amountRaw: bigint; legAccounts: LegAccounts }): Promise<Instruction> {
@@ -95,6 +95,7 @@ const refuse = (why: string): never => { throw new Error(`Leash refused: ${why}`
 
 /** Contracts 3.1 / invariant 1: exactly one pull and one later settle of the leash program, same leg, amount, min_out, user and pinned accounts. */
 export function checkLeashInstructions(ixs: readonly Instruction[], a: { user: Address; leg: LeashLegByte; amountRaw: bigint; minOutRaw: bigint }): void {
+  if (a.minOutRaw === 0n) refuse("min_out is 0 (the program refuses it, GUARD:MIN_OUT_ZERO)");
   const idx = ixs.map((ix, i) => (ix.programAddress === LEASH_PROGRAM ? i : -1)).filter((i) => i >= 0);
   if (idx.length === 1 && ixs[idx[0]].data?.[0] === 0) refuse("a pull without a settle");
   if (idx.length !== 2) refuse(`expected exactly one pull and one settle, found ${idx.length} leash instructions`);
@@ -205,12 +206,17 @@ const ceilDiv = (n: bigint, d: bigint) => n / d + (n % d === 0n ? 0n : 1n);
  * tests/lib/leash.test.ts shared with leash/tests/tests/unit_floor.rs. USDC is valued at exactly $1. */
 export function floorRaw(a: { leg: LeashLegByte; amountRaw: bigint; rn: bigint; rd: bigint; priceLow: bigint | null; exponent: number | null; feeBps: number; tolBps: number; underlyingDecimals: number }): bigint {
   if (a.rn === 0n || a.rd === 0n) throw new Error("leash floor: BadReader (a zero rate)");
+  // The program picks the formula by LEG (is_unpriced, lib.rs read_price_acct), never by whether a price was found:
+  // a priced leg without a price (or an unpriced leg with one) is refused, not silently valued as USDC.
+  const priced = LEG_SPEC[a.leg].feed !== null;
+  if (priced !== (a.priceLow !== null && a.exponent !== null)) throw new Error(`leash floor: BadPriceAccount (leg ${a.leg} is ${priced ? "priced and has no price" : "unpriced and got a price"})`);
+  if (a.priceLow !== null && a.priceLow <= 0n) throw new Error("leash floor: PriceConfidence (p_low <= 0)");   // read_price GUARD:P_LOW
   const keep = 10_000n - BigInt(a.feeBps) - BigInt(a.tolBps);
   if (keep < 0n) throw new Error("leash floor: Overflow");
   const net = mul(a.amountRaw, keep) / 10_000n;
   let n: bigint;
   let d: bigint;
-  if (a.priceLow === null || a.exponent === null) {
+  if (!priced || a.priceLow === null || a.exponent === null) {
     n = mul(net, a.rd);
     d = a.rn;
   } else {
