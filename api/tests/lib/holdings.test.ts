@@ -105,6 +105,18 @@ describe("lending value and earned (spec 8)", () => {
     const [none] = lendingFrom({ positions: [{ asset: "USDC_LEND", venue: "kamino_klend", receiptRaw: 830_536n }], legs: [], rows: [vrow()], prices: {} });
     expect(none.valueUsd).toBeNull();
   });
+  it("R359: a partial withdrawal (the receipt read from chain drops) reduces Put in and Earned in proportion; the position stays", () => {
+    const legs = [lendLeg(1_000_000n, 1.2), lendLeg(661_072n, 1.2038)];
+    const args = { legs, rows: [vrow()], prices: { USDC_LEND: 1 } };
+    const [whole] = lendingFrom({ ...args, positions: [{ asset: "USDC_LEND", venue: "kamino_klend", receiptRaw: 1_661_072n }] });
+    const [part] = lendingFrom({ ...args, positions: [{ asset: "USDC_LEND", venue: "kamino_klend", receiptRaw: 415_268n }] });   // a quarter left
+    expect(whole.putInCents).toBe(400);
+    expect(part.putInCents).toBe(100);
+    expect(part.earnedUsd! / whole.earnedUsd!).toBeCloseTo(0.25, 6);
+    expect(part.underlyingRaw).toBe(500_397n);   // 415_268 x 1.205
+    const [h] = lendHoldings([part]);
+    expect(h).toMatchObject({ asset: "USDC_LEND", heldRaw: 500_397n, putInCents: 100 });
+  });
   it("one aggregated holding per lending asset, underlying summed", () => {
     const ps = lendingFrom({
       positions: [{ asset: "USDC_LEND", venue: "kamino_klend", receiptRaw: 1_000_000n }, { asset: "USDC_LEND", venue: "jupiter_lend", receiptRaw: 1_000_000n }],

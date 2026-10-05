@@ -34,6 +34,26 @@ describe("R252: the widget's text at the top, its garden under it", () => {
   });
 });
 
+describe("R360 in the widget: it draws only what is held now, and a restarted coin from its new planting", () => {
+  const svgOf = (m: MeResponse, restartMarks = {}) => {
+    const root = SproutsWidget({ me: m, width: 320, height: 200, wide: true, restartMarks }) as El;
+    const svg = kids(root).find((k) => k.type === "SvgWidget") as ReactElement<{ svg: string }> | undefined;
+    return svg?.props.svg ?? null;
+  };
+  const usdc = (id: string, ts: string) => ({ id, ts, asset: "USDC_LEND", amountOutRaw: "610000", usdcInCents: 65 });
+  const withUsdc = { ...me, history: { plantings: [...me.history.plantings, usdc("u1", "2026-10-02T12:00:00.000Z")], picks: [] }, positions: [], positionsRead: "ok" } as unknown as MeResponse;
+  it("a lending position withdrawn in full draws as if it had never been planted", () => {
+    expect(svgOf(withUsdc)).toBe(svgOf(me));
+  });
+  it("re-planted after the zero: the widget grows it from the new planting only", () => {
+    const held = { asset: "USDC_LEND", venue: "jupiter_lend", receiptMint: "M", receiptRaw: "610000", underlyingRaw: "650000", valueUsd: 0.65, ratePct: 4, avg7Pct: 4, earnedUsd: 0, putInCents: 65, withdrawableUsd: null, poolFull: false };
+    const again = { ...withUsdc, positions: [held], history: { plantings: [...withUsdc.history.plantings, usdc("u2", "2026-10-03T12:00:00.000Z")], picks: [] } } as unknown as MeResponse;
+    const onlyNew = { ...again, history: { plantings: [...me.history.plantings, usdc("u2", "2026-10-03T12:00:00.000Z")], picks: [] } } as unknown as MeResponse;
+    expect(svgOf(again, { USDC_LEND: "2026-10-02T12:00:00.000Z" })).toBe(svgOf(onlyNew));
+    expect(svgOf(again)).not.toBe(svgOf(onlyNew));
+  });
+});
+
 // His note (10-05, a 2x3 widget on the Seeker): "looks too talk and theres a big gap between "in your garden" and the garden below".
 // The garden sits straight under the text, its view cropped to the plants (no sky past TIGHT_TOP), as big as the width and the room allow.
 const NOW = new Date("2026-10-02T12:00:00Z");

@@ -29,6 +29,14 @@ describe("GET /api/activity, lending (contracts 5.7)", () => {
       expect.objectContaining({ asset: "JitoSOL", venue: null, receiptOutRaw: null, underlyingOutRaw: null }),
     ]);
   });
+  it("R359: a lend_withdrawn row carries whole (false for a part) when the event recorded it, and no key when it did not", async () => {
+    await repo.addEvent({ userPubkey: U, walletPubkey: null, kind: "lend_withdrawn", detail: { asset: "USDC_LEND", venue: "jupiter_lend", receiptRaw: "5", underlyingRaw: "6", signature: "p1", whole: false } });
+    await repo.addEvent({ userPubkey: U, walletPubkey: null, kind: "lend_withdrawn", detail: { asset: "USDC_LEND", venue: "jupiter_lend", receiptRaw: "5", underlyingRaw: "6", signature: "p0" } });
+    const res = await activity(new Request("http://x/api/activity", { headers: { authorization: `Bearer ${await issueSession(U, "M")}` } }));
+    const rows = (await res.json()).lendWithdrawals as { signature: string; whole?: boolean }[];
+    expect(rows.find((r) => r.signature === "p1")?.whole).toBe(false);
+    expect("whole" in rows.find((r) => r.signature === "p0")!).toBe(false);
+  });
   it("lendWithdrawals carry underlyingRaw (null when the event has none); moves; found", async () => {
     await repo.addEvent({ userPubkey: U, walletPubkey: null, kind: "lend_withdrawn", detail: { asset: "USDC_LEND", venue: "kamino_klend", receiptRaw: "1661072", underlyingRaw: "2001591", signature: "w1" } });
     await repo.addEvent({ userPubkey: U, walletPubkey: null, kind: "lend_withdrawn", detail: { asset: "SOL_LEND", venue: "jupiter_lend", receiptRaw: "940800", signature: "w0" } });

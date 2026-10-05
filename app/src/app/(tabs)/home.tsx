@@ -5,6 +5,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons'
 import { useQueryClient } from '@tanstack/react-query'
 import { useMe, useInvalidateMe, toGardenInput } from '@/lib/me'
 import { recordWatering, wateredPlantsFor } from '@/lib/last-watering'
+import { readZeroMarks } from '@/lib/zero-marks'
 import { plantLabel } from '@/lib/plant-label'
 import { api, ApiError, type MeResponse } from '@/lib/api'
 import { buildScene } from '@/model/garden'
@@ -90,7 +91,7 @@ export default function Home() {
     }
   }, [])
   const scene = useMemo(
-    () => (me ? buildScene(withDevBud(toGardenInput(me, now, wateredPlantsFor(me.user.wateredAt)), devBud)) : null),
+    () => (me ? buildScene(withDevBud(toGardenInput(me, now, wateredPlantsFor(me.user.wateredAt), readZeroMarks()), devBud)) : null),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `now` is taken once per render on purpose; the scene follows the local date
     [me, today, devBud],
   )

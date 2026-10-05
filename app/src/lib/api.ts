@@ -103,6 +103,8 @@ export type MeResponse = {
   };
   // contracts 5.2, Track A: absent from the API on main a6d6f32
   positions?: LendingPosition[];
+  /** R360: "failed" when the API could not read the lending receipts (positions is then empty, not zero); absent on an API before it. */
+  positionsRead?: "ok" | "failed";
   lendSigns?: Partial<Record<LendAsset, LendSign | null>>;
   relink?: { needed: boolean; wallets: { pubkey: string; via: "app" | "link_page" }[] };
   terms?: { currentVersion: string; acceptedVersion: string | null };
@@ -122,7 +124,8 @@ export type ActivityResponse = {
     unstakeSignature: string | null; withdrawSignature: string | null; cancelled: boolean; delivered: boolean;
   }[];
   /** underlyingRaw: string | null on the API (null when the amount is not known); null or absent, the line names the coin and no amount. */
-  lendWithdrawals?: { ts: string; asset: LendAsset; venue: AutoVenue; receiptRaw: string; underlyingRaw?: string | null; signature: string }[];
+  /** R359: `whole` false = part of the position (the rest keeps earning); absent on rows from before it. */
+  lendWithdrawals?: { ts: string; asset: LendAsset; venue: AutoVenue; receiptRaw: string; underlyingRaw?: string | null; signature: string; whole?: boolean }[];
   moves?: { ts: string; asset: LendAsset; from: AutoVenue; to: AutoVenue; receiptRaw: string; status: MoveStatus }[];
   found?: FoundVenue[];
 };

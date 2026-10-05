@@ -169,6 +169,72 @@ describe("Withdraw a lending position (contracts 5.3, R264)", () => {
     expect(log.mock.calls.some((c) => String(c[0]).includes("event was not written") && String(c[0]).includes("db down"))).toBe(true);
     log.mockRestore();
   });
+
+  // ---- R359: a partial withdrawal (an amount in the underlying's raw units) ----
+  const partialBody = async (amountRaw: string, asset = "USDC_LEND", venue = "kamino_klend") => call(build, { asset, venue, amountRaw });
+  const redeemAmount = (b64: string) => {
+    const t = getTransactionDecoder().decode(getBase64Encoder().encode(b64));
+    const m = decompileTransactionMessage(getCompiledTransactionMessageDecoder().decode(t.messageBytes));
+    const ixs = m.instructions as readonly Instruction[];
+    const redeem = ixs.filter((ix) => ix.data && ix.data.length === 16).at(-1)!;
+    return Buffer.from(redeem.data!).readBigUInt64LE(8);
+  };
+  it("R359: an amount redeems the matching receipt (rounded up so at least the amount comes back), the rest stays", async () => {
+    const res = await partialBody("1000000");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    // ceil(1_000_000 x 10_000 / 12_050) = 829_876 receipt; back: 829_876 x 12_050 / 10_000 = 1_000_000
+    expect(body).toMatchObject({ receiptRaw: "829876", expectedOutRaw: "1000000", all: false });
+    expect(redeemAmount(body.transaction)).toBe(829_876n);
+    const tx = getTransactionDecoder().decode(getBase64Encoder().encode(body.transaction));
+    await expect(checkBeforeSigning(tx, { kind: "withdraw_klend", user: user.address, asset: "USDC_LEND", receiptRaw: body.receiptRaw })).resolves.toBeUndefined();
+  });
+  it("R359: no amount, or the whole value, is the whole position (all: true)", async () => {
+    expect(await (await call(build, { asset: "USDC_LEND", venue: "kamino_klend" })).json()).toMatchObject({ receiptRaw: "1661072", all: true });
+    expect(await (await partialBody("2001591")).json()).toMatchObject({ receiptRaw: "1661072", expectedOutRaw: "2001591", all: true });
+  });
+  it("R359: more than the position, zero, under the smallest, or not a whole number of raw units is a 400; nothing built", async () => {
+    for (const bad of ["2001592", "0", "9999", "1.5", "-1", "abc", ""]) {
+      const res = await partialBody(bad);
+      expect(res.status, bad).toBe(400);
+    }
+    expect((await (await partialBody("2001592")).json()).error).toBe("That is more than this position holds.");
+    expect((await (await partialBody("9999")).json()).error).toBe("The smallest withdrawal is 0.01 USDC.");
+  });
+  it("R359 dust: a rest worth under the smallest withdrawal is taken too (all: true)", async () => {
+    // rest = 1_661_072 - ceil(1_995_000 x 10_000 / 12_050) = 1_661_072 - 1_655_602 = 5_470 receipt, worth 6_591 raw < 10_000
+    const body = await (await partialBody("1995000")).json();
+    expect(body).toMatchObject({ receiptRaw: "1661072", all: true });
+    expect(body.brief).toMatch(/The rest is too small to leave, so this takes it all\./);
+    // a rest worth at least the minimum stays (8_789 receipt, worth 10_590 raw)
+    const keep = await (await partialBody("1991000")).json();
+    expect(keep.all).toBe(false);
+  });
+  it("R359: the pool check reads the amount asked for, not the whole position", async () => {
+    available = 1_500_000n;
+    expect((await call(build, { asset: "USDC_LEND", venue: "kamino_klend" })).status).toBe(409);
+    expect((await partialBody("1000000")).status).toBe(200);
+    expect((await partialBody("1600000")).status).toBe(409);
+  });
+  it("R359 SOL on Jupiter Lend: a partial redeems shares and still closes the WSOL account in the same transaction (unwrapped)", async () => {
+    // rate 11/10: 1_000_000 lamports needs ceil(1_000_000 x 10 / 11) = 909_091 shares
+    const body = await (await partialBody("1000000", "SOL_LEND", "jupiter_lend")).json();
+    expect(body).toMatchObject({ receiptRaw: "909091", all: false });
+    const tx = getTransactionDecoder().decode(getBase64Encoder().encode(body.transaction));
+    await expect(checkBeforeSigning(tx, { kind: "withdraw_jlend", user: user.address, asset: "SOL_LEND", receiptRaw: "909091" })).resolves.toBeUndefined();
+    const m = decompileTransactionMessage(getCompiledTransactionMessageDecoder().decode(tx.messageBytes));
+    const last = (m.instructions as readonly Instruction[]).at(-1)!;
+    expect(last.data?.[0]).toBe(9);   // Token CloseAccount: the WSOL comes back as SOL
+  });
+  it("R359 confirm: a partial is sent and recorded with whole: false; the whole position with whole: true", async () => {
+    const part = await (await partialBody("1000000")).json();
+    let res = await call(confirm, { signedTransaction: await sign(part.transaction), asset: "USDC_LEND", venue: "kamino_klend" });
+    expect(res.status).toBe(200);
+    expect((await res.json()).withdrawn).toMatchObject({ receiptRaw: "829876", underlyingRaw: "1000000", whole: false });
+    const all = await built();
+    res = await call(confirm, { signedTransaction: await sign(all.transaction), asset: "USDC_LEND", venue: "kamino_klend" });
+    expect((await res.json()).withdrawn).toMatchObject({ receiptRaw: "1661072", whole: true });
+  });
   const appSign = "/Users/lucasgarzoli/Documents/claude/seekerhackathon/build/sprouts-lend-app/app/src/lib/sign.ts";
   // Skipped (shown as skipped in the run) when the app worktree is not on this machine: the vendored copy was then not compared.
   it.skipIf(!existsSync(appSign))("the vendored copy of the app's sign.ts equals the app's file byte for byte, bar the one documented import edit (skipped only when the app worktree sprouts-lend-app is absent)", () => {

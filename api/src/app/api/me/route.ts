@@ -115,6 +115,8 @@ export async function GET(request: Request) {
     },
     holdings: allHoldings,
     positions: positionsOut.map(({ earnedUnderlyingRaw: _e, ...p }) => p),
+    // R360: "failed" tells the app the empty list is a failed read, not a zero (the garden drops a coin's plant only at a real zero).
+    positionsRead: lendRead === null ? "failed" : "ok",
     lendSigns: lendSignsFor({ picks, positions: positionsOut, rows: venueRows }),
     manager: {
       managed: rules.managed, stop: rules.stop, pins: rules.pins, changedDay: rules.allocationDay, undoAvailable: rules.prevAllocation !== null,
