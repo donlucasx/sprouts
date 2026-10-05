@@ -61,9 +61,7 @@ fn u64_at(d: &[u8], o: usize) -> u64 {
 
 /// `body` = Config bytes 16..1504, the init_config / set_config payload.
 pub fn decode_body(body: &[u8]) -> Result<Config, LeashError> {
-    if body.len() != BODY_LEN {
-        return Err(LeashError::BadData);
-    }
+    if body.len() != BODY_LEN { return Err(LeashError::BadData); } // GUARD:BODY_LEN
     let mut legs = [EMPTY_LEG; NUM_LEGS];
     for (i, leg) in legs.iter_mut().enumerate() {
         let o = BODY_LEGS + LEG_LEN * i;

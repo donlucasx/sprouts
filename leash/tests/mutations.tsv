@@ -22,3 +22,17 @@ V_RATE_ZERO host program/src/config.rs unit_config validate_guards
 V_FEED host program/src/config.rs unit_config validate_guards
 V_EXTRA_ZERO host program/src/config.rs unit_config validate_guards
 V_STORE_EXTRA host program/src/config.rs unit_config validate_guards
+BODY_LEN svm program/src/config.rs admin init_guards
+INIT_SIGNER svm program/src/lib.rs admin init_guards
+INIT_ADMIN svm program/src/lib.rs admin init_guards
+INIT_SYSTEM svm program/src/lib.rs admin init_guards
+INIT_PDA svm program/src/lib.rs admin init_guards
+INIT_ONCE svm program/src/lib.rs admin init_guards
+INIT_VALIDATE svm program/src/lib.rs admin init_and_set_refuse_every_invalid_config
+SET_VALIDATE svm program/src/lib.rs admin init_and_set_refuse_every_invalid_config
+SET_SIGNER svm program/src/lib.rs admin set_config_guards
+SET_ADMIN svm program/src/lib.rs admin set_config_guards
+CFG_OWNER svm program/src/lib.rs admin config_account_guards
+CFG_ADDRESS svm program/src/lib.rs admin config_account_guards
+INIT_REENCODE svm program/src/lib.rs admin nonzero_pad_bytes_init_stores_zeros
+SET_REENCODE svm program/src/lib.rs admin nonzero_pad_bytes_set_stores_zeros

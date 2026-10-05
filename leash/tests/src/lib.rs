@@ -14,6 +14,8 @@ pub use solana_clock::Clock;
 pub use solana_instruction::{AccountMeta, Instruction};
 pub use solana_pubkey::Pubkey;
 
+pub mod admin;
+pub use admin::*;
 pub mod cfg;
 pub use cfg::*;
 
