@@ -1,12 +1,11 @@
 "use no memo";
 import { FlexWidget, TextWidget, SvgWidget } from "react-native-android-widget";
 import type { MeResponse } from "@/lib/api";
-import type { LiveAsset } from "@/lib/coins";
 import { buildScene } from "@/model/garden";
 import { widgetGardenHeight, widgetGardenSvg } from "@/model/widget-svg";
 import { toGardenInput } from "@/lib/garden-input";
-import { formatAmount, formatSkr, formatUsd } from "@/lib/format";
-import { gardenTotals } from "@/lib/me-state";
+import { formatSkr, formatUsd } from "@/lib/format";
+import { gardenTotals, lastPlantingLine } from "@/lib/me-state";
 import type { PlantId } from "@/model/garden";
 
 /** The home-screen widget, drawn from the last verified read (never a network call of its own): the whole garden's value, next planting, the garden. */
@@ -40,8 +39,8 @@ export function SproutsWidget({ me, width, height, wide, wateredPlants = null }:
       <FlexWidget style={{ width: "match_parent", flexDirection: "column" }}>
         <TextWidget text={total === null ? formatSkr(BigInt(me.pot.skrStakedRaw), me.pot.skrUsd) : `In your garden ${formatUsd(Math.round(total * 100))}`} style={{ fontSize: 16, color: "#2B2B2B", fontWeight: "600" }} />
         <TextWidget text={`Next planting ${formatUsd(me.nextPlanting.pendingCents)} of ${formatUsd(me.nextPlanting.thresholdCents)}`} style={{ fontSize: 12, color: "#6B6558" }} />
-        {showLast && me.lastReceipt ? (
-          <TextWidget text={`Last planting ${formatUsd(me.lastReceipt.usdcPulledCents)} pulled, ${formatAmount(me.lastReceipt.asset as LiveAsset, BigInt(me.lastReceipt.amountOutRaw), me.lastReceipt.usdPrice)} planted`} style={{ fontSize: 12, color: "#6B6558" }} />
+        {showLast && lastPlantingLine(me.lastReceipt) ? (
+          <TextWidget text={lastPlantingLine(me.lastReceipt)!} style={{ fontSize: 12, color: "#6B6558" }} />
         ) : null}
       </FlexWidget>
       {garden !== null ? <SvgWidget svg={garden.svg} style={{ width: gardenW, height: garden.h }} /> : null}

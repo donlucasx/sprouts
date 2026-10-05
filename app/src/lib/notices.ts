@@ -1,15 +1,15 @@
-import { formatUsd, formatAmount, formatSkr, COIN_NAME_LONG } from "./format";
-import { ASSETS, isRetired, type LiveAsset, type Split } from "./coins";
+import { plantedWhat, formatSkr, COIN_NAME_LONG } from "./format";
+import { ASSETS, isRetired, type AutoVenue, type LiveAsset, type Split } from "./coins";
 import type { MeResponse } from "./api";
 
 /** The planting push (R172, 10-02): one line, the change and what it became, with the coin's value. The "where it sits" and "a new
  * sprout is waiting" clauses are gone: they ran past one line, and he picked the plain line over "a new sprout grows". */
 export function plantingNotice(
-  p: { asset: LiveAsset; usdcInCents: number; amountOutRaw: string },
+  p: { asset: LiveAsset; usdcInCents: number; amountOutRaw: string; venue?: AutoVenue | null },
   pot: { skrUsd: number | null; storeUsd: number | null },
 ): string {
-  const amount = formatAmount(p.asset, BigInt(p.amountOutRaw), p.asset === "SKR" ? pot.skrUsd : p.asset === "stORE" ? pot.storeUsd : null);
-  return `Your change was planted: ${formatUsd(p.usdcInCents)} became ${amount}.`;
+  const usdPrice = p.asset === "SKR" ? pot.skrUsd : p.asset === "stORE" ? pot.storeUsd : null;
+  return `Your change was planted: ${plantedWhat({ ...p, usdPrice })}.`;
 }
 
 /** R161: the four notices, each behind its own switch in Settings > Notifications. */
