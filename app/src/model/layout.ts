@@ -426,3 +426,13 @@ function nearSpots(out: Map<PlantId, Spot>, signs: SignPart[], lend: SignPart[],
   for (const o of best) out.set(o.plant, { side: o.c >= o.foot ? 1 : -1, x: o.c });
   return out;
 }
+/** R357: the paper over the garden's tallest drawn part (each plant drawn PLANT_SCALE about its foot), in view px from the view's top. */
+export function skyAbove(plants: readonly PlantOnStage[], frame: { y: number; zoom: number }): number {
+  const top = Math.min(CANVAS.height, ...plants.map((p) => FOOT_Y(p.row) - p.layout.top * PLANT_SCALE));
+  return Math.max(0, (top - frame.y) * frame.zoom);
+}
+/** R356 then R357 (10-05, "tighten the gap ... a bit", then "by another half"): how far Home pulls the garden up under its value
+ * block, in dp: the screen's gap (Screen's spacing.lg, 16) plus as much of the garden's sky as lies past SKY_KEEP, at most 40, so the
+ * tallest part always keeps SKY_KEEP of paper under the block (a tall garden whose headroom gave way to MAX_VIEW_H is pulled less). */
+export const SKY_KEEP = 32;
+export const valuePull = (sky: number) => 16 + Math.min(40, Math.max(0, sky - SKY_KEEP));
