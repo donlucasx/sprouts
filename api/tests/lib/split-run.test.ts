@@ -331,6 +331,23 @@ describe("the AI's tools, verdicts and found venues (spec 4, R275-R278)", () => 
     expect(safeLine("hSOL grew 4.4% at hsol.fund", [4.4])).toBeNull();
   });
 
+  it("K-M6: a domain split by spaces around the dot is still a domain; an ordinary sentence end is not", () => {
+    for (const line of ["hSOL grew 4.4% at hsol . fund", "hSOL grew 4.4% at hsol .fund", "hSOL grew 4.4% at hsol. fund", "hSOL grew 4.4% at hsol  .  fund"]) expect(safeLine(line, [4.4])).toBeNull();
+    expect(safeLine("hSOL grew 4.4% a year. SKR held its floor.", [4.4])).toBe("hSOL grew 4.4% a year. SKR held its floor.");
+  });
+
+  it("K-M3: a found pool's project and symbol from DefiLlama are stored only when they pass a plain-name allowlist", async () => {
+    for (const bad of [{ project: "kamino\u202Elend" }, { project: "kamino\u200Blend" }, { project: "<b>kamino</b>" }, { project: "kamino-bonus.xyz" }, { symbol: "SOL\nclaim at x" }, { project: "x".repeat(41) }]) {
+      const r = await venueRepo();
+      const pool = { ...POOL, ...bad };
+      await decideSplits({ repo: r, now: NOW, model: scripted(finalWith({ found: [{ poolId: pool.poolId, note: "Kamino SOL pool at 5.6% a year." }] })), scout: async () => [pool] });
+      expect(await r.listFoundVenues(DAY, 5)).toEqual([]);
+    }
+    const ok = await venueRepo();
+    await decideSplits({ repo: ok, now: NOW, model: scripted(finalWith({ found: [{ poolId: POOL.poolId, note: "Kamino SOL pool at 5.6% a year." }] })), scout: async () => [{ ...POOL, project: "save_v2", symbol: "JitoSOL" }] });
+    expect((await ok.listFoundVenues(DAY, 5)).map((f) => [f.project, f.symbol])).toEqual([["save_v2", "JitoSOL"]]);
+  });
+
   it("an avoid without a reason fails the schema: the stop falls back and no veto is applied", async () => {
     const repo = await venueRepo();
     const rows = await decideSplits({ repo, now: NOW, model: scripted(finalWith({ verdicts: [{ venue: "kamino_klend", asset: "USDC_LEND", verdict: "avoid" }] })), scout: async () => [POOL] });
