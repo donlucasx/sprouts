@@ -1,3 +1,4 @@
+/** K-M9 (10-04): no SESSION_SECRET: sessions are opaque random tokens stored as SHA-256 hashes (lib/session.ts); nothing signs with a secret. */
 export type Config = {
   heliusApiKey: string;
   heliusRpcUrl: string;
@@ -5,7 +6,6 @@ export type Config = {
   supabaseUrl: string;
   supabaseServiceKey: string;
   pullerSecretKey: string;
-  sessionSecret: string;
   cronSecret: string;
   heliusWebhookSecret: string;
   appOrigin: string;
@@ -23,7 +23,6 @@ const MAP: Record<keyof Config, string> = {
   supabaseUrl: "SUPABASE_URL",
   supabaseServiceKey: "SUPABASE_SERVICE_KEY",
   pullerSecretKey: "PULLER_SECRET_KEY",
-  sessionSecret: "SESSION_SECRET",
   cronSecret: "CRON_SECRET",
   heliusWebhookSecret: "HELIUS_WEBHOOK_SECRET",
   appOrigin: "APP_ORIGIN",
