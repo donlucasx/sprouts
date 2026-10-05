@@ -12,6 +12,7 @@ export type Config = {
   feeWallet: string;
   heliusWebhookId: string;
   anthropicApiKey: string;
+  pythApiKey: string;
 };
 
 const MAP: Record<keyof Config, string> = {
@@ -28,6 +29,7 @@ const MAP: Record<keyof Config, string> = {
   feeWallet: "FEE_WALLET",
   heliusWebhookId: "HELIUS_WEBHOOK_ID",
   anthropicApiKey: "ANTHROPIC_API_KEY",
+  pythApiKey: "PYTH_API_KEY",
 };
 
 let cached: Config | null = null;
