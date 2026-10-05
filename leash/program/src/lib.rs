@@ -6,6 +6,7 @@ pub mod constants;
 pub mod config;
 pub mod errors;
 pub mod price;
+pub mod readers;
 
 pub use pinocchio::Address;
 use pinocchio::{
