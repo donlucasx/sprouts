@@ -81,6 +81,8 @@ export async function buildPlantingTx(a: { delegator: Address; user: Address; as
   if (lend !== (a.venue !== null)) throw new Error(`${a.asset} with venue ${a.venue}: a lending leg needs a venue and a coin leg takes none`);
   const puller = await pullerSigner();
   const coin = COINS[a.asset];
+  // T9 review M3 (fix round 1): a negative carry would shrink a deposit or stake below what the leg's numbers assume; refuse it.
+  for (const [k, v] of Object.entries(a.carryIn)) if (v !== undefined && v < 0n) throw new Error(`${a.asset}: carry ${k} ${v} is negative`);
   const carry = (k: CarryKind) => a.carryIn[k] ?? 0n;
   const pullerUsdc = await ataOf(puller.address, USDC_MINT);
   const pullerWsol = await ataOf(puller.address, WSOL_MINT);
@@ -135,6 +137,7 @@ export async function buildPlantingTx(a: { delegator: Address; user: Address; as
   let deliveryAccount: Address;
   let pullerJl: Address | null = null;
   let jlLeftover: 0n | 1n | null = null;
+  let jlRn: bigint | null = null;
   const depositRaw = a.asset === "USDC_LEND" ? a.pullRaw + carry("USDC") : a.asset === "SOL_LEND" ? swapMin + carry("WSOL") : 0n;
   if (a.venue === "kamino_klend") {
     const asset = a.asset as LendAsset;
@@ -147,6 +150,7 @@ export async function buildPlantingTx(a: { delegator: Address; user: Address; as
   } else if (a.venue === "jupiter_lend") {
     const asset = a.asset as LendAsset;
     const r = await jlendRate(asset);
+    jlRn = r.rn;
     pullerJl = await ataOf(puller.address, JLEND[asset].fTokenMint);
     jlLeftover = a.jlLeftover ?? JL_EXPECTED_LEFTOVER;
     const bal = await rpc().getAccountInfo(pullerJl, { encoding: "base64", commitment: "confirmed" }).send();
@@ -197,7 +201,7 @@ export async function buildPlantingTx(a: { delegator: Address; user: Address; as
   // Carry-in (T6 review): the K-Lend deposit amount is BOUND to this leg's own amount (the pull, plus this user's own carry). The
   // puller's USDC / WSOL account is pooled across users, so a larger deposit would draw other users' float into this user's receipt.
   if (a.venue === "kamino_klend") await checkKlendDepositInstructions(ixs, { puller: puller.address, user: a.user, asset: a.asset as LendAsset, amountRaw: depositRaw });
-  if (a.venue === "jupiter_lend") await checkJlendDepositInstructions(ixs, { puller: puller.address, user: a.user, asset: a.asset as LendAsset });
+  if (a.venue === "jupiter_lend") await checkJlendDepositInstructions(ixs, { puller: puller.address, user: a.user, asset: a.asset as LendAsset, depositRaw, rn: jlRn as bigint });
 
   if (preTxs.length) await sendPriceTxs(preTxs);   // the VAA write + verify move no funds; post_update needs them landed
   const alt = process.env.SPROUTS_ALT;

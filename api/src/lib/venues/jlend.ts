@@ -88,7 +88,7 @@ const addrs = (ix: Instruction) => (ix.accounts ?? []).map((x) => x.address as s
  * foreign dust before the mint, one Transfer to the user's canonical jl account, at most one Burn of exactly 1 share after it, one
  * CloseAccount to the puller last.
  */
-export async function checkJlendDepositInstructions(ixs: readonly Instruction[], a: { puller: Address; user: Address; asset: LendAsset }): Promise<void> {
+export async function checkJlendDepositInstructions(ixs: readonly Instruction[], a: { puller: Address; user: Address; asset: LendAsset; depositRaw: bigint; rn: bigint }): Promise<void> {
   const j = JLEND[a.asset];
   const pullerJl = await ata(a.puller, j.fTokenMint);
   const userJl = await ata(a.user, j.fTokenMint);
@@ -102,6 +102,13 @@ export async function checkJlendDepositInstructions(ixs: readonly Instruction[],
   // and only the leash `settle` (delta >= min_out vs the oracle floor, contracts 2.8 / inv. 6) bounds that. This check binds the
   // Transfer to the minted `shares` so the user receives every share but the venue's one-share shortfall (review I1).
   const shares = d.readBigUInt64LE(8);
+  // T9 review I3 (fix round 1): the mint is bound to the leg's own deposit, as the K-Lend deposit is. The puller's source account
+  // pools every user's float, so `max_assets` must be exactly the leg's deposit and the shares asked for may not be worth more
+  // than it at the rate read (shares * rn <= deposit * 1e12); settle bounds only from below and would not see an over-mint.
+  if (a.depositRaw <= 0n || a.rn <= 0n) refuse(`the leg's deposit ${a.depositRaw} / rate ${a.rn} is not positive`);
+  const maxAssets = d.readBigUInt64LE(16);
+  if (maxAssets !== a.depositRaw) refuse(`max_assets ${maxAssets}, not the leg's deposit ${a.depositRaw}`);
+  if (shares * a.rn > a.depositRaw * PRICE_SCALE) refuse(`${shares} shares are worth more than the leg's deposit ${a.depositRaw} at rate ${a.rn}`);
   const want = [a.puller, source, pullerJl, j.mint, JLEND_LENDING_ADMIN, j.lending, j.fTokenMint, j.supplyTokenReservesLiquidity, j.lendingSupplyPositionOnLiquidity, j.rateModel, j.vault, JLEND_LIQUIDITY, JLEND_LIQUIDITY_PROGRAM, j.rewardsRateModel, TOKEN, ASSOCIATED_TOKEN_PROGRAM_ADDRESS, SYSTEM_PROGRAM] as string[];
   const got = addrs(mint);
   if (got.length !== want.length || got.some((x, i) => x !== want[i])) refuse("mint accounts are not the pinned ones");

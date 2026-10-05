@@ -1,4 +1,5 @@
-import type { Address } from "@solana/kit";
+import { address, type Address } from "@solana/kit";
+import { config } from "./config";
 import { ASSOCIATED_TOKEN_PROGRAM_ADDRESS, findAssociatedTokenPda, TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
 import { findEventAuthorityPda } from "@solana/subscriptions";
 import { GUARDIAN_POOL, JLEND_LIQUIDITY_PROGRAM, JLEND_PROGRAM, KLEND_PROGRAM, LEASH_PROGRAM, ORE_STAKE_ACCOUNT, PYTH_RECEIVER, SKR_MINT, SKR_STAKING_PROGRAM, STAKE_CONFIG, STAKE_VAULT, STORE_MINT, SUBSCRIPTIONS_PROGRAM, SYSTEM_PROGRAM, SYSVAR_INSTRUCTIONS, USDC_MINT, WSOL_MINT } from "./constants";
@@ -12,7 +13,9 @@ export async function sproutsAltAddresses(puller: Address): Promise<Address[]> {
   const [eventAuthority] = await findEventAuthorityPda();
   const list: Address[] = [
     LEASH_PROGRAM, await leashConfigPda(), SUBSCRIPTIONS_PROGRAM, eventAuthority, USDC_MINT, WSOL_MINT, TOKEN_PROGRAM_ADDRESS, ASSOCIATED_TOKEN_PROGRAM_ADDRESS, SYSTEM_PROGRAM, SYSVAR_INSTRUCTIONS,
-    await ata(puller, USDC_MINT), await ata(puller, WSOL_MINT), await ata(puller, SKR_MINT), PYTH_ACCOUNT.SOL, PYTH_ACCOUNT.ORE, PYTH_RECEIVER,
+    await ata(puller, USDC_MINT), await ata(puller, WSOL_MINT), await ata(puller, SKR_MINT), PYTH_ACCOUNT.SOL, PYTH_ACCOUNT.ORE, PYTH_ACCOUNT.CBBTC, PYTH_RECEIVER,
+    // T9 review M1: the fee wallet's USDC ATA rides every coin leg's swap (R105, swapFeeParams); static, so it belongs here.
+    await ata(address(config().feeWallet), USDC_MINT),
     KLEND_PROGRAM, KLEND_MARKET, KLEND_LMA, JLEND_PROGRAM, JLEND_LIQUIDITY_PROGRAM, JLEND_LENDING_ADMIN, JLEND_LIQUIDITY,
     COINS.hSOL.pool as Address, COINS.hSOL.mint, COINS.cbBTC.mint, STAKE_CONFIG, GUARDIAN_POOL, STAKE_VAULT, SKR_STAKING_PROGRAM, SKR_MINT, ORE_STAKE_ACCOUNT, STORE_MINT,
   ];
