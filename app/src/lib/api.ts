@@ -1,4 +1,5 @@
 import { loadSession } from "./session";
+import { LEND_MOCK, mockAfter, mockBefore } from "./lend-mock";
 import type { Asset, AutoVenue, LendAsset, LiveAsset, Stop, Split, Pins, Venue } from "./coins";
 export { ASSETS } from "./coins";
 export type { Asset, AutoVenue, LendAsset, LiveAsset, Stop, Split, Pins, Venue } from "./coins";
@@ -14,6 +15,11 @@ export class ApiError extends Error {
 
 /** One fetch for every call: JSON in, JSON out, the session bearer when there is one, the API's own sentence on failure. */
 export async function api<T>(path: string, init: { method?: "GET" | "POST" | "PUT"; body?: unknown; auth?: boolean } = {}): Promise<T> {
+  if (LEND_MOCK) {
+    const m = mockBefore(path, init.method ?? "GET", init.body);
+    if (m && "error" in m) throw new ApiError(m.error.status, m.error.message);
+    if (m) return m.answer as T;
+  }
   const headers: Record<string, string> = { "content-type": "application/json" };
   if (init.auth !== false) {
     const s = await loadSession();
@@ -23,7 +29,7 @@ export async function api<T>(path: string, init: { method?: "GET" | "POST" | "PU
   const text = await res.text();
   const json = text ? (JSON.parse(text) as { error?: string }) : {};
   if (!res.ok) throw new ApiError(res.status, json.error ?? `Request failed (${res.status}).`);
-  return json as T;
+  return (LEND_MOCK ? mockAfter(path, json) : json) as T;
 }
 
 // Response types the screens use. Every raw amount is a decimal string (bigint on the wire). Contracts section 5; the fields Track A
