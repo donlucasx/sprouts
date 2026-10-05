@@ -52,15 +52,17 @@ Enable preconditions, recorded status (Kimi F2). A leg turns on only when every 
 
 SKR stake rounding (S2): 0 share(s) below floor(skr * 1e9 / share_price) at 2026-10-04; the API builder's min_out = expected - 1 is safe.
 
-Release (Task 8, 2026-10-04, program/src as of 38ea620, built by scripts/sbf.sh `sbf_build`, Agave 3.1.11): leash.so sha256 = 3b80a2942c10089880574b857eeffa25a58489f88688197f411ed7e86dbe65e5, size = 65928 B, rent = 0.33579308 SOL (`solana rent 65973`), mutation rows RED = 152 / 152 (140 guard markers, each exactly once, every one with a row; no MUTATED string in the .so; two builds gave the same hash). NOT deployed (Task 9 runbook).
+Release (R334 verifiable build, 2026-10-04, program/src unchanged since 38ea620, built by scripts/sbf.sh `verify_build`: solana-verify 0.5.2 `build --library-name leash`, image solanafoundation/solana-verifiable-build:3.1.11 @sha256:4687aba06e83923eb01b550451335fcf452c9feb9c70f309ba75a8e683a482c2 = Agave 3.1.11, platform-tools v1.52): leash.so sha256 = 04f7ac04ddd3327842fe36412097e06a4b8151b0027c3c57a953af5b78d1ffb9, size = 65928 B, executable hash (what `solana-verify verify-from-repo` compares with the chain) = b124e7bfbef68713339c694c957dde1582414517ac3fd25f6332d77aabadecf1, rent = 0.33579308 SOL (`solana rent 65973`, size unchanged). Reproducible: two fresh clones and the worktree gave the same bytes. Against these bytes: `scripts/test.sh` 114 passed, 0 failed, 3 ignored (fork gate included: K-Lend actual deposit kUSDC rel. error 0, kSOL 8.466e-8); `scripts/mutate.sh` 152 / 152 RED (mutants built in the same image); `verify-from-repo` rehearsed on a local test validator holding the .so at the program id: `Program hash matches`. NOT deployed (Task 9 runbook).
+Superseded, never deployed: Task 8's local build (scripts/sbf.sh `sbf_build`, this Mac's cargo-build-sbf, 38ea620), 3b80a294...65e5, 65928 B; same source, other bytes. Every gate above was re-run on the verifiable build.
 Mainnet deploy record (DEPLOY-RUNBOOK.md; filled by the owner or the next session; empty = not done):
 - A4 deploy signature: 
 - A5 `solana program show` (Authority GrHSwzYpgiFzuTpwR6539NpNXktXNEUfVU9UYvHdDKLY, Data Length 70000): 
 - B1 init signatures (init_config, set_leg 0..7): 
 - B5 `check-config.sh day1` line: 
+- C4 `solana-verify verify-from-repo` (deployed commit, the two hash lines, `Program hash matches`): 
 NEVER INSTALL config/TEST-VECTOR-all-legs-NEVER-INSTALL.hex (leg 0 SKR ON, no price source, R324): config/mainnet-day1.hex is the only installable Config.
 Final fix wave (2026-10-04, tests/config/docs only; program/src unchanged since 38ea620): feed_account pinned on legs 1, 4-7 (I1), floor boundaries
-for legs 1, 3, 6, 7 through leash.so (F2). `scripts/test.sh` 114 passed, 0 failed, 3 ignored; `scripts/mutate.sh` 152 / 152 RED; leash.so rebuilt = 3b80a294...65e5.
+for legs 1, 3, 6, 7 through leash.so (F2). `scripts/test.sh` 114 passed, 0 failed, 3 ignored; `scripts/mutate.sh` 152 / 152 RED; leash.so rebuilt = 3b80a294...65e5 (local build, superseded by the R334 verifiable build above).
 Mutation sweep cells: the sweep is program-wide (every guard, every leg), so the same PASS goes in each row; it never enables a leg on its own (see ENABLE PRECONDITIONS above).
 
 S2 notes (Task 0, 2026-10-04): "+ pyth" = `s2_pyth_accounts_layout` also PASS for that leg's feed account (SOL, cbBTC, ORE; USDC checked as a control).
