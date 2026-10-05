@@ -58,6 +58,8 @@ export const JLEND: Readonly<Record<LendAsset, Readonly<{ lending: string; mint:
 const KLEND_REFRESH = [2, 218, 138, 235, 79, 201, 25, 102]
 const KLEND_REDEEM = [234, 117, 181, 125, 185, 142, 220, 29]
 const JLEND_REDEEM = [184, 12, 86, 149, 70, 196, 97, 225]
+const KLEND_DEPOSIT = [169, 201, 30, 126, 6, 205, 102, 68] // deposit_reserve_liquidity a9c91e7e06cd6644
+const JLEND_DEPOSIT = [242, 35, 198, 137, 82, 225, 242, 182] // deposit f223c68952e1f2b6
 const TOKEN_CLOSE_ACCOUNT = 9
 
 /**
@@ -95,8 +97,18 @@ export type SignFlow =
    */
   | { kind: 'withdraw_klend'; user: string; asset: LendAsset; receiptRaw: string }
   | { kind: 'withdraw_jlend'; user: string; asset: LendAsset; receiptRaw: string }
+  /**
+   * Spec 7, R279: a move between lending venues, same asset, Kamino and Jupiter Lend only. receiptRaw is the position the card showed
+   * (/api/me moveProposal.receiptRaw); depositRaw is the build's (contracts 5.4: about 99.9% of the redeem's expected out, into the user's
+   * own receipt account). part: S3 passed ONE, so the API sends [redeem, deposit] in one wallet session; 'whole' is both in one tx.
+   * One member per direction (T14 carry-in), each routed by name below; nothing falls through to the withdraw checks.
+   */
+  | { kind: 'move_klend_to_jlend'; user: string; asset: LendAsset; receiptRaw: string; depositRaw: string; part: MovePart }
+  | { kind: 'move_jlend_to_klend'; user: string; asset: LendAsset; receiptRaw: string; depositRaw: string; part: MovePart }
   /** R287, contracts 6: the Seed Vault wallet (delegator == user) moves its approval to the leash; web-linked wallets re-link on the link page. */
   | { kind: 'relink'; user: string }
+
+export type MovePart = 'redeem' | 'deposit' | 'whole'
 
 /** The sentences a refusal shows; each ends "Nothing was signed." so the screen needs no wording of its own. */
 export const REFUSED = {
@@ -229,6 +241,40 @@ async function jlendRedeemSteps(user: string, asset: LendAsset, amount: bigint, 
   ]
 }
 
+/** Contracts 6 move deposit to K-Lend: [create the kToken ATA], refresh, deposit from the user's underlying ATA into the user's kToken ATA, [SOL: close]. */
+async function klendDepositSteps(user: string, asset: LendAsset, amount: bigint): Promise<Step[]> {
+  const r = KLEND_RESERVE[asset]
+  const [und, k] = await Promise.all([ata(user, r.liquidityMint), ata(user, r.collateralMint)])
+  return [
+    ataCreate(user, k, r.collateralMint, true),
+    klendRefresh(asset),
+    { program: KLEND_PROGRAM, data: KLEND_DEPOSIT, length: 16, amount,
+      accounts: [user, r.reserve, KLEND_MARKET, KLEND_LMA, r.liquidityMint, r.supplyVault, r.collateralMint, und, k, TOKEN_PROGRAM, TOKEN_PROGRAM, SYSVAR_INSTRUCTIONS] },
+    ...(asset === 'SOL_LEND' ? [closeWsol(und, user)] : []),
+  ]
+}
+/** Contracts 6 move deposit to Jupiter Lend: [create the fToken ATA], deposit (17 accounts), [SOL: close]. */
+async function jlendDepositSteps(user: string, asset: LendAsset, amount: bigint): Promise<Step[]> {
+  const j = JLEND[asset]
+  const [und, f] = await Promise.all([ata(user, j.mint), ata(user, j.fTokenMint)])
+  return [
+    ataCreate(user, f, j.fTokenMint, true),
+    { program: JLEND_PROGRAM, data: JLEND_DEPOSIT, length: 16, amount,
+      accounts: [user, und, f, j.mint, JLEND_LENDING_ADMIN, j.lending, j.fTokenMint, j.strl, j.lspol, j.rateModel, j.vault, JLEND_LIQUIDITY, JLEND_LIQUIDITY_PROGRAM, j.rewardsRateModel, TOKEN_PROGRAM, ATA_PROGRAM, SYSTEM_PROGRAM] },
+    ...(asset === 'SOL_LEND' ? [closeWsol(und, user)] : []),
+  ]
+}
+/**
+ * Contracts 6 move parts: the redeem is the source venue's withdraw except that SOL keeps the WSOL account open (no close: a close there
+ * is a Token instruction outside the part's programs, refused as 'program'); the deposit spends it and closes it; 'whole' is both, in order.
+ */
+function movePart(ixs: Ix[], part: MovePart, redeem: Step[], deposit: Step[]): void {
+  if (part === 'redeem') return steps(ixs, redeem)
+  if (part === 'deposit') return steps(ixs, deposit)
+  if (part === 'whole') return steps(ixs, [...redeem, ...deposit])
+  return refuse('plan')
+}
+
 /**
  * An approval (link, relink): [create the USDC account], [revoke an old delegation], [init the authority], create the delegation: exactly
  * one create, from this wallet, to one of `delegatees`, at $5 a day with no expiry; at most `maxRevokes` revokes. A fixed delegation or a
@@ -297,6 +343,17 @@ async function checkInstructions(ixs: Ix[], flow: SignFlow): Promise<void> {
     const amount = amountOf(flow.receiptRaw)
     if (flow.kind === 'withdraw_klend') return steps(ixs, await klendRedeemSteps(user, flow.asset, amount, true))
     if (flow.kind === 'withdraw_jlend') return steps(ixs, await jlendRedeemSteps(user, flow.asset, amount, true))
+    return refuse('plan')
+  }
+  // The moves (T14): each direction by name; the source venue's redeem (no close), then the other venue's deposit.
+  if (flow.kind === 'move_klend_to_jlend' || flow.kind === 'move_jlend_to_klend') {
+    if (!isLend(flow.asset)) return refuse('plan')
+    const receipt = amountOf(flow.receiptRaw)
+    const deposit = amountOf(flow.depositRaw)
+    if (flow.kind === 'move_klend_to_jlend')
+      return movePart(ixs, flow.part, await klendRedeemSteps(user, flow.asset, receipt, false), await jlendDepositSteps(user, flow.asset, deposit))
+    if (flow.kind === 'move_jlend_to_klend')
+      return movePart(ixs, flow.part, await jlendRedeemSteps(user, flow.asset, receipt, false), await klendDepositSteps(user, flow.asset, deposit))
     return refuse('plan')
   }
   const d = await derived(user)
@@ -378,5 +435,27 @@ export function makeSigner(signTransaction: (tx: Transaction) => Promise<Transac
     await checkBeforeSigning(tx, flow)
     const signed = await signTransaction(tx)
     return getBase64EncodedWireTransaction(signed)
+  }
+}
+
+/**
+ * S3 (contracts 9, VERDICT ONE): several transactions in ONE wallet session, one passcode. Each is checked against its own flow, in order,
+ * before the wallet is asked; one refusal (or a count that is not the flows') and the wallet is never asked.
+ */
+export function makeBatchSigner(signTransactions: (txs: Transaction[]) => Promise<Transaction[]>, flows: readonly SignFlow[]) {
+  return async function signAllWithSeeker(base64s: string[]): Promise<string[]> {
+    if (base64s.length === 0 || base64s.length !== flows.length) return refuse('plan')
+    const txs: Transaction[] = []
+    for (const b of base64s) {
+      try {
+        txs.push(getTransactionDecoder().decode(getBase64Encoder().encode(b)))
+      } catch {
+        return refuse('unreadable')
+      }
+    }
+    for (let i = 0; i < txs.length; i++) await checkBeforeSigning(txs[i], flows[i])
+    const signed = await signTransactions(txs)
+    if (signed.length !== txs.length) return refuse('unreadable')
+    return signed.map((t) => getBase64EncodedWireTransaction(t))
   }
 }

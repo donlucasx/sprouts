@@ -22,6 +22,7 @@ import { canSlot } from '@/model/can'
 import { nextPlantingRow } from '@/lib/next-planting'
 import { PauseRow } from '@/components/PauseRow'
 import { RelinkCard } from '@/components/RelinkCard'
+import { MoveCard } from '@/components/MoveCard'
 import { termsNeeded, termsSummary } from '@/lib/terms'
 import { arrivalLine, formatUsd, formatSkr, formatAsOf } from '@/lib/format'
 import { useSession } from '@/lib/session'
@@ -330,6 +331,7 @@ export default function Home() {
           <Button title="Withdraw" kind="quiet" onPress={() => {}} />
         </Link>
       </Card>
+      <MoveCard me={me} />
       {walletsRow ? (
         <Pressable
           onPress={() => router.push('/settings')}

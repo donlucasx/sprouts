@@ -70,3 +70,22 @@ export async function jlendWithdrawIxs(o: { asset: LA; amount: bigint; createAta
   if (o.close ?? o.asset === 'SOL_LEND') out.push(closeAcct(und))
   return out
 }
+/** Contracts 6 move deposit to K-Lend: [create the kToken ATA], refresh, deposit(amount) from the user's underlying ATA, [SOL: close]. */
+export async function klendDepositIxs(o: { asset: LA; amount: bigint; createAta?: boolean; close?: boolean; dest?: string }): Promise<Instruction[]> {
+  const r = KRES[o.asset], und = await ataOf(USER, r.mint), k = await ataOf(USER, r.kMint)
+  const out: Instruction[] = []
+  if (o.createAta) out.push(createAta(k, r.kMint))
+  out.push(refresh(o.asset))
+  out.push(ix(L.KLEND, [USER, r.reserve, L.MARKET, L.LMA, r.mint, r.vault, r.kMint, und, o.dest ?? k, L.TOKEN, L.TOKEN, L.IXS], [...D.kDeposit, ...u64le(o.amount)]))
+  if (o.close ?? o.asset === 'SOL_LEND') out.push(closeAcct(und))
+  return out
+}
+/** Contracts 6 move deposit to Jupiter Lend: [create the jl ATA], deposit(amount) with its 17 accounts, [SOL: close]. */
+export async function jlendDepositIxs(o: { asset: LA; amount: bigint; createAta?: boolean; close?: boolean; dest?: string }): Promise<Instruction[]> {
+  const j = JRES[o.asset], und = await ataOf(USER, j.mint), f = await ataOf(USER, j.fMint)
+  const out: Instruction[] = []
+  if (o.createAta) out.push(createAta(f, j.fMint))
+  out.push(ix(L.JLEND, [USER, und, o.dest ?? f, j.mint, L.JADMIN, j.lending, j.fMint, j.strl, j.lspol, j.rateModel, j.vault, L.JLIQ, L.JLIQ_PROGRAM, j.rewards, L.TOKEN, L.ATA, L.SYSTEM], [...D.jDeposit, ...u64le(o.amount)]))
+  if (o.close ?? o.asset === 'SOL_LEND') out.push(closeAcct(und))
+  return out
+}
