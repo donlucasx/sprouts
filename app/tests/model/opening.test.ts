@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
-import { openingPlan, openingPlants, arrivalsOf, releaseGroups, stripOf, STRIP_FOR, endOf, drawnBy, type PlantItem, type OpeningItem, PACE, LEAF_MS, PART_GAP_MS, STEM_MS, BUD_FADE_MS, BUD_FADE_AFTER_MS, PART_FADE_MS, OPEN_BEAT_MS, BUD_ARRIVE_MS, TOKEN_ARRIVE_MS, SEED_MS, SEED_GAP_MS, REDUCED_MS } from "@/model/opening";
+import { openingPlan, openingPlants, arrivalsOf, releaseGroups, stripOf, STRIP_FOR, endOf, drawnBy, type PlantItem, type OpeningItem, PACE, LEAF_MS, PART_GAP_MS, STEM_MS, BUD_FADE_MS, BUD_FADE_AFTER_MS, PART_FADE_MS, UNFURL_MS, OPEN_BEAT_MS, BUD_ARRIVE_MS, TOKEN_ARRIVE_MS, SEED_MS, SEED_GAP_MS, REDUCED_MS } from "@/model/opening";
 import { buildScene, type Scene } from "@/model/garden";
 import { plantLayouts } from "@/model/scene-to-layout";
 import { previewInputAt } from "@/model/fixtures/median-year";
@@ -146,11 +146,44 @@ describe("every animation ends visible (I4 fix round 1, ruling c)", () => {
         expect(during.length).toBe(pl.layout.parts.length);
         for (const d of during) if (d !== "static") expect(endOf(d).opacity).toBe(1);
         expect(drawnBy(pl.layout.parts.length, mine, true).every((d) => d === "static")).toBe(true);
-        for (const it of mine) if (it.kind === "bud") expect(before.find((b) => b.plant === pl.plant)!.layout.parts[it.part]).toMatchObject({ part: "bud" });
+        for (const it of mine) if (it.kind === "bud") expect(["bud", "nub", "furl"]).toContain(before.find((b) => b.plant === pl.plant)!.layout.parts[it.part].part);
         else expect(pl.layout.parts[it.part]).toBeDefined();
       }
       for (const it of items) expect(Number.isFinite(it.delay + it.ms)).toBe(true);
     });
   }
   it("a strip's last frame is its end picture", () => { expect(frameAt(1, 16)).toBe(15); expect(endOf({ kind: "strip", plant: "skr", shoot: "a", part: 0, leaf: 0, strip: "skr-blade", delay: 0, ms: 1 })).toEqual({ opacity: 1, frame: "last" }); });
+});
+
+describe("R351: an opening mandarin sprout unfurls in place (no strip, no stem reveal, no bud fade, no crossfade)", () => {
+  // shoot a's closed sprout before (nub + furled pair), its open twig after; shoot b already open
+  const nub: Placed = { kind: "stem", part: "nub", x0: 0, y0: -20, x1: -2, y1: -21, w0: 2, w1: 1, bend: 0, color: "#000", z: 1, shoot: "a" };
+  const furl = (rot: number): Placed => ({ kind: "sprite", part: "furl", name: "leaf-mandarin-s0", x: -2, y: -21, rot, scale: 0.8, xScale: 0.5, z: 2, shoot: "a" });
+  const skrBefore = { plant: "skr" as const, layout: lay([stem("trunk"), nub, furl(-40), furl(-24), stem("twig", "b"), sprite("leaf", "leaf-mandarin-s1", "b")]) };
+  const skrAfter = { plant: "skr" as const, layout: lay([stem("trunk"), stem("twig", "a"), sprite("leaf", "leaf-mandarin-s0", "a"), sprite("leaf", "leaf-mandarin-s0", "a"), stem("twig", "b"), sprite("leaf", "leaf-mandarin-s1", "b")]) };
+  const d = { seeds: [], buds: [], opened: ["a"], branches: [], tokens: [] };
+  it("one unfurl item for the shoot, from the beat, ~4.5 s; the next shoot after its stem has grown", () => {
+    expect(UNFURL_MS).toBeGreaterThanOrEqual(4000); expect(UNFURL_MS).toBeLessThanOrEqual(5000);
+    const { items, endMs } = openingPlan({ scene, plants: [skrAfter], before: [skrBefore], diff: d, first: null, reduced: false, tempo: 1 });
+    expect(items).toEqual([{ kind: "unfurl", plant: "skr", shoot: "a", part: 1, leaves: [2, 3], delay: OPEN_BEAT_MS, ms: UNFURL_MS }]);
+    expect(endMs).toBe(OPEN_BEAT_MS + UNFURL_MS);
+    const by = drawnBy(skrAfter.layout.parts.length, items as PlantItem[], false);
+    expect(by.map((x) => (x === "static" ? "static" : x.kind))).toEqual(["static", "unfurl", "unfurl", "unfurl", "static", "static"]);
+    expect(endOf(items[0])).toEqual({ opacity: 1, frame: null });
+    const two = openingPlan({ scene, plants: [skrAfter], before: [skrBefore], diff: { ...d, opened: ["a", "b"] }, first: null, reduced: false, tempo: 1 });
+    expect(two.items.find((i) => i.kind === "stem")!.delay).toBe(OPEN_BEAT_MS + Math.round(UNFURL_MS * 0.4) + PART_GAP_MS);
+  });
+  it("reduced motion: the same item, at once, under the 300 ms fade", () => {
+    const { items } = openingPlan({ scene, plants: [skrAfter], before: [skrBefore], diff: d, first: null, reduced: true, tempo: 1 });
+    expect(items).toEqual([{ kind: "unfurl", plant: "skr", shoot: "a", part: 1, leaves: [2, 3], delay: 0, ms: REDUCED_MS }]);
+  });
+  it("a sprout that opens into more than a pair (stage 2: three leaves) falls back to the reveal, and its closed parts fade out", () => {
+    const three = { plant: "skr" as const, layout: lay([...skrAfter.layout.parts.slice(0, 4), sprite("leaf", "leaf-mandarin-s0", "a"), ...skrAfter.layout.parts.slice(4)]) };
+    const { items } = openingPlan({ scene, plants: [three], before: [skrBefore], diff: d, first: null, reduced: false, tempo: 1 });
+    expect(items.map((i) => i.kind)).toEqual(["stem", "strip", "strip", "strip", "bud", "bud", "bud"]);
+  });
+  it("a new sprout arrives whole: its nub and furled pair swell in together", () => {
+    const { items } = openingPlan({ scene, plants: [skrBefore], before: null, diff: { seeds: [], buds: ["a"], opened: [], branches: [], tokens: [] }, first: null, reduced: false, tempo: 1 });
+    expect(items).toEqual([1, 2, 3].map((part) => ({ kind: "fade", plant: "skr", shoot: "a", part, delay: 0, ms: BUD_ARRIVE_MS })));
+  });
 });
