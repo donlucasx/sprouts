@@ -18,6 +18,8 @@ pub mod admin;
 pub use admin::*;
 pub mod cfg;
 pub use cfg::*;
+pub mod synth;
+pub use synth::*;
 
 /// 2026-10-05T00:00:00Z: the clock of every synthetic (non-fork) test.
 pub const NOW: i64 = 1_791_158_400;

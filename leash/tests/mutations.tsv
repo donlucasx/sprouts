@@ -36,3 +36,16 @@ CFG_OWNER svm program/src/lib.rs admin config_account_guards
 CFG_ADDRESS svm program/src/lib.rs admin config_account_guards
 INIT_REENCODE svm program/src/lib.rs admin nonzero_pad_bytes_init_stores_zeros
 SET_REENCODE svm program/src/lib.rs admin nonzero_pad_bytes_set_stores_zeros
+P_OWNER host program/src/price.rs unit_price read_price_guards
+P_LEN host program/src/price.rs unit_price read_price_guards
+P_DISC host program/src/price.rs unit_price read_price_guards
+P_FEED_ACCOUNT host program/src/price.rs unit_price read_price_guards
+P_FULL host program/src/price.rs unit_price read_price_guards
+P_FEED_ID host program/src/price.rs unit_price read_price_guards
+P_STALE host program/src/price.rs unit_price read_price_guards
+P_POSITIVE host program/src/price.rs unit_price read_price_guards
+P_EXPO_LO host program/src/price.rs unit_price read_price_guards
+P_EXPO_HI host program/src/price.rs unit_price read_price_guards
+P_CONF host program/src/price.rs unit_price read_price_guards
+P_LOW host program/src/price.rs unit_price read_price_guards
+F_RATE_ZERO host program/src/price.rs unit_floor floor_rate_zero_is_bad_reader
