@@ -4,7 +4,7 @@ import type { ActivityResponse, Holding, LendingPosition, LendSign, MeResponse, 
  * Contract-shaped data (contracts 5.1 to 5.7) for tests and the dev mock. Numbers are illustrative, chosen to be consistent with each
  * other (the aggregated holding is the positions summed); receipt mints are the real ones (contracts 1.4). Never shown in a release build.
  */
-export const FIXTURE_TERMS_VERSION = "2026-10-06";
+export const FIXTURE_TERMS_VERSION = "2026-10-07";
 export const FIXTURE_POSITIONS: LendingPosition[] = [
   { asset: "USDC_LEND", venue: "kamino_klend", receiptMint: "B8V6WVjPxW1UGwVDfxH2d2r8SyT4cqn7dQRK6XneVa7D", receiptRaw: "1661200", underlyingRaw: "1999752", valueUsd: 2.0, ratePct: 4.43, avg7Pct: 4.41, earnedUsd: 0.02, putInCents: 200, withdrawableUsd: 12_000_000, poolFull: false },
   { asset: "USDC_LEND", venue: "jupiter_lend", receiptMint: "9BEcn9aPEmhSPbPQeFGjidRiEKki46fVQDyPpSQXPA2D", receiptRaw: "940000", underlyingRaw: "999140", valueUsd: 1.0, ratePct: 3.83, avg7Pct: 3.9, earnedUsd: 0.0004, putInCents: 100, withdrawableUsd: 0, poolFull: true },

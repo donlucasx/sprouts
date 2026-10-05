@@ -41,7 +41,7 @@ describe("GET /api/me, lending (contracts 5.2)", () => {
     expect(body.positions).toEqual([expect.objectContaining({ asset: "USDC_LEND", venue: "kamino_klend", receiptMint: "B8V6WVjPxW1UGwVDfxH2d2r8SyT4cqn7dQRK6XneVa7D", receiptRaw: "1661072", underlyingRaw: "2001591", ratePct: 4.43, avg7Pct: 4.4, putInCents: 200, poolFull: false })]);
     expect(body.holdings.find((h: { asset: string }) => h.asset === "USDC_LEND")).toMatchObject({ heldRaw: "2001591", putInCents: 200 });
     expect(body.lendSigns).toEqual({ USDC_LEND: { line1: "USDC", line2: "Kamino 4.4%", venue: "kamino_klend", ratePct: 4.43 }, SOL_LEND: null });
-    expect(body.terms).toEqual({ currentVersion: "2026-10-06", acceptedVersion: null });
+    expect(body.terms).toEqual({ currentVersion: "2026-10-07", acceptedVersion: null });
     expect(body.manager).toMatchObject({ picks: { USDC_LEND: "kamino_klend", SOL_LEND: null }, legsEnabled: null });
     expect(body.wallets).toEqual([{ pubkey: "W", status: "active", dailyCapCents: 500, linkModel: "puller" }]);
     expect(body.moveProposal).toBeNull();
