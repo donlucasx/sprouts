@@ -13,7 +13,7 @@ import { readPosition, crankWithdraw, sharePrice } from "@/lib/staking";
 import { reconcileOwnStakes } from "@/lib/reconcile";
 import { snapshotCoins, IMPACT_LIMIT_PCT, type CoinReads } from "@/lib/coin-data";
 import { decideSplits, applyToUsers } from "@/lib/split-run";
-import { callTool } from "@/lib/anthropic";
+import { callConversation } from "@/lib/anthropic";
 import { getQuote, pricesUsd } from "@/lib/jupiter";
 import { storeRedeemRate } from "@/lib/store";
 import { assetBalanceRaw, receiptBalanceRaw, readLendingPositions } from "@/lib/holdings";
@@ -103,7 +103,7 @@ export async function GET(request: Request) {
     const now = new Date();
     // The Yield Manager's three steps before the planting run (spec 6.1): snapshot the coins, decide each stop's split, apply to users.
     const coins = await step("snapshot", () => snapshotCoins({ repo, now, reads: realCoinReads(repo, now) }));
-    const splits = await step("decide", () => decideSplits({ repo, now, model: process.env.ANTHROPIC_API_KEY ? callTool : null }));
+    const splits = await step("decide", () => decideSplits({ repo, now, model: process.env.ANTHROPIC_API_KEY ? callConversation : null }));
     const applied = await step("apply", () => applyToUsers({ repo, now }));
     const planting = await runPlanting({ repo, now, chain: realChain(), deadlineMs: startedMs + 240_000 });
     const withdrawals = await runWithdrawCrank({ repo, now, chain: { readPosition: (u) => readPosition(address(u)), crankWithdraw: (u) => crankWithdraw(address(u)) } });
