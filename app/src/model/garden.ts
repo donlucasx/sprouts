@@ -1,5 +1,5 @@
 import type { LiveAsset, Split } from "@/lib/coins";
-import { ROW_OF, signSide, slotsFor } from "./layout";
+import { ROW_OF, signLabel, signSide, slotsFor, type LendSignLines, type SignLines } from "./layout";
 import { branchFlags, pupsByCount, stageOf } from "./plant-geometry";
 import { PLANT_SPECIES, type Band, type PlantId, type Species, type Stage } from "./species";
 export type { PlantId } from "./species";
@@ -19,6 +19,8 @@ export type GardenInput = {
   earned: Partial<Record<LiveAsset, { count: number; progress: number }>>;   // token-fruit per coin (RG16): the count on the ladder and the next one's progress
   storePutInRaw: bigint; joinedValueRaw: bigint;
   basket: { amountRaw: bigint; readyAt: Date } | null;
+  /** Contracts 7.2: the API's line two per lending stake ("Kamino 4.4%"); absent from an API before the lending build. */
+  lendSigns?: LendSignLines | null;
 };
 
 export const PLANT_ORDER: readonly PlantId[] = ["skr", "ore", "hsol", "jitosol", "jupsol", "cbbtc"] as const;
@@ -43,7 +45,7 @@ export function fruitLadder(earnedUsd: number, putInCents: number): { count: num
 export type Part =
   | { kind: "soil" }
   | { kind: "plant"; plant: PlantId; species: Species; row: "front" | "back"; x: number; shoots: number }
-  | { kind: "sign"; plant: PlantId; row: "front" | "back"; x: number; side: -1 | 1 }
+  | { kind: "sign"; plant: PlantId; row: "front" | "back"; x: number; side: -1 | 1; lines: SignLines }
   | { kind: "seed"; id: string; plant: PlantId; index: number }
   | { kind: "sprout"; id: string; plant: PlantId; slot: number; stage: Stage; bud: boolean; band: Band; branch: boolean; ageDays: number }   // branch = RG19's state over the full history; the geometry decides what is drawn (the mandarin draws the eight lowest)
   | { kind: "swelling"; plant: PlantId; progress: number }
@@ -95,7 +97,7 @@ export function buildScene(g: GardenInput): Scene {
   // front of each other), and counting it put JitoSOL's stake into the narrow JitoSOL to JupSOL gap beside JupSOL's
   const rowX = (c: PlantId) => withSign.filter((o) => ROW_OF[o] === ROW_OF[c]).map((o) => xs[o]!);
   for (const c of present) parts.push({ kind: "plant", plant: c, species: PLANT_SPECIES[c], row: ROW_OF[c], x: xs[c]!, shoots: keptOf(c).length });
-  for (const c of withSign) parts.push({ kind: "sign", plant: c, row: ROW_OF[c], x: xs[c]!, side: signSide(xs[c]!, rowX(c), 1) });
+  for (const c of withSign) parts.push({ kind: "sign", plant: c, row: ROW_OF[c], x: xs[c]!, side: signSide(xs[c]!, rowX(c), 1), lines: signLabel(c, g.lendSigns) });
 
   // RG9, R89: change waiting is seeds beside the NEXT coin's sign while that coin has no plant, else a swelling on its plant. The
   // API always serves nextPlanting.asset (me/route.ts:83); with it absent (a fixture) pending change draws nothing.

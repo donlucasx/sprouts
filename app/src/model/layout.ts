@@ -1,4 +1,5 @@
 import { BAKED_L, type Placed, type PlantId } from "./species";
+import type { LendAsset } from "@/lib/coins";
 import type { Scene } from "./garden";
 import type { PlantOnStage } from "./scene-to-layout";   // a type only: no require cycle
 import { SPRITE_META } from "@/garden/sprite-meta";   // boxes only, no require(): safe in node
@@ -85,9 +86,9 @@ export const SIGN_SCALE = 1.35;
 export const FRONT_SIGN = 1.2;
 export const signScale = (row: "front" | "back") => SIGN_SCALE * (row === "front" ? FRONT_SIGN : CANVAS.backScale);
 /** gen06:72-74: 14 px from the foot plus a fifth of the sign's half width, clamped a pixel inside the canvas. `scale` is the sign's
- * drawn scale (signScale: 1.35 front, 1.08 back), so its half width (15 at 1x) grows with the board. */
-export function signX(x: number, side: -1 | 1, width: number, scale: number): number {
-  const half = 15 * scale;
+ * drawn scale (signScale: 1.35 front, 1.08 back), so its half width (15 at 1x) grows with the board; `boardX` widens a lending board. */
+export function signX(x: number, side: -1 | 1, width: number, scale: number, boardX = 1): number {
+  const half = 15 * scale * boardX;
   return Math.min(Math.max(x + side * (half + SIGN_GAP), half + 1), width - half - 1);
 }
 /** R232 (10-04, "the JitoSOL stake should move left a bit as to not cover the sprout"): the board stands wholly beside its plant's
@@ -103,19 +104,36 @@ export const SIGN_SOIL_MARGIN = 3;
 export function signStand(x: number, want: number, scale: number, soilBottom: (x: number) => number): number {
   return Math.min(want, soilBottom(x + SIGN_FOOT.x * scale) - SIGN_SOIL_MARGIN - SIGN_FOOT.y * scale);
 }
-/** The app's stake for a sign part, at the garden's width: its anchor and its drawn scale. */
+/** The app's stake for a sign part, at the garden's width: its anchor, its drawn scale and its board's widening. */
 /** R234: `zoom` is the frame's; the stake's drawn scale is signScale over it, so a stake keeps one size on screen while the plants zoom. */
-export function signPlacement(s: { x: number; side: -1 | 1; row: "front" | "back" }, width: number, zoom = 1, ground: GroundPlace = appGround(width)) {
-  const scale = signScale(s.row) / zoom, x = signX(s.x * width, s.side, width, scale), g = ground;
-  return { x, y: signStand(x, FOOT_Y(s.row) + 4, scale, (px) => soilBottomAt(px, g)), scale };
+export function signPlacement(s: { x: number; side: -1 | 1; row: "front" | "back"; lines?: SignLines }, width: number, zoom = 1, ground: GroundPlace = appGround(width)) {
+  const scale = signScale(s.row) / zoom, boardX = boardXOf(s.lines), x = signX(s.x * width, s.side, width, scale, boardX), g = ground;
+  return { x, y: signStand(x, FOOT_Y(s.row) + 4, scale, (px) => soilBottomAt(px, g)), scale, boardX };
 }
 /** R168 (10-02): the word on a stake, drawn as crisp type over the one blank baked board (`sign`), in the board's own frame: the anchor
  * at (0, 0) before the sign's scale (signScale: 1.35 front, 1.08 back), the board 30 by 11 from y -12 to -1, leaning -4 degrees (gen01_garden.py
  * sign()). 6.8 px fits the longest label, "JitoSOL" (3.62 em in Albert Sans Medium, 24.6 px), with 2.7 px a side; the baseline at
  * -4.1 centres the 0.70 em capitals on the face (its centre at -6.5). */
 export const SIGN_TEXT = { size: 6.8, y: -4.1, rot: -4 } as const;
-/** The words, as today: the ORE stake reads stORE (RG7). */
-export const SIGN_LABEL: Record<PlantId, string> = { skr: "SKR", ore: "stORE", hsol: "hSOL", jitosol: "JitoSOL", jupsol: "JupSOL", cbbtc: "cbBTC" };
+/** The words: the ORE stake reads stORE (RG7); the lending plants read their asset (contracts 7.2). */
+export const SIGN_LABEL: Record<PlantId, string> = { skr: "SKR", ore: "stORE", hsol: "hSOL", jitosol: "USDC", jupsol: "SOL", cbbtc: "cbBTC" };
+export type SignLines = { line1: string; line2: string | null };
+export type LendSignLines = Partial<Record<LendAsset, { line2: string } | null>>;
+/**
+ * R262 / contracts 7.2 (DECIDED 10-04, two lines): a lending stake reads its asset over "<Venue> <rate>%". Sizes from Albert Sans
+ * Medium (fontTools, 10-04): the widest line two, "Kamino 12.5%" (6.311 em), is 31.6 px at 5.0, so the board is drawn 1.2x wide (36 px
+ * face, 2 px a side); line one at 6.0 (capitals 4.2 px, top -11.1), line two at 5.0 (baseline -2.2, descender to -1.2).
+ */
+export const LEND_SIGN = { boardX: 1.2, size1: 6.0, y1: -6.9, size2: 5.0, y2: -2.2, max2: 13 } as const;
+const LEND_OF: Partial<Record<PlantId, LendAsset>> = { jitosol: "USDC_LEND", jupsol: "SOL_LEND" };
+export function signLabel(plant: PlantId, lend: LendSignLines | null | undefined): SignLines {
+  const a = LEND_OF[plant];
+  const raw = a ? lend?.[a]?.line2 : undefined;
+  const line2 = raw ? raw.slice(0, LEND_SIGN.max2).trim() : "";
+  return { line1: SIGN_LABEL[plant], line2: line2.length > 0 ? line2 : null };
+}
+/** A two-line stake's board is LEND_SIGN.boardX wide; every other board 1. */
+export const boardXOf = (lines?: SignLines) => (lines?.line2 ? LEND_SIGN.boardX : 1);
 /** RG30 (10-02): the garden frames what is planted; 2x is the cap the 3x bakes hold; Garden.tsx eases each change over easeMs.
  * R167 (10-02): the view's HEIGHT follows the content, never shorter than the ground band plus `aboveGround`. */
 export const FRAME = { maxZoom: 2, footInset: 0.12, pad: 20, easeMs: 1200, aboveGround: 40 } as const;   // R231: pad from 16, the 1.3x front row's sway
@@ -163,13 +181,13 @@ function frameAt(scene: Scene, plants: PlantOnStage[], width: number, room: { sh
     const fx = p.x * width, reach = Math.max(0, ...p.layout.parts.map(sideReach));
     x0 = Math.min(x0, fx - reach); x1 = Math.max(x1, fx + reach); y0 = Math.min(y0, FOOT_Y(p.row) - p.layout.top);
     const s = signs.get(p.plant);
-    if (s) { const sc = signScale(s.row) / signZoom, sx = signX(s.x * width, s.side, width, sc); x0 = Math.min(x0, sx - 15 * sc); x1 = Math.max(x1, sx + 15 * sc); }
+    if (s) { const sc = signScale(s.row) / signZoom, bx = boardXOf(s.lines), sx = signX(s.x * width, s.side, width, sc, bx); x0 = Math.min(x0, sx - 15 * sc * bx); x1 = Math.max(x1, sx + 15 * sc * bx); }
   }
   x0 -= FRAME.pad; x1 += FRAME.pad;
   // R242 (10-04, "hsol and cbBTC plants are on the very edge- they should be sitting within/on the soil"): the ground spans the frame
   // (R238) and R241's mound thins toward its ends, so every foot and stake post keeps FRAME.footInset of the frame's breadth from either
   // side, where the mound is full: the box widens about the feet when it must
-  const feet = [...plants.map((p) => p.x * width), ...plants.flatMap((p) => { const s = signs.get(p.plant); return s ? [signX(s.x * width, s.side, width, signScale(s.row) / signZoom)] : []; })];
+  const feet = [...plants.map((p) => p.x * width), ...plants.flatMap((p) => { const s = signs.get(p.plant); return s ? [signX(s.x * width, s.side, width, signScale(s.row) / signZoom, boardXOf(s.lines))] : []; })];
   const f0 = Math.min(...feet), f1 = Math.max(...feet), need = (f1 - f0) / (1 - 2 * FRAME.footInset);
   if (f0 - x0 < FRAME.footInset * need) x0 = f0 - FRAME.footInset * Math.max(need, x1 - x0);
   if (x1 - f1 < FRAME.footInset * need) x1 = f1 + FRAME.footInset * Math.max(need, x1 - x0);
