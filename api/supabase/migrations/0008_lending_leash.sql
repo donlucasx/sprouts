@@ -105,15 +105,20 @@ alter table split_days add column venue_pick jsonb;   -- {"USDC_LEND": "kamino_k
 
 -- 10. Allocations to six live keys. Managed users: JitoSOL -> USDC_LEND, JupSOL -> SOL_LEND (the next cron re-derives).
 --     Unmanaged users: retired shares fold into SKR (their pins on retired coins are dropped). Undo is not offered across this.
-update rules set pins = pins - 'JitoSOL' - 'JupSOL';
+--     AMEND 10-04 s20 (T3 review I1): idempotent and sum-preserving on every re-run. Existing USDC_LEND/SOL_LEND shares are
+--     KEPT for every user (live keys a user may pin) and the retired share is ADDED on top; only rows still holding a retired
+--     key (in allocation or prev_allocation) are touched, so a second run changes nothing.
+update rules set pins = pins - 'JitoSOL' - 'JupSOL'
+  where pins ?| array['JitoSOL','JupSOL'];
 update rules set allocation = jsonb_build_object(
   'SKR', coalesce((allocation->>'SKR')::int, 0) + case when managed then 0 else coalesce((allocation->>'JitoSOL')::int, 0) + coalesce((allocation->>'JupSOL')::int, 0) end,
   'stORE', coalesce((allocation->>'stORE')::int, 0),
-  'USDC_LEND', case when managed then coalesce((allocation->>'JitoSOL')::int, 0) else 0 end,
-  'SOL_LEND', case when managed then coalesce((allocation->>'JupSOL')::int, 0) else 0 end,
+  'USDC_LEND', coalesce((allocation->>'USDC_LEND')::int, 0) + case when managed then coalesce((allocation->>'JitoSOL')::int, 0) else 0 end,
+  'SOL_LEND', coalesce((allocation->>'SOL_LEND')::int, 0) + case when managed then coalesce((allocation->>'JupSOL')::int, 0) else 0 end,
   'hSOL', coalesce((allocation->>'hSOL')::int, 0),
   'cbBTC', coalesce((allocation->>'cbBTC')::int, 0)),
-  prev_allocation = null, allocation_day = null;
+  prev_allocation = null, allocation_day = null
+  where allocation ?| array['JitoSOL','JupSOL'] or prev_allocation ?| array['JitoSOL','JupSOL'];
 alter table rules alter column allocation set default '{"SKR": 100, "stORE": 0, "USDC_LEND": 0, "SOL_LEND": 0, "hSOL": 0, "cbBTC": 0}';
 
 -- 11. Ramp (spec 4): yesterday's split per stop = the new stop defaults (sec 1.2), so the move limit starts lending at its default;

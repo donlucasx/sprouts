@@ -60,8 +60,11 @@ export async function swapFeeParams(asset: LiveAsset): Promise<{ platformFeeBps?
  * still sits in the puller's account (spec 3.2 step 4; security audit R207 #2); the run decides it, the ledger is in plant-run.
  */
 export async function buildPlantingTx(a: { delegator: Address; user: Address; asset: LiveAsset; pullRaw: bigint; delegationPda: Address; skrCarryRaw?: bigint }): Promise<BuiltPlanting> {
-  const puller = await pullerSigner();
   const coin = COINS[a.asset];
+  // Step 0 (T9, security scan = T1 review I2): this is the coin-swap path. A lending leg has no pinned destination here (its output
+  // is a venue receipt, not a swap delivery), so it is refused before any quote is asked or anything is signed.
+  if (coin.kind === "lend" || coin.held === "venue") throw new Error(`${a.asset} is a lending leg: the coin-swap planting refuses it`);
+  const puller = await pullerSigner();
   const fee = await swapFeeParams(a.asset);
   // Direct routes only for SKR (one hop); the other coins route through two pools.
   const quote = await getQuote({ inputMint: USDC_MINT, outputMint: coin.mint, amountRaw: a.pullRaw, maxAccounts: 24, onlyDirectRoutes: a.asset === "SKR", ...(fee.platformFeeBps ? { platformFeeBps: fee.platformFeeBps } : {}) });
@@ -73,7 +76,8 @@ export async function buildPlantingTx(a: { delegator: Address; user: Address; as
   // and where the swap delivers (R207 #4): the user's token account for a wallet coin, the puller's own SKR account for SKR.
   const [wsolAccount] = await findAssociatedTokenPda({ owner: puller.address, mint: WSOL_MINT, tokenProgram: TOKEN_PROGRAM_ADDRESS });
   const delivers = destination ?? (coin.held === "staked" ? await skrAta(puller.address) : undefined);
-  checkSwapInstructions(swap, { puller: puller.address, ...(fee.feeAccount ? { feeAccount: fee.feeAccount } : {}), wsolAccount, ...(delivers ? { destination: delivers } : {}), ...(destination ? { destinationOwner: a.user } : {}) });
+  if (!delivers) throw new Error(`${a.asset}: no pinned destination for the swap`);
+  checkSwapInstructions(swap, { puller: puller.address, ...(fee.feeAccount ? { feeAccount: fee.feeAccount } : {}), wsolAccount, destination: delivers, ...(destination ? { destinationOwner: a.user } : {}) });
   const minOutRaw = BigInt(quote.otherAmountThreshold);
 
   const ixs: Instruction[] = [
@@ -97,7 +101,7 @@ export async function buildPlantingTx(a: { delegator: Address; user: Address; as
     (m) => compressTransactionMessageUsingAddressLookupTables(m, tables),
   );
   const tx = await signTransactionMessageWithSigners(message);
-  return { tx, signature: getSignatureFromTransaction(tx), expectedOutRaw: BigInt(quote.outAmount), minOutRaw, lookupTables: swap.lookupTables, lastValidBlockHeight, deliveryAccount: delivers! };
+  return { tx, signature: getSignatureFromTransaction(tx), expectedOutRaw: BigInt(quote.outAmount), minOutRaw, lookupTables: swap.lookupTables, lastValidBlockHeight, deliveryAccount: delivers };
 }
 
 type TokenBalance = { mint: string; owner?: string; uiTokenAmount: { amount: string } };

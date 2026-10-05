@@ -34,7 +34,7 @@ export function readJlendRate(data: Uint8Array, asset: LendAsset): { rn: bigint;
 }
 
 export async function jlendRate(asset: LendAsset): Promise<{ rn: bigint; rd: bigint }> {
-  const info = await rpc().getAccountInfo(JLEND[asset].lending, { encoding: "base64" }).send();
+  const info = await rpc().getAccountInfo(JLEND[asset].lending, { encoding: "base64", commitment: "confirmed" }).send();
   if (!info.value) throw new Error(`Jupiter Lend lending ${JLEND[asset].lending} missing`);
   if (info.value.owner !== JLEND_PROGRAM) throw new Error(`Jupiter Lend lending owner is ${info.value.owner}`);
   return readJlendRate(new Uint8Array(Buffer.from(info.value.data[0], "base64")), asset);
@@ -146,6 +146,7 @@ export async function checkJlendDepositInstructions(ixs: readonly Instruction[],
 
 /** Contracts 3.3: the user's jl account gained min_out AND the puller's jl account is absent after (closed: zero residue). */
 export function jlendDeliveryShortfall(sim: Simulation & { watched?: Record<string, { pre: bigint | null; post: bigint | null }> }, built: { minOutRaw: bigint; pullerJl: Address | null }): string | null {
+  if (built.minOutRaw <= 0n) return `min_out ${built.minOutRaw} is not positive: the guard would pass an empty delivery`;
   if (!sim.delivery) return "the simulation returned no delivery balance";
   const change = sim.delivery.post - sim.delivery.pre;
   if (change < built.minOutRaw) return `the user's jl account gained ${change}, under the minimum ${built.minOutRaw}`;

@@ -32,15 +32,20 @@ export function readKlendRate(data: Uint8Array, asset: LendAsset): KlendRate {
   if (addrAt(b, 128) !== k.liquidityMint) throw new Error("K-Lend reserve refused: another liquidity mint");
   if (addrAt(b, 2560) !== k.collateralMint) throw new Error("K-Lend reserve refused: another collateral mint");
   const available = b.readBigUInt64LE(224);
-  const borrowedSf = u128At(b, 232) - u128At(b, 344) - u128At(b, 360) - u128At(b, 376);
-  const rn = available + (borrowedSf > 0n ? borrowedSf >> 60n : 0n);
+  // Parity with the leash's readers.rs klend_rate (GUARD:K_FEES): fees = protocol @344 + referrer @360 + pending referrer @376,
+  // a u128 checked sum, and fees above borrowed is BadReader there, so it is refused here too (no clamp to zero).
+  const fees = u128At(b, 344) + u128At(b, 360) + u128At(b, 376);
+  const borrowed = u128At(b, 232);
+  if (fees >= 1n << 128n) throw new Error("K-Lend reserve refused: fee sum overflows u128");
+  if (fees > borrowed) throw new Error(`K-Lend reserve refused: fees ${fees} above borrowed ${borrowed}`);
+  const rn = available + ((borrowed - fees) >> 60n);
   const rd = b.readBigUInt64LE(2592);
   if (rd === 0n || rn === 0n) throw new Error("K-Lend reserve refused: empty");
   return { rn, rd, availableRaw: available };
 }
 
 export async function klendRate(asset: LendAsset): Promise<KlendRate> {
-  const info = await rpc().getAccountInfo(KLEND[asset].reserve, { encoding: "base64" }).send();
+  const info = await rpc().getAccountInfo(KLEND[asset].reserve, { encoding: "base64", commitment: "confirmed" }).send();
   if (!info.value) throw new Error(`K-Lend reserve ${KLEND[asset].reserve} missing`);
   if (info.value.owner !== KLEND_PROGRAM) throw new Error(`K-Lend reserve owner is ${info.value.owner}`);
   return readKlendRate(new Uint8Array(Buffer.from(info.value.data[0], "base64")), asset);
@@ -110,6 +115,7 @@ export async function checkKlendDepositInstructions(ixs: readonly Instruction[],
 
 /** Contracts 3.3: the user's kToken account gained at least min_out in the simulation; no balance fails closed. */
 export function klendDeliveryShortfall(sim: Simulation, built: { minOutRaw: bigint }): string | null {
+  if (built.minOutRaw <= 0n) return `min_out ${built.minOutRaw} is not positive: the guard would pass an empty delivery`;
   if (!sim.delivery) return "the simulation returned no delivery balance";
   const change = sim.delivery.post - sim.delivery.pre;
   return change >= built.minOutRaw ? null : `the kToken account gained ${change}, under the minimum ${built.minOutRaw}`;

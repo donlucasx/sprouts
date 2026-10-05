@@ -4,40 +4,61 @@ import { toKitInstruction, parseSwapInstructions, checkSwapInstructions, JUPITER
 import fixture from "../fixtures/jupiter-swap-instructions.json";
 
 const PULLER = "9H7ChDC2o32wC8jcpVDjLGQhwyx1hmLW1fiCjsjUuzFm";
-const clone = () => JSON.parse(JSON.stringify(fixture)) as typeof fixture;
+// Step 0 (T9): checkSwapInstructions now refuses a call without a pinned destination, so every accepting case carries one. The
+// recorded fixture's swap lists one account, so clone() prepends a plain route's first five slots delivering to FIX_DEST (user slot
+// 3, custom slot 4 empty = the aggregator id); every other byte of the recorded response is unchanged.
+const FIX_DEST = "4wiD3N7FrBNJSmZUQDkGHM4CsvDrvyvx7G1FApLGEbJ1";
+const clone = () => {
+  const f = JSON.parse(JSON.stringify(fixture)) as typeof fixture;
+  f.swapInstruction.accounts = [
+    { pubkey: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", isSigner: false, isWritable: false },
+    { pubkey: PULLER, isSigner: true, isWritable: false },
+    { pubkey: "So11111111111111111111111111111111111111112", isSigner: false, isWritable: true },
+    { pubkey: FIX_DEST, isSigner: false, isWritable: true },
+    { pubkey: "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4", isSigner: false, isWritable: false },
+    ...f.swapInstruction.accounts,
+  ];
+  return f;
+};
 
 // Review I5: the puller signs whatever Jupiter's HTTP response contains, so the response is checked before it is signed.
 describe("checkSwapInstructions", () => {
   it("accepts Jupiter's own response", () => {
-    expect(() => checkSwapInstructions(parseSwapInstructions(fixture), { puller: PULLER })).not.toThrow();
+    expect(() => checkSwapInstructions(parseSwapInstructions(clone()), { puller: PULLER, destination: FIX_DEST })).not.toThrow();
     expect(JUPITER_AGGREGATOR).toBe("JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4");
   });
 
   it("refuses a swap instruction that is not the Jupiter aggregator", () => {
     const f = clone();
     f.swapInstruction.programId = "SKRskrmtL83pcL4YqLWt6iPefDqwXQWHSw9S9vz94BZ";
-    expect(() => checkSwapInstructions(parseSwapInstructions(f), { puller: PULLER })).toThrow(/swap program/);
+    expect(() => checkSwapInstructions(parseSwapInstructions(f), { puller: PULLER, destination: FIX_DEST })).toThrow(/swap program/);
   });
 
   it("refuses a setup or cleanup instruction from a program outside the allowlist", () => {
     const f = clone();
     f.setupInstructions[0].programId = "SKRskrmtL83pcL4YqLWt6iPefDqwXQWHSw9S9vz94BZ";
-    expect(() => checkSwapInstructions(parseSwapInstructions(f), { puller: PULLER })).toThrow(/setup program/);
+    expect(() => checkSwapInstructions(parseSwapInstructions(f), { puller: PULLER, destination: FIX_DEST })).toThrow(/setup program/);
   });
 
   it("refuses any signer other than the puller", () => {
     const f = clone();
     f.swapInstruction.accounts.push({ pubkey: "8KiTtZXjcpxUGuH93G12iMVNcTYteTbRvaovdeQdfjc6", isSigner: true, isWritable: true });
-    expect(() => checkSwapInstructions(parseSwapInstructions(f), { puller: PULLER })).toThrow(/signer/);
+    expect(() => checkSwapInstructions(parseSwapInstructions(f), { puller: PULLER, destination: FIX_DEST })).toThrow(/signer/);
   });
 
   it("requires the fee account and the destination account to appear in the swap when they were requested", () => {
-    const parsed = parseSwapInstructions(fixture);
-    expect(() => checkSwapInstructions(parsed, { puller: PULLER, feeAccount: "8KiTtZXjcpxUGuH93G12iMVNcTYteTbRvaovdeQdfjc6" })).toThrow(/fee account/);
+    const parsed = parseSwapInstructions(clone());
+    expect(() => checkSwapInstructions(parsed, { puller: PULLER, destination: FIX_DEST, feeAccount: "8KiTtZXjcpxUGuH93G12iMVNcTYteTbRvaovdeQdfjc6" })).toThrow(/fee account/);
     expect(() => checkSwapInstructions(parsed, { puller: PULLER, destination: "8KiTtZXjcpxUGuH93G12iMVNcTYteTbRvaovdeQdfjc6" })).toThrow(/destination/);
     const f = clone();
     f.swapInstruction.accounts.push({ pubkey: "8KiTtZXjcpxUGuH93G12iMVNcTYteTbRvaovdeQdfjc6", isSigner: false, isWritable: true });
-    expect(() => checkSwapInstructions(parseSwapInstructions(f), { puller: PULLER, feeAccount: "8KiTtZXjcpxUGuH93G12iMVNcTYteTbRvaovdeQdfjc6" })).not.toThrow();
+    expect(() => checkSwapInstructions(parseSwapInstructions(f), { puller: PULLER, destination: FIX_DEST, feeAccount: "8KiTtZXjcpxUGuH93G12iMVNcTYteTbRvaovdeQdfjc6" })).not.toThrow();
+  });
+
+  it("refuses a call with no pinned destination (Step 0 T9: a lending leg reached the coin path with none)", () => {
+    const parsed = parseSwapInstructions(clone());
+    expect(() => checkSwapInstructions(parsed, { puller: PULLER } as never)).toThrow(/no pinned destination/);
+    expect(() => checkSwapInstructions(parsed, { puller: PULLER, destination: "" })).toThrow(/no pinned destination/);
   });
 });
 
@@ -131,7 +152,7 @@ describe("checkSwapInstructions, decoded (R207 #4)", () => {
   const acc = (pubkey: string, isWritable = true, isSigner = false) => ({ pubkey, isSigner, isWritable });
   const b64 = (bytes: number[]) => Buffer.from(bytes).toString("base64");
   const ix = (programId: string, accounts: ReturnType<typeof acc>[], data: number[]) => ({ programId, accounts, data: b64(data) });
-  const opts = { puller: PULLER, wsolAccount: WSOL_ACC, destinationOwner: USER };
+  const opts = { puller: PULLER, wsolAccount: WSOL_ACC, destinationOwner: USER, destination: FIX_DEST };
   const withSetup = (...setup: ReturnType<typeof ix>[]) => { const f = clone(); f.setupInstructions = setup as never; return parseSwapInstructions(f); };
   const withCleanup = (c: ReturnType<typeof ix>) => { const f = clone(); (f as { cleanupInstruction: unknown }).cleanupInstruction = c; return parseSwapInstructions(f); };
   const ataCreate = (owner: string, tag: number[] = [1], payer = PULLER) => ix(ATA, [acc(payer, true, payer === PULLER), acc(DEST), acc(owner, false), acc(MINT, false), acc(SYSTEM, false), acc(TOKEN, false)], tag);
@@ -160,13 +181,13 @@ describe("checkSwapInstructions, decoded (R207 #4)", () => {
     expect(() => checkSwapInstructions(withCleanup(ix(TOKEN, [acc(WSOL_ACC), acc(THIEF), acc(PULLER, false, true)], [9])), opts)).toThrow(/CloseAccount pays/);
     expect(() => checkSwapInstructions(withCleanup(ix(TOKEN, [acc(DEST), acc(PULLER), acc(PULLER, false, true)], [9])), opts)).toThrow(/not the puller's wSOL/);
     expect(() => checkSwapInstructions(withSetup(ix(TOKEN, [acc(DEST)], [17])), opts)).toThrow(/not the puller's wSOL/);
-    expect(() => checkSwapInstructions(withSetup(ix(TOKEN, [acc(WSOL_ACC)], [17])), { puller: PULLER })).toThrow(/not the puller's wSOL/);
+    expect(() => checkSwapInstructions(withSetup(ix(TOKEN, [acc(WSOL_ACC)], [17])), { puller: PULLER, destination: FIX_DEST })).toThrow(/not the puller's wSOL/);
   });
 
   it("refuses an ATA RecoverNested, a create for a stranger, and a create paid by someone else", () => {
     expect(() => checkSwapInstructions(withSetup(ataCreate(PULLER, [2])), opts)).toThrow(/not a create/);
     expect(() => checkSwapInstructions(withSetup(ataCreate(THIEF)), opts)).toThrow(/neither the puller nor the destination's owner/);
-    expect(() => checkSwapInstructions(withSetup(ataCreate(USER)), { puller: PULLER, wsolAccount: WSOL_ACC })).toThrow(/neither/);
+    expect(() => checkSwapInstructions(withSetup(ataCreate(USER)), { puller: PULLER, wsolAccount: WSOL_ACC, destination: FIX_DEST })).toThrow(/neither/);
     expect(() => checkSwapInstructions(withSetup(ataCreate(PULLER, [1], THIEF)), opts)).toThrow(/not paid by the puller/);
   });
 
@@ -203,6 +224,6 @@ describe("checkSwapInstructions, decoded (R207 #4)", () => {
   it("refuses a swap instruction whose layout is unknown, even with the destination writable (fail closed)", () => {
     const other = swapWith([1, 2, 3, 4, 5, 6, 7, 8], [acc(PULLER, false, true), acc(DEST)]);
     expect(() => checkSwapInstructions(other, { ...opts, destination: DEST })).toThrow(/0102030405060708 is not a known route layout/);
-    expect(() => checkSwapInstructions(other, { puller: PULLER })).toThrow(/not a known route layout/);
+    expect(() => checkSwapInstructions(other, { puller: PULLER, destination: FIX_DEST })).toThrow(/not a known route layout/);
   });
 });
