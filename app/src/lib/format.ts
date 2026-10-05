@@ -107,6 +107,12 @@ function timeOf(d: Date): string {
   return `${h % 12 === 0 ? 12 : h % 12}:${m} ${h < 12 ? "AM" : "PM"}`;
 }
 
+/** R350: an Activity row's when, "Oct 5, 7:11 AM", in the phone's zone. */
+export function dayTime(iso: string): string {
+  const d = new Date(iso);
+  return `${MONTHS[d.getMonth()]} ${d.getDate()}, ${timeOf(d)}`;
+}
+
 /** "as of 9:41 AM" today, "as of yesterday 9:41 AM", else "as of Sep 20": the last verified read, never a guess. */
 export function formatAsOf(date: Date, now: Date = new Date()): string {
   const sameDay = (a: Date, b: Date) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();

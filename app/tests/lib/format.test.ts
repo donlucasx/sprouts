@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatUsd, formatSkr, formatAsOf, roundUpTo, formatWallet, formatStore, formatAmount, DECIMALS, HOLDINGS_NOTE, shareLine, dayLabel, COIN_NAME, feeClause, plantedLine, potHeadline, holdingAmount, arrivalLine } from "@/lib/format";
+import { formatUsd, formatSkr, formatAsOf, roundUpTo, formatWallet, formatStore, formatAmount, DECIMALS, HOLDINGS_NOTE, shareLine, dayLabel, COIN_NAME, feeClause, plantedLine, potHeadline, holdingAmount, arrivalLine, dayTime } from "@/lib/format";
 
 describe("format", () => {
   it("dollars first, two decimals, whole cents", () => {
@@ -120,5 +120,13 @@ describe("arrivalLine (R165)", () => {
   it("a past readyAt says arriving today, capitalised on request", () => {
     expect(arrivalLine(ready, new Date("2026-10-06T00:00:00Z"))).toBe("arriving today");
     expect(arrivalLine(ready, new Date("2026-10-06T00:00:00Z"), true)).toBe("Arriving today");
+  });
+});
+
+describe("dayTime (R350)", () => {
+  it("reads the date and the time in the phone's zone", () => {
+    expect(dayTime("2026-10-05T14:11:34.294Z")).toBe("Oct 5, 7:11 AM");
+    expect(dayTime("2026-10-05T07:24:00Z")).toBe("Oct 5, 12:24 AM");
+    expect(dayTime("2026-10-06T00:05:00Z")).toBe("Oct 5, 5:05 PM");
   });
 });

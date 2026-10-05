@@ -6,6 +6,7 @@ import { Screen } from '@/components/Screen'
 import { Card } from '@/components/Card'
 import { Button } from '@/components/Button'
 import { ThemedText } from '@/components/ThemedText'
+import { dayTime } from '@/lib/format'
 import { api, ApiError, type ActivityResponse } from '@/lib/api'
 import { useMe, useInvalidateMe, useApplyRules } from '@/lib/me'
 import { SPLIT_SECTION } from '@/model/manager'
@@ -13,7 +14,7 @@ import { foundRow, FOUND_SECTION, lendWithdrawalRow, moveRow, plantingRow, split
 import { undoSplit } from '@/lib/manager-api'
 import { spacing, TARGET, useTheme } from '@/theme'
 
-const day = (iso: string) => new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+const day = dayTime // R350: every row says when, "Oct 5, 7:11 AM"
 
 /** R284: one plain line; a tap opens its details and its transaction on Solscan (a wallet-started withdrawal not yet delivered: the wallet, R165). */
 function Row({ row, accountPubkey, right }: { row: ActivityRow; accountPubkey?: string | null; right?: ReactNode }) {
