@@ -49,9 +49,12 @@ pre)
   ok "leash.so sha256 $HASH and size $SIZE B equal GATES.md's Release line"
   [ "$MAX_LEN" -ge "$SIZE" ] || fail "MAX_LEN $MAX_LEN is under the .so size $SIZE"
 
-  if solana account "$PROGRAM_ID" -u "$URL" >/dev/null 2>&1; then
-    fail "$PROGRAM_ID already exists on $URL: this runbook is for the first deploy only"
+  # Fail closed: only an explicit AccountNotFound counts as "nothing deployed"; an RPC error or rate limit STOPs.
+  if PROBE=$(solana account "$PROGRAM_ID" -u "$URL" 2>&1); then
+    fail "$PROGRAM_ID already exists on $URL. Right after an A4 attempt: run A5 (the deploy may have landed). Otherwise this runbook (first deploy only) does not apply"
   fi
+  # Exact line: the CLI also labels a transport error "AccountNotFound: pubkey=...: error sending request ..." (seen).
+  echo "$PROBE" | grep -qx "Error: AccountNotFound: pubkey=$PROGRAM_ID" || fail "could not read $PROGRAM_ID on $URL (RPC error, not an answer): rerun A3 in a minute"
   ok "nothing is deployed at $PROGRAM_ID yet"
   BUFFERS=$(solana program show --buffers -k "$ADMIN_KP" -u "$URL" | awk 'NF && $1 != "Buffer" && $1 !~ /^-+$/' | wc -l | tr -d ' ')
   [ "$BUFFERS" = 0 ] || fail "ADMIN owns $BUFFERS leftover buffer(s); see 'If the deploy stops part-way' in DEPLOY-RUNBOOK.md"

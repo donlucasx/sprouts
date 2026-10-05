@@ -27,7 +27,7 @@ if [ -n "${LEASH_CONFIG_JSON:-}" ]; then
   JSON="$LEASH_CONFIG_JSON"
 else
   mkdir -p target
-  solana account "$PDA" --output json -u "$URL" > "$JSON" || { echo "STOP: no Config account at $PDA on $URL yet" >&2; exit 1; }
+  solana account "$PDA" --output json -u "$URL" > "$JSON" || { echo "STOP: could not read the Config account $PDA on $URL (not created yet, or an RPC error)" >&2; exit 1; }
 fi
 # Absolute: `cargo test` runs in tests/, so a relative path would not be found there.
 JSON="$(cd "$(dirname "$JSON")" && pwd)/$(basename "$JSON")"
