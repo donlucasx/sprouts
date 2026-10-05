@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, beforeEach, vi } from "vitest";
 import { MemoryRepo } from "@/db/memory";
 import { setRepoForTests } from "@/db/repo";
+import { dayOf } from "@/domain/day";
 
 vi.mock("@/lib/rpc", () => ({ rpc: () => ({}) }));
 vi.mock("@/lib/staking", () => ({ readPosition: vi.fn(), crankWithdraw: vi.fn(), sharePrice: vi.fn(async () => 1_146_000_000n) }));
@@ -46,6 +47,8 @@ describe("cron route", () => {
     delete process.env.MOVES_ENABLED;
     repo = new MemoryRepo();
     setRepoForTests(repo);
+    // Moves need today's SOL price (the cost basis); each test starts with one.
+    void repo.putCoinDay({ day: dayOf(new Date()), asset: "SOL_LEND", priceUsd: 150 } as never);
   });
 
   it("refuses without the bearer", async () => {
@@ -74,6 +77,9 @@ describe("cron route", () => {
     expect(decideMock.mock.invocationCallOrder[0]).toBeLessThan(applyMock.mock.invocationCallOrder[0]);
   });
 
+  const seedSolPrice = async (priceUsd: number | null) => {
+    await repo.putCoinDay({ day: dayOf(new Date()), asset: "SOL_LEND", priceUsd } as never);
+  };
   const get = () => GET(new Request("http://x/api/cron/plant", { headers: { authorization: `Bearer ${SECRET}` } }));
 
   it("runs venues, coins, decide, apply, moves, then plant, and reports venues and moves", async () => {
@@ -89,6 +95,17 @@ describe("cron route", () => {
     const body = (await (await get()).json()) as { moves: number | null };
     expect(order).toEqual(["venues", "coins", "decide", "apply", "plant"]);
     expect(body.moves).toBeNull();
+  });
+
+  it("skips the moves step, logged, when today has no SOL price (never a zero cost basis)", async () => {
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    await seedSolPrice(null);
+    const res = await get();
+    expect(res.status).toBe(200);
+    expect(order).not.toContain("moves");
+    expect(order).toContain("plant");
+    expect(err.mock.calls.map((c) => String(c[0])).join("\n")).toContain("moves failed: no SOL price today, moves skipped");
+    err.mockRestore();
   });
 
   it("a failed venues or moves step is logged and the planting still runs", async () => {

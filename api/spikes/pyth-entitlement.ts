@@ -1,5 +1,6 @@
 // Spike S4, step 1 (contracts 9): can PYTH_API_KEY read the four feeds the leash prices? Prints status and age per feed, never the key.
 // Run: cd api && pnpm tsx --env-file=.env.local spikes/pyth-entitlement.ts
+export {};
 const FEEDS: Record<string, string> = {
   SOL: "ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d",
   CBBTC: "2817d7bfe5c64b8ea956e9a26f573ef64e72e4d7891f2d6af9bcc93f7aff9a97",
