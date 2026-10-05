@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Animated, { runOnJS, useAnimatedStyle, useReducedMotion, useSharedValue, withTiming } from 'react-native-reanimated'
 import { Garden } from '@/garden/Garden'
 import { ThemedText } from './ThemedText'
+import { Lockup } from './Lockup'
 import { SPLASH, splashHoldMs, splashScene } from '@/lib/splash'
 import { spacing, useTheme } from '@/theme'
 
@@ -38,6 +39,8 @@ export function Splash() {
       accessibilityLabel={SPLASH.line}
       style={[{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, backgroundColor: colors.background, justifyContent: 'center', paddingHorizontal: 20, gap: spacing.lg }, fade]}
     >
+      {/* His asks 10-05: the splash carries the brand, the STACKED lockup (manual 3) above the garden. */}
+      <Lockup wordSize={32} />
       <Garden scene={scene} live={false} canReady={false} onWater={async () => false} onNudge={() => {}} row={() => null} onReady={onReady} />
       <ThemedText variant="heading" style={{ textAlign: 'center' }}>
         {SPLASH.line}

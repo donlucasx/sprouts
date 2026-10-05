@@ -2,11 +2,12 @@
 import { FlexWidget, TextWidget, SvgWidget } from "react-native-android-widget";
 import type { MeResponse } from "@/lib/api";
 import { buildScene } from "@/model/garden";
-import { widgetGardenHeight, widgetGardenSvg } from "@/model/widget-svg";
+import { widgetGarden } from "@/model/widget-svg";
 import { toGardenInput, type ZeroMarks } from "@/lib/garden-input";
 import { formatSkr, formatUsd } from "@/lib/format";
 import { gardenTotals, lastPlantingLine } from "@/lib/me-state";
-import type { PlantId } from "@/model/garden";
+import { nextPlantingFor, nextPlantingText } from "@/lib/next-planting";
+import type { PlantId, Scene } from "@/model/garden";
 
 /** The home-screen widget, drawn from the last verified read (never a network call of its own): the whole garden's value, next planting, the garden. */
 const PAD = 10;
@@ -24,26 +25,30 @@ export function SproutsWidget({ me, width, height, wide, wateredPlants = null, r
   }
   const showLast = wide && me.lastReceipt !== null;
   const gardenW = width - 2 * PAD;
-  const maxGardenH = Math.max(60, height - 2 * PAD - (showLast ? WIDE_TEXT_H : TEXT_H) - GAP);
-  // R252: the garden is the app's (widget-svg.ts), as tall as its view at this width (sky above it, never more than the room), at the
-  // bottom; the text at the top, in the paper the old layout left blank. A cached read missing a newer field falls back to the text.
-  let garden: { svg: string; h: number } | null = null;
+  const maxGardenH = Math.max(1, height - 2 * PAD - (showLast ? WIDE_TEXT_H : TEXT_H) - GAP);
+  // R252: the garden is the app's (widget-svg.ts); the text at the top. His note (10-05, "a big gap between "in your garden" and the
+  // garden below"): the garden sits GAP under the text, cropped to its plants and as big as the width and the room allow; any paper
+  // left on a tall widget is under it. A cached read missing a newer field falls back to the text.
+  const now = new Date();
+  let garden: { svg: string; h: number } | null = null, scene: Scene | null = null;
   try {
-    const scene = buildScene(toGardenInput(me, new Date(), wateredPlants, restartMarks)), h = widgetGardenHeight(scene, gardenW, maxGardenH);
-    garden = { svg: widgetGardenSvg(scene, gardenW, h), h };
+    scene = buildScene(toGardenInput(me, now, wateredPlants, restartMarks));
+    garden = widgetGarden(scene, gardenW, maxGardenH);
   } catch { garden = null; }
+  // His note 10-05: Home's own Next planting row (run time once the threshold is reached, Paused while paused), as one line
+  const next = nextPlantingText(nextPlantingFor(me, scene ?? { parts: [] }, now));
   // R146, R252: the headline is the whole garden in dollars, as on Home; the SKR pot alone only when no SKR price is known
   const total = gardenTotals(me).valueUsd;
   return (
-    <FlexWidget clickAction="OPEN_APP" style={{ height: "match_parent", width: "match_parent", backgroundColor: "#F4EEDF", borderRadius: 16, padding: PAD, flexDirection: "column", justifyContent: "space-between" }}>
+    <FlexWidget clickAction="OPEN_APP" style={{ height: "match_parent", width: "match_parent", backgroundColor: "#F4EEDF", borderRadius: 16, padding: PAD, flexDirection: "column", justifyContent: "flex-start" }}>
       <FlexWidget style={{ width: "match_parent", flexDirection: "column" }}>
-        <TextWidget text={total === null ? formatSkr(BigInt(me.pot.skrStakedRaw), me.pot.skrUsd) : `In your garden ${formatUsd(Math.round(total * 100))}`} style={{ fontSize: 16, color: "#2B2B2B", fontWeight: "600" }} />
-        <TextWidget text={`Next planting ${formatUsd(me.nextPlanting.pendingCents)} of ${formatUsd(me.nextPlanting.thresholdCents)}`} style={{ fontSize: 12, color: "#6B6558" }} />
+        <TextWidget text={total === null ? formatSkr(BigInt(me.pot.skrStakedRaw), me.pot.skrUsd) : `In your garden ${formatUsd(Math.round(total * 100))}`} maxLines={1} truncate="END" style={{ fontSize: 16, color: "#2B2B2B", fontWeight: "600" }} />
+        <TextWidget text={next} maxLines={1} truncate="END" style={{ fontSize: 12, color: "#6B6558" }} />
         {showLast && lastPlantingLine(me.lastReceipt) ? (
-          <TextWidget text={lastPlantingLine(me.lastReceipt)!} style={{ fontSize: 12, color: "#6B6558" }} />
+          <TextWidget text={lastPlantingLine(me.lastReceipt)!} maxLines={1} truncate="END" style={{ fontSize: 12, color: "#6B6558" }} />
         ) : null}
       </FlexWidget>
-      {garden !== null ? <SvgWidget svg={garden.svg} style={{ width: gardenW, height: garden.h }} /> : null}
+      {garden !== null ? <SvgWidget svg={garden.svg} style={{ width: gardenW, height: garden.h, marginTop: GAP }} /> : null}
     </FlexWidget>
   );
 }
