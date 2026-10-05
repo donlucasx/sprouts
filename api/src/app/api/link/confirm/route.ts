@@ -4,7 +4,8 @@ import { z } from "zod";
 import { getRepo } from "@/db/repo";
 import { clientIp, rateLimited } from "@/lib/auth-guard";
 import { config } from "@/lib/config";
-import { readDelegation } from "@/lib/subscriptions";
+import { delegationPda, waitForDelegation } from "@/lib/subscriptions";
+import { pullerSigner } from "@/lib/puller";
 import { heliusAddAddress } from "@/lib/helius";
 import { verifyPostedTransaction } from "@/lib/verify-tx";
 import { rpc } from "@/lib/rpc";
@@ -15,19 +16,6 @@ export const runtime = "nodejs";
 export const maxDuration = 60; // the delegation poll (up to 10 s) plus the send
 
 const Body = z.object({ code: z.string().length(6), wallet: z.string().min(32).max(44), waitMs: z.number().int().min(0).max(10_000).optional(), signedTransaction: z.string().optional() });
-const RETRY_MS = 2_000;
-
-/** Waits for the delegation to appear (RPC lag right after the signature), up to `waitMs`. */
-async function delegationAppears(pda: Address, waitMs: number) {
-  const deadline = Date.now() + waitMs;
-  for (;;) {
-    const d = await readDelegation(pda);
-    if (d.exists) return d;
-    if (Date.now() >= deadline) return d;
-    await new Promise((r) => setTimeout(r, Math.min(RETRY_MS, Math.max(0, deadline - Date.now()))));
-  }
-}
-
 /** Links the wallet once its delegation is on chain: consumes the code, records the wallet, adds it to the swap webhook. */
 export async function POST(request: Request) {
   // Per caller IP (R207 #7): the confirm can hold a function for up to 10 s, so a loop from one address is slowed here.
@@ -71,7 +59,7 @@ export async function POST(request: Request) {
     }
   }
 
-  const delegation = await delegationAppears(address(link.delegationPda), parsed.data.waitMs ?? 10_000);
+  const delegation = await waitForDelegation(address(link.delegationPda), parsed.data.waitMs ?? 10_000);
   if (!delegation.exists) return NextResponse.json({ error: "No delegation found for this wallet yet. Sign the approval first." }, { status: 409 });
 
   const taken = await repo.takeLinkCode(code, wallet);
@@ -85,8 +73,12 @@ export async function POST(request: Request) {
     webhookAdded = false;
     console.error(`helius add address failed for ${wallet}: ${e instanceof Error ? e.message : String(e)}`);
   }
-  await repo.addWallet({ pubkey: wallet, userPubkey: link.userPubkey, delegationPda: link.delegationPda, dailyCapCents: Number(delegation.amountPerPeriodRaw / 10_000n), webhookAdded });
-  await repo.addEvent({ userPubkey: link.userPubkey, walletPubkey: wallet, kind: "wallet_linked", detail: { webhookAdded } });
+  // R297 / contracts 3.4: a link is either the puller's or, after go-live, the leash's; the bound delegation says which (the GET derived
+  // it from the delegatee it chose), so the garden id is never parsed here.
+  const pullerPda = await delegationPda({ delegator: wallet, delegatee: (await pullerSigner()).address, nonce: link.nonce });
+  const linkModel = link.delegationPda !== pullerPda ? "leash" : "puller";
+  await repo.addWallet({ pubkey: wallet, userPubkey: link.userPubkey, delegationPda: link.delegationPda, dailyCapCents: Number(delegation.amountPerPeriodRaw / 10_000n), webhookAdded, linkModel });
+  await repo.addEvent({ userPubkey: link.userPubkey, walletPubkey: wallet, kind: "wallet_linked", detail: { webhookAdded, linkModel } });
   const user = await repo.getUser(link.userPubkey);
   return NextResponse.json({ linked: true, skrName: user?.skrName ?? null });
 }

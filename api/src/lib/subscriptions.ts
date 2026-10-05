@@ -124,3 +124,16 @@ export async function readDelegation(pda: Address): Promise<DelegationState> {
     periodLengthS: BigInt(d.periodLengthS),
   };
 }
+
+const RETRY_MS = 2_000;
+
+/** Waits for a delegation to appear (RPC lag right after the signature), up to `waitMs`; the link and re-link confirms poll with it. */
+export async function waitForDelegation(pda: Address, waitMs: number): Promise<DelegationState> {
+  const deadline = Date.now() + waitMs;
+  for (;;) {
+    const d = await readDelegation(pda);
+    if (d.exists) return d;
+    if (Date.now() >= deadline) return d;
+    await new Promise((r) => setTimeout(r, Math.min(RETRY_MS, Math.max(0, deadline - Date.now()))));
+  }
+}
