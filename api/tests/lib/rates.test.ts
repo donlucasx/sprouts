@@ -63,6 +63,24 @@ describe("snapshotVenues (one row per venue per asset per day)", () => {
     expect(rows.find((r) => r.venue === "jupiter_lend" && r.asset === "USDC_LEND")).toMatchObject({ ok: false, eligible: false });
     expect(rows.find((r) => r.venue === "kamino_klend" && r.asset === "USDC_LEND")).toMatchObject({ avg7Pct: 4.48, daysMeasured: 2 });
   });
+  it("a malformed 200 from one source marks only its rows no data; the other venues still read (review I4)", async () => {
+    const repo = new MemoryRepo();
+    const rows = await snapshotVenues({ repo, now: NOW, reads: reads({ kaminoReserves: async () => ({ error: "maintenance" }), kaminoVault: async () => "oops" }) });
+    expect(rows.length).toBe(7);
+    for (const asset of ["USDC_LEND", "SOL_LEND"]) expect(rows.find((r) => r.venue === "kamino_klend" && r.asset === asset)).toMatchObject({ ok: false, eligible: false, supplyPct: null });
+    expect(rows.find((r) => r.venue === "jupiter_lend" && r.asset === "USDC_LEND")).toMatchObject({ ok: true, eligible: true, supplyPct: 3.83 });
+    expect(rows.find((r) => r.venue === "lulo_protected")!.ok).toBe(true);
+  });
+  it("a field that is not a number is no data, never a NaN row marked ok (review M1)", async () => {
+    const repo = new MemoryRepo();
+    const rows = await snapshotVenues({ repo, now: NOW, reads: reads({
+      kaminoReserves: async () => KAMINO.map((k) => (k.reserve === "D6q6wuQSrifJKZYpR1M8R4YawnLDtDsMmWM1NbBmgJ59" ? { ...k, supplyApy: undefined } : k)),
+      exchangeRate: async (venue) => (venue === "jupiter_lend" ? Number.NaN : 1.2038),
+    }) });
+    expect(rows.find((r) => r.venue === "kamino_klend" && r.asset === "USDC_LEND")).toMatchObject({ supplyPct: null, ok: false, avg7Pct: null, daysMeasured: 0, eligible: false });
+    expect(rows.find((r) => r.venue === "kamino_klend" && r.asset === "SOL_LEND")).toMatchObject({ ok: true, eligible: true });
+    expect(rows.find((r) => r.venue === "jupiter_lend" && r.asset === "USDC_LEND")).toMatchObject({ ok: true, exchangeRate: null, eligible: false });
+  });
   it("a second run the same day keeps the AI's verdict and what it was served", async () => {
     const repo = new MemoryRepo();
     await snapshotVenues({ repo, now: NOW, reads: reads() });

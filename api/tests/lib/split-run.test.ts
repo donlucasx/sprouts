@@ -3,7 +3,7 @@ import { MemoryRepo } from "@/db/memory";
 import type { CoinDayRow } from "@/db/types";
 import { SKR_ONLY, ASSETS, zeroSplit, type Split } from "@/domain/coins";
 import { STOP_DEFAULTS, STOPS, MOVE_LIMIT } from "@/domain/split";
-import { decideSplits, applyToUsers, readFacts, factsTable } from "@/lib/split-run";
+import { decideSplits, applyToUsers, readFacts, factsTable, safeLine } from "@/lib/split-run";
 import type { ConversationCall } from "@/lib/anthropic";
 
 const NOW = new Date("2026-10-02T14:00:00Z");
@@ -170,6 +170,14 @@ describe("decideSplits (spec 6.2 to 6.5)", () => {
     expect(sum(careful.split)).toBe(100);
   });
 
+  it("the decide step's time budget spent means no model call and a fallback by rule (review I5)", async () => {
+    const repo = await seededRepo();
+    let calls = 0;
+    const rows = await decideSplits({ repo, now: NOW, model: async () => { calls++; return { toolUses: [{ id: "t", name: "set_split", input: good }], usage: { inputTokens: 1, outputTokens: 1 } }; }, budgetMs: 0 });
+    expect(calls).toBe(0);
+    expect(rows.every((r) => r.fallback === "model")).toBe(true);
+  });
+
   it("the month's budget gone means every stop falls back as budget", async () => {
     const repo = await seededRepo();
     await repo.addWatcherCall({ userPubkey: "U", kind: "compile", inputTokens: 0, outputTokens: 0, costMicrocents: 1_000_000_000, ts: NOW });
@@ -251,6 +259,9 @@ describe("the AI's tools, verdicts and found venues (spec 4, R275-R278)", () => 
     if (req.messages.length === 3) return { toolUses: [u("b", "get_venue_rates", { venue: "jupiter_lend" }), u("c", "scout_yields", {})], usage };
     return { toolUses: [u("d", "set_split", final)], usage };
   };
+  // Controller ruling (fix round 1): code owns the routing sentence for every lending leg with a share.
+  const USDC_ROUTE = "Your USDC goes to Kamino, 4.4% vs Jupiter 4.2%.";
+  const SOL_ROUTE = "Your SOL goes to Kamino, 5.6% vs Jupiter 3.9%.";
   async function venueRepo() {
     const repo = await seededRepo();
     await snapshotVenues({ repo, now: NOW, reads });
@@ -269,7 +280,7 @@ describe("the AI's tools, verdicts and found venues (spec 4, R275-R278)", () => 
       { asset: "SOL_LEND", ...(({ day: _d, venue: _v, asset: _a, exchangeRate: _e, eligible: _el, verdict: _ve, reason: _r, served: _s, ok: _o, ...x }) => x)(venues.find((r) => r.venue === "kamino_klend" && r.asset === "SOL_LEND")!) },
     ]));
     expect(rows[1].venuePick).toEqual({ USDC_LEND: "kamino_klend", SOL_LEND: "kamino_klend" });
-    expect(rows[1].why).toBe("Your USDC goes to Kamino, 4.4% vs Jupiter 4.2%.");
+    expect(rows[1].why).toBe(`${USDC_ROUTE} ${SOL_ROUTE}`);
     expect(await repo.listFoundVenues(DAY, 5)).toEqual([{ day: DAY, poolId: POOL.poolId, project: "kamino-lend", symbol: "SOL", asset: "SOL", apyBasePct: 5.6418, tvlUsd: 25_399_214, note: "Kamino SOL pool at 5.6% a year." }]);
   });
 
@@ -286,13 +297,38 @@ describe("the AI's tools, verdicts and found venues (spec 4, R275-R278)", () => 
   it("a why quoting a number nobody served is replaced by the routing line (Review Focus 5)", async () => {
     const repo = await venueRepo();
     const rows = await decideSplits({ repo, now: NOW, model: scripted(finalWith({ why: "Your USDC goes to Kamino at 9.9%." })), scout: async () => [POOL] });
-    expect(rows[1].why).toBe("Your USDC goes to Kamino, 4.4% vs Jupiter 4.2%.");
+    expect(rows[1].why).toBe(`${USDC_ROUTE} ${SOL_ROUTE}`);
   });
 
-  it("a why that does not name where the USDC goes is replaced by the routing line", async () => {
+  it("a model sentence that says nothing about lending is kept after code's routing; one about lending is not", async () => {
     const repo = await venueRepo();
     const rows = await decideSplits({ repo, now: NOW, model: scripted(finalWith({ why: "Your split leans to hSOL this week." })), scout: async () => [POOL] });
-    expect(rows[1].why).toBe("Your USDC goes to Kamino, 4.4% vs Jupiter 4.2%.");
+    expect(rows[1].why).toBe(`${USDC_ROUTE} ${SOL_ROUTE} Your split leans to hSOL this week.`);
+    const repo2 = await venueRepo();
+    const rows2 = await decideSplits({ repo: repo2, now: NOW, model: scripted(finalWith({ why: "Your USDC skips Kamino and goes to Jupiter at 4.2%." })), scout: async () => [POOL] });
+    expect(rows2[1].why).toBe(`${USDC_ROUTE} ${SOL_ROUTE}`);
+  });
+
+  it("the model READ both venues and named the avoided venue as the destination: code's line replaces it and says why the lower rate won", async () => {
+    const repo = await venueRepo();
+    const why = "Your USDC goes to Kamino, 4.4% vs Jupiter 4.2%.";   // every number was served: only code's routing ownership catches it
+    const rows = await decideSplits({ repo, now: NOW, model: scripted(finalWith({ verdicts: [{ venue: "kamino_klend", asset: "USDC_LEND", verdict: "avoid", reason: "near_full" }], why })), scout: async () => [POOL] });
+    expect(rows[1].venuePick).toEqual({ USDC_LEND: "jupiter_lend", SOL_LEND: "kamino_klend" });
+    expect(rows[1].why).toBe(`Your USDC goes to Jupiter at 4.2%; Kamino's 4.4% was set aside today: it is nearly full. ${SOL_ROUTE}`);
+    expect(rows[1].why!.split(". ")[0].length).toBeLessThanOrEqual(140);
+  });
+
+  it("found notes are stored as the checked string; markup, domains and invisible characters never reach display (review I3)", async () => {
+    const repo = await venueRepo();
+    await decideSplits({ repo, now: NOW, model: scripted(finalWith({ found: [{ poolId: POOL.poolId, note: "Kamino SOL pool\nat 5.6% a year https://x.example/claim" }] })), scout: async () => [POOL] });
+    expect((await repo.listFoundVenues(DAY, 5)).map((f) => f.note)).toEqual(["Kamino SOL pool at 5.6% a year"]);
+    for (const note of ["Kamino SOL pool at 5.6%, see kamino-bonus.xyz", "Kamino <b>risk free</b> at 5.6%", "Kamino SOL\u202E at 5.6%", "Kamino\u200B SOL at 5.6%"]) {
+      const r = await venueRepo();
+      await decideSplits({ repo: r, now: NOW, model: scripted(finalWith({ found: [{ poolId: POOL.poolId, note }] })), scout: async () => [POOL] });
+      expect(await r.listFoundVenues(DAY, 5)).toEqual([]);
+    }
+    expect(safeLine("hSOL grew 4.4% a year.", [4.4])).toBe("hSOL grew 4.4% a year.");
+    expect(safeLine("hSOL grew 4.4% at hsol.fund", [4.4])).toBeNull();
   });
 
   it("an avoid without a reason fails the schema: the stop falls back and no veto is applied", async () => {
@@ -331,6 +367,6 @@ describe("the AI's tools, verdicts and found venues (spec 4, R275-R278)", () => 
     const rows = await decideSplits({ repo, now: NOW, model });
     expect((await repo.listVenueDays(DAY)).find((r) => r.venue === "kamino_klend" && r.asset === "USDC_LEND")).toMatchObject({ verdict: "avoid", reason: "near_full" });
     expect(rows[1].venuePick).toEqual({ USDC_LEND: "jupiter_lend", SOL_LEND: "kamino_klend" });
-    expect(rows[1].why).toBe("Your USDC goes to Jupiter, 4.2% vs Kamino 4.4%.");   // the routing line still compares against the avoided venue (as the brief pins)
+    expect(rows[1].why).toBe(`Your USDC goes to Jupiter at 4.2%; Kamino's 4.4% was set aside today: it is nearly full. ${SOL_ROUTE}`);   // controller ruling: say why the lower rate won
   });
 });

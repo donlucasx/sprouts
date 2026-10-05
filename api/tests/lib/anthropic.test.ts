@@ -26,7 +26,7 @@ describe("callTool errors", () => {
   });
 });
 
-import { runToolLoop, type ConversationCall } from "@/lib/anthropic";
+import { runToolLoop, callConversation, type ConversationCall } from "@/lib/anthropic";
 describe("runToolLoop", () => {
   it("runs tools until the final tool, records what each returned, sums usage, and feeds errors back as tool results", async () => {
     const seen: unknown[] = [];
@@ -40,5 +40,36 @@ describe("runToolLoop", () => {
     expect(r.served).toEqual([{ name: "boom", input: {}, output: { error: "no" } }, { name: "echo", input: { n: 7 }, output: { n: 7 } }]);
     expect(r.usage).toEqual({ inputTokens: 30, outputTokens: 5 });
     expect(seen[1]).toEqual({ role: "user", content: [{ type: "tool_result", tool_use_id: "1", content: '{"error":"no"}' }, { type: "tool_result", tool_use_id: "2", content: '{"n":7}' }] });
+  });
+});
+
+describe("callConversation (review I5, M6)", () => {
+  afterEach(() => vi.restoreAllMocks());
+  const conv = { system: "s", messages: [{ role: "user" as const, content: "u" }], tools: [], maxTokens: 10 };
+  const ok = { content: [{ type: "tool_use", id: "1", name: "t", input: { a: 1 } }], usage: { input_tokens: 5, output_tokens: 2 } };
+  const res = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+
+  it("sends a timeout signal and retries a 529 exactly once", async () => {
+    const f = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(res(529, { error: { type: "overloaded_error", message: "Overloaded" } })).mockResolvedValueOnce(res(200, ok));
+    await expect(callConversation(conv)).resolves.toEqual({ toolUses: [{ id: "1", name: "t", input: { a: 1 } }], usage: { inputTokens: 5, outputTokens: 2 } });
+    expect(f).toHaveBeenCalledTimes(2);
+    expect((f.mock.calls[0][1] as RequestInit).signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it("a second 529 throws; any other error is not retried", async () => {
+    const f = vi.spyOn(globalThis, "fetch").mockImplementation(async () => res(529, { error: { type: "overloaded_error", message: "Overloaded" } }));
+    await expect(callConversation(conv)).rejects.toThrow("Anthropic answered 529 (overloaded_error: Overloaded).");
+    expect(f).toHaveBeenCalledTimes(2);
+    f.mockReset();
+    f.mockImplementation(async () => res(500, {}));
+    await expect(callConversation(conv)).rejects.toThrow("Anthropic answered 500.");
+    expect(f).toHaveBeenCalledTimes(1);
+  });
+
+  it("runToolLoop starts no turn past its deadline", async () => {
+    let calls = 0;
+    const r = await runToolLoop({ call: async () => { calls++; return { toolUses: [], usage: { inputTokens: 1, outputTokens: 1 } }; }, system: "s", user: "u", tools: [], finalTool: "done", maxTurns: 4, maxTokens: 10, run: async () => null, deadlineMs: Date.now() - 1 });
+    expect(calls).toBe(0);
+    expect(r.final).toBeNull();
   });
 });
