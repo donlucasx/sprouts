@@ -1,4 +1,4 @@
-import { AccountRole, getAddressDecoder, getAddressEncoder, getProgramDerivedAddress, type Address, type Instruction, type TransactionSigner } from "@solana/kit";
+import { AccountRole, type AccountSignerMeta, getAddressDecoder, getAddressEncoder, getProgramDerivedAddress, type Address, type Instruction, type TransactionSigner } from "@solana/kit";
 import { findAssociatedTokenPda, TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
 import { findEventAuthorityPda, findSubscriptionAuthorityPda } from "@solana/subscriptions";
 import { GUARDIAN_POOL, LEASH_PROGRAM, ORE_STAKE_ACCOUNT, STAKE_CONFIG, STORE_MINT, SUBSCRIPTIONS_PROGRAM, SYSTEM_PROGRAM, SYSVAR_INSTRUCTIONS, USDC_MINT } from "./constants";
@@ -70,10 +70,12 @@ export async function buildPullIx(a: { puller: TransactionSigner; delegator: Add
   const [eventAuthority] = await findEventAuthorityPda();
   const [delegatorUsdc] = await findAssociatedTokenPda({ owner: a.delegator, mint: USDC_MINT, tokenProgram: TOKEN_PROGRAM_ADDRESS });
   const [pullerUsdc] = await findAssociatedTokenPda({ owner: a.puller.address, mint: USDC_MINT, tokenProgram: TOKEN_PROGRAM_ADDRESS });
+  // A typed signer meta (no cast on the Instruction): the kit signs with it when the tx is built.
+  const pullerMeta: AccountSignerMeta = { address: a.puller.address, role: AccountRole.READONLY_SIGNER, signer: a.puller };
   return {
     programAddress: LEASH_PROGRAM,
     accounts: [
-      { address: a.puller.address, role: AccountRole.READONLY_SIGNER, signer: a.puller },
+      pullerMeta,
       ro(await leashConfigPda()), ro(a.delegator), ro(a.user), ro(await leashPda(a.delegator, a.user)),
       rw(a.delegationPda), rw(subscriptionAuthority), rw(delegatorUsdc), rw(pullerUsdc),
       ro(USDC_MINT), ro(TOKEN_PROGRAM_ADDRESS), ro(eventAuthority), ro(SUBSCRIPTIONS_PROGRAM), ro(SYSVAR_INSTRUCTIONS),
