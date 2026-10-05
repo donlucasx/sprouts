@@ -54,7 +54,7 @@ T_LEN host program/src/readers.rs unit_readers token_receipt_guards
 T_MINT host program/src/readers.rs unit_readers token_receipt_guards
 T_USER host program/src/readers.rs unit_readers token_receipt_guards
 T_ATA host program/src/readers.rs unit_readers token_receipt_guards
-S_ADDR host program/src/readers.rs unit_readers skr_receipt_guards
+S_ADDR host program/src/readers.rs unit_readers skr_receipt_addr_guard_covers_the_absent_branch
 S_OWNER host program/src/readers.rs unit_readers skr_receipt_guards
 S_LEN host program/src/readers.rs unit_readers skr_receipt_guards
 S_DISC host program/src/readers.rs unit_readers skr_receipt_guards
