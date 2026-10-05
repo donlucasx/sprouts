@@ -15,7 +15,7 @@ describe("coinAccountInstructions", () => {
     expect(await coinAccountInstructions({ asset: "SKR", payer, user: USER })).toEqual([]);
   });
 
-  for (const asset of ["stORE", "hSOL", "JitoSOL", "JupSOL", "cbBTC"] as const) {
+  for (const asset of ["stORE", "hSOL", "cbBTC"] as const) {
     it(`creates only the user's ${asset} token account, idempotently`, async () => {
       const payer = await generateKeyPairSigner();
       const ixs = await coinAccountInstructions({ asset, payer, user: USER });
@@ -31,6 +31,7 @@ describe("coinAccountInstructions", () => {
       expect(accounts[3]).toBe(COINS[asset].mint);
     });
   }
+  it("adds nothing for a lending leg", async () => { const payer = await generateKeyPairSigner(); expect(await coinAccountInstructions({ asset: "USDC_LEND", payer, user: USER })).toEqual([]); });
 });
 
 import { skrChangeFromMeta } from "@/lib/planting";

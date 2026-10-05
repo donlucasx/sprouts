@@ -1,6 +1,7 @@
 // Spike 3b: one real ten-cent planting from the throwaway wallet into a Seeker's SKR position: pull, swap, stake in one transaction.
 // Simulates first and aborts on any error. The only "send" in Plan 1 besides Spike 3a.
-// Run from api/: pnpm tsx --env-file=.env.local spikes/plant-once.ts <seed vault address or name.skr> [SKR|stORE|hSOL|JitoSOL|JupSOL|cbBTC] [usdc amount, default 0.10] [--send]
+// Run from api/: pnpm tsx --env-file=.env.local spikes/plant-once.ts <seed vault address or name.skr> [SKR|stORE|USDC_LEND|SOL_LEND|hSOL|cbBTC] [usdc amount, default 0.10] [--jupiter] [--send]
+// Unleashed (the throwaway wallet's old puller link): a lending leg deposits on Kamino, or on Jupiter Lend with --jupiter; no carry.
 // The pull must fit the delegation's daily allowance (5 USD per period); the delegation state is printed before building.
 import { address, createKeyPairSignerFromPrivateKeyBytes } from "@solana/kit";
 import { readFileSync } from "node:fs";
@@ -10,7 +11,7 @@ import { config } from "../src/lib/config";
 import { delegationPda, readDelegation } from "../src/lib/subscriptions";
 import { buildPlantingTx, simulatePlanting, sendPlanting } from "../src/lib/planting";
 import { readPosition } from "../src/lib/staking";
-import { isAsset, type Asset } from "../src/domain/coins";
+import { isLendAsset, isLiveAsset, type LiveAsset } from "../src/domain/coins";
 import { getBase64EncodedWireTransaction } from "@solana/kit";
 
 /** A Seed Vault address, or a .skr name resolved through AllDomains to its owner. */
@@ -25,11 +26,11 @@ async function seedVaultFrom(arg: string) {
 
 const args = process.argv.slice(2).filter((a) => !a.startsWith("--"));
 const user = await seedVaultFrom(args[0] ?? "");
-if (args[1] !== undefined && !isAsset(args[1])) {
+if (args[1] !== undefined && !isLiveAsset(args[1])) {
   console.log(`bad asset: ${args[1]}`);
   process.exit(1);
 }
-const asset: Asset = (args[1] as Asset | undefined) ?? "SKR";
+const asset: LiveAsset = (args[1] as LiveAsset | undefined) ?? "SKR";
 const usdc = Number(args[2] ?? "0.10");
 const pullRaw = BigInt(Math.round(usdc * 1_000_000));
 const doSend = process.argv.includes("--send");
@@ -45,7 +46,8 @@ console.log(`delegation ${pda}: allowance ${Number(d.amountPerPeriodRaw) / 1e6} 
 console.log(`pulling ${usdc} USDC (${pullRaw} raw)`);
 const before = await readPosition(user);
 console.log(`position before: ${before.stakedRaw} raw SKR staked`);
-const built = await buildPlantingTx({ delegator: wallet.address, user, asset, pullRaw, feeBps: 50, delegationPda: pda });
+const venue = isLendAsset(asset) ? (process.argv.includes("--jupiter") ? "jupiter_lend" as const : "kamino_klend" as const) : null;
+const built = await buildPlantingTx({ delegator: wallet.address, user, asset, venue, pullRaw, delegationPda: pda, leashed: false, carryIn: {} });
 const bytes = Buffer.from(getBase64EncodedWireTransaction(built.tx), "base64").length;
 console.log(`built ${asset} planting: ${bytes} bytes, expected out ${built.expectedOutRaw}, minimum ${built.minOutRaw}, lookup tables ${built.lookupTables.length}`);
 const sim = await simulatePlanting(built);

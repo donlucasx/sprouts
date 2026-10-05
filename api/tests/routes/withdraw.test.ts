@@ -57,7 +57,7 @@ describe("withdraw routes", () => {
     await repo.upsertUser({ seedVaultPubkey: U, sgtMint: "M", skrName: null });
     await repo.setJoinedPosition(U, { shares: 0n, sharePrice: SP });
     const p = await repo.insertPlanting({ userPubkey: U, walletPubkey: "W", signature: "s", usdcPulledCents: 23, networkFeeCents: 3, status: "confirmed", aiLine: null },
-      [{ asset: "SKR", usdcInCents: 20, amountOutRaw: legRaw, staked: true, feeAmountRaw: 0n, feeCents: 0, rateAtPlanting: null }]);
+      [{ asset: "SKR", usdcInCents: 20, amountOutRaw: legRaw, staked: true, feeAmountRaw: 0n, feeCents: 0, rateAtPlanting: null, venue: null }]);
     await repo.setPlantingShares(p.id, { before: 0n, after: 2_000_000_000n, minted: 2_000_000_000n });
     auth = { authorization: `Bearer ${await issueSession(U, "M")}`, "content-type": "application/json" };
   }
@@ -214,6 +214,28 @@ describe("withdraw routes", () => {
     expect(pending?.sharesUnstaked).toBe(80_279_232n);
     expect(pending?.principalRaw).toBe(0n);
     expect(pending?.source).toBe("sprouts");
+  });
+
+  it("K-I4: two posts of the same signed unstake racing: one basket row, the same answer twice; the reconcile books no phantom own-stake", async () => {
+    const b = await (await build(post("/api/withdraw/build", { mode: "earned" }))).json();
+    const signed = await signAsUser(b.transaction);
+    positionMock.mockResolvedValue(staked(1_919_720_768n, 92_000_000n, 1_790_000_000n));
+    const [r1, r2] = await Promise.all([confirmRoute(post("/api/withdraw/confirm", { signedTransaction: signed })), confirmRoute(post("/api/withdraw/confirm", { signedTransaction: signed }))]);
+    expect([r1.status, r2.status]).toEqual([200, 200]);
+    const [b1, b2] = [await r1.json(), await r2.json()];
+    expect(b2.basket.id).toBe(b1.basket.id);
+    expect(await repo.listWithdrawals(U, 10)).toHaveLength(1);
+    // A third post after the fact answers from the row and sends nothing.
+    sendMock.mockClear();
+    const r3 = await confirmRoute(post("/api/withdraw/confirm", { signedTransaction: signed }));
+    expect(r3.status).toBe(200);
+    expect((await r3.json()).basket.id).toBe(b1.basket.id);
+    expect(sendMock).not.toHaveBeenCalled();
+    // The reconcile: shares 2e9 minted - 80_279_232 burned once = what the chain shows; nothing to book.
+    const { reconcileOwnStakes } = await import("@/lib/reconcile");
+    const out = await reconcileOwnStakes({ repo, chain: { readPosition: async () => staked(1_919_720_768n, 92_000_000n, 1_790_000_000n), sharePrice: async () => SP } });
+    expect(out.adjusted).toEqual([]);
+    expect(await repo.listStakeAdjustments(U)).toEqual([]);
   });
 
   it("confirm refuses an unsigned or foreign transaction before sending anything", async () => {

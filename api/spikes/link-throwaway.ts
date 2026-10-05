@@ -1,6 +1,6 @@
 // Task 15 step 4: link the throwaway trading wallet to a Seeker account through the real routes, end to end.
 //   1. upsert the Seeker's user row (Genesis mint and .skr name read live from chain; nothing about the Seeker is hardcoded)
-//   2. mint a session for it in-process (same SESSION_SECRET as production; the token is never printed)
+//   2. mint a session for it in-process (a random token stored hashed, as in production; the token is never printed)
 //   3. POST /api/link/new -> code; GET /api/link/{code}?wallet= -> unsigned approve-once (one instruction: the throwaway's
 //      authority already exists, so this exercises the re-link path); sign with the throwaway key; simulate; send with --send
 //   4. POST /api/link/confirm -> { linked, skrName }; the wallet row and the webhook address follow

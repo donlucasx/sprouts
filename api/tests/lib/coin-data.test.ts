@@ -19,6 +19,7 @@ function fakeReads(over: Partial<CoinReads> = {}): CoinReads {
     currentEpoch: async () => 1046n,
     prices: async (mints) => Object.fromEntries(mints.map((m) => [m, { usdPrice: 100, liquidity: 1e8, priceChange24h: 0.5, decimals: 9 }])),
     quoteOk: async () => true,
+    lendOk: async () => true,
     ...over,
   };
 }
@@ -36,7 +37,7 @@ describe("snapshotCoins (spec 5.2)", () => {
     expect(by.stORE.rate).toBeCloseTo(1.0496, 4);
     expect(by.cbBTC.rate).toBeNull();
     expect(rows.every((r) => r.ok && r.tradeable && r.priceUsd === 100)).toBe(true);
-    expect((await repo.getCoinDay("2026-10-02", "JupSOL"))?.ok).toBe(true);
+    expect((await repo.getCoinDay("2026-10-02", "USDC_LEND"))?.ok).toBe(true);
   });
 
   it("one coin's failed read does not block the others, and is marked no data with an event", async () => {
@@ -54,7 +55,6 @@ describe("snapshotCoins (spec 5.2)", () => {
     const rows = await snapshotCoins({ repo, now: NOW, reads: fakeReads({ currentEpoch: async () => 1048n, quoteOk: async (a) => { quoted.push(a); return a !== "cbBTC"; } }) });
     const by = Object.fromEntries(rows.map((r) => [r.asset, r]));
     expect(by.hSOL.ok).toBe(false);
-    expect(by.JitoSOL.ok).toBe(false);
     expect(quoted).not.toContain("SKR");
     expect(by.SKR.tradeable).toBe(true);
     expect(by.cbBTC.tradeable).toBe(false);
@@ -108,5 +108,15 @@ describe("priceChange", () => {
     expect(p.days).toBe(3);
     expect(p.pct).toBeCloseTo(5, 6);
     expect(priceChange([row("2026-10-02", 1, { priceUsd: 147 })])).toEqual({ pct: null, days: 0 });
+  });
+});
+
+describe("lending rows in coin_days (contracts 4)", () => {
+  it("a lending row holds the underlying's price, no rate, and is ok only when an auto venue was measured today", async () => {
+    const repo = new MemoryRepo();
+    const rows = await snapshotCoins({ repo, now: NOW, reads: fakeReads({ lendOk: async (a) => a === "USDC_LEND" }) });
+    const by = Object.fromEntries(rows.map((r) => [r.asset, r]));
+    expect(by.USDC_LEND).toMatchObject({ rate: null, priceUsd: 100, ok: true, tradeable: true });
+    expect(by.SOL_LEND).toMatchObject({ rate: null, ok: false });
   });
 });

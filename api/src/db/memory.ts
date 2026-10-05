@@ -1,6 +1,8 @@
 import type { Repo, NewPlanting, NewWithdrawal, NewWatcherCall } from "./repo";
+import { checkLegVenues } from "./repo";
 import type * as T from "./types";
-import type { Asset, Stop } from "@/domain/coins";
+import type { LiveAsset, LendAsset, Stop } from "@/domain/coins";
+import type { Venue } from "@/domain/venues";
 import { toSplit } from "@/domain/coins";
 import { DEFAULT_RULES } from "@/domain/roundup";
 
@@ -26,6 +28,10 @@ export class MemoryRepo implements Repo {
   private watcherCallSeq = 0;
   coinDays = new Map<string, T.CoinDayRow>();
   splitDays = new Map<string, T.SplitDayRow>();
+  venueDays = new Map<string, T.VenueDayRow>();
+  foundVenues = new Map<string, T.FoundVenueRow>();
+  moves = new Map<string, T.MoveProposalRow>();
+  carry: { plantingId: string; userPubkey: string; kind: "WSOL" | "USDC"; carryInRaw: bigint; surplusRaw: bigint | null }[] = [];
 
   async upsertUser(u: { seedVaultPubkey: string; sgtMint: string; skrName: string | null }) {
     for (const other of this.users.values()) {
@@ -35,6 +41,7 @@ export class MemoryRepo implements Repo {
     const row: T.UserRow = {
       seedVaultPubkey: u.seedVaultPubkey, sgtMint: u.sgtMint, skrName: u.skrName, proUntil: existing?.proUntil ?? null, createdAt: existing?.createdAt ?? new Date(),
       wateredAt: existing?.wateredAt ?? null, joinedShares: existing?.joinedShares ?? 0n, joinedSharePrice: existing?.joinedSharePrice ?? 0n,
+      termsVersion: existing?.termsVersion ?? null, termsAcceptedAt: existing?.termsAcceptedAt ?? null,
     };
     this.users.set(row.seedVaultPubkey, row);
     return { row, created: !existing };
@@ -90,13 +97,14 @@ export class MemoryRepo implements Repo {
     return [...this.rules.values()].filter((r) => r.managed);
   }
 
-  async addWallet(w: { pubkey: string; userPubkey: string; delegationPda: string; dailyCapCents: number; webhookAdded?: boolean }): Promise<T.WalletRow> {
+  async addWallet(w: { pubkey: string; userPubkey: string; delegationPda: string; dailyCapCents: number; webhookAdded?: boolean; linkModel?: T.LinkModel }): Promise<T.WalletRow> {
     // An upsert, like Supabase: a re-link resets the delegation, cap, status and webhook flag and keeps the ledger (review I3).
-    const { webhookAdded = false, ...rest } = w;
+    const { webhookAdded = false, linkModel, ...rest } = w;
     const existing = this.wallets.get(w.pubkey);
     const row: T.WalletRow = {
       ...rest, status: "active", webhookAdded,
       ledgerCents: { ...(existing?.ledgerCents ?? {}) }, createdAt: existing?.createdAt ?? new Date(),
+      linkModel: linkModel ?? existing?.linkModel ?? "puller",
     };
     this.wallets.set(w.pubkey, row);
     return row;
@@ -123,7 +131,7 @@ export class MemoryRepo implements Repo {
     if (w) w.status = status;
   }
 
-  async bumpLedger(pubkey: string, asset: Asset, cents: number) {
+  async bumpLedger(pubkey: string, asset: LiveAsset, cents: number) {
     const w = this.wallets.get(pubkey);
     if (!w) return;
     w.ledgerCents[asset] = (w.ledgerCents[asset] ?? 0) + cents;
@@ -192,12 +200,29 @@ export class MemoryRepo implements Repo {
     return this.legs.filter((l) => l.plantingId === plantingId);
   }
 
+  /** Test seam (AMEND 10-04 s20, T3 review I3): the next insertPlanting fails after the planting row is written, as a Postgres legs/carry insert error would. One-shot. */
+  insertFault: "legs" | "carry" | null = null;
+
   async insertPlanting(p: NewPlanting, legs: Omit<T.PlantingLegRow, "plantingId">[]): Promise<T.PlantingRow> {
-    const { sharesBefore = null, ts, ...rest } = p;
+    checkLegVenues(legs);
+    const { sharesBefore = null, ts, carryIn, ...rest } = p;
     const row: T.PlantingRow = { ...rest, id: id(), ts: ts ?? new Date(), sharesBefore, sharesAfter: null, sharesMinted: null, skrCarryInRaw: rest.skrCarryInRaw ?? 0n, skrSurplusRaw: null };
     this.plantings.set(row.id, row);
-    for (const leg of legs) this.legs.push({ ...leg, plantingId: row.id });
+    try {
+      if (this.insertFault === "legs") throw new Error("planting_legs insert failed (insertFault)");
+      for (const leg of legs) this.legs.push({ ...leg, plantingId: row.id });
+      if (this.insertFault === "carry") throw new Error("carry insert failed (insertFault)");
+      for (const [kind, raw] of Object.entries(carryIn ?? {}) as ["WSOL" | "USDC", bigint][]) if (raw > 0n) this.carry.push({ plantingId: row.id, userPubkey: row.userPubkey, kind, carryInRaw: raw, surplusRaw: null });
+    } catch (e) {
+      this.insertFault = null;
+      await this.setPlantingStatus(row.id, "failed");
+      throw e;
+    }
     return row;
+  }
+
+  async plantingCarry(plantingId: string) {
+    return Object.fromEntries(this.carry.filter((c) => c.plantingId === plantingId).map((c) => [c.kind, c.carryInRaw])) as Partial<Record<"WSOL" | "USDC", bigint>>;
   }
 
   async setPlantingStatus(plantingId: string, status: T.PlantingStatus, signature?: string) {
@@ -207,7 +232,7 @@ export class MemoryRepo implements Repo {
     if (signature) p.signature = signature;
   }
 
-  async setLegAmountOut(plantingId: string, asset: Asset, amountOutRaw: bigint) {
+  async setLegAmountOut(plantingId: string, asset: LiveAsset, amountOutRaw: bigint) {
     const leg = this.legs.find((l) => l.plantingId === plantingId && l.asset === asset);
     if (leg) leg.amountOutRaw = amountOutRaw;
   }
@@ -261,14 +286,14 @@ export class MemoryRepo implements Repo {
   async putCoinDay(row: T.CoinDayRow) {
     this.coinDays.set(`${row.day}|${row.asset}`, { ...row });
   }
-  async getCoinDay(day: string, asset: Asset) {
+  async getCoinDay(day: string, asset: LiveAsset) {
     return this.coinDays.get(`${day}|${asset}`) ?? null;
   }
-  async listCoinDays(asset: Asset, sinceDay: string) {
+  async listCoinDays(asset: LiveAsset, sinceDay: string) {
     return [...this.coinDays.values()].filter((r) => r.asset === asset && r.day >= sinceDay).sort((a, b) => a.day.localeCompare(b.day));
   }
   async putSplitDay(row: T.SplitDayRow) {
-    this.splitDays.set(`${row.day}|${row.stop}`, { ...row, split: toSplit(row.split) });
+    this.splitDays.set(`${row.day}|${row.stop}`, { ...row, split: toSplit(row.split), venuePick: row.venuePick ?? null });
   }
   async getSplitDay(day: string, stop: Stop) {
     return this.splitDays.get(`${day}|${stop}`) ?? null;
@@ -276,6 +301,97 @@ export class MemoryRepo implements Repo {
   async latestSplitDay(stop: Stop, beforeDay?: string) {
     const rows = [...this.splitDays.values()].filter((r) => r.stop === stop && (!beforeDay || r.day < beforeDay)).sort((a, b) => b.day.localeCompare(a.day));
     return rows[0] ?? null;
+  }
+
+  async putVenueDay(row: T.VenueDayRow) {
+    this.venueDays.set(`${row.day}|${row.venue}|${row.asset}`, { ...row });
+  }
+  async listVenueDays(day: string) {
+    return [...this.venueDays.values()].filter((r) => r.day === day);
+  }
+  async listVenueHistory(venue: Venue, asset: LendAsset, sinceDay: string) {
+    return [...this.venueDays.values()].filter((r) => r.venue === venue && r.asset === asset && r.day >= sinceDay).sort((a, b) => a.day.localeCompare(b.day));
+  }
+  async putFoundVenues(rows: T.FoundVenueRow[]) {
+    for (const r of rows) this.foundVenues.set(`${r.day}|${r.poolId}`, { ...r });
+  }
+  async listFoundVenues(sinceDay: string, limit: number) {
+    return [...this.foundVenues.values()].filter((r) => r.day >= sinceDay).sort((a, b) => b.day.localeCompare(a.day)).slice(0, limit);
+  }
+  async insertMoveProposal(p: Omit<T.MoveProposalRow, "id" | "ts" | "status" | "redeemSignature" | "depositSignature" | "closedAt">) {
+    if (!(p.gain30dUsd > 3 * p.costUsd)) throw new Error('new row for relation "move_proposals" violates check constraint');
+    if (await this.openMoveProposal(p.userPubkey)) return null;
+    const row: T.MoveProposalRow = { ...p, id: id(), ts: new Date(), status: "open", redeemSignature: null, depositSignature: null, closedAt: null };
+    this.moves.set(row.id, row);
+    return { ...row };
+  }
+  async openMoveProposal(userPubkey: string) {
+    const r = [...this.moves.values()].find((m) => m.userPubkey === userPubkey && m.status === "open");
+    return r ? { ...r } : null;
+  }
+  async getMoveProposal(moveId: string) {
+    const r = this.moves.get(moveId);
+    return r ? { ...r } : null;
+  }
+  async listMoveProposals(userPubkey: string, status: T.MoveStatus) {
+    const key = (m: T.MoveProposalRow) => (m.closedAt ?? m.ts).getTime();
+    return [...this.moves.values()].filter((m) => m.userPubkey === userPubkey && m.status === status).sort((a, b) => key(a) - key(b) || a.ts.getTime() - b.ts.getTime()).map((m) => ({ ...m }));
+  }
+  async transitionMoveProposal(moveId: string, from: T.MoveStatus, to: T.MoveStatus, opts?: { notInFlight?: boolean }) {
+    const m = this.moves.get(moveId);
+    if (!m || m.status !== from || (opts?.notInFlight && m.redeemSignature !== null)) return false;
+    if (to === "open" && [...this.moves.values()].some((x) => x !== m && x.userPubkey === m.userPubkey && x.status === "open"))
+      throw new Error('duplicate key value violates unique constraint "move_proposals_one_open"');
+    m.status = to;
+    if (to !== "open") m.closedAt = new Date();
+    return true;
+  }
+  async storeMoveSignatures(moveId: string, sig: { redeem: string; deposit: string }) {
+    const m = this.moves.get(moveId);
+    if (!m || m.status !== "open" || m.redeemSignature !== null) return false;
+    m.redeemSignature = sig.redeem;
+    m.depositSignature = sig.deposit;
+    return true;
+  }
+  async clearMoveSignatures(moveId: string, redeem: string) {
+    const m = this.moves.get(moveId);
+    if (!m || m.status !== "open" || m.redeemSignature !== redeem) return false;
+    m.redeemSignature = null;
+    m.depositSignature = null;
+    return true;
+  }
+  async carryCreditRaw(userPubkey: string, kind: T.CarryKind) {
+    if (kind === "SKR") return this.skrCreditRaw(userPubkey);
+    let credit = 0n;
+    for (const c of this.carry) {
+      if (c.userPubkey !== userPubkey || c.kind !== kind) continue;
+      const status = this.plantings.get(c.plantingId)?.status;
+      if (status === "confirmed") credit += c.surplusRaw ?? 0n;
+      if (status === "confirmed" || status === "sent") credit -= c.carryInRaw;
+    }
+    return credit;
+  }
+  async setPlantingSurplus(plantingId: string, kind: "WSOL" | "USDC", surplusRaw: bigint) {
+    const row = this.carry.find((c) => c.plantingId === plantingId && c.kind === kind);
+    if (row) {
+      if (row.surplusRaw === null) row.surplusRaw = surplusRaw;
+      return;
+    }
+    const p = this.plantings.get(plantingId);
+    if (p) this.carry.push({ plantingId, userPubkey: p.userPubkey, kind, carryInRaw: 0n, surplusRaw });
+  }
+  async setWalletLink(pubkey: string, l: { delegationPda: string; linkModel: T.LinkModel; dailyCapCents?: number }) {
+    const w = this.wallets.get(pubkey);
+    if (!w) return;
+    w.delegationPda = l.delegationPda;
+    w.linkModel = l.linkModel;
+    if (l.dailyCapCents !== undefined) w.dailyCapCents = l.dailyCapCents;
+  }
+  async setTermsAccepted(userPubkey: string, version: string, at: Date) {
+    const u = this.users.get(userPubkey);
+    if (!u) return;
+    u.termsVersion = version;
+    u.termsAcceptedAt = at;
   }
 
   async putNonce(n: { nonce: string; expiresAt: Date }) {
@@ -315,9 +431,16 @@ export class MemoryRepo implements Repo {
   }
 
   async insertWithdrawal(w: NewWithdrawal): Promise<T.WithdrawalRow> {
+    // Mirrors withdrawals_unstake_signature_once (0009): the same signature answers the row already there.
+    const had = w.unstakeSignature !== null ? await this.withdrawalBySignature(w.unstakeSignature) : null;
+    if (had) return had;
     const row: T.WithdrawalRow = { ...w, id: id(), unstakeTs: new Date(), withdrawSignature: null, cancelSignature: null, amountOutRaw: null, rewardDeltaRaw: null, skippedAt: null };
     this.withdrawals.set(row.id, row);
     return row;
+  }
+
+  async withdrawalBySignature(unstakeSignature: string) {
+    return [...this.withdrawals.values()].find((w) => w.unstakeSignature === unstakeSignature) ?? null;
   }
 
   /** Open rows: not delivered, not cancelled, not skipped. */

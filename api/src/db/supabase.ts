@@ -1,7 +1,9 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { Repo, NewPlanting, NewWithdrawal, NewWatcherCall } from "./repo";
+import { checkLegVenues } from "./repo";
 import type * as T from "./types";
-import type { Asset, Stop } from "@/domain/coins";
+import type { Asset, LiveAsset, LendAsset, Stop } from "@/domain/coins";
+import type { Venue } from "@/domain/venues";
 import { toSplit } from "@/domain/coins";
 import { config } from "@/lib/config";
 
@@ -95,9 +97,9 @@ export class SupabaseRepo implements Repo {
   }
 
   /** An upsert on the wallet: a re-link resets the delegation, cap, status and webhook flag; the ledger columns are untouched. */
-  async addWallet(w: { pubkey: string; userPubkey: string; delegationPda: string; dailyCapCents: number; webhookAdded?: boolean }) {
+  async addWallet(w: { pubkey: string; userPubkey: string; delegationPda: string; dailyCapCents: number; webhookAdded?: boolean; linkModel?: T.LinkModel }) {
     return this.one(this.db.from("wallets").upsert(
-      { pubkey: w.pubkey, user_pubkey: w.userPubkey, delegation_pda: w.delegationPda, daily_cap_cents: w.dailyCapCents, status: "active", webhook_added: w.webhookAdded ?? false },
+      { pubkey: w.pubkey, user_pubkey: w.userPubkey, delegation_pda: w.delegationPda, daily_cap_cents: w.dailyCapCents, status: "active", webhook_added: w.webhookAdded ?? false, ...(w.linkModel ? { link_model: w.linkModel } : {}) },
       { onConflict: "pubkey" },
     ).select().single(), walletRow);
   }
@@ -130,7 +132,7 @@ export class SupabaseRepo implements Repo {
   }
 
   /** One statement on the server (bump_ledger), so concurrent plantings never lose an increment. */
-  async bumpLedger(pubkey: string, asset: Asset, cents: number) {
+  async bumpLedger(pubkey: string, asset: LiveAsset, cents: number) {
     const { error } = await this.db.rpc("bump_ledger", { p_pubkey: pubkey, p_asset: asset, p_cents: cents });
     if (error) throw new Error(error.message);
   }
@@ -190,6 +192,7 @@ export class SupabaseRepo implements Repo {
   }
 
   async insertPlanting(p: NewPlanting, legs: Omit<T.PlantingLegRow, "plantingId">[]) {
+    checkLegVenues(legs);
     const row = await this.one(this.db.from("plantings").insert({
       user_pubkey: p.userPubkey, wallet_pubkey: p.walletPubkey, signature: p.signature, usdc_pulled_cents: p.usdcPulledCents,
       network_fee_cents: p.networkFeeCents, status: p.status, ai_line: p.aiLine, shares_before: p.sharesBefore == null ? null : p.sharesBefore.toString(),
@@ -197,13 +200,29 @@ export class SupabaseRepo implements Repo {
       // R207 #2 (0007): sent only when there is a carry, so a planting without one never depends on the column.
       ...(p.skrCarryInRaw ? { skr_carry_in_raw: p.skrCarryInRaw.toString() } : {}),
     }).select().single(), plantingRow);
-    if (legs.length) {
-      const { error } = await this.db.from("planting_legs").insert(legs.map((l) => ({
-        planting_id: row.id, asset: l.asset, usdc_in_cents: l.usdcInCents, amount_out_raw: l.amountOutRaw.toString(), staked: l.staked, fee_amount_raw: l.feeAmountRaw.toString(), fee_cents: l.feeCents, rate_at_planting: l.rateAtPlanting,
-      })));
-      if (error) throw new Error(error.message);
+    try {
+      if (legs.length) {
+        const { error } = await this.db.from("planting_legs").insert(legs.map((l) => ({
+          planting_id: row.id, asset: l.asset, usdc_in_cents: l.usdcInCents, amount_out_raw: l.amountOutRaw.toString(), staked: l.staked, fee_amount_raw: l.feeAmountRaw.toString(), fee_cents: l.feeCents, rate_at_planting: l.rateAtPlanting, venue: l.venue,
+        })));
+        if (error) throw new Error(error.message);
+      }
+      const carry = (Object.entries(p.carryIn ?? {}) as [string, bigint][]).filter(([, v]) => v > 0n);
+      if (carry.length) {
+        const { error } = await this.db.from("carry").insert(carry.map(([kind, v]) => ({ planting_id: row.id, user_pubkey: p.userPubkey, kind, carry_in_raw: v.toString() })));
+        if (error) throw new Error(error.message);
+      }
+    } catch (e) {
+      // A half-written planting must not stay `sent`: `failed` gives its carry back at once and keeps it out of listSentPlantings.
+      await this.setPlantingStatus(row.id, "failed").catch((e2) => console.error(`planting ${row.id}: not marked failed after an insert error (${e2 instanceof Error ? e2.message : String(e2)}); the reconciler gives it up later`));
+      throw e;
     }
     return row;
+  }
+
+  async plantingCarry(plantingId: string) {
+    const rows = await this.many(this.db.from("carry").select("kind, carry_in_raw").eq("planting_id", plantingId), (r) => [String(r.kind), BigInt(String(r.carry_in_raw))] as const);
+    return Object.fromEntries(rows) as Partial<Record<"WSOL" | "USDC", bigint>>;
   }
 
   async setPlantingStatus(plantingId: string, status: T.PlantingStatus, signature?: string) {
@@ -211,7 +230,7 @@ export class SupabaseRepo implements Repo {
     if (error) throw new Error(error.message);
   }
 
-  async setLegAmountOut(plantingId: string, asset: Asset, amountOutRaw: bigint) {
+  async setLegAmountOut(plantingId: string, asset: LiveAsset, amountOutRaw: bigint) {
     const { error } = await this.db.from("planting_legs").update({ amount_out_raw: amountOutRaw.toString() }).eq("planting_id", plantingId).eq("asset", asset);
     if (error) throw new Error(error.message);
   }
@@ -287,16 +306,16 @@ export class SupabaseRepo implements Repo {
     }, { onConflict: "day,asset" });
     if (error) throw new Error(error.message);
   }
-  async getCoinDay(day: string, asset: Asset) {
+  async getCoinDay(day: string, asset: LiveAsset) {
     const { data, error } = await this.db.from("coin_days").select().eq("day", day).eq("asset", asset).maybeSingle();
     if (error) throw new Error(error.message);
     return data ? coinDayRow(data as Row) : null;
   }
-  async listCoinDays(asset: Asset, sinceDay: string) {
+  async listCoinDays(asset: LiveAsset, sinceDay: string) {
     return this.many(this.db.from("coin_days").select().eq("asset", asset).gte("day", sinceDay).order("day"), coinDayRow);
   }
   async putSplitDay(r: T.SplitDayRow) {
-    const { error } = await this.db.from("split_days").upsert({ day: r.day, stop: r.stop, split: r.split, model_answer: r.modelAnswer, why: r.why, fallback: r.fallback, call_id: r.callId }, { onConflict: "day,stop" });
+    const { error } = await this.db.from("split_days").upsert({ day: r.day, stop: r.stop, split: r.split, model_answer: r.modelAnswer, why: r.why, fallback: r.fallback, call_id: r.callId, venue_pick: r.venuePick ?? null }, { onConflict: "day,stop" });
     if (error) throw new Error(error.message);
   }
   async getSplitDay(day: string, stop: Stop) {
@@ -310,6 +329,94 @@ export class SupabaseRepo implements Repo {
     const { data, error } = await q.order("day", { ascending: false }).limit(1).maybeSingle();
     if (error) throw new Error(error.message);
     return data ? splitDayRow(data as Row) : null;
+  }
+
+  async putVenueDay(r: T.VenueDayRow) {
+    const { error } = await this.db.from("venue_days").upsert({
+      day: r.day, venue: r.venue, asset: r.asset, supply_pct: r.supplyPct, rewards_pct: r.rewardsPct, utilization_pct: r.utilizationPct, withdrawable_usd: r.withdrawableUsd,
+      tvl_usd: r.tvlUsd, exchange_rate: r.exchangeRate, avg7_pct: r.avg7Pct, days_measured: r.daysMeasured, eligible: r.eligible, verdict: r.verdict, reason: r.reason, served: r.served ?? null, ok: r.ok,
+    }, { onConflict: "day,venue,asset" });
+    if (error) throw new Error(error.message);
+  }
+  async listVenueDays(day: string) {
+    return this.many(this.db.from("venue_days").select().eq("day", day), venueDayRow);
+  }
+  async listVenueHistory(venue: Venue, asset: LendAsset, sinceDay: string) {
+    return this.many(this.db.from("venue_days").select().eq("venue", venue).eq("asset", asset).gte("day", sinceDay).order("day"), venueDayRow);
+  }
+  async putFoundVenues(rows: T.FoundVenueRow[]) {
+    if (!rows.length) return;
+    const { error } = await this.db.from("found_venues").upsert(rows.map((r) => ({ day: r.day, pool_id: r.poolId, project: r.project, symbol: r.symbol, asset: r.asset, apy_base_pct: r.apyBasePct, tvl_usd: r.tvlUsd, note: r.note })), { onConflict: "day,pool_id" });
+    if (error) throw new Error(error.message);
+  }
+  async listFoundVenues(sinceDay: string, limit: number) {
+    return this.many(this.db.from("found_venues").select().gte("day", sinceDay).order("day", { ascending: false }).limit(limit), foundVenueRow);
+  }
+  async insertMoveProposal(p: Omit<T.MoveProposalRow, "id" | "ts" | "status" | "redeemSignature" | "depositSignature" | "closedAt">) {
+    const { data, error } = await this.db.from("move_proposals").insert({
+      user_pubkey: p.userPubkey, asset: p.asset, from_venue: p.fromVenue, to_venue: p.toVenue, receipt_raw: p.receiptRaw.toString(), value_usd: p.valueUsd,
+      from_avg7_pct: p.fromAvg7Pct, to_avg7_pct: p.toAvg7Pct, gain_30d_usd: p.gain30dUsd, cost_usd: p.costUsd,
+    }).select().single();
+    if (error) {
+      if (error.code === UNIQUE_VIOLATION) return null;
+      throw new Error(error.message);
+    }
+    return moveProposalRow(data as Row);
+  }
+  async openMoveProposal(userPubkey: string) {
+    const { data, error } = await this.db.from("move_proposals").select().eq("user_pubkey", userPubkey).eq("status", "open").maybeSingle();
+    if (error) throw new Error(error.message);
+    return data ? moveProposalRow(data as Row) : null;
+  }
+  async getMoveProposal(moveId: string) {
+    const { data, error } = await this.db.from("move_proposals").select().eq("id", moveId).maybeSingle();
+    if (error) throw new Error(error.message);
+    return data ? moveProposalRow(data as Row) : null;
+  }
+  async listMoveProposals(userPubkey: string, status: T.MoveStatus) {
+    return this.many(this.db.from("move_proposals").select().eq("user_pubkey", userPubkey).eq("status", status).order("closed_at", { ascending: true, nullsFirst: true }).order("ts", { ascending: true }), moveProposalRow);
+  }
+  /** One conditional UPDATE (C-I2): `where id and status = from [and redeem_signature is null]`; the returned rows say whether it won. */
+  async transitionMoveProposal(moveId: string, from: T.MoveStatus, to: T.MoveStatus, opts?: { notInFlight?: boolean }) {
+    let q = this.db.from("move_proposals").update({ status: to, ...(to !== "open" ? { closed_at: new Date().toISOString() } : {}) }).eq("id", moveId).eq("status", from);
+    if (opts?.notInFlight) q = q.is("redeem_signature", null);
+    const { data, error } = await q.select("id");
+    if (error) throw new Error(error.message);
+    return (data ?? []).length > 0;
+  }
+  async storeMoveSignatures(moveId: string, sig: { redeem: string; deposit: string }) {
+    const { data, error } = await this.db.from("move_proposals").update({ redeem_signature: sig.redeem, deposit_signature: sig.deposit })
+      .eq("id", moveId).eq("status", "open").is("redeem_signature", null).select("id");
+    if (error) throw new Error(error.message);
+    return (data ?? []).length > 0;
+  }
+  async clearMoveSignatures(moveId: string, redeem: string) {
+    const { data, error } = await this.db.from("move_proposals").update({ redeem_signature: null, deposit_signature: null })
+      .eq("id", moveId).eq("status", "open").eq("redeem_signature", redeem).select("id");
+    if (error) throw new Error(error.message);
+    return (data ?? []).length > 0;
+  }
+  /** One statement on the server (carry_credit, 0008): exact numerics, never through JS numbers. */
+  async carryCreditRaw(userPubkey: string, kind: T.CarryKind) {
+    const { data, error } = await this.db.rpc("carry_credit", { p_user: userPubkey, p_kind: kind });
+    if (error) throw new Error(error.message);
+    return BigInt(String(data ?? 0));
+  }
+  async setPlantingSurplus(plantingId: string, kind: "WSOL" | "USDC", surplusRaw: bigint) {
+    const { data, error } = await this.db.from("carry").update({ surplus_raw: surplusRaw.toString() }).eq("planting_id", plantingId).eq("kind", kind).is("surplus_raw", null).select("planting_id");
+    if (error) throw new Error(error.message);
+    if ((data ?? []).length) return;
+    const user = await this.one(this.db.from("plantings").select("user_pubkey").eq("id", plantingId).single(), (r) => String(r.user_pubkey));
+    const { error: e2 } = await this.db.from("carry").upsert({ planting_id: plantingId, user_pubkey: user, kind, carry_in_raw: "0", surplus_raw: surplusRaw.toString() }, { onConflict: "planting_id,kind", ignoreDuplicates: true });
+    if (e2) throw new Error(e2.message);
+  }
+  async setWalletLink(pubkey: string, l: { delegationPda: string; linkModel: T.LinkModel; dailyCapCents?: number }) {
+    const { error } = await this.db.from("wallets").update({ delegation_pda: l.delegationPda, link_model: l.linkModel, ...(l.dailyCapCents !== undefined ? { daily_cap_cents: l.dailyCapCents } : {}) }).eq("pubkey", pubkey);
+    if (error) throw new Error(error.message);
+  }
+  async setTermsAccepted(userPubkey: string, version: string, at: Date) {
+    const { error } = await this.db.from("users").update({ terms_version: version, terms_accepted_at: at.toISOString() }).eq("seed_vault_pubkey", userPubkey);
+    if (error) throw new Error(error.message);
   }
 
   async putNonce(n: { nonce: string; expiresAt: Date }) {
@@ -348,10 +455,24 @@ export class SupabaseRepo implements Repo {
   }
 
   async insertWithdrawal(w: NewWithdrawal) {
-    return this.one(this.db.from("withdrawals").insert({
+    const { data, error } = await this.db.from("withdrawals").insert({
       user_pubkey: w.userPubkey, asset: w.asset, source: w.source, unstake_ts: new Date().toISOString(), unstake_signature: w.unstakeSignature,
       shares_unstaked: w.sharesUnstaked.toString(), amount_raw: w.amountRaw.toString(), principal_raw: w.principalRaw.toString(),
-    }).select().single(), withdrawalRow);
+    }).select().single();
+    if (error) {
+      // K-I4: a racing post of the same signed unstake inserted first (0009's unique index): answer that row.
+      if (error.code === UNIQUE_VIOLATION && w.unstakeSignature !== null) {
+        const had = await this.withdrawalBySignature(w.unstakeSignature);
+        if (had) return had;
+      }
+      throw new Error(error.message);
+    }
+    return withdrawalRow(data as Row);
+  }
+  async withdrawalBySignature(unstakeSignature: string) {
+    const { data, error } = await this.db.from("withdrawals").select().eq("unstake_signature", unstakeSignature).maybeSingle();
+    if (error) throw new Error(error.message);
+    return data ? withdrawalRow(data as Row) : null;
   }
 
   /** Open rows: not delivered, not cancelled, not skipped [A11]. */
@@ -427,6 +548,7 @@ function userRow(r: Row): T.UserRow {
   return {
     seedVaultPubkey: String(r.seed_vault_pubkey), sgtMint: String(r.sgt_mint), skrName: str(r.skr_name), proUntil: r.pro_until ? date(r.pro_until) : null, createdAt: date(r.created_at),
     wateredAt: r.watered_at ? date(r.watered_at) : null, joinedShares: big(r.joined_shares) ?? 0n, joinedSharePrice: big(r.joined_share_price) ?? 0n,
+    termsVersion: str(r.terms_version), termsAcceptedAt: r.terms_accepted_at ? date(r.terms_accepted_at) : null,
   };
 }
 
@@ -448,17 +570,38 @@ export function walletRow(r: Row): T.WalletRow {
   return {
     pubkey: String(r.pubkey), userPubkey: String(r.user_pubkey), delegationPda: String(r.delegation_pda), dailyCapCents: Number(r.daily_cap_cents),
     status: r.status as T.WalletStatus, webhookAdded: Boolean(r.webhook_added), ledgerCents: { ...((r.ledger_cents as Record<string, number> | null) ?? {}) }, createdAt: date(r.created_at),
+    linkModel: (r.link_model as T.LinkModel) ?? "puller",
   };
 }
 
+const num = (v: unknown) => (v === null || v === undefined ? null : Number(v));
 export function legRow(r: Row): T.PlantingLegRow {
   return {
     plantingId: String(r.planting_id), asset: r.asset as Asset, usdcInCents: Number(r.usdc_in_cents), amountOutRaw: BigInt(String(r.amount_out_raw)),
     staked: Boolean(r.staked), feeAmountRaw: BigInt(String(r.fee_amount_raw ?? 0)), feeCents: Number(r.fee_cents ?? 0),
     rateAtPlanting: r.rate_at_planting === null || r.rate_at_planting === undefined ? null : Number(r.rate_at_planting),
+    venue: (r.venue as T.PlantingLegRow["venue"]) ?? null,
   };
 }
-const num = (v: unknown) => (v === null || v === undefined ? null : Number(v));
+export function venueDayRow(r: Row): T.VenueDayRow {
+  return {
+    day: String(r.day), venue: r.venue as T.VenueDayRow["venue"], asset: r.asset as T.VenueDayRow["asset"], supplyPct: num(r.supply_pct), rewardsPct: num(r.rewards_pct),
+    utilizationPct: num(r.utilization_pct), withdrawableUsd: num(r.withdrawable_usd), tvlUsd: num(r.tvl_usd), exchangeRate: num(r.exchange_rate), avg7Pct: num(r.avg7_pct),
+    daysMeasured: Number(r.days_measured ?? 0), eligible: Boolean(r.eligible), verdict: (r.verdict as T.VenueDayRow["verdict"]) ?? null, reason: (r.reason as T.VenueDayRow["reason"]) ?? null,
+    served: r.served ?? null, ok: Boolean(r.ok),
+  };
+}
+function foundVenueRow(r: Row): T.FoundVenueRow {
+  return { day: String(r.day), poolId: String(r.pool_id), project: String(r.project), symbol: String(r.symbol), asset: r.asset as "USDC" | "SOL", apyBasePct: num(r.apy_base_pct), tvlUsd: num(r.tvl_usd), note: str(r.note) };
+}
+export function moveProposalRow(r: Row): T.MoveProposalRow {
+  return {
+    id: String(r.id), userPubkey: String(r.user_pubkey), ts: date(r.ts), asset: r.asset as T.MoveProposalRow["asset"], fromVenue: r.from_venue as T.MoveProposalRow["fromVenue"],
+    toVenue: r.to_venue as T.MoveProposalRow["toVenue"], receiptRaw: BigInt(String(r.receipt_raw)), valueUsd: Number(r.value_usd), fromAvg7Pct: Number(r.from_avg7_pct),
+    toAvg7Pct: Number(r.to_avg7_pct), gain30dUsd: Number(r.gain_30d_usd), costUsd: Number(r.cost_usd), status: r.status as T.MoveStatus,
+    redeemSignature: str(r.redeem_signature), depositSignature: str(r.deposit_signature), closedAt: r.closed_at ? date(r.closed_at) : null,
+  };
+}
 export function coinDayRow(r: Row): T.CoinDayRow {
   return {
     day: String(r.day), asset: r.asset as Asset, rate: num(r.rate), ratePrev: num(r.rate_prev), ratePrevDays: num(r.rate_prev_days), priceUsd: num(r.price_usd),
@@ -469,6 +612,7 @@ export function splitDayRow(r: Row): T.SplitDayRow {
   return {
     day: String(r.day), stop: r.stop as Stop, split: toSplit(r.split as Record<string, number>), modelAnswer: r.model_answer ?? null,
     why: str(r.why), fallback: str(r.fallback), callId: num(r.call_id),
+    venuePick: (r.venue_pick as T.SplitDayRow["venuePick"]) ?? null,
   };
 }
 function eventRow(r: Row): T.EventRow {
