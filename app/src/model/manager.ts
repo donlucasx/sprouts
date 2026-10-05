@@ -23,8 +23,7 @@ export const PIN_STEP = 5;
 
 export const SWITCH_LABEL = "Yield Manager";
 /** R348: the one line under the Yield Manager switch on Rules (replaces R178's). */
-export const MANAGER_LINE =
-  "Each morning, AI picks how your new change is split, leaning toward the coins paying more, within the limit you choose below. It never sells what you hold.";
+export const MANAGER_LINE = "Each morning, AI splits your new change toward the coins paying more. It never sells what you hold.";
 /** R347: the manager is branded Pro and included for everyone during launch. */
 export const PRO_BADGE = "Pro";
 export const PRO_LINE = "Included free during launch.";
