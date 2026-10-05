@@ -26,6 +26,8 @@ const chainPre = new Map<string, bigint>();
 const simPost = new Map<string, bigint>();
 /** Task 12 (measured on mainnet 10-04): an account the transaction CLOSES comes back from simulateTransaction as lamports 0, System-owned, 0 data bytes, not null. */
 const simClosed = new Set<string>();
+/** Task 12 review M1: a 0-byte account that still holds lamports (not a close): its lamports here. */
+const simClosedLamports = new Map<string, bigint>();
 const simCalls: string[][] = [];
 const stakes: bigint[] = [];
 const postIx: Instruction = { programAddress: address("rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ"), accounts: [], data: new Uint8Array([7]) };
@@ -38,7 +40,7 @@ vi.mock("@/lib/rpc", () => ({ rpc: () => ({
   getMultipleAccounts: (addrs: string[], cfg?: { encoding?: string }) => ({ send: async () => ({ value: addrs.map((a) => (a === ALT_ADDR && cfg?.encoding === "jsonParsed"
     ? { data: { parsed: { info: { addresses: altContent, authority: null, deactivationSlot: "18446744073709551615", lastExtendedSlot: "0", lastExtendedSlotStartIndex: 0 }, type: "lookupTable" }, program: "address-lookup-table", space: 56n + 32n * BigInt(altContent.length) }, executable: false, lamports: 1n, owner: "AddressLookupTab1e1111111111111111111111111", space: 56n + 32n * BigInt(altContent.length) }
     : chainPre.has(a) ? { data: [tokenAcct(chainPre.get(a)!), "base64"] } : null)) }) }),
-  simulateTransaction: (_tx: string, cfg: { accounts: { addresses: string[] } }) => ({ send: async () => { simCalls.push(cfg.accounts.addresses); return { value: { err: null, logs: [], unitsConsumed: 1n, accounts: cfg.accounts.addresses.map((a) => (simClosed.has(a) ? { lamports: 0n, owner: "11111111111111111111111111111111", data: ["", "base64"] } : simPost.has(a) ? { data: [tokenAcct(simPost.get(a)!), "base64"] } : null)) } }; } }),
+  simulateTransaction: (_tx: string, cfg: { accounts: { addresses: string[] } }) => ({ send: async () => { simCalls.push(cfg.accounts.addresses); return { value: { err: null, logs: [], unitsConsumed: 1n, accounts: cfg.accounts.addresses.map((a) => (simClosed.has(a) ? { lamports: simClosedLamports.get(a) ?? 0n, owner: "11111111111111111111111111111111", data: ["", "base64"] } : simPost.has(a) ? { data: [tokenAcct(simPost.get(a)!), "base64"] } : null)) } }; } }),
 }) }));
 vi.mock("@/lib/subscriptions", () => ({ buildTransferRecurringIx: vi.fn(async () => ({ programAddress: "De1egAFMkMWZSN5rYXRj9CAdheBamobVNubTsi9avR44", accounts: [], data: new Uint8Array([5]) })) }));
 vi.mock("@/lib/staking", async (orig) => {
@@ -356,7 +358,7 @@ describe("buildPlantingTx, unleashed SKR and wallet coins (R207 #2, #4; restored
 
 describe("simulatePlanting: the delivery account and every watched account, before and after (restored + watched)", () => {
   beforeEach(async () => {
-    puller = await generateKeyPairSigner(); simCalls.length = 0; chainPre.clear(); simPost.clear(); simClosed.clear();
+    puller = await generateKeyPairSigner(); simCalls.length = 0; chainPre.clear(); simPost.clear(); simClosed.clear(); simClosedLamports.clear();
     altContent = await sproutsAltAddresses(puller.address);
     process.env.SPROUTS_ALT = ALT_ADDR;
   });
@@ -408,6 +410,20 @@ describe("simulatePlanting: the delivery account and every watched account, befo
     const s = await simulatePlanting(b);
     expect(s.watched?.[jl]).toEqual({ pre: 0n, post: null });
     expect(s.delivery).toEqual({ pre: 0n, post: 830_000n });
+  });
+  it("Task 12 review M1: a 0-byte account reads closed ONLY at the puller's jl account with lamports 0; anywhere else, or with lamports, it throws", async () => {
+    const b = await buildPlantingTx({ ...base, asset: "USDC_LEND", venue: "jupiter_lend", leashed: false, carryIn: {} });
+    const [usdc, , , jl] = b.watched;
+    expect(jl).toBe(b.pullerJl);
+    // The USDC float comes back 0-byte: a misreported read must not pass the float guard as "absent".
+    chainPre.set(usdc, 9n); simClosed.add(usdc); chainPre.set(jl, 0n); simClosed.add(jl); simPost.set(b.deliveryAccount, 830_000n);
+    await expect(simulatePlanting(b)).rejects.toThrow();
+    // The jl account 0-byte but still holding lamports: not a close either.
+    simClosed.delete(usdc); simPost.set(usdc, 9n); simClosedLamports.set(jl, 2_039_280n);
+    await expect(simulatePlanting(b)).rejects.toThrow();
+    // Positive control: lamports 0 at the jl account is the close.
+    simClosedLamports.delete(jl);
+    expect((await simulatePlanting(b)).watched?.[jl]).toEqual({ pre: 0n, post: null });
   });
   it("a watched account absent before and present after reads pre null, post its amount", async () => {
     const b = await buildPlantingTx({ ...base, asset: "USDC_LEND", venue: "jupiter_lend", leashed: false, carryIn: {} });
