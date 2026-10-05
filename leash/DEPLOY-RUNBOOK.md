@@ -39,11 +39,13 @@ cd ~/Documents/claude/seekerhackathon/build/sprouts && git status --porcelain &&
 Expected: nothing from `git status`, then one line: the commit the coordinator named for this deploy. (After A6 you will
 have edited `leash/GATES.md`; then `git status` shows ` M leash/GATES.md`. That is expected.)
 
-**A2. Rebuild the program**
+**A2. Rebuild the program (the verifiable build, in docker)**
 ```
-cd ~/Documents/claude/seekerhackathon/build/sprouts/leash && mkdir -p target && bash -c '. scripts/sbf.sh && sbf_build program/Cargo.toml target/build-leash.log quiet' && cargo test -q -p leash-tests --test golden 2>&1 | grep -E '^test result|FAILED'
+cd ~/Documents/claude/seekerhackathon/build/sprouts/leash && colima start && mkdir -p target && bash -c '. scripts/sbf.sh && verify_build target/build-leash.log quiet' && cargo test -q -p leash-tests --test golden 2>&1 | grep -E '^test result|FAILED'
 ```
-Expected: `test result: ok. 3 passed; 0 failed; 2 ignored; ...`. A3 then checks that the rebuilt file is the tested one.
+Expected: colima's start lines (or that it is already running), then `test result: ok. 4 passed; 0 failed; 2 ignored; ...`.
+The build runs `solana-verify build` in the pinned Agave 3.1.11 image (about a minute the first time). A3 then checks that
+the rebuilt file is the tested one. If it says `VERIFY BUILD`: docker or solana-verify is missing; stop and send the output.
 
 **A3. Pre-check (read-only: sends nothing)**
 ```
@@ -178,10 +180,20 @@ cd ~/Documents/claude/seekerhackathon/build/sprouts/leash && ./scripts/check-con
 Expected: one `step 1/1 set_header confirmed <sig>` line, then `on-chain Config OK: legs [...] enabled, puller <NEW>`.
 Then the old puller secret is removed from the server and destroyed (Kimi #10), per API D8.
 
-**C4. Later, not for Oct 6: a verifiable build (Kimi F5 / final review I3).** A `solana-verify build` runs in docker and
-gives different bytes from this machine's build, so publishing a verified build means a program upgrade. It goes with the
-Squads migration after Oct 8 (owner ruling pending): rebuild with `solana-verify build`, upgrade, then
-`solana-verify verify-from-repo` and record its output in `leash/GATES.md`. Nothing in Parts A-C changes for it.
+**C4. After the deploy: check the verifiable build against the chain (read-only)**
+
+Only after A5 passed, and after the coordinator has pushed the deployed commit (the one A1 printed) to GitHub. It clones
+the public repo at that commit, rebuilds `leash/` in the same pinned docker image, and compares the result with the
+program on mainnet. `--current-dir` makes it clone into a temporary folder under `sprouts/` (removed when it ends):
+colima only shares your home folder with docker, so the default clone in `/tmp` fails with `chdir to cwd ("/build//program/")`.
+Put the A1 commit in place of `<COMMIT>`:
+```
+cd ~/Documents/claude/seekerhackathon/build/sprouts && colima start && solana-verify verify-from-repo --current-dir -u mainnet-beta --program-id GyBmDLN72kg6xwAnZfj9c7fjeaJ3GvhkHNhFns83f8f7 https://github.com/donlucasx/sprouts --commit-hash <COMMIT> --library-name leash --mount-path leash --base-image solanafoundation/solana-verifiable-build@sha256:4687aba06e83923eb01b550451335fcf452c9feb9c70f309ba75a8e683a482c2
+```
+Expected: the build output, then `Executable Program Hash from repo: b124e7bfbef68713339c694c957dde1582414517ac3fd25f6332d77aabadecf1`,
+`On-chain Program Hash: b124e7bf...` (the same) and `Program hash matches`. It then asks whether to upload the verification
+data on chain: answer `n` (that upload is a transaction from ADMIN, a separate decision). Copy the hash lines into
+`leash/GATES.md`, "Mainnet deploy record", C4. A mismatch: stop and send the output.
 
 ---
 
@@ -210,8 +222,17 @@ Squads migration after Oct 8 (owner ruling pending): rebuild with `solana-verify
   buffer + program data succeeded), so ADMIN never holds out more than about 0.367 SOL. `--max-len 70000` sizes the
   program data (CLI 3.1.11's default is the exact .so size, measured); 4,072 B of headroom for a small fix costs 0.0207 SOL.
 - A2 runs only the golden tests: on main the venue fixtures (git-ignored) are absent, so `scripts/test.sh` would fail there.
-  The full suite passed in the leash worktree (112 passed, 3 ignored), and a fresh clone of the branch rebuilt leash.so to
-  the same sha256 (3b80a294...), which A3 checks.
+  Verifiable build (owner ruling R334, replaces the earlier "later" C4): leash.so is built by `solana-verify build` 0.5.2
+  (`scripts/sbf.sh` `verify_build`) in `solanafoundation/solana-verifiable-build:3.1.11`, pinned by digest
+  `sha256:4687aba0...82c2` (Agave 3.1.11, platform-tools v1.52, the same toolchain as the local build). Two fresh clones
+  built the same bytes: sha256 04f7ac04...ffb9, 65,928 B (executable hash b124e7bf...ecf1). This machine's earlier local
+  build (3b80a294...65e5) is the same size but other bytes and is NOT deployed. The full suite (114 passed, 3 ignored),
+  the fork gate and the mutation sweep ran against the verified bytes (GATES.md "Release"); A3 checks the hash.
+  C4 was rehearsed on a local test validator holding the verified .so at the program id (2026-10-04): `Program hash
+  matches`, then `n` at the upload prompt (`Exiting without uploading the program.`).
+  On this Mac docker is colima (`colima start`); solana-verify is `~/.cargo/bin/solana-verify`. Keep no clone of the repo
+  under `leash/` (for example in `target/`): `solana-verify build` builds the first crate named `leash` it finds, and
+  `verify_build` stops if that is not `leash/program`.
 - Gates: legs 2, 6, 7 are enabled from their GATES rows (leg 2: Task 7 actual-deposit PASS supersedes its S2 FAIL; leg 7:
   S4 max age 280 s in `api/spikes/RESULTS.md`). Contracts 8 invariant 3 (one simulated leashed planting per enabled leg)
   can only run on an enabled leg (the program answers LegDisabled 6015 otherwise), so it gates the relink and go-live
