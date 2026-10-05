@@ -121,62 +121,100 @@ cd ~/Documents/claude/seekerhackathon/build/sprouts/leash && ./scripts/check-con
 Expected: `chain enabled legs []; config/mainnet-init.hex enabled legs []` and
 `Config matches config/mainnet-init.hex byte for byte (...)`. `MISMATCH`: stop and send the output.
 
-**B3. Which legs turn on today: 1 (stORE) only if its ORE price sample passed, plus 2 (USDC on K-Lend), 6 (hSOL), 7 (cbBTC)**
+**B3. Which legs turn on today: the base 2 (USDC on K-Lend), 6 (hSOL), 7 (cbBTC), plus 1 (stORE) and 3 (USDC on Jupiter Lend) only if each passed its own check**
 
 Every priced leg reads only its sponsored Pyth price account (pinned in the Config). Legs 2, 6, 7 passed their gates in
-`leash/GATES.md` (cbBTC also its price-age sample: 280 s at most, under the 600 s limit). Leg 1 (stORE) turns on today
-only if stORE's S4 ORE price-age sample has passed (owner ruling R339): in `leash/GATES.md`, the row `1 stORE` of the
-second table says `PASS` in its S4 column (`ORE max age` 55 s or less), and the coordinator confirms it. Legs 0, 3, 4, 5
-stay off.
+`leash/GATES.md` (cbBTC also its price-age sample: 280 s at most, under the 600 s limit). Two more legs join Day 1, each on
+its own check, and the coordinator confirms each one to you:
 
-- S4 passed: use **B4 line A** (legs 1, 2, 6, 7) and **B5 line A**.
-- S4 not passed, or you are not sure: use **B4 line B** (legs 2, 6, 7) and **B5 line B**. Leg 1 can be added later in C2.
+- Leg 1 (stORE, owner ruling R339): its S4 ORE price-age sample passed. In `leash/GATES.md`, the row `1 stORE` of the second
+  table says `PASS` in its S4 column (`ORE max age` 55 s or less). This is API plan D7 step 5 (`api/spikes/RESULTS.md`).
+- Leg 3 (USDC on Jupiter Lend, owner ruling R343): its D7 leashed mainnet simulation passed, that is, its
+  `USDC_LEND:jupiter_lend` line says `ok=true` (API plan D7). It also needs the Sprouts ALT live, which it is, from API D2.
 
-If the coordinator tells you one of 2, 6, 7 failed a gate, leave it out of B4 (for example `--enable 1,2,6`) and in B5 use
-the `legs` line with that same list (for example `./scripts/check-config.sh legs 1,2,6`).
+Legs 0, 4, 5 stay off. Leg 0 (SKR) never.
 
-**B4. Turn on the Day-1 legs (run ONE of these two lines)**
+Pick the list that matches those two answers, then use the matching B4 and B5 line:
 
-Line A, stORE's sample passed (4 transactions):
-```
-cd ~/Documents/claude/seekerhackathon/build/sprouts/api && pnpm tsx scripts/leash-admin.ts set --enable 1,2,6,7 --admin ~/.config/solana/sprouts-admin.json
-```
-Expected: `step 1/4 set_leg 1 confirmed <sig> (436 B)`, `step 2/4 set_leg 2 confirmed <sig> (436 B)`,
-`step 3/4 set_leg 6 confirmed <sig> (436 B)`, `step 4/4 set_leg 7 confirmed <sig> (436 B)`, then `Config matches ...`.
+| stORE (1) passed? | USDC Jupiter Lend (3) passed? | Legs to enable | B4 / B5 line |
+|---|---|---|---|
+| no or unsure | no or unsure | 2,6,7 | line A |
+| yes | no or unsure | 1,2,6,7 | line B |
+| no or unsure | yes | 2,3,6,7 | line C |
+| yes | yes | 1,2,3,6,7 | line D |
 
-Line B, stORE's sample not passed (3 transactions):
+If the coordinator tells you one of 2, 6, 7 failed a gate, leave it out of the list in B4 (for example `--enable 1,2,6`) and in B5
+use the `legs` line with that same list (for example `./scripts/check-config.sh legs 1,2,6`).
+
+**B4. Turn on the Day-1 legs (run ONE of these four lines)**
+
+Line A, legs 2, 6, 7 (3 transactions):
 ```
 cd ~/Documents/claude/seekerhackathon/build/sprouts/api && pnpm tsx scripts/leash-admin.ts set --enable 2,6,7 --admin ~/.config/solana/sprouts-admin.json
 ```
 Expected: `step 1/3 set_leg 2 confirmed <sig> (436 B)`, `step 2/3 set_leg 6 confirmed <sig> (436 B)`,
 `step 3/3 set_leg 7 confirmed <sig> (436 B)`, then `Config matches ...`.
 
+Line B, legs 1, 2, 6, 7 (4 transactions):
+```
+cd ~/Documents/claude/seekerhackathon/build/sprouts/api && pnpm tsx scripts/leash-admin.ts set --enable 1,2,6,7 --admin ~/.config/solana/sprouts-admin.json
+```
+Expected: `step 1/4 set_leg 1 confirmed <sig> (436 B)`, `step 2/4 set_leg 2 confirmed <sig> (436 B)`,
+`step 3/4 set_leg 6 confirmed <sig> (436 B)`, `step 4/4 set_leg 7 confirmed <sig> (436 B)`, then `Config matches ...`.
+
+Line C, legs 2, 3, 6, 7 (4 transactions):
+```
+cd ~/Documents/claude/seekerhackathon/build/sprouts/api && pnpm tsx scripts/leash-admin.ts set --enable 2,3,6,7 --admin ~/.config/solana/sprouts-admin.json
+```
+Expected: `step 1/4 set_leg 2 confirmed <sig> (436 B)`, `step 2/4 set_leg 3 confirmed <sig> (436 B)`,
+`step 3/4 set_leg 6 confirmed <sig> (436 B)`, `step 4/4 set_leg 7 confirmed <sig> (436 B)`, then `Config matches ...`.
+
+Line D, legs 1, 2, 3, 6, 7 (5 transactions):
+```
+cd ~/Documents/claude/seekerhackathon/build/sprouts/api && pnpm tsx scripts/leash-admin.ts set --enable 1,2,3,6,7 --admin ~/.config/solana/sprouts-admin.json
+```
+Expected: `step 1/5 set_leg 1 confirmed <sig> (436 B)`, `step 2/5 set_leg 2 confirmed <sig> (436 B)`,
+`step 3/5 set_leg 3 confirmed <sig> (436 B)`, `step 4/5 set_leg 6 confirmed <sig> (436 B)`,
+`step 5/5 set_leg 7 confirmed <sig> (436 B)`, then `Config matches ...`.
+
 If it stops: rerun the same line.
 
 **B5. Final check (read-only; the line that matches the B4 line you ran)**
 
-Line A (you ran B4 line A, legs 1, 2, 6, 7):
-```
-cd ~/Documents/claude/seekerhackathon/build/sprouts/leash && ./scripts/check-config.sh legs 1,2,6,7
-```
-Expected: `on-chain Config OK: legs [1, 2, 6, 7] enabled, puller <the current puller>` and `test result: ok. 1 passed`.
-
-Line B (you ran B4 line B, legs 2, 6, 7: this is the file `config/mainnet-day1.hex`):
+Line A (you ran B4 line A, legs 2, 6, 7: this is the file `config/mainnet-day1.hex`):
 ```
 cd ~/Documents/claude/seekerhackathon/build/sprouts/leash && ./scripts/check-config.sh day1
 ```
 Expected: `chain enabled legs [2, 6, 7]; config/mainnet-day1.hex enabled legs [2, 6, 7]` and
 `Config matches config/mainnet-day1.hex byte for byte (1488 B body, magic, version 1, bump 255, owner = leash)`.
 
-Then, for either line:
+Line B (you ran B4 line B, legs 1, 2, 6, 7):
+```
+cd ~/Documents/claude/seekerhackathon/build/sprouts/leash && ./scripts/check-config.sh legs 1,2,6,7
+```
+Expected: `on-chain Config OK: legs [1, 2, 6, 7] enabled, puller <the current puller>` and `test result: ok. 1 passed`.
+
+Line C (you ran B4 line C, legs 2, 3, 6, 7):
+```
+cd ~/Documents/claude/seekerhackathon/build/sprouts/leash && ./scripts/check-config.sh legs 2,3,6,7
+```
+Expected: `on-chain Config OK: legs [2, 3, 6, 7] enabled, puller <the current puller>` and `test result: ok. 1 passed`.
+
+Line D (you ran B4 line D, legs 1, 2, 3, 6, 7):
+```
+cd ~/Documents/claude/seekerhackathon/build/sprouts/leash && ./scripts/check-config.sh legs 1,2,3,6,7
+```
+Expected: `on-chain Config OK: legs [1, 2, 3, 6, 7] enabled, puller <the current puller>` and `test result: ok. 1 passed`.
+
+Then, for any of the four:
 ```
 cd ~/Documents/claude/seekerhackathon/build/sprouts/api && pnpm tsx scripts/leash-admin.ts show --admin ~/.config/solana/sprouts-admin.json
 ```
-Expected: `leg 2 ON`, `leg 6 ON`, `leg 7 ON`, and `leg 1 ON` only after line A; every other leg `off`, no `UNSET` line.
-`MISMATCH`, a failed test, or a leg ON that you did not turn on: stop and send the output.
+Expected: `leg 2 ON`, `leg 6 ON`, `leg 7 ON`, `leg 1 ON` only after line B or D, `leg 3 ON` only after line C or D; every other
+leg `off`, no `UNSET` line. `MISMATCH`, a failed test, or a leg ON that you did not turn on: stop and send the output.
 
 **B6. Write it down**
-In `leash/GATES.md`: each leg's `set_leg` signature in its "Enabled on chain" cell (legs 1, 2, 6, 7, or 2, 6, 7), and the B1 signatures in
+In `leash/GATES.md`: each leg's `set_leg` signature in its "Enabled on chain" cell (the legs you turned on in B4), and the B1 signatures in
 "Mainnet deploy record". The next session commits it.
 
 ---
@@ -194,15 +232,15 @@ cd ~/Documents/claude/seekerhackathon/build/sprouts/leash && ./scripts/check-con
 
 **C2. Day 2: one more leg at a time, only when the coordinator says its gates passed**
 
-The list is the FULL list that should be on: the legs on now plus the new one. Leg 0 (SKR) is never in the list.
-For example, adding leg 3 (USDC on Jupiter Lend) after B4 line A (legs 1, 2, 6, 7 on):
+Legs 1 (stORE) and 3 (USDC on Jupiter Lend) are Day-1 legs now (B3), so Day 2 is for legs 4 and 5 (SOL lending) only. The
+list is the FULL list that should be on: the legs on now plus the new one. Leg 0 (SKR) is never in the list.
+For example, adding leg 4 after B4 line A (legs 2, 6, 7 on):
 ```
-cd ~/Documents/claude/seekerhackathon/build/sprouts/api && pnpm tsx scripts/leash-admin.ts set --enable 1,2,3,6,7 --admin ~/.config/solana/sprouts-admin.json
-cd ~/Documents/claude/seekerhackathon/build/sprouts/leash && ./scripts/check-config.sh legs 1,2,3,6,7
+cd ~/Documents/claude/seekerhackathon/build/sprouts/api && pnpm tsx scripts/leash-admin.ts set --enable 2,4,6,7 --admin ~/.config/solana/sprouts-admin.json
+cd ~/Documents/claude/seekerhackathon/build/sprouts/leash && ./scripts/check-config.sh legs 2,4,6,7
 ```
-Expected: one `set_leg 3 confirmed` line, then `on-chain Config OK: legs [1, 2, 3, 6, 7] enabled, ...` and
-`test result: ok. 1 passed`. After B4 line B (legs 2, 6, 7 on), the same example is `--enable 2,3,6,7` and `legs 2,3,6,7`;
-leg 1 (stORE) is added the same way, only once its S4 ORE price sample has passed (for example `--enable 1,2,6,7`).
+Expected: one `set_leg 4 confirmed` line, then `on-chain Config OK: legs [2, 4, 6, 7] enabled, ...` and
+`test result: ok. 1 passed`. After another B4 line, put that line's legs plus the new one in both places.
 
 **C3. Go-live only (after D7 is green for every enabled leg): new puller (one transaction)**
 
@@ -277,7 +315,7 @@ data on chain: answer `n` (that upload is a transaction from ADMIN, a separate d
   S4 max age 280 s in `api/spikes/RESULTS.md`); leg 1 on Day 1 only when its S4 ORE price-age sample passed (R339). Contracts 8 invariant 3 (one simulated leashed planting per enabled leg)
   can only run on an enabled leg (the program answers LegDisabled 6015 otherwise), so it gates the relink and go-live
   (API D7, D8), not the enable; a leg that fails it is turned off in C1. Legs 4, 5 also need S1; leg 1 the ORE sample;
-  leg 3 is a Day-2 leg in GATES; leg 0 has no price source (R324). Nothing moves money before go-live: no delegation names
+  leg 3 joins Day 1 when its D7 leashed simulation passes (R343), like leg 1 after its S4 sample; leg 0 has no price source (R324). Nothing moves money before go-live: no delegation names
   the leash until then (contracts 8.3).
 - `leash-admin.ts` exit codes: 0 matched, 1 simulation failed, 2 a tx over 1,232 B, 3 the final read differs; a send error
   (dropped tx, RPC) throws and is resumed by rerunning the same line.
