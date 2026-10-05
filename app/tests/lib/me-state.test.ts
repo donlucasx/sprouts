@@ -8,6 +8,7 @@ import {
   pauseState,
   coinRows,
   statTiles,
+  valueBlock,
   walletsLine,
   lastPlantingLine,
 } from '@/lib/me-state'
@@ -237,5 +238,26 @@ describe('gardenTotals: put in follows the holdings (audit finding 7, R159)', ()
       history: { plantings: [{ asset: 'SKR', usdcInCents: 65 }, { asset: 'hSOL', usdcInCents: 203 }], picks: [] },
     } as unknown as MeResponse
     expect(gardenTotals(me).putInCents).toBe(166)
+  })
+})
+
+// R355 (10-05, "Value on top"): Home's one compact block under the status line, "$420.69 / in your garden" with Put in and Earned small.
+describe('valueBlock (R355)', () => {
+  it('the whole garden in dollars, the label, Put in and Earned beside it, one spoken line', () => {
+    expect(valueBlock({ valueUsd: 420.69, earnedUsd: 25.69, putInCents: 39500 }, 1n)).toEqual({
+      big: '$420.69',
+      label: 'in your garden',
+      side: [
+        { label: 'Put in', value: '$395.00' },
+        { label: 'Earned', value: '$25.69' },
+      ],
+      a11y: '$420.69 in your garden. Put in $395.00. Earned $25.69.',
+    })
+  })
+  it('no price known: the staked SKR is the big number (grouped), Earned left out', () => {
+    const b = valueBlock({ valueUsd: null, earnedUsd: null, putInCents: 1000 }, 12_980_460_000n)
+    expect(b.big).toBe('12,980.46 SKR')
+    expect(b.side).toEqual([{ label: 'Put in', value: '$10.00' }])
+    expect(b.a11y).toBe('12,980.46 SKR in your garden. Put in $10.00.')
   })
 })
