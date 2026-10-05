@@ -24,9 +24,9 @@ import { PauseRow } from '@/components/PauseRow'
 import { RelinkCard } from '@/components/RelinkCard'
 import { MoveCard } from '@/components/MoveCard'
 import { termsNeeded, termsSummary } from '@/lib/terms'
-import { arrivalLine, formatUsd, formatSkr, formatAsOf } from '@/lib/format'
+import { arrivalLine, formatSkr, formatAsOf } from '@/lib/format'
 import { useSession } from '@/lib/session'
-import { gardenTotals, pauseState, coinRows, statTiles, walletsLine, lastPlantingLine } from '@/lib/me-state'
+import { gardenTotals, pauseState, coinRows, valueBlock, walletsLine, lastPlantingLine } from '@/lib/me-state'
 import { setPaused } from '@/lib/pause-api'
 import { freshWalletSignIn } from '@/lib/reauth'
 import { identity } from '@/lib/identity'
@@ -149,7 +149,7 @@ export default function Home() {
   const skrUsd = me.pot.skrUsd
   const name = me.user.skrName
   const staked = BigInt(me.pot.skrStakedRaw)
-  const totals = gardenTotals(me)
+  const value = valueBlock(gardenTotals(me), staked)
   const pause = pauseState(me.wallets)
   // R96, R184 and R186: the one line and the can decided together, so they always agree; the can is in colour only while a bud waits.
   // R186: the Next planting row draws inside the garden (directly under it, the can at its bar's end). R199: the line rides in that
@@ -216,6 +216,35 @@ export default function Home() {
       {pause.shown ? (
         <PauseRow on={pause.on} line={pause.line} busy={pausing} error={pauseError} onChange={togglePaused} />
       ) : null}
+      {/* R355 (10-05, "Value on top", his pick): the money in one compact block right under the status line, above the garden: the
+          whole garden in dollars big with "in your garden" under it, Put in and Earned small on the right (R146, R150's numbers). */}
+      <View style={{ gap: spacing.xs }}>
+        <View accessible accessibilityLabel={value.a11y} style={{ flexDirection: 'row', alignItems: 'flex-end', gap: spacing.md }}>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <ThemedText variant="display" numeric numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5}>
+              {value.big}
+            </ThemedText>
+            <ThemedText variant="label" tone="secondary">
+              {value.label}
+            </ThemedText>
+          </View>
+          <View style={{ alignItems: 'flex-end', gap: 2, flexShrink: 0, maxWidth: '50%' }}>
+            {value.side.map((t) => (
+              <ThemedText key={t.label} variant="label" tone="secondary" numeric numberOfLines={1}>
+                {`${t.label} `}
+                <ThemedText variant="label" numeric>
+                  {t.value}
+                </ThemedText>
+              </ThemedText>
+            ))}
+          </View>
+        </View>
+        {stale && asOf ? (
+          <ThemedText variant="caption" tone="error">
+            {formatAsOf(asOf, now)}, the chain could not be read just now.
+          </ThemedText>
+        ) : null}
+      </View>
       <RelinkCard me={me} />
       {termsNeeded(me) ? (
         <Card>
@@ -251,41 +280,14 @@ export default function Home() {
         )}
       />
       {watcher.line ? receipt() : null}
-      {/* R199: one small step more than the screen's gap before the pot card, so the garden section reads as one block above it. */}
+      {/* R199: one small step more than the screen's gap before the coins card, so the garden section reads as one block above it. */}
       {/* R236 (10-04, his note): closer under the Last planting row; the row's own touch height already leaves room */}
       <Card style={{ marginTop: -spacing.xs }}>
-        {/* R146 and R150: the whole garden in dollars, two stat tiles, then one row per coin; no sentences. */}
-        <ThemedText variant="label" tone="secondary">
-          In your garden
-        </ThemedText>
-        <ThemedText variant="display" numeric>
-          {totals.valueUsd === null ? formatSkr(staked, null) : formatUsd(Math.round(totals.valueUsd * 100))}
-        </ThemedText>
-        <View style={{ flexDirection: 'row', gap: spacing.sm }}>
-          {statTiles(totals).map((t) => (
-            <View
-              key={t.label}
-              style={{
-                flex: 1,
-                backgroundColor: colors.background,
-                borderRadius: radius.md,
-                padding: spacing.md,
-                gap: 2,
-              }}
-            >
-              <ThemedText variant="label" tone="secondary">
-                {t.label}
-              </ThemedText>
-              <ThemedText variant="heading" numeric>
-                {t.value}
-              </ThemedText>
-            </View>
-          ))}
-        </View>
+        {/* R146 and R150: one row per coin, no sentences; R355 moved the total, Put in and Earned to the block above the garden. */}
         {/* R230 (his note, "a more familiar portfolio look, like coinmarketcap's"): one row per coin, the token and the full name with
             the amount under it on the left, the dollars with the coin's status under them on the right; hairlines between rows.
             Replaces R198/R205's one-line rows (the lead rows' larger face goes: every row now has the same two lines). */}
-        <View style={{ marginTop: spacing.xs }}>
+        <View>
           {coinRows(me).map((r, i) => (
             <View
               key={r.key}
@@ -331,11 +333,6 @@ export default function Home() {
             </View>
           ))}
         </View>
-        {stale && asOf ? (
-          <ThemedText variant="caption" tone="error">
-            {formatAsOf(asOf, now)}, the chain could not be read just now.
-          </ThemedText>
-        ) : null}
         <Link href="/withdraw" asChild>
           <Button title="Withdraw" kind="quiet" onPress={() => {}} />
         </Link>
