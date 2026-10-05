@@ -72,7 +72,7 @@ function Bud({ g, plant, ox, oy, call, res }: { g: Closed; plant: PlantOnStage["
 /** R351: a mandarin sprout unfolding into its leaf pair (no crossfade): the open twig's own stem and two leaves, each in its own view,
  * moved by one clock `u` (0 to 1, linear; model/sprout.ts eases each phase). The stem view sits on the node and scales along the
  * stem's axis from the nub; each leaf view sits on the leaf's open anchor, its sprite drawn upright at the open scale, and the view
- * carries it to the stem's moving tip, turns it out and widens it. At u = 1 every view is the identity: the static twig. */
+ * carries it to the stem's moving tip, turns it out and widens it. At u = 1 the views draw the static twig's geometry exactly. */
 function Unfurl({ stem: s, leaves, ox, oy, delay, ms, res }: { stem: Extract<Placed, { kind: "stem" }>; leaves: Extract<Placed, { kind: "sprite" }>[]; ox: number; oy: number; delay: number; ms: number; res: number }) {
   const u = useSharedValue(0);
   useEffect(() => { u.value = 0; u.value = withDelay(delay, withTiming(1, { duration: ms, easing: Easing.linear })); }, [u, delay, ms]);
@@ -117,10 +117,6 @@ export function Plant({ p, footX, footY, sway, gust, gustDelay, reduced, items: 
     <Animated.View style={[{ position: "absolute", left: footX - W / 2, top: footY - H, width: W, height: H + BELOW, transformOrigin: [W / 2, H, 0] }, swayStyle]} pointerEvents="none">
       {items.map((it) => {
         const q = p.layout.parts[it.part];
-        if (it.kind === "unfurl" && !reduced && q?.kind === "stem") {
-          const leaves = it.leaves.map((i) => p.layout.parts[i]).filter((l): l is Extract<Placed, { kind: "sprite" }> => l?.kind === "sprite");
-          return <Unfurl key={key(it)} stem={q} leaves={leaves} ox={W / 2} oy={H} delay={it.delay} ms={it.ms} res={res} />;
-        }
         return it.kind === "stem" && q?.kind === "stem" ? <StemReveal key={key(it)} s={q} ox={W / 2} oy={H} delay={it.delay} ms={it.ms} reduced={reduced} /> : null;
       })}
       <HiSvg width={W} height={H + BELOW} res={res}>
@@ -137,6 +133,12 @@ export function Plant({ p, footX, footY, sway, gust, gustDelay, reduced, items: 
           })}
         </G>
       </HiSvg>
+      {reduced ? null : items.map((it) => {   // R351: over the static parts (the leaves are z 2, as the closed sprout's call view is)
+        const q = p.layout.parts[it.part];
+        if (it.kind !== "unfurl" || q?.kind !== "stem") return null;
+        const leaves = it.leaves.map((i) => p.layout.parts[i]).filter((l): l is Extract<Placed, { kind: "sprite" }> => l?.kind === "sprite");
+        return <Unfurl key={key(it)} stem={q} leaves={leaves} ox={W / 2} oy={H} delay={it.delay} ms={it.ms} res={res} />;
+      })}
       {call ? buds.map((g) => <Bud key={`bud-${g.parts[0].shoot ?? g.px}`} g={g} plant={p.plant} ox={W / 2} oy={H} call={call} res={res} />) : null}
     </Animated.View>
   );

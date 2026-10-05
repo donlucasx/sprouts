@@ -74,15 +74,16 @@ export default function Home() {
   // R351's device check, DEV builds only: the dev menu's "Grow a bud" adds a local SKR bud; the can then waters it locally (nothing is sent)
   const [devBud, setDevBud] = useState<DevBud | null>(null)
   useEffect(() => {
-    if (typeof __DEV__ === 'undefined' || !__DEV__) return
-    void import('expo-dev-menu')
-      .then(({ registerDevMenuItems }) =>
-        registerDevMenuItems([
-          { name: 'Grow a bud (SKR, local)', callback: () => setDevBud({ budAt: new Date(Date.now() - 1000), wateredAt: null }), shouldCollapse: true },
-          { name: 'Clear the dev bud', callback: () => setDevBud(null), shouldCollapse: true },
-        ]),
-      )
-      .catch(() => {})
+    if (typeof __DEV__ !== 'undefined' && __DEV__) {
+      void import('expo-dev-menu')
+        .then(({ registerDevMenuItems }) =>
+          registerDevMenuItems([
+            { name: 'Grow a bud (SKR, local)', callback: () => setDevBud({ budAt: new Date(Date.now() - 1000), wateredAt: null }), shouldCollapse: true },
+            { name: 'Clear the dev bud', callback: () => setDevBud(null), shouldCollapse: true },
+          ]),
+        )
+        .catch(() => {})
+    }
   }, [])
   const scene = useMemo(
     () => (me ? buildScene(withDevBud(toGardenInput(me, now, wateredPlantsFor(me.user.wateredAt)), devBud)) : null),
