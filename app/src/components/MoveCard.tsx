@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { View } from 'react-native'
-import { getBase58Decoder, type Signature, type Transaction } from '@solana/kit'
+import { getBase58Decoder, type Address, type Signature, type Transaction } from '@solana/kit'
 import { useMobileWallet } from '@wallet-ui/react-native-kit'
 import { Card } from './Card'
 import { Button } from './Button'
@@ -9,7 +9,7 @@ import { api, ApiError, type MeResponse } from '@/lib/api'
 import { makeBatchSigner, SignRefused } from '@/lib/sign'
 import { useInvalidateMe } from '@/lib/me'
 import { MOVE_FAILED, MOVED_LINE, moveAtTap, moveCopy, MoveSent, type MoveBuild } from '@/lib/moves'
-import { partialUnwrap, UNWRAP_BUTTON, UNWRAP_DONE, UNWRAP_FAILED, UNWRAP_NOT_SENT, UNWRAP_SENT, unwrapAtTap, unwrapRetryable } from '@/lib/unwrap'
+import { partialUnwrap, UNWRAP_BUTTON, UNWRAP_DONE, UNWRAP_FAILED, UNWRAP_SENT, unwrapAfterError, unwrapAtTap, wsolAccount } from '@/lib/unwrap'
 import { oneAtATime } from '@/lib/withdraw-flow'
 import { spacing } from '@/theme'
 
@@ -81,15 +81,15 @@ export function MoveCard({ me }: { me: MeResponse }) {
       else setLine({ text: UNWRAP_SENT, error: false })
       void invalidate()
     } catch (e) {
-      // Nothing was sent (a refusal, a decline, a cancelled sheet): the button stays while the blockhash can still land.
-      if (e instanceof SignRefused) {
-        setUnwrap(null)
-        setLine({ text: e.message, error: true })
-      } else if (unwrapRetryable(Date.now() - unwrapAt)) setLine({ text: UNWRAP_NOT_SENT, error: true })
-      else {
-        setUnwrap(null)
-        setLine({ text: UNWRAP_FAILED, error: true })
-      }
+      // Read state, not the error (unwrapAfterError): only a refusal or the wallet's explicit decline means nothing was sent.
+      const r = await unwrapAfterError({
+        error: e,
+        ageMs: Date.now() - unwrapAt,
+        accountExists: async () => (await client.rpc.getAccountInfo((await wsolAccount(me.user.pubkey)) as Address, { encoding: 'base64' }).send()).value !== null,
+      })
+      if (!r.keepButton) setUnwrap(null)
+      setLine({ text: r.text, error: r.error })
+      if (r.invalidate) void invalidate()
     } finally {
       setUnwrapping(false)
       gate.leave()
