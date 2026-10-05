@@ -112,6 +112,10 @@ describe("checkLeashInstructions: exactly one pull and one later settle, matchin
     const alias = await pair({ swapReceipt: true });
     expect(() => checkLeashInstructions([alias.pull, alias.settle], want)).toThrow(/accounts/);
     expect(() => checkLeashInstructions([pull, settle], { ...want, amountRaw: 1n })).toThrow(/amount/);
+    // Fix round 1 (I1): a pair built consistently for USER, checked as if for WALLET: only the pa[3] binding catches it.
+    expect(() => checkLeashInstructions([pull, settle], { ...want, user: WALLET })).toThrow(/another user/);
+    // Fix round 1 (minor 3): GUARD:MIN_OUT_ZERO mirrored.
+    expect(() => checkLeashInstructions([pull, settle], { ...want, minOutRaw: 0n })).toThrow(/min_out is 0/);
   });
 });
 
@@ -255,18 +259,30 @@ describe("byte-for-byte against the leash program (feat/leash-program)", () => {
   });
   // leash/tests/tests/unit_floor.rs, verbatim (floor_vectors, store_donation_halves_the_floor, the two error tests).
   it("floorRaw answers the program's unit_floor vectors", () => {
-    const f = (amount: bigint, rn: bigint, rd: bigint, p: [bigint, number] | null, fee: number, tol: number, dec: number) =>
-      floorRaw({ leg: 0, amountRaw: amount, rn, rd, priceLow: p ? p[0] : null, exponent: p ? p[1] : null, feeBps: fee, tolBps: tol, underlyingDecimals: dec });
-    expect(f(5_000_000n, 1n, 1n, [6_500_000_000_000n, -8], 50, 100, 8)).toBe(7_577n);
-    expect(f(2_000_000n, 1_200_000_000_000n, 1_000_000_000_000n, null, 0, 10, 6)).toBe(1_665_000n);
-    expect(f(1_000_001n, 1_200_001n, 1_000_000n, null, 0, 10, 6)).toBe(832_500n);
-    expect(f(5_000_000n, 11_551n, 10n, [1_499_000n, -4], 0, 150, 9)).toBe(28_444n);
-    expect(f(1_000_000n, 1_149_090_094n, 1_000_000_000n, [1_990_000n, -8], 50, 100, 6)).toBe(43_075_376n);
-    expect(f(5_000_000n, 1_250_000_000n, 1_000_000_000n, [15_000_000_000n, -8], 50, 100, 9)).toBe(26_266_667n);
-    expect(f(5_000_000n, 1_051_100_000n, 1_000_000_000n, [13_100_000_000n, -8], 50, 100, 11)).toBe(3_576_769_085n);
-    expect(f(5_000_000n, 2_102_200_000n, 1_000_000_000n, [13_100_000_000n, -8], 50, 100, 11)).toBe(1_788_384_543n);
-    expect(() => f(5_000_000n, 0n, 1_000_000n, null, 0, 10, 6)).toThrow(/BadReader/);
-    expect(() => f(5_000_000n, 1_000_000n, 0n, null, 0, 10, 6)).toThrow(/BadReader/);
-    expect(() => f((1n << 64n) - 1n, 1n, ((1n << 128n) - 1n) / 2n, [1n, -12], 0, 0, 11)).toThrow(/Overflow/);
+    // The leg picks the branch (Fix round 1, I2): unpriced vectors run as leg 2, priced ones as the leg they describe.
+    const f = (leg: LeashLegByte, amount: bigint, rn: bigint, rd: bigint, p: [bigint, number] | null, fee: number, tol: number, dec: number) =>
+      floorRaw({ leg, amountRaw: amount, rn, rd, priceLow: p ? p[0] : null, exponent: p ? p[1] : null, feeBps: fee, tolBps: tol, underlyingDecimals: dec });
+    expect(f(7, 5_000_000n, 1n, 1n, [6_500_000_000_000n, -8], 50, 100, 8)).toBe(7_577n);
+    expect(f(2, 2_000_000n, 1_200_000_000_000n, 1_000_000_000_000n, null, 0, 10, 6)).toBe(1_665_000n);
+    expect(f(2, 1_000_001n, 1_200_001n, 1_000_000n, null, 0, 10, 6)).toBe(832_500n);
+    expect(f(4, 5_000_000n, 11_551n, 10n, [1_499_000n, -4], 0, 150, 9)).toBe(28_444n);
+    expect(f(0, 1_000_000n, 1_149_090_094n, 1_000_000_000n, [1_990_000n, -8], 50, 100, 6)).toBe(43_075_376n);
+    expect(f(6, 5_000_000n, 1_250_000_000n, 1_000_000_000n, [15_000_000_000n, -8], 50, 100, 9)).toBe(26_266_667n);
+    expect(f(1, 5_000_000n, 1_051_100_000n, 1_000_000_000n, [13_100_000_000n, -8], 50, 100, 11)).toBe(3_576_769_085n);
+    expect(f(1, 5_000_000n, 2_102_200_000n, 1_000_000_000n, [13_100_000_000n, -8], 50, 100, 11)).toBe(1_788_384_543n);
+    expect(() => f(2, 5_000_000n, 0n, 1_000_000n, null, 0, 10, 6)).toThrow(/BadReader/);
+    expect(() => f(2, 5_000_000n, 1_000_000n, 0n, null, 0, 10, 6)).toThrow(/BadReader/);
+    expect(() => f(1, (1n << 64n) - 1n, 1n, ((1n << 128n) - 1n) / 2n, [1n, -12], 0, 0, 11)).toThrow(/Overflow/);
+    // Fix round 1 (minor 4): the negative margin is Overflow (checked_sub), p_low 0 is PriceConfidence.
+    expect(() => f(7, 5_000_000n, 1n, 1n, [6_500_000_000_000n, -8], 100, 9_901, 8)).toThrow(/Overflow/);
+    expect(() => f(7, 5_000_000n, 1n, 1n, [0n, -8], 50, 100, 8)).toThrow(/PriceConfidence/);
+  });
+  it("Fix round 1 (I2): the leg, not the price's presence, picks the formula; a price must be positive", () => {
+    const base = { amountRaw: 2_000_000n, rn: 1_189_400_000n, rd: 1_000_000_000n, feeBps: 50, tolBps: 100, underlyingDecimals: 9 };
+    expect(() => floorRaw({ ...base, leg: 6, priceLow: null, exponent: null })).toThrow(/BadPriceAccount.*priced and has no price/);
+    expect(() => floorRaw({ ...base, leg: 6, priceLow: 12_137_000_000n, exponent: null })).toThrow(/BadPriceAccount/);
+    expect(() => floorRaw({ ...base, leg: 2, priceLow: 100_000_000n, exponent: -8, feeBps: 0, tolBps: 10, underlyingDecimals: 6 })).toThrow(/BadPriceAccount.*unpriced and got a price/);
+    expect(() => floorRaw({ ...base, leg: 6, priceLow: -12_137_000_000n, exponent: -8 })).toThrow(/PriceConfidence/);
+    expect(floorRaw({ ...base, leg: 6, priceLow: 12_137_000_000n, exponent: -8 })).toBe(13_646_678n);
   });
 });
