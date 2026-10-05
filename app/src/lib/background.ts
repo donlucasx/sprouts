@@ -7,11 +7,12 @@ import { refreshWidget } from "./widget-refresh";
 import { normalizeMe } from "./me-state";
 import { noticesFor } from "./notices";
 import { readNotify } from "./prefs";
+import { coalesce } from "./coalesce";
 
 const TASK = "sprouts-refresh";
 
 /** Every 15 minutes or so (Android decides): read the pot; say what changed since the last read (R161: plantings, a delivered withdrawal, the manager's move, the daily limit) and refresh the widget. */
-TaskManager.defineTask(TASK, async () => {
+TaskManager.defineTask(TASK, coalesce(async () => {
   try {
     const before = readLastMe();
     const me = normalizeMe(await api<MeResponse>("/api/me"));
@@ -22,7 +23,7 @@ TaskManager.defineTask(TASK, async () => {
   } catch {
     return BackgroundTask.BackgroundTaskResult.Failed;
   }
-});
+}));
 
 export async function registerBackgroundRefresh() {
   await BackgroundTask.registerTaskAsync(TASK, { minimumInterval: 15 });
