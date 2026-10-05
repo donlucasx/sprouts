@@ -2,6 +2,7 @@ import type { Repo } from "@/db/repo";
 import type { PlantingLegRow, PlantingRow, WalletRow } from "@/db/types";
 import { rulesRowToRules } from "@/db/types";
 import { pickAsset, type Asset } from "@/domain/allocation";
+import { COINS, isLendAsset, type LiveAsset } from "@/domain/coins";
 import { dayOf } from "@/domain/day";
 import { capLeftCents, plantAmountCents } from "@/domain/cap";
 
@@ -9,7 +10,6 @@ import { capLeftCents, plantAmountCents } from "@/domain/cap";
 export const NETWORK_FEE_CENTS = 3;
 const USDC_PER_CENT = 10_000n;
 const CONCURRENCY = 8;
-const FEE_BPS = 50;
 /** After this many build failures in a row the run stops: that is a Jupiter or RPC outage, not a wallet problem. */
 const OUTAGE_AFTER = 3;
 /** A `sent` planting younger than this may still be in flight from a concurrent run; older ones are reconciled. */
@@ -29,7 +29,7 @@ export type Chain = {
   /** 0n when the wallet has no USDC account; throws on an RPC error (which must not read as "no USDC"). */
   usdcBalanceRaw(owner: string): Promise<bigint>;
   /** Builds and signs; the signature is known before anything is sent. */
-  buildPlantingTx(a: { delegator: string; user: string; asset: Asset; pullRaw: bigint; feeBps: number; delegationPda: string; skrCarryRaw?: bigint }): Promise<Built>;
+  buildPlantingTx(a: { delegator: string; user: string; asset: LiveAsset; pullRaw: bigint; delegationPda: string; skrCarryRaw?: bigint }): Promise<Built>;
   simulatePlanting(built: Built): Promise<Simulation>;
   /** Sends and waits for confirmation; may throw after the transaction has landed (a dropped websocket), so the caller checks. */
   sendPlanting(built: Built): Promise<void>;
@@ -289,25 +289,34 @@ async function plantOneOrThrow(a: { repo: Repo; now: Date; chain: Chain }, w: Wa
   const carryFor = (asset: Asset) => (asset === "SKR" && credit > 0n ? credit : 0n);
 
   let asset = pickAsset(w.ledgerCents, rules.allocation);
-  const attempt = async (asset: Asset) => {
+  const attempt = async (asset: LiveAsset) => {
     const carry = carryFor(asset);
-    const built = await a.chain.buildPlantingTx({ delegator: w.pubkey, user: w.userPubkey, asset, pullRaw: BigInt(amount.pullCents) * USDC_PER_CENT, feeBps: FEE_BPS, delegationPda: w.delegationPda, ...(carry > 0n ? { skrCarryRaw: carry } : {}) });
+    const built = await a.chain.buildPlantingTx({ delegator: w.pubkey, user: w.userPubkey, asset, pullRaw: BigInt(amount.pullCents) * USDC_PER_CENT, delegationPda: w.delegationPda, ...(carry > 0n ? { skrCarryRaw: carry } : {}) });
     const sim = await a.chain.simulatePlanting(built);
     const short = sim.ok ? deliveryShortfall(sim, built, asset, carry) : null;
     return { built, sim: short ? { ...sim, ok: false, err: { delivery: short } } : sim };
   };
-  let { built, sim } = await attempt(asset).then((r) => {
+  const outcome = await attempt(asset).then((r) => {
     if (asset !== "SKR" && !r.sim.ok) throw new Error(`simulation: ${JSON.stringify(r.sim.err)} ${r.sim.logs.slice(-2).join(" | ")}`);
     return r;
   }).catch(async (e: unknown) => {
     // A non-SKR leg that will not build or simulate must not freeze the wallet (the picker would choose it again tomorrow) nor
     // count toward the outage stop: plant SKR today and say which coin fell back (spec 7.3; the ORE plan's finding 4, generalised).
     if (asset === "SKR") throw e;
+    if (isLendAsset(asset)) {
+      // Spec 2: a lending leg that fails to build or simulate does NOT fall back to SKR (that planting would pay the 0.5% on money
+      // meant to be free); this wallet's planting waits for the next run.
+      console.error(`${asset} leg for ${w.pubkey} failed (${message(e)}); skipped today`);
+      await a.repo.addEvent({ userPubkey: w.userPubkey, walletPubkey: w.pubkey, kind: "leg_skipped", detail: { asset, err: message(e) } });
+      return null;
+    }
     console.error(`${asset} leg for ${w.pubkey} failed (${message(e)}); planting SKR instead`);
     await a.repo.addEvent({ userPubkey: w.userPubkey, walletPubkey: w.pubkey, kind: "leg_fallback", detail: { asset, err: message(e) } });
     asset = "SKR";
     return attempt(asset);
   });
+  if (!outcome) return { wallet: w.pubkey, reason: "leg failed" };
+  const { built, sim } = outcome;
   if (!sim.ok) {
     console.error(`planting for ${w.pubkey} failed simulation: ${JSON.stringify(sim.err)} ${sim.logs.slice(-2).join(" | ")}`);
     await a.repo.addEvent({ userPubkey: w.userPubkey, walletPubkey: w.pubkey, kind: "pull_failed", detail: { stage: "simulate", err: sim.err, logs: sim.logs.slice(-5) } });
@@ -330,7 +339,7 @@ async function plantOneOrThrow(a: { repo: Repo; now: Date; chain: Chain }, w: Wa
   const rateAtPlanting = (await a.repo.getCoinDay(dayOf(a.now), asset))?.rate ?? null;
   const planting = await a.repo.insertPlanting(
     { userPubkey: w.userPubkey, walletPubkey: w.pubkey, signature: built.signature, usdcPulledCents: amount.pullCents, networkFeeCents: NETWORK_FEE_CENTS, status: "sent", aiLine: null, sharesBefore, ts: a.now, ...(carryFor(asset) > 0n ? { skrCarryInRaw: carryFor(asset) } : {}) },
-    [{ asset, usdcInCents: amount.changeCents, amountOutRaw: built.minOutRaw, staked: asset === "SKR", feeAmountRaw: 0n, feeCents: Math.round((amount.pullCents * FEE_BPS) / 10_000), rateAtPlanting }],
+    [{ asset, usdcInCents: amount.changeCents, amountOutRaw: built.minOutRaw, staked: asset === "SKR", feeAmountRaw: 0n, feeCents: Math.round((amount.pullCents * COINS[asset].feeBps) / 10_000), rateAtPlanting }],
   );
   // R207 #2: the carry is reserved by the row just written; if another run spent the same remainder meanwhile, the user's credit is
   // now below zero and this planting stands down before claiming or sending (a failed read stands down too).

@@ -39,7 +39,7 @@ import { SKR_MINT } from "@/lib/constants";
 import { COINS } from "@/domain/coins";
 
 const USER = address("52vzF8A1qEL7qTY7HiRnvTrXSMN4FkTANZ1DYKQBiF6e");
-const base = { delegator: address("DdpHknAJvVsG8HYTAN3ZmSLLiPh2GfXP2pMoJJFa1p9m"), user: USER, pullRaw: 2_000_000n, feeBps: 50, delegationPda: address("ADaL11LqTrsaqMh5XkyVGV6nE2wPdvPaR7GgFSvvJWuD") };
+const base = { delegator: address("DdpHknAJvVsG8HYTAN3ZmSLLiPh2GfXP2pMoJJFa1p9m"), user: USER, pullRaw: 2_000_000n, delegationPda: address("ADaL11LqTrsaqMh5XkyVGV6nE2wPdvPaR7GgFSvvJWuD") };
 
 describe("buildPlantingTx (R207 #2, #4)", () => {
   beforeEach(async () => { puller = await generateKeyPairSigner(); stakes.length = 0; checks.length = 0; });

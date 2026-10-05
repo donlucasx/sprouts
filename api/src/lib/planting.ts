@@ -13,7 +13,7 @@ import { pullerSigner } from "./puller";
 import { rpc } from "./rpc";
 import { config } from "./config";
 import { USDC_MINT, SKR_MINT, WSOL_MINT } from "./constants";
-import { COINS, type Asset } from "@/domain/coins";
+import { COINS, type Asset, type LiveAsset } from "@/domain/coins";
 
 
 export type BuiltPlanting = {
@@ -41,29 +41,39 @@ export async function coinAccountInstructions(a: { asset: Asset; payer: Transact
 }
 
 /**
+ * R266, contracts 3.2: the 0.5% rides only on the four coin legs. A lending leg's quote carries no platformFeeBps and its swap no
+ * feeAccount: Jupiter answers 400 "platformFee must be greater than 0 when feeAccount is set" (Claude audit F1), which the run
+ * used to turn into a charged SKR planting.
+ */
+export async function swapFeeParams(asset: LiveAsset): Promise<{ platformFeeBps?: number; feeAccount?: Address }> {
+  const bps = COINS[asset].feeBps;
+  if (bps === 0) return {};
+  const [feeAccount] = await findAssociatedTokenPda({ owner: address(config().feeWallet), mint: USDC_MINT, tokenProgram: TOKEN_PROGRAM_ADDRESS });
+  return { platformFeeBps: bps, feeAccount };
+}
+
+/**
  * The planting: one versioned transaction the puller signs alone. Pull USDC from the trading wallet, swap it on Jupiter with the
  * 0.5% fee taken in USDC on the input side (R105), deliver the coin (SKR into the puller's account and then the stake keyed by
  * the Seed Vault key; every other coin straight into the user's own token account). If any step fails, nothing moves.
  * The SKR stake takes the quote's minimum plus `skrCarryRaw`, the same user's slippage remainder from earlier SKR plantings that
  * still sits in the puller's account (spec 3.2 step 4; security audit R207 #2); the run decides it, the ledger is in plant-run.
  */
-export async function buildPlantingTx(a: { delegator: Address; user: Address; asset: Asset; pullRaw: bigint; feeBps: number; delegationPda: Address; skrCarryRaw?: bigint }): Promise<BuiltPlanting> {
+export async function buildPlantingTx(a: { delegator: Address; user: Address; asset: LiveAsset; pullRaw: bigint; delegationPda: Address; skrCarryRaw?: bigint }): Promise<BuiltPlanting> {
   const puller = await pullerSigner();
   const coin = COINS[a.asset];
-  const feeWallet = address(config().feeWallet);
-  // R105: the fee account is the fee wallet's USDC token account, the same for every coin, created once by hand.
-  const [feeAccount] = await findAssociatedTokenPda({ owner: feeWallet, mint: USDC_MINT, tokenProgram: TOKEN_PROGRAM_ADDRESS });
+  const fee = await swapFeeParams(a.asset);
   // Direct routes only for SKR (one hop); the other coins route through two pools.
-  const quote = await getQuote({ inputMint: USDC_MINT, outputMint: coin.mint, amountRaw: a.pullRaw, platformFeeBps: a.feeBps, maxAccounts: 24, onlyDirectRoutes: a.asset === "SKR" });
+  const quote = await getQuote({ inputMint: USDC_MINT, outputMint: coin.mint, amountRaw: a.pullRaw, maxAccounts: 24, onlyDirectRoutes: a.asset === "SKR", ...(fee.platformFeeBps ? { platformFeeBps: fee.platformFeeBps } : {}) });
   checkQuoteMints(quote, { inputMint: USDC_MINT, outputMint: coin.mint });
   const [userAta] = await findAssociatedTokenPda({ owner: a.user, mint: coin.mint, tokenProgram: TOKEN_PROGRAM_ADDRESS });
   const destination = coin.held === "wallet" ? userAta : undefined;
-  const swap = await getSwapInstructions({ quote, userPublicKey: puller.address, feeAccount, ...(destination ? { destinationTokenAccount: destination } : {}) });
+  const swap = await getSwapInstructions({ quote, userPublicKey: puller.address, ...(fee.feeAccount ? { feeAccount: fee.feeAccount } : {}), ...(destination ? { destinationTokenAccount: destination } : {}) });
   // Nothing from the network is signed unchecked: the aggregator, each decoded helper instruction, the signers, the fee account,
   // and where the swap delivers (R207 #4): the user's token account for a wallet coin, the puller's own SKR account for SKR.
   const [wsolAccount] = await findAssociatedTokenPda({ owner: puller.address, mint: WSOL_MINT, tokenProgram: TOKEN_PROGRAM_ADDRESS });
   const delivers = destination ?? (coin.held === "staked" ? await skrAta(puller.address) : undefined);
-  checkSwapInstructions(swap, { puller: puller.address, feeAccount, wsolAccount, ...(delivers ? { destination: delivers } : {}), ...(destination ? { destinationOwner: a.user } : {}) });
+  checkSwapInstructions(swap, { puller: puller.address, ...(fee.feeAccount ? { feeAccount: fee.feeAccount } : {}), wsolAccount, ...(delivers ? { destination: delivers } : {}), ...(destination ? { destinationOwner: a.user } : {}) });
   const minOutRaw = BigInt(quote.otherAmountThreshold);
 
   const ixs: Instruction[] = [
