@@ -4,6 +4,7 @@ import { api, type MeResponse } from "./api";
 import { readLastMe, writeLastMe } from "./me";
 import { notify } from "./notify";
 import { refreshWidget } from "./widget-refresh";
+import { normalizeMe } from "./me-state";
 import { noticesFor } from "./notices";
 import { readNotify } from "./prefs";
 
@@ -13,7 +14,7 @@ const TASK = "sprouts-refresh";
 TaskManager.defineTask(TASK, async () => {
   try {
     const before = readLastMe();
-    const me = await api<MeResponse>("/api/me");
+    const me = normalizeMe(await api<MeResponse>("/api/me"));
     writeLastMe(me);
     for (const n of noticesFor(before, me, readNotify)) await notify(n.title, n.body);
     await refreshWidget(me);

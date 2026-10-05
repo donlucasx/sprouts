@@ -1,16 +1,25 @@
+import { createContext, useContext, useEffect } from "react";
 import { G, Path, Circle, ClipPath, Defs, Image as SvgImage, Rect, Text as SvgText } from "react-native-svg";
 import { SPRITES } from "./sprites";
 import { stemPaths, spriteTransform } from "@/model/paint";
 import { COLORS, SOIL, type Placed, type PlantId } from "@/model/species";
-import { SIGN_LABEL, SIGN_TEXT } from "@/model/layout";
+import { boardXOf, LEND_SIGN, SIGN_TEXT, type SignLines } from "@/model/layout";
 import { SOIL_CLIP_ID, soilClipPath, type GroundPlace } from "@/model/soil-clip";
 import { FONT } from "@/theme/tokens";
 
 export const INK = SOIL.ink; export const WATER = SOIL.water; export const OCHRE = SOIL.front;
 /** A baked sprite placed by its anchor; `xScale` (the succulent's slender blades, the spruce's arms) scales x apart from y. */
+/** What a sprite reports to whoever wants to know the pictures are in (the splash waits on it): its name on `start` when it mounts, and on `done` when
+ * its PNG loaded (the native event comes once per distinct picture, not per instance) (react-native-svg's Image has no onError: a PNG that never loads is the splash's cap to cut). Outside a Garden that provides it, nothing is reported. */
+export type SpriteLoad = { start: (name: string) => void; done: (name: string) => void };
+export const SpriteLoadContext = createContext<SpriteLoad | null>(null);
 export function SpriteAt({ name, x, y, rot = 0, scale = 1, xScale }: { name: string; x: number; y: number; rot?: number; scale?: number; xScale?: number }) {
-  const m = SPRITES[name]; if (!m) return null;
-  return <G transform={spriteTransform(m, x, y, rot, scale, xScale ?? scale)}><SvgImage href={m.src} width={m.w} height={m.h} /></G>;
+  const load = useContext(SpriteLoadContext);
+  const m = SPRITES[name];
+  useEffect(() => { if (m) load?.start(name); }, [load, m, name]);
+  if (!m) return null;
+  const done = () => load?.done(name);
+  return <G transform={spriteTransform(m, x, y, rot, scale, xScale ?? scale)}><SvgImage href={m.src} width={m.w} height={m.h} onLoad={done} /></G>;
 }
 /** A painted stem: gen03's three layers as paths. */
 export function PaintedStem({ s }: { s: Extract<Placed, { kind: "stem" }> }) {
@@ -45,13 +54,24 @@ export function Seed({ index }: { index: number }) {   // gen01 seeds(): alterna
   const dx = (index % 2 ? 1 : -1) * (3 + 2.4 * Math.floor(index / 2)), dy = -1.2 * (index % 3);
   return <SpriteAt name="seed" x={dx} y={dy} rot={((index * 37) % 60) - 30} />;
 }
-/** R168: the painted board (one blank bake for all six) and the coin's word over it in Albert Sans, dark ink, crisp at any zoom. */
-export function Sign({ plant, scale }: { plant: PlantId; scale: number }) {
+/** R168: the painted board (one blank bake for all six) and the words over it in Albert Sans, dark ink, crisp at any zoom. R262: a
+ * lending stake's board is drawn LEND_SIGN.boardX wide with two lines (contracts 7.2). */
+export function Sign({ lines, scale }: { lines: SignLines; scale: number }) {
+  const text = (y: number, size: number, words: string) => (
+    <SvgText x={0} y={y} fontSize={size} fontFamily={FONT.label} fill={INK} textAnchor="middle">{words}</SvgText>
+  );
   return (
     <G>
-      <SpriteAt name="sign" x={0} y={0} rot={0} scale={scale} />
+      <SpriteAt name="sign" x={0} y={0} rot={0} scale={scale} xScale={scale * boardXOf(lines)} />
       <G transform={`scale(${scale}) rotate(${SIGN_TEXT.rot})`}>
-        <SvgText x={0} y={SIGN_TEXT.y} fontSize={SIGN_TEXT.size} fontFamily={FONT.label} fill={INK} textAnchor="middle">{SIGN_LABEL[plant]}</SvgText>
+        {lines.line2 ? (
+          <>
+            {text(LEND_SIGN.y1, LEND_SIGN.size1, lines.line1)}
+            {text(LEND_SIGN.y2, LEND_SIGN.size2, lines.line2)}
+          </>
+        ) : (
+          text(SIGN_TEXT.y, SIGN_TEXT.size, lines.line1)
+        )}
       </G>
     </G>
   );

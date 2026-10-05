@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { withdrawAtTap, REPLANNED, AMOUNT_CHANGED, type WithdrawPlan } from '@/lib/withdraw-flow'
+import { withdrawAtTap, oneAtATime, REPLANNED, AMOUNT_CHANGED, type WithdrawPlan } from '@/lib/withdraw-flow'
 
 const plan = (transaction: string, prunes = false, amountRaw = '1000000', shares = '1'): WithdrawPlan => ({ transaction, shares, amountRaw, prunes, brief: [] })
 
@@ -37,5 +37,31 @@ describe('withdrawAtTap (round 3, item 7: build at the tap)', () => {
     const confirm = vi.fn(async () => {})
     await expect(withdrawAtTap({ request: { mode: 'earned' }, shown: plan('stale'), build: async () => plan('fresh'), sign: () => async () => { throw new Error('declined') }, confirm })).rejects.toThrow('declined')
     expect(confirm).not.toHaveBeenCalled()
+  })
+})
+
+describe('oneAtATime (T8 review Minor 2: two presses in one frame start one withdraw)', () => {
+  it('lets the first caller in and turns the second away until the first leaves', () => {
+    const gate = oneAtATime()
+    expect(gate.enter()).toBe(true)
+    expect(gate.enter()).toBe(false)
+    gate.leave()
+    expect(gate.enter()).toBe(true)
+  })
+  it('two taps started before either awaits run the action once', async () => {
+    const gate = oneAtATime()
+    const action = vi.fn(async () => {})
+    const tap = async () => {
+      if (!gate.enter()) return
+      try {
+        await action()
+      } finally {
+        gate.leave()
+      }
+    }
+    await Promise.all([tap(), tap()])
+    expect(action).toHaveBeenCalledTimes(1)
+    await tap()
+    expect(action).toHaveBeenCalledTimes(2)
   })
 })

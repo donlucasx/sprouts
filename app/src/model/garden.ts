@@ -1,5 +1,5 @@
-import type { Asset, Split } from "@/lib/coins";
-import { ROW_OF, signSide, slotsFor } from "./layout";
+import type { LiveAsset, Split } from "@/lib/coins";
+import { ROW_OF, signLabel, signSide, slotsFor, type LendSignLines, type SignLines } from "./layout";
 import { branchFlags, pupsByCount, stageOf } from "./plant-geometry";
 import { PLANT_SPECIES, type Band, type PlantId, type Species, type Stage } from "./species";
 export type { PlantId } from "./species";
@@ -9,21 +9,23 @@ export type GardenInput = {
   /** R249: the plants the last watering opened (the app records them as it waters, lib/last-watering.ts); absent (another phone's
    * watering, the widget before a record), the plants planted in the week before it stand for them (a bud seldom waits longer). */
   wateredPlants?: PlantId[] | null;
-  plantings: { id: string; ts: Date; asset: Asset; amountOutRaw: bigint; usdcInCents: number }[];
-  picks: { ts: Date; asset: Asset; amountRaw: bigint }[];
+  plantings: { id: string; ts: Date; asset: LiveAsset; amountOutRaw: bigint; usdcInCents: number }[];
+  picks: { ts: Date; asset: LiveAsset; amountRaw: bigint }[];
   skrPutInRaw: bigint; skrEarnedRaw: bigint; skrPickedRaw: bigint; skrPrincipalPickedRaw: bigint;   // principal withdrawn prunes; fruit picked does not [A13]
   pendingCents: number;              // change waiting: seeds beside the next coin's sign before its first planting, then the swelling on its plant (RG9)
   thresholdCents: number;
-  nextAsset?: Asset;                 // the coin the next planting buys (/api/me nextPlanting.asset)
+  nextAsset?: LiveAsset;                 // the coin the next planting buys (/api/me nextPlanting.asset)
   allocation: Split;                 // today's split, rules.allocation in both manager modes (spec 5): a coin with a share gets a sign
-  earned: Partial<Record<Asset, { count: number; progress: number }>>;   // token-fruit per coin (RG16): the count on the ladder and the next one's progress
+  earned: Partial<Record<LiveAsset, { count: number; progress: number }>>;   // token-fruit per coin (RG16): the count on the ladder and the next one's progress
   storePutInRaw: bigint; joinedValueRaw: bigint;
   basket: { amountRaw: bigint; readyAt: Date } | null;
+  /** Contracts 7.2: the API's line two per lending stake ("Kamino 4.4%"); absent from an API before the lending build. */
+  lendSigns?: LendSignLines | null;
 };
 
 export const PLANT_ORDER: readonly PlantId[] = ["skr", "ore", "hsol", "jitosol", "jupsol", "cbbtc"] as const;
-export const PLANT_OF: Record<Asset, PlantId> = { SKR: "skr", stORE: "ore", hSOL: "hsol", JitoSOL: "jitosol", JupSOL: "jupsol", cbBTC: "cbbtc" };
-export const ASSET_OF: Record<PlantId, Asset> = { skr: "SKR", ore: "stORE", hsol: "hSOL", jitosol: "JitoSOL", jupsol: "JupSOL", cbbtc: "cbBTC" };
+export const PLANT_OF: Record<LiveAsset, PlantId> = { SKR: "skr", stORE: "ore", USDC_LEND: "jitosol", SOL_LEND: "jupsol", hSOL: "hsol", cbBTC: "cbbtc" };
+export const ASSET_OF: Record<PlantId, LiveAsset> = { skr: "SKR", ore: "stORE", hsol: "hSOL", jitosol: "USDC_LEND", jupsol: "SOL_LEND", cbbtc: "cbBTC" };
 
 /** RG4: small under $1, usual $1 to $5, large over $5; a 0 (a legacy row with no leg) reads usual, never small. */
 export const bandOf = (usdcInCents: number): Band => (usdcInCents <= 0 ? 1 : usdcInCents < 100 ? 0 : usdcInCents <= 500 ? 1 : 2);
@@ -43,7 +45,7 @@ export function fruitLadder(earnedUsd: number, putInCents: number): { count: num
 export type Part =
   | { kind: "soil" }
   | { kind: "plant"; plant: PlantId; species: Species; row: "front" | "back"; x: number; shoots: number }
-  | { kind: "sign"; plant: PlantId; row: "front" | "back"; x: number; side: -1 | 1 }
+  | { kind: "sign"; plant: PlantId; row: "front" | "back"; x: number; side: -1 | 1; lines: SignLines }
   | { kind: "seed"; id: string; plant: PlantId; index: number }
   | { kind: "sprout"; id: string; plant: PlantId; slot: number; stage: Stage; bud: boolean; band: Band; branch: boolean; ageDays: number }   // branch = RG19's state over the full history; the geometry decides what is drawn (the mandarin draws the eight lowest)
   | { kind: "swelling"; plant: PlantId; progress: number }
@@ -85,17 +87,18 @@ export function buildScene(g: GardenInput): Scene {
   const kept = new Set(skrPlantings.slice(0, skrPlantings.length - prune).map((p) => p.id));
   if (prune > 0) parts.push({ kind: "pruned", count: prune });
 
-  const coin = (a: Asset): PlantId => PLANT_OF[a];
+  const coin = (a: LiveAsset): PlantId => PLANT_OF[a];
   const fullOf = (c: PlantId) => sorted.filter((p) => coin(p.asset) === c);                       // the full history (RG19's flags)
   const keptOf = (c: PlantId) => fullOf(c).filter((p) => p.asset !== "SKR" || kept.has(p.id));     // what is drawn
   const present = PLANT_ORDER.filter((c) => keptOf(c).length > 0 || (c === "skr" && g.joinedValueRaw > 0n));
   const withSign = PLANT_ORDER.filter((c) => present.includes(c) || (g.allocation[ASSET_OF[c]] ?? 0) > 0);
   const xs = slotsFor([...withSign]);
   // R237 fix (10-04): a stake takes the side with more room in ITS OWN row; a front plant never meets a back stake (the rows pass in
-  // front of each other), and counting it put JitoSOL's stake into the narrow JitoSOL to JupSOL gap beside JupSOL's
+  // front of each other), and counting it put the snake plant's stake (then JitoSOL's, now USDC lending's) into the narrow gap beside
+  // the blueberry's (then JupSOL, now SOL lending). A two-line stake may still flip off a front trunk at placement (layout.ts stakeSide)
   const rowX = (c: PlantId) => withSign.filter((o) => ROW_OF[o] === ROW_OF[c]).map((o) => xs[o]!);
   for (const c of present) parts.push({ kind: "plant", plant: c, species: PLANT_SPECIES[c], row: ROW_OF[c], x: xs[c]!, shoots: keptOf(c).length });
-  for (const c of withSign) parts.push({ kind: "sign", plant: c, row: ROW_OF[c], x: xs[c]!, side: signSide(xs[c]!, rowX(c), 1) });
+  for (const c of withSign) parts.push({ kind: "sign", plant: c, row: ROW_OF[c], x: xs[c]!, side: signSide(xs[c]!, rowX(c), 1), lines: signLabel(c, g.lendSigns) });
 
   // RG9, R89: change waiting is seeds beside the NEXT coin's sign while that coin has no plant, else a swelling on its plant. The
   // API always serves nextPlanting.asset (me/route.ts:83); with it absent (a fixture) pending change draws nothing.

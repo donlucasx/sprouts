@@ -6,7 +6,7 @@ import Animated, { Easing, FadeIn, FadeOut, cancelAnimation, runOnJS, useAnimate
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Svg, { G } from "react-native-svg";
 import { PLANT_ORDER, type Scene, type Part, type PlantId } from "@/model/garden";
-import { CANVAS, FOOT_Y, FRAME, PLANT_SCALE, frameFor, plantUnder, SIDE_GUTTER, signPlacement } from "@/model/layout";
+import { CANVAS, FOOT_Y, FRAME, PLANT_SCALE, frameFor, stakeSpots, plantUnder, SIDE_GUTTER, signPlacement } from "@/model/layout";
 import { plantLayouts } from "@/model/scene-to-layout";
 import { SOIL_CLIP_ID } from "@/model/soil-clip";
 import { diffScenes, gateDiff, sceneKey, NO_CHANGE, type Diff } from "@/lib/scene-diff";
@@ -19,7 +19,7 @@ import { Appear } from "./Strip";
 import { Wind } from "./Wind";
 import { packScene } from "@/model/spread";
 import { frameGround } from "@/model/soil-clip";
-import { Soil, SoilClip, Ring, Seed, Sign, Basket, SpriteAt } from "./parts";
+import { Soil, SoilClip, Ring, Seed, Sign, Basket, SpriteAt, SpriteLoadContext, type SpriteLoad } from "./parts";
 
 const MOUNT_FADE_MS = 300;
 const RING_MS = 1350;      // gen11_motion.py:163: every present plant's ring rises over 1.35 s after a watering
@@ -63,7 +63,7 @@ function useReduceMotion() {
  * row directly under the garden, and the can sits at its bar's end in an overlay over both (the garden view's top-left its origin).
  * R196: the overlay reaches into the screen's right gutter (the garden's box is that much wider, its margin giving it back), so the
  * finger may carry the can to the screen's edge. R195: `wobble` is bumped on every landing on Home and every pull-to-refresh. */
-export function Garden({ scene: incoming, live, canReady, onWater, onNudge, row, tempo = 1, wobble = 0, labelFor }: { scene: Scene; live: boolean; canReady: boolean; onWater: (target: PlantId | null) => Promise<boolean>; onNudge: () => void; row: (can: CanRow) => ReactNode; tempo?: number; wobble?: number; labelFor?: (plant: PlantId, budWaiting: boolean) => string[] }) {
+export function Garden({ scene: incoming, live, canReady, onWater, onNudge, row, tempo = 1, wobble = 0, labelFor, onReady }: { scene: Scene; live: boolean; canReady: boolean; onWater: (target: PlantId | null) => Promise<boolean>; onNudge: () => void; row: (can: CanRow) => ReactNode; tempo?: number; wobble?: number; labelFor?: (plant: PlantId, budWaiting: boolean) => string[]; onReady?: () => void }) {
   const { width } = useWindowDimensions(); const w = width - 40;
   const { colors } = useTheme();
   const reduced = useReduceMotion();
@@ -87,6 +87,7 @@ export function Garden({ scene: incoming, live, canReady, onWater, onNudge, row,
   // canvas point p lands at (p - frame) * zoom and the frame fills the view; x and zoom ease linearly, and since the frame's right
   // limit (width - width / zoom) is concave in a linearly eased zoom, a frame inside the bed at both ends stays inside it throughout.
   const target = frameFor(scene, plants, w);
+  const spots = stakeSpots(scene, plants, w, target.zoom);   // R326, R327: a two-line stake's side and x (layout.ts)
   const ground = frameGround(w, target);   // R238: the soil spans the frame, its rounded painted ends always in view
   const fx = useSharedValue(target.x), fy = useSharedValue(target.y), z = useSharedValue(target.zoom), vh = useSharedValue(target.viewH);
   useEffect(() => {
@@ -267,7 +268,17 @@ export function Garden({ scene: incoming, live, canReady, onWater, onNudge, row,
     waiters.current.push(x);
   });
 
+  // `onReady` (the splash): fires once, when every distinct sprite mounted so far has loaded (all of the first frame mount together).
+  const tally = useRef({ wanted: new Set<string>(), loaded: new Set<string>(), fired: false });
+  const onReadyRef = useRef(onReady);
+  useEffect(() => { onReadyRef.current = onReady; }, [onReady]);
+  const spriteLoad = useMemo<SpriteLoad>(() => {
+    const check = () => { const t = tally.current; if (!t.fired && t.wanted.size > 0 && [...t.wanted].every((n) => t.loaded.has(n))) { t.fired = true; onReadyRef.current?.(); } };
+    return { start: (name) => { tally.current.wanted.add(name); }, done: (name) => { tally.current.loaded.add(name); check(); } };
+  }, []);
+
   return (
+    <SpriteLoadContext.Provider value={spriteLoad}>
     <View style={{ width: w + SIDE_GUTTER, marginRight: -SIDE_GUTTER }}>
     <Animated.View style={[{ width: w }, outer]}>
      <GestureDetector gesture={zoomGesture}>
@@ -309,7 +320,7 @@ export function Garden({ scene: incoming, live, canReady, onWater, onNudge, row,
         return <Plant key={p.plant} p={p} footX={p.x * w} footY={FOOT_Y(p.row)} sway={sway} gust={gust} gustDelay={delays[p.plant] ?? 0} reduced={reduced} items={itemsOf(p.plant)} settled={settledOf(p.plant)} before={was} call={budCall} zoom={target.zoom} />;
        }),
        <Svg key={`signs-${row}`} width={w} height={CANVAS.height} style={{ position: "absolute", left: 0, top: 0 }} pointerEvents="none">
-        {of("sign").filter((s) => s.row === row).map((s) => { const at = signPlacement(s, w, target.zoom, ground); return <G key={`s${s.plant}`} x={at.x} y={at.y}><Sign plant={s.plant} scale={at.scale} /></G>; })}
+        {of("sign").filter((s) => s.row === row).map((s) => { const at = signPlacement(s, w, target.zoom, ground, spots); return <G key={`s${s.plant}`} x={at.x} y={at.y}><Sign lines={s.lines} scale={at.scale} /></G>; })}
        </Svg>,
       ])}
      </Animated.View>
@@ -335,5 +346,6 @@ export function Garden({ scene: incoming, live, canReady, onWater, onNudge, row,
       </Animated.View>
     ) : null}
     </View>
+    </SpriteLoadContext.Provider>
   );
 }

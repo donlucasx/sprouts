@@ -1,5 +1,5 @@
 import type { Scene } from "./garden";
-import { CANVAS, FOOT_Y, PLANT_SCALE, SIGN_LABEL, SIGN_TEXT, frameFor, signPlacement, windSpan } from "./layout";
+import { CANVAS, FOOT_Y, LEND_SIGN, PLANT_SCALE, SIGN_TEXT, frameFor, stakeSpots, signPlacement, windSpan } from "./layout";
 import { stemPaths, spriteTransform } from "./paint";
 import { COLORS, SOIL } from "./species";
 import { GROUND, SOIL_CLIP_ID, frameGround, soilClipPath } from "./soil-clip";
@@ -9,6 +9,8 @@ import { SPRITE_META } from "@/garden/sprite-meta";
 import { SPRITES_B64 } from "@/garden/sprites-b64";
 
 const f = (n: number) => Number(n.toFixed(2));
+/** API text goes into XML here (contracts 7.2's line two): escaped. */
+const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 /** R252 (10-04, his photo: "is this what the widget is supposed to look like rn?"): the widget draws the app's own garden: the same
  * packing (R234), frame (RG30), deep ground spanning the frame (R231, R238), both rows, the stakes in front of their plants (R226), in
  * the app's canvas units at the 320 reference width, shown through an SVG viewBox. The view is the app's frame, widened or heightened
@@ -77,7 +79,7 @@ export function widgetGardenSvg(scene0: Scene, width: number, height: number): s
   let rings = false;
   for (const r of of("ring")) { const ft = footOf(r.plant); if (ft) { rings = true; body.push(`<g clip-path="url(#${SOIL_CLIP_ID})"><g opacity="${f(1 - r.age)}">${placeStr("ring", ft.x, ft.y + 2, 0, r.plant === "skr" || r.plant === "ore" ? CANVAS.frontScale : 2 / 3)}</g></g>`); } }
   for (const s of of("seed")) { const ft = footOf(s.plant); if (ft) place("seed", ft.x + (s.index % 2 ? 1 : -1) * (3 + 2.4 * Math.floor(s.index / 2)), ft.y + 1 - 1.2 * (s.index % 3), ((s.index * 37) % 60) - 30, 1); }
-  const signs = v.signs;
+  const signs = v.signs, spots = stakeSpots(scene, plants, W, v.zoom);
   for (const row of ["back", "front"] as const) {
     for (const p of plants.filter((q) => q.row === row)) {
       const fx = p.x * W, fy = FOOT_Y(p.row), k = PLANT_SCALE * (v.signs ? 1 : WIDGET_BOOST);   // R187: the app's 1.25x about the foot; R252: a narrow widget more
@@ -91,9 +93,12 @@ export function widgetGardenSvg(scene0: Scene, width: number, height: number): s
     // R226: the row's stakes in front of its plants; R168: the one blank board and the word as vector text (AndroidSVG cannot load the
     // app's font: a plain sans-serif, same ink and place)
     if (signs) for (const s of of("sign").filter((q) => q.row === row)) {
-      const at = signPlacement(s, W, v.zoom, ground);
-      place("sign", at.x, at.y, 0, at.scale);
-      body.push(`<g transform="translate(${f(at.x)} ${f(at.y)}) scale(${f(at.scale)}) rotate(${SIGN_TEXT.rot})"><text x="0" y="${SIGN_TEXT.y}" text-anchor="middle" font-family="sans-serif" font-size="${SIGN_TEXT.size}" font-weight="500" fill="${SOIL.ink}">${SIGN_LABEL[s.plant]}</text></g>`);
+      const at = signPlacement(s, W, v.zoom, ground, spots);
+      place("sign", at.x, at.y, 0, at.scale, at.scale * at.boardX);
+      const words: [number, number, string][] = s.lines.line2
+        ? [[LEND_SIGN.y1, LEND_SIGN.size1, s.lines.line1], [LEND_SIGN.y2, LEND_SIGN.size2, s.lines.line2]]
+        : [[SIGN_TEXT.y, SIGN_TEXT.size, s.lines.line1]];
+      body.push(`<g transform="translate(${f(at.x)} ${f(at.y)}) scale(${f(at.scale)}) rotate(${SIGN_TEXT.rot})">${words.map(([y, size, t]) => `<text x="0" y="${y}" text-anchor="middle" font-family="sans-serif" font-size="${size}" font-weight="500" fill="${SOIL.ink}">${esc(t)}</text>`).join("")}</g>`);
     }
   }
   const defs = [...used].map((n) => `<image id="s-${n}" width="${SPRITE_META[n].w}" height="${SPRITE_META[n].h}" xlink:href="data:image/png;base64,${SPRITES_B64[n]}"/>`).join("");

@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, type MeResponse } from "./api";
-import { applyRulesTo, pickMeState, usableMe, type ManagerExtra } from "./me-state";
+import { applyRulesTo, normalizeMe, pickMeState, usableMe, type ManagerExtra } from "./me-state";
 import { refreshWidget } from "./widget-refresh";
 export { toGardenInput } from "./garden-input";
 
@@ -11,7 +11,8 @@ const KEY = "me.last";
 /** The last verified read, or null when there is none or it predates the Yield Manager build: every reader (Home, the widget task, the background fetch) goes through here. */
 export function readLastMe(): MeResponse | null {
   const raw = store.getString(KEY);
-  return raw ? usableMe(JSON.parse(raw) as MeResponse) : null;
+  const usable = raw ? usableMe(JSON.parse(raw) as MeResponse) : null;
+  return usable ? normalizeMe(usable) : null;
 }
 
 export function writeLastMe(me: MeResponse) {
@@ -23,7 +24,7 @@ export function useMe() {
   const q = useQuery({
     queryKey: ["me"],
     queryFn: async () => {
-      const me = await api<MeResponse>("/api/me");
+      const me = normalizeMe(await api<MeResponse>("/api/me"));
       writeLastMe(me);
       void refreshWidget(me).catch(() => {}); // the home-screen widget follows every good read
       return me;

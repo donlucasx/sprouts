@@ -12,3 +12,6 @@ spikes/keys/
 leash/target/
 leash/fixtures/*.so
 leash/fixtures/accounts/
+
+# Track P device screenshots
+.shots/

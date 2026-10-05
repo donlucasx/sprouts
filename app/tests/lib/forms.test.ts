@@ -29,7 +29,7 @@ describe("maxAmountText", () => {
 
 // 09-29: each "+" asked for its own approval; changes are now drafted and saved once.
 describe("rulesChanges", () => {
-  const saved = { dailyCapCents: 500, plantThresholdCents: 200, roundupOn: true, managed: false, stop: "balanced", pins: {}, allocation: { SKR: 100, stORE: 0, hSOL: 0, JitoSOL: 0, JupSOL: 0, cbBTC: 0 } };
+  const saved = { dailyCapCents: 500, plantThresholdCents: 200, roundupOn: true, managed: false, stop: "balanced", pins: {}, allocation: { SKR: 100, stORE: 0, hSOL: 0, USDC_LEND: 0, SOL_LEND: 0, cbBTC: 0 } };
   it("keeps only what differs from the saved rules", () => {
     expect(rulesChanges(saved, { dailyCapCents: 500, plantThresholdCents: 150 })).toEqual({ patch: { plantThresholdCents: 150 }, raises: false });
   });
@@ -53,13 +53,13 @@ describe("rulesChanges", () => {
 
 // Plan v2 (R92): the allocation is an object, so the draft compares it by value; moving the fence never asks for a sign-in.
 describe("rulesChanges with the allocation", () => {
-  const saved = { dailyCapCents: 500, allocation: { SKR: 100, stORE: 0, hSOL: 0, JitoSOL: 0, JupSOL: 0, cbBTC: 0 } };
+  const saved = { dailyCapCents: 500, allocation: { SKR: 100, stORE: 0, hSOL: 0, USDC_LEND: 0, SOL_LEND: 0, cbBTC: 0 } };
   it("an allocation equal in value to the saved one is not a change", () => {
-    expect(rulesChanges(saved, { allocation: { SKR: 100, stORE: 0, hSOL: 0, JitoSOL: 0, JupSOL: 0, cbBTC: 0 } }).patch).toEqual({});
+    expect(rulesChanges(saved, { allocation: { SKR: 100, stORE: 0, hSOL: 0, USDC_LEND: 0, SOL_LEND: 0, cbBTC: 0 } }).patch).toEqual({});
   });
   it("a moved fence is a change and never a raise", () => {
-    const { patch, raises } = rulesChanges(saved, { allocation: { SKR: 70, stORE: 30, hSOL: 0, JitoSOL: 0, JupSOL: 0, cbBTC: 0 } });
-    expect(patch).toEqual({ allocation: { SKR: 70, stORE: 30, hSOL: 0, JitoSOL: 0, JupSOL: 0, cbBTC: 0 } });
+    const { patch, raises } = rulesChanges(saved, { allocation: { SKR: 70, stORE: 30, hSOL: 0, USDC_LEND: 0, SOL_LEND: 0, cbBTC: 0 } });
+    expect(patch).toEqual({ allocation: { SKR: 70, stORE: 30, hSOL: 0, USDC_LEND: 0, SOL_LEND: 0, cbBTC: 0 } });
     expect(raises).toBe(false);
   });
 });

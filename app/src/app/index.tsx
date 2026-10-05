@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { View } from 'react-native'
-import { Redirect } from 'expo-router'
+import { Redirect, router } from 'expo-router'
 import { useMobileWallet } from '@wallet-ui/react-native-kit'
 import { freshWalletSignIn } from '@/lib/reauth'
 import { identity } from '@/lib/identity'
@@ -12,9 +12,8 @@ import { useSession } from '@/lib/session'
 import { signInWithSeeker } from '@/lib/signin'
 import { ApiError } from '@/lib/api'
 import { spacing } from '@/theme'
-
-/** The slogan (RB21), the one sentence used everywhere a sentence fits. */
-const SLOGAN = 'Round-ups into SKR that your Seeker keeps and a yield manager grows.'
+import { SLOGAN } from '@/lib/slogan'
+import { termsSummary } from '@/lib/terms'
 
 function isCanceled(e: unknown) {
   const code = e !== null && typeof e === 'object' && 'code' in e ? String((e as { code: unknown }).code) : ''
@@ -45,6 +44,18 @@ export default function Welcome() {
         <ThemedText variant="label" style={{ fontSize: 20, lineHeight: 28, textAlign: 'center', maxWidth: 320 }}>
           {SLOGAN}
         </ThemedText>
+        {/* R283: signing in accepts the Terms; the three lines say what, the full page is one tap away */}
+        <View style={{ alignSelf: 'stretch', gap: spacing.xs }}>
+          <ThemedText variant="caption" tone="secondary">
+            By signing in you agree to the Terms and Privacy:
+          </ThemedText>
+          {termsSummary().map((l) => (
+            <ThemedText key={l} variant="caption" tone="secondary">
+              {`• ${l}`}
+            </ThemedText>
+          ))}
+          <Button title="Read the Terms and Privacy" kind="quiet" onPress={() => router.push('/terms')} style={{ alignSelf: 'flex-start' }} />
+        </View>
         <View style={{ alignSelf: 'stretch', gap: spacing.sm, marginTop: spacing.lg }}>
           <Button
             title="Sign in with your Seeker"
