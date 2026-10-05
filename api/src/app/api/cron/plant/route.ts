@@ -92,6 +92,8 @@ const json = (v: unknown) => JSON.parse(JSON.stringify(v, (_k, x) => (typeof x =
 /** Once a day (Vercel cron, bearer = CRON_SECRET): plant, crank withdrawals, reconcile the Seed Vaults' own stakes, clean up, keep the database awake. */
 export async function GET(request: Request) {
   if (!authorized(request.headers.get("authorization"))) return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  // Review M1: the planting run starts no new wallet past 240 s from here, so the crank, the reconcile and the cleanup always run.
+  const startedMs = Date.now();
   try {
     const repo = await getRepo();
     const now = new Date();
@@ -99,7 +101,7 @@ export async function GET(request: Request) {
     const coins = await step("snapshot", () => snapshotCoins({ repo, now, reads: realCoinReads() }));
     const splits = await step("decide", () => decideSplits({ repo, now, model: process.env.ANTHROPIC_API_KEY ? callTool : null }));
     const applied = await step("apply", () => applyToUsers({ repo, now }));
-    const planting = await runPlanting({ repo, now, chain: realChain() });
+    const planting = await runPlanting({ repo, now, chain: realChain(), deadlineMs: startedMs + 240_000 });
     const withdrawals = await runWithdrawCrank({ repo, now, chain: { readPosition: (u) => readPosition(address(u)), crankWithdraw: (u) => crankWithdraw(address(u)) } });
     // R61: stakes and unstakes the Seed Vault made from its own wallet, found by comparing the chain's share count with the ledger's.
     const reconciled = await reconcileOwnStakes({ repo, chain: { readPosition: (u) => readPosition(address(u), "finalized"), sharePrice } });

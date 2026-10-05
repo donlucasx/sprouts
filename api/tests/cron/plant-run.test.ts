@@ -1,17 +1,17 @@
 import { describe, it, expect, vi } from "vitest";
 import { MemoryRepo } from "@/db/memory";
 import { SKR_ONLY } from "@/domain/coins";
-import { runPlanting, type Chain } from "@/lib/plant-run";
+import { runPlanting, PRE_SEND_WAIT_S, PRE_BUILD_WAIT_S, BUILD_HEADROOM_S, type Chain } from "@/lib/plant-run";
 import type { VenueDayRow } from "@/db/types";
 import type { LeashConfig } from "@/lib/leash";
 
 const NOW = new Date("2026-09-29T14:00:00Z");
 const DELEGATION = { exists: true, amountPerPeriodRaw: 5_000_000n, pulledInPeriodRaw: 0n, periodStartTs: 0n, periodLengthS: 86_400n };
 
-/** T9 review I2: every leg watches the puller's USDC float (PU); a build stub that overrides the fake's carries it too. */
-const FLOAT = { usdcFloat: "PU", watched: ["PU"] };
+/** T9 review I2, Task 11 review I1: every leg watches the puller's three pooled floats, USDC (PU), WSOL (PW), SKR (PS); a build stub carries them too. */
+const FLOAT = { usdcFloat: "PU", wsolFloat: "PW", skrFloat: "PS", watched: ["PU", "PW", "PS"] };
 /** ...and the simulation reports it unchanged (the swap spent exactly the pull). */
-const HELD = { watched: { PU: { pre: 5_000n, post: 5_000n } } };
+const HELD = { watched: { PU: { pre: 5_000n, post: 5_000n }, PW: { pre: 5_000n, post: 5_000n }, PS: { pre: 5_000n, post: 5_000n } } };
 
 function fakeChain(over: Partial<Chain> = {}): Chain {
   let n = 0;
@@ -22,8 +22,8 @@ function fakeChain(over: Partial<Chain> = {}): Chain {
     // WSOL float (PW); Jupiter Lend the puller's jl account (PJ).
     buildPlantingTx: async (a) => ({
       tx: { asset: a.asset }, signature: `sig${++n}`, expectedOutRaw: a.pullRaw * 48n, minOutRaw: a.pullRaw * 47n, lookupTables: [], lastValidBlockHeight: 0n, asset: a.asset, venue: a.venue,
-      usdcFloat: "PU", wsolFloat: a.asset === "SOL_LEND" ? "PW" : null,
-      watched: ["PU", ...(a.asset === "SOL_LEND" ? ["PW"] : []), ...(a.venue === "jupiter_lend" ? ["PJ"] : [])], pullerJl: a.venue === "jupiter_lend" ? "PJ" : null,
+      usdcFloat: "PU", wsolFloat: "PW", skrFloat: a.asset === "SKR" ? null : "PS",
+      watched: ["PU", "PW", ...(a.asset === "SKR" ? [] : ["PS"]), ...(a.venue === "jupiter_lend" ? ["PJ"] : [])], pullerJl: a.venue === "jupiter_lend" ? "PJ" : null,
       jlLeftover: a.venue === "jupiter_lend" ? (a.jlLeftover ?? 0n) : null, cleanup: [],
     }),
     // The delivery account gains the minimum; the floats hold; the jl account ends closed.
@@ -740,7 +740,7 @@ describe("venues, the leash and the carry in the run (contracts 3.2-3.4)", () =>
     const builds: BuildArgs[] = [];
     const chain = recording(builds, {
       simulatePlanting: async (b) => (b.jlLeftover === 1n
-        ? { ok: true, err: null, logs: [], units: 1, delivery: { pre: 0n, post: b.minOutRaw }, watched: { PU: { pre: 5_000n, post: 5_000n }, PJ: { pre: null, post: null } } }
+        ? { ok: true, err: null, logs: [], units: 1, delivery: { pre: 0n, post: b.minOutRaw }, watched: { ...HELD.watched, PU: { pre: 5_000n, post: 5_000n }, PJ: { pre: null, post: null } } }
         : { ok: false, err: { InstructionError: [9, { Custom: 11 }] }, logs: ["Program log: Error: Non-native account can only be closed if its balance is zero"], units: 1 }),
     });
     const r = await runPlanting({ repo, now: NOW, chain });
@@ -792,7 +792,7 @@ describe("venues, the leash and the carry in the run (contracts 3.2-3.4)", () =>
     const repo = await seeded([83, 62, 70]);
     await seedVenues(repo);
     await repo.saveRules("U", { allocation: { ...lendOnly, USDC_LEND: 0, SOL_LEND: 100 } });
-    const drains = { simulatePlanting: async (b: Parameters<Chain["simulatePlanting"]>[0]) => ({ ok: true, err: null, logs: [], units: 1, delivery: { pre: 0n, post: b.minOutRaw }, watched: { PW: { pre: 5_000n, post: 4_990n }, PU: { pre: 5_000n, post: 5_000n } } }) };
+    const drains = { simulatePlanting: async (b: Parameters<Chain["simulatePlanting"]>[0]) => ({ ok: true, err: null, logs: [], units: 1, delivery: { pre: 0n, post: b.minOutRaw }, watched: { ...HELD.watched, PW: { pre: 5_000n, post: 4_990n }, PU: { pre: 5_000n, post: 5_000n } } }) };
     const r = await runPlanting({ repo, now: NOW, chain: fakeChain(drains) });
     expect(r.skipped[0].reason).toBe("leg failed");
     expect((await repo.unplantedSwaps("W")).length).toBe(3);
@@ -804,7 +804,7 @@ describe("venues, the leash and the carry in the run (contracts 3.2-3.4)", () =>
     const repo = await seeded([83, 62, 70]);
     await seedVenues(repo, { kamino_klend: { eligible: false } });
     await repo.saveRules("U", { allocation: lendOnly });
-    const r = await runPlanting({ repo, now: NOW, chain: fakeChain({ simulatePlanting: async (b) => ({ ok: true, err: null, logs: [], units: 1, delivery: { pre: 0n, post: b.minOutRaw }, watched: { PU: { pre: 5_000n, post: 5_000n }, PJ: { pre: null, post: 1n } } }) }) });
+    const r = await runPlanting({ repo, now: NOW, chain: fakeChain({ simulatePlanting: async (b) => ({ ok: true, err: null, logs: [], units: 1, delivery: { pre: 0n, post: b.minOutRaw }, watched: { ...HELD.watched, PU: { pre: 5_000n, post: 5_000n }, PJ: { pre: null, post: 1n } } }) }) });
     expect(r.skipped[0].reason).toBe("leg failed");
   });
 
@@ -829,6 +829,7 @@ describe("venues, the leash and the carry in the run (contracts 3.2-3.4)", () =>
 });
 
 import { LEASH_PROGRAM } from "@/lib/constants";
+import { dayOf } from "@/domain/day";
 
 describe("Task 11 carry-ins (T7/T8/T9 reviews)", () => {
   type BuildArgs = Parameters<Chain["buildPlantingTx"]>[0];
@@ -883,7 +884,7 @@ describe("Task 11 carry-ins (T7/T8/T9 reviews)", () => {
     const chain = recording(builds, {
       // The first simulation fails (the leftover guess), the rebuild passes; the deposit drew all 500 of the carry: the float fell by 500.
       simulatePlanting: async (b) => (++sims === 1 ? { ok: false, err: "x", logs: [], units: 1 }
-        : { ok: true, err: null, logs: [], units: 1, delivery: { pre: 0n, post: b.minOutRaw }, watched: { PU: { pre: 5_000n, post: 4_500n }, PJ: { pre: null, post: null } } }),
+        : { ok: true, err: null, logs: [], units: 1, delivery: { pre: 0n, post: b.minOutRaw }, watched: { ...HELD.watched, PU: { pre: 5_000n, post: 4_500n }, PJ: { pre: null, post: null } } }),
       pullerCarryChangeRaw: async () => -500n,
     });
     const r = await runPlanting({ repo, now: later, chain });
@@ -897,7 +898,7 @@ describe("Task 11 carry-ins (T7/T8/T9 reviews)", () => {
   it("I2: a swap leg whose puller USDC falls (the swap spent more than the pull) is refused; the same leg with the float held plants", async () => {
     const repo = await seeded([83, 62, 70]);
     await repo.saveRules("U", { allocation: hsolOnly });
-    const drain = { simulatePlanting: async (b: Parameters<Chain["simulatePlanting"]>[0]) => ({ ok: true, err: null, logs: [], units: 1, delivery: { pre: 0n, post: b.minOutRaw }, watched: { PU: { pre: 5_000n, post: 4_999n } } }) };
+    const drain = { simulatePlanting: async (b: Parameters<Chain["simulatePlanting"]>[0]) => ({ ok: true, err: null, logs: [], units: 1, delivery: { pre: 0n, post: b.minOutRaw }, watched: { ...HELD.watched, PU: { pre: 5_000n, post: 4_999n } } }) };
     const r = await runPlanting({ repo, now: NOW, chain: fakeChain(drain) });
     expect(r.planted).toEqual([]);   // hSOL refused, and its SKR fallback too (the same drain)
     expect(JSON.stringify(repo.events.find((e) => e.kind === "leg_fallback")?.detail)).toMatch(/puller's USDC fell by 1, more than this user's carry of 0/);
@@ -909,12 +910,12 @@ describe("Task 11 carry-ins (T7/T8/T9 reviews)", () => {
     const repo = await seeded([83, 62, 70]);
     await seedVenues(repo);
     await repo.saveRules("U", { allocation: { ...lendOnly, USDC_LEND: 0, SOL_LEND: 100 } });
-    const r = await runPlanting({ repo, now: NOW, chain: fakeChain({ simulatePlanting: async (b) => ({ ok: true, err: null, logs: [], units: 1, delivery: { pre: 0n, post: b.minOutRaw }, watched: { PW: { pre: 5_000n, post: 5_000n }, PU: { pre: 5_000n, post: 4_000n } } }) }) });
+    const r = await runPlanting({ repo, now: NOW, chain: fakeChain({ simulatePlanting: async (b) => ({ ok: true, err: null, logs: [], units: 1, delivery: { pre: 0n, post: b.minOutRaw }, watched: { ...HELD.watched, PW: { pre: 5_000n, post: 5_000n }, PU: { pre: 5_000n, post: 4_000n } } }) }) });
     expect(r.skipped[0].reason).toBe("leg failed");
   });
 
   // 3. Run-level prices.
-  it("prices: one leash read per run, one wait per FEED (all feeds at once), builds with waitS 0 and the on-chain cap and age, a re-check before each send", async () => {
+  it("prices: one leash read per run, one wait per FEED (all feeds at once), bounded waits before the build (with headroom) and the send, builds with waitS 0 and the on-chain cap and age", async () => {
     const repo = await seeded([83, 62, 70]);
     await repo.setWalletLink("W", { delegationPda: "D", linkModel: "leash" });
     await repo.saveRules("U", { allocation: hsolOnly });
@@ -929,12 +930,12 @@ describe("Task 11 carry-ins (T7/T8/T9 reviews)", () => {
     let inFlight = 0;
     let maxInFlight = 0;
     const waits: [number, number][] = [];
-    const checks: [number, number][] = [];
+    const checks: [number, number, number][] = [];
     const builds: BuildArgs[] = [];
     const r = await runPlanting({ repo, now: NOW, chain: recording(builds, {
       readLeashConfig: async () => { reads++; return cfg; },
       priceFresh: async (leg, c, waitS) => {
-        if (waitS === 0) { checks.push([leg, c.maxAgeS]); return; }
+        if (waitS !== 60) { checks.push([leg, c.maxAgeS, waitS]); return; }
         waits.push([leg, waitS]);
         inFlight++; maxInFlight = Math.max(maxInFlight, inFlight);
         await new Promise((res) => setTimeout(res, 5));
@@ -946,22 +947,33 @@ describe("Task 11 carry-ins (T7/T8/T9 reviews)", () => {
     expect(waits.sort()).toEqual([[6, 60], [7, 60]]);   // SOL once (two users on it), cbBTC once
     expect(maxInFlight).toBe(2);                        // the two feeds wait at the same time
     expect(builds.map((b) => b.priceOpts)).toEqual([{ waitS: 0, confCapBps: 150, maxAgeS: 90 }, { waitS: 0, confCapBps: 150, maxAgeS: 90 }]);
-    expect(checks).toEqual([[6, 90], [6, 90], [6, 90], [6, 90]]);   // per wallet: before the build, again right before the send
+    // Per wallet (review I2): before the build up to 20 s for a price with 5 s to spare (max age 90 - 5), right before the send up to 15 s.
+    expect(checks.sort()).toEqual([[6, 85, 20], [6, 85, 20], [6, 90, 15], [6, 90, 15]]);   // two wallets, run concurrently
   });
 
-  it("prices: a price unusable at send sends nothing; the round-ups and the carry go back and the leg waits", async () => {
-    const repo = await leashed();
-    let zeroChecks = 0;
+  it("prices: a price unusable at send sends nothing; the round-ups and THIS planting's WSOL carry go back and the leg waits (review M7)", async () => {
+    const repo = await leashed({ ...hsolOnly, hSOL: 0, SOL_LEND: 100 });
+    const cfg = leashCfg([4, 5]);
+    const builds: BuildArgs[] = [];
     let sent = 0;
-    const r = await runPlanting({ repo, now: NOW, chain: fakeChain({
-      readLeashConfig: async () => leashCfg([6]),
-      priceFresh: async (_l, _c, waitS) => { if (waitS === 0 && ++zeroChecks === 2) throw new Error("sponsored SOL price is 61 s old"); },
+    // Day 1 plants on Kamino (leg 4) and leaves 300 WSOL with the puller: this user's carry.
+    await runPlanting({ repo, now: NOW, chain: recording(builds, { readLeashConfig: async () => cfg, pullerCarryChangeRaw: async () => 300n, sendPlanting: async () => { sent++; } }) });
+    expect(await repo.carryCreditRaw("U", "WSOL")).toBe(300n);
+    // Day 2: the build carries the 300; the price goes stale between the build and the send and does not come back within 15 s.
+    await addSwaps(repo, "W", "d2-");
+    for (const v of [...repo.venueDays.values()]) await repo.putVenueDay({ ...v, day: "2026-09-30" });
+    for (const asset of ["USDC_LEND", "SOL_LEND"] as const) await repo.putCoinDay({ ...(await repo.getCoinDay("2026-09-29", asset))!, day: "2026-09-30" });
+    const r = await runPlanting({ repo, now: new Date(NOW.getTime() + 86_400_000), chain: recording(builds, {
+      readLeashConfig: async () => cfg,
+      priceFresh: async (_l, _c, waitS) => { if (waitS === PRE_SEND_WAIT_S) throw new Error("sponsored SOL price is 61 s old"); },
       sendPlanting: async () => { sent++; },
     }) });
+    expect(builds.map((b) => b.carryIn)).toEqual([{}, { WSOL: 300n }]);
     expect(r.skipped).toEqual([{ wallet: "W", reason: "leg failed" }]);
-    expect(sent).toBe(0);
-    expect([...repo.plantings.values()].map((p) => p.status)).toEqual(["failed"]);
+    expect(sent).toBe(1);
+    expect([...repo.plantings.values()].map((p) => p.status)).toEqual(["confirmed", "failed"]);
     expect((await repo.unplantedSwaps("W")).length).toBe(3);
+    expect(await repo.carryCreditRaw("U", "WSOL")).toBe(300n);   // reserved by the failed row, now given back
     expect(JSON.stringify(repo.events.find((e) => e.kind === "leg_skipped")?.detail)).toMatch(/price unusable at send/);
   });
 
@@ -1012,7 +1024,7 @@ describe("Task 11 carry-ins (T7/T8/T9 reviews)", () => {
     const repo2 = await leashed();
     const r2 = await runPlanting({ repo: repo2, now: NOW, chain: fakeChain({ ...noSkrPrice, readLeashConfig: async () => leashCfg([0, 6]), buildPlantingTx: async () => { throw new Error("Jupiter: no route"); } }) });
     expect(r2.skipped).toEqual([{ wallet: "W", reason: "leg failed" }]);
-    expect(repo2.events.map((e) => e.kind)).toEqual(["leg_fallback", "leg_skipped"]);
+    expect(repo2.events.map((e) => e.kind)).toEqual(["leg_skipped"]);   // review M4: no misleading leg_fallback for a leashed user
     // Unleashed users keep today's SKR path, with the same chain.
     const repo3 = await seeded([83, 62, 70]);
     expect((await runPlanting({ repo: repo3, now: NOW, chain: fakeChain(noSkrPrice) })).planted[0].asset).toBe("SKR");
@@ -1031,5 +1043,180 @@ describe("Task 11 carry-ins (T7/T8/T9 reviews)", () => {
     for (const v of [...repo.venueDays.values()]) await repo.putVenueDay({ ...v, day: "2026-09-30" });
     await runPlanting({ repo, now: tomorrow, chain });
     expect(repo.events.filter((e) => e.kind === "leg_skipped").length).toBe(2);
+  });
+});
+
+describe("Task 11 fix round 1 (review I1, I2, M1-M4, M7, M9)", () => {
+  type BuildArgs = Parameters<Chain["buildPlantingTx"]>[0];
+  type Sim = Parameters<Chain["simulatePlanting"]>[0];
+  const hsolOnly = { SKR: 0, stORE: 0, USDC_LEND: 0, SOL_LEND: 0, hSOL: 100, cbBTC: 0 };
+  const ok = (b: Sim, watched: Record<string, { pre: bigint | null; post: bigint | null }>) => ({ ok: true, err: null, logs: [], units: 1, delivery: { pre: 0n, post: b.minOutRaw }, watched: { ...HELD.watched, ...watched } });
+  const assetOf = (b: Sim) => (b.tx as { asset: string }).asset;
+  const leashed = async (allocation: Record<string, number> = hsolOnly) => {
+    const repo = await seeded([83, 62, 70]);
+    await seedVenues(repo);
+    await repo.setWalletLink("W", { delegationPda: "D", linkModel: "leash" });
+    await repo.saveRules("U", { allocation: allocation as never });
+    return repo;
+  };
+  const addSwaps = async (repo: MemoryRepo, wallet: string, tag: string, now = NOW) => {
+    for (const [i, c] of [83, 62, 70].entries()) await repo.insertSwap({ signature: `${tag}${i}`, walletPubkey: wallet, ts: new Date(now.getTime() - 3_600_000), inMint: "a", inAmount: 1, outMint: "b", outAmount: 1, usdSizeCents: 100, class: "major", roundupCents: c });
+  };
+
+  // I1: every pooled float on every leg.
+  it("I1: an hSOL route that spends the pooled SKR float (other users' remainders) instead of the pull is refused, with an ALERT", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await repo.saveRules("U", { allocation: hsolOnly });
+    const log = vi.spyOn(console, "error");
+    // The forged route: the USDC float RISES by the unspent pull, the user still gets the minimum, 1000 SKR leave the puller's SKR float.
+    const r = await runPlanting({ repo, now: NOW, chain: fakeChain({ simulatePlanting: async (b) => (assetOf(b) === "hSOL" ? ok(b, { PU: { pre: 5_000n, post: 2_185_000n }, PS: { pre: 5_000n, post: 4_000n } }) : ok(b, {})) }) });
+    const alerts = log.mock.calls.filter((c) => /^ALERT: guard refusal on hSOL/.test(String(c[0])));
+    log.mockRestore();
+    expect(r.planted[0]?.asset).toBe("SKR");   // unleashed: the coin leg falls back, the SKR leg is clean
+    expect(JSON.stringify(repo.events.find((e) => e.kind === "leg_fallback")?.detail)).toMatch(/puller's SKR fell by 1000, more than this user's carry of 0/);
+    expect(alerts.length).toBe(1);
+  });
+
+  it("I1: an SKR leg whose route closes the pooled wSOL account (every user's WSOL carry) is refused", async () => {
+    const repo = await seeded([83, 62, 70]);
+    let sent = 0;
+    const r = await runPlanting({ repo, now: NOW, chain: fakeChain({ sendPlanting: async () => { sent++; }, simulatePlanting: async (b) => ({ ...ok(b, { PW: { pre: 9_000n, post: null } }), delivery: { pre: 1_000n, post: 1_000n } }) }) });
+    expect(r.skipped).toEqual([{ wallet: "W", reason: "simulation failed" }]);
+    expect(sent).toBe(0);
+    expect(JSON.stringify(repo.events.at(-1)?.detail)).toMatch(/puller's WSOL fell by 9000/);
+  });
+
+  it("I1: SOL lending may draw its own WSOL carry but no SKR, and USDC lending no WSOL", async () => {
+    const repo = await leashed({ ...hsolOnly, hSOL: 0, SOL_LEND: 100 });
+    repo.carryCreditRaw = async (_u: string, k: string) => (k === "WSOL" ? 10n : 0n);
+    const cfg = { readLeashConfig: async () => leashCfg([2, 4]) };
+    const own = await runPlanting({ repo, now: NOW, chain: fakeChain({ ...cfg, sendPlanting: async () => { throw new Error("socket"); }, simulatePlanting: async (b) => ok(b, { PW: { pre: 5_000n, post: 4_990n } }) }) });
+    expect(own.skipped[0].reason).toBe("send unknown");   // passed every guard (positive control)
+    const repo2 = await leashed({ ...hsolOnly, hSOL: 0, SOL_LEND: 100 });
+    repo2.carryCreditRaw = async (_u: string, k: string) => (k === "WSOL" ? 10n : 0n);
+    expect((await runPlanting({ repo: repo2, now: NOW, chain: fakeChain({ ...cfg, simulatePlanting: async (b) => ok(b, { PW: { pre: 5_000n, post: 4_990n }, PS: { pre: 5_000n, post: 4_999n } }) }) })).skipped[0].reason).toBe("leg failed");
+    const repo3 = await leashed({ ...hsolOnly, hSOL: 0, USDC_LEND: 100 });
+    expect((await runPlanting({ repo: repo3, now: NOW, chain: fakeChain({ ...cfg, simulatePlanting: async (b) => ok(b, { PW: { pre: 5_000n, post: 4_999n } }) }) })).skipped[0].reason).toBe("leg failed");
+  });
+
+  // I2: the price phase. A virtual Pyth feed publishes every 50-55 s (measured 10-04 for SOL and ORE); a price is usable while
+  // younger than max age - 20 s. The build reads it with no wait a moment after the pre-build check; quote, sign, simulate and the
+  // database writes take a few seconds before the pre-send check.
+  const lcg = (seed: number) => { let x = seed >>> 0; return () => (x = (Math.imul(x, 1664525) + 1013904223) >>> 0) / 2 ** 32; };
+  function world(seed: number) {
+    const rnd = lcg(seed);
+    const pubs: number[] = [];
+    for (let p = -rnd() * 55; p < 2_000; p += 50 + 5 * rnd()) pubs.push(p);
+    let t = rnd() * 55;   // the run starts at a random phase of the update cycle
+    const last = () => Math.max(...pubs.filter((p) => p <= t));
+    const fresh = (maxAgeS: number) => t - last() < maxAgeS - 20;
+    return {
+      advance: (lo: number, hi: number) => { t += lo + (hi - lo) * rnd(); },
+      fresh,
+      priceFresh: async (_leg: number, c: { maxAgeS: number }, waitS: number) => {
+        if (fresh(c.maxAgeS)) return;
+        const next = Math.min(...pubs.filter((p) => p > t));
+        if (next - t <= waitS) { t = next; return; }
+        t += waitS;
+        throw new Error("sponsored price is stale");
+      },
+    };
+  }
+  async function skipRate(oldDesign: boolean) {
+    const legs: [string, number, Record<string, number>][] = [["hSOL", 6, hsolOnly], ["stORE", 1, { ...hsolOnly, hSOL: 0, stORE: 100 }], ["SOL_LEND", 4, { ...hsolOnly, hSOL: 0, SOL_LEND: 100 }]];
+    let runs = 0;
+    let skips = 0;
+    for (const [, leg, allocation] of legs) {
+      for (let i = 0; i < 100; i++) {
+        const wd = world(1_000 * leg + i);
+        const repo = await leashed(allocation);
+        const r = await runPlanting({ repo, now: NOW, chain: fakeChain({
+          readLeashConfig: async () => leashCfg([2, leg]),
+          // The wallet's turn comes anywhere in the first 150 s of the run (other wallets plant first): a random phase again.
+          readDelegation: async () => { wd.advance(0, 150); return DELEGATION; },
+          // The old design (c4530b5): no wait before the build or the send, no headroom.
+          priceFresh: async (l, c, waitS) => wd.priceFresh(l, oldDesign && waitS !== PRICE_WAIT ? { maxAgeS: 60 } : c, oldDesign && waitS !== PRICE_WAIT ? 0 : waitS),
+          buildPlantingTx: async (a) => {
+            wd.advance(0.2, 0.8);                                                  // the builder's own no-wait read (and the second read)
+            if (!wd.fresh(a.priceOpts?.maxAgeS ?? 60)) throw new Error("sponsored price stale at build");
+            wd.advance(1, 3);                                                      // quote, swap instructions, sign
+            return fakeChain().buildPlantingTx(a);
+          },
+          simulatePlanting: async (b) => { wd.advance(1, 4); return fakeChain().simulatePlanting(b); },   // simulate + DB writes
+        }) });
+        runs++;
+        if (!r.planted.length) skips++;
+      }
+    }
+    return { runs, skips, rate: skips / runs };
+  }
+  const PRICE_WAIT = 60;
+
+  it("I2: with the measured 50-55 s SOL/ORE update gaps a leashed SOL lending / stORE / hSOL planting rarely skips (old design: often)", async () => {
+    const now = await skipRate(false);
+    const old = await skipRate(true);
+    console.log(`I2 skip rate over ${now.runs} leashed plantings at random phases: ${now.skips} (${(now.rate * 100).toFixed(1)}%); the c4530b5 design: ${old.skips} (${(old.rate * 100).toFixed(1)}%)`);
+    expect(now.rate).toBeLessThanOrEqual(0.01);
+    expect(old.rate).toBeGreaterThan(0.1);   // the instrument can see the problem
+    expect([PRE_BUILD_WAIT_S, PRE_SEND_WAIT_S, BUILD_HEADROOM_S]).toEqual([20, 15, 5]);
+  });
+
+  it("I2: a dead feed (its run-level wait failed) fails fast: no wait before the build", async () => {
+    const repo = await leashed();
+    const waits: number[] = [];
+    const r = await runPlanting({ repo, now: NOW, chain: fakeChain({ readLeashConfig: async () => leashCfg([6]), priceFresh: async (_l, _c, waitS) => { waits.push(waitS); throw new Error("feed down"); } }) });
+    expect(r.skipped[0].reason).toBe("leg failed");
+    expect(waits).toEqual([60, 0]);
+  });
+
+  // M1: the run deadline.
+  it("M1: past the run deadline no new wallet starts; each is skipped as 'run deadline' and the log names them", async () => {
+    const repo = await seeded([83, 62, 70]);
+    let builds = 0;
+    const log = vi.spyOn(console, "error");
+    const r = await runPlanting({ repo, now: NOW, deadlineMs: Date.now() - 1, chain: fakeChain({ buildPlantingTx: async (a) => { builds++; return fakeChain().buildPlantingTx(a); } }) });
+    const line = log.mock.calls.find((c) => /planting run deadline reached: 1 wallet\(s\) not started \(W\)/.test(String(c[0])));
+    log.mockRestore();
+    expect(r.skipped).toEqual([{ wallet: "W", reason: "run deadline" }]);
+    expect(builds).toBe(0);
+    expect(line).toBeTruthy();
+    expect((await runPlanting({ repo, now: NOW, deadlineMs: Date.now() + 60_000, chain: fakeChain() })).planted.length).toBe(1);   // positive control
+  });
+
+  // M2: the dedupe key.
+  it("M2: distinct leash error codes on one day are distinct events; two wallets of one user each get theirs", async () => {
+    const repo = await leashed();
+    await repo.addWallet({ pubkey: "W2", userPubkey: "U", delegationPda: "D2", dailyCapCents: 500, linkModel: "leash" });
+    await addSwaps(repo, "W2", "w2-");
+    const fail = (code: string) => async () => ({ ok: false, err: "x", logs: [`Program ${LEASH_PROGRAM} failed: custom program error: ${code}`], units: 1 });
+    const cfg = { readLeashConfig: async () => leashCfg([6]) };
+    await runPlanting({ repo, now: NOW, chain: fakeChain({ ...cfg, simulatePlanting: fail("0x1778") }) });   // BelowFloor, both wallets
+    await runPlanting({ repo, now: NOW, chain: fakeChain({ ...cfg, simulatePlanting: fail("0x1779") }) });   // Underdelivered, both wallets
+    await runPlanting({ repo, now: NOW, chain: fakeChain({ ...cfg, simulatePlanting: fail("0x1779") }) });   // the same again: deduped
+    const skips = repo.events.filter((e) => e.kind === "leg_skipped").map((e) => [e.walletPubkey, /0x177[0-9a-f]/.exec(JSON.stringify(e.detail))?.[0]]);
+    expect(skips.sort()).toEqual([["W", "0x1778"], ["W", "0x1779"], ["W2", "0x1778"], ["W2", "0x1779"]]);
+  });
+
+  // M3: the 6007 repeat window.
+  it("M3: a SettleMismatch repeat alerts within 7 days only", async () => {
+    const repo = await leashed();
+    const sm = { ok: false, err: "x", logs: [`Program ${LEASH_PROGRAM} failed: custom program error: 0x1777`], units: 1 };
+    const chain = fakeChain({ readLeashConfig: async () => leashCfg([6]), simulatePlanting: async () => sm });
+    await runPlanting({ repo, now: NOW, chain });
+    const later = new Date(NOW.getTime() + 8 * 86_400_000);
+    for (const v of [...repo.venueDays.values()]) await repo.putVenueDay({ ...v, day: dayOf(later) });
+    await runPlanting({ repo, now: later, chain });
+    expect(repo.events.filter((e) => e.kind === "leg_skipped").map((e) => (e.detail as { alert: boolean }).alert)).toEqual([false, false]);
+  });
+
+  // M9: a booking throw after `confirmed` still credits the surplus.
+  it("M9: a booking that throws after the planting is confirmed still credits its WSOL surplus", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await seedVenues(repo);
+    await repo.saveRules("U", { allocation: { ...hsolOnly, hSOL: 0, SOL_LEND: 100 } });
+    const r = await runPlanting({ repo, now: NOW, chain: fakeChain({ readShares: (() => { let n = 0; return async () => { if (++n > 1) throw new Error("rpc down"); return 1_000_000_000n; }; })(), pullerCarryChangeRaw: async () => 777n }) });
+    expect(r.skipped).toEqual([{ wallet: "W", reason: "send unknown" }]);   // the booking was interrupted
+    expect([...repo.plantings.values()][0].status).toBe("confirmed");
+    expect(await repo.carryCreditRaw("U", "WSOL")).toBe(777n);
   });
 });

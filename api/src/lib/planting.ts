@@ -64,8 +64,12 @@ export type BuiltPlanting = {
   deliveryAccount: Address;
   /** Puller accounts whose fall the guards bound: the USDC float (every leg, T9 review I2), the WSOL float (SOL lending), the jl account that must end closed. */
   watched: Address[];
-  /** The puller's USDC pull receiver (every leg) and WSOL swap output (SOL lending only), both in `watched`. */
-  usdcFloat: Address; wsolFloat: Address | null;
+  /**
+   * Task 11 review I1: the puller's three pooled floats, watched on EVERY leg (each may fall by at most this leg's own carry of that
+   * kind): the USDC pull receiver, the WSOL swap output, the SKR stake source. `skrFloat` is null on an SKR leg, where that account
+   * is the delivery account and deliveryShortfall bounds it.
+   */
+  usdcFloat: Address; wsolFloat: Address; skrFloat: Address | null;
   asset: LiveAsset; venue: AutoVenue | null; leg: LeashLegByte | null; preRaw: bigint | null;
   leashMinOutRaw: bigint | null; pullerJl: Address | null; jlLeftover: 0n | 1n | null; cleanup: Instruction[]; carryIn: Partial<Record<CarryKind, bigint>>; sizeBytes: number;
 };
@@ -119,7 +123,9 @@ export async function buildPlantingTx(a: { delegator: Address; user: Address; as
   const venueIxs = (v: Instruction[]) => { atas.push(...v.filter(isCreate)); body.push(...v.filter((ix) => !isCreate(ix))); };
   // T9 review I2: the puller's USDC is watched on EVERY leg. On a swap leg it may not fall (the swap spends exactly the pull, so its
   // input is bound to pullRaw and cannot drain the pooled float); on USDC lending it may fall by this user's USDC carry only.
-  const watched: Address[] = a.asset === "SOL_LEND" ? [pullerUsdc, pullerWsol] : [pullerUsdc];
+  // Review I1 (fix round 1): the WSOL and SKR floats too, on every leg: a forged route could spend them as its input or close the wSOL.
+  const pullerSkr = await skrAta(puller.address);
+  const watched: Address[] = [pullerUsdc, pullerWsol, ...(a.asset === "SKR" ? [] : [pullerSkr])];
   let lookupTables: Address[] = [];
   let expectedOutRaw = 0n;
   let swapMin = 0n;
@@ -134,7 +140,7 @@ export async function buildPlantingTx(a: { delegator: Address; user: Address; as
     const quote = await getQuote({ inputMint: USDC_MINT, outputMint: coin.mint, amountRaw: a.pullRaw, maxAccounts: SWAP_MAX_ACCOUNTS[a.asset], onlyDirectRoutes: a.asset === "SKR", ...(fee.platformFeeBps ? { platformFeeBps: fee.platformFeeBps } : {}) });
     checkQuoteMints(quote, { inputMint: USDC_MINT, outputMint: coin.mint });
     const swap = await getSwapInstructions({ quote, userPublicKey: puller.address, ...(fee.feeAccount ? { feeAccount: fee.feeAccount } : {}), ...(a.asset === "SKR" ? {} : { destinationTokenAccount: destination }) });
-    checkSwapInstructions(swap, { puller: puller.address, ...(fee.feeAccount ? { feeAccount: fee.feeAccount } : {}), wsolAccount: pullerWsol, destination, ...(coin.held === "wallet" ? { destinationOwner: a.user } : {}) });
+    checkSwapInstructions(swap, { puller: puller.address, ...(fee.feeAccount ? { feeAccount: fee.feeAccount } : {}), wsolAccount: pullerWsol, destination, source: pullerUsdc, ...(coin.held === "wallet" ? { destinationOwner: a.user } : {}) });
     body.push(...swap.setup, swap.swap, ...(swap.cleanup ? [swap.cleanup] : []));
     lookupTables = swap.lookupTables;
     expectedOutRaw = BigInt(quote.outAmount);
@@ -232,7 +238,7 @@ export async function buildPlantingTx(a: { delegator: Address; user: Address; as
   const sizeBytes = getTransactionEncoder().encode(tx).length;
   if (sizeBytes > MAX_TX_BYTES) throw new Error(`${a.asset} planting is ${sizeBytes} bytes, over ${MAX_TX_BYTES}`);
   return {
-    tx, signature: getSignatureFromTransaction(tx), expectedOutRaw, minOutRaw, lookupTables: tableAddrs, lastValidBlockHeight, deliveryAccount, watched, usdcFloat: pullerUsdc, wsolFloat: a.asset === "SOL_LEND" ? pullerWsol : null,
+    tx, signature: getSignatureFromTransaction(tx), expectedOutRaw, minOutRaw, lookupTables: tableAddrs, lastValidBlockHeight, deliveryAccount, watched, usdcFloat: pullerUsdc, wsolFloat: pullerWsol, skrFloat: a.asset === "SKR" ? null : pullerSkr,
     asset: a.asset, venue: a.venue, leg, preRaw, leashMinOutRaw, pullerJl, jlLeftover, cleanup, carryIn: a.carryIn, sizeBytes,
   };
 }
@@ -241,15 +247,14 @@ const LEG_RECEIPT_MINT = (asset: LendAsset, venue: AutoVenue): Address => (venue
 const COMPUTE_BUDGET = "ComputeBudget111111111111111111111111111111";
 const TOKEN_PROGRAMS = new Set<string>([TOKEN_PROGRAM_ADDRESS, "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"]);
 const SYNC_NATIVE = 17;
-const CLOSE_ACCOUNT = 9;
 
 /**
  * Task 7 carry, contracts 3.3: the whole transaction against an allowlist, on top of each part's own checker (Jupiter's response,
  * the venue's deposit, the leash pair). Every top-level program must be one this leg uses, each the expected number of times.
  * Every ATA instruction is a create paid by the puller, for the puller's own account or for THIS user's account of this leg's coin
  * or receipt mint. Every Token instruction is either on the puller's jl account (checkJlendDepositInstructions rules on each one)
- * or Jupiter's SyncNative / CloseAccount-to-the-puller on the puller's WSOL account; a Transfer, Approve, SetAuthority, Burn or
- * Close on any other account (another user's, the puller's USDC float) is refused.
+ * or Jupiter's SyncNative on the puller's WSOL account; a Transfer, Approve, SetAuthority, Burn or Close on any other account
+ * (another user's, the puller's USDC float), and any CloseAccount of the pooled WSOL account (review I1), is refused.
  */
 export function checkPlantingInstructions(ixs: readonly Instruction[], a: { puller: Address; user: Address; asset: LiveAsset; venue: AutoVenue | null; leashed: boolean; pullerWsol: Address; pullerJl: Address | null; userMints: Address[]; posted: boolean }): void {
   const refuse = (why: string): never => { throw new Error(`Planting refused: ${why}`); };
@@ -281,7 +286,6 @@ export function checkPlantingInstructions(ixs: readonly Instruction[], a: { pull
       const target = acc(0);
       if (a.pullerJl && target === a.pullerJl) continue;
       if (data.length === 1 && data[0] === SYNC_NATIVE && target === a.pullerWsol) continue;
-      if (data.length === 1 && data[0] === CLOSE_ACCOUNT && target === a.pullerWsol && acc(1) === a.puller && acc(2) === a.puller) continue;
       refuse(`Token instruction ${data[0]} on ${target} is not allowed in a planting`);
     }
     if (!expected.has(prog)) refuse(`program ${prog} is not allowed in a ${a.asset} planting`);
