@@ -55,7 +55,8 @@ export async function POST(request: Request) {
     if (e instanceof Error && e.message === "This phone is already registered.") return NextResponse.json({ error: e.message }, { status: 409 });
     throw e;
   }
-  if (parsed.data.termsVersion === TERMS_VERSION) {
+  // The first acceptance of this version stands: a later sign-in neither moves its time nor adds an event.
+  if (parsed.data.termsVersion === TERMS_VERSION && (await repo.getUser(output.address))?.termsVersion !== TERMS_VERSION) {
     await repo.setTermsAccepted(output.address, TERMS_VERSION, new Date());
     await repo.addEvent({ userPubkey: output.address, walletPubkey: null, kind: "terms_accepted", detail: { version: TERMS_VERSION, at: "sign-in" } });
   }

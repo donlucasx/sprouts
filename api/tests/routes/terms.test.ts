@@ -19,6 +19,14 @@ describe("POST /api/terms (R283)", () => {
     expect((await repo.getUser(U))!.termsVersion).toBe("2026-10-06");
     expect(repo.events.map((e) => e.kind)).toContain("terms_accepted");
   });
+  it("a second acceptance keeps the first time and adds no event (M2)", async () => {
+    const first = await (await post({ version: "2026-10-06" })).json();
+    await new Promise((r) => setTimeout(r, 5));
+    const again = await (await post({ version: "2026-10-06" })).json();
+    expect(again.acceptedAt).toBe(first.acceptedAt);
+    expect((await repo.getUser(U))!.termsAcceptedAt!.toISOString()).toBe(first.acceptedAt);
+    expect(repo.events.filter((e) => e.kind === "terms_accepted")).toHaveLength(1);
+  });
   it("refuses another version, and a bad body", async () => {
     expect((await post({ version: "2026-01-01" })).status).toBe(400);
     expect((await post({})).status).toBe(400);

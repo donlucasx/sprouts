@@ -124,6 +124,14 @@ describe("POST /api/auth/verify, Terms at sign-in (R283, contracts 5.6)", () => 
     expect((await repo.getUser(user.address))!.termsVersion).toBe("2026-10-06");
     expect(repo.events.filter((e) => e.kind === "terms_accepted")).toHaveLength(1);
   });
+  it("a later sign-in with the same version keeps the first acceptance time and adds no event (M2)", async () => {
+    expect((await post({ ...(await signedIn(repo, "phone-1")), termsVersion: "2026-10-06" })).status).toBe(200);
+    const at = (await repo.getUser(user.address))!.termsAcceptedAt!.getTime();
+    await new Promise((r) => setTimeout(r, 5));
+    expect((await post({ ...(await signedIn(repo, "phone-1")), termsVersion: "2026-10-06" })).status).toBe(200);
+    expect((await repo.getUser(user.address))!.termsAcceptedAt!.getTime()).toBe(at);
+    expect(repo.events.filter((e) => e.kind === "terms_accepted")).toHaveLength(1);
+  });
   it("another version, or none, signs in without recording", async () => {
     expect((await post({ ...(await signedIn(repo, "phone-1")), termsVersion: "2026-01-01" })).status).toBe(200);
     expect((await post(await signedIn(repo, "phone-1"))).status).toBe(200);
