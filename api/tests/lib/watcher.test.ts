@@ -146,3 +146,21 @@ describe("reserveWatcherCall", () => {
     expect((await repo.listWatcherCalls()).length).toBe(0);
   });
 });
+
+describe("the compile prompt after lending (spec 11)", () => {
+  it("no longer says Sprouts never withdraws; it says money moves only when the person signs", async () => {
+    let system = "";
+    await compileRule({ text: "round up to 2 dollars", current, model: async (req) => { system = req.system; return { input: { understood: "ok" }, usage: { inputTokens: 1, outputTokens: 1 } }; } });
+    expect(system).not.toMatch(/never withdraws/);
+    expect(system).toMatch(/only when the person signs it in the app/);
+    expect(system).toMatch(/lending/);
+    expect(system).not.toMatch(/only when you sign/);
+    expect(system).toMatch(/ORE for the share they choose/);
+  });
+  it("\"put more in ORE\" still compiles to the stORE pin, not a refusal (M3)", async () => {
+    let system = "";
+    const r = await compileRule({ text: "put more in ORE", current, model: async (req) => { system = req.system; return { input: { oreShare: 30, understood: "30% grows ORE.", cannot: null }, usage: { inputTokens: 1, outputTokens: 1 } }; } });
+    expect(r.patch).toEqual({ pins: { stORE: 30 } });
+    expect(system).toMatch(/ORE/);
+  });
+});
