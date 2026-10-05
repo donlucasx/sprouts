@@ -125,3 +125,102 @@ The spike plantings above never wrote `plantings` rows; the daily reconciliation
   - CBBTC max age 280s; updates seen 8; gaps (s) min 270 max 271; not Full/missing 0
   - ORE max age 55s; updates seen 35; gaps (s) min 50 max 55; not Full/missing 0
 - Consequence (R324, nothing posts): cbBTC leg 7 keeps `max_age_s` 600 (yes: max age 280 s, plus 60 = 340, at or under 600); SKR leg 0 has no source (contracts 10 item 15); SOL/ORE legs use the sponsored account under 40 s old and wait up to 60 s otherwise (Task 8). Note: SOL/ORE max age 55 s with 50-55 s gaps, so the under-40 s rule will skip some runs and wait for the next update.
+
+## Day-1 legs, unleashed simulation (Task 12, 2026-10-04 21:20 to 21:28 PDT by `date`)
+
+The go-live gate `scripts/simulate-legs.ts`, run by Claude from the worktree, `--no-post` (the default): simulateTransaction only, NOTHING SENT. User = the Saga test user's Seed Vault `DjRpjufi1BNBaYXPu5ybGQu9cHhxgpPkHJb1UJbePcTR`, wallet = its linked Phantom `887dEPR85vfSZ45zFrxttJ6cLomwvnYbh5HnyGbTAXVu`, delegation `GXcd5FZoxQKQm78CCzUzv7sfsL197CxCjt2eCD4ZRrgz` (today's puller link: 5 USDC per period, 1.03 pulled this period), pull 1 USDC. SPROUTS_ALT is NOT set (the owner creates the ALT, Task 22 D1), so these are Jupiter's tables only.
+
+Run 21:23:17 PDT (the first run at 21:20:06 lost stORE and SKR to Jupiter 429s and crashed USDC Jupiter Lend in `simulatePlanting`, see the fix below; the script now waits 3 s between legs):
+
+```
+LEG SOL_LEND:jupiter_lend unleashed size=1484 build failed jlLeftover=0: SOL_LEND planting is 1484 bytes, over 1232
+LEG SOL_LEND:jupiter_lend unleashed size=1530 build failed jlLeftover=1: SOL_LEND planting is 1530 bytes, over 1232
+LEG SOL_LEND:kamino_klend unleashed size=1130 ok=true units=187434 guard=null leashError=null minOut=7129997 locks=32
+LEG USDC_LEND:jupiter_lend unleashed size=1127 ok=true units=100274 guard=null leashError=null minOut=940592 jlLeftover=0 locks=26
+LEG USDC_LEND:kamino_klend unleashed size=971 ok=true units=87043 guard=null leashError=null minOut=830478 locks=22
+LEG cbBTC unleashed size=995 ok=true units=74750 guard=null leashError=null minOut=1150 locks=29
+LEG hSOL unleashed size=1091 ok=true units=68409 guard=null leashError=null minOut=6892919 locks=37
+LEG stORE unleashed size=838 ok=true units=116715 guard=null leashError=null minOut=748904232 locks=27
+LEG SKR unleashed size=1026 ok=true units=98879 guard=null leashError=null minOut=53602046 locks=35
+HEADROOM worst size SOL_LEND:jupiter_lend 1530/1232 B (-298 B left); worst locks hSOL 37/64 (27 left)
+exit 1
+```
+
+Reading: 7 of 8 legs pass on mainnet today (composition, venue checks, delivery guards). USDC on Jupiter Lend passes with `jlLeftover=0`: `JL_EXPECTED_LEFTOVER` stays `0n`. SOL on Jupiter Lend does NOT fit without the Sprouts ALT even unleashed (1,349 to 1,530 B across runs: the route varies), so it cannot be simulated until the ALT exists.
+
+FIX found by this run (`src/lib/planting.ts` `simulatePlanting`, test-first): an account the transaction CLOSES (the puller's jl account on every Jupiter Lend leg) comes back from mainnet `simulateTransaction` as lamports 0, System-owned, 0 data bytes, not null (probe 21:21 PDT). `tokenAmountOf` threw `not a token account (0 bytes)`, so every Jupiter Lend planting would have died in the simulation. It now reads as absent (null), which is what `jlendDeliveryShortfall` expects.
+
+## Sizes with the Sprouts ALT, COMPUTED (Task 12, 2026-10-04 21:23 to 21:28 PDT)
+
+The ALT is not on chain yet, so `--assume-alt` compresses with its address list (`lib/alt.ts`, 56 addresses) held in memory (`buildPlantingTx` `measureAlt`, measurement only). These sizes are COMPUTED from the real built routes, not measured on chain, and none of these transactions was simulated.
+
+Unleashed, 21:23:55 PDT:
+
+```
+LEG SOL_LEND:jupiter_lend unleashed size=1012 locks=40 ok=n/a (computed with the Sprouts ALT in memory, not simulated) minOut=7869427 jlLeftover=0
+LEG SOL_LEND:kamino_klend unleashed size=820 locks=34 ok=n/a (computed with the Sprouts ALT in memory, not simulated) minOut=7126385
+LEG USDC_LEND:jupiter_lend unleashed size=727 locks=26 ok=n/a (computed with the Sprouts ALT in memory, not simulated) minOut=940591 jlLeftover=0
+LEG USDC_LEND:kamino_klend unleashed size=633 locks=22 ok=n/a (computed with the Sprouts ALT in memory, not simulated) minOut=830478
+LEG cbBTC unleashed size=822 locks=29 ok=n/a (computed with the Sprouts ALT in memory, not simulated) minOut=1150
+LEG hSOL unleashed size=906 locks=35 ok=n/a (computed with the Sprouts ALT in memory, not simulated) minOut=6892026
+LEG stORE unleashed size=748 locks=27 ok=n/a (computed with the Sprouts ALT in memory, not simulated) minOut=748904228
+LEG SKR unleashed size=812 locks=35 ok=n/a (computed with the Sprouts ALT in memory, not simulated) minOut=53602046
+HEADROOM worst size SOL_LEND:jupiter_lend 1012/1232 B (220 B left); worst locks SOL_LEND:jupiter_lend 40/64 (24 left)
+```
+
+Route variance, 4 more samples 21:27 to 21:28 PDT (unleashed, ALT in memory): SOL_LEND:jupiter_lend 949/949/913/949 B (36-38 locks); SOL_LEND:kamino_klend 959/820/820/854 B (32-40 locks); hSOL 907/906/1001/906 B (35-37 locks).
+
+The leash's own cost on the SAME route (`spikes/leash-size-delta.ts --assume-alt`, 21:26:45 PDT: the unleashed build decompiled, transferRecurring swapped for the real pull + settle, recompressed; COMPUTED, not simulated):
+
+```
+DELTA SOL_LEND:jupiter_lend assume-alt unleashed=913 B/36 locks -> leashed(computed)=975 B/41 locks (+62 B, 257 B headroom)
+DELTA SOL_LEND:kamino_klend assume-alt unleashed=854 B/32 locks -> leashed(computed)=916 B/37 locks (+62 B, 316 B headroom)
+DELTA USDC_LEND:jupiter_lend assume-alt unleashed=727 B/26 locks -> leashed(computed)=789 B/31 locks (+62 B, 443 B headroom)
+DELTA USDC_LEND:kamino_klend assume-alt unleashed=633 B/22 locks -> leashed(computed)=694 B/26 locks (+61 B, 538 B headroom)
+DELTA cbBTC assume-alt unleashed=744 B/25 locks -> leashed(computed)=804 B/30 locks (+60 B, 428 B headroom)
+DELTA hSOL assume-alt unleashed=906 B/35 locks -> leashed(computed)=969 B/41 locks (+63 B, 263 B headroom)
+DELTA stORE assume-alt unleashed=748 B/27 locks -> leashed(computed)=814 B/34 locks (+66 B, 418 B headroom)
+DELTA SKR assume-alt unleashed=777 B/32 locks -> leashed(computed)=871 B/38 locks (+94 B, 361 B headroom)
+```
+
+The leash adds 60 to 66 B and 4 to 7 locks per leg (94 B on SKR, whose price account would be a fresh posted account outside every table). Cross-check: the full leashed builds (`--leashed --assume-alt`, 21:24:23 PDT) gave USDC_LEND:jupiter_lend 789 B and USDC_LEND:kamino_klend 694 B, the same as the delta method. Worst projected leashed size = the worst sampled unleashed route (1,012 B, SOL on Jupiter Lend) + 66 B = about 1,078 B of 1,232 (about 154 B headroom); worst locks about 40 + 7 = 47 of 64. With NO ALT the leashed lending legs do not fit (`--leashed --size-only`, 21:24:57 PDT: SOL_LEND:jupiter_lend 1,504-1,519 B, SOL_LEND:kamino_klend 1,416 B, USDC_LEND:jupiter_lend 1,282-1,297 B; only USDC_LEND:kamino_klend fits at 1,094 B): SPROUTS_ALT is REQUIRED before go-live.
+
+Leash floor at today's routes (the API's own pre-send check, `buildPlantingTx`, no send): the leashed builds refused cbBTC (min_out 1,148-1,149 vs floor 1,150), stORE (748,904,221-748,904,224 vs floor 752,838,360-754,264,666, about 0.5% under) and once hSOL (6,876,747 vs 6,880,723; it passed in the other run at 6,886,504). The quote's minimum is the route output less 100 bps of slippage (`getQuote` default), and the floor is the oracle value less fee 50 + tol 100 bps, so any price impact or market-vs-oracle spread puts a coin leg under the floor. These legs would print `build failed: ... under the leash floor` in the owner's leashed run; nothing fails on chain.
+
+CU: unleashed `units=` max 187,434 (SOL_LEND:kamino_klend). Leashed units cannot be measured until the leash is deployed, so `PLANTING_CU_LIMIT` stays the 400,000 placeholder (Task 12 Step 4 sets it from the owner's leashed lines).
+
+## OWNER RUNS (Oct 6)
+
+After `feat/lend-api` is merged, from `build/sprouts/api` (until then the same lines run from `build/sprouts-lend-api/api`). Every line here is simulateTransaction only; none sends a planting. Exit code: 0 all passed, 1 a leg failed, 2 none failed but a leg was skipped (a skip is not a pass).
+
+1. After Task 22 D1 (the ALT created, its `SPROUTS_ALT=` line in `.env.local`), check it is there (prints 1):
+
+```
+cd /Users/lucasgarzoli/Documents/claude/seekerhackathon/build/sprouts/api && grep -c '^SPROUTS_ALT=' .env.local
+```
+
+2. BEFORE the re-link (D6), every leg unleashed against today's link, now with the real ALT on chain. This is the first time SOL on Jupiter Lend can simulate:
+
+```
+cd /Users/lucasgarzoli/Documents/claude/seekerhackathon/build/sprouts/api && pnpm tsx --env-file=.env.local scripts/simulate-legs.ts --user DjRpjufi1BNBaYXPu5ybGQu9cHhxgpPkHJb1UJbePcTR --wallet 887dEPR85vfSZ45zFrxttJ6cLomwvnYbh5HnyGbTAXVu --delegation GXcd5FZoxQKQm78CCzUzv7sfsL197CxCjt2eCD4ZRrgz --pull 1000000 SOL_LEND:jupiter_lend SOL_LEND:kamino_klend USDC_LEND:jupiter_lend USDC_LEND:kamino_klend cbBTC hSOL stORE SKR
+```
+
+3. After D5-D6 (Config initialised, the legs' flags on, his wallet re-linked to the leash), read the NEW delegation PDA (the first line prints `delegation <pda>`; the script may then stop on a missing HELIUS_WEBHOOK_ID, which is fine):
+
+```
+cd /Users/lucasgarzoli/Documents/claude/seekerhackathon/build/sprouts/api && pnpm tsx --env-file=.env.local spikes/db-peek.ts 887dEPR85vfSZ45zFrxttJ6cLomwvnYbh5HnyGbTAXVu | head -1
+```
+
+4. Leashed, every enabled leg (put the PDA from step 3 in place of `<NEW_PDA>`; list only the legs `leash-admin.ts` enabled). Nothing posts: SKR prints `skipped=needs-post` (no price source, R324) and the other priced legs read the sponsored accounts:
+
+```
+cd /Users/lucasgarzoli/Documents/claude/seekerhackathon/build/sprouts/api && pnpm tsx --env-file=.env.local scripts/simulate-legs.ts --user DjRpjufi1BNBaYXPu5ybGQu9cHhxgpPkHJb1UJbePcTR --wallet 887dEPR85vfSZ45zFrxttJ6cLomwvnYbh5HnyGbTAXVu --delegation <NEW_PDA> --leashed --pull 1000000 SOL_LEND:jupiter_lend SOL_LEND:kamino_klend USDC_LEND:jupiter_lend USDC_LEND:kamino_klend cbBTC hSOL stORE
+```
+
+Read each line: `ok=true` passes the leg; `leashError=StalePrice` rerun; `BelowFloor` stop and compare with Task 5's golden vectors; `LegDisabled` the flag is off; `build failed: ... under the leash floor` means today's route minimum is under the floor (see above), rerun once, then leave that leg disabled. A `jlLeftover=1` on a Jupiter Lend line means set `JL_EXPECTED_LEFTOVER` to `1n` in `src/lib/venues/jlend.ts`. Paste the lines back to Claude: the highest leashed `units=` + 55,000, rounded up to the next 10,000, becomes `PLANTING_CU_LIMIT` (Task 12 Step 4, `## CU limit`).
+
+5. Posted-price run (SKR), ONLY once SKR has a price source (a crypto-entitled Pyth key and `SKR_PRICE_SOURCE` true; not before). This one SENDS puller-paid price transactions (VAA write, verify, rent reclaim; no user funds):
+
+```
+cd /Users/lucasgarzoli/Documents/claude/seekerhackathon/build/sprouts/api && pnpm tsx --env-file=.env.local scripts/simulate-legs.ts --user DjRpjufi1BNBaYXPu5ybGQu9cHhxgpPkHJb1UJbePcTR --wallet 887dEPR85vfSZ45zFrxttJ6cLomwvnYbh5HnyGbTAXVu --delegation <NEW_PDA> --leashed --allow-post --pull 1000000 SKR
+```
