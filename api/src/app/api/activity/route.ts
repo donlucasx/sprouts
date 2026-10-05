@@ -48,13 +48,13 @@ export async function GET(request: Request) {
   });
   // Contracts 5.7: a lending position back to the wallet (underlyingRaw = what came back, from the confirmed tx; null when unknown),
   // the moves the user approved or turned down, and the scout's finds of the last 7 days.
-  const lendEvents = await repo.listEvents(session.pubkey, ["lend_withdrawn", "move_proposed", "move_done", "move_dismissed"], LIMIT);
+  const lendEvents = await repo.listEvents(session.pubkey, ["lend_withdrawn", "move_proposed", "move_done", "move_dismissed", "move_failed"], LIMIT);
   // Event details are validated, never cast through: a malformed row is skipped rather than served with undefined fields.
   type EvDetail = Record<string, unknown>;
   const digits = (v: unknown): v is string => typeof v === "string" && /^\d+$/.test(v);
   const str_ = (v: unknown): v is string => typeof v === "string" && v.length > 0;
   // No route writes a move_* event yet (Tasks 18/19 own moves); a status outside MoveStatus reads from the event kind.
-  const MOVE_STATUS: Partial<Record<EventKind, MoveStatus>> = { move_proposed: "open", move_done: "done", move_dismissed: "dismissed" };
+  const MOVE_STATUS: Partial<Record<EventKind, MoveStatus>> = { move_proposed: "open", move_done: "done", move_dismissed: "dismissed", move_failed: "failed" };
   const MOVE_STATUSES: readonly MoveStatus[] = ["open", "dismissed", "expired", "done", "failed"];
   const lendWithdrawals = lendEvents.filter((e) => e.kind === "lend_withdrawn").flatMap((e) => {
     const d = (e.detail ?? {}) as EvDetail;

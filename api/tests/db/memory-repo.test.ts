@@ -228,11 +228,35 @@ describe("0008: venues, carry, moves, links, terms (memory repo)", () => {
     expect(first?.status).toBe("open");
     expect(await repo.insertMoveProposal(p)).toBeNull();
     expect((await repo.openMoveProposal("U"))?.id).toBe(first!.id);
-    await repo.setMoveProposalStatus(first!.id, "done", { redeem: "r", deposit: "d" });
+    expect(await repo.storeMoveSignatures(first!.id, { redeem: "r", deposit: "d" })).toBe(true);
+    expect(await repo.transitionMoveProposal(first!.id, "open", "done")).toBe(true);
     const done = await repo.getMoveProposal(first!.id);
     expect(done).toMatchObject({ status: "done", redeemSignature: "r", depositSignature: "d" });
     expect(done!.closedAt).not.toBeNull();
     expect(await repo.openMoveProposal("U")).toBeNull();
+  });
+
+  it("move proposals: every write is a compare-and-set (C-I2): a stale status, an in-flight card, a stored signature all refuse", async () => {
+    const repo = new MemoryRepo();
+    const p = { userPubkey: "U", asset: "USDC_LEND" as const, fromVenue: "jupiter_lend" as const, toVenue: "kamino_klend" as const, receiptRaw: 9_000_000n, valueUsd: 1000, fromAvg7Pct: 4.19, toAvg7Pct: 4.43, gain30dUsd: 0.1973, costUsd: 0.01 };
+    const card = (await repo.insertMoveProposal(p))!;
+    // signatures: only onto an open card with none; never overwritten
+    expect(await repo.storeMoveSignatures(card.id, { redeem: "R1", deposit: "D1" })).toBe(true);
+    expect(await repo.storeMoveSignatures(card.id, { redeem: "R2", deposit: "D2" })).toBe(false);
+    expect(await repo.getMoveProposal(card.id)).toMatchObject({ redeemSignature: "R1", depositSignature: "D1" });
+    // in flight: no dismiss, no expiry
+    expect(await repo.transitionMoveProposal(card.id, "open", "dismissed", { notInFlight: true })).toBe(false);
+    expect(await repo.transitionMoveProposal(card.id, "open", "expired", { notInFlight: true })).toBe(false);
+    expect((await repo.getMoveProposal(card.id))?.status).toBe("open");
+    // clear only the stored redeem
+    expect(await repo.clearMoveSignatures(card.id, "R2")).toBe(false);
+    expect(await repo.clearMoveSignatures(card.id, "R1")).toBe(true);
+    expect(await repo.getMoveProposal(card.id)).toMatchObject({ redeemSignature: null, depositSignature: null });
+    // status CAS: the second writer loses and nothing changes
+    expect(await repo.transitionMoveProposal(card.id, "open", "expired", { notInFlight: true })).toBe(true);
+    expect(await repo.transitionMoveProposal(card.id, "open", "dismissed")).toBe(false);
+    expect(await repo.storeMoveSignatures(card.id, { redeem: "R3", deposit: "D3" })).toBe(false);
+    expect(await repo.getMoveProposal(card.id)).toMatchObject({ status: "expired", redeemSignature: null });
   });
 
   it("links and terms", async () => {

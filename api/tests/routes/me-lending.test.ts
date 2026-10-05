@@ -101,7 +101,7 @@ describe("GET /api/me, lending (contracts 5.2)", () => {
     expect(before.earnedUsd).toBeGreaterThan(0);
     await repo.putVenueDay({ day: dayOf(new Date()), venue: "jupiter_lend", asset: "USDC_LEND", supplyPct: 4.6, rewardsPct: 0, utilizationPct: 91, withdrawableUsd: 1e7, tvlUsd: 1.2e8, exchangeRate: 1.1, avg7Pct: 4.6, daysMeasured: 2, eligible: true, verdict: "ok", reason: null, served: null, ok: true });
     const m = (await repo.insertMoveProposal({ userPubkey: U, asset: "USDC_LEND", fromVenue: "kamino_klend", toVenue: "jupiter_lend", receiptRaw: 1_661_072n, valueUsd: 2, fromAvg7Pct: 4, toAvg7Pct: 9, gain30dUsd: 0.5, costUsd: 0.01 }))!;
-    await repo.setMoveProposalStatus(m.id, "done", { redeem: "R", deposit: "D" });
+    await repo.storeMoveSignatures(m.id, { redeem: "R", deposit: "D" }); await repo.transitionMoveProposal(m.id, "open", "done");
     await repo.addEvent({ userPubkey: U, walletPubkey: null, kind: "move_built", detail: { id: m.id, asset: "USDC_LEND", from: "kamino_klend", to: "jupiter_lend", receiptRaw: "1661072", sourceReceiptRaw: "1661072", depositRaw: "1999589", toReceiptRaw: "1817808", fromRate: 1.205, toRate: 1.1 } });
     await repo.addEvent({ userPubkey: U, walletPubkey: null, kind: "move_done", detail: { id: m.id, asset: "USDC_LEND", from: "kamino_klend", to: "jupiter_lend", receiptRaw: "1661072", status: "done" } });
     vi.mocked(readLendingPositions).mockResolvedValueOnce([{ asset: "USDC_LEND", venue: "jupiter_lend", receiptRaw: 1_817_808n }]);
@@ -109,10 +109,12 @@ describe("GET /api/me, lending (contracts 5.2)", () => {
     expect(after).toMatchObject({ venue: "jupiter_lend", putInCents: before.putInCents });
     expect(after.earnedUsd).toBeCloseTo(before.earnedUsd, 9);
   });
-  it("the open move proposal, as contracts 5.4", async () => {
-    await repo.insertMoveProposal({ userPubkey: U, asset: "USDC_LEND", fromVenue: "kamino_klend", toVenue: "jupiter_lend", receiptRaw: 1_661_072n, valueUsd: 2, fromAvg7Pct: 4, toAvg7Pct: 9, gain30dUsd: 0.5, costUsd: 0.01 });
+  it("the open move proposal, as contracts 5.4, plus inFlight (C-I2 4): true once its redeem signature is stored", async () => {
+    const m = (await repo.insertMoveProposal({ userPubkey: U, asset: "USDC_LEND", fromVenue: "kamino_klend", toVenue: "jupiter_lend", receiptRaw: 1_661_072n, valueUsd: 2, fromAvg7Pct: 4, toAvg7Pct: 9, gain30dUsd: 0.5, costUsd: 0.01 }))!;
     const { moveProposal } = await get();
-    expect(Object.keys(moveProposal).sort()).toEqual(["asset", "costUsd", "from", "fromAvg7Pct", "gain30dUsd", "id", "receiptRaw", "to", "toAvg7Pct", "ts", "valueUsd"].sort());
-    expect(moveProposal).toMatchObject({ asset: "USDC_LEND", from: "kamino_klend", to: "jupiter_lend", receiptRaw: "1661072", valueUsd: 2 });
+    expect(Object.keys(moveProposal).sort()).toEqual(["asset", "costUsd", "from", "fromAvg7Pct", "gain30dUsd", "id", "inFlight", "receiptRaw", "to", "toAvg7Pct", "ts", "valueUsd"].sort());
+    expect(moveProposal).toMatchObject({ asset: "USDC_LEND", from: "kamino_klend", to: "jupiter_lend", receiptRaw: "1661072", valueUsd: 2, inFlight: false });
+    await repo.storeMoveSignatures(m.id, { redeem: "R", deposit: "D" });
+    expect((await get()).moveProposal).toMatchObject({ id: m.id, inFlight: true });
   });
 });

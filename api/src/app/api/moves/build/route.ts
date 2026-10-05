@@ -9,7 +9,7 @@ import { klendRate } from "@/lib/venues/klend";
 import { jlendRate } from "@/lib/venues/jlend";
 import { jupiterWithdrawableRaw } from "@/lib/venues/rates";
 import { buildMove } from "@/lib/venues/user-builders";
-import { carryMoves, moveBuiltDetail, moveCarriesFor, moveDepositRaw } from "@/lib/moves";
+import { carryMoves, IN_FLIGHT, moveBuiltDetail, moveCarriesFor, moveDepositRaw } from "@/lib/moves";
 import { COINS, type LendAsset } from "@/domain/coins";
 import { VENUE_SHORT, type AutoVenue } from "@/domain/venues";
 import { dayOf } from "@/domain/day";
@@ -37,6 +37,8 @@ export async function POST(request: Request) {
   const p = await repo.getMoveProposal(parsed.data.id);
   if (!p || p.userPubkey !== user.seedVaultPubkey) return NextResponse.json({ error: "No such move." }, { status: 404 });
   if (p.status !== "open") return NextResponse.json({ error: "This move is no longer open." }, { status: 409 });
+  // K-I2: a move in flight is never rebuilt with new amounts (its signed pair and the build it was pinned to settle it).
+  if (p.redeemSignature) return NextResponse.json({ error: IN_FLIGHT, inFlight: true }, { status: 409 });
   const owner = userAddress(user.seedVaultPubkey);
   const { asset, fromVenue: from, toVenue: to } = p;
   let balance: bigint;

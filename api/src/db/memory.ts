@@ -337,13 +337,28 @@ export class MemoryRepo implements Repo {
     const key = (m: T.MoveProposalRow) => (m.closedAt ?? m.ts).getTime();
     return [...this.moves.values()].filter((m) => m.userPubkey === userPubkey && m.status === status).sort((a, b) => key(a) - key(b) || a.ts.getTime() - b.ts.getTime()).map((m) => ({ ...m }));
   }
-  async setMoveProposalStatus(moveId: string, status: T.MoveStatus, sig?: { redeem?: string; deposit?: string }) {
+  async transitionMoveProposal(moveId: string, from: T.MoveStatus, to: T.MoveStatus, opts?: { notInFlight?: boolean }) {
     const m = this.moves.get(moveId);
-    if (!m) return;
-    m.status = status;
-    if (sig?.redeem) m.redeemSignature = sig.redeem;
-    if (sig?.deposit) m.depositSignature = sig.deposit;
-    if (status !== "open") m.closedAt = new Date();
+    if (!m || m.status !== from || (opts?.notInFlight && m.redeemSignature !== null)) return false;
+    if (to === "open" && [...this.moves.values()].some((x) => x !== m && x.userPubkey === m.userPubkey && x.status === "open"))
+      throw new Error('duplicate key value violates unique constraint "move_proposals_one_open"');
+    m.status = to;
+    if (to !== "open") m.closedAt = new Date();
+    return true;
+  }
+  async storeMoveSignatures(moveId: string, sig: { redeem: string; deposit: string }) {
+    const m = this.moves.get(moveId);
+    if (!m || m.status !== "open" || m.redeemSignature !== null) return false;
+    m.redeemSignature = sig.redeem;
+    m.depositSignature = sig.deposit;
+    return true;
+  }
+  async clearMoveSignatures(moveId: string, redeem: string) {
+    const m = this.moves.get(moveId);
+    if (!m || m.status !== "open" || m.redeemSignature !== redeem) return false;
+    m.redeemSignature = null;
+    m.depositSignature = null;
+    return true;
   }
   async carryCreditRaw(userPubkey: string, kind: T.CarryKind) {
     if (kind === "SKR") return this.skrCreditRaw(userPubkey);

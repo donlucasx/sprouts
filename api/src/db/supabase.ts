@@ -376,11 +376,25 @@ export class SupabaseRepo implements Repo {
   async listMoveProposals(userPubkey: string, status: T.MoveStatus) {
     return this.many(this.db.from("move_proposals").select().eq("user_pubkey", userPubkey).eq("status", status).order("closed_at", { ascending: true, nullsFirst: true }).order("ts", { ascending: true }), moveProposalRow);
   }
-  async setMoveProposalStatus(moveId: string, status: T.MoveStatus, sig?: { redeem?: string; deposit?: string }) {
-    const { error } = await this.db.from("move_proposals").update({
-      status, ...(sig?.redeem ? { redeem_signature: sig.redeem } : {}), ...(sig?.deposit ? { deposit_signature: sig.deposit } : {}), ...(status !== "open" ? { closed_at: new Date().toISOString() } : {}),
-    }).eq("id", moveId);
+  /** One conditional UPDATE (C-I2): `where id and status = from [and redeem_signature is null]`; the returned rows say whether it won. */
+  async transitionMoveProposal(moveId: string, from: T.MoveStatus, to: T.MoveStatus, opts?: { notInFlight?: boolean }) {
+    let q = this.db.from("move_proposals").update({ status: to, ...(to !== "open" ? { closed_at: new Date().toISOString() } : {}) }).eq("id", moveId).eq("status", from);
+    if (opts?.notInFlight) q = q.is("redeem_signature", null);
+    const { data, error } = await q.select("id");
     if (error) throw new Error(error.message);
+    return (data ?? []).length > 0;
+  }
+  async storeMoveSignatures(moveId: string, sig: { redeem: string; deposit: string }) {
+    const { data, error } = await this.db.from("move_proposals").update({ redeem_signature: sig.redeem, deposit_signature: sig.deposit })
+      .eq("id", moveId).eq("status", "open").is("redeem_signature", null).select("id");
+    if (error) throw new Error(error.message);
+    return (data ?? []).length > 0;
+  }
+  async clearMoveSignatures(moveId: string, redeem: string) {
+    const { data, error } = await this.db.from("move_proposals").update({ redeem_signature: null, deposit_signature: null })
+      .eq("id", moveId).eq("status", "open").eq("redeem_signature", redeem).select("id");
+    if (error) throw new Error(error.message);
+    return (data ?? []).length > 0;
   }
   /** One statement on the server (carry_credit, 0008): exact numerics, never through JS numbers. */
   async carryCreditRaw(userPubkey: string, kind: T.CarryKind) {

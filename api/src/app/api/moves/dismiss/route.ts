@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getRepo } from "@/db/repo";
 import { requireSession } from "@/lib/auth-guard";
-import { moveDetail } from "@/lib/moves";
+import { IN_FLIGHT, moveDetail } from "@/lib/moves";
 
 export const runtime = "nodejs";
 const Body = z.object({ id: z.string().min(1) });
@@ -19,7 +19,15 @@ export async function POST(request: Request) {
   const p = await repo.getMoveProposal(parsed.data.id);
   if (!p || p.userPubkey !== user.seedVaultPubkey) return NextResponse.json({ error: "No such move." }, { status: 404 });
   if (p.status !== "open") return NextResponse.json({ error: "This move is no longer open." }, { status: 409 });
-  await repo.setMoveProposalStatus(p.id, "dismissed");
+  // K-I1: a move in flight (its redeem signature stored) is never dismissed: the cron or the confirm settles it.
+  if (p.redeemSignature) return NextResponse.json({ error: IN_FLIGHT, inFlight: true }, { status: 409 });
+  // Compare-and-set (C-I2): the confirm storing its signatures, or the cron's expiry, may have won since the read above.
+  if (!(await repo.transitionMoveProposal(p.id, "open", "dismissed", { notInFlight: true }))) {
+    const now = await repo.getMoveProposal(p.id);
+    return now?.status === "open" && now.redeemSignature
+      ? NextResponse.json({ error: IN_FLIGHT, inFlight: true }, { status: 409 })
+      : NextResponse.json({ error: "This move is no longer open." }, { status: 409 });
+  }
   await repo.addEvent({ userPubkey: user.seedVaultPubkey, walletPubkey: null, kind: "move_dismissed", detail: moveDetail(p, "dismissed") });
   return NextResponse.json({ dismissed: true });
 }

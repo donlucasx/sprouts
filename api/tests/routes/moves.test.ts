@@ -54,8 +54,11 @@ describe("Moves (spec 7, contracts 5.4 with S3 = ONE: [redeem, deposit] in one s
   it("GET /api/moves: the open card as contracts 5.4, or null", async () => {
     const body = await (await list(new Request("http://x/api/moves", { headers: await auth() }))).json();
     expect(body.proposal).toMatchObject({ id: p.id, asset: "USDC_LEND", from: "jupiter_lend", to: "kamino_klend", receiptRaw: "1661072", valueUsd: 5000, fromAvg7Pct: 4.19, toAvg7Pct: 4.43, gain30dUsd: 0.98, costUsd: 0.25 });
-    expect(Object.keys(body.proposal).sort()).toEqual(["asset", "costUsd", "from", "fromAvg7Pct", "gain30dUsd", "id", "receiptRaw", "to", "toAvg7Pct", "ts", "valueUsd"].sort());
-    await repo.setMoveProposalStatus(p.id, "expired");
+    expect(Object.keys(body.proposal).sort()).toEqual(["asset", "costUsd", "from", "fromAvg7Pct", "gain30dUsd", "id", "inFlight", "receiptRaw", "to", "toAvg7Pct", "ts", "valueUsd"].sort());
+    expect(body.proposal.inFlight).toBe(false);
+    await repo.storeMoveSignatures(p.id, { redeem: "R", deposit: "D" });
+    expect((await (await list(new Request("http://x/api/moves", { headers: await auth() }))).json()).proposal).toMatchObject({ id: p.id, inFlight: true });
+    await repo.transitionMoveProposal(p.id, "open", "expired");
     expect(await (await list(new Request("http://x/api/moves", { headers: await auth() }))).json()).toEqual({ proposal: null });
   });
 
@@ -150,14 +153,118 @@ describe("Moves (spec 7, contracts 5.4 with S3 = ONE: [redeem, deposit] in one s
     expect((await call(confirm, { id: p.id, signedTransactions: [await sign(r), await sign(d)] })).status).toBe(409);
   });
 
-  it("the redeem fails: nothing moved, the deposit is never sent, the card stays open", async () => {
+  it("the redeem fails: nothing moved, the deposit is never sent, the card stays open and is no longer in flight", async () => {
     const built = await (await call(build, { id: p.id })).json();
     vi.mocked(waitConfirmed).mockResolvedValue("failed");
     const res = await call(confirm, { id: p.id, signedTransactions: await Promise.all(built.transactions.map(sign)) });
     expect(res.status).toBe(409);
     expect((await res.json()).partial).toBeUndefined();
     expect(vi.mocked(sendPosted)).toHaveBeenCalledTimes(1);
-    expect((await repo.getMoveProposal(p.id))?.status).toBe("open");
+    expect(await repo.getMoveProposal(p.id)).toMatchObject({ status: "open", redeemSignature: null, depositSignature: null });
+    expect((await call(dismiss, { id: p.id })).status).toBe(200);   // an ordinary open card again
+  });
+
+  it("both signatures are stored BEFORE the redeem is sent (C-I2 1, ledger T20 minor 3)", async () => {
+    const built = await (await call(build, { id: p.id })).json();
+    const atSend: (string | null)[][] = [];
+    vi.mocked(sendPosted).mockImplementation(async () => { const c = (await repo.getMoveProposal(p.id))!; atSend.push([c.redeemSignature, c.depositSignature]); });
+    const { move } = await (await call(confirm, { id: p.id, signedTransactions: await Promise.all(built.transactions.map(sign)) })).json();
+    expect(atSend[0]).toEqual([move.redeemSignature, move.depositSignature]);
+  });
+
+  /** A confirm whose redeem is still pending when the function answers: the card is in flight, both signatures stored. */
+  const inFlight = async () => {
+    const built = await (await call(build, { id: p.id })).json();
+    const signed = await Promise.all(built.transactions.map(sign));
+    vi.mocked(waitConfirmed).mockResolvedValue("pending");
+    vi.mocked(settleUnconfirmed).mockResolvedValue("pending");
+    const res = await call(confirm, { id: p.id, signedTransactions: signed });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: MAY_STILL });
+    vi.mocked(sendPosted).mockClear();
+    return { built, signed, card: (await repo.getMoveProposal(p.id))! };
+  };
+
+  it("in flight: Not now is refused (409 inFlight), the card stays open with its signatures (K-I1)", async () => {
+    const { card } = await inFlight();
+    expect(card.redeemSignature).toEqual(expect.any(String));
+    const res = await call(dismiss, { id: p.id });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "This move is on its way. Check Home in a minute.", inFlight: true });
+    expect(await repo.getMoveProposal(p.id)).toMatchObject({ status: "open", redeemSignature: card.redeemSignature, depositSignature: card.depositSignature });
+    expect(repo.events.some((e) => e.kind === "move_dismissed")).toBe(false);
+  });
+
+  it("in flight: no rebuild with new amounts (K-I2): build answers 409 inFlight and records no move_built", async () => {
+    await inFlight();
+    const before = repo.events.filter((e) => e.kind === "move_built").length;
+    receipt = 1_000_000n;
+    const res = await call(build, { id: p.id });
+    expect(res.status).toBe(409);
+    expect((await res.json()).inFlight).toBe(true);
+    expect(repo.events.filter((e) => e.kind === "move_built").length).toBe(before);
+  });
+
+  it("in flight: a different signed pair is refused before anything is sent, and the stored signatures are never overwritten (ledger T20 minor 2)", async () => {
+    const { card } = await inFlight();
+    vi.mocked(waitConfirmed).mockResolvedValue("confirmed");
+    // A fresh build is refused while in flight, so the other pair is made by hand (a deposit one unit smaller: other signatures).
+    const owner = user.address;
+    const other = await Promise.all((["redeem", "deposit"] as const).map(async (part) => sign(await buildUserTransaction(owner, await buildMove({ user: owner, asset: "USDC_LEND", from: "jupiter_lend", to: "kamino_klend", receiptRaw: 1_661_072n, depositRaw: 1_825_350n, part })))));
+    const res = await call(confirm, { id: p.id, signedTransactions: other });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: MAY_STILL });
+    expect(vi.mocked(sendPosted)).not.toHaveBeenCalled();
+    expect(await repo.getMoveProposal(p.id)).toMatchObject({ status: "open", redeemSignature: card.redeemSignature, depositSignature: card.depositSignature });
+  });
+
+  it("in flight: the SAME pair again (a retry after a lost answer) goes on and finishes the move", async () => {
+    const { signed, card } = await inFlight();
+    vi.mocked(waitConfirmed).mockResolvedValue("confirmed");
+    const res = await call(confirm, { id: p.id, signedTransactions: signed });
+    expect(res.status).toBe(200);
+    expect((await res.json()).move).toEqual({ id: p.id, status: "done", redeemSignature: card.redeemSignature, depositSignature: card.depositSignature });
+    expect(repo.events.filter((e) => e.kind === "move_done")).toHaveLength(1);
+  });
+
+  it("the cron settles the move while the confirm polls the deposit: the confirm answers from the winner's state, never a 500 (C-I2 c)", async () => {
+    const built = await (await call(build, { id: p.id })).json();
+    let sends = 0;
+    vi.mocked(sendPosted).mockImplementation(async () => {
+      // The deposit goes out; meanwhile the cron's settle finds it confirmed and wins the compare-and-set.
+      if (++sends === 2) await proposeMoves({ repo, now: new Date(), positions: async () => [], solUsd: 120, txStatus: async () => "confirmed" });
+    });
+    const res = await call(confirm, { id: p.id, signedTransactions: await Promise.all(built.transactions.map(sign)) });
+    expect(res.status).toBe(200);
+    expect((await res.json()).move).toMatchObject({ id: p.id, status: "done" });
+    expect(repo.events.filter((e) => e.kind === "move_done")).toHaveLength(1);
+  });
+
+  it("the cron fails the move while the confirm sees the deposit fail: one move_failed, the partial answer, never a 500", async () => {
+    const built = await (await call(build, { id: p.id })).json();
+    let sends = 0;
+    vi.mocked(sendPosted).mockImplementation(async () => {
+      if (++sends === 2) await proposeMoves({ repo, now: new Date(), positions: async () => [], solUsd: 120, txStatus: async (sig) => ((await repo.getMoveProposal(p.id))!.redeemSignature === sig ? "confirmed" : "failed") });
+    });
+    vi.mocked(waitConfirmed).mockResolvedValueOnce("confirmed").mockResolvedValue("failed");
+    const res = await call(confirm, { id: p.id, signedTransactions: await Promise.all(built.transactions.map(sign)) });
+    expect(res.status).toBe(409);
+    expect((await res.json()).partial).toBe(true);
+    expect(repo.events.filter((e) => e.kind === "move_failed")).toHaveLength(1);
+  });
+
+  it("a build that slipped in after the signatures were stored never changes the carry: the confirm pinned its own build", async () => {
+    const first = await (await call(build, { id: p.id })).json();
+    vi.mocked(waitConfirmed).mockResolvedValueOnce("confirmed").mockResolvedValue("pending");
+    vi.mocked(settleUnconfirmed).mockResolvedValue("pending");
+    expect((await call(confirm, { id: p.id, signedTransactions: await Promise.all(first.transactions.map(sign)) })).status).toBe(409);
+    // A build that passed its in-flight check just before the signatures were stored writes its (different) amounts afterwards.
+    await repo.addEvent({ userPubkey: user.address, walletPubkey: null, kind: "move_built", detail: { id: p.id, asset: "USDC_LEND", from: "jupiter_lend", to: "kamino_klend", receiptRaw: "1000000", sourceReceiptRaw: "1000000", depositRaw: "1098900", toReceiptRaw: "911950", fromRate: 1.1, toRate: 1.205 } });
+    const card = (await repo.getMoveProposal(p.id))!;
+    await proposeMoves({ repo, now: new Date(), positions: async () => [], solUsd: 120, txStatus: async () => "confirmed" });
+    expect(card.depositSignature).toEqual(expect.any(String));
+    expect((await repo.getMoveProposal(p.id))?.status).toBe("done");
+    expect((await moveCarriesFor(repo, user.address)).map((c) => c.depositRaw.toString())).toEqual([first.depositRaw]);
   });
 
   it("the redeem lands and the deposit fails: 409 partial in the USDC wording; status failed", async () => {
@@ -167,10 +274,12 @@ describe("Moves (spec 7, contracts 5.4 with S3 = ONE: [redeem, deposit] in one s
     expect(res.status).toBe(409);
     expect(await res.json()).toEqual({ error: "Your USDC is back in your wallet; the move did not finish.", partial: true });
     expect(await repo.getMoveProposal(p.id)).toMatchObject({ status: "failed" });
+    // C-I2 5: Activity says the money came back to the wallet
+    expect(repo.events.filter((e) => e.kind === "move_failed").map((e) => e.detail)).toEqual([{ id: p.id, asset: "USDC_LEND", from: "jupiter_lend", to: "kamino_klend", receiptRaw: "1661072", status: "failed" }]);
   });
 
   it("SOL: the partial 409 names SOL and hands back an unwrap tx for the WSOL the redeem left (no stranded WSOL)", async () => {
-    await repo.setMoveProposalStatus(p.id, "dismissed");
+    await repo.transitionMoveProposal(p.id, "open", "dismissed");
     const sol = await propose("SOL_LEND");
     const built = await (await call(build, { id: sol.id })).json();
     expect(built.brief).toMatch(/^Moves your SOL from Jupiter to Kamino: about \d+\.\d{4} SOL out, \d+\.\d{4} SOL in\.$/);
@@ -207,7 +316,7 @@ describe("Moves (spec 7, contracts 5.4 with S3 = ONE: [redeem, deposit] in one s
     // each poll is 12 tries (18 s): both inside the 60 s function limit
     expect(vi.mocked(waitConfirmed).mock.calls.every((c) => c[1] === 12)).toBe(true);
     // the cron: the money is at the target now; the deposit's signature landed
-    await proposeMoves({ repo, now: new Date(), positions: async () => [{ asset: "USDC_LEND", venue: "kamino_klend", receiptRaw: 1_514_000n }], solUsd: 120, depositStatus: async (sig) => (sig === card.depositSignature ? "confirmed" : "pending") });
+    await proposeMoves({ repo, now: new Date(), positions: async () => [{ asset: "USDC_LEND", venue: "kamino_klend", receiptRaw: 1_514_000n }], solUsd: 120, txStatus: async (sig) => (sig === card.depositSignature ? "confirmed" : "pending") });
     expect((await repo.getMoveProposal(p.id))?.status).toBe("done");
     expect(repo.events.find((e) => e.kind === "move_done")?.detail).toMatchObject({ id: p.id, status: "done" });
     expect((await moveCarriesFor(repo, user.address)).map((c) => c.depositRaw)).toEqual([1_825_351n]);
@@ -218,7 +327,8 @@ describe("Moves (spec 7, contracts 5.4 with S3 = ONE: [redeem, deposit] in one s
     vi.mocked(waitConfirmed).mockResolvedValueOnce("confirmed").mockResolvedValue("pending");
     vi.mocked(settleUnconfirmed).mockResolvedValue("pending");
     expect((await call(confirm, { id: p.id, signedTransactions: await Promise.all(built.transactions.map(sign)) })).status).toBe(409);
-    const r = await proposeMoves({ repo, now: new Date(), positions: async () => [], solUsd: 120, depositStatus: async () => "expired" });
+    const card = (await repo.getMoveProposal(p.id))!;
+    const r = await proposeMoves({ repo, now: new Date(), positions: async () => [], solUsd: 120, txStatus: async (sig) => (sig === card.redeemSignature ? "confirmed" : "expired") });
     expect(r.expired).toEqual([]);
     expect((await repo.getMoveProposal(p.id))?.status).toBe("failed");
     expect(await moveCarriesFor(repo, user.address)).toEqual([]);

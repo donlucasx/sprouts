@@ -16,11 +16,11 @@ const { order, snapshotMock, decideMock, applyMock, venuesMock, movesMock } = vi
     decideMock: vi.fn(async (_a: unknown) => { order.push("decide"); return [{ stop: "careful", fallback: null }, { stop: "balanced", fallback: null }, { stop: "bold", fallback: "model" }]; }),
     applyMock: vi.fn(async () => { order.push("apply"); return { changed: ["U"] }; }),
     venuesMock: vi.fn(async () => { order.push("venues"); return [{ ok: true }, { ok: false }]; }),
-    movesMock: vi.fn(async (_a: unknown) => { order.push("moves"); return { proposed: ["U"], expired: [] }; }),
+    movesMock: vi.fn(async (_a: unknown) => { order.push("moves"); return { proposed: ["U"], expired: [], settled: [] }; }),
   };
 });
 vi.mock("@/lib/venues/rates", () => ({ snapshotVenues: venuesMock, scoutYields: vi.fn(async () => []), realVenueReads: vi.fn(() => ({})) }));
-vi.mock("@/lib/moves", () => ({ proposeMoves: movesMock }));
+vi.mock("@/lib/moves", async (orig) => ({ ...(await orig<object>()), proposeMoves: movesMock }));
 vi.mock("@/lib/plant-run", async (orig) => {
   const actual = await orig<typeof import("@/lib/plant-run")>();
   return { ...actual, runPlanting: vi.fn(async (a: Parameters<typeof actual.runPlanting>[0]) => { order.push("plant"); return actual.runPlanting(a); }) };
@@ -82,7 +82,8 @@ describe("cron route", () => {
   };
   const get = () => GET(new Request("http://x/api/cron/plant", { headers: { authorization: `Bearer ${SECRET}` } }));
 
-  it("runs venues, coins, decide, apply, moves, then plant, and reports venues and moves", async () => {
+  it("runs venues, coins, decide, apply, moves, then plant, and reports venues and moves (MOVES_ENABLED=true)", async () => {
+    process.env.MOVES_ENABLED = "true";
     const res = await get();
     expect(order).toEqual(["venues", "coins", "decide", "apply", "moves", "plant"]);
     const body = (await res.json()) as { venues: number; moves: number };
@@ -90,14 +91,21 @@ describe("cron route", () => {
     expect(body.moves).toBe(1);
   });
 
-  it("skips the moves step when MOVES_ENABLED is false", async () => {
-    process.env.MOVES_ENABLED = "false";
-    const body = (await (await get()).json()) as { moves: number | null };
-    expect(order).toEqual(["venues", "coins", "decide", "apply", "plant"]);
-    expect(body.moves).toBeNull();
+  it("R337: moves are OFF unless MOVES_ENABLED is exactly \"true\" (unset, false, 1 all skip the step, logged as off)", async () => {
+    for (const v of [undefined, "false", "1", "TRUE"]) {
+      if (v === undefined) delete process.env.MOVES_ENABLED; else process.env.MOVES_ENABLED = v;
+      order.length = 0;
+      const log = vi.spyOn(console, "log").mockImplementation(() => {});
+      const body = (await (await get()).json()) as { moves: number | null };
+      expect(order).toEqual(["venues", "coins", "decide", "apply", "plant"]);
+      expect(body.moves).toBeNull();
+      expect(log.mock.calls.map((c) => String(c[0])).join("\n")).toContain("moves off,");
+      log.mockRestore();
+    }
   });
 
   it("skips the moves step, logged, when today has no SOL price (never a zero cost basis)", async () => {
+    process.env.MOVES_ENABLED = "true";
     const err = vi.spyOn(console, "error").mockImplementation(() => {});
     await seedSolPrice(null);
     const res = await get();
@@ -109,6 +117,7 @@ describe("cron route", () => {
   });
 
   it("a failed venues or moves step is logged and the planting still runs", async () => {
+    process.env.MOVES_ENABLED = "true";
     const err = vi.spyOn(console, "error").mockImplementation(() => {});
     venuesMock.mockRejectedValueOnce(new Error("JUPITER_API_KEY is not set"));
     movesMock.mockRejectedValueOnce(new Error("moves boom"));
@@ -124,14 +133,18 @@ describe("cron route", () => {
     err.mockRestore();
   });
 
-  it("the moves step reads positions only inside its deadline, and the decide step gets the scout", async () => {
+  it("the moves step reads positions and in-flight signatures only inside its deadline, and the decide step gets the scout", async () => {
+    process.env.MOVES_ENABLED = "true";
     await get();
-    const a = movesMock.mock.calls.at(-1)![0] as { positions(u: string): Promise<unknown>; solUsd: number };
+    const a = movesMock.mock.calls.at(-1)![0] as { positions(u: string): Promise<unknown>; solUsd: number; txStatus(sig: string, card: unknown): Promise<unknown> };
     expect(typeof a.solUsd).toBe("number");
     expect(typeof (decideMock.mock.calls.at(-1)![0] as { scout: unknown }).scout).toBe("function");
     const real = Date.now;
     Date.now = () => real() + 10 * 60_000;
-    try { await expect(a.positions("U")).rejects.toThrow(/deadline/); } finally { Date.now = real; }
+    try {
+      await expect(a.positions("U")).rejects.toThrow(/deadline/);
+      await expect(a.txStatus("sig", {})).rejects.toThrow(/deadline/);   // T21 minor: settleInFlight's chain reads too
+    } finally { Date.now = real; }
   });
 
   it("a failed snapshot never stops the planting run", async () => {
