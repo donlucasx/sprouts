@@ -20,10 +20,42 @@ export const SKR_OVERRIDE_FLAG = "--DANGER-enable-skr-leg-without-price-source";
 /** R299 + the coordinator's update: the only key allowed is GrHSwzYp...; anything else stops here, before any RPC. Never prints key bytes. */
 export async function loadAdmin(path: string): Promise<KeyPairSigner> {
   if (!path) throw new Error("--admin <path to the admin keypair json> is required");
-  const bytes = Uint8Array.from(JSON.parse(readFileSync(path.replace(/^~(?=\/)/, os.homedir()), "utf8")) as number[]);
+  const text = readFileSync(path.replace(/^~(?=\/)/, os.homedir()), "utf8");
+  let arr: unknown;
+  try { arr = JSON.parse(text); } catch { throw new Error(`${path}: not a Solana keypair JSON file`); }   // never echo the parse error: it quotes the file (key bytes)
+  if (!Array.isArray(arr) || arr.length !== 64 || !arr.every((x) => Number.isInteger(x) && x >= 0 && x <= 255)) throw new Error(`${path}: not a Solana keypair JSON file (expected 64 bytes)`);
+  const bytes = Uint8Array.from(arr as number[]);
   const signer = await createKeyPairSignerFromBytes(bytes);
   if (signer.address !== LEASH_ADMIN) throw new Error(`${path} holds ${signer.address}, not the Sprouts admin key ${LEASH_ADMIN}`);
   return signer;
+}
+
+const sameBytes = (a: Uint8Array, b: Uint8Array) => a.length === b.length && a.every((x, i) => x === b[i]);
+
+/**
+ * The Config PDA as getAccountInfo returns it -> the planner's input. Missing, or PRE-FUNDED (System-owned, zero data: anyone can send
+ * lamports to the PDA; the program tops up, Allocates and Assigns at init_config, lib.rs:93-101) = no Config yet (null, plan init_config).
+ * Owned by the leash program = its bytes. Any other owner, or a System account holding data: refused.
+ */
+export function configAccountBytes(info: { owner: Address | string; data: Uint8Array } | null): Uint8Array | null {
+  if (!info) return null;
+  if (info.owner === SYSTEM_PROGRAM && info.data.length === 0) return null;
+  if (info.owner !== LEASH_PROGRAM) throw new Error(`the Config account is owned by ${info.owner} (${info.data.length} bytes), not the leash program. Nothing was sent.`);
+  return info.data;
+}
+
+/**
+ * `init` installs the default Config (PULLER_MAINNET, every leg off). On an existing account it must not undo anything the owner set:
+ * refused when any leg is enabled (use set) or when the on-chain header differs (a puller rotation: use set --puller explicitly).
+ * Legs init_config left unset (all zero) are not "enabled"; a header-only account (an interrupted init) resumes.
+ */
+export function assertInitSafe(raw: Uint8Array | null, want: LeashConfig): void {
+  if (!raw) return;
+  if (raw.length !== 1504) throw new Error(`leash config: ${raw.length} bytes, expected 1504`);
+  const legOn = LEG_BYTES.some((l) => raw[96 + 176 * l] === 1);
+  if (legOn) throw new Error("a Config with enabled legs exists: use set (init would turn them off). Nothing was sent.");
+  if (!sameBytes(raw.subarray(16, 96), encodeHeader(want)))
+    throw new Error("the on-chain header (puller / puller_usdc / max_pull) differs from init's default: init would undo it. Use set --puller <pubkey> explicitly. Nothing was sent.");
 }
 
 /** Amended contracts 2.3 per-leg values: tol 100/150/10, fee 50/0, confidence cap 100 bps, max age per leg (60 s; cbBTC 600 s, R324), the leg's pinned feed, feed_account zero. */
@@ -56,7 +88,6 @@ export function assertInstallable(want: LeashConfig, allowSkr: boolean): void {
 /** One admin instruction per tx (contracts 2.5, R325). */
 export type AdminStep = { kind: "init" } | { kind: "header" } | { kind: "leg"; leg: LeashLegByte };
 export const stepName = (s: AdminStep): string => (s.kind === "init" ? "init_config" : s.kind === "header" ? "set_header" : `set_leg ${s.leg}`);
-const sameBytes = (a: Uint8Array, b: Uint8Array) => a.length === b.length && a.every((x, i) => x === b[i]);
 
 /**
  * The steps that move the on-chain account (`raw` = its 1504 bytes, null = no Config yet) to `want`, compared byte for byte:
@@ -124,7 +155,7 @@ const json = (v: unknown) => JSON.stringify(v, (_k, x) => (typeof x === "bigint"
  * resumes from the chain). After the last step re-reads the account and requires bytes 16..1504 to equal encodeConfig(want).
  * Codes: 0 matched, 1 simulation failed, 2 over the size limit, 3 the final read differs.
  */
-export async function runAdminSteps(a: { admin: TransactionSigner; want: LeashConfig; chain: AdminChain; log?: (s: string) => void; maxTxBytes?: number }): Promise<AdminRun> {
+export async function runAdminSteps(a: { admin: TransactionSigner; want: LeashConfig; chain: AdminChain; log?: (s: string) => void; maxTxBytes?: number; finalReadRetries?: number; retryDelayMs?: number }): Promise<AdminRun> {
   const log = a.log ?? console.log;
   const limit = a.maxTxBytes ?? MAX_TX_BYTES;
   const sent: string[] = [];
@@ -146,8 +177,15 @@ export async function runAdminSteps(a: { admin: TransactionSigner; want: LeashCo
     sent.push(stepName(step));
     log(`${label} confirmed ${getSignatureFromTransaction(tx)} (${size} B)`);
   }
-  const after = await a.chain.readRaw();
-  if (!after || Buffer.from(after.subarray(16)).toString("hex") !== Buffer.from(encodeConfig(a.want)).toString("hex")) {
+  // A load-balanced RPC can lag the node that confirmed the last send: re-read up to `finalReadRetries` more times, ~2 s apart, before code 3.
+  const wantHex = Buffer.from(encodeConfig(a.want)).toString("hex");
+  const matches = (raw: Uint8Array | null) => !!raw && Buffer.from(raw.subarray(16)).toString("hex") === wantHex;
+  let ok = matches(await a.chain.readRaw());
+  for (let i = 0; !ok && i < (a.finalReadRetries ?? 3); i++) {
+    await new Promise((r) => setTimeout(r, a.retryDelayMs ?? 2000));
+    ok = matches(await a.chain.readRaw());
+  }
+  if (!ok) {
     log("the on-chain Config does not equal what was planned: STOP and send `show` output to the coordinator");
     return { code: 3, sent };
   }
