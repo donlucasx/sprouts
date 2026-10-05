@@ -42,7 +42,10 @@ export async function api<T>(path: string, init: { method?: "GET" | "POST" | "PU
   let json: { error?: string } = {};
   if (text) {
     try {
-      json = JSON.parse(text) as { error?: string };
+      const parsed: unknown = JSON.parse(text);
+      // null, a number or an array is not an answer this API gives: unknown outcome, not a TypeError on json.error.
+      if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) throw new Error("not an object");
+      json = parsed as { error?: string };
     } catch {
       throw new ApiError(res.status, API_UNANSWERED);
     }
