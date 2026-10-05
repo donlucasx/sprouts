@@ -5,9 +5,12 @@
  * widget dp from the widget's top-left corner.
  */
 export const W_PAD = 12;
+/** A widget narrower than this (the 110 dp minimum, a 2x2 on a dense 5-column grid) keeps a thinner margin. */
+const NARROW_W = 140, NARROW_PAD = 8;
+export const padFor = (width: number) => (width < NARROW_W ? NARROW_PAD : W_PAD);
 export const BIG_SIZE = 24;
 /** The total shrinks to fit a narrow widget (a five-figure garden on a 2x2 dense grid), never under this. */
-export const BIG_MIN = 18;
+export const BIG_MIN = 16;
 export const LABEL_SIZE = 11;
 export const STATE_SIZE = 12;
 /** The state line shrinks to fit the dense 2x2 ("A bud is ready. Water it." at 150 dp), never under this. */
@@ -39,12 +42,13 @@ export function textWidth(text: string, size: number, bold = false): number {
 }
 
 export type Box = { x: number; y: number; w: number; h: number };
-export type WidgetLayout = { mode: "stacked" | "wide"; bigSize: number; stateSize: number; header: Box; garden: Box; state: Box };
+export type WidgetLayout = { mode: "stacked" | "wide"; pad: number; bigSize: number; stateSize: number; stateLines: 1 | 2; header: Box; garden: Box; state: Box };
 
 /** The widget's three boxes for a `width` by `height` widget showing `big` (the total), its `label` and the state `line`. */
 export function widgetLayout(width: number, height: number, big: string, label: string, line = ""): WidgetLayout {
-  const innerW = width - 2 * W_PAD, innerH = height - 2 * W_PAD;
-  const wide = width / Math.max(1, height) >= WIDE_RATIO;
+  const P = padFor(width), innerW = width - 2 * P, innerH = height - 2 * P;
+  // wide only when the total's column (at its smallest size) leaves the garden most of the width
+  const wide = width / Math.max(1, height) >= WIDE_RATIO && textWidth(big, BIG_MIN, true) <= innerW * 0.4;
   const fitSize = (room: number) => {
     let s = BIG_SIZE;
     while (s > BIG_MIN && textWidth(big, s, true) > room) s--;
@@ -52,19 +56,21 @@ export function widgetLayout(width: number, height: number, big: string, label: 
   };
   let stateSize = STATE_SIZE;
   while (stateSize > STATE_MIN && textWidth(line, stateSize, true) > innerW) stateSize--;
-  const stateH = lineBox(STATE_SIZE);
-  const state: Box = { x: W_PAD, y: height - W_PAD - stateH, w: innerW, h: stateH };
+  // a line that does not fit at STATE_MIN (the bud's call on a 110 dp widget) wraps to two lines rather than cut "Water it."
+  const stateLines: 1 | 2 = textWidth(line, stateSize, true) > innerW ? 2 : 1;
+  const stateH = lineBox(STATE_SIZE) * stateLines;
+  const state: Box = { x: P, y: height - P - stateH, w: innerW, h: stateH };
   if (wide) {
     // the total's column as wide as its own text (the larger of the two lines), at most 40 percent of the widget
     const bigSize = fitSize(innerW * 0.4);
-    const colW = Math.ceil(Math.min(innerW * 0.4, Math.max(textWidth(big, bigSize, true), textWidth(label, LABEL_SIZE)) + 2));
-    const header: Box = { x: W_PAD, y: W_PAD, w: colW, h: lineBox(bigSize) + lineBox(LABEL_SIZE) };
-    const garden: Box = { x: W_PAD + colW + COL_GAP, y: W_PAD, w: innerW - colW - COL_GAP, h: innerH - stateH - GAP };
-    return { mode: "wide", bigSize, stateSize, header, garden, state };
+    const colW = Math.ceil(Math.max(textWidth(big, bigSize, true), textWidth(label, LABEL_SIZE)) + 2);
+    const header: Box = { x: P, y: P, w: colW, h: lineBox(bigSize) + lineBox(LABEL_SIZE) };
+    const garden: Box = { x: P + colW + COL_GAP, y: P, w: innerW - colW - COL_GAP, h: Math.max(1, innerH - stateH - GAP) };
+    return { mode: "wide", pad: P, bigSize, stateSize, stateLines, header, garden, state };
   }
   const bigSize = fitSize(innerW);
-  const header: Box = { x: W_PAD, y: W_PAD, w: innerW, h: lineBox(bigSize) + lineBox(LABEL_SIZE) };
+  const header: Box = { x: P, y: P, w: innerW, h: lineBox(bigSize) + lineBox(LABEL_SIZE) };
   const gy = header.y + header.h + GAP;
-  const garden: Box = { x: W_PAD, y: gy, w: innerW, h: Math.max(1, state.y - GAP - gy) };
-  return { mode: "stacked", bigSize, stateSize, header, garden, state };
+  const garden: Box = { x: P, y: gy, w: innerW, h: Math.max(1, state.y - GAP - gy) };
+  return { mode: "stacked", pad: P, bigSize, stateSize, stateLines, header, garden, state };
 }

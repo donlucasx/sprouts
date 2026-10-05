@@ -6,7 +6,7 @@ import { widgetGarden } from "@/model/widget-svg";
 import { toGardenInput, type ZeroMarks } from "@/lib/garden-input";
 import { gardenTotals, valueBlock } from "@/lib/me-state";
 import { widgetStateLine, type WidgetState } from "@/lib/widget-state";
-import { LABEL_SIZE, W_PAD, lineBox, widgetLayout, type Box } from "./widget-layout";
+import { LABEL_SIZE, lineBox, widgetLayout, type Box } from "./widget-layout";
 import type { PlantId, Scene } from "@/model/garden";
 
 /** Brand colours (manual 4, light: the widget draws on paper whatever the phone's theme). */
@@ -20,19 +20,22 @@ export const WIDGET_LABEL = "your garden";
  * ONE state line at the bottom that invites a tap (widgetStateLine: Home's own state). Wide sizes keep the total at the left of the
  * garden; tall ones centre the garden in its box. The boxes come from widgetLayout; the whole widget opens the app.
  */
-export function SproutsWidget({ me, width, height, wateredPlants = null, restartMarks = {}, now = new Date() }: { me: MeResponse | null; width: number; height: number; wide?: boolean; wateredPlants?: PlantId[] | null; restartMarks?: ZeroMarks; now?: Date }) {
-  if (!me) {
-    return (
-      <FlexWidget clickAction="OPEN_APP" style={{ height: "match_parent", width: "match_parent", backgroundColor: PAPER, borderRadius: 16, padding: 12, justifyContent: "center" }}>
-        <TextWidget text="Open Sprouts to sign in" style={{ fontSize: 14, color: INK }} />
-      </FlexWidget>
-    );
-  }
-  // R146, R252: the total is Home's own number (valueBlock: the whole garden in dollars, the SKR pot when no SKR price is known)
-  const big = valueBlock(gardenTotals(me), BigInt(me.pot.skrStakedRaw)).big;
-  let scene: Scene | null = null;
-  try { scene = buildScene(toGardenInput(me, now, wateredPlants, restartMarks)); } catch { scene = null; }   // a cached read missing a newer field: the text alone
-  const state: WidgetState = widgetStateLine(me, scene ?? { parts: [], unrevealed: 0 }, now);
+export function SproutsWidget({ me, width, height, wateredPlants = null, restartMarks = {}, now = new Date() }: { me: MeResponse | null; width: number; height: number; wateredPlants?: PlantId[] | null; restartMarks?: ZeroMarks; now?: Date }) {
+  const notice = (text: string) => (
+    <FlexWidget clickAction="OPEN_APP" style={{ height: "match_parent", width: "match_parent", backgroundColor: PAPER, borderRadius: 16, padding: 12, justifyContent: "center" }}>
+      <TextWidget text={text} style={{ fontSize: 14, color: INK }} />
+    </FlexWidget>
+  );
+  if (!me) return notice("Open Sprouts to sign in");
+  // R146, R252: the total is Home's own number (valueBlock: the whole garden in dollars, the SKR pot when no SKR price is known).
+  // A cached read too old for these fields says "open the app" rather than failing the whole render.
+  let big: string, scene: Scene | null = null, state: WidgetState;
+  try {
+    big = valueBlock(gardenTotals(me), BigInt(me.pot.skrStakedRaw)).big;
+    // a garden that cannot be built (a cached read missing a newer field) draws no garden, and so no bud line: Home rebuilds on open
+    try { scene = buildScene(toGardenInput(me, now, wateredPlants, restartMarks)); } catch { scene = null; }
+    state = widgetStateLine(me, scene ?? { parts: [], unrevealed: 0 }, now);
+  } catch { return notice("Open Sprouts to see your garden"); }
   const L = widgetLayout(width, height, big, WIDGET_LABEL, state.text);
   let garden: { svg: string; h: number } | null = null;
   try { garden = scene ? widgetGarden(scene, L.garden.w, L.garden.h) : null; } catch { garden = null; }
@@ -51,7 +54,7 @@ export function SproutsWidget({ me, width, height, wateredPlants = null, restart
     </FlexWidget>
   );
   const line = (
-    <TextWidget text={state.text} maxLines={1} truncate="END" style={{ fontSize: L.stateSize, color: state.action ? ACCENT : QUIET, fontWeight: state.action ? "600" : "normal", height: L.state.h }} />
+    <TextWidget text={state.text} maxLines={L.stateLines} truncate="END" style={{ fontSize: L.stateSize, color: state.action ? ACCENT : QUIET, fontWeight: state.action ? "600" : "normal", height: L.state.h }} />
   );
   const top = L.mode === "wide"
     ? (
@@ -62,14 +65,14 @@ export function SproutsWidget({ me, width, height, wateredPlants = null, restart
       </FlexWidget>
     )
     : (
-      <FlexWidget style={{ width: "match_parent", height: L.state.y - W_PAD, flexDirection: "column" }}>
+      <FlexWidget style={{ width: "match_parent", height: L.garden.y + L.garden.h - L.pad, flexDirection: "column" }}>
         {header}
         <FlexWidget style={{ width: "match_parent", height: L.garden.y - L.header.y - L.header.h }} />
         {gardenBox(L.garden)}
       </FlexWidget>
     );
   return (
-    <FlexWidget clickAction="OPEN_APP" style={{ height: "match_parent", width: "match_parent", backgroundColor: PAPER, borderRadius: 16, padding: W_PAD, flexDirection: "column", justifyContent: "space-between" }}>
+    <FlexWidget clickAction="OPEN_APP" style={{ height: "match_parent", width: "match_parent", backgroundColor: PAPER, borderRadius: 16, padding: L.pad, flexDirection: "column", justifyContent: "space-between" }}>
       {top}
       {line}
     </FlexWidget>

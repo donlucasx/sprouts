@@ -26,7 +26,7 @@ const me = {
 
 describe("R360 in the widget: it draws only what is held now, and a restarted coin from its new planting", () => {
   const svgOf = (m: MeResponse, restartMarks = {}) => {
-    const root = SproutsWidget({ me: m, width: 320, height: 200, wide: true, restartMarks }) as El;
+    const root = SproutsWidget({ me: m, width: 320, height: 200, restartMarks }) as El;
     const svg = all(root).find((k) => k.type === "SvgWidget") as ReactElement<{ svg: string }> | undefined;
     return svg?.props.svg ?? null;
   };
@@ -83,11 +83,26 @@ const STATES = {
 } as const;
 /** Launcher sizes in dp: his Seeker's cells (2x2 about 206 by 205, 4x2, 2x3, 3x2) and a denser grid's (2x2 150, 4x2, 2x3, 3x2). */
 const R364_SIZES = { "2x2": [[206, 205], [150, 150]], "4x2": [[430, 205], [320, 150]], "2x3": [[206, 307], [150, 230]], "3x2": [[310, 205], [230, 150]] } as const;
-const CASES = Object.entries(R364_SIZES).flatMap(([cells, sizes]) => sizes.map(([w, h]) => [cells, w, h] as const));
+const CASES = [...Object.entries({ ...R364_SIZES, min: [[110, 110], [200, 110]] })].flatMap(([cells, sizes]) => sizes.map(([w, h]) => [cells, w, h] as const));
 const texts = (root: El) => all(root).filter((e) => e.type === "TextWidget") as ReactElement<{ text: string; maxLines?: number; style: { fontSize: number; fontWeight?: string; color: string } }>[];
 const svgOfRoot = (root: El) => all(root).find((e) => e.type === "SvgWidget") as ReactElement<{ svg: string; style: { width: number; height: number } }> | undefined;
 const inside = (b: { x: number; y: number; w: number; h: number }, w: number, h: number) => b.x >= 0 && b.y >= 0 && b.x + b.w <= w && b.y + b.h <= h;
 const overlap = (a: { x: number; y: number; w: number; h: number }, b: typeof a) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+
+describe("both drawing paths (in-app refresh, the system task handler) build the same widget, zero marks included", () => {
+  it("widgetFor passes R360's zero marks and the watered plants, and index.js draws through it", async () => {
+    vi.resetModules();
+    vi.doMock("@/lib/zero-marks", () => ({ readZeroMarks: () => ({ USDC_LEND: "2026-10-02T12:00:00.000Z" }) }));
+    vi.doMock("@/lib/last-watering", () => ({ wateredPlantsFor: () => ["skr"] }));
+    const { widgetFor } = await import("@/lib/widget-refresh");
+    const el = widgetFor(me, { width: 206, height: 205 }) as ReactElement<{ restartMarks: unknown; wateredPlants: unknown; width: number }>;
+    expect(el.props.restartMarks).toEqual({ USDC_LEND: "2026-10-02T12:00:00.000Z" }); expect(el.props.wateredPlants).toEqual(["skr"]); expect(el.props.width).toBe(206);
+    const { readFileSync } = await import("node:fs");
+    const entry = readFileSync(new URL("../../index.js", import.meta.url), "utf8");
+    expect(entry).toMatch(/renderWidget\(widgetFor\(/); expect(entry).not.toMatch(/SproutsWidget/);
+    vi.doUnmock("@/lib/zero-marks"); vi.doUnmock("@/lib/last-watering");
+  });
+});
 
 describe("R364: the default widget is a 2x2 square, still resizable", async () => {
   const appJson = (await import("../../app.json")).default as { expo: { plugins: unknown[] } };
@@ -95,7 +110,7 @@ describe("R364: the default widget is a 2x2 square, still resizable", async () =
   const w = plugin[1].widgets[0];
   it("targets 2 by 2 cells, its minimum a square, both directions resizable", () => {
     expect(w.targetCellWidth).toBe(2); expect(w.targetCellHeight).toBe(2);
-    expect(w.minWidth).toBe(w.minHeight);
+    expect(w.minWidth).toBe("110dp"); expect(w.minHeight).toBe("110dp");
     expect(w.resizeMode).toBe("horizontal|vertical");
     expect(w.maxResizeHeight).toBeUndefined();   // a tall widget is allowed (it centres its garden)
   });
@@ -104,7 +119,7 @@ describe("R364: the default widget is a 2x2 square, still resizable", async () =
 describe("R363 + R364: every size lays out the total, the garden and one state line, each inside the widget", () => {
   it.each(CASES)("%s at %i by %i: one line each, the garden inside its box and using it", (_cells, width, height) => {
     for (const [state, m0] of Object.entries(STATES)) for (const m of [m0, priced(m0), priced({ ...m0, history: grown.history } as MeResponse)]) {
-      const root = SproutsWidget({ me: m, width, height, wide: width >= 300 }) as El;
+      const root = SproutsWidget({ me: m, width, height}) as El;
       const [big, label, line] = texts(root);
       const L = widgetLayout(width, height, big.props.text, label.props.text, line.props.text);
       // the three boxes: inside the widget, apart
@@ -114,10 +129,27 @@ describe("R363 + R364: every size lays out the total, the garden and one state l
       expect(big.props.style.fontSize).toBe(L.bigSize); expect(L.bigSize).toBeGreaterThanOrEqual(18); expect(L.bigSize).toBeLessThanOrEqual(BIG_SIZE);
       expect(label.props.style.fontSize).toBe(LABEL_SIZE); expect(line.props.style.fontSize).toBe(L.stateSize);
       expect(L.stateSize).toBeGreaterThanOrEqual(STATE_MIN); if (width >= 200) expect(L.stateSize).toBe(STATE_SIZE);
-      for (const t of [big, label, line]) expect(t.props.maxLines).toBe(1);
+      for (const t of [big, label]) expect(t.props.maxLines).toBe(1);
+      // the state line is one line on every launcher size; only under 140 dp may the bud's call wrap to two (never cut)
+      expect(line.props.maxLines).toBe(L.stateLines); if (width >= 140) expect(L.stateLines).toBe(1);
       expect(textWidth(big.props.text, L.bigSize, true)).toBeLessThanOrEqual(L.header.w);
       expect(textWidth(label.props.text, LABEL_SIZE)).toBeLessThanOrEqual(L.header.w);
-      expect(textWidth(line.props.text, L.stateSize, true), `"${line.props.text}" at ${width}`).toBeLessThanOrEqual(L.state.w);
+      expect(textWidth(line.props.text, L.stateSize, true), `"${line.props.text}" at ${width}`).toBeLessThanOrEqual(L.state.w * L.stateLines);
+      // the rendered tree adds up: the root's padding is the layout's, the top block's children fill its box, the top block and the
+      // line fit the inner height, and in the wide row the header, the spacer and the garden fill the inner width
+      expect(root.props.style).toMatchObject({ padding: L.pad });
+      const [topBlock, lineEl] = kids(root);
+      const ts = topBlock.props.style as { height: number; flexDirection: string };
+      const sizes = kids(topBlock).map((k) => k.props.style as { width: number | string; height: number });
+      expect(ts.height + (lineEl.props.style as { height: number }).height).toBeLessThanOrEqual(height - 2 * L.pad);
+      expect((lineEl.props.style as { height: number }).height).toBe(L.state.h);
+      if (ts.flexDirection === "column") {
+        expect(sizes.reduce((t, z) => t + z.height, 0)).toBe(ts.height);
+        expect(L.garden.y + L.garden.h).toBeLessThanOrEqual(L.state.y);
+      } else {
+        expect(sizes.reduce((t, z) => t + (z.width as number), 0)).toBe(width - 2 * L.pad);
+        expect(sizes.every((z) => z.height <= ts.height)).toBe(true);
+      }
       // the garden: inside its box, as wide as it or as tall as it (no small garden in a big box), its sky cropped
       const svg = svgOfRoot(root)!;
       const st = svg.props.style;
@@ -128,14 +160,16 @@ describe("R363 + R364: every size lays out the total, the garden and one state l
     }
   });
   it("the square and the tall sizes stack (total, garden, line); 4x2 puts the total at the left of the garden", () => {
-    for (const [cells, w, h] of CASES) expect(widgetLayout(w, h, "$14.99", "your garden").mode, `${cells}`).toBe(cells === "4x2" ? "wide" : "stacked");
+    for (const [cells, w, h] of CASES) expect(widgetLayout(w, h, "$14.99", "your garden").mode, `${cells} ${w}`).toBe(cells === "4x2" ? "wide" : w / h >= 1.8 ? "wide" : "stacked");
+    // a total too long for a wide widget's column stacks instead of being cut
+    expect(widgetLayout(200, 110, "$123456.78", "your garden").mode).toBe("stacked");
     const sq = widgetLayout(206, 205, "$14.99", "your garden");
     expect(sq.header.y).toBeLessThan(sq.garden.y); expect(sq.garden.y + sq.garden.h).toBeLessThanOrEqual(sq.state.y);
     const wide = widgetLayout(430, 205, "$14.99", "your garden");
     expect(wide.header.x + wide.header.w).toBeLessThanOrEqual(wide.garden.x);
   });
   it("the total is big and alone: Home's number, the label under it", () => {
-    const root = SproutsWidget({ me: priced(STATES.saving), width: 206, height: 205, wide: false }) as El;
+    const root = SproutsWidget({ me: priced(STATES.saving), width: 206, height: 205}) as El;
     const [big, label] = texts(root);
     expect(big.props.text).toBe("$14.98"); expect(big.props.style.fontSize).toBe(BIG_SIZE); expect(big.props.style.fontWeight).toBe("700");
     expect(label.props.text).toBe("your garden");
@@ -143,14 +177,16 @@ describe("R363 + R364: every size lays out the total, the garden and one state l
   it("a six-figure total shrinks to fit the dense 2x2, never under 18", () => {
     const L = widgetLayout(150, 150, "$123456.78", "your garden");
     expect(L.bigSize).toBeLessThan(BIG_SIZE); expect(textWidth("$123456.78", L.bigSize, true)).toBeLessThanOrEqual(L.header.w);
+    const M = widgetLayout(110, 110, "$12345.67", "your garden");
+    expect(textWidth("$12345.67", M.bigSize, true)).toBeLessThanOrEqual(M.header.w);
   });
   it("tall: the garden is centred in its box (no paper only under it)", () => {
-    const root = SproutsWidget({ me: priced(STATES.saving), width: 206, height: 307, wide: false }) as El;
+    const root = SproutsWidget({ me: priced(STATES.saving), width: 206, height: 307}) as El;
     const box = all(root).find((e) => kids(e).some((k) => k.type === "SvgWidget"))!;
     expect(box.props.style).toMatchObject({ justifyContent: "center", alignItems: "center" });
   });
   it("the whole widget opens the app", () => {
-    for (const m of Object.values(STATES)) expect((SproutsWidget({ me: m, width: 206, height: 205, wide: false }) as El).props).toMatchObject({ clickAction: "OPEN_APP" });
+    for (const m of Object.values(STATES)) expect((SproutsWidget({ me: m, width: 206, height: 205}) as El).props).toMatchObject({ clickAction: "OPEN_APP" });
   });
 });
 
@@ -159,7 +195,7 @@ describe("R363: the state line is Home's state (watcherLine's can, nextPlantingF
     const scene = buildScene(toGardenInput(m, NOW_W, null));
     return { can: watcherLine({ unrevealed: scene.unrevealed, failed: false, nudged: false }).can, row: nextPlantingFor(m, scene, NOW_W) };
   };
-  const lineOf = (m: MeResponse) => texts(SproutsWidget({ me: m, width: 206, height: 205, wide: false, now: NOW_W }) as El)[2];
+  const lineOf = (m: MeResponse) => texts(SproutsWidget({ me: m, width: 206, height: 205, now: NOW_W }) as El)[2];
   const NOW_W = new Date("2026-10-05T12:00:00Z");   // 5 AM in Los Angeles: the run (14:00 UTC) is "Today, 7 AM"
   it("a bud waiting (Home's can in colour): the call to water, in the accent green", () => {
     expect(homeOf(STATES.bud).can).toBe("ready");
