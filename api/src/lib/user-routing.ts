@@ -65,10 +65,11 @@ export async function userRouting(a: { repo: Repo; splitRow: SplitDayRow | null;
   // The capped legs' sentences first; the other routed legs' (code's, as split-run writes them) while the whole stays within WHY_MAX.
   const split = a.splitRow.split;
   // R344: a leash-moved leg gets the plain sentence for the venue it plants to, or none when no allowed venue qualifies (compared only against venues the leash allows).
-  const one = (l: LendAsset) => (leashed.has(l) ? (picks[l] ? routingWhy(l, picks[l] ?? null, rows.filter((r) => r.asset !== l || (a.leash?.[l] ?? []).includes(r.venue as never))) : "") : routingWhy(l, picks[l] ?? null, rows, stored[l] ?? null));
+  const allowedRows = (l: LendAsset) => (a.leash ? rows.filter((r) => r.asset !== l || (a.leash?.[l] ?? []).includes(r.venue as never)) : rows);
+  const one = (l: LendAsset) => (leashed.has(l) ? (picks[l] ? routingWhy(l, picks[l] ?? null, allowedRows(l)) : "") : routingWhy(l, picks[l] ?? null, rows, stored[l] ?? null));
   let why = moved.map(one).filter(Boolean).join(" ");
   for (const l of LEND_ASSETS.filter((x) => split[x] > 0 && !moved.includes(x))) {
-    const more = routingWhy(l, picks[l] ?? null, rows);
+    const more = routingWhy(l, picks[l] ?? null, allowedRows(l));
     if (why.length + (why ? 1 : 0) + more.length <= WHY_MAX) why = why ? `${why} ${more}` : more;
   }
   return { picks, why: why || null };

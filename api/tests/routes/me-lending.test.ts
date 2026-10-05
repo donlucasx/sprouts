@@ -128,6 +128,20 @@ describe("GET /api/me, lending (contracts 5.2)", () => {
     // (the SOL sentence is the unchanged non-leash one: SOL's own pick is null in the stop's row.)
     expect(none.why ?? "").not.toMatch(/leash|Kamino|Jupiter|USDC/i);
   });
+  it("R344: for a leashed wallet, a leg the leash did not move compares only against venues the leash allows (no \"vs Kamino\" for SOL when its leg is off)", async () => {
+    const day = dayOf(new Date());
+    const row = (venue: "jupiter_lend" | "kamino_klend", avg7Pct: number) => ({ day, venue, asset: "SOL_LEND" as const, supplyPct: avg7Pct, rewardsPct: 0, utilizationPct: 80, withdrawableUsd: 1e7, tvlUsd: 1.2e8, exchangeRate: 1.06, avg7Pct, daysMeasured: 2, eligible: true, verdict: "ok" as const, reason: null, served: null, ok: true });
+    await repo.putVenueDay(row("jupiter_lend", 5)); await repo.putVenueDay(row("kamino_klend", 4));
+    await repo.putVenueDay({ day, venue: "jupiter_lend", asset: "USDC_LEND", supplyPct: 4.19, rewardsPct: 0, utilizationPct: 90, withdrawableUsd: 1e7, tvlUsd: 1.2e8, exchangeRate: 1.06, avg7Pct: 4.2, daysMeasured: 2, eligible: true, verdict: "ok", reason: null, served: null, ok: true });
+    await repo.putSplitDay({ day, stop: "balanced", split: { SKR: 45, stORE: 0, USDC_LEND: 15, SOL_LEND: 10, hSOL: 20, cbBTC: 10 }, modelAnswer: null, why: "w", fallback: null, callId: null, venuePick: { USDC_LEND: "kamino_klend", SOL_LEND: "jupiter_lend" } });
+    await repo.setWalletLink("W", { delegationPda: "D5", linkModel: "leash" });
+    // Legs 0, 3 (USDC on Jupiter Lend) and 5 (SOL on Jupiter Lend): USDC moves Kamino -> Jupiter; SOL stays on Jupiter and Kamino SOL (leg 4) is not allowed.
+    const legs = LEG_BYTES.map((b) => ({ enabled: b === 0 || b === 3 || b === 5, reader: 0, feeBps: 0, tolBps: 0 })) as unknown as LeashConfig["legs"];
+    vi.mocked(readLeashConfig).mockResolvedValueOnce({ legs } as LeashConfig);
+    const why = (await get()).manager.why as string;
+    expect(why).toBe("Your USDC goes to Jupiter at 4.2%. Your SOL goes to Jupiter at 5.0%.");
+    expect(why).not.toMatch(/Kamino|vs/);
+  });
   it("legsEnabled: the leash config's enabled legs once a wallet is leashed; [] when the config cannot be read", async () => {
     await repo.setWalletLink("W", { delegationPda: "D5", linkModel: "leash" });
     expect((await get()).manager.legsEnabled).toEqual([]);
