@@ -4,7 +4,8 @@ import { z } from "zod";
 import { getRepo } from "@/db/repo";
 import { clientIp, rateLimited } from "@/lib/auth-guard";
 import { config } from "@/lib/config";
-import { readDelegation } from "@/lib/subscriptions";
+import { delegationPda, waitForDelegation } from "@/lib/subscriptions";
+import { leashPda } from "@/lib/leash";
 import { heliusAddAddress } from "@/lib/helius";
 import { verifyPostedTransaction } from "@/lib/verify-tx";
 import { rpc } from "@/lib/rpc";
@@ -15,17 +16,15 @@ export const runtime = "nodejs";
 export const maxDuration = 60; // the delegation poll (up to 10 s) plus the send
 
 const Body = z.object({ code: z.string().length(6), wallet: z.string().min(32).max(44), waitMs: z.number().int().min(0).max(10_000).optional(), signedTransaction: z.string().optional() });
-const RETRY_MS = 2_000;
-
-/** Waits for the delegation to appear (RPC lag right after the signature), up to `waitMs`. */
-async function delegationAppears(pda: Address, waitMs: number) {
-  const deadline = Date.now() + waitMs;
-  for (;;) {
-    const d = await readDelegation(pda);
-    if (d.exists) return d;
-    if (Date.now() >= deadline) return d;
-    await new Promise((r) => setTimeout(r, Math.min(RETRY_MS, Math.max(0, deadline - Date.now()))));
+/** The delegation a leash link for (wallet, garden) names, or null when the garden id is not an address. */
+async function leashDelegationPda(wallet: Address, garden: string, nonce: bigint): Promise<Address | null> {
+  let user: Address;
+  try {
+    user = address(garden);
+  } catch {
+    return null;
   }
+  return delegationPda({ delegator: wallet, delegatee: await leashPda(wallet, user), nonce });
 }
 
 /** Links the wallet once its delegation is on chain: consumes the code, records the wallet, adds it to the swap webhook. */
@@ -62,7 +61,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 400 });
     }
     const boundPda = address(link.delegationPda);
-    if (!posted.instructions.some((ix) => ix.accounts.includes(boundPda))) return NextResponse.json({ error: "This approval is for another delegation." }, { status: 400 });
+    if (!posted.instructions.some((ix) => ix.accounts.includes(boundPda))) return NextResponse.json({ error: "This approval is for another delegation. Get a new code in the app, then try again." }, { status: 400 });
     try {
       await rpc().sendTransaction(posted.wire as Base64EncodedWireTransaction, { encoding: "base64", preflightCommitment: "confirmed" }).send();
     } catch (e) {
@@ -71,7 +70,7 @@ export async function POST(request: Request) {
     }
   }
 
-  const delegation = await delegationAppears(address(link.delegationPda), parsed.data.waitMs ?? 10_000);
+  const delegation = await waitForDelegation(address(link.delegationPda), parsed.data.waitMs ?? 10_000);
   if (!delegation.exists) return NextResponse.json({ error: "No delegation found for this wallet yet. Sign the approval first." }, { status: 409 });
 
   const taken = await repo.takeLinkCode(code, wallet);
@@ -85,8 +84,12 @@ export async function POST(request: Request) {
     webhookAdded = false;
     console.error(`helius add address failed for ${wallet}: ${e instanceof Error ? e.message : String(e)}`);
   }
-  await repo.addWallet({ pubkey: wallet, userPubkey: link.userPubkey, delegationPda: link.delegationPda, dailyCapCents: Number(delegation.amountPerPeriodRaw / 10_000n), webhookAdded });
-  await repo.addEvent({ userPubkey: link.userPubkey, walletPubkey: wallet, kind: "wallet_linked", detail: { webhookAdded } });
+  // R297 / contracts 3.4, review I3: 'leash' only when the bound delegation is exactly the one named for leashPda(wallet, garden);
+  // anything else (the puller, a rotated puller, a garden id that is not an address) is 'puller', which after go-live plants nothing
+  // and asks for a re-link: the classification fails toward the safe side.
+  const linkModel = (await leashDelegationPda(wallet, link.userPubkey, link.nonce)) === link.delegationPda ? "leash" : "puller";
+  await repo.addWallet({ pubkey: wallet, userPubkey: link.userPubkey, delegationPda: link.delegationPda, dailyCapCents: Number(delegation.amountPerPeriodRaw / 10_000n), webhookAdded, linkModel });
+  await repo.addEvent({ userPubkey: link.userPubkey, walletPubkey: wallet, kind: "wallet_linked", detail: { webhookAdded, linkModel } });
   const user = await repo.getUser(link.userPubkey);
   return NextResponse.json({ linked: true, skrName: user?.skrName ?? null });
 }

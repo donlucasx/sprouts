@@ -393,8 +393,8 @@ export class SupabaseRepo implements Repo {
     const { error: e2 } = await this.db.from("carry").upsert({ planting_id: plantingId, user_pubkey: user, kind, carry_in_raw: "0", surplus_raw: surplusRaw.toString() }, { onConflict: "planting_id,kind", ignoreDuplicates: true });
     if (e2) throw new Error(e2.message);
   }
-  async setWalletLink(pubkey: string, l: { delegationPda: string; linkModel: T.LinkModel }) {
-    const { error } = await this.db.from("wallets").update({ delegation_pda: l.delegationPda, link_model: l.linkModel }).eq("pubkey", pubkey);
+  async setWalletLink(pubkey: string, l: { delegationPda: string; linkModel: T.LinkModel; dailyCapCents?: number }) {
+    const { error } = await this.db.from("wallets").update({ delegation_pda: l.delegationPda, link_model: l.linkModel, ...(l.dailyCapCents !== undefined ? { daily_cap_cents: l.dailyCapCents } : {}) }).eq("pubkey", pubkey);
     if (error) throw new Error(error.message);
   }
   async setTermsAccepted(userPubkey: string, version: string, at: Date) {

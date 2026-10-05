@@ -361,11 +361,12 @@ export class MemoryRepo implements Repo {
     const p = this.plantings.get(plantingId);
     if (p) this.carry.push({ plantingId, userPubkey: p.userPubkey, kind, carryInRaw: 0n, surplusRaw });
   }
-  async setWalletLink(pubkey: string, l: { delegationPda: string; linkModel: T.LinkModel }) {
+  async setWalletLink(pubkey: string, l: { delegationPda: string; linkModel: T.LinkModel; dailyCapCents?: number }) {
     const w = this.wallets.get(pubkey);
     if (!w) return;
     w.delegationPda = l.delegationPda;
     w.linkModel = l.linkModel;
+    if (l.dailyCapCents !== undefined) w.dailyCapCents = l.dailyCapCents;
   }
   async setTermsAccepted(userPubkey: string, version: string, at: Date) {
     const u = this.users.get(userPubkey);
