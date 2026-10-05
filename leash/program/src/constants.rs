@@ -26,8 +26,13 @@ pub const USER_STAKE_SEED: &[u8] = b"user_stake";
 
 pub const IX_PULL: u8 = 0;
 pub const IX_SETTLE: u8 = 1;
+/// [2][Config bytes 16..96] = 81 B: creates the Config with the header only; every leg stays zero (unset) (contracts 2.5, R325).
 pub const IX_INIT_CONFIG: u8 = 2;
-pub const IX_SET_CONFIG: u8 = 3;
+// Tag 3 was the full-body set_config (1 + 1488 B, a 1,693-B tx, over Solana's 1,232): retired, never reused; it answers BadData.
+/// [4][Config bytes 16..96] = 81 B: full replace of the header; legs untouched.
+pub const IX_SET_HEADER: u8 = 4;
+/// [5][leg u8][LegConfig 176 B] = 178 B: full replace of one leg after validate_leg.
+pub const IX_SET_LEG: u8 = 5;
 pub const TRANSFER_RECURRING: u8 = 5;
 
 pub const CONFIG_LEN: usize = 1504;
@@ -41,7 +46,13 @@ pub const MAX_PULL_CEILING: u64 = 5_000_000;
 pub const MAX_FEE_BPS: u16 = 100;
 pub const MAX_FEE_PLUS_TOL_BPS: u16 = 150;
 pub const MAX_CONF_CAP_BPS: u16 = 200;
-pub const MAX_AGE_CEILING_S: u16 = 3600;
+/// Config bytes 16..96: puller 32, puller_usdc 32, max_pull_raw u64, reserved 8.
+pub const HEADER_LEN: usize = LEGS_OFF - 16;
+pub const SET_LEG_DATA_LEN: usize = 2 + LEG_LEN;
+/// R324: the most a leg's max_age_s may be. 60 s on legs 0-6 (spec 6.4); 3600 s on leg 7 (cbBTC reads the slow sponsored account).
+pub const MAX_AGE_CEILING_OF_LEG: [u16; NUM_LEGS] = [60, 60, 60, 60, 60, 60, 60, 3600];
+/// R324: the configured max_age_s (golden Config, TS LEG_SPEC.maxAgeS). Leg 7 = 600 s pending S4's measurement; changing it is one set_leg.
+pub const MAX_AGE_S_OF_LEG: [u16; NUM_LEGS] = [60, 60, 60, 60, 60, 60, 60, 600];
 
 pub const LEG_SKR: usize = 0;
 pub const LEG_STORE: usize = 1;
