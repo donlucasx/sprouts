@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { depositCap, moveAtTap, moveCopy, moveFlows, MOVE_SENT, MoveSent, MOVE_TXS_ALLOWED } from '@/lib/moves'
+import { depositCap, moveAtTap, moveCopy, moveFlows, MOVE_SENT, MOVE_IN_FLIGHT, isMoveInFlight, MoveSent, MOVE_TXS_ALLOWED } from '@/lib/moves'
 import { FIXTURE_MOVE, FIXTURE_POSITIONS } from '@/lib/lend-fixtures'
 import { REFUSED, SignRefused } from '@/lib/sign'
 import { USER } from '../fixtures/api-built'
@@ -61,5 +61,22 @@ describe('the move card (R280: least asking; spec 7)', () => {
     const partial = Object.assign(new Error('Your USDC is back in your wallet; the move did not finish.'), { status: 409 })
     await expect(go(async () => { throw partial })).rejects.toBe(partial)
     expect(MOVE_SENT).not.toMatch(/Nothing moved/)
+  })
+})
+
+describe('a move already under way (inFlight)', () => {
+  it('says one plain sentence and recognises the API 409', () => {
+    expect(MOVE_IN_FLIGHT).toBe('This move is on its way. Check Home in a minute.')
+    const e = Object.assign(new Error(MOVE_IN_FLIGHT), { status: 409, body: { error: MOVE_IN_FLIGHT, inFlight: true } })
+    expect(isMoveInFlight(e)).toBe(true)
+    expect(isMoveInFlight(Object.assign(new Error('x'), { status: 409, body: { partial: true } }))).toBe(false)
+    expect(isMoveInFlight(Object.assign(new Error('x'), { status: 500, body: { inFlight: true } }))).toBe(false)
+    expect(isMoveInFlight('nope')).toBe(false)
+  })
+  it('a build that answers the in-flight 409 reaches the caller as it is, nothing signed', async () => {
+    const e = Object.assign(new Error(MOVE_IN_FLIGHT), { status: 409, body: { inFlight: true } })
+    const signAll = vi.fn()
+    await expect(moveAtTap({ user: USER, proposal: FIXTURE_MOVE, positions: FIXTURE_POSITIONS, build: async () => { throw e }, signAll, confirm: vi.fn() })).rejects.toBe(e)
+    expect(signAll).not.toHaveBeenCalled()
   })
 })

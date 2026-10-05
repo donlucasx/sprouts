@@ -8,6 +8,8 @@ export const MOVE_TXS_ALLOWED: readonly number[] = [1, 2]
 /** What POST /api/moves/build answers (contracts 5.4). */
 export type MoveBuild = { transactions: string[]; receiptRaw: string; depositRaw: string; brief: string }
 export const MOVE_CHANGED = 'Your position changed since this was proposed. Nothing moved.'
+/** The API's IN_FLIGHT sentence (a stored redeem signature): the card shows it instead of the buttons, and build / dismiss answer it as a 409 with `inFlight: true`. */
+export const MOVE_IN_FLIGHT = 'This move is on its way. Check Home in a minute.'
 export const MOVED_LINE = 'Moved.'
 export const MOVE_FAILED = 'The move did not go through. Nothing moved.'
 /** As the re-link card's: once the Seeker signed, a failed confirm may still have sent the move. */
@@ -79,4 +81,11 @@ export async function moveAtTap(a: {
     throw new MoveSent(e)
   }
   return { done: true }
+}
+
+/** A 409 that says the move is already under way (build and dismiss, `inFlight: true`): the same sentence the card shows. Duck-typed like moveAtTap's status check. */
+export function isMoveInFlight(e: unknown): boolean {
+  if (!(e instanceof Error)) return false
+  const { status, body } = e as { status?: unknown; body?: { inFlight?: unknown } }
+  return status === 409 && body?.inFlight === true
 }

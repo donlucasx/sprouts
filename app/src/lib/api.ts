@@ -65,7 +65,9 @@ export type LendingPosition = { asset: LendAsset; venue: AutoVenue; receiptMint:
 /** Contracts 7.2: the two-line garden sign the API serves ready to draw. */
 export type LendSign = { line1: "USDC" | "SOL"; line2: string; venue: AutoVenue; ratePct: number };
 /** Contracts 5.4. */
-export type MoveProposal = { id: string; ts: string; asset: LendAsset; from: AutoVenue; to: AutoVenue; receiptRaw: string; valueUsd: number; fromAvg7Pct: number; toAvg7Pct: number; gain30dUsd: number; costUsd: number };
+export type MoveProposal = { id: string; ts: string; asset: LendAsset; from: AutoVenue; to: AutoVenue; receiptRaw: string; valueUsd: number; fromAvg7Pct: number; toAvg7Pct: number; gain30dUsd: number; costUsd: number;
+  /** A redeem signature is stored: the move is under way (C-I2 4). Absent on older answers. */
+  inFlight?: boolean };
 export type FoundVenue = { day: string; project: string; symbol: string; asset: "USDC" | "SOL"; apyBasePct: number | null; tvlUsd: number | null; note: string | null };
 /** Contracts 5.1. */
 export type VenueRow = { venue: Venue; asset: LendAsset; name: string; auto: boolean; supplyPct: number | null; rewardsPct: number | null; avg7Pct: number | null; daysMeasured: number; utilizationPct: number | null; tvlUsd: number | null; withdrawableUsd: number | null; eligible: boolean; verdict: "ok" | "avoid" | null; reason: VetoReason | null; picked: boolean; note: string | null };

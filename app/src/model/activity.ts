@@ -60,7 +60,7 @@ export function moveRow(day: string, m: Move): ActivityRow | null {
   const coin = COIN_NAME[m.asset], from = VENUE_NAME[m.from], to = VENUE_NAME[m.to]
   const base = { key: `mv-${m.ts}`, signature: null }
   if (m.status === 'done') return { ...base, line: `${day}, moved your ${coin} from ${from} to ${to}`, details: [] }
-  if (m.status === 'failed') return { ...base, line: `${day}, a move of your ${coin} from ${from} to ${to} did not finish`, details: ['Withdraw shows where it sits now.'] }
+  if (m.status === 'failed') return { ...base, line: `${day}, moving your ${coin} didn't finish. It is back in your wallet.`, details: [`${from} to ${to}.`] }
   if (m.status === 'dismissed') return { ...base, line: `${day}, you kept your ${coin} on ${from}`, details: [] }
   return null
 }
