@@ -167,19 +167,25 @@ export function drawnSpans(plants: readonly PlantOnStage[], width: number, y0: n
 }
 const overlap = (lo: number, hi: number, spans: readonly (readonly [number, number])[]) =>
   spans.reduce((t, [l, h]) => t + Math.max(0, Math.min(hi, h) - Math.max(lo, l)), 0);
-/** R356: the search reads every x of the row, and frameFor asks for the same spots at the same zoom several times: answers are kept per
- * scene and plant list (by identity), width and zoom. */
+/** Answers kept per scene and plant list (by identity), width, zoom and span: Garden re-renders ask again with the same ones. */
 const spotsCache = new WeakMap<Scene, WeakMap<readonly PlantOnStage[], Map<string, Map<PlantId, Spot>>>>();
-export function stakeSpots(scene: Scene, plants: readonly PlantOnStage[], width: number, zoom: number): Map<PlantId, Spot> {
+/** The whole bed, R356's search span: the frame (frameFor) is sized around the stakes where R356 puts them, and draws them there. */
+export const bedSpan = (width: number) => ({ lo: 0, hi: width });
+/**
+ * Without `span`: R326/R327's spots (two-line stakes within STAKE_WALK), the ones the packing (spread.ts) reads, so a stake R356 moves
+ * never unpacks a young garden. With `span` (bedSpan: frameFor, Garden.tsx, the widget): R356's whole-row search, each back-row board
+ * inside the span. A board that walks past the packed frame widens it (the garden zooms out a little for the words to read).
+ */
+export function stakeSpots(scene: Scene, plants: readonly PlantOnStage[], width: number, zoom: number, span?: { lo: number; hi: number }): Map<PlantId, Spot> {
   let byPlants = spotsCache.get(scene); if (!byPlants) spotsCache.set(scene, (byPlants = new WeakMap()));
   let byKey = byPlants.get(plants); if (!byKey) byPlants.set(plants, (byKey = new Map()));
-  const key = `${width}:${zoom}`, hit = byKey.get(key);
+  const key = `${width}:${zoom}:${span ? `${span.lo}:${span.hi}` : "-"}`, hit = byKey.get(key);
   if (hit) return new Map(hit);
-  const out = searchSpots(scene, plants, width, zoom);
+  const out = searchSpots(scene, plants, width, zoom, span);
   byKey.set(key, out);
   return new Map(out);
 }
-function searchSpots(scene: Scene, plants: readonly PlantOnStage[], width: number, zoom: number): Map<PlantId, Spot> {
+function searchSpots(scene: Scene, plants: readonly PlantOnStage[], width: number, zoom: number, span?: { lo: number; hi: number }): Map<PlantId, Spot> {
   const signs = scene.parts.flatMap((q) => (q.kind === "sign" ? [q] : [])).sort((a, b) => a.x - b.x);
   const out = new Map<PlantId, Spot>(signs.map((q) => [q.plant, { side: q.side, x: null }]));
   const trunks = scene.parts.flatMap((q) => (q.kind === "plant" && q.row === "front" ? [q.x * width] : []));
@@ -193,6 +199,7 @@ function searchSpots(scene: Scene, plants: readonly PlantOnStage[], width: numbe
     const other = -q.side as -1 | 1, a = stakeAt(q, width, zoom), h = 15 * a.scale * a.boardX, c = q.x * width + other * (h + SIGN_GAP);
     if (c - h >= 1 && c + h <= width - 1 && !covered(q, board(q, { side: other, x: null }))) out.set(q.plant, { side: other, x: null });
   }
+  if (!span) return nearSpots(out, signs, lend, plants, width, zoom);
   // R356 (10-05, his words: "the USDC Kamino stake should not be over the SKR plant (its behind), so maybe nudge it around so its not
   // covered by it? same with the SOL Jupiter stake.. should not be in front of the stORE"): depth stays true, so EVERY back-row stake
   // (one-line ones too) searches its whole row, inside the canvas, for its x. Each candidate is ranked, in order: board over board
@@ -205,7 +212,7 @@ function searchSpots(scene: Scene, plants: readonly PlantOnStage[], width: numbe
   const opts = movers.map((q) => {
     const a = stakeAt(q, width, zoom, out), h = 15 * a.scale * a.boardX, y = FOOT_Y(q.row) + 4, y0 = y - 12 * a.scale, y1 = y - a.scale;
     const frontPl = plants.filter((pl) => pl.row === "front"), front = drawnSpans(frontPl, width, y0, y1, STILL), swayed = drawnSpans(frontPl, width, y0, y1), back = drawnSpans(plants.filter((pl) => pl.row === "back"), width, y0, y1);
-    const lo = h + 1, hi = width - h - 1, near = ([-1, 1] as const).map((sd) => signX(q.x * width, sd, width, a.scale, a.boardX));
+    const lo = Math.max(h + 1, span.lo + h), hi = Math.min(width - h - 1, span.hi - h), near = ([-1, 1] as const).map((sd) => signX(q.x * width, sd, width, a.scale, a.boardX));
     const own = q.x * width, feet = signs.filter((o) => o !== q && o.row === "back").map((o) => o.x * width);
     const xs = lo > hi ? [a.x] : [...new Set([Math.min(Math.max(a.x, lo), hi), ...Array.from({ length: Math.floor(hi - lo) + 1 }, (_, i) => lo + i), hi])];
     return xs.map((c) => ({ c, h, plant: q.plant, foot: own,
@@ -223,7 +230,7 @@ function searchSpots(scene: Scene, plants: readonly PlantOnStage[], width: numbe
   // take the only clear spot another needed)
   const place = (order: number[]) => {
     const chosen: Opt[] = [];
-    const bestOf = (i: number, others: Opt[], start: Opt) => { let best = start; for (const o of opts[i]) if (less(costOf(o, others), costOf(best, others))) best = o; return best; };
+    const bestOf = (i: number, others: Opt[], start: Opt) => { let best = start, bc = costOf(start, others); for (const o of opts[i]) { const c = costOf(o, others); if (less(c, bc)) { best = o; bc = c; } } return best; };
     for (const i of order) chosen[i] = bestOf(i, order.filter((j) => chosen[j] !== undefined && j !== i).map((j) => chosen[j]), opts[i][0]);
     for (let pass = 0; pass < 2; pass++) for (const i of order) chosen[i] = bestOf(i, chosen.filter((_, j) => j !== i), chosen[i]);
     const total = chosen.map((o, i) => costOf(o, chosen.slice(i + 1))).reduce((t, c) => t.map((v, k) => v + c[k]));
@@ -231,7 +238,7 @@ function searchSpots(scene: Scene, plants: readonly PlantOnStage[], width: numbe
   };
   const perms = (xs: number[]): number[][] => (xs.length <= 1 ? [xs] : xs.flatMap((x) => perms(xs.filter((y) => y !== x)).map((r) => [x, ...r])));
   // each stake at its own best, ignoring the others: when those boards already stand apart, no order can do better
-  const alone = opts.map((xs) => xs.reduce((b, o) => (less(costOf(o, []), costOf(b, [])) ? o : b), xs[0]));
+  const alone = opts.map((xs) => { let b = xs[0], bc = costOf(b, []); for (const o of xs) { const c = costOf(o, []); if (less(c, bc)) { b = o; bc = c; } } return b; });
   const apart = alone.every((o, i) => alone.every((k, j) => j <= i || pair(o, k) === 0));
   let chosen: Opt[] = alone, bestTotal: number[] | null = null;
   if (!apart) for (const order of perms(opts.map((_, i) => i))) { const r = place(order); if (bestTotal === null || less(r.total, bestTotal)) { chosen = r.chosen; bestTotal = r.total; } }
@@ -313,7 +320,7 @@ export function frameFor(scene: Scene, plants: PlantOnStage[], width: number, ro
   for (let j = 0; j < 3; j++) {
     let grew = false;
     for (const q of scene.parts) if (q.kind === "sign" && !present.has(q.plant) && !bare.has(q.plant)) {
-      const a = stakeAt(q, width, f.zoom, stakeSpots(scene, plants, width, f.zoom)), h = 15 * a.scale * a.boardX, lo = a.x - h, hi = a.x + h, g = SIDE_GUTTER / f.zoom;
+      const a = stakeAt(q, width, f.zoom, stakeSpots(scene, plants, width, f.zoom, bedSpan(width))), h = 15 * a.scale * a.boardX, lo = a.x - h, hi = a.x + h, g = SIDE_GUTTER / f.zoom;
       if (hi > f.x - g && lo < f.x + f.w + g && (lo < f.x || hi > f.x + f.w)) { bare.add(q.plant); grew = true; }
     }
     if (!grew) break;
@@ -331,7 +338,7 @@ function frameAt(scene: Scene, plants: PlantOnStage[], width: number, room: { sh
     x0 = Math.min(x0, fx - reach); x1 = Math.max(x1, fx + reach); y0 = Math.min(y0, FOOT_Y(p.row) - p.layout.top);
   }
   // each present plant's stake, and the bare stakes frameFor found the frame cutting (fix round 1)
-  const spots = stakeSpots(scene, plants, width, signZoom), stakes = [...signs.values()].filter((s) => bare.has(s.plant) || plants.some((p) => p.plant === s.plant)).map((s) => stakeAt(s, width, signZoom, spots));
+  const spots = stakeSpots(scene, plants, width, signZoom, bedSpan(width)), stakes = [...signs.values()].filter((s) => bare.has(s.plant) || plants.some((p) => p.plant === s.plant)).map((s) => stakeAt(s, width, signZoom, spots));
   for (const a of stakes) { const h = 15 * a.scale * a.boardX; x0 = Math.min(x0, a.x - h); x1 = Math.max(x1, a.x + h); }
   x0 -= FRAME.pad; x1 += FRAME.pad;
   // R242 (10-04, "hsol and cbBTC plants are on the very edge- they should be sitting within/on the soil"): the ground spans the frame
@@ -364,3 +371,39 @@ export function plantUnder(x: number, y: number, slots: Partial<Record<PlantId, 
 }
 /** A point on the garden's view (px from its top-left) back on the canvas: RG30's frame puts canvas p at (p - frame) * zoom. */
 export const toCanvas = (pt: { x: number; y: number }, frame: { x: number; y: number; zoom: number }) => ({ x: frame.x + pt.x / frame.zoom, y: frame.y + pt.y / frame.zoom });
+/** R326 as it stood before R356: the two-line stakes' x together, within STAKE_WALK of their spots (the frame's and the packing's). */
+type SignPart = Extract<Scene["parts"][number], { kind: "sign" }>;
+function nearSpots(out: Map<PlantId, Spot>, signs: SignPart[], lend: SignPart[], plants: readonly PlantOnStage[], width: number, zoom: number): Map<PlantId, Spot> {
+  if (lend.length === 0) return out;
+  const board = (q: SignPart) => { const a = stakeAt(q, width, zoom, out), h = 15 * a.scale * a.boardX; return [a.x - h, a.x + h] as const; };
+  // R326: the two-line stakes' x together, each within STAKE_WALK of its spot and its post nearer its own foot than any other
+  // back-row foot, minimising in turn: board over board (the one-line
+  // stakes' and each other's), plant parts over or under a face (front parts weighted STAKE_FRONT_W), then the distance walked
+  const fixed = signs.filter((o) => o.row === "back" && !lend.includes(o)).map((o) => board(o));
+  const opts = lend.map((q) => {
+    const a = stakeAt(q, width, zoom, out), h = 15 * a.scale * a.boardX, y = FOOT_Y(q.row) + 4, y0 = y - 12 * a.scale, y1 = y - a.scale;
+    const front = drawnSpans(plants.filter((pl) => pl.row === "front"), width, y0, y1), back = drawnSpans(plants.filter((pl) => pl.row === "back"), width, y0, y1);
+    const walk = STAKE_WALK / zoom, lo = Math.max(h + 1, a.x - walk), hi = Math.min(width - h - 1, a.x + walk);
+    // its post stays its plant's: nearer its own foot than any other back-row foot (a plant's or a bare stake's)
+    const own = q.x * width, feet = signs.filter((o) => o !== q && o.row === "back").map((o) => o.x * width);
+    const mine = (c: number) => feet.every((f) => Math.abs(c - own) < Math.abs(c - f));
+    const all = lo > hi ? [] : [...new Set([Math.min(Math.max(a.x, lo), hi), ...Array.from({ length: Math.floor(hi - lo) + 1 }, (_, i) => lo + i), hi])].filter(mine);
+    const xs = all.length > 0 ? all : [a.x];
+    return xs.map((c) => ({ c, h, plant: q.plant, foot: q.x * width, boards: overlap(c - h, c + h, fixed),
+      parts: STAKE_FRONT_W * overlap(c - h - STAKE_CLEAR, c + h + STAKE_CLEAR, front) + overlap(c - h - STAKE_CLEAR, c + h + STAKE_CLEAR, back), walk: Math.abs(c - a.x) }));
+  });
+  type Opt = (typeof opts)[number][number];
+  let best: Opt[] = [], bestCost = [Infinity, Infinity, Infinity];
+  const less = (u: number[], v: number[]) => { for (let i = 0; i < u.length; i++) if (Math.abs(u[i] - v[i]) > 1e-9) return u[i] < v[i]; return false; };
+  const pick = (i: number, chosen: Opt[], cost: number[]) => {
+    if (cost[0] > bestCost[0] + 1e-9) return;
+    if (i === opts.length) { if (less(cost, bestCost)) { best = [...chosen]; bestCost = cost; } return; }
+    for (const o of opts[i]) {
+      const pair = chosen.reduce((t, k) => t + Math.max(0, Math.min(o.c + o.h, k.c + k.h) - Math.max(o.c - o.h, k.c - k.h)), 0);
+      pick(i + 1, [...chosen, o], [cost[0] + o.boards + pair, cost[1] + o.parts, cost[2] + o.walk]);
+    }
+  };
+  pick(0, [], [0, 0, 0]);
+  for (const o of best) out.set(o.plant, { side: o.c >= o.foot ? 1 : -1, x: o.c });
+  return out;
+}
