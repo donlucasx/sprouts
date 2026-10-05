@@ -455,10 +455,24 @@ export class SupabaseRepo implements Repo {
   }
 
   async insertWithdrawal(w: NewWithdrawal) {
-    return this.one(this.db.from("withdrawals").insert({
+    const { data, error } = await this.db.from("withdrawals").insert({
       user_pubkey: w.userPubkey, asset: w.asset, source: w.source, unstake_ts: new Date().toISOString(), unstake_signature: w.unstakeSignature,
       shares_unstaked: w.sharesUnstaked.toString(), amount_raw: w.amountRaw.toString(), principal_raw: w.principalRaw.toString(),
-    }).select().single(), withdrawalRow);
+    }).select().single();
+    if (error) {
+      // K-I4: a racing post of the same signed unstake inserted first (0009's unique index): answer that row.
+      if (error.code === UNIQUE_VIOLATION && w.unstakeSignature !== null) {
+        const had = await this.withdrawalBySignature(w.unstakeSignature);
+        if (had) return had;
+      }
+      throw new Error(error.message);
+    }
+    return withdrawalRow(data as Row);
+  }
+  async withdrawalBySignature(unstakeSignature: string) {
+    const { data, error } = await this.db.from("withdrawals").select().eq("unstake_signature", unstakeSignature).maybeSingle();
+    if (error) throw new Error(error.message);
+    return data ? withdrawalRow(data as Row) : null;
   }
 
   /** Open rows: not delivered, not cancelled, not skipped [A11]. */
