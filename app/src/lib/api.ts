@@ -14,7 +14,7 @@ export class ApiError extends Error {
 }
 
 /** One fetch for every call: JSON in, JSON out, the session bearer when there is one, the API's own sentence on failure. */
-export async function api<T>(path: string, init: { method?: "GET" | "POST" | "PUT"; body?: unknown; auth?: boolean } = {}): Promise<T> {
+export async function api<T>(path: string, init: { method?: "GET" | "POST" | "PUT"; body?: unknown; auth?: boolean; signal?: AbortSignal } = {}): Promise<T> {
   if (LEND_MOCK) {
     const m = mockBefore(path, init.method ?? "GET", init.body);
     if (m && "error" in m) throw new ApiError(m.error.status, m.error.message);
@@ -25,7 +25,7 @@ export async function api<T>(path: string, init: { method?: "GET" | "POST" | "PU
     const s = await loadSession();
     if (s) headers.authorization = `Bearer ${s.token}`;
   }
-  const res = await fetch(`${API_ORIGIN}${path}`, { method: init.method ?? "GET", headers, body: init.body === undefined ? undefined : JSON.stringify(init.body) });
+  const res = await fetch(`${API_ORIGIN}${path}`, { method: init.method ?? "GET", headers, body: init.body === undefined ? undefined : JSON.stringify(init.body), signal: init.signal });
   const text = await res.text();
   const json = text ? (JSON.parse(text) as { error?: string }) : {};
   if (!res.ok) throw new ApiError(res.status, json.error ?? `Request failed (${res.status}).`);
