@@ -217,12 +217,12 @@ Expected: one `set_leg <n> confirmed` line per leg turned off, then `on-chain Co
 
 Legs 1 (stORE) and 3 (USDC on Jupiter Lend) are Day-1 legs now (B3), so Day 2 is for legs 4 and 5 (SOL lending) only. The
 list is the FULL list that should be on: the legs on now plus the new one. Leg 0 (SKR) is never in the list.
-For example, adding leg 4 after B4 line A (legs 2, 6, 7 on):
+For example, adding leg 4 after B4 line A (legs 1, 2, 3, 6, 7 on; R343):
 ```
-cd ~/Documents/claude/seekerhackathon/build/sprouts/api && pnpm tsx scripts/leash-admin.ts set --enable 2,4,6,7 --admin ~/.config/solana/sprouts-admin.json
-cd ~/Documents/claude/seekerhackathon/build/sprouts/leash && ./scripts/check-config.sh legs 2,4,6,7
+cd ~/Documents/claude/seekerhackathon/build/sprouts/api && pnpm tsx scripts/leash-admin.ts set --enable 1,2,3,4,6,7 --admin ~/.config/solana/sprouts-admin.json
+cd ~/Documents/claude/seekerhackathon/build/sprouts/leash && ./scripts/check-config.sh legs 1,2,3,4,6,7
 ```
-Expected: one `set_leg 4 confirmed` line, then `on-chain Config OK: legs [2, 4, 6, 7] enabled, ...` and
+Expected: one `set_leg 4 confirmed` line, then `on-chain Config OK: legs [1, 2, 3, 4, 6, 7] enabled, ...` and
 `test result: ok. 1 passed`. After another B4 line, put that line's legs plus the new one in both places.
 
 **C3. Go-live only (after D7 is green for every enabled leg): new puller (one transaction)**
