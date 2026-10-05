@@ -240,3 +240,17 @@ describe("checkSwapInstructions, decoded (R207 #4)", () => {
     expect(() => checkSwapInstructions(other, { puller: PULLER, destination: FIX_DEST })).toThrow(/not a known route layout/);
   });
 });
+
+import { getSwapInstructions, priceUsd, pricesUsd } from "@/lib/jupiter";
+describe("T21 minor: every Jupiter call carries a 10 s timeout (a hung price read never holds /api/me or the run)", () => {
+  afterEach(() => vi.restoreAllMocks());
+  it("quote, swap-instructions, price and prices each send an AbortSignal", async () => {
+    const f = vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response("{}", { status: 500 }));
+    await getQuote({ inputMint: PULLER as never, outputMint: FIX_DEST as never, amountRaw: 1n }).catch(() => {});
+    await getSwapInstructions({ quote: {} as never, userPublicKey: PULLER as never }).catch(() => {});
+    await priceUsd(PULLER);
+    await pricesUsd([PULLER]).catch(() => {});
+    expect(f).toHaveBeenCalledTimes(4);
+    for (const c of f.mock.calls) expect((c[1] as RequestInit).signal).toBeInstanceOf(AbortSignal);
+  });
+});

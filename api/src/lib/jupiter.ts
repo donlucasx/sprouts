@@ -15,6 +15,9 @@ export type SwapInstructionsResponse = {
 
 export type Quote = { inputMint: string; outputMint: string; inAmount: string; outAmount: string; otherAmountThreshold: string; priceImpactPct: string; routePlan: unknown[] };
 
+/** T21 minor (final review): every Jupiter call stops at 10 s, as the venue reads do (venues/rates.ts getJson). */
+const timeout = () => AbortSignal.timeout(10_000);
+
 function headers(): Record<string, string> {
   return { "x-api-key": config().jupiterApiKey, "content-type": "application/json" };
 }
@@ -194,7 +197,7 @@ export async function getQuote(a: {
     maxAccounts: String(a.maxAccounts ?? 24), onlyDirectRoutes: String(a.onlyDirectRoutes ?? false), restrictIntermediateTokens: "true",
     ...(a.platformFeeBps ? { platformFeeBps: String(a.platformFeeBps) } : {}),
   });
-  const res = await fetch(`${BASE}/swap/v1/quote?${q}`, { headers: headers() });
+  const res = await fetch(`${BASE}/swap/v1/quote?${q}`, { headers: headers(), signal: timeout() });
   if (!res.ok) throw new Error(`Jupiter quote failed: ${res.status} ${(await res.text()).slice(0, 200)}`);
   const quote = (await res.json()) as Quote;
   // Every caller gets a quote whose minimum matches the slippage it asked for (R207 #4).
@@ -207,6 +210,7 @@ export async function getSwapInstructions(a: { quote: Quote; userPublicKey: Addr
   const res = await fetch(`${BASE}/swap/v1/swap-instructions`, {
     method: "POST",
     headers: headers(),
+    signal: timeout(),
     body: JSON.stringify({
       quoteResponse: a.quote, userPublicKey: a.userPublicKey, wrapAndUnwrapSol: false, dynamicComputeUnitLimit: true,
       ...(a.destinationTokenAccount ? { destinationTokenAccount: a.destinationTokenAccount } : {}),
@@ -220,7 +224,7 @@ export async function getSwapInstructions(a: { quote: Quote; userPublicKey: Addr
 /** Current USD price of a mint from Jupiter's price API, or null when unknown. */
 export async function priceUsd(mint: string): Promise<number | null> {
   try {
-    const res = await fetch(`${BASE}/price/v3?ids=${mint}`, { headers: headers() });
+    const res = await fetch(`${BASE}/price/v3?ids=${mint}`, { headers: headers(), signal: timeout() });
     if (!res.ok) return null;
     const j = (await res.json()) as Record<string, { usdPrice?: number } | undefined>;
     const p = j[mint]?.usdPrice;
@@ -234,7 +238,7 @@ export type PriceInfo = { usdPrice: number; liquidity: number | null; priceChang
 
 /** Several mints' prices in one call (the daily snapshot, spec 5.2); a mint the API does not know is simply absent. Throws on a failed call so the snapshot marks the day. */
 export async function pricesUsd(mints: string[]): Promise<Record<string, PriceInfo>> {
-  const res = await fetch(`${BASE}/price/v3?ids=${mints.join(",")}`, { headers: headers() });
+  const res = await fetch(`${BASE}/price/v3?ids=${mints.join(",")}`, { headers: headers(), signal: timeout() });
   if (!res.ok) throw new Error(`Jupiter price failed: ${res.status}`);
   const j = (await res.json()) as Record<string, { usdPrice?: number; liquidity?: number; priceChange24h?: number; decimals?: number } | undefined>;
   const out: Record<string, PriceInfo> = {};
