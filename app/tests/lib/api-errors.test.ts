@@ -40,6 +40,16 @@ describe('api(): an error body that is not JSON', () => {
     expect(e).toBeInstanceOf(ApiError)
     expect(e.message).toBe(API_UNANSWERED)
   })
+  it('a null, number or array body is unanswered, not a TypeError that reads as "Nothing moved."', async () => {
+    for (const body of ['null', '42', '[]', 'true']) {
+      answer(500, body)
+      const e = await failure(api('/x', { auth: false }))
+      expect(e).toBeInstanceOf(ApiError)
+      expect(e.message).toBe(API_UNANSWERED)
+    }
+    answer(200, 'null')
+    expect((await failure(api('/x', { auth: false }))).message).toBe(API_UNANSWERED)
+  })
   it('a valid JSON error is unchanged, and carries its body', async () => {
     answer(409, JSON.stringify({ error: 'Back in your wallet.', partial: true, unwrapTransaction: 'AAA' }))
     const e = await failure(api('/x', { auth: false }))

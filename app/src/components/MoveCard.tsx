@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { View } from 'react-native'
-import type { Transaction } from '@solana/kit'
+import { getBase58Decoder, type Signature, type Transaction } from '@solana/kit'
 import { useMobileWallet } from '@wallet-ui/react-native-kit'
 import { Card } from './Card'
 import { Button } from './Button'
@@ -9,14 +9,14 @@ import { api, ApiError, type MeResponse } from '@/lib/api'
 import { makeBatchSigner, SignRefused } from '@/lib/sign'
 import { useInvalidateMe } from '@/lib/me'
 import { MOVE_FAILED, MOVED_LINE, moveAtTap, moveCopy, MoveSent, type MoveBuild } from '@/lib/moves'
-import { partialUnwrap, UNWRAP_BUTTON, UNWRAP_DONE, UNWRAP_FAILED, unwrapAtTap } from '@/lib/unwrap'
+import { partialUnwrap, UNWRAP_BUTTON, UNWRAP_DONE, UNWRAP_FAILED, UNWRAP_NOT_SENT, UNWRAP_SENT, unwrapAtTap, unwrapRetryable } from '@/lib/unwrap'
 import { oneAtATime } from '@/lib/withdraw-flow'
 import { spacing } from '@/theme'
 
 /** R258, R280: at most one move card, only when the API proposes one (no faked card, spec 7); one approval for both transactions (S3). */
 export function MoveCard({ me }: { me: MeResponse }) {
   const p = me.moveProposal ?? null
-  const { signTransactions, signAndSendTransaction } = useMobileWallet()
+  const { signTransactions, signAndSendTransactions, client } = useMobileWallet()
   const invalidate = useInvalidateMe()
   const [gate] = useState(oneAtATime)
   // The Move tap's phase: the Seeker is asked, then (signatures back) the API sends both and waits.
@@ -27,6 +27,7 @@ export function MoveCard({ me }: { me: MeResponse }) {
   // A SOL move that redeemed but could not deposit: the API's one-instruction unwrap, offered once (it carries a blockhash, so one try).
   const [unwrap, setUnwrap] = useState<string | null>(null)
   const [unwrapping, setUnwrapping] = useState(false)
+  const [unwrapAt, setUnwrapAt] = useState(0)
 
   async function move() {
     if (!p || !gate.enter()) return
@@ -48,7 +49,9 @@ export function MoveCard({ me }: { me: MeResponse }) {
         setLine({ text: MOVED_LINE, error: false })
       }
     } catch (e) {
-      setUnwrap(partialUnwrap(e))
+      const u = partialUnwrap(e)
+      setUnwrap(u)
+      setUnwrapAt(Date.now())
       setLine({ text: e instanceof ApiError || e instanceof SignRefused || e instanceof MoveSent ? e.message : MOVE_FAILED, error: true })
     } finally {
       setPhase(null)
@@ -60,12 +63,33 @@ export function MoveCard({ me }: { me: MeResponse }) {
     if (!unwrap || !gate.enter()) return
     setUnwrapping(true)
     try {
-      await unwrapAtTap({ user: me.user.pubkey, transaction: unwrap, signAndSend: (tx) => signAndSendTransaction(tx, 0n) })
+      const out = await unwrapAtTap({
+        user: me.user.pubkey,
+        transaction: unwrap,
+        signAndSend: async (tx) => getBase58Decoder().decode(await signAndSendTransactions(tx, 0n)),
+        status: async (sig) => {
+          const v = (await client.rpc.getSignatureStatuses([sig as Signature]).send()).value[0]
+          if (!v) return 'pending'
+          if (v.err) return 'failed'
+          return v.confirmationStatus === 'confirmed' || v.confirmationStatus === 'finalized' ? 'confirmed' : 'pending'
+        },
+      })
+      // Sent: the one try is spent either way (a retry would be a second send of the same transaction).
       setUnwrap(null)
-      setLine({ text: UNWRAP_DONE, error: false })
+      if (out === 'confirmed') setLine({ text: UNWRAP_DONE, error: false })
+      else if (out === 'failed') setLine({ text: UNWRAP_FAILED, error: true })
+      else setLine({ text: UNWRAP_SENT, error: false })
+      void invalidate()
     } catch (e) {
-      setUnwrap(null)
-      setLine({ text: e instanceof SignRefused ? e.message : UNWRAP_FAILED, error: true })
+      // Nothing was sent (a refusal, a decline, a cancelled sheet): the button stays while the blockhash can still land.
+      if (e instanceof SignRefused) {
+        setUnwrap(null)
+        setLine({ text: e.message, error: true })
+      } else if (unwrapRetryable(Date.now() - unwrapAt)) setLine({ text: UNWRAP_NOT_SENT, error: true })
+      else {
+        setUnwrap(null)
+        setLine({ text: UNWRAP_FAILED, error: true })
+      }
     } finally {
       setUnwrapping(false)
       gate.leave()
