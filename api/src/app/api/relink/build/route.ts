@@ -1,30 +1,15 @@
 import { NextResponse } from "next/server";
 import { randomBytes } from "node:crypto";
-import { address, type Address, type Instruction } from "@solana/kit";
+import { address } from "@solana/kit";
 import { getRepo } from "@/db/repo";
 import { requireSession } from "@/lib/auth-guard";
 import { buildUserTransaction } from "@/lib/user-tx";
-import { buildApproveOnceIxs, buildRevokeDelegationIx, delegationPda, readDelegation, readSubscriptionAuthority, readUsdcAtaExists } from "@/lib/subscriptions";
+import { delegationPda, readDelegation, readSubscriptionAuthority, readUsdcAtaExists } from "@/lib/subscriptions";
 import { leashPda } from "@/lib/leash";
+import { buildRelink } from "@/lib/venues/user-builders";
 import { rpc } from "@/lib/rpc";
 
 export const runtime = "nodejs";
-
-const CAP_RAW = 5_000_000n; // $5 a day, the amount the phone pins (contracts 6 relink)
-
-/**
- * Contracts 5.5, in its order: [ATA create when missing], [revoke the current delegation when live], [init the authority when missing],
- * create(delegatee = leashPda(user, user), $5 per 86_400 s, expiry 0). Only the ATA and Subscriptions programs, no ComputeBudget
- * (contracts 6, AMEND s20): the phone's checkApproval accepts exactly this. (Task 18's `buildRelink` in lib/venues/user-builders.ts
- * builds the same set with the revoke first, the other order the phone accepts.)
- */
-async function relinkIxs(a: { user: Address; nonce: bigint; existingDelegationPda: Address | null; existingInitId?: bigint; createAta: boolean }): Promise<Instruction[]> {
-  const ixs = await buildApproveOnceIxs({ delegator: a.user, delegatee: await leashPda(a.user, a.user), capRaw: CAP_RAW, nonce: a.nonce, ...(a.existingInitId !== undefined ? { existingInitId: a.existingInitId } : {}), createAta: a.createAta });
-  if (!a.existingDelegationPda) return ixs;
-  const revoke = buildRevokeDelegationIx({ delegator: a.user, delegationPda: a.existingDelegationPda });
-  const at = a.createAta && a.existingInitId === undefined ? 1 : 0; // after the ATA create, before the init
-  return [...ixs.slice(0, at), revoke, ...ixs.slice(at)];
-}
 
 /** Contracts 5.5: the Seed Vault wallet re-links in one signature (revoke the puller delegation, create the leash one). Works before go-live too (his test wallet). */
 export async function POST(request: Request) {
@@ -41,7 +26,7 @@ export async function POST(request: Request) {
   const nonce = randomBytes(8).readBigUInt64LE();
   const [authority, ataExists, current] = await Promise.all([readSubscriptionAuthority(me), readUsdcAtaExists(me), readDelegation(address(wallet.delegationPda))]);
   const live = current.exists;
-  const ixs = await relinkIxs({ user: me, nonce, existingDelegationPda: live ? address(wallet.delegationPda) : null, ...(authority.exists ? { existingInitId: authority.initId } : {}), createAta: !ataExists });
+  const ixs = await buildRelink({ user: me, nonce, startTs: BigInt(Math.floor(Date.now() / 1000)), existingDelegationPda: live ? address(wallet.delegationPda) : null, ...(authority.exists ? { existingInitId: authority.initId } : {}), createAta: !ataExists });
   const transaction = await buildUserTransaction(me, ixs);
   // Simulated before any wallet sees it (as link/[code]): a re-link that would fail asks nothing of the wallet.
   const sim = await rpc().simulateTransaction(transaction as Parameters<ReturnType<typeof rpc>["simulateTransaction"]>[0], { encoding: "base64", sigVerify: false, replaceRecentBlockhash: true, commitment: "confirmed" }).send();

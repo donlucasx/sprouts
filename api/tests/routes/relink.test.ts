@@ -230,11 +230,11 @@ describe("re-link the Seed Vault wallet to the leash (contracts 5.5, R287)", () 
       expect(shape(body.transaction)).toEqual(["SUBS:3", "SUBS:2"]);
       await expect(appCheckApproval(decode(body.transaction), { kind: "relink", user: user.address })).resolves.toBeUndefined();
     });
-    it("no USDC account, no authority: the route's contracts-5.5 order [ATA, revoke, init, create], no ComputeBudget", async () => {
+    it("no USDC account, no authority: the one builder's order [revoke, ATA, init, create], no ComputeBudget", async () => {
       vi.mocked(readUsdcAtaExists).mockResolvedValueOnce(false);
       vi.mocked(readSubscriptionAuthority).mockResolvedValueOnce({ exists: false });
       const body = await (await call(build, {})).json();
-      expect(shape(body.transaction)).toEqual(["ATA:1", "SUBS:3", "SUBS:0", "SUBS:2"]);
+      expect(shape(body.transaction)).toEqual(["SUBS:3", "ATA:1", "SUBS:0", "SUBS:2"]);
       await expect(appCheckApproval(decode(body.transaction), { kind: "relink", user: user.address })).resolves.toBeUndefined();
       // and the server accepts its own build
       expect((await call(confirm, { signedTransaction: await sign(body.transaction) })).status).toBe(200);
