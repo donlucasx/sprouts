@@ -4,20 +4,33 @@ A leg is enabled on chain only when every column left of "Enabled on chain" says
 
 | Leg | Byte | Day | S2 offsets (T0) | Unit + svm tests (T1-T6) | Mutation sweep (T8) | Fork sim (T7) | Enabled on chain |
 |---|---|---|---|---|---|---|---|
-| SKR | 0 | 2 | PASS offsets; price feed UNVERIFIED (2026-10-04, slot 453408545; see note 2) | PASS 2026-10-04 2bdf821 (synthetic price) | | PASS venue only 2026-10-04 2bdf821 (61450 CU, margin 1.015%): real SKR `stake`, SYNTHETIC price fixture $0.01808 (R324: no SKR price source; leg stays OFF) | |
-| stORE | 1 | 2 | PASS (2026-10-04, slot 453408545) + pyth | PASS 2026-10-04 2bdf821 | | PASS 2026-10-04 2bdf821 (29495 CU, margin 0.817%; real ORE vault reader, stand-in swap at mid - 0.5%) | |
-| USDC K-Lend | 2 | 1 | FAIL: `assertion left == right failed: D6q6wuQSrifJKZYpR1M8R4YawnLDtDsMmWM1NbBmgJ59: collateral supply @2592 == the kToken mint's supply (same slot)` left 92149838469384, right 92149825708849 (2026-10-04, slot 453408545) | PASS 2026-10-04 2bdf821 | | PASS 2026-10-04 2bdf821 (90323 CU, margin 0.100%); real K-Lend deposit minted exactly the reader's prediction (rel. error 0) | |
+| SKR | 0 | 2 | PASS offsets; price feed UNVERIFIED (2026-10-04, slot 453408545; see note 2) | PASS 2026-10-04 2bdf821 (synthetic price) | | VENUE-ONLY (synthetic price) 2026-10-04 2bdf821 (61450 CU, margin 1.015%): real SKR `stake`, SYNTHETIC price fixture $0.01808 (R324: no SKR price source; leg stays OFF) | |
+| stORE | 1 | 2 | PASS (2026-10-04, slot 453408545) + pyth | PASS 2026-10-04 2bdf821 | | PASS 2026-10-04 2bdf821 (29495 CU, margin 0.817% vs an assumed 0.5% swap cost, not a route measurement; real ORE vault reader, stand-in swap at mid - 0.5%) | |
+| USDC K-Lend | 2 | 1 | FAIL (mint-supply check; superseded by the Task 7 actual-deposit PASS 2bdf821, note 1): `assertion left == right failed: D6q6wuQSrifJKZYpR1M8R4YawnLDtDsMmWM1NbBmgJ59: collateral supply @2592 == the kToken mint's supply (same slot)` left 92149838469384, right 92149825708849 (2026-10-04, slot 453408545) | PASS 2026-10-04 2bdf821 | | PASS 2026-10-04 2bdf821 (90323 CU, margin 0.100%); real K-Lend deposit minted exactly the reader's prediction (rel. error 0) | |
 | USDC Jupiter Lend | 3 | 2 | PASS (2026-10-04, slot 453408545) | PASS 2026-10-04 2bdf821 | | PASS 2026-10-04 2bdf821 (88487 CU, margin 0.080%); real JL mint vs reader rel. error 1.0e-6 | |
 | SOL K-Lend | 4 | 2 | PASS(mint-supply) + pyth (2026-10-04, slot 453408545: `s2_klend_sol_reserve_matches_mint_supply_and_api`, collateral @2592 == kSOL mint supply, Kamino API lag 1.40e-4); the real gate is Task 7, see note 1 | PASS 2026-10-04 2bdf821 (tol 150 floor/floor-1 on the fork) | | PASS 2026-10-04 2bdf821 (115574 CU, margin 1.004%); real K-Lend deposit vs reader rel. error 8.5e-8 | |
 | SOL Jupiter Lend | 5 | 2 | PASS (2026-10-04, slot 453408545) + pyth | PASS 2026-10-04 2bdf821 (tol 150 floor/floor-1 on the fork) | | PASS 2026-10-04 2bdf821 (102191 CU, margin 0.983%); real JL mint vs reader rel. error 5.1e-7 | |
-| hSOL | 6 | 1 | PASS (2026-10-04, slot 453408545) + pyth | PASS 2026-10-04 2bdf821 | | PASS 2026-10-04 2bdf821 (42559 CU, margin 1.004%; real hSOL pool reader, stand-in swap) | |
-| cbBTC | 7 | 1 | PASS (no reader) + pyth (2026-10-04, slot 453408545) | PASS 2026-10-04 2bdf821 | | PASS 2026-10-04 2bdf821 (33003 CU, margin 0.930%; real sponsored price copy, stand-in swap) | |
+| hSOL | 6 | 1 | PASS (2026-10-04, slot 453408545) + pyth | PASS 2026-10-04 2bdf821 | | PASS 2026-10-04 2bdf821 (42559 CU, margin 1.004% vs an assumed 0.5% swap cost, not a route measurement; real hSOL pool reader, stand-in swap) | |
+| cbBTC | 7 | 1 | PASS (no reader) + pyth (2026-10-04, slot 453408545) | PASS 2026-10-04 2bdf821 | | PASS 2026-10-04 2bdf821 (33003 CU, margin 0.930% vs an assumed 0.5% swap cost, not a route measurement; real sponsored price copy, stand-in swap) | |
 
 Fork notes (Task 7, 2026-10-04, `./scripts/test.sh --test fork`, snapshot slot 453408545): CU varies by ~15k run to run (bump search). Legs 2-5 run the real venue
 instruction; legs 1, 6, 7 and the SOL legs' USDC->WSOL step use the stand-in swap at the oracle mid minus 0.5% (their real routes are the API track's S1).
 Legs 4, 5 (tol 150): `fork_leg{4,5}_floor_boundary_through_leash` plant through leash.so on the real venue: min_out = floor - 1 refused (0, 6008),
 floor - 1 delivered refused at the settle (6009), exactly the floor passes. The fork clock is the snapshot's: K-Lend accrued 7 slots (USDC) and 180 slots
 (SOL) at refresh, so these errors measure the reader, not a long un-refreshed reserve.
+Legs 1 and 6 on the fork: the stand-in swap's output is computed from the reader's own rate, so their rate is self-consistent there; Task 0's S2
+(reader vs the venue APIs) is the independent check of that rate.
+K-Lend liveness (Task 7 review, question 5): the API builder's min_out is 2 bp under the pre-refresh prediction, so a reserve left un-refreshed for
+more than ~4-5 h (~4.7e-10/slot measured on the SOL reserve, USDC similar) makes the planting revert at the settle. Fail closed, no loss; busy reserves
+are refreshed within minutes.
+
+ENABLE PRECONDITIONS BEYOND THIS TABLE (Task 7 review, Important 1). Task 8's mutation column alone never enables a leg:
+- EVERY leg: contracts sec 8 inv. 3, a simulated leashed planting for that leg on mainnet (the real route), PASS before any user is relinked to it.
+- Legs 4, 5: also contracts sec 9 S1 PASS (the real pull + USDC->WSOL swap + deposit + settle fits 1,232 B with the ALT and simulates err null on
+  mainnet); until then SOL_LEND stays 0%. The fork used a legacy tx with no Jupiter route and no ALT, so it says nothing about S1.
+- Leg 1 (stORE): also the S4 ORE sponsored-price age sample. Leg 7 (cbBTC): also the S4 age sample (R324, 600 s).
+- Leg 0 (SKR): stays off until it has a price source (R324, owner decision open).
+
 SKR stake rounding (S2): 0 share(s) below floor(skr * 1e9 / share_price) at 2026-10-04; the API builder's min_out = expected - 1 is safe.
 
 Release (Task 8): leash.so sha256 = , size = B, rent = SOL, mutation rows RED = /

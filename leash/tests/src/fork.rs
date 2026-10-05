@@ -58,8 +58,8 @@ pub fn rate_now(svm: &LiteSVM, leg: usize, accounts: &[Pubkey]) -> (u128, u128) 
     readers::rate(leg, &cfg.legs[leg], &views, svm.get_sysvar::<Clock>().epoch).expect("reader on the snapshot")
 }
 
-/// What the API's post_update writes when the sponsored account is 60 s old or more: the dumped sponsored bytes
-/// (same feed, price, conf, Full) at a fresh address with publish_time = now - 1.
+/// The dumped sponsored bytes (same feed, price, conf, Full) at a fresh address with a fresh publish_time (now - 1).
+/// R324 retired posting; feed_account is zero on every leg, so any receiver-owned account with the right feed is read.
 pub fn posted_copy(svm: &mut LiteSVM, sponsored: &str) -> Pubkey {
     let mut a = must_fixture(sponsored);
     let now = svm.get_sysvar::<Clock>().unix_timestamp;
