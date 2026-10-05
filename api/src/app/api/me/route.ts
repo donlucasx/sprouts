@@ -9,7 +9,7 @@ import { storeBalanceRaw, storeRedeemRate } from "@/lib/store";
 import { readDelegation } from "@/lib/subscriptions";
 import { readHoldings, latestCoinDays, holdingsFrom, rateFacts, readLendingPositions, lendingFrom, lendHoldings, latestVenueRows } from "@/lib/holdings";
 import { lendSignsFor, underlyingOutRaw, receiptOutRaw } from "@/lib/lend-view";
-import { readLeashConfig, enabledLegs, LEG_SPEC, leashLive } from "@/lib/leash";
+import { readLeashConfig, enabledLegs, LEG_SPEC, leashLive, relinkPilot } from "@/lib/leash";
 import { TERMS_VERSION } from "@/lib/terms";
 import { carryMoves, moveCarriesFor } from "@/lib/moves";
 import { userRouting } from "@/lib/user-routing";
@@ -98,6 +98,12 @@ export async function GET(request: Request) {
   // Re-link (contracts 5.5, R287): this user's wallets still on the puller; a wallet on the leash or revoked never needs it.
   const pullerWallets = wallets.filter((w) => w.linkModel === "puller" && w.status !== "revoked");
   const open = await repo.openMoveProposal(user.seedVaultPubkey);
+  // R339 pilot: before go-live (LEASH_LIVE unset) a Seed Vault listed in RELINK_PILOT is asked to re-link its OWN wallet in the app
+  // (the one leash proof, runbook D6); never a web wallet, whose link page still names the puller before go-live.
+  const seedOnPuller = pullerWallets.filter((w) => w.pubkey === user.seedVaultPubkey);
+  const pilot = !leashLive() && relinkPilot().includes(user.seedVaultPubkey) && seedOnPuller.length > 0;
+  const asked = pilot ? seedOnPuller : pullerWallets;
+  const relinkBlock = { needed: pilot || (leashLive() && pullerWallets.length > 0), wallets: asked.map((w) => ({ pubkey: w.pubkey, via: w.pubkey === user.seedVaultPubkey ? "app" : "link_page" })) };
 
   return NextResponse.json(str({
     user: { pubkey: user.seedVaultPubkey, skrName: user.skrName, joinedAt: user.createdAt, wateredAt: user.wateredAt },
@@ -113,7 +119,7 @@ export async function GET(request: Request) {
       why: routing.why, fallback: splitRow?.fallback ?? null, stopSplit: splitRow?.split ?? STOP_DEFAULTS[rules.stop],
       picks, legsEnabled,
     },
-    relink: { needed: leashLive() && pullerWallets.length > 0, wallets: pullerWallets.map((w) => ({ pubkey: w.pubkey, via: w.pubkey === user.seedVaultPubkey ? "app" : "link_page" })) },
+    relink: relinkBlock,
     terms: { currentVersion: TERMS_VERSION, acceptedVersion: user.termsVersion },
     moveProposal: open
       ? { id: open.id, ts: open.ts, asset: open.asset, from: open.fromVenue, to: open.toVenue, receiptRaw: open.receiptRaw, valueUsd: open.valueUsd,
