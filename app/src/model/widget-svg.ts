@@ -1,5 +1,5 @@
 import type { Scene } from "./garden";
-import { CANVAS, FOOT_Y, LEND_SIGN, PLANT_SCALE, SIGN_TEXT, frameFor, stakeSpots, signPlacement, windSpan } from "./layout";
+import { CANVAS, bedSpan, FOOT_Y, LEND_SIGN, PLANT_SCALE, SIGN_TEXT, frameFor, stakeSpots, signPlacement, windSpan } from "./layout";
 import { stemPaths, spriteTransform } from "./paint";
 import { COLORS, SOIL } from "./species";
 import { GROUND, SOIL_CLIP_ID, frameGround, soilClipPath } from "./soil-clip";
@@ -79,7 +79,7 @@ export function widgetGardenSvg(scene0: Scene, width: number, height: number): s
   let rings = false;
   for (const r of of("ring")) { const ft = footOf(r.plant); if (ft) { rings = true; body.push(`<g clip-path="url(#${SOIL_CLIP_ID})"><g opacity="${f(1 - r.age)}">${placeStr("ring", ft.x, ft.y + 2, 0, r.plant === "skr" || r.plant === "ore" ? CANVAS.frontScale : 2 / 3)}</g></g>`); } }
   for (const s of of("seed")) { const ft = footOf(s.plant); if (ft) place("seed", ft.x + (s.index % 2 ? 1 : -1) * (3 + 2.4 * Math.floor(s.index / 2)), ft.y + 1 - 1.2 * (s.index % 3), ((s.index * 37) % 60) - 30, 1); }
-  const signs = v.signs, spots = stakeSpots(scene, plants, W, v.zoom);
+  const signs = v.signs, spots = stakeSpots(scene, plants, W, v.zoom, bedSpan(W));   // R356: as the app draws them
   for (const row of ["back", "front"] as const) {
     for (const p of plants.filter((q) => q.row === row)) {
       const fx = p.x * W, fy = FOOT_Y(p.row), k = PLANT_SCALE * (v.signs ? 1 : WIDGET_BOOST);   // R187: the app's 1.25x about the foot; R252: a narrow widget more

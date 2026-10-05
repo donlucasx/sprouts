@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatUsd, formatSkr, formatAsOf, roundUpTo, formatWallet, formatStore, formatAmount, DECIMALS, HOLDINGS_NOTE, shareLine, dayLabel, COIN_NAME, feeClause, plantedLine, potHeadline, holdingAmount, arrivalLine, dayTime } from "@/lib/format";
+import { formatUsd, formatSkr, positionAmount, underlyingAmount, formatAsOf, roundUpTo, formatWallet, formatStore, formatAmount, DECIMALS, HOLDINGS_NOTE, shareLine, dayLabel, COIN_NAME, feeClause, plantedLine, potHeadline, holdingAmount, arrivalLine, dayTime } from "@/lib/format";
 
 describe("format", () => {
   it("dollars first, two decimals, whole cents", () => {
@@ -76,8 +76,8 @@ describe("six coins", () => {
   });
 
   it("potHeadline: the big number is the dollar value, the SKR under it; without a price the SKR is the big number", () => {
-    expect(potHeadline(1_284_500_000n, 0.01833)).toEqual({ big: "$23.54", small: "1284.50 SKR" });
-    expect(potHeadline(1_284_500_000n, null)).toEqual({ big: "1284.50 SKR", small: null });
+    expect(potHeadline(1_284_500_000n, 0.01833)).toEqual({ big: "$23.54", small: "1,284.50 SKR" });
+    expect(potHeadline(1_284_500_000n, null)).toEqual({ big: "1,284.50 SKR", small: null });
   });
 
   it("feeClause: no clause for a legacy row with no recorded fee (audit fix F4), else the fee in dollars", () => {
@@ -128,5 +128,30 @@ describe("dayTime (R350)", () => {
     expect(dayTime("2026-10-05T14:11:34.294Z")).toBe("Oct 5, 7:11 AM");
     expect(dayTime("2026-10-05T07:24:00Z")).toBe("Oct 5, 12:24 AM");
     expect(dayTime("2026-10-06T00:05:00Z")).toBe("Oct 5, 5:05 PM");
+  });
+});
+
+// R355 (10-05): coin amounts carry thousands separators, "12,980.46 SKR", wherever an amount is formatted.
+describe("thousands separators on coin amounts", () => {
+  it("formatSkr groups the whole part, with and without a price", () => {
+    expect(formatSkr(12_980_460_000n, null)).toBe("12,980.46 SKR");
+    expect(formatSkr(1_234_567_890_000n, null)).toBe("1,234,567.89 SKR");
+    expect(formatSkr(999_990_000n, null)).toBe("999.99 SKR");
+    expect(formatSkr(1_000_000_000n, null)).toBe("1,000.00 SKR");
+    expect(formatSkr(12_980_460_000n, 0.01)).toBe("12,980.46 SKR ($129.80)");
+  });
+  it("formatStore and formatAmount group too", () => {
+    expect(formatStore(1_234_567_890_000_000n, null)).toBe("12,345.6789 stORE");
+    expect(formatAmount("SKR", 12_980_460_000n, null)).toBe("12,980.46 SKR");
+    expect(formatAmount("USDC_LEND", 1_234_500_000n, null)).toBe("1,234.50 USDC");
+    expect(formatAmount("hSOL", 1_234_500_000_000n, null)).toBe("1,234.5000 hSOL");
+  });
+  it("holdingAmount, positionAmount and underlyingAmount group too", () => {
+    expect(holdingAmount({ asset: "USDC_LEND", heldRaw: "1234500000", valueUsd: null } as never)).toBe("1,234.50 USDC");
+    expect(positionAmount({ asset: "USDC_LEND", underlyingRaw: "1234500000", valueUsd: null } as never)).toBe("1,234.50 USDC");
+    expect(underlyingAmount("SOL_LEND", "1234500000000")).toBe("1,234.5000 SOL");
+  });
+  it("potHeadline's SKR line groups", () => {
+    expect(potHeadline(12_980_460_000n, null)).toEqual({ big: "12,980.46 SKR", small: null });
   });
 });
