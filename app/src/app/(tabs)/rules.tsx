@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Switch, TextInput, View } from 'react-native'
 import { Screen } from '@/components/Screen'
 import { Card } from '@/components/Card'
+import { ProBadge } from '@/components/ProBadge'
 import { Button } from '@/components/Button'
 import { ThemedText } from '@/components/ThemedText'
 import { Stepper, StepButtons } from '@/components/Stepper'
@@ -23,7 +24,6 @@ import {
   undoLine,
   SWITCH_LABEL,
   MANAGER_LINE,
-  PRO_BADGE,
   PRO_LINE,
   ROWS_LINE,
   STOP_LINE,
@@ -260,13 +260,7 @@ export default function Rules() {
       <Card>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
           <ThemedText variant="heading">{SWITCH_LABEL}</ThemedText>
-          <View
-            style={{ borderWidth: 1, borderColor: colors.accentText, borderRadius: 999, paddingHorizontal: spacing.sm, paddingVertical: 2 }}
-          >
-            <ThemedText variant="caption" tone="accentText">
-              {PRO_BADGE}
-            </ThemedText>
-          </View>
+          <ProBadge />
         </View>
         <ThemedText variant="caption" tone="secondary">
           {PRO_LINE}

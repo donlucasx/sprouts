@@ -136,9 +136,10 @@ describe("R326: a lending stake stands where its whole board reads", () => {
         expect(Math.abs(x.a.x - x.q.x * width), `${width} ${x.q.plant}/${o.q.plant}`).toBeLessThan(Math.abs(x.a.x - o.q.x * width));
     }
   });
-  // Was KNOWN (fix round 2): the mandarin's canopy hid part of the USDC face within R326's 48 px reach. R356 searches the whole row
-  // (front parts measured still), so the face now clears.
-  it("R356: the Seeker's garden at 360 no longer hides the USDC face behind the mandarin", () => {
+  // KNOWN (fix round 2, again after R357): the mandarin's canopy covers the USDC face over the whole stretch R357 keeps it in (by its own
+  // plant, short of the blueberry's stem); R356's whole-row search cleared it by standing it far off, which he ruled out ("too far from
+  // the plant and cant tell what it belongs to"). it.fails records it.
+  it.fails("KNOWN: the Seeker's garden at 360 still hides part of the USDC face behind the mandarin", () => {
     const d = drawn(SCENES()[0], 360), x = d.boards.find((b) => b.q.plant === "jitosol")!;
     expect(faceCover(d, x, 360).front).toBe(0);
   });

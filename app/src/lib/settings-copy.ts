@@ -30,7 +30,7 @@ export const DISCLOSURES: [string, string][] = [
   ],
   [
     'Where your lending goes',
-    'New USDC and SOL go to Kamino Lend or Jupiter Lend, whichever has paid more over the last 7 days and is safe that day. Once you lend $20 or more, neither holds more than 60% of it. marginfi and Lulo are compared every day but get no money. The Yield Manager can skip a venue for a day and says why.',
+    'New USDC and SOL go to Kamino Lend or Jupiter Lend, whichever has paid more over the last 7 days and is safe that day. Once you lend $20 or more, new money goes to a venue only if that keeps it at or under 60% of your lending. marginfi and Lulo are compared every day but get no money. The Yield Manager can skip a venue for a day and says why.',
   ],
   [
     'If a pool is full',
@@ -38,7 +38,7 @@ export const DISCLOSURES: [string, string][] = [
   ],
   [
     'Kamino and where you live',
-    "Kamino blocks users in the US and UK on its own website. Sprouts deposits on-chain for you, so you can hold a Kamino position even where Kamino's site is blocked, and you withdraw it in Sprouts. Follow the rules where you live.",
+    "Kamino restricts some regions on its own website. Sprouts deposits on-chain for you and you withdraw in Sprouts; check that using lending is allowed where you live.",
   ],
   [
     'Signed in',
@@ -51,7 +51,7 @@ export const DISCLOSURES: [string, string][] = [
   ],
   [
     'Not advice',
-    'Sprouts is not tax advice and not investment advice. The Yield Manager, if you turn it on, splits new round-ups across SKR, stORE, USDC lending, SOL lending, hSOL and cbBTC inside limits you set and limits in code. It never sets the amount, never sells anything you hold, and every change it makes shows in Activity with an undo. The tax export is a record, not a filing.',
+    'Sprouts is not tax advice and not investment advice. The Yield Manager, if you turn it on, splits new round-ups across SKR, stORE, USDC lending, SOL lending, hSOL and cbBTC inside limits you set and limits in code. It never sets the amount, never sells anything you hold, and every change it makes shows in Activity with an undo. Export for taxes is coming soon; its output will be a record, not a filing.',
   ],
 ]
 

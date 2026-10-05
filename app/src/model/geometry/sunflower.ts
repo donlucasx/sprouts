@@ -21,9 +21,10 @@ export function sunflower(shoots: ShootIn[], o: LayoutOpts, k: number): PlantLay
     }
   });
   const top = -rise, opened = shoots.filter((s) => s.opened).length;
-  if (o.head || opened >= 4) sprite(acc, "head", "head-sunflower", -1 * k, top, 0, k, 3);
+  const head = o.head || opened >= 4;
+  if (head) sprite(acc, "head", "head-sunflower", -1 * k, top, 0, k, 3);
   for (let q = 0; q < o.fruit; q++) sprite(acc, "token", "token-hsol", -1 * k + (q - (o.fruit - 1) / 2) * 9 * k, -rise * 0.55 + (q % 2) * 6 * k, 0, k, 4);
   if (o.ripening > 0) sprite(acc, "token", "token-hsol", -1 * k + (o.fruit - (o.fruit - 1) / 2) * 9 * k, -rise * 0.55 + (o.fruit % 2) * 6 * k, 0, k * (0.5 + 0.5 * o.ripening), 4);
-  swelling(acc, -1 * k, top + 1.2 * k, o.pending, k);
+  swelling(acc, "sunflower", -1 * k, top, o.pending, k, head ? 7 * k : 0);   // R358: with the head, the droplet stands on the disc's top edge (r 7.9), not on its face
   return finish(acc, { x: -1 * k, y: top });
 }

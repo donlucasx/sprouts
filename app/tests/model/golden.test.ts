@@ -37,9 +37,12 @@ describe.skipIf(!existsSync(PATH))("the TypeScript geometry draws what the gener
       // R290 (10-04): gen04's blueberry twigs rise from the cane's CHORD (lean times t), up to 6 px off its bowed paint; ours leave the paint
       const tol = coin === "jup" ? JUP_TOL : TOL;
       matchAll(rec.placed.filter(leafLike), sprites.filter((p) => p.part === "leaf" || p.part === "blade").map((p) => ({ x: p.x, y: p.y, rot: p.rot, L: leafLen(p) })), `${coin} leaves`, tol);
-      matchAll(rec.placed.filter((r) => r.part === "bud"), sprites.filter((p) => p.part === "bud").map((p) => ({ x: p.x, y: p.y })), `${coin} buds`, tol);
+      // R351 (10-05): the mandarin's bud is a sprout on a nub, placed at its twig's node: matched by the nub's node, which sits on the
+      // trunk 3 px in from gen04's floating bud (on a branch, the same point)
+      const closed = species === "mandarin" ? stems.filter((p) => p.part === "nub").map((p) => ({ x: p.x0, y: p.y0 })) : sprites.filter((p) => p.part === "bud").map((p) => ({ x: p.x, y: p.y }));
+      matchAll(rec.placed.filter((r) => r.part === "bud"), closed, `${coin} buds`, species === "mandarin" ? tol + 3 : tol);
       const genStems = rec.placed.filter((r) => r.part === "stem").map((r) => ({ x: r.x1!, y: r.y1!, x0: r.x0!, y0: r.y0! }));
-      matchAll(genStems.map((s) => ({ part: "stem", x: s.x, y: s.y })), stems.map((s) => ({ x: s.x1, y: s.y1 })), `${coin} stem ends`, tol);   // every stem, the succulent's stalk included: the recorder records it too
+      matchAll(genStems.map((s) => ({ part: "stem", x: s.x, y: s.y })), stems.filter((s) => s.part !== "nub").map((s) => ({ x: s.x1, y: s.y1 })), `${coin} stem ends`, tol);   // every stem, the succulent's stalk included: the recorder records it too
       void stageOf;
     });
   }

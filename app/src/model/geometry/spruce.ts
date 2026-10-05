@@ -17,6 +17,6 @@ export function spruce(shoots: ShootIn[], o: LayoutOpts, k: number): PlantLayout
   sprite(acc, "tip", "tip-spruce", 0, -rise, 0, k, 3);
   for (let q = 0; q < o.fruit; q++) sprite(acc, "token", "token-cbbtc", (q - (o.fruit - 1) / 2) * 10 * k, -rise * (0.35 + 0.1 * (q % 3)), 0, k, 4);
   if (o.ripening > 0) sprite(acc, "token", "token-cbbtc", (o.fruit - (o.fruit - 1) / 2) * 10 * k, -rise * (0.35 + 0.1 * (o.fruit % 3)), 0, k * (0.5 + 0.5 * o.ripening), 4);
-  swelling(acc, 0, -rise + 1.2 * k, o.pending, k);
+  swelling(acc, "spruce", 0, -rise, o.pending, k);
   return finish(acc, { x: 0, y: -rise });
 }

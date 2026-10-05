@@ -1,13 +1,18 @@
-import { useCallback, useMemo, useState } from 'react'
-import { View, Pressable, RefreshControl, Image } from 'react-native'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { View, Pressable, RefreshControl, Image, useWindowDimensions } from 'react-native'
 import { Link, Redirect, router, useFocusEffect } from 'expo-router'
 import { MaterialCommunityIcons } from '@expo/vector-icons'
 import { useQueryClient } from '@tanstack/react-query'
 import { useMe, useInvalidateMe, toGardenInput } from '@/lib/me'
 import { recordWatering, wateredPlantsFor } from '@/lib/last-watering'
+import { readZeroMarks } from '@/lib/zero-marks'
 import { plantLabel } from '@/lib/plant-label'
 import { api, ApiError, type MeResponse } from '@/lib/api'
 import { buildScene } from '@/model/garden'
+import { withDevBud, type DevBud } from '@/lib/dev-bud'
+import { frameFor, skyAbove, valuePull } from '@/model/layout'
+import { packScene } from '@/model/spread'
+import { plantLayouts } from '@/model/scene-to-layout'
 import { watcherLine } from '@/model/watcher'
 import { Garden } from '@/garden/Garden'
 import { SPRITES } from '@/garden/sprites'
@@ -19,7 +24,7 @@ import { MarkedTitle } from '@/components/Lockup'
 import { WatcherLine } from '@/components/WatcherLine'
 import { NextPlanting, roomUnderBar } from '@/components/NextPlanting'
 import { canSlot } from '@/model/can'
-import { nextPlantingRow } from '@/lib/next-planting'
+import { nextPlantingFor } from '@/lib/next-planting'
 import { PauseRow } from '@/components/PauseRow'
 import { RelinkCard } from '@/components/RelinkCard'
 import { MoveCard } from '@/components/MoveCard'
@@ -53,11 +58,6 @@ const COIN_FULL_NAME: Record<LiveAsset, string> = {
 /** USDC has no painted token yet (contracts 10.6): a plain dollar glyph in USDC's blue. SOL lending shows the Solana-glyph token. */
 const USDC_BLUE = '#2775CA'
 
-/** R356 (10-05, his note on R355: tighten the gap between the value block and the garden "a bit"): the garden pulled up into the
- * screen's gap and 8 dp into the block's bottom, about a third off the paper between them (the screen's 16 dp gap plus the garden's
- * own headroom, 72 dp at least). Only empty sky overlaps: the garden's view has no ground of its own up there. The Relink and Terms
- * cards stand above the block so nothing pressable sits under the pull. */
-const VALUE_PULL = spacing.xl
 
 /** R199: the Last planting row's hit slop at its bottom and sides; the row is TARGET minus this tall, so its touch target is 48 dp.
  * No slop at its top: that edge meets the garden's row, where the can's touch box ends, and a later sibling's slop would win there. */
@@ -76,8 +76,33 @@ export default function Home() {
   const [landed, setLanded] = useState(0) // R195: every landing here and every pull-to-refresh replays the can's wobble
   const now = new Date()
   const today = now.toDateString()
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- `now` is taken once per render on purpose; the scene follows the local date
-  const scene = useMemo(() => (me ? buildScene(toGardenInput(me, now, wateredPlantsFor(me.user.wateredAt))) : null), [me, today])
+  // R351's device check, DEV builds only: the dev menu's "Grow a bud" adds a local SKR bud; the can then waters it locally (nothing is sent)
+  const [devBud, setDevBud] = useState<DevBud | null>(null)
+  useEffect(() => {
+    if (typeof __DEV__ !== 'undefined' && __DEV__) {
+      void import('expo-dev-menu')
+        .then(({ registerDevMenuItems }) =>
+          registerDevMenuItems([
+            { name: 'Grow a bud (SKR, local)', callback: () => setDevBud({ budAt: new Date(Date.now() - 1000), wateredAt: null }), shouldCollapse: true },
+            { name: 'Clear the dev bud', callback: () => setDevBud(null), shouldCollapse: true },
+          ]),
+        )
+        .catch(() => {})
+    }
+  }, [])
+  const scene = useMemo(
+    () => (me ? buildScene(withDevBud(toGardenInput(me, now, wateredPlantsFor(me.user.wateredAt), readZeroMarks()), devBud)) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `now` is taken once per render on purpose; the scene follows the local date
+    [me, today, devBud],
+  )
+  // R356, R357 (10-05, the gap above the garden tightened "a bit", then "by another half"): the garden pulled up under the value block
+  // into its own empty sky, never closer than SKY_KEEP to its tallest part (layout.ts valuePull); framed as Garden.tsx frames it
+  const { width: screenW } = useWindowDimensions()
+  const pull = useMemo(() => {
+    if (!scene) return spacing.lg
+    const packed = packScene(scene), plants = plantLayouts(packed)
+    return valuePull(skyAbove(plants, frameFor(packed, plants, screenW - 2 * spacing.edge)))
+  }, [scene, screenW])
   // Coming back to Home reads again: a wallet linked on the web, a planting, a withdrawal show without a pull-down. Leaving it
   // forgets a failed watering and the greyed can's hint (audits/watering-ux, finding 10).
   useFocusEffect(
@@ -100,6 +125,10 @@ export default function Home() {
    */
   async function water(): Promise<boolean> {
     if (!me || !scene) return false
+    if (devBud && !devBud.wateredAt) {
+      setDevBud({ ...devBud, wateredAt: new Date() }) // DEV only: the dev bud is watered locally, the API is never called
+      return true
+    }
     setFailed(false)
     // R249: the plants with a bud as the watering begins are the ones it opens; kept with the answer's time for the rings
     const buds = [...new Set(scene.parts.flatMap((q) => (q.kind === 'sprout' && q.bud ? [q.plant] : [])))]
@@ -165,13 +194,7 @@ export default function Home() {
     failed,
     nudged,
   })
-  const nextRow = nextPlantingRow({
-    pendingCents: me.nextPlanting.pendingCents,
-    thresholdCents: me.nextPlanting.thresholdCents,
-    hasPlant: scene.parts.some((p) => p.kind === 'plant'),
-    now,
-    paused: pause.shown && !pause.on,
-  })
+  const nextRow = nextPlantingFor(me, scene, now)
   const wallets = me.wallets.filter((w) => w.status !== 'revoked')
   const receiptLine = lastPlantingLine(me.lastReceipt)
   const walletsRow = walletsLine(wallets)
@@ -234,7 +257,7 @@ export default function Home() {
       ) : null}
       {/* R355 (10-05, "Value on top", his pick): the money in one compact block right under the status line, above the garden: the
           whole garden in dollars big with "in your garden" under it, Put in and Earned small on the right (R146, R150's numbers). */}
-      <View style={{ gap: spacing.xs, marginBottom: -VALUE_PULL }}>
+      <View style={{ gap: spacing.xs, marginBottom: -pull }}>
         <View accessible accessibilityLabel={value.a11y} style={{ flexDirection: 'row', alignItems: 'flex-end', gap: spacing.md }}>
           <View style={{ flex: 1, minWidth: 0 }}>
             <ThemedText variant="display" numeric numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5}>

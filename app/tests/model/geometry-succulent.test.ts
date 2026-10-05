@@ -37,7 +37,7 @@ describe("the succulent (RG13, gen06:26-50)", () => {
     const l = succulent(sh([5, 4]), { ...O, pups: 3 }, 1);
     expect(sprites(l).filter((s) => s.part === "pup").map((s) => s.x)).toEqual([-20, 20, -26]);
   });
-  it("the swelling sits at the rosette's centre, 6 px up", () => {
-    expect(sprites(succulent(sh([5]), { ...O, pending: 1 }, 1)).find((s) => s.part === "swelling")).toMatchObject({ x: 0, y: -6, scale: 4.6 });
+  it("R358: the droplet bud sits in the rosette's centre, its base 5 px up", () => {
+    expect(sprites(succulent(sh([5]), { ...O, pending: 1 }, 1)).find((s) => s.part === "swelling")).toMatchObject({ name: "swell-succulent", x: 0, y: -5, scale: 4.6 / 3.8 });
   });
 });

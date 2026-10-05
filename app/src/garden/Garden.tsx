@@ -6,7 +6,7 @@ import Animated, { Easing, FadeIn, FadeOut, cancelAnimation, runOnJS, useAnimate
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Svg, { G } from "react-native-svg";
 import { PLANT_ORDER, type Scene, type Part, type PlantId } from "@/model/garden";
-import { CANVAS, FOOT_Y, FRAME, PLANT_SCALE, bedSpan, frameFor, stakeSpots, plantUnder, SIDE_GUTTER, signPlacement } from "@/model/layout";
+import { BASKET, CANVAS, FOOT_Y, FRAME, PLANT_SCALE, basketAt, bedSpan, frameFor, stakeSpots, plantUnder, SIDE_GUTTER, signPlacement } from "@/model/layout";
 import { plantLayouts } from "@/model/scene-to-layout";
 import { SOIL_CLIP_ID } from "@/model/soil-clip";
 import { diffScenes, gateDiff, sceneKey, NO_CHANGE, type Diff } from "@/lib/scene-diff";
@@ -296,8 +296,8 @@ export function Garden({ scene: incoming, live, canReady, onWater, onNudge, row,
           const a = arrivingSeeds.get(s.id);
           return a ? <Appear key={s.id} delay={a.delay} ms={a.ms}>{seed}</Appear> : seed;
         })}
-        {/* R242: the basket inside the frame, where the mound is full (it stood at w - 40 and the zoom cut it) */}
-        {of("basket").length ? <G x={target.x + target.w * (1 - FRAME.footInset) - 26} y={CANVAS.frontFeet - 14}><Basket /></G> : null}
+        {/* R242: the basket inside the frame; 10-05: where no plant or stake covers it (layout.ts basketAt) */}
+        {of("basket").length ? <G x={basketAt(scene, plants, w, target, spots, ground)} y={BASKET.y}><Basket /></G> : null}
         {/* Spec 3: the paper grain once over the whole garden, the static Svg's last child (app only). */}
         <G opacity={0.5}><SpriteAt name="grain" x={0} y={0} scale={CANVAS.height / 260} xScale={w / 320} /></G>
       </Svg>

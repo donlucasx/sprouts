@@ -3,6 +3,7 @@
 import type { Diff } from "@/lib/scene-diff";
 import { PLANT_ORDER, type PlantId, type Scene } from "./garden";
 import type { PlantLayout } from "./species";
+import { isClosedPart, pairOf, UNFURL_STEM } from "./sprout";
 
 /** R202 (device check 2, "it all happens kinda fast"; his pick "About 2x slower", each leaf over ~5 s): the watering's opening runs at
  * G11's timings times PACE, order and gaps kept in proportion (the can's own sequence doubles, CAN_MS). New buds and seeds keep G11's. */
@@ -14,6 +15,9 @@ export const STEM_MS = paced(600);      // gen11_motion.py:173: a twig's or bran
 export const BUD_FADE_MS = paced(1400); // gen11_motion.py:156 budout 1.4 s ease-in ...
 export const BUD_FADE_AFTER_MS = paced(250);   // ... from 0.25 s after its first leaf's stroke begins (:193)
 export const PART_FADE_MS = paced(1050);       // an opening shoot's other parts (tiers, pups, heads) fade in with its first leaf
+/** R351 (10-05, his #4 on the sprout draft: "should be slow enough so the user can appreciate it"; the length is Claude's call): a
+ * mandarin sprout unfolds into its leaf pair over 4.5 s, after the beat (model/sprout.ts: the stem over the first 40%, the pair after). */
+export const UNFURL_MS = paced(2700);
 export const OPEN_BEAT_MS = 800;        // R202: the beat between the water reaching a plant and its bud starting to open
 export const BUD_ARRIVE_MS = 1050;      // gen11_motion.py:154, :157: a new bud comes in over 1.05 s
 export const TOKEN_ARRIVE_MS = paced(1500);   // gen11_motion.py:178: an earned token over 1.5 s, after the openings
@@ -33,6 +37,7 @@ export type OpeningItem =
   | { kind: "strip"; plant: PlantId; shoot: string; part: number; leaf: number; strip: string; delay: number; ms: number }
   | { kind: "fade"; plant: PlantId; shoot: string | null; part: number; delay: number; ms: number }
   | { kind: "bud"; plant: PlantId; shoot: string; part: number; delay: number; ms: number }
+  | { kind: "unfurl"; plant: PlantId; shoot: string; part: number; leaves: [number, number]; delay: number; ms: number }
   | { kind: "seed"; id: string; delay: number; ms: number };
 type Laid = { plant: PlantId; layout: PlantLayout };
 
@@ -62,6 +67,15 @@ export function openingPlan(o: { scene: Scene; plants: Laid[]; before: Laid[] | 
     const run = [...shootsHere.filter((s) => opened.has(s)), ...shootsHere.filter((s) => !opened.has(s) && branched.has(s))];
     for (const shoot of run) {
       const mine = parts.flatMap((q, i) => (q.shoot === shoot ? [{ q, i }] : []));
+      const old = opened.has(shoot) ? (o.before?.find((p) => p.plant === plant)?.layout.parts ?? []) : [];
+      // R351: a mandarin sprout (a nub before) that opens into its pair unfolds in place: one item moves its stem and both leaves
+      const pair = old.some((q) => q.shoot === shoot && q.part === "nub") ? pairOf(mine.map(({ q }) => q)) : null;
+      if (pair) {
+        const at = (q: (typeof parts)[number]) => mine.find((m) => m.q === q)!.i;
+        push({ kind: "unfurl", plant, shoot, part: at(pair.stem), leaves: [at(pair.leaves[0]), at(pair.leaves[1])], delay: t, ms: UNFURL_MS });
+        t += Math.round(UNFURL_MS * UNFURL_STEM[1]) + PART_GAP_MS;   // the next shoot once this one's stem has grown, a gap later
+        continue;
+      }
       const stems = mine.filter(({ q }) => q.kind === "stem");
       for (const { i } of stems) push({ kind: "stem", plant, shoot, part: i, delay: t, ms: STEM_MS });
       const leafAt = t + (stems.length ? STEM_MS : 0);
@@ -73,14 +87,13 @@ export function openingPlan(o: { scene: Scene; plants: Laid[]; before: Laid[] | 
         else push({ kind: "fade", plant, shoot, part: i, delay: leafAt, ms: PART_FADE_MS });
       }
       if (opened.has(shoot)) {
-        const old = o.before?.find((p) => p.plant === plant)?.layout.parts ?? [];
-        old.forEach((q, i) => { if (q.shoot === shoot && q.kind === "sprite" && q.part === "bud") push({ kind: "bud", plant, shoot, part: i, delay: leafAt + BUD_FADE_AFTER_MS, ms: BUD_FADE_MS }); });
+        old.forEach((q, i) => { if (q.shoot === shoot && isClosedPart(q)) push({ kind: "bud", plant, shoot, part: i, delay: leafAt + BUD_FADE_AFTER_MS, ms: BUD_FADE_MS }); });
       }
       t = leafAt + PART_GAP_MS * Math.max(1, leaf);
     }
   }
   // arrivals: new closed buds swell in at once; earned tokens after the openings (the k-th token sprite of a plant is its k-th fruit)
-  if (!group) for (const pl of plants) pl.layout.parts.forEach((q, i) => { if (q.kind === "sprite" && q.part === "bud" && q.shoot && diff.buds.includes(q.shoot)) push({ kind: "fade", plant: pl.plant, shoot: q.shoot, part: i, delay: 0, ms: BUD_ARRIVE_MS }); });
+  if (!group) for (const pl of plants) pl.layout.parts.forEach((q, i) => { if (isClosedPart(q) && q.shoot && diff.buds.includes(q.shoot)) push({ kind: "fade", plant: pl.plant, shoot: q.shoot, part: i, delay: 0, ms: BUD_ARRIVE_MS }); });
   const opensEnd = end;
   for (const pl of plants) {
     if (group && !order.includes(pl.plant)) continue;
@@ -118,6 +131,6 @@ export const endOf = (it: OpeningItem): { opacity: 0 | 1; frame: "last" | null }
 /** Who draws each part of a plant's layout: the static drawing, or the item playing it. Once the garden settles (the plan's end, or a
  * newer change cutting it short) every part is static, which is each item's end picture: nothing can stay hidden. */
 export function drawnBy(partCount: number, items: PlantItem[], settled: boolean): (PlantItem | "static")[] {
-  const by = new Map(settled ? [] : items.flatMap((it) => (it.kind === "bud" ? [] : [[it.part, it] as const])));
+  const by = new Map<number, PlantItem>(settled ? [] : items.flatMap((it): [number, PlantItem][] => (it.kind === "bud" ? [] : it.kind === "unfurl" ? [it.part, ...it.leaves].map((i): [number, PlantItem] => [i, it]) : [[it.part, it]])));
   return Array.from({ length: partCount }, (_, i) => by.get(i) ?? "static");
 }

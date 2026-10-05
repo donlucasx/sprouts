@@ -1,4 +1,7 @@
 import { formatUsd } from "./format";
+import { pauseState } from "./me-state";
+import type { MeResponse } from "./api";
+import type { Scene } from "@/model/garden";
 
 /** The daily planting job runs at 14:00 UTC (R164). */
 const RUN_HOUR_UTC = 14;
@@ -20,9 +23,15 @@ function clock(d: Date): string {
 }
 
 /** The job's next run after `now`, in the phone's time zone: "Today, 7 AM" when it is later today there, else "Tomorrow, 7 AM". */
-export function nextRunLabel(now: Date): string {
+function nextRun(now: Date): Date {
   const run = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), RUN_HOUR_UTC));
   if (run.getTime() <= now.getTime()) run.setUTCDate(run.getUTCDate() + 1);
+  return run;
+}
+/** The job's next run as the phone's clock alone, "7 AM": the widget's short form of nextRunLabel (R363, "Next: 7 AM"). */
+export const nextRunClock = (now: Date): string => clock(nextRun(now));
+export function nextRunLabel(now: Date): string {
+  const run = nextRun(now);
   const sameDay = run.getFullYear() === now.getFullYear() && run.getMonth() === now.getMonth() && run.getDate() === now.getDate();
   return `${sameDay ? "Today" : "Tomorrow"}, ${clock(run)}`;
 }
@@ -38,3 +47,20 @@ export function nextPlantingRow(p: { pendingCents: number; thresholdCents: numbe
   if (pending <= 0) return { state: "empty", label, value: of, fraction: 0 };
   return { state: "saving", label, value: of, fraction: pending / threshold };
 }
+
+/** The Next planting row from one read, Home's and the widget's alike (his note 10-05: the widget said "$1.35 of $0.10" where Home said
+ * "Tomorrow, 7 AM"): paused while every linked wallet is paused (Home's switch), "Next planting" once the garden holds a plant. */
+export function nextPlantingFor(me: Pick<MeResponse, "nextPlanting" | "wallets">, scene: Pick<Scene, "parts">, now: Date): NextPlantingRow {
+  const pause = pauseState(me.wallets);
+  return nextPlantingRow({
+    pendingCents: me.nextPlanting.pendingCents,
+    thresholdCents: me.nextPlanting.thresholdCents,
+    hasPlant: scene.parts.some((p) => p.kind === "plant"),
+    now,
+    paused: pause.shown && !pause.on,
+  });
+}
+
+/** The row as one line (the widget has no bar): "Next planting · Tomorrow, 7 AM". */
+/** The widget's one line, short enough for a 2-cell widget (his note 10-05: "Tomorrow, 7 ..." was cut): "Next: Tomorrow, 7 AM". */
+export const nextPlantingText = (row: NextPlantingRow): string => `${row.label === "Next planting" ? "Next" : "First"}: ${row.value}`;

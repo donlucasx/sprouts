@@ -1,8 +1,8 @@
-import { BAKED_L, type Placed, type PlantId } from "./species";
+import { BAKED_L, SWELL_REACH, type Placed, type PlantId } from "./species";
 import type { LendAsset } from "@/lib/coins";
 import type { Scene } from "./garden";
 import type { PlantOnStage } from "./scene-to-layout";   // a type only: no require cycle
-import { SPRITE_META } from "@/garden/sprite-meta";   // boxes only, no require(): safe in node
+import { GROUND_OUTLINE, SPRITE_META } from "@/garden/sprite-meta";   // boxes only, no require(): safe in node
 import { appGround, soilBottomAt, GROUND, type GroundPlace } from "./soil-clip";
 
 /** Spec 5: the canvas is the screen width minus 40 by 260; the soil line at 200; the back row's feet at 214 and the front's at 244. */
@@ -141,6 +141,19 @@ export const STAKE_WALK = 48, STAKE_CLEAR = 1.5;
 export const STAKE_FRONT_W = 3;
 /** The angles the clearance holds a plant at: still and its steady sway either way (motion SWAY.deg; the gust is momentary). */
 const STAKE_SWAY = [-5, 0, 5] as const;
+/** R357: how far past its own plant's drawn edge a moved back-row board's centre may stand, in board widths. */
+export const STAKE_NEAR = 0.6;
+/** A plant's drawn x extent (canvas px, still, at PLANT_SCALE about its foot; a stem padded by its half width), its foot included. */
+function ownSpan(p: PlantOnStage | undefined, foot: number, width: number): [number, number] {
+  if (!p) return [foot, foot];
+  let lo = foot, hi = foot;
+  const fx = p.x * width;
+  for (const q of p.layout.parts) {
+    const pad = q.kind === "stem" ? (Math.max(q.w0, q.w1) * PLANT_SCALE) / 2 : 0;
+    for (const [x] of partCorners(q)) { lo = Math.min(lo, fx + x * PLANT_SCALE - pad); hi = Math.max(hi, fx + x * PLANT_SCALE + pad); }
+  }
+  return [lo, hi];
+}
 /** R356: front parts over a back board are measured still (a sway brushes a board only for a moment); the whole row has room for it. */
 const STILL = [0] as const;
 /** Each drawn part's x span (canvas px) inside the vertical band [y0, y1], at PLANT_SCALE about its foot and at each STAKE_SWAY angle:
@@ -214,7 +227,13 @@ function searchSpots(scene: Scene, plants: readonly PlantOnStage[], width: numbe
     const frontPl = plants.filter((pl) => pl.row === "front"), front = drawnSpans(frontPl, width, y0, y1, STILL), swayed = drawnSpans(frontPl, width, y0, y1), back = drawnSpans(plants.filter((pl) => pl.row === "back"), width, y0, y1);
     const lo = Math.max(h + 1, span.lo + h), hi = Math.min(width - h - 1, span.hi - h), near = ([-1, 1] as const).map((sd) => signX(q.x * width, sd, width, a.scale, a.boardX));
     const own = q.x * width, feet = signs.filter((o) => o !== q && o.row === "back").map((o) => o.x * width);
-    const xs = lo > hi ? [a.x] : [...new Set([Math.min(Math.max(a.x, lo), hi), ...Array.from({ length: Math.floor(hi - lo) + 1 }, (_, i) => lo + i), hi])];
+    // R357 (10-05, "the USDC/kamino is legible but its too far from the plant and cant tell what it belongs to"): the board's centre
+    // stays within STAKE_NEAR of a board's width past its own plant's drawn edge (still), either side of its stem, and short of the
+    // nearest other back-row stem
+    const [l0, r0] = ownSpan(plants.find((pl) => pl.plant === q.plant), own, width), reach = STAKE_NEAR * 2 * h;
+    const leftFoot = Math.max(-Infinity, ...feet.filter((f) => f < own)), rightFoot = Math.min(Infinity, ...feet.filter((f) => f > own));
+    const bLo = Math.max(lo, l0 - reach, leftFoot + 1), bHi = Math.min(hi, r0 + reach, rightFoot - 1);
+    const xs = bLo > bHi ? [a.x] : [...new Set([Math.min(Math.max(a.x, bLo), bHi), ...Array.from({ length: Math.floor(bHi - bLo) + 1 }, (_, i) => bLo + i), bHi])];
     return xs.map((c) => ({ c, h, plant: q.plant, foot: own,
       front: overlap(c - h - STAKE_CLEAR, c + h + STAKE_CLEAR, front), swayed: overlap(c - h - STAKE_CLEAR, c + h + STAKE_CLEAR, swayed),
       stray: feet.some((f) => Math.abs(c - f) <= Math.abs(c - own)) ? 1 : 0,
@@ -286,11 +305,11 @@ export const HEADROOM = { share: 0.6, minPx: 72 } as const;   // R185 (10-02, "w
 /** `x`, `y`, `w`, `h` in canvas px; `viewH` the view's height on screen (h times zoom). */
 export type Frame = { x: number; y: number; w: number; h: number; zoom: number; viewH: number };
 /** How far a part reaches sideways from its plant's foot, a safe bound as `topOf` takes it: a leaf-like sprite its baked length times
- * its scale whatever its rotation; the head 17.6 scale; a swelling or dot its radius; the rest 8 scale; a stem its farther end. */
+ * its scale whatever its rotation; the head 17.6 scale; a swelling its droplet's SWELL_REACH scale, a dot its radius; the rest 8 scale; a stem its farther end. */
 const sideReach = (q: Placed) => {
   if (q.kind === "stem") return Math.max(Math.abs(q.x0), Math.abs(q.x1));
   const base = BAKED_L[q.name.replace(/-s\d$/, "").replace(/-\d$/, "")];
-  const len = base ? base[Number(q.name.match(/-s(\d)$/)?.[1] ?? 0)] * q.scale : q.part === "head" ? 17.6 * q.scale : q.part === "swelling" || q.part === "dot" ? q.scale : 8 * q.scale;
+  const len = base ? base[Number(q.name.match(/-s(\d)$/)?.[1] ?? 0)] * q.scale : q.part === "head" ? 17.6 * q.scale : q.part === "swelling" ? SWELL_REACH * q.scale : q.part === "dot" ? q.scale : 8 * q.scale;
   return Math.abs(q.x) + len;
 };
 /** R167's floor in view px: the soil band (the soil line to the bed's bottom, 60) plus 40, so a garden of seeds is not a sliver. */
@@ -406,4 +425,44 @@ function nearSpots(out: Map<PlantId, Spot>, signs: SignPart[], lend: SignPart[],
   pick(0, [], [0, 0, 0]);
   for (const o of best) out.set(o.plant, { side: o.c >= o.foot ? 1 : -1, x: o.c });
   return out;
+}
+/** R357: the paper over the garden's tallest drawn part (each plant drawn PLANT_SCALE about its foot), in view px from the view's top. */
+export function skyAbove(plants: readonly PlantOnStage[], frame: { y: number; zoom: number }): number {
+  const top = Math.min(CANVAS.height, ...plants.map((p) => FOOT_Y(p.row) - p.layout.top * PLANT_SCALE));
+  return Math.max(0, (top - frame.y) * frame.zoom);
+}
+/** R356 then R357 (10-05, "tighten the gap ... a bit", then "by another half"): how far Home pulls the garden up under its value
+ * block, in dp: the screen's gap (Screen's spacing.lg, 16) plus as much of the garden's sky as lies past SKY_KEEP, at most 40, so the
+ * tallest part always keeps SKY_KEEP of paper under the block (a tall garden whose headroom gave way to MAX_VIEW_H is pulled less). */
+export const SKY_KEEP = 32;
+export const valuePull = (sky: number) => 16 + Math.min(40, Math.max(0, sky - SKY_KEEP));
+/** The basket (an SKR unstake on its way, parts.tsx Basket: 26 wide, its rim at y 0, the handle 12 above, the body 16 deep), standing
+ * BASKET.y on the front row's feet line: its drawn band in canvas px. */
+export const BASKET = { w: 26, y: CANVAS.frontFeet - 14, top: CANVAS.frontFeet - 26, bottom: CANVAS.frontFeet + 2 } as const;
+/**
+ * The basket's left x (10-05, the owner's Seeker: a solid brown box under the young stORE blade). R242 stood it at the frame's right
+ * foot inset, which is where the frame puts the outermost plant's foot, so it always landed on that plant (drawn in the ground layer,
+ * under the blade) or its stake. Now it takes the spot inside the frame (R242) that no stake board and no plant part covers in its band
+ * (still first, then at its steady sway: a sway may brush it for a moment where the mound has no wider gap), the one nearest R242's spot; with none clear, the least covered (boards first). Only where the
+ * mound is full (R242): the painted soil runs under both its sides and its bottom edge stays SIGN_SOIL_MARGIN below the basket's.
+ */
+export function basketAt(scene: Scene, plants: readonly PlantOnStage[], width: number, frame: { x: number; w: number; zoom: number }, spots: Spots, ground: GroundPlace = appGround(width)): number {
+  const want = frame.x + frame.w * (1 - FRAME.footInset) - BASKET.w, lo = frame.x + 2, hi = frame.x + frame.w - 2 - BASKET.w;
+  const still = drawnSpans(plants, width, BASKET.top, BASKET.bottom, STILL), swayed = drawnSpans(plants, width, BASKET.top, BASKET.bottom);
+  // the boards (y -12 to -1 of the anchor, times the scale) and posts (down to SIGN_FOOT.y) that reach the basket's band: the back row's stand above it
+  const boards = scene.parts.flatMap((q) => (q.kind === "sign" ? [q] : [])).flatMap((s): [number, number][] => {
+    const a = signPlacement(s, width, frame.zoom, ground, spots), h = 15 * a.scale * a.boardX;
+    return a.y - 12 * a.scale < BASKET.bottom && a.y + SIGN_FOOT.y * a.scale > BASKET.top ? [[a.x - h, a.x + h]] : [];
+  });
+  const [ux0, ux1] = [Math.min(...GROUND_OUTLINE.map(([u]) => u)), Math.max(...GROUND_OUTLINE.map(([u]) => u))].map((u) => ground.x0 + u * ground.sx);
+  const onSoil = (x: number) => x > ux0 && x < ux1 && soilBottomAt(x, ground) >= BASKET.bottom + SIGN_SOIL_MARGIN;
+  let best = Math.min(Math.max(want, lo), hi), bc = [Infinity, Infinity, Infinity, Infinity];
+  for (let c = lo; c <= hi + 1e-9; c += 0.5) {
+    if (!onSoil(c) || !onSoil(c + BASKET.w)) continue;
+    const a = c - STAKE_CLEAR, b = c + BASKET.w + STAKE_CLEAR;
+    const cost = [overlap(a, b, boards), overlap(a, b, still), overlap(a, b, swayed), Math.abs(c - want)];
+    const i = cost.findIndex((v, k) => Math.abs(v - bc[k]) > 1e-9);
+    if (i >= 0 && cost[i] < bc[i]) { best = c; bc = cost; }
+  }
+  return best;
 }

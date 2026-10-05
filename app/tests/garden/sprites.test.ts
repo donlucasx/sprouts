@@ -10,6 +10,7 @@ const EXPECTED = [
   ...["mandarin", "sunflower", "blueberry"].flatMap((s) => [0, 1, 2, 3].map((i) => `leaf-${s}-s${i}`)),
   ...[0, 1, 2, 3].map((i) => `blade-snake-s${i}`), ...[0, 1, 2, 3].map((i) => `tier-spruce-s${i}`), ...[0, 1, 2].map((i) => `blade-succulent-${i}`),
   ...["mandarin", "succulent", "sunflower", "snake", "blueberry", "spruce"].map((s) => `bud-${s}`),
+  ...["mandarin", "succulent", "sunflower", "snake", "blueberry", "spruce"].map((s) => `swell-${s}`),   // R358: the droplet bud
   ...["skr", "ore", "hsol", "jitosol", "jupsol", "cbbtc"].map((p) => `token-${p}`),
   "sign", "blossom-mandarin", "bell-blueberry", "head-sunflower", "tip-spruce", "pup-succulent", "seed", "ring", "can", "can-tilt", "can-grey", "can-shadow", "ground", "grain", "bar-track", "bar-fill",
 ];
