@@ -57,7 +57,7 @@ describe("withdraw routes", () => {
     await repo.upsertUser({ seedVaultPubkey: U, sgtMint: "M", skrName: null });
     await repo.setJoinedPosition(U, { shares: 0n, sharePrice: SP });
     const p = await repo.insertPlanting({ userPubkey: U, walletPubkey: "W", signature: "s", usdcPulledCents: 23, networkFeeCents: 3, status: "confirmed", aiLine: null },
-      [{ asset: "SKR", usdcInCents: 20, amountOutRaw: legRaw, staked: true, feeAmountRaw: 0n, feeCents: 0, rateAtPlanting: null }]);
+      [{ asset: "SKR", usdcInCents: 20, amountOutRaw: legRaw, staked: true, feeAmountRaw: 0n, feeCents: 0, rateAtPlanting: null, venue: null }]);
     await repo.setPlantingShares(p.id, { before: 0n, after: 2_000_000_000n, minted: 2_000_000_000n });
     auth = { authorization: `Bearer ${await issueSession(U, "M")}`, "content-type": "application/json" };
   }

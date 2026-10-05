@@ -1,5 +1,6 @@
 import type { Rules } from "@/domain/roundup";
-import type { Asset, Split, Stop } from "@/domain/coins";
+import type { Asset, LiveAsset, LendAsset, Split, Stop } from "@/domain/coins";
+import type { AutoVenue, Venue, VetoReason } from "@/domain/venues";
 import type { SwapClass } from "@/domain/classify";
 
 export type UserRow = {
@@ -12,6 +13,9 @@ export type UserRow = {
   /** The position's shares and the share price on the day the Seeker joined: put in, not earned (R61). */
   joinedShares: bigint;
   joinedSharePrice: bigint;
+  /** Terms + Privacy acceptance (R283, 0008). */
+  termsVersion: string | null;
+  termsAcceptedAt: Date | null;
 };
 
 export type WalletStatus = "active" | "paused" | "revoked";
@@ -26,6 +30,8 @@ export type WalletRow = {
   /** Cents delivered per asset (one jsonb map since 0005); a missing coin is zero. */
   ledgerCents: Partial<Record<Asset, number>>;
   createdAt: Date;
+  /** The model of the wallet's live delegation (0008): the puller, or the leash. */
+  linkModel: LinkModel;
 };
 
 /**
@@ -75,7 +81,9 @@ export type PlantingRow = {
 };
 
 /** `feeCents` is the 0.5% taken in USDC (R105); `rateAtPlanting` is the coin's `coin_days.rate` that day, null before the first snapshot. */
-export type PlantingLegRow = { plantingId: string; asset: Asset; usdcInCents: number; amountOutRaw: bigint; staked: boolean; feeAmountRaw: bigint; feeCents: number; rateAtPlanting: number | null };
+export type PlantingLegRow = { plantingId: string; asset: Asset; usdcInCents: number; amountOutRaw: bigint; staked: boolean; feeAmountRaw: bigint; feeCents: number; rateAtPlanting: number | null;
+  /** The venue of a lending leg (0008); null for coin legs. */
+  venue: AutoVenue | null };
 
 export type WithdrawalSource = "sprouts" | "wallet";
 
@@ -126,7 +134,13 @@ export type EventKind =
   | "split_undone"
   | "leg_fallback"
   | "leg_skipped"
-  | "coin_no_data";
+  | "coin_no_data"
+  | "lend_withdrawn"
+  | "move_proposed"
+  | "move_done"
+  | "move_dismissed"
+  | "relinked"
+  | "terms_accepted";
 
 export type EventRow = { id: number; userPubkey: string | null; walletPubkey: string | null; ts: Date; kind: EventKind; detail: unknown };
 
@@ -137,7 +151,19 @@ export type CoinDayRow = {
 };
 
 /** One stop's split for one day (spec 6.7): what was applied, the raw model answer beside it, and why it fell back if it did. */
-export type SplitDayRow = { day: string; stop: Stop; split: Split; modelAnswer: unknown | null; why: string | null; fallback: string | null; callId: number | null };
+export type SplitDayRow = { day: string; stop: Stop; split: Split; modelAnswer: unknown | null; why: string | null; fallback: string | null; callId: number | null;
+  /** The day's venue pick per lending leg (0008), before the per-user 60% cap. */
+  venuePick: Partial<Record<LendAsset, AutoVenue | null>> | null };
+
+export type LinkModel = "puller" | "leash";
+export type CarryKind = "SKR" | "WSOL" | "USDC";
+export type MoveStatus = "open" | "dismissed" | "expired" | "done" | "failed";
+export type VenueDayRow = { day: string; venue: Venue; asset: LendAsset; supplyPct: number | null; rewardsPct: number | null; utilizationPct: number | null;
+  withdrawableUsd: number | null; tvlUsd: number | null; exchangeRate: number | null; avg7Pct: number | null; daysMeasured: number; eligible: boolean;
+  verdict: "ok" | "avoid" | null; reason: VetoReason | null; served: unknown | null; ok: boolean };
+export type FoundVenueRow = { day: string; poolId: string; project: string; symbol: string; asset: "USDC" | "SOL"; apyBasePct: number | null; tvlUsd: number | null; note: string | null };
+export type MoveProposalRow = { id: string; userPubkey: string; ts: Date; asset: LendAsset; fromVenue: AutoVenue; toVenue: AutoVenue; receiptRaw: bigint; valueUsd: number;
+  fromAvg7Pct: number; toAvg7Pct: number; gain30dUsd: number; costUsd: number; status: MoveStatus; redeemSignature: string | null; depositSignature: string | null; closedAt: Date | null };
 
 export type LinkCodeRow = {
   code: string;

@@ -116,7 +116,7 @@ async function reconcileSentPlantings(a: { repo: Repo; now: Date; chain: Chain }
 async function bookConfirmed(repo: Repo, chain: Chain, p: PlantingRow, outBefore: bigint | null = null) {
   await repo.setPlantingStatus(p.id, "confirmed");
   const legs = await repo.plantingLegs(p.id);
-  for (const leg of legs) await repo.bumpLedger(p.walletPubkey, leg.asset, leg.usdcInCents);
+  for (const leg of legs) await repo.bumpLedger(p.walletPubkey, leg.asset as LiveAsset, leg.usdcInCents);
   const after = await chain.readShares(p.userPubkey);
   const minted = p.sharesBefore === null ? await estimateMinted(chain, legs) : after - p.sharesBefore;
   await repo.setPlantingShares(p.id, { before: p.sharesBefore, after, minted });
@@ -168,7 +168,7 @@ async function recordLanded(repo: Repo, chain: Chain, p: PlantingRow, legs: Plan
         console.error(`planting ${p.id}: ${leg.asset} landed ${landed}, not above zero; the quote stands`);
         continue;
       }
-      await repo.setLegAmountOut(p.id, leg.asset, landed);
+      await repo.setLegAmountOut(p.id, leg.asset as LiveAsset, landed);
     } catch (e) {
       console.error(`planting ${p.id}: what ${leg.asset} landed could not be read (${message(e)}); the quote stands`);
     }
@@ -339,7 +339,7 @@ async function plantOneOrThrow(a: { repo: Repo; now: Date; chain: Chain }, w: Wa
   const rateAtPlanting = (await a.repo.getCoinDay(dayOf(a.now), asset))?.rate ?? null;
   const planting = await a.repo.insertPlanting(
     { userPubkey: w.userPubkey, walletPubkey: w.pubkey, signature: built.signature, usdcPulledCents: amount.pullCents, networkFeeCents: NETWORK_FEE_CENTS, status: "sent", aiLine: null, sharesBefore, ts: a.now, ...(carryFor(asset) > 0n ? { skrCarryInRaw: carryFor(asset) } : {}) },
-    [{ asset, usdcInCents: amount.changeCents, amountOutRaw: built.minOutRaw, staked: asset === "SKR", feeAmountRaw: 0n, feeCents: Math.round((amount.pullCents * COINS[asset].feeBps) / 10_000), rateAtPlanting }],
+    [{ asset, usdcInCents: amount.changeCents, amountOutRaw: built.minOutRaw, staked: asset === "SKR", feeAmountRaw: 0n, feeCents: Math.round((amount.pullCents * COINS[asset].feeBps) / 10_000), rateAtPlanting, venue: null }],
   );
   // R207 #2: the carry is reserved by the row just written; if another run spent the same remainder meanwhile, the user's credit is
   // now below zero and this planting stands down before claiming or sending (a failed read stands down too).

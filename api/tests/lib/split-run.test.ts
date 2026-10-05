@@ -121,7 +121,7 @@ describe("decideSplits (spec 6.2 to 6.5)", () => {
 
   it("an answer is held to the move limit against yesterday's row for the stop", async () => {
     const repo = await seededRepo();
-    await repo.putSplitDay({ day: "2026-10-01", stop: "bold", split: STOP_DEFAULTS.bold, modelAnswer: null, why: null, fallback: null, callId: null });
+    await repo.putSplitDay({ day: "2026-10-01", stop: "bold", split: STOP_DEFAULTS.bold, modelAnswer: null, why: null, fallback: null, callId: null, venuePick: null });
     const rows = await decideSplits({ repo, now: NOW, model: answers({ SKR: 25, stORE: 0, hSOL: 35, USDC_LEND: 5, SOL_LEND: 35, cbBTC: 0, why: "hSOL and SOL_LEND lead." }) });
     const bold = rows[2];
     expect(bold.split.hSOL).toBe(STOP_DEFAULTS.bold.hSOL + MOVE_LIMIT);
@@ -144,7 +144,7 @@ describe("decideSplits (spec 6.2 to 6.5)", () => {
   it("an every-coin-no-data day holds yesterday's split as no data and calls no model (spec 5.5)", async () => {
     const repo = await seededRepo();
     const prior = split({ SKR: 50, hSOL: 20, USDC_LEND: 10, SOL_LEND: 10, cbBTC: 10 });
-    await repo.putSplitDay({ day: "2026-10-01", stop: "balanced", split: prior, modelAnswer: null, why: null, fallback: null, callId: null });
+    await repo.putSplitDay({ day: "2026-10-01", stop: "balanced", split: prior, modelAnswer: null, why: null, fallback: null, callId: null, venuePick: null });
     for (const a of ["stORE", "hSOL", "USDC_LEND", "SOL_LEND", "cbBTC"] as const) await repo.putCoinDay(day(a, DAY, null, { ok: false, tradeable: false }));
     let calls = 0;
     const rows = await decideSplits({ repo, now: NOW, model: async () => { calls++; return { input: good, usage: { inputTokens: 1, outputTokens: 1 } }; } });
@@ -153,7 +153,7 @@ describe("decideSplits (spec 6.2 to 6.5)", () => {
     expect(rows[1].split).toEqual(prior);                          // yesterday stands
     expect(rows[0].split).toEqual(STOP_DEFAULTS.careful);          // no yesterday: the stop default
     const repo2 = await seededRepo();                                // no model key: the same day still holds, as no data
-    await repo2.putSplitDay({ day: "2026-10-01", stop: "balanced", split: prior, modelAnswer: null, why: null, fallback: null, callId: null });
+    await repo2.putSplitDay({ day: "2026-10-01", stop: "balanced", split: prior, modelAnswer: null, why: null, fallback: null, callId: null, venuePick: null });
     for (const a of ["stORE", "hSOL", "USDC_LEND", "SOL_LEND", "cbBTC"] as const) await repo2.putCoinDay(day(a, DAY, null, { ok: false, tradeable: false }));
     const keyless = await decideSplits({ repo: repo2, now: NOW, model: null });
     expect(keyless.every((r) => r.fallback === "no data")).toBe(true);

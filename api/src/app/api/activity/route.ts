@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getRepo } from "@/db/repo";
-import type { Asset, Split } from "@/domain/coins";
+import type { Asset, LiveAsset, Split } from "@/domain/coins";
 import { dayOf } from "@/domain/day";
 import { requireSession } from "@/lib/auth-guard";
 import { priceUsd } from "@/lib/jupiter";
@@ -28,7 +28,7 @@ export async function GET(request: Request) {
   for (const [i, p] of plantings.entries()) for (const l of legs[i]) if (l.asset !== "SKR") wanted.set(`${dayOf(p.ts)}|${l.asset}`, { day: dayOf(p.ts), asset: l.asset });
   const skrUsdRead = priceUsd(SKR_MINT).catch(() => null);
   const dayPrices = new Map<string, number | null>();
-  await Promise.all([...wanted].map(async ([key, { day, asset }]) => { dayPrices.set(key, (await repo.getCoinDay(day, asset))?.priceUsd ?? null); }));
+  await Promise.all([...wanted].map(async ([key, { day, asset }]) => { dayPrices.set(key, (await repo.getCoinDay(day, asset as LiveAsset))?.priceUsd ?? null); }));   // a retired leg reads its own history rows (0008 keeps them)
   const skrUsd = await skrUsdRead;
   const missing = [...wanted.values()].filter(({ day, asset }) => dayPrices.get(`${day}|${asset}`) === null).map(({ asset }) => asset);
   const latest = missing.length ? await latestCoinDays(repo, dayOf(new Date())) : {};
