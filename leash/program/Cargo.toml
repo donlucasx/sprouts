@@ -1,0 +1,19 @@
+[package]
+name = "leash"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["lib", "cdylib"]
+
+[features]
+no-entrypoint = []
+
+[dependencies]
+pinocchio = { workspace = true }
+pinocchio-system = { workspace = true }
+solana-address = { workspace = true }
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }

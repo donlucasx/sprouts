@@ -9,3 +9,6 @@ dist
 spikes/keys/
 .superpowers/
 .DS_Store
+leash/target/
+leash/fixtures/*.so
+leash/fixtures/accounts/
