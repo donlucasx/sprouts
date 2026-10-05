@@ -150,6 +150,8 @@ export interface Repo {
   insertMoveProposal(p: Omit<T.MoveProposalRow, "id" | "ts" | "status" | "redeemSignature" | "depositSignature" | "closedAt">): Promise<T.MoveProposalRow | null>;
   openMoveProposal(userPubkey: string): Promise<T.MoveProposalRow | null>;
   getMoveProposal(id: string): Promise<T.MoveProposalRow | null>;
+  /** One user's proposals in one status, oldest closed first (closed_at, then ts): a done move's carry reads these, not the events. */
+  listMoveProposals(userPubkey: string, status: T.MoveStatus): Promise<T.MoveProposalRow[]>;
   setMoveProposalStatus(id: string, status: T.MoveStatus, sig?: { redeem?: string; deposit?: string }): Promise<void>;
   // carry (SKR keeps skrCreditRaw / setPlantingSkrSurplus / skrCarryInRaw unchanged)
   carryCreditRaw(userPubkey: string, kind: T.CarryKind): Promise<bigint>;

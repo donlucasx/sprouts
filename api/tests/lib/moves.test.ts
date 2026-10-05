@@ -3,7 +3,7 @@ import { address, type Instruction } from "@solana/kit";
 import { TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
 import { MemoryRepo } from "@/db/memory";
 import type { PlantingLegRow, VenueDayRow } from "@/db/types";
-import { proposeMoves, moveDepositRaw, carryMoves, type MoveCarry } from "@/lib/moves";
+import { proposeMoves, moveDepositRaw, carryMoves, moveCarriesFor, moveBuiltDetail, type MoveCarry } from "@/lib/moves";
 import { lendingFrom } from "@/lib/holdings";
 import { buildMove } from "@/lib/venues/user-builders";
 
@@ -40,6 +40,59 @@ describe("proposeMoves (spec 7, R280): only when 30 days of the gap beat 3x the 
     await proposeMoves({ repo, now: NOW, positions: async () => [{ asset: "USDC_LEND", venue: "jupiter_lend", receiptRaw: 4_716_981_132n }], solUsd: 121.47 });
     const open = await repo.openMoveProposal("U");
     expect(repo.events.find((e) => e.kind === "move_proposed")?.detail).toEqual({ id: open!.id, asset: "USDC_LEND", from: "jupiter_lend", to: "kamino_klend", receiptRaw: "4716981132", status: "open" });
+  });
+});
+
+describe("proposeMoves settles a card whose redeem landed instead of expiring it (fix round 1, review I1)", () => {
+  const POS = async () => [{ asset: "USDC_LEND" as const, venue: "kamino_klend" as const, receiptRaw: 5_000_000_000n }];   // the money is at the target now
+  async function inFlight(sigs: { redeem?: string; deposit?: string }) {
+    const repo = await repoWith(4.43, 4.19);
+    await proposeMoves({ repo, now: NOW, positions: async () => [{ asset: "USDC_LEND", venue: "jupiter_lend", receiptRaw: 4_716_981_132n }], solUsd: 121.47 });
+    const card = (await repo.openMoveProposal("U"))!;
+    await repo.addEvent({ userPubkey: "U", walletPubkey: null, kind: "move_built", detail: moveBuiltDetail({ id: card.id, asset: "USDC_LEND", from: "jupiter_lend", to: "kamino_klend", receiptRaw: 4_716_981_132n, sourceReceiptRaw: 4_716_981_132n, depositRaw: 4_995_000_000n, fromRate: 1.06, toRate: 1.2, toReceiptRaw: 4_162_500_000n }) });
+    await repo.setMoveProposalStatus(card.id, "open", sigs);
+    return { repo, card };
+  }
+  it("the deposit landed: done, the move_done event, the carry intact; not expired", async () => {
+    const { repo, card } = await inFlight({ redeem: "R", deposit: "D" });
+    const asked: string[] = [];
+    const r = await proposeMoves({ repo, now: NOW, positions: POS, solUsd: 121.47, depositStatus: async (sig) => { asked.push(sig); return "confirmed"; } });
+    expect(asked).toEqual(["D"]);
+    expect(r.expired).toEqual([]);
+    expect(await repo.getMoveProposal(card.id)).toMatchObject({ status: "done", redeemSignature: "R", depositSignature: "D" });
+    expect(repo.events.find((e) => e.kind === "move_done")?.detail).toEqual({ id: card.id, asset: "USDC_LEND", from: "jupiter_lend", to: "kamino_klend", receiptRaw: "4716981132", status: "done" });
+    expect((await moveCarriesFor(repo, "U")).map((c) => c.depositRaw)).toEqual([4_995_000_000n]);
+  });
+  it("the deposit can no longer land (failed or expired): failed, not expired", async () => {
+    for (const s of ["failed", "expired"] as const) {
+      const { repo, card } = await inFlight({ redeem: "R", deposit: "D" });
+      const r = await proposeMoves({ repo, now: NOW, positions: POS, solUsd: 121.47, depositStatus: async () => s });
+      expect(r.expired).toEqual([]);
+      expect((await repo.getMoveProposal(card.id))?.status).toBe("failed");
+      expect(await moveCarriesFor(repo, "U")).toEqual([]);
+    }
+  });
+  it("still pending: the card is left as it is; a redeem with no deposit signature is failed", async () => {
+    const pending = await inFlight({ redeem: "R", deposit: "D" });
+    await proposeMoves({ repo: pending.repo, now: NOW, positions: POS, solUsd: 121.47, depositStatus: async () => "pending" });
+    expect((await pending.repo.getMoveProposal(pending.card.id))?.status).toBe("open");
+    const lone = await inFlight({ redeem: "R" });
+    await proposeMoves({ repo: lone.repo, now: NOW, positions: POS, solUsd: 121.47, depositStatus: async () => "confirmed" });
+    expect((await lone.repo.getMoveProposal(lone.card.id))?.status).toBe("failed");
+  });
+  it("a positions read failure skips the user: the open card is untouched (review minor 1)", async () => {
+    const repo = await repoWith(4.43, 4.19);
+    await proposeMoves({ repo, now: NOW, positions: async () => [{ asset: "USDC_LEND", venue: "jupiter_lend", receiptRaw: 4_716_981_132n }], solUsd: 121.47 });
+    const card = (await repo.openMoveProposal("U"))!;
+    const r = await proposeMoves({ repo, now: NOW, positions: async () => { throw new Error("rpc down"); }, solUsd: 121.47 });
+    expect(r).toEqual({ proposed: [], expired: [] });
+    expect((await repo.openMoveProposal("U"))?.id).toBe(card.id);
+  });
+  it("the carry reads done proposals, so a lost move_done event cannot erase it", async () => {
+    const { repo, card } = await inFlight({ redeem: "R", deposit: "D" });
+    await repo.setMoveProposalStatus(card.id, "done", { redeem: "R", deposit: "D" });
+    expect(repo.events.some((e) => e.kind === "move_done")).toBe(false);
+    expect((await moveCarriesFor(repo, "U")).map((c) => c.id)).toEqual([card.id]);
   });
 });
 
