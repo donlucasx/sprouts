@@ -59,6 +59,6 @@ export function mandarin(shoots: ShootIn[], o: LayoutOpts, k: number): PlantLayo
     const t = tips[q]; stem(acc, "stalk", t.x, t.y, t.x, t.y + 4 * k, 1 * k, 1 * k, c.deep, 0, 3); sprite(acc, "token", "token-skr", t.x, t.y + 7.5 * k, 0, k, 4);
   }
   if (o.ripening > 0 && tips.length > o.fruit) { const t = tips[o.fruit]; sprite(acc, "blossom", "blossom-mandarin", t.x, t.y + 3 * k, 0, k * (0.6 + 0.4 * o.ripening), 4); }
-  swelling(acc, 1.5 * k, -trunkH - 1.2 * k, o.pending, k);   // G10: seated on the tip, overlapping it by a third of its radius
+  swelling(acc, "mandarin", 1.5 * k, -trunkH, o.pending, k);   // R358: the droplet bud on the trunk's tip, the trunk grown on into it
   return finish(acc, { x: 1.5 * k, y: -trunkH });
 }

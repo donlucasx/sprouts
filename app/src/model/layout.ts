@@ -1,4 +1,4 @@
-import { BAKED_L, type Placed, type PlantId } from "./species";
+import { BAKED_L, SWELL_REACH, type Placed, type PlantId } from "./species";
 import type { LendAsset } from "@/lib/coins";
 import type { Scene } from "./garden";
 import type { PlantOnStage } from "./scene-to-layout";   // a type only: no require cycle
@@ -305,11 +305,11 @@ export const HEADROOM = { share: 0.6, minPx: 72 } as const;   // R185 (10-02, "w
 /** `x`, `y`, `w`, `h` in canvas px; `viewH` the view's height on screen (h times zoom). */
 export type Frame = { x: number; y: number; w: number; h: number; zoom: number; viewH: number };
 /** How far a part reaches sideways from its plant's foot, a safe bound as `topOf` takes it: a leaf-like sprite its baked length times
- * its scale whatever its rotation; the head 17.6 scale; a swelling or dot its radius; the rest 8 scale; a stem its farther end. */
+ * its scale whatever its rotation; the head 17.6 scale; a swelling its droplet's SWELL_REACH scale, a dot its radius; the rest 8 scale; a stem its farther end. */
 const sideReach = (q: Placed) => {
   if (q.kind === "stem") return Math.max(Math.abs(q.x0), Math.abs(q.x1));
   const base = BAKED_L[q.name.replace(/-s\d$/, "").replace(/-\d$/, "")];
-  const len = base ? base[Number(q.name.match(/-s(\d)$/)?.[1] ?? 0)] * q.scale : q.part === "head" ? 17.6 * q.scale : q.part === "swelling" || q.part === "dot" ? q.scale : 8 * q.scale;
+  const len = base ? base[Number(q.name.match(/-s(\d)$/)?.[1] ?? 0)] * q.scale : q.part === "head" ? 17.6 * q.scale : q.part === "swelling" ? SWELL_REACH * q.scale : q.part === "dot" ? q.scale : 8 * q.scale;
   return Math.abs(q.x) + len;
 };
 /** R167's floor in view px: the soil band (the soil line to the bed's bottom, 60) plus 40, so a garden of seeds is not a sliver. */

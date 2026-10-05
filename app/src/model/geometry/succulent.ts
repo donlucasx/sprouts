@@ -24,6 +24,6 @@ export function succulent(shoots: ShootIn[], o: LayoutOpts, k: number): PlantLay
     if (o.ripening > 0 && tokens < 4) sprite(acc, "token", "token-ore", 4 * k - tokens * 1.2 * k, top + 4 * k + tokens * 8 * k, 0, (3.2 / 3.6) * k * (0.5 + 0.5 * o.ripening), 3);
   }
   for (let p = 0; p < o.pups; p++) sprite(acc, "pup", "pup-succulent", (p % 2 === 0 ? -1 : 1) * (20 + 6 * Math.floor(p / 2)) * k, 0, 0, k, 1);
-  swelling(acc, 0, -6 * k, o.pending, k);
+  swelling(acc, "succulent", 0, -5 * k, o.pending, k);   // R358: the droplet's base in the rosette's heart
   return finish(acc, { x: 0, y: -6 * k });
 }

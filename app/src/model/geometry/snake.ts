@@ -19,7 +19,7 @@ export function snake(shoots: ShootIn[], o: LayoutOpts, k: number): PlantLayout 
   });
   for (let q = 0; q < o.fruit; q++) sprite(acc, "token", "token-jitosol", (q - (o.fruit - 1) / 2) * 8 * k, -4 * k, 0, k, 4);
   if (o.ripening > 0) sprite(acc, "token", "token-jitosol", (o.fruit - (o.fruit - 1) / 2) * 8 * k, -4 * k, 0, k * (0.5 + 0.5 * o.ripening), 4);
-  swelling(acc, 4 * k, -4 * k, o.pending, k);
+  swelling(acc, "snake", 2 * k, -12 * k, o.pending, k);   // R358: the droplet in the fan's heart, its sepals clear of the tokens at the foot (4 up, r 4.6)
   void COLORS;
   return finish(acc, { x: 4 * k, y: -4 * k });
 }
