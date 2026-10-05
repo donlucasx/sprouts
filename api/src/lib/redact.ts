@@ -2,7 +2,8 @@
  * K-M10: HELIUS_RPC_URL carries the Helius key as `?api-key=`. An error that quotes the URL (undici's "Failed to parse URL from
  * <url>", a websocket close, a library that prints its endpoint) must not put the key in a log line or a response body. Every error
  * string that can carry it goes through here first: the configured URL (and its wss form) becomes "[rpc url]", any other
- * `api-key=` value becomes "[redacted]". Reads the environment directly (never config(), which throws when a value is missing).
+ * `api-key=` value becomes "[redacted]", as does HELIUS_API_KEY itself wherever it appears (the Helius webhook URL carries it as
+ * `?api-key=`, lib/helius.ts; residual O3). Reads the environment directly (never config(), which throws when a value is missing).
  */
 export function redact(s: string): string {
   let out = s;

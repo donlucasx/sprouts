@@ -114,6 +114,23 @@ describe("link flow", () => {
     expect((await repo.getWallet(WALLET))?.webhookAdded).toBe(false);
   });
 
+  it("residual O3: a webhook add failure that quotes the Helius webhook URL is logged without the api key", async () => {
+    const { heliusAddAddress } = await import("@/lib/helius");
+    const mock = heliusAddAddress as unknown as { mockRejectedValueOnce: (e: unknown) => void };
+    mock.mockRejectedValueOnce(new TypeError("Failed to parse URL from https://api.helius.xyz/v0/webhooks/hook-1?api-key=FAKEHOOKKEY-9999"));
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const c = await mintCode(repo);
+      await getTx(new Request(`http://x/api/link/${c.code}?wallet=${WALLET}`), { params: Promise.resolve({ code: c.code }) });
+      const r = await confirm(new Request("http://x/api/link/confirm", { method: "POST", body: JSON.stringify({ code: c.code, wallet: WALLET }) }));
+      expect(r.status).toBe(200);
+      const line = spy.mock.calls.map((a) => a.join(" ")).find((l) => l.includes("helius add address failed"));
+      expect(line).toBeDefined();
+      expect(line).not.toContain("FAKEHOOKKEY");
+      expect(line).toContain("api-key=[redacted]");
+    } finally { spy.mockRestore(); }
+  });
+
   it("re-link: a wallet with an existing authority gets a one-instruction approval instead of a re-init", async () => {
     const { readSubscriptionAuthority } = await import("@/lib/subscriptions");
     const mock = readSubscriptionAuthority as unknown as { mockResolvedValue: (v: unknown) => void };

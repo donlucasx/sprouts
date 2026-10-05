@@ -13,6 +13,12 @@ describe("redact (K-M10): an error string that can carry HELIUS_RPC_URL never re
     expect(redact(`wss://rpc.example.test/?api-key=FAKEKEY-0000-1111 closed`)).not.toContain("FAKEKEY");
     expect(redact("nothing secret here")).toBe("nothing secret here");
   });
+  it("residual O3: the Helius webhook URL's api key (HELIUS_API_KEY) is redacted, in the URL and bare", () => {
+    vi.stubEnv("HELIUS_API_KEY", "FAKEHOOKKEY-9999");
+    expect(redact("PUT https://api.helius.xyz/v0/webhooks/hook-1?api-key=FAKEHOOKKEY-9999 failed")).toBe("PUT https://api.helius.xyz/v0/webhooks/hook-1?api-key=[redacted] failed");
+    expect(redact("key FAKEHOOKKEY-9999 echoed")).toBe("key [redacted] echoed");
+    expect(errorText(new Error("fetch failed", { cause: new Error("bad https://api.helius.xyz/v0/webhooks/x?api-key=FAKEHOOKKEY-9999") }))).not.toContain("FAKEHOOKKEY");
+  });
   it("errorText: the message and its cause, both redacted", () => {
     vi.stubEnv("HELIUS_RPC_URL", FAKE);
     const e = new Error("fetch failed", { cause: new Error(`connect ECONNREFUSED ${FAKE}`) });

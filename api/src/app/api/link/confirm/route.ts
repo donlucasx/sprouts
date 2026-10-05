@@ -12,6 +12,7 @@ import { rpc } from "@/lib/rpc";
 import { SUBSCRIPTIONS_PROGRAM, USDC_MINT } from "@/lib/constants";
 import { findSubscriptionAuthorityPda } from "@solana/subscriptions";
 import { ASSOCIATED_TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
+import { errorText } from "@/lib/redact";
 
 export const runtime = "nodejs";
 export const maxDuration = 60; // the delegation poll (up to 10 s) plus the send
@@ -98,7 +99,7 @@ export async function POST(request: Request) {
     await heliusAddAddress(config().heliusWebhookId, wallet);
   } catch (e) {
     webhookAdded = false;
-    console.error(`helius add address failed for ${wallet}: ${e instanceof Error ? e.message : String(e)}`);
+    console.error(`helius add address failed for ${wallet}: ${errorText(e)}`);   // residual O3: the webhook URL carries HELIUS_API_KEY
   }
   // R297 / contracts 3.4, review I3: 'leash' only when the bound delegation is exactly the one named for leashPda(wallet, garden);
   // anything else (the puller, a rotated puller, a garden id that is not an address) is 'puller', which after go-live plants nothing
