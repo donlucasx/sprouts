@@ -29,9 +29,12 @@ export function RelinkCard({ me }: { me: MeResponse }) {
   const qc = useQueryClient()
   const [gate] = useState(oneAtATime)
   const [open, setOpen] = useState(false)
-  const [relinking, setRelinking] = useState(false)
+  // The Re-link tap's phase: the Seeker is asked, then (signature back) the confirm and its retries run.
+  const [relinking, setRelinking] = useState<null | 'seeker' | 'chain'>(null)
   const [coding, setCoding] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  // Each tap's error sits beside its own button (T9 re-review minor).
+  const [relinkError, setRelinkError] = useState<string | null>(null)
+  const [codeError, setCodeError] = useState<string | null>(null)
   // Set when this phone's re-link confirmed; the done line shows once the refetched read no longer lists this phone.
   const [relinked, setRelinked] = useState(false)
   const [code, setCode] = useState<{ code: string; at: number; web: string[] } | null>(null)
@@ -70,21 +73,22 @@ export function RelinkCard({ me }: { me: MeResponse }) {
 
   async function relinkHere() {
     if (!gate.enter()) return
-    setRelinking(true)
-    setError(null)
+    setRelinking('seeker')
+    setRelinkError(null)
     try {
       await relinkThisPhone({
         user,
         build: () => api<{ transaction: string }>('/api/relink/build', { method: 'POST', body: {} }),
         sign: (flow) => makeSigner(signTransaction, flow),
         confirm: (body) => api('/api/relink/confirm', { method: 'POST', body }),
+        onSigned: () => setRelinking('chain'),
       })
       setRelinked(true)
       setSettling(true)
     } catch (e) {
-      setError(e instanceof RelinkSent || e instanceof ApiError || e instanceof SignRefused ? e.message : RELINK.failedBefore)
+      setRelinkError(e instanceof RelinkSent || e instanceof ApiError || e instanceof SignRefused ? e.message : RELINK.failedBefore)
     } finally {
-      setRelinking(false)
+      setRelinking(null)
       try {
         await qc.invalidateQueries({ queryKey: ['me'] })
       } finally {
@@ -96,13 +100,13 @@ export function RelinkCard({ me }: { me: MeResponse }) {
   async function getCode() {
     if (!gate.enter()) return
     setCoding(true)
-    setError(null)
+    setCodeError(null)
     try {
       const c = await relinkCode({ mock: LEND_MOCK, post: () => api<{ code: string }>('/api/link/new', { method: 'POST', body: {} }) })
-      if ('error' in c) setError(c.error)
+      if ('error' in c) setCodeError(c.error)
       else setCode({ code: c.code, at: Date.now(), web: view.web })
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : RELINK.codeFailed)
+      setCodeError(e instanceof ApiError ? e.message : RELINK.codeFailed)
     } finally {
       gate.leave()
       setCoding(false)
@@ -111,7 +115,6 @@ export function RelinkCard({ me }: { me: MeResponse }) {
 
   const doneLine = relinked && !view.thisPhone
   if (!view.show && !doneLine) return null
-  const err = error ? <ThemedText tone="error">{error}</ThemedText> : null
   return (
     <Card>
       {view.thisPhone || !doneLine ? <ThemedText variant="heading">{RELINK.title}</ThemedText> : null}
@@ -119,13 +122,13 @@ export function RelinkCard({ me }: { me: MeResponse }) {
       {view.thisPhone ? (
         <>
           <ThemedText>{RELINK.body}</ThemedText>
-          {settling ? null : <Button title={RELINK.button} loading={relinking} onPress={relinkHere} />}
+          {settling ? null : <Button title={RELINK.button} loading={relinking !== null} onPress={relinkHere} />}
           {relinking ? (
             <ThemedText variant="caption" tone="secondary">
-              {RELINK.waiting}
+              {relinking === 'seeker' ? RELINK.waiting : RELINK.checking}
             </ThemedText>
           ) : null}
-          {open ? null : err}
+          {relinkError ? <ThemedText tone="error">{relinkError}</ThemedText> : null}
         </>
       ) : null}
       {view.web.length > 0 ? (
@@ -163,11 +166,11 @@ export function RelinkCard({ me }: { me: MeResponse }) {
                 </>
               ) : null}
               <Button title={code && !used ? RELINK.newCode : RELINK.getCode} kind="quiet" loading={coding} onPress={getCode} style={{ alignSelf: 'flex-start' }} />
-              {err}
+              {codeError ? <ThemedText tone="error">{codeError}</ThemedText> : null}
             </View>
           ) : null}
         </View>
-      ) : view.thisPhone ? null : err}
+      ) : null}
     </Card>
   )
 }

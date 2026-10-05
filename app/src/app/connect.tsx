@@ -10,7 +10,7 @@ import { api, ApiError } from '@/lib/api'
 import { makeSigner, SignRefused } from '@/lib/sign'
 import { useInvalidateMe, useMe } from '@/lib/me'
 import { newlyLinked } from '@/lib/newly-linked'
-import { confirmWithRetries } from '@/lib/confirm-retry'
+import { confirmWithRetries, LINK_NOT_ON_CHAIN_YET } from '@/lib/confirm-retry'
 import { formatWallet } from '@/lib/format'
 import { useSession } from '@/lib/session'
 import { FONT, spacing } from '@/theme'
@@ -21,7 +21,9 @@ import { FONT, spacing } from '@/theme'
  */
 function confirmLink(code: string, wallet: string, signedTransaction: string) {
   // after the first send the approval is out; only the delegation read is pending
-  return confirmWithRetries((attempt) => api('/api/link/confirm', { method: 'POST', body: attempt === 0 ? { code, wallet, signedTransaction } : { code, wallet } }))
+  return confirmWithRetries((attempt) => api('/api/link/confirm', { method: 'POST', body: attempt === 0 ? { code, wallet, signedTransaction } : { code, wallet } }), {
+    notOnChainYet: LINK_NOT_ON_CHAIN_YET,
+  })
 }
 
 export default function Connect() {

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import type { Address, Transaction } from '@solana/kit'
 import { disclosureItems, relinkCode, relinkView, relinkThisPhone, relinkWebLines, RelinkSent, RELINK, WEB_LINK_TRUST } from '@/lib/relink'
-import { confirmWithRetries } from '@/lib/confirm-retry'
+import { confirmWithRetries, LINK_NOT_ON_CHAIN_YET, RELINK_NOT_ON_CHAIN_YET } from '@/lib/confirm-retry'
 import { leashPda, makeSigner, SignRefused } from '@/lib/sign'
 import { linkIxs, OTHER, USER, wire } from '../fixtures/api-built'
 import type { MeResponse } from '@/lib/api'
@@ -12,7 +12,9 @@ class ApiError extends Error {
     super(message)
   }
 }
-const LATE = 'No delegation found for this wallet yet. Sign the approval first.'
+/** The routes' real 409 sentences: link/confirm route.ts:75; relink/confirm lending-api.md:5675 (pinned verbatim here, not via the constant). */
+const LINK_LATE = 'No delegation found for this wallet yet. Sign the approval first.'
+const RELINK_LATE = 'No re-link found on chain yet. Check again in a minute.'
 
 const me = (relink?: MeResponse['relink']) => ({ user: { pubkey: USER }, relink }) as unknown as MeResponse
 
@@ -104,19 +106,24 @@ describe('M1: mock mode never makes a real link code', () => {
 })
 
 describe('confirmWithRetries (shared with Connect, T9 review I3)', () => {
+  it("Connect's matcher is link/confirm's real sentence; the two routes' sentences do not match each other", () => {
+    expect(LINK_LATE).toContain(LINK_NOT_ON_CHAIN_YET)
+    expect(RELINK_LATE).not.toContain(LINK_NOT_ON_CHAIN_YET)
+    expect(LINK_LATE).not.toContain(RELINK_NOT_ON_CHAIN_YET)
+  })
   it('late answers are retried, 5 sends in all, then the last error is thrown', async () => {
     const send = vi.fn(async (_n: number) => {
-      throw new ApiError(409, LATE)
+      throw new ApiError(409, LINK_LATE)
     })
-    await expect(confirmWithRetries(send, { sleep: async () => {} })).rejects.toThrow('No delegation found')
+    await expect(confirmWithRetries(send, { notOnChainYet: LINK_NOT_ON_CHAIN_YET, sleep: async () => {} })).rejects.toThrow('No delegation found')
     expect(send.mock.calls.map((c) => c[0])).toEqual([0, 1, 2, 3, 4])
   })
   it('any other error (or a 409 that is not the late one) is thrown at once', async () => {
-    for (const err of [new ApiError(400, 'Bad'), new ApiError(409, 'Code used'), new Error(LATE)]) {
+    for (const err of [new ApiError(400, 'Bad'), new ApiError(409, 'Code used'), new Error(LINK_LATE)]) {
       const send = vi.fn(async () => {
         throw err
       })
-      await expect(confirmWithRetries(send, { sleep: async () => {} })).rejects.toBe(err)
+      await expect(confirmWithRetries(send, { notOnChainYet: LINK_NOT_ON_CHAIN_YET, sleep: async () => {} })).rejects.toBe(err)
       expect(send).toHaveBeenCalledTimes(1)
     }
   })
@@ -139,17 +146,35 @@ describe('relinkThisPhone', () => {
     expect(sign).not.toHaveBeenCalled()
     expect(confirm).not.toHaveBeenCalled()
   })
-  it('I3: a late delegation re-sends the SAME signed transaction (one signature), then succeeds', async () => {
+  it("I3: the relink route's REAL late sentence re-sends the SAME signed transaction (one signature), then succeeds", async () => {
+    expect(RELINK_NOT_ON_CHAIN_YET).toBe(RELINK_LATE)
     const tx = wire(await linkIxs({ delegatee: (await leashPda(USER, USER)) as Address, revokeOld: true }))
     const sign = vi.fn(async (t: Transaction) => t)
+    const onSigned = vi.fn()
     let n = 0
     const confirm = vi.fn(async (_b: { signedTransaction: string }) => {
-      if (n++ < 2) throw new ApiError(409, LATE)
+      expect(onSigned).toHaveBeenCalledTimes(1) // the waiting line has already turned to the chain line
+      if (n++ < 2) throw new ApiError(409, RELINK_LATE)
       return { relinked: true }
     })
-    await relinkThisPhone({ user: USER, build: async () => ({ transaction: tx }), sign: (flow) => makeSigner(sign, flow), confirm, sleep: async () => {} })
+    await relinkThisPhone({ user: USER, build: async () => ({ transaction: tx }), sign: (flow) => makeSigner(sign, flow), confirm, onSigned, sleep: async () => {} })
     expect(sign).toHaveBeenCalledTimes(1)
     expect(confirm.mock.calls).toEqual([[{ signedTransaction: tx }], [{ signedTransaction: tx }], [{ signedTransaction: tx }]])
+  })
+  it("I3: the link route's sentence is NOT a late answer on the relink route: no re-send, RelinkSent at once", async () => {
+    const tx = wire(await linkIxs({ delegatee: (await leashPda(USER, USER)) as Address, revokeOld: true }))
+    const confirm = vi.fn(async () => {
+      throw new ApiError(409, LINK_LATE)
+    })
+    const out = relinkThisPhone({ user: USER, build: async () => ({ transaction: tx }), sign: (flow) => makeSigner(async (t: Transaction) => t, flow), confirm, sleep: async () => {} })
+    await expect(out).rejects.toBeInstanceOf(RelinkSent)
+    expect(confirm).toHaveBeenCalledTimes(1)
+  })
+  it('a refused signature never calls onSigned (the Seeker line stays until the error)', async () => {
+    const onSigned = vi.fn()
+    const tx = wire(await linkIxs({ revokeOld: true }))
+    await expect(relinkThisPhone({ user: USER, build: async () => ({ transaction: tx }), sign: (flow) => makeSigner(async (t: Transaction) => t, flow), confirm: vi.fn(), onSigned })).rejects.toThrow(SignRefused)
+    expect(onSigned).not.toHaveBeenCalled()
   })
   it("I3: a failure after signing is RelinkSent, and its copy never says nothing changed", async () => {
     const tx = wire(await linkIxs({ delegatee: (await leashPda(USER, USER)) as Address, revokeOld: true }))
