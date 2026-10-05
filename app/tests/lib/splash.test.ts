@@ -14,7 +14,7 @@ describe("the splash (R282: one painted picture + one line, about 1.5 s, every l
     expect(SPLASH.line).toBe(SLOGAN)
     expect(SPLASH.line.length).toBeLessThanOrEqual(70)
     expect(SPLASH.line).not.toMatch(/[–—]/)
-    expect(SPLASH.ms).toBe(1500)
+    expect(SPLASH.ms).toBe(2500)   // his note 10-05
     expect(SPLASH.fadeMs).toBeLessThanOrEqual(300)
   })
   it("the R319 slogan, pinned once (the one literal copy outside slogan.ts)", () => {
@@ -23,17 +23,17 @@ describe("the splash (R282: one painted picture + one line, about 1.5 s, every l
 })
 
 describe("the hold counts from the picture being in; a picture that never comes is cut at the cap", () => {
-  it("in at once: held 1.5 s from then", () => {
+  it("in at once: held 2.5 s from then", () => {
     expect(splashHoldMs(0, 0)).toBe(SPLASH.ms)
   })
-  it("in late (2.2 s): held 1.5 s from then", () => {
+  it("in late (2.2 s): held 2.5 s from then", () => {
     expect(splashHoldMs(2200, 2200)).toBe(SPLASH.ms)
     expect(splashHoldMs(2200, 3000)).toBe(SPLASH.ms - 800)
   })
   it("never in: fades at the cap, no further hold; one that lands after the cap changes nothing", () => {
     expect(splashHoldMs(null, 0)).toBe(SPLASH.capMs)
     expect(splashHoldMs(null, SPLASH.capMs)).toBe(0)
-    expect(splashHoldMs(3200, 3200)).toBe(0)
+    expect(splashHoldMs(4200, 4200)).toBe(0)
   })
   it("the cap leaves room for the hold and the fade", () => {
     expect(SPLASH.capMs).toBeGreaterThanOrEqual(SPLASH.ms + SPLASH.fadeMs)
