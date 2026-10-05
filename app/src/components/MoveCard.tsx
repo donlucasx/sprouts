@@ -9,13 +9,14 @@ import { api, ApiError, type MeResponse } from '@/lib/api'
 import { makeBatchSigner, SignRefused } from '@/lib/sign'
 import { useInvalidateMe } from '@/lib/me'
 import { MOVE_FAILED, MOVED_LINE, moveAtTap, moveCopy, MoveSent, type MoveBuild } from '@/lib/moves'
+import { partialUnwrap, UNWRAP_BUTTON, UNWRAP_DONE, UNWRAP_FAILED, unwrapAtTap } from '@/lib/unwrap'
 import { oneAtATime } from '@/lib/withdraw-flow'
 import { spacing } from '@/theme'
 
 /** R258, R280: at most one move card, only when the API proposes one (no faked card, spec 7); one approval for both transactions (S3). */
 export function MoveCard({ me }: { me: MeResponse }) {
   const p = me.moveProposal ?? null
-  const { signTransactions } = useMobileWallet()
+  const { signTransactions, signAndSendTransaction } = useMobileWallet()
   const invalidate = useInvalidateMe()
   const [gate] = useState(oneAtATime)
   // The Move tap's phase: the Seeker is asked, then (signatures back) the API sends both and waits.
@@ -23,6 +24,9 @@ export function MoveCard({ me }: { me: MeResponse }) {
   const [line, setLine] = useState<{ text: string; error: boolean } | null>(null)
   // The proposal this card is done with (moved or dismissed): hidden at once, before the refetch drops it.
   const [gone, setGone] = useState<string | null>(null)
+  // A SOL move that redeemed but could not deposit: the API's one-instruction unwrap, offered once (it carries a blockhash, so one try).
+  const [unwrap, setUnwrap] = useState<string | null>(null)
+  const [unwrapping, setUnwrapping] = useState(false)
 
   async function move() {
     if (!p || !gate.enter()) return
@@ -44,11 +48,27 @@ export function MoveCard({ me }: { me: MeResponse }) {
         setLine({ text: MOVED_LINE, error: false })
       }
     } catch (e) {
+      setUnwrap(partialUnwrap(e))
       setLine({ text: e instanceof ApiError || e instanceof SignRefused || e instanceof MoveSent ? e.message : MOVE_FAILED, error: true })
     } finally {
       setPhase(null)
       gate.leave()
       void invalidate()
+    }
+  }
+  async function unwrapSol() {
+    if (!unwrap || !gate.enter()) return
+    setUnwrapping(true)
+    try {
+      await unwrapAtTap({ user: me.user.pubkey, transaction: unwrap, signAndSend: (tx) => signAndSendTransaction(tx, 0n) })
+      setUnwrap(null)
+      setLine({ text: UNWRAP_DONE, error: false })
+    } catch (e) {
+      setUnwrap(null)
+      setLine({ text: e instanceof SignRefused ? e.message : UNWRAP_FAILED, error: true })
+    } finally {
+      setUnwrapping(false)
+      gate.leave()
     }
   }
   async function dismiss() {
@@ -67,7 +87,13 @@ export function MoveCard({ me }: { me: MeResponse }) {
     }
   }
 
-  if (!p || p.id === gone) return line ? <ThemedText tone={line.error ? 'error' : 'accentText'}>{line.text}</ThemedText> : null
+  if (!p || p.id === gone)
+    return line || unwrap ? (
+      <View style={{ gap: spacing.sm }}>
+        {line ? <ThemedText tone={line.error ? 'error' : 'accentText'}>{line.text}</ThemedText> : null}
+        {unwrap ? <Button title={UNWRAP_BUTTON} loading={unwrapping} disabled={unwrapping} onPress={unwrapSol} /> : null}
+      </View>
+    ) : null
   const c = moveCopy(p)
   return (
     <Card>
@@ -83,6 +109,7 @@ export function MoveCard({ me }: { me: MeResponse }) {
         </ThemedText>
       ) : null}
       {line ? <ThemedText tone={line.error ? 'error' : 'accentText'}>{line.text}</ThemedText> : null}
+      {unwrap ? <Button title={UNWRAP_BUTTON} loading={unwrapping} disabled={unwrapping || phase !== null} onPress={unwrapSol} /> : null}
     </Card>
   )
 }

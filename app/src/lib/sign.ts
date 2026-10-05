@@ -110,6 +110,8 @@ export type SignFlow =
   | { kind: 'move_jlend_to_klend'; user: string; asset: LendAsset; receiptRaw: string; depositRaw: string; depositCapRaw: string; part: MovePart }
   /** R287, contracts 6: the Seed Vault wallet (delegator == user) moves its approval to the leash; web-linked wallets re-link on the link page. */
   | { kind: 'relink'; user: string }
+  /** The 409 partial's `unwrapTransaction` (moves/confirm): one Token CloseAccount of the user's WSOL account, its lamports to the user. */
+  | { kind: 'unwrap_wsol'; user: string }
 
 export type MovePart = 'redeem' | 'deposit' | 'whole'
 
@@ -362,6 +364,8 @@ async function checkInstructions(ixs: Ix[], flow: SignFlow): Promise<void> {
       return movePart(ixs, flow.part, await jlendRedeemSteps(user, flow.asset, receipt, false), await klendDepositSteps(user, flow.asset, deposit))
     return refuse('plan')
   }
+  // The unwrap: exactly the one close, nothing else (no ComputeBudget); it touches none of derived()'s PDAs either.
+  if (flow.kind === 'unwrap_wsol') return steps(ixs, [closeWsol(await ata(user, WSOL_MINT), user)])
   const d = await derived(user)
   switch (flow.kind) {
     case 'withdraw': {
