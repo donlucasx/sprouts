@@ -1,5 +1,5 @@
 import type { MeResponse } from './api'
-import { DECIMALS, formatUsd, formatSkr, formatAmount, holdingAmount } from './format'
+import { DECIMALS, formatUsd, formatSkr, plantedWhat, holdingAmount } from './format'
 import { ASSETS, isRetired, liveSplit, livePins, type LiveAsset } from './coins'
 
 /** A cached read from before the Yield Manager build has no holdings, manager or rules.allocation and would crash every screen that reads them: it counts as no cache (10-01 whole-branch review, I2). */
@@ -111,7 +111,7 @@ export function walletsLine(wallets: { status: string }[]): string | null {
 export function lastPlantingLine(r: MeResponse['lastReceipt']): string | null {
   if (!r || isRetired(r.asset)) return null   // a retired coin shows nowhere (R281)
   const day = new Date(r.ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-  return `Last planting ${day}: ${formatUsd(r.usdcPulledCents - r.networkFeeCents)} became ${formatAmount(r.asset, BigInt(r.amountOutRaw), r.usdPrice)}`
+  return `Last planting ${day}: ${plantedWhat({ usdcInCents: r.usdcPulledCents - r.networkFeeCents, asset: r.asset, amountOutRaw: r.amountOutRaw, usdPrice: r.usdPrice, venue: r.venue })}`
 }
 
 /**

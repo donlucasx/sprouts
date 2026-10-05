@@ -1,4 +1,4 @@
-import { VENUE_NAME, type AutoVenue, type LiveAsset } from "./coins";
+import { isLend, VENUE_NAME, type AutoVenue, type LiveAsset } from "./coins";
 import type { Holding } from "./api";
 
 /** Display decimals per leg (the mints', read on chain; stORE is 11; lending legs show the UNDERLYING, USDC 6 and SOL 9, never the receipt). Never money math: the API computes, the app formats. */
@@ -75,9 +75,17 @@ export function holdingAmount(h: Holding): string {
 /** Under Home's holdings (spec 3.3, said once): the wallet coins are not locked and Sprouts cannot sell them. */
 export const HOLDINGS_NOTE = "These sit in your Seeker wallet, not locked. Sprouts cannot sell them for you.";
 
-/** A planting in one clause, dollars first (manual 5 and 6): what the change became, with the fee clause as ruled (R139). */
-export function plantedLine(p: { usdcInCents: number; asset: LiveAsset; amountOutRaw: string; usdPrice: number | null; feeCents: number; feeAmountRaw?: string }): string {
-  return `${formatUsd(p.usdcInCents)} became ${formatAmount(p.asset, BigInt(p.amountOutRaw), p.usdPrice)}${feeClause(p.feeCents, p.feeAmountRaw)}`;
+type Planted = { usdcInCents: number; asset: LiveAsset; amountOutRaw: string; usdPrice: number | null; venue?: AutoVenue | null };
+/** What a planting became, no fee clause (Home's receipt row, the push, the widget). A lending leg's amountOutRaw is in RECEIPT units
+ * (kUSDC, kSOL at 6 decimals, jl shares; contracts 4), so lending names where the dollars went and never formats that amount. */
+export function plantedWhat(p: Planted): string {
+  if (isLend(p.asset)) return `${formatUsd(p.usdcInCents)} went into ${legLabel(p.asset, p.venue)}`;
+  return `${formatUsd(p.usdcInCents)} became ${formatAmount(p.asset, BigInt(p.amountOutRaw), p.usdPrice)}`;
+}
+/** A planting in one clause, dollars first (manual 5 and 6), with the fee clause as ruled (R139); lending carries no Sprouts fee (R266). */
+export function plantedLine(p: Planted & { feeCents: number; feeAmountRaw?: string }): string {
+  if (isLend(p.asset)) return `${plantedWhat(p)}, no Sprouts fee`;
+  return `${plantedWhat(p)}${feeClause(p.feeCents, p.feeAmountRaw)}`;
 }
 
 /** The pot's headline on Home (manual 5: the big number is dollars first): the dollar value big, the SKR under it; the SKR alone when no price is known. */
