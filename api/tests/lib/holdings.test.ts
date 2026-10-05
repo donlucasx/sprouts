@@ -83,3 +83,59 @@ describe("rateFacts", () => {
     expect(none.growthPct).toBeNull();
   });
 });
+
+import { lendingFrom, lendHoldings, latestVenueRows } from "@/lib/holdings";
+import type { VenueDayRow } from "@/db/types";
+
+describe("lending value and earned (spec 8)", () => {
+  const vrow = (over: Partial<VenueDayRow> = {}): VenueDayRow => ({ day: "2026-10-06", venue: "kamino_klend", asset: "USDC_LEND", supplyPct: 4.43, rewardsPct: 0, utilizationPct: 91, withdrawableUsd: 10_698_638, tvlUsd: 1.2e8, exchangeRate: 1.205, avg7Pct: 4.4, daysMeasured: 2, eligible: true, verdict: null, reason: null, served: null, ok: true, ...over });
+  const lendLeg = (amountOutRaw: bigint, rateAtPlanting: number | null): PlantingLegRow => ({ plantingId: "p", asset: "USDC_LEND", venue: "kamino_klend", usdcInCents: 200, amountOutRaw, staked: false, feeAmountRaw: 0n, feeCents: 0, rateAtPlanting });
+
+  it("value = receipt x exchange rate x price; earned = receipt x (rate now - rate at planting)", () => {
+    const [p] = lendingFrom({ positions: [{ asset: "USDC_LEND", venue: "kamino_klend", receiptRaw: 1_661_072n }], legs: [lendLeg(1_661_072n, 1.2038)], rows: [vrow()], prices: { USDC_LEND: 1 } });
+    expect(p.underlyingRaw).toBe(2_001_591n);   // 1_661_072 x 1.205 = 2_001_591.76
+    expect(p.valueUsd).toBeCloseTo(2.001591, 6);
+    expect(p.earnedUsd).toBeCloseTo(0.0019933, 7);   // 1.661072 x 0.0012
+    expect(p).toMatchObject({ receiptMint: "B8V6WVjPxW1UGwVDfxH2d2r8SyT4cqn7dQRK6XneVa7D", ratePct: 4.43, avg7Pct: 4.4, putInCents: 200, poolFull: false });
+  });
+  it("half withdrawn keeps half the basis; a full pool says so; no price, no value", () => {
+    const [half] = lendingFrom({ positions: [{ asset: "USDC_LEND", venue: "kamino_klend", receiptRaw: 830_536n }], legs: [lendLeg(1_661_072n, 1.2038)], rows: [vrow({ withdrawableUsd: 0.5 })], prices: { USDC_LEND: 1 } });
+    expect(half.putInCents).toBe(100);
+    expect(half.poolFull).toBe(true);
+    const [none] = lendingFrom({ positions: [{ asset: "USDC_LEND", venue: "kamino_klend", receiptRaw: 830_536n }], legs: [], rows: [vrow()], prices: {} });
+    expect(none.valueUsd).toBeNull();
+  });
+  it("one aggregated holding per lending asset, underlying summed", () => {
+    const ps = lendingFrom({
+      positions: [{ asset: "USDC_LEND", venue: "kamino_klend", receiptRaw: 1_000_000n }, { asset: "USDC_LEND", venue: "jupiter_lend", receiptRaw: 1_000_000n }],
+      legs: [], rows: [vrow(), vrow({ venue: "jupiter_lend", exchangeRate: 1.0629, avg7Pct: 4.19 })], prices: { USDC_LEND: 1 },
+    });
+    const [h] = lendHoldings(ps);
+    expect(h).toMatchObject({ asset: "USDC_LEND", heldRaw: 2_267_900n, growthPct: 4.4 });
+    expect(h.valueUsd).toBeCloseTo(2.2679, 4);
+  });
+  it("Kamino SOL: receipt 6 dp, underlying lamports 9 dp; the rate is raw per raw, so value uses the underlying's decimals", () => {
+    const [p] = lendingFrom({ positions: [{ asset: "SOL_LEND", venue: "kamino_klend", receiptRaw: 1_000_000n }], legs: [], rows: [vrow({ asset: "SOL_LEND", exchangeRate: 1100.5 })], prices: { SOL_LEND: 150 } });
+    expect(p.underlyingRaw).toBe(1_100_500_000n);
+    expect(p.valueUsd).toBeCloseTo(165.075, 6);
+  });
+  it("no rated snapshot in 7 days: underlying at the highest rate at planting (understates, never 0 for a funded position); no value; no legs with a rate, 0 (I1)", () => {
+    const legs = [lendLeg(1_000_000n, 1.2038), lendLeg(661_072n, 1.205), lendLeg(1n, null)];
+    const [p] = lendingFrom({ positions: [{ asset: "USDC_LEND", venue: "kamino_klend", receiptRaw: 1_661_072n }], legs, rows: [], prices: { USDC_LEND: 1 } });
+    expect(p.underlyingRaw).toBe(2_001_591n);   // 1_661_072 x 1.205 (the higher planting rate)
+    expect(p).toMatchObject({ valueUsd: null, earnedUsd: null, earnedUnderlyingRaw: null, poolFull: false, ratePct: null });
+    const [none] = lendingFrom({ positions: [{ asset: "USDC_LEND", venue: "kamino_klend", receiptRaw: 1_661_072n }], legs: [lendLeg(1_661_072n, null)], rows: [], prices: { USDC_LEND: 1 } });
+    expect(none.underlyingRaw).toBe(0n);
+    const [rated] = lendingFrom({ positions: [{ asset: "USDC_LEND", venue: "kamino_klend", receiptRaw: 1_661_072n }], legs, rows: [vrow({ exchangeRate: 1.21 })], prices: { USDC_LEND: 1 } });
+    expect(rated.underlyingRaw).toBe(2_009_897n);   // a snapshot's rate wins over the planting fallback: 1_661_072 x 1.21
+  });
+  it("latestVenueRows: a failed snapshot today keeps yesterday's exchange rate; rows older than 7 days are dropped", async () => {
+    const repo = new MemoryRepo();
+    await repo.putVenueDay(vrow({ day: "2026-10-05", exchangeRate: 1.2 }));
+    await repo.putVenueDay(vrow({ day: "2026-10-06", exchangeRate: null, supplyPct: 4.5 }));
+    await repo.putVenueDay(vrow({ day: "2026-09-20", venue: "jupiter_lend", exchangeRate: 1.05 }));
+    const rows = await latestVenueRows(repo, "2026-10-06");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ day: "2026-10-06", supplyPct: 4.5, exchangeRate: 1.2 });
+  });
+});
