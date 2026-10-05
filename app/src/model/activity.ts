@@ -1,6 +1,6 @@
 import type { ActivityResponse, FoundVenue, SplitRow } from '@/lib/api'
 import { isRetired, VENUE_NAME, type LiveAsset, type Stop } from '@/lib/coins'
-import { arrivalLine, COIN_NAME, COIN_NAME_LONG, dayLabel, formatSkr, formatUsd, legLabel, plantedLine, underlyingAmount } from '@/lib/format'
+import { arrivalLine, COIN_NAME, COIN_NAME_LONG, dayLabel, dayTime, formatSkr, formatUsd, legLabel, plantedLine, underlyingAmount } from '@/lib/format'
 import { changeSummary, STOP_LABEL } from './manager'
 
 /** R284: every Activity row is ONE plain line; its details and its transaction open with a tap. */
@@ -30,7 +30,7 @@ export function plantingRow(day: string, p: Planting): ActivityRow | null {
 
 /** A split change in one line; what moved and the manager's why behind the tap. Dated by the API's UTC day (the Rules card's "Changed"). */
 export function splitRow(s: SplitRow, i: number): ActivityRow {
-  const day = dayLabel(s.ts.slice(0, 10))
+  const day = dayTime(s.ts) // R350: the time too, so the phone's zone (was the API's UTC day)
   const summary = changeSummary(s.from, s.to)
   const stop = s.stop ? `${STOP_LABEL[s.stop as Stop] ?? s.stop}.` : ''
   const base = { key: `${s.ts}-${i}`, signature: null }

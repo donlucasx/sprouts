@@ -36,14 +36,14 @@ describe('the split, as one line', () => {
   const ts = '2026-10-03T14:00:00.000Z'
   const row = (o: Partial<SplitRow>): SplitRow => ({ ts, by: 'manager', from: { SKR: 45, USDC_LEND: 10, hSOL: 20, JitoSOL: 5 }, to: { SKR: 45, USDC_LEND: 15, hSOL: 15, JitoSOL: 5 }, stop: 'balanced', why: 'Kamino paid more this week.', fallback: null, ...o })
   it("the manager's move, its change and its why behind the tap; retired keys never named", () => {
-    expect(keep(splitRow(row({}), 0))).toEqual({ key: `${ts}-0`, line: 'Oct 3, the Yield Manager moved your split', details: ['USDC lending 10 to 15, hSOL 20 to 15', 'Kamino paid more this week.'], signature: null })
+    expect(keep(splitRow(row({}), 0))).toEqual({ key: `${ts}-0`, line: 'Oct 3, 7:00 AM, the Yield Manager moved your split', details: ['USDC lending 10 to 15, hSOL 20 to 15', 'Kamino paid more this week.'], signature: null })
     expect(splitRow(row({ from: { SKR: 40, JitoSOL: 10 }, to: { SKR: 50, JitoSOL: 0 }, why: null }), 1).details).toEqual(['SKR 40 to 50'])
   })
   it('an undo, a switch turned on, a change by rule, your own change', () => {
-    expect(keep(splitRow(row({ by: 'undo' }), 0)).line).toBe('Oct 3, undone. The Yield Manager is off.')
-    expect(keep(splitRow(row({ by: 'you', turnedOn: true, to: { SKR: 45, USDC_LEND: 10, hSOL: 20, JitoSOL: 5 } }), 0))).toMatchObject({ line: 'Oct 3, you turned the Yield Manager on', details: ['Balanced.'] })
-    expect(keep(splitRow(row({ fallback: 'model' }), 0)).line).toBe('Oct 3, your split moved by rule today')
-    expect(keep(splitRow(row({ by: 'you' }), 0))).toMatchObject({ line: 'Oct 3, you changed your split', details: ['USDC lending 10 to 15, hSOL 20 to 15'] })
+    expect(keep(splitRow(row({ by: 'undo' }), 0)).line).toBe('Oct 3, 7:00 AM, undone. The Yield Manager is off.')
+    expect(keep(splitRow(row({ by: 'you', turnedOn: true, to: { SKR: 45, USDC_LEND: 10, hSOL: 20, JitoSOL: 5 } }), 0))).toMatchObject({ line: 'Oct 3, 7:00 AM, you turned the Yield Manager on', details: ['Balanced.'] })
+    expect(keep(splitRow(row({ fallback: 'model' }), 0)).line).toBe('Oct 3, 7:00 AM, your split moved by rule today')
+    expect(keep(splitRow(row({ by: 'you' }), 0))).toMatchObject({ line: 'Oct 3, 7:00 AM, you changed your split', details: ['USDC lending 10 to 15, hSOL 20 to 15'] })
   })
 })
 
