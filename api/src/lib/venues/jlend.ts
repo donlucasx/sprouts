@@ -98,6 +98,10 @@ export async function checkJlendDepositInstructions(ixs: readonly Instruction[],
   const mint = mine[0];
   const d = Buffer.from(mint.data ?? []);
   if (d.length !== 24 || !d.subarray(0, 8).equals(DISC.mint)) refuse("not mint_with_max_assets");
+  // `shares` and `max_assets` are NOT bounded here: a server minting fewer shares than the deposit buys keeps the difference in USDC,
+  // and only the leash `settle` (delta >= min_out vs the oracle floor, contracts 2.8 / inv. 6) bounds that. This check binds the
+  // Transfer to the minted `shares` so the user receives every share but the venue's one-share shortfall (review I1).
+  const shares = d.readBigUInt64LE(8);
   const want = [a.puller, source, pullerJl, j.mint, JLEND_LENDING_ADMIN, j.lending, j.fTokenMint, j.supplyTokenReservesLiquidity, j.lendingSupplyPositionOnLiquidity, j.rateModel, j.vault, JLEND_LIQUIDITY, JLEND_LIQUIDITY_PROGRAM, j.rewardsRateModel, TOKEN, ASSOCIATED_TOKEN_PROGRAM_ADDRESS, SYSTEM_PROGRAM] as string[];
   const got = addrs(mint);
   if (got.length !== want.length || got.some((x, i) => x !== want[i])) refuse("mint accounts are not the pinned ones");
@@ -106,22 +110,34 @@ export async function checkJlendDepositInstructions(ixs: readonly Instruction[],
   let burnsAfter = 0;
   let closes = 0;
   for (const [i, ix] of ixs.entries()) {
-    if (ix.programAddress !== TOKEN || addrs(ix)[0] !== pullerJl) continue;
-    const tag = ix.data?.[0];
+    if (ix.programAddress !== TOKEN) continue;
     const acc = addrs(ix);
+    if (acc[0] !== pullerJl) {
+      // Contracts 3.3 "Burn only of the puller jl ATA": no Token instruction may touch the user's jl account or the f-token mint (review m2).
+      if (acc[0] === userJl) refuse("a Token instruction on the user's jl account");
+      if (acc.includes(j.fTokenMint)) refuse("a Token instruction on the f-token mint outside the puller's jl account");
+      continue;
+    }
+    const tag = ix.data?.[0];
     const amount = ix.data && ix.data.length >= 9 ? Buffer.from(ix.data).readBigUInt64LE(1) : null;
     if (tag === 8 && acc[1] === j.fTokenMint && acc[2] === a.puller && i < mintAt) continue;   // foreign dust, before the mint
     if (tag === 3) {
-      if (acc[1] !== userJl || acc[2] !== a.puller || i < mintAt || transferAt >= 0) refuse(`a transfer from the puller's jl account to ${acc[1]}, not one transfer to the user's canonical account`);
+      if (acc[1] !== userJl || acc[2] !== a.puller || i < mintAt || transferAt >= 0) refuse(`a transfer from the puller's jl account to ${acc[1]}, not one transfer to the user's canonical account after the mint`);
+      if (amount !== shares - 1n) refuse(`a transfer of ${amount} shares, not the minted ${shares} - 1`);
       transferAt = i;
       continue;
     }
     if (tag === 8 && i > transferAt && transferAt >= 0) {
       if (amount !== 1n || acc[1] !== j.fTokenMint || acc[2] !== a.puller || burnsAfter > 0) refuse(`a burn of ${amount} after the transfer: only the 1-share leftover may be burned`);
+      if (closes > 0) refuse("a burn after the close: the leftover burn must come before it");
       burnsAfter++;
       continue;
     }
-    if (tag === 9 && acc[1] === a.puller && acc[2] === a.puller && i > transferAt && transferAt >= 0) { closes++; continue; }
+    if (tag === 9) {
+      if (acc[1] !== a.puller || acc[2] !== a.puller || transferAt < 0) refuse(`a close of the puller's jl account to ${acc[1]}, not to the puller after the transfer`);
+      closes++;
+      continue;
+    }
     refuse(`Token instruction ${tag} on the puller's jl account is not allowed here`);
   }
   if (transferAt < 0) refuse("no transfer to the user");

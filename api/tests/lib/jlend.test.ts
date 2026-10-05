@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { address, generateKeyPairSigner, getAddressEncoder, type Instruction } from "@solana/kit";
-import { findAssociatedTokenPda, getBurnInstruction, getTransferInstruction, TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
+import { address, AccountRole, createNoopSigner, generateKeyPairSigner, getAddressEncoder, type Instruction } from "@solana/kit";
+import { findAssociatedTokenPda, getApproveInstruction, getBurnInstruction, getCloseAccountInstruction, getTransferCheckedInstruction, getTransferInstruction, TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
 import { readJlendRate, jlendShares, buildJlendDepositIxs, checkJlendDepositInstructions, jlendDeliveryShortfall, buildJlendWithdrawIxs, buildJlendUserDepositIxs, JL_EXPECTED_LEFTOVER, LENDING_LEN } from "@/lib/venues/jlend";
 import { JLEND } from "@/lib/venues/addresses";
 import { JLEND_PROGRAM } from "@/lib/constants";
@@ -119,7 +119,7 @@ describe("share math and leftover agree with the leash fork measurements (leash 
       expect(cost(jlendShares(deposit, rn), lagged(rn))).toBeLessThanOrEqual(deposit);
       expect(cost((deposit * S) / rn - 2n, lagged(rn))).toBeGreaterThan(deposit);
     });
-    it(`${asset}: N - 1 minted, shares - 1 transferred leaves exactly JL_EXPECTED_LEFTOVER (0) in the puller's jl account`, async () => {
+    it(`${asset}: builder arithmetic under the fork's measured N - 1 mint (20,000,000 asked -> 19,999,999 minted, leash Task 7): the transfer of shares - 1 leaves JL_EXPECTED_LEFTOVER (0)`, async () => {
       const puller = await generateKeyPairSigner();
       const r = await buildJlendDepositIxs({ puller, user: USER, asset, depositRaw: 20_000_000n, rn, pullerJlBalance: 0n, leftover: JL_EXPECTED_LEFTOVER });
       const minted = r.shares - 1n;
@@ -159,7 +159,10 @@ describe("user-signed Jupiter Lend builders produce EXACTLY the app verifier's s
         { program: JL, data: "b80c569546c461e1" + u64hex(1_881_240n), accounts: [USER, fAta, uAta, PIN.admin, p.lending, p.mint, p.fMint, p.strl, p.lspol, p.rateModel, p.vault, p.claim, PIN.liquidity, PIN.liqProgram, p.rewards, TOKENKEG, ATOKEN, SYSTEM] },
         ...(asset === "SOL_LEND" ? [{ program: TOKENKEG, data: "09", accounts: [uAta, USER, USER] }] : []),
       ];
-      expect(shape(await buildJlendWithdrawIxs({ user: USER, asset, receiptRaw: 1_881_240n }))).toEqual(want);
+      const ixs = await buildJlendWithdrawIxs({ user: USER, asset, receiptRaw: 1_881_240n });
+      expect(shape(ixs)).toEqual(want);
+      const { READONLY: R, WRITABLE: W, WRITABLE_SIGNER: WS } = AccountRole;   // IDL redeem roles (brief, @jup-ag/lend 0.4.0)
+      expect(ixs[1].accounts!.map((x) => x.role)).toEqual([WS, W, W, R, W, R, W, W, W, R, W, W, W, R, R, R, R, R]);
     });
     it(`move deposit into Jupiter Lend ${asset}: create jl, deposit (17 accounts in order), ${asset === "SOL_LEND" ? "close WSOL" : "no close"}; no ComputeBudget`, async () => {
       const p = PIN[asset];
@@ -170,11 +173,79 @@ describe("user-signed Jupiter Lend builders produce EXACTLY the app verifier's s
         { program: JL, data: "f223c68952e1f2b6" + u64hex(2_000_000n), accounts: [USER, uAta, fAta, p.mint, PIN.admin, p.lending, p.fMint, p.strl, p.lspol, p.rateModel, p.vault, PIN.liquidity, PIN.liqProgram, p.rewards, TOKENKEG, ATOKEN, SYSTEM] },
         ...(asset === "SOL_LEND" ? [{ program: TOKENKEG, data: "09", accounts: [uAta, USER, USER] }] : []),
       ];
-      expect(shape(await buildJlendUserDepositIxs({ user: USER, asset, depositRaw: 2_000_000n }))).toEqual(want);
+      const ixs = await buildJlendUserDepositIxs({ user: USER, asset, depositRaw: 2_000_000n });
+      expect(shape(ixs)).toEqual(want);
+      const { READONLY: R, WRITABLE: W, WRITABLE_SIGNER: WS } = AccountRole;   // IDL deposit roles (brief, @jup-ag/lend 0.4.0)
+      expect(ixs[1].accounts!.map((x) => x.role)).toEqual([WS, W, W, R, R, W, W, W, W, R, W, W, R, R, R, R, R]);
     });
   }
   it("the only signer on every user-signed instruction is the user", async () => {
     for (const ixs of [await buildJlendWithdrawIxs({ user: USER, asset: "SOL_LEND", receiptRaw: 5n }), await buildJlendUserDepositIxs({ user: USER, asset: "SOL_LEND", depositRaw: 5n })])
       for (const ix of ixs) for (const a of ix.accounts ?? []) if (a.role >= 2) expect(a.address).toBe(USER);
+  });
+});
+
+describe("checkJlendDepositInstructions pins, each mutation-proven (review fix round 1: I1, I2, m1, m2)", () => {
+  const j = JLEND.USDC_LEND;
+  async function plan(leftover: 0n | 1n = 0n) {
+    const puller = await generateKeyPairSigner();
+    const r = await buildJlendDepositIxs({ puller, user: USER, asset: "USDC_LEND", depositRaw: 2_000_000n, rn: PRICE, pullerJlBalance: 0n, leftover });
+    const [userJl] = await findAssociatedTokenPda({ owner: USER, mint: j.fTokenMint, tokenProgram: TOKEN_PROGRAM_ADDRESS });
+    const check = (ixs: Instruction[]) => checkJlendDepositInstructions(ixs, { puller: puller.address, user: USER, asset: "USDC_LEND" });
+    const at = (tag: number) => r.ixs.findIndex((ix) => ix.programAddress === TOKEN_PROGRAM_ADDRESS && ix.data?.[0] === tag);
+    return { puller, ...r, userJl, check, at, mintAt: r.ixs.findIndex((ix) => ix.programAddress === JLEND_PROGRAM) };
+  }
+  it("I1: Transfer(shares - 2) + Burn(1) + Close is refused (the transfer is bound to the minted shares - 1)", async () => {
+    const p = await plan(1n);
+    await expect(p.check(p.ixs)).resolves.toBeUndefined();
+    const bad = p.ixs.map((ix, i) => (i === p.at(3) ? getTransferInstruction({ source: p.pullerJl, destination: p.userJl, authority: p.puller, amount: p.shares - 2n }) as Instruction : ix));
+    await expect(p.check(bad)).rejects.toThrow(/transfer of 1881239 shares/);
+  });
+  it("the mint's 17 accounts are pinned: a recipient swapped to another owner's jl account is refused", async () => {
+    const p = await plan();
+    const [alias] = await findAssociatedTokenPda({ owner: OTHER, mint: j.fTokenMint, tokenProgram: TOKEN_PROGRAM_ADDRESS });
+    const bad = p.ixs.map((ix, i) => (i === p.mintAt ? { ...ix, accounts: ix.accounts!.map((x, k) => (k === 2 ? { ...x, address: alias } : x)) } as Instruction : ix));
+    await expect(p.check(bad)).rejects.toThrow(/pinned/);
+  });
+  it("the mint's discriminator and data length are pinned", async () => {
+    const p = await plan();
+    const withData = (data: Uint8Array) => p.ixs.map((ix, i) => (i === p.mintAt ? { ...ix, data } as Instruction : ix));
+    const d = Buffer.from(p.ixs[p.mintAt].data!);
+    await expect(p.check(withData(new Uint8Array(Buffer.concat([Buffer.from("f223c68952e1f2b6", "hex"), d.subarray(8)]))))).rejects.toThrow(/mint_with_max_assets/);
+    await expect(p.check(withData(new Uint8Array(Buffer.concat([d, Buffer.from([0])]))))).rejects.toThrow(/mint_with_max_assets/);
+  });
+  it("a transfer before the mint, and a second transfer, are refused", async () => {
+    const p = await plan();
+    const t = p.ixs[p.at(3)];
+    const before = p.ixs.filter((ix) => ix !== t);
+    before.splice(p.mintAt, 0, t);
+    await expect(p.check(before)).rejects.toThrow(/transfer/);
+    const twice = [...p.ixs];
+    twice.splice(p.at(3), 0, t);
+    await expect(p.check(twice)).rejects.toThrow(/transfer/);
+  });
+  it("a close that sends the rent to another address is refused", async () => {
+    const p = await plan();
+    const bad = p.ixs.map((ix, i) => (i === p.at(9) ? getCloseAccountInstruction({ account: p.pullerJl, destination: OTHER, owner: p.puller }) as Instruction : ix));
+    await expect(p.check(bad)).rejects.toThrow(/close of the puller's jl account to/);
+  });
+  it("any other Token instruction on the puller's jl account is refused (Approve)", async () => {
+    const p = await plan();
+    const bad = [...p.ixs];
+    bad.splice(p.at(9), 0, getApproveInstruction({ source: p.pullerJl, delegate: OTHER, owner: p.puller, amount: 1n }) as Instruction);
+    await expect(p.check(bad)).rejects.toThrow(/Token instruction 4 on the puller's jl account is not allowed/);
+  });
+  it("m1: the leftover burn after the close is refused", async () => {
+    const p = await plan(1n);
+    const burnAt = p.at(8), closeAt = p.at(9);
+    const bad = p.ixs.map((ix, i) => (i === burnAt ? p.ixs[closeAt] : i === closeAt ? p.ixs[burnAt] : ix));
+    await expect(p.check(bad)).rejects.toThrow(/burn after the close/);
+  });
+  it("m2: a Token instruction on the user's jl account, or touching the f-token mint elsewhere, is refused", async () => {
+    const p = await plan();
+    const userSigner = createNoopSigner(USER);
+    await expect(p.check([...p.ixs, getApproveInstruction({ source: p.userJl, delegate: OTHER, owner: userSigner, amount: 1n }) as Instruction])).rejects.toThrow(/user's jl account/);
+    const [otherJl] = await findAssociatedTokenPda({ owner: OTHER, mint: j.fTokenMint, tokenProgram: TOKEN_PROGRAM_ADDRESS });
+    await expect(p.check([...p.ixs, getTransferCheckedInstruction({ source: otherJl, mint: j.fTokenMint, destination: OTHER, authority: createNoopSigner(OTHER), amount: 1n, decimals: 6 }) as Instruction])).rejects.toThrow(/f-token mint/);
   });
 });
