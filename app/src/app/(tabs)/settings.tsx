@@ -3,6 +3,8 @@ import { Appearance, Switch, View } from 'react-native'
 import { Link, router } from 'expo-router'
 import { Screen } from '@/components/Screen'
 import { Card } from '@/components/Card'
+import { ProBadge } from '@/components/ProBadge'
+import { PRO_LINE } from '@/model/manager'
 import { Button } from '@/components/Button'
 import { ThemedText } from '@/components/ThemedText'
 import { Disclosure } from '@/components/Disclosure'
@@ -215,8 +217,12 @@ export default function Settings() {
         ))}
       </Card>
       <Card>
-        <ThemedText variant="heading">Export for taxes</ThemedText>
-        <ThemedText tone="secondary">Coming soon.</ThemedText>
+        {/* His note 10-05: Export for taxes is a Pro feature too (R347's badge and line). */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+          <ThemedText variant="heading">Export for taxes</ThemedText>
+          <ProBadge />
+        </View>
+        <ThemedText tone="secondary">Coming soon. {PRO_LINE}</ThemedText>
       </Card>
       <Card style={{ gap: 0 }}>
         {/* R145 and R153: the disclosures as rows that open in place, grouped as About at the end; R300's promise above them, the precise rule inside. */}
