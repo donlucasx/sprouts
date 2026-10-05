@@ -794,6 +794,32 @@ describe("venues, the leash and the carry in the run (contracts 3.2-3.4)", () =>
     expect(builds[0]).toMatchObject({ asset: "USDC_LEND", venue: "jupiter_lend", leashed: true });
   });
 
+  it("R339 mixed mode (LEASH_LIVE unset): one re-linked leash wallet plants only its enabled legs; a puller wallet in the same run plants SKR and stORE", async () => {
+    delete process.env.LEASH_LIVE;
+    const repo = await seeded([83, 62, 70]);   // U / W: the puller link, Bold-ish with SKR and stORE
+    await seedVenues(repo);
+    await repo.saveRules("U", { allocation: { SKR: 40, stORE: 30, USDC_LEND: 10, SOL_LEND: 0, hSOL: 10, cbBTC: 10 } });
+    await repo.upsertUser({ seedVaultPubkey: "U2", sgtMint: "M2", skrName: null });
+    await repo.addWallet({ pubkey: "W2", userPubkey: "U2", delegationPda: "D2", dailyCapCents: 500 });
+    await repo.setWalletLink("W2", { delegationPda: "D2", linkModel: "leash" });
+    await repo.saveRules("U2", { stop: "careful", allocation: { SKR: 60, stORE: 0, USDC_LEND: 10, SOL_LEND: 0, hSOL: 10, cbBTC: 20 } });
+    for (const [i, c] of [83, 62, 70].entries()) await repo.insertSwap({ signature: `w2-${i}`, walletPubkey: "W2", ts: new Date(NOW.getTime() - 3_600_000), inMint: "a", inAmount: 1, outMint: "b", outAmount: 1, usdSizeCents: 100, class: "major", roundupCents: c });
+    const builds: BuildArgs[] = [];
+    // Day 1 with stORE: legs {1,2,6,7}; SKR (leg 0) stays off the leash.
+    const r = await runPlanting({ repo, now: NOW, chain: recording(builds, { readLeashConfig: async () => leashCfg([1, 2, 6, 7]) }) });
+    expect(r.planted.map((p) => p.wallet).sort()).toEqual(["W", "W2"]);
+    const byWallet = Object.fromEntries(builds.map((b) => [b.delegator, b]));
+    expect(byWallet.W).toMatchObject({ asset: "SKR", leashed: false });   // the puller wallet: everything, SKR first
+    expect(byWallet.W2.leashed).toBe(true);
+    expect(["stORE", "USDC_LEND", "hSOL", "cbBTC"]).toContain(byWallet.W2.asset);   // never SKR while leg 0 is off
+    // Next day the puller wallet's stORE share is planted too (its largest gap after an SKR day).
+    for (const [i, c] of [83, 62, 70].entries()) await repo.insertSwap({ signature: `d2-${i}`, walletPubkey: "W", ts: new Date(NOW.getTime() + 3_600_000), inMint: "a", inAmount: 1, outMint: "b", outAmount: 1, usdSizeCents: 100, class: "major", roundupCents: c });
+    const later = new Date(NOW.getTime() + 86_400_000);
+    const b2: BuildArgs[] = [];
+    await runPlanting({ repo, now: later, chain: recording(b2, { readLeashConfig: async () => leashCfg([1, 2, 6, 7]) }) });
+    expect(b2.find((b) => b.delegator === "W")).toMatchObject({ asset: "stORE", leashed: false });
+  });
+
   it("a leashed user plants nothing when the config cannot be read, or no leg is enabled", async () => {
     const repo = await seeded([83, 62, 70]);
     await repo.setWalletLink("W", { delegationPda: "D", linkModel: "leash" });
