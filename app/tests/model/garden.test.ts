@@ -25,16 +25,23 @@ describe("buildScene: plants, rows and signs (RG6, RG7, RG22)", () => {
     expect(Object.fromEntries(of(s, "sign").map((q) => [q.plant, q.side]))).toMatchObject({ hsol: 1, jitosol: -1, jupsol: 1, cbbtc: -1 });
     expect(of(s, "sign").find((p) => p.plant === "hsol")?.side).toBe(1);     // the edge counts double: more room on the right
   });
-  it("signs for every coin with a share; seeds beside nextAsset's sign only, while it has no plant (Review Focus 1)", () => {
+  it("R349: with a plant, signs only for planted coins; no stake and so no seeds for an unplanted next coin (his 10-05 note)", () => {
     const s = buildScene({ ...base, wateredAt: NOW, allocation: BALANCED, plantings: [planting("a", 5), planting("b", 4)], pendingCents: 150, nextAsset: "hSOL" });
     expect(of(s, "plant").map((p) => p.plant)).toEqual(["skr"]);
-    expect(of(s, "sign").map((p) => p.plant)).toEqual(["skr", "hsol", "jitosol", "jupsol", "cbbtc"]);
-    expect(of(s, "seed").map((p) => p.plant)).toEqual(["hsol", "hsol", "hsol", "hsol", "hsol", "hsol"]);
+    expect(of(s, "sign").map((p) => p.plant)).toEqual(["skr"]);
+    expect(of(s, "seed")).toHaveLength(0);
     expect(of(s, "swelling")).toHaveLength(0);
   });
-  it("a lone front plant centres at 0.40 and a bare sign occupies its slot (RG22)", () => {
+  it("R349: with no plant at all (a new user), signs for every coin with a share and seeds beside nextAsset's (Review Focus 1)", () => {
+    const s = buildScene({ ...base, allocation: BALANCED, pendingCents: 150, nextAsset: "hSOL" });
+    expect(of(s, "plant")).toHaveLength(0);
+    expect(of(s, "sign").map((p) => p.plant)).toEqual(["skr", "hsol", "jitosol", "jupsol", "cbbtc"]);
+    expect(of(s, "seed").map((p) => p.plant)).toEqual(["hsol", "hsol", "hsol", "hsol", "hsol", "hsol"]);
+  });
+  it("a lone front plant centres at 0.40; a share with no planting no longer takes a slot (RG22, R349)", () => {
     expect(of(buildScene({ ...base, plantings: [planting("a", 2)] }), "plant")[0].x).toBe(0.4);
-    expect(of(buildScene({ ...base, plantings: [planting("a", 2)], allocation: { ...SPLIT, SKR: 60, stORE: 40 } }), "plant")[0].x).toBe(0.34);   // R237
+    expect(of(buildScene({ ...base, plantings: [planting("a", 2)], allocation: { ...SPLIT, SKR: 60, stORE: 40 } }), "plant")[0].x).toBe(0.4);
+    expect(of(buildScene({ ...base, plantings: [planting("a", 2), planting("b", 1, "stORE")], allocation: { ...SPLIT, SKR: 60, stORE: 40 } }), "plant")[0].x).toBe(0.34);   // R237
   });
 });
 

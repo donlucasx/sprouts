@@ -63,7 +63,7 @@ const DAY = 86_400_000;
 
 /**
  * The scene from the user's own history (R55: parts assembled from history, never a fixed set of paintings). Two rows with the
- * locked slots (RG6, RG17, RG22), a sign per coin with a planting or a share (RG7), seeds beside the next coin's sign before its
+ * locked slots (RG6, RG17, RG22), a sign per planted coin (R349; with no plant, per coin with a share), seeds beside the next coin's sign before its
  * first planting and then a swelling on its plant (RG9), every kept planting a shoot with its band (RG4) and its branch flag from the
  * FULL history (RG19, never un-branched by a prune), token fruit per coin (RG16), stORE's pups by count (RG20), one ring per present
  * plant after a watering (RG11). Nothing falls or rots; a price drop changes dollar numbers, never the plant.
@@ -91,7 +91,9 @@ export function buildScene(g: GardenInput): Scene {
   const fullOf = (c: PlantId) => sorted.filter((p) => coin(p.asset) === c);                       // the full history (RG19's flags)
   const keptOf = (c: PlantId) => fullOf(c).filter((p) => p.asset !== "SKR" || kept.has(p.id));     // what is drawn
   const present = PLANT_ORDER.filter((c) => keptOf(c).length > 0 || (c === "skr" && g.joinedValueRaw > 0n));
-  const withSign = PLANT_ORDER.filter((c) => present.includes(c) || (g.allocation[ASSET_OF[c]] ?? 0) > 0);
+  // R349 (10-05): a coin gets its stake with its first planting; the garden shows what you own (amends RG7's "or a share"). A garden
+  // with no plant at all keeps the share stakes, so a new user's first garden is not bare paper (Claude's call inside R349).
+  const withSign = present.length > 0 ? present : PLANT_ORDER.filter((c) => (g.allocation[ASSET_OF[c]] ?? 0) > 0);
   const xs = slotsFor([...withSign]);
   // R237 fix (10-04): a stake takes the side with more room in ITS OWN row; a front plant never meets a back stake (the rows pass in
   // front of each other), and counting it put the snake plant's stake (then JitoSOL's, now USDC lending's) into the narrow gap beside
