@@ -60,7 +60,7 @@ export function moveRow(day: string, m: Move): ActivityRow | null {
   const coin = COIN_NAME[m.asset], from = VENUE_NAME[m.from], to = VENUE_NAME[m.to]
   const base = { key: `mv-${m.ts}`, signature: null }
   if (m.status === 'done') return { ...base, line: `${day}, moved your ${coin} from ${from} to ${to}`, details: [] }
-  if (m.status === 'failed') return { ...base, line: `${day}, moving your ${coin} didn't finish. It is back in your wallet.`, details: [`${from} to ${to}.`] }
+  if (m.status === 'failed') return { ...base, line: m.asset === 'SOL_LEND' ? `${day}, moving your SOL didn't finish. Your SOL is in your wallet. If it shows as wrapped SOL, unwrap it in your wallet.` : `${day}, moving your ${coin} didn't finish. It is back in your wallet.`, details: [`${from} to ${to}.`] }
   if (m.status === 'dismissed') return { ...base, line: `${day}, you kept your ${coin} on ${from}`, details: [] }
   return null
 }

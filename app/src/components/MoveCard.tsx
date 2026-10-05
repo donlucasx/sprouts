@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { View } from 'react-native'
 import { getBase58Decoder, type Address, type Signature, type Transaction } from '@solana/kit'
 import { useMobileWallet } from '@wallet-ui/react-native-kit'
+import { COIN_NAME } from '@/lib/format'
+import { VENUE_NAME } from '@/lib/coins'
 import { Card } from './Card'
 import { Button } from './Button'
 import { ThemedText } from './ThemedText'
@@ -122,8 +124,10 @@ export function MoveCard({ me }: { me: MeResponse }) {
   if (p.inFlight)
     return (
       <Card>
-        <ThemedText variant="heading">{c.title}</ThemedText>
+        <ThemedText variant="heading">{`Moving your ${COIN_NAME[p.asset]} to ${VENUE_NAME[p.to]}.`}</ThemedText>
         <ThemedText tone="secondary">{MOVE_IN_FLIGHT}</ThemedText>
+        {line ? <ThemedText tone={line.error ? 'error' : 'accentText'}>{line.text}</ThemedText> : null}
+        {unwrap ? <Button title={UNWRAP_BUTTON} loading={unwrapping} disabled={unwrapping} onPress={unwrapSol} /> : null}
       </Card>
     )
   return (
