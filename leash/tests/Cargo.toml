@@ -1,0 +1,17 @@
+[package]
+name = "leash-tests"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[dependencies]
+leash = { path = "../program", features = ["no-entrypoint"] }
+litesvm = "^0.12"
+solana-account = "~3.4"
+solana-clock = "^3"
+solana-instruction = "^3"
+solana-message = { version = "^3.1", features = ["bincode"] }
+solana-pubkey = "^4"
+solana-transaction = "^3"
+serde_json = "1"
+base64 = "0.22"
