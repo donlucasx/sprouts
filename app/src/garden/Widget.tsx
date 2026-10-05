@@ -3,7 +3,7 @@ import { FlexWidget, TextWidget, SvgWidget } from "react-native-android-widget";
 import type { MeResponse } from "@/lib/api";
 import { buildScene } from "@/model/garden";
 import { widgetGardenHeight, widgetGardenSvg } from "@/model/widget-svg";
-import { toGardenInput } from "@/lib/garden-input";
+import { toGardenInput, type ZeroMarks } from "@/lib/garden-input";
 import { formatSkr, formatUsd } from "@/lib/format";
 import { gardenTotals, lastPlantingLine } from "@/lib/me-state";
 import type { PlantId } from "@/model/garden";
@@ -14,7 +14,7 @@ const TEXT_H = 42;       // the pot line (16) and the next-planting line (12), w
 const WIDE_TEXT_H = 58;  // plus the last-planting line
 const GAP = 6;           // between the text and the garden
 
-export function SproutsWidget({ me, width, height, wide, wateredPlants = null }: { me: MeResponse | null; width: number; height: number; wide: boolean; wateredPlants?: PlantId[] | null }) {
+export function SproutsWidget({ me, width, height, wide, wateredPlants = null, restartMarks = {} }: { me: MeResponse | null; width: number; height: number; wide: boolean; wateredPlants?: PlantId[] | null; restartMarks?: ZeroMarks }) {
   if (!me) {
     return (
       <FlexWidget clickAction="OPEN_APP" style={{ height: "match_parent", width: "match_parent", backgroundColor: "#F4EEDF", borderRadius: 16, padding: 12, justifyContent: "center" }}>
@@ -29,7 +29,7 @@ export function SproutsWidget({ me, width, height, wide, wateredPlants = null }:
   // bottom; the text at the top, in the paper the old layout left blank. A cached read missing a newer field falls back to the text.
   let garden: { svg: string; h: number } | null = null;
   try {
-    const scene = buildScene(toGardenInput(me, new Date(), wateredPlants)), h = widgetGardenHeight(scene, gardenW, maxGardenH);
+    const scene = buildScene(toGardenInput(me, new Date(), wateredPlants, restartMarks)), h = widgetGardenHeight(scene, gardenW, maxGardenH);
     garden = { svg: widgetGardenSvg(scene, gardenW, h), h };
   } catch { garden = null; }
   // R146, R252: the headline is the whole garden in dollars, as on Home; the SKR pot alone only when no SKR price is known
