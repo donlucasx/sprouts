@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { Keypair } from "@solana/web3.js";
 import { address, AccountRole, generateKeyPairSigner, getTransactionDecoder, getBase64Encoder, getCompiledTransactionMessageDecoder, type Instruction, type Blockhash } from "@solana/kit";
-import { loadAdmin, legConfigFor, configFor, parseLegs, planAdminSteps, adminIx, adminIxData, adminTxSize, stepName, assertInstallable, runAdminSteps,
+import { loadAdmin, legConfigFor, configFor, parseLegs, planAdminSteps, adminIx, adminIxData, adminTxSize, stepName, assertInstallable, assertInitSafe, configAccountBytes, runAdminSteps,
   PULLER_MAINNET, MAX_TX_BYTES, SKR_OVERRIDE_FLAG, type AdminChain } from "../../scripts/leash-admin-lib";
 import { encodeConfig, encodeHeader, encodeLeg, leashConfigPda, LEG_BYTES } from "@/lib/leash";
 import { LEASH_PROGRAM } from "@/lib/constants";
@@ -31,6 +31,17 @@ describe("leash-admin helpers", () => {
   it("refuses any keypair that is not the Sprouts admin GrHSwzYp... before anything is sent", async () => {
     await expect(loadAdmin(throwawayKeyFile())).rejects.toThrow(/not the Sprouts admin key GrHSwzYpgiFzuTpwR6539NpNXktXNEUfVU9UYvHdDKLY/);
     await expect(loadAdmin("")).rejects.toThrow(/--admin/);
+  });
+  it("a malformed or wrong-length key file is refused with a generic message that never echoes its bytes", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "leash-admin-"));
+    const bad = path.join(dir, "bad.json");
+    writeFileSync(bad, "[201,77,88,99,x]");
+    const e1 = await loadAdmin(bad).then(() => null, (e: Error) => e);
+    expect(e1?.message).toMatch(/not a Solana keypair JSON file/);
+    expect(e1?.message).not.toMatch(/77|88|99|201/);
+    const short = path.join(dir, "short.json");
+    writeFileSync(short, JSON.stringify(Array.from(Keypair.generate().secretKey).slice(0, 63)));
+    await expect(loadAdmin(short)).rejects.toThrow(/expected 64 bytes/);
   });
   it("leg configs carry the amended contracts' values (R324: cbBTC 600 s)", () => {
     expect(legConfigFor(2, true)).toMatchObject({ enabled: true, reader: 3, feeBps: 0, tolBps: 10, confCapBps: 100, maxAgeS: 60, feedId: null, feedAccount: null, receiptMint: "B8V6WVjPxW1UGwVDfxH2d2r8SyT4cqn7dQRK6XneVa7D", rateAccount: "D6q6wuQSrifJKZYpR1M8R4YawnLDtDsMmWM1NbBmgJ59" });
@@ -70,10 +81,12 @@ describe("leash-admin helpers", () => {
     expect(noSkr.code).not.toBe(0);
     expect(noSkr.err).toMatch(/leg 0 \(SKR\) enabled/);
     expect(noSkr.err).not.toMatch(/not the Sprouts admin key/);
+    expect(noSkr.err).not.toMatch(/\n\s+at /);   // one line, no stack trace
     const withFlag = run(["set", "--admin", key, "--enable", "0,2,6,7", SKR_OVERRIDE_FLAG, "--rpc", "http://127.0.0.1:9"]);
     expect(withFlag.code).not.toBe(0);
     expect(withFlag.err).toMatch(/not the Sprouts admin key/);
     expect(withFlag.err).not.toMatch(/leg 0 \(SKR\)/);
+    expect(withFlag.err.trim()).toMatch(/^leash-admin: .*not the Sprouts admin key \S+$/);
   }, 60_000);
   it.skipIf(!leashRoot)("encodes byte for byte the leash track's installable bodies (init, day1) and the encoder vector, and the step payloads rebuild them", async () => {
     for (const [file, legs] of [["config/mainnet-init.hex", []], ["config/mainnet-day1.hex", DAY1], ["config/TEST-VECTOR-all-legs-NEVER-INSTALL.hex", ALL_LEGS]] as const) {
@@ -101,6 +114,28 @@ describe("leash-admin helpers", () => {
       expect(Buffer.from(adminIxData({ kind: "leg", leg: n }, day1)).toString("hex"), `set_leg ${n}`).toBe(g);
     }
     expect(Buffer.from(encodeConfig(day1)).toString("hex")).toBe(hex("tests/golden/config.hex"));
+  });
+  it("a PRE-FUNDED Config PDA (System-owned, zero data) is 'no Config yet' and plans init_config + every leg; any other owner is refused", async () => {
+    const off = await configFor({ puller: address(PULLER_MAINNET), enabled: [] });
+    const prefunded = configAccountBytes({ owner: "11111111111111111111111111111111", data: new Uint8Array(0) });
+    expect(prefunded).toBeNull();
+    expect(planAdminSteps(prefunded, off).map(stepName)).toEqual(["init_config", ...ALL_LEGS.map((l) => `set_leg ${l}`)]);
+    expect(configAccountBytes(null)).toBeNull();
+    const body = account(encodeConfig(off));
+    expect(configAccountBytes({ owner: LEASH_PROGRAM, data: body })).toEqual(body);
+    expect(() => configAccountBytes({ owner: "11111111111111111111111111111111", data: new Uint8Array(8) })).toThrow(/owned by 11111111111111111111111111111111 \(8 bytes\), not the leash program/);
+    expect(() => configAccountBytes({ owner: OTHER_PULLER, data: new Uint8Array(0) })).toThrow(/not the leash program/);
+  });
+  it("init never undoes the owner's settings: enabled legs or a rotated puller are refused; a fresh or interrupted init resumes", async () => {
+    const off = await configFor({ puller: address(PULLER_MAINNET), enabled: [] });
+    expect(() => assertInitSafe(null, off)).not.toThrow();
+    const headerOnly = account(new Uint8Array(Buffer.concat([Buffer.from(encodeHeader(off)), Buffer.alloc(176 * 8)])));
+    expect(() => assertInitSafe(headerOnly, off)).not.toThrow();
+    expect(() => assertInitSafe(account(encodeConfig(off)), off)).not.toThrow();
+    const day1 = account(encodeConfig(await configFor({ puller: address(PULLER_MAINNET), enabled: DAY1 })));
+    const rotatedOff = account(encodeConfig(await configFor({ puller: OTHER_PULLER, enabled: [] })));
+    expect(() => assertInitSafe(day1, off)).toThrow(/enabled legs exists: use set/);
+    expect(() => assertInitSafe(rotatedOff, off)).toThrow(/Use set --puller <pubkey> explicitly/);
   });
   it("plans one step per changed part, from the chain's bytes (init, resume, enable, rotate, nothing)", async () => {
     const off = await configFor({ puller: address(PULLER_MAINNET), enabled: [] });
@@ -143,13 +178,21 @@ describe("leash-admin helpers", () => {
  * An in-memory leash program behind the AdminChain seam: simulate decodes the signed wire tx (fee payer must be the signer, signature
  * present, last ix = the leash program), send applies the admin ix the way contracts 2.5 says the program writes it.
  */
-function mockChain(o: { failSimAt?: number; corrupt?: boolean } = {}) {
+function mockChain(o: { failSimAt?: number; corrupt?: boolean; staleFinalReads?: number } = {}) {
   let acct: Uint8Array | null = null;
   let sims = 0;
+  let sends = 0;
+  let stale = o.staleFinalReads ?? 0;
   const log: string[] = [];
   const simulated: string[] = [];
   const chain: AdminChain = {
-    readRaw: async () => (acct ? new Uint8Array(acct) : null),
+    // after the last send, the first `staleFinalReads` reads answer from a lagging node (leg 7 still unset)
+    readRaw: async () => {
+      if (!acct) return null;
+      const r = new Uint8Array(acct);
+      if (sends > 0 && stale-- > 0) r.fill(0, 96 + 176 * 7);
+      return r;
+    },
     latestBlockhash: async () => ({ blockhash: "4uQeVj5tqViQh7yWWGStvkEG1Zmhx6uasJtWCJziofM" as Blockhash, lastValidBlockHeight: 100n }),
     simulate: async (wire) => {
       sims++;
@@ -167,6 +210,7 @@ function mockChain(o: { failSimAt?: number; corrupt?: boolean } = {}) {
       else if (d[0] === 4) acct.set(d.subarray(1), 16);
       else if (d[0] === 5) acct.set(d.subarray(2), 96 + 176 * d[1]);
       else throw new Error(`tag ${d[0]}`);
+      sends++;
       if (o.corrupt) acct[1500] = 0xee;   // a stray write in leg 7's feed_account after every send
     },
   };
@@ -214,8 +258,17 @@ describe("leash-admin run (size check, simulate, send, resume, final byte compar
   it("a final read that differs from encodeConfig(want) fails with code 3", async () => {
     const admin = await generateKeyPairSigner();
     const m = mockChain({ corrupt: true });
-    const r = await runAdminSteps({ admin, want: await configFor({ puller: address(PULLER_MAINNET), enabled: [] }), chain: m.chain, log: (s) => m.log.push(s) });
+    const r = await runAdminSteps({ admin, want: await configFor({ puller: address(PULLER_MAINNET), enabled: [] }), chain: m.chain, log: (s) => m.log.push(s), retryDelayMs: 0 });
     expect(r.code).toBe(3);
     expect(m.log.at(-1)).toMatch(/does not equal/);
+  });
+  it("the final read retries a lagging RPC (up to 3 more reads) before declaring code 3", async () => {
+    const admin = await generateKeyPairSigner();
+    const want = await configFor({ puller: address(PULLER_MAINNET), enabled: DAY1 });
+    const lagging = mockChain({ staleFinalReads: 3 });
+    expect((await runAdminSteps({ admin, want, chain: lagging.chain, log: () => {}, retryDelayMs: 0 })).code).toBe(0);
+    const tooSlow = mockChain({ staleFinalReads: 4 });
+    expect((await runAdminSteps({ admin, want, chain: tooSlow.chain, log: (s) => tooSlow.log.push(s), retryDelayMs: 0 })).code).toBe(3);
+    expect(tooSlow.log.at(-1)).toMatch(/does not equal/);
   });
 });
