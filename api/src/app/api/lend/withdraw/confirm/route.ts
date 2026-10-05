@@ -4,7 +4,7 @@ import { ASSOCIATED_TOKEN_PROGRAM_ADDRESS, TOKEN_PROGRAM_ADDRESS } from "@solana
 import { getRepo } from "@/db/repo";
 import { requireSession } from "@/lib/auth-guard";
 import { verifyPostedTransaction } from "@/lib/verify-tx";
-import { sendPosted, waitConfirmed, settleUnconfirmed, userAddress } from "@/lib/user-tx";
+import { sendPosted, waitConfirmed, settleUnconfirmed, userAddress, STILL_WAITING } from "@/lib/user-tx";
 import { json } from "@/lib/json";
 import { receiptBalanceRaw } from "@/lib/holdings";
 import { klendRate } from "@/lib/venues/klend";
@@ -35,6 +35,9 @@ export async function POST(request: Request) {
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 400 });
   }
+  // A replayed confirm (same signature) answers with the record already written and books nothing twice.
+  const prior = (await repo.listEvents(user.seedVaultPubkey, ["lend_withdrawn"], 200)).find((e) => (e.detail as { signature?: string } | null)?.signature === posted.signature);
+  if (prior) return NextResponse.json(json({ withdrawn: prior.detail }));
   const redeem = posted.instructions.filter((ix) => ix.program === program).at(-1);
   if (!redeem || redeem.data.length !== 16) return NextResponse.json({ error: "That is not a withdrawal." }, { status: 400 });
   const receiptRaw = Buffer.from(redeem.data).readBigUInt64LE(8);
@@ -43,26 +46,32 @@ export async function POST(request: Request) {
   const want = expected.map((ix) => ({ program: ix.programAddress as string, data: Buffer.from(ix.data ?? []).toString("hex"), accounts: (ix.accounts ?? []).map((x) => x.address as string) }));
   const got = posted.instructions.map((ix) => ({ program: ix.program as string, data: Buffer.from(ix.data).toString("hex"), accounts: ix.accounts as string[] }));
   if (want.length !== got.length || want.some((w, i) => w.program !== got[i].program || w.data !== got[i].data || !same(w.accounts, got[i].accounts))) return NextResponse.json({ error: "That withdrawal is not the one Sprouts built." }, { status: 400 });
-  let status;
   try {
-    await sendPosted(posted.wire);
-    status = await waitConfirmed(posted.signature);
-  } catch {
-    status = await waitConfirmed(posted.signature, 3);
+    let status;
+    try {
+      await sendPosted(posted.wire);
+      status = await waitConfirmed(posted.signature);
+    } catch {
+      status = await waitConfirmed(posted.signature, 3);
+    }
+    const settled = status === "pending" ? await settleUnconfirmed(posted) : status;
+    if (settled !== "confirmed") return NextResponse.json({ error: settled === "failed" ? "The withdrawal failed on chain. Nothing moved." : settled === "expired" ? "It did not go through. Nothing moved. Try again." : STILL_WAITING.withdraw }, { status: 409 });
+    // What came back in the underlying's units: the redeemed receipt at the venue's rate now [estimate: for SOL the WSOL account is created
+    // and closed in the same tx, so the delivery is not in its token balances]. The money already moved: a failed rate read records null
+    // (contracts 5.7: the app shows the line without an amount), never a 500 that skips the event.
+    let underlyingRaw: bigint | null = null;
+    try {
+      const r = venue === "kamino_klend" ? await klendRate(asset) : await jlendRate(asset);
+      underlyingRaw = (receiptRaw * r.rn) / r.rd;
+    } catch {
+      underlyingRaw = null;
+    }
+    const withdrawn = { asset, venue, receiptRaw: receiptRaw.toString(), underlyingRaw: underlyingRaw === null ? null : underlyingRaw.toString(), signature: posted.signature };
+    await repo.addEvent({ userPubkey: user.seedVaultPubkey, walletPubkey: null, kind: "lend_withdrawn", detail: withdrawn });
+    return NextResponse.json(json({ withdrawn }));
+  } catch (e) {
+    // The send may have gone out: whatever threw after it, the answer is the "may still go through" one, never a bare 500.
+    console.error(`lend withdraw confirm: failed after the send for ${user.seedVaultPubkey}: ${e instanceof Error ? e.message : String(e)}`);
+    return NextResponse.json({ error: STILL_WAITING.withdraw }, { status: 409 });
   }
-  const settled = status === "pending" ? await settleUnconfirmed(posted) : status;
-  if (settled !== "confirmed") return NextResponse.json({ error: settled === "failed" ? "The withdrawal failed on chain. Nothing moved." : settled === "expired" ? "It did not go through. Nothing moved. Try again." : "It may still go through. Check Activity in a minute before you try again." }, { status: 409 });
-  // What came back in the underlying's units: the redeemed receipt at the venue's rate now [estimate: for SOL the WSOL account is created
-  // and closed in the same tx, so the delivery is not in its token balances]. The money already moved: a failed rate read records null
-  // (contracts 5.7: the app shows the line without an amount), never a 500 that skips the event.
-  let underlyingRaw: bigint | null = null;
-  try {
-    const r = venue === "kamino_klend" ? await klendRate(asset) : await jlendRate(asset);
-    underlyingRaw = (receiptRaw * r.rn) / r.rd;
-  } catch {
-    underlyingRaw = null;
-  }
-  const withdrawn = { asset, venue, receiptRaw: receiptRaw.toString(), underlyingRaw: underlyingRaw === null ? null : underlyingRaw.toString(), signature: posted.signature };
-  await repo.addEvent({ userPubkey: user.seedVaultPubkey, walletPubkey: null, kind: "lend_withdrawn", detail: withdrawn });
-  return NextResponse.json(json({ withdrawn }));
 }

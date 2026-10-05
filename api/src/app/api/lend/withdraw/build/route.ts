@@ -7,7 +7,7 @@ import { json } from "@/lib/json";
 import { receiptBalanceRaw } from "@/lib/holdings";
 import { klendRate } from "@/lib/venues/klend";
 import { jlendRate } from "@/lib/venues/jlend";
-import { jupiterWithdrawableRaw } from "@/lib/venues/withdrawable";
+import { jupiterWithdrawableRaw } from "@/lib/venues/rates";
 import { buildLendWithdraw } from "@/lib/venues/user-builders";
 import { COINS } from "@/domain/coins";
 import { VENUE_NAME } from "@/domain/venues";
@@ -30,12 +30,20 @@ export async function POST(request: Request) {
   if (!user) return NextResponse.json({ error: "Sign in first." }, { status: 401 });
   const { asset, venue } = parsed.data;
   const owner = userAddress(user.seedVaultPubkey);
-  const receiptRaw = await receiptBalanceRaw(owner, asset, venue);
-  if (receiptRaw === 0n) return NextResponse.json({ error: "Nothing to withdraw here." }, { status: 409 });
-  // What the redeem should pay out, and what the venue can pay right now (K-Lend: the reserve's available liquidity; Jupiter Lend: its API's withdrawable).
-  const [expectedOutRaw, withdrawable] = venue === "kamino_klend"
-    ? await klendRate(asset).then((r) => [(receiptRaw * r.rn) / r.rd, r.availableRaw])
-    : await Promise.all([jlendRate(asset).then((r) => (receiptRaw * r.rn) / r.rd), jupiterWithdrawableRaw(asset)]);
+  let receiptRaw: bigint;
+  let expectedOutRaw: bigint;
+  let withdrawable: bigint;
+  try {
+    receiptRaw = await receiptBalanceRaw(owner, asset, venue);
+    if (receiptRaw === 0n) return NextResponse.json({ error: "Nothing to withdraw here." }, { status: 409 });
+    // What the redeem should pay out, and what the venue can pay right now (K-Lend: the reserve's available liquidity; Jupiter Lend: its API's withdrawable).
+    [expectedOutRaw, withdrawable] = venue === "kamino_klend"
+      ? await klendRate(asset).then((r) => [(receiptRaw * r.rn) / r.rd, r.availableRaw] as const)
+      : await Promise.all([jlendRate(asset).then((r) => (receiptRaw * r.rn) / r.rd), jupiterWithdrawableRaw(asset)]);
+  } catch (e) {
+    console.error(`lend withdraw build: venue read failed for ${asset} on ${venue}: ${e instanceof Error ? e.message : String(e)}`);
+    return NextResponse.json({ error: "Could not read the venue just now. Try again in a minute." }, { status: 503 });
+  }
   if (withdrawable < expectedOutRaw) return NextResponse.json({ error: POOL_FULL, poolFull: true }, { status: 409 });
   const transaction = await buildUserTransaction(owner, await buildLendWithdraw({ user: owner, asset, venue, receiptRaw }));
   const coin = asset === "USDC_LEND" ? "USDC" : "SOL";
