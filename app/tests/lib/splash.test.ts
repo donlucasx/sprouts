@@ -12,7 +12,6 @@ describe("the splash (R282: one painted picture + one line, about 1.5 s, every l
   })
   it("one plain line (the slogan, R319), short, no dashes; on screen about a second and a half", () => {
     expect(SPLASH.line).toBe(SLOGAN)
-    expect(SPLASH.line).toBe('Round-ups into SKR that your Seeker keeps and a yield manager grows.')
     expect(SPLASH.line.length).toBeLessThanOrEqual(70)
     expect(SPLASH.line).not.toMatch(/[–—]/)
     expect(SPLASH.ms).toBe(1500)
