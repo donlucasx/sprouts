@@ -21,6 +21,8 @@ export type GardenInput = {
   basket: { amountRaw: bigint; readyAt: Date } | null;
   /** Contracts 7.2: the API's line two per lending stake ("Kamino 4.4%"); absent from an API before the lending build. */
   lendSigns?: LendSignLines | null;
+  /** R360: the user has planted before (a live coin). A garden emptied by withdrawals stays bare; only a never-planted one shows share stakes. */
+  everPlanted?: boolean;
 };
 
 export const PLANT_ORDER: readonly PlantId[] = ["skr", "ore", "hsol", "jitosol", "jupsol", "cbbtc"] as const;
@@ -93,7 +95,9 @@ export function buildScene(g: GardenInput): Scene {
   const present = PLANT_ORDER.filter((c) => keptOf(c).length > 0 || (c === "skr" && g.joinedValueRaw > 0n));
   // R349 (10-05): a coin gets its stake with its first planting; the garden shows what you own (amends RG7's "or a share"). A garden
   // with no plant at all keeps the share stakes, so a new user's first garden is not bare paper (Claude's call inside R349).
-  const withSign = present.length > 0 ? present : PLANT_ORDER.filter((c) => (g.allocation[ASSET_OF[c]] ?? 0) > 0);
+  // R360 (10-05): a coin withdrawn to zero loses its stake too, so a garden emptied by withdrawals stays bare (Claude's call: the share
+  // stakes are for a garden that never planted).
+  const withSign = present.length > 0 ? present : g.everPlanted ? [] : PLANT_ORDER.filter((c) => (g.allocation[ASSET_OF[c]] ?? 0) > 0);
   const xs = slotsFor([...withSign]);
   // R237 fix (10-04): a stake takes the side with more room in ITS OWN row; a front plant never meets a back stake (the rows pass in
   // front of each other), and counting it put the snake plant's stake (then JitoSOL's, now USDC lending's) into the narrow gap beside

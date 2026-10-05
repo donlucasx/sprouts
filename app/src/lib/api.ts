@@ -103,6 +103,8 @@ export type MeResponse = {
   };
   // contracts 5.2, Track A: absent from the API on main a6d6f32
   positions?: LendingPosition[];
+  /** R360: "failed" when the API could not read the lending receipts (positions is then empty, not zero); absent on an API before it. */
+  positionsRead?: "ok" | "failed";
   lendSigns?: Partial<Record<LendAsset, LendSign | null>>;
   relink?: { needed: boolean; wallets: { pubkey: string; via: "app" | "link_page" }[] };
   terms?: { currentVersion: string; acceptedVersion: string | null };
