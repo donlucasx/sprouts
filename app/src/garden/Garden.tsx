@@ -6,7 +6,7 @@ import Animated, { Easing, FadeIn, FadeOut, cancelAnimation, runOnJS, useAnimate
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Svg, { G } from "react-native-svg";
 import { PLANT_ORDER, type Scene, type Part, type PlantId } from "@/model/garden";
-import { CANVAS, FOOT_Y, FRAME, PLANT_SCALE, frameFor, stakeSides, plantUnder, SIDE_GUTTER, signPlacement } from "@/model/layout";
+import { CANVAS, FOOT_Y, FRAME, PLANT_SCALE, frameFor, stakeSpots, plantUnder, SIDE_GUTTER, signPlacement } from "@/model/layout";
 import { plantLayouts } from "@/model/scene-to-layout";
 import { SOIL_CLIP_ID } from "@/model/soil-clip";
 import { diffScenes, gateDiff, sceneKey, NO_CHANGE, type Diff } from "@/lib/scene-diff";
@@ -87,7 +87,7 @@ export function Garden({ scene: incoming, live, canReady, onWater, onNudge, row,
   // canvas point p lands at (p - frame) * zoom and the frame fills the view; x and zoom ease linearly, and since the frame's right
   // limit (width - width / zoom) is concave in a linearly eased zoom, a frame inside the bed at both ends stays inside it throughout.
   const target = frameFor(scene, plants, w);
-  const sides = stakeSides(scene, w, target.zoom);   // fix round 1: a two-line stake's side after its flip (layout.ts)
+  const spots = stakeSpots(scene, plants, w, target.zoom);   // R326, R327: a two-line stake's side and x (layout.ts)
   const ground = frameGround(w, target);   // R238: the soil spans the frame, its rounded painted ends always in view
   const fx = useSharedValue(target.x), fy = useSharedValue(target.y), z = useSharedValue(target.zoom), vh = useSharedValue(target.viewH);
   useEffect(() => {
@@ -310,7 +310,7 @@ export function Garden({ scene: incoming, live, canReady, onWater, onNudge, row,
         return <Plant key={p.plant} p={p} footX={p.x * w} footY={FOOT_Y(p.row)} sway={sway} gust={gust} gustDelay={delays[p.plant] ?? 0} reduced={reduced} items={itemsOf(p.plant)} settled={settledOf(p.plant)} before={was} call={budCall} zoom={target.zoom} />;
        }),
        <Svg key={`signs-${row}`} width={w} height={CANVAS.height} style={{ position: "absolute", left: 0, top: 0 }} pointerEvents="none">
-        {of("sign").filter((s) => s.row === row).map((s) => { const at = signPlacement(s, w, target.zoom, ground, sides); return <G key={`s${s.plant}`} x={at.x} y={at.y}><Sign lines={s.lines} scale={at.scale} /></G>; })}
+        {of("sign").filter((s) => s.row === row).map((s) => { const at = signPlacement(s, w, target.zoom, ground, spots); return <G key={`s${s.plant}`} x={at.x} y={at.y}><Sign lines={s.lines} scale={at.scale} /></G>; })}
        </Svg>,
       ])}
      </Animated.View>
