@@ -94,7 +94,8 @@ export function buildScene(g: GardenInput): Scene {
   const withSign = PLANT_ORDER.filter((c) => present.includes(c) || (g.allocation[ASSET_OF[c]] ?? 0) > 0);
   const xs = slotsFor([...withSign]);
   // R237 fix (10-04): a stake takes the side with more room in ITS OWN row; a front plant never meets a back stake (the rows pass in
-  // front of each other), and counting it put JitoSOL's stake into the narrow JitoSOL to JupSOL gap beside JupSOL's
+  // front of each other), and counting it put the snake plant's stake (then JitoSOL's, now USDC lending's) into the narrow gap beside
+  // the blueberry's (then JupSOL, now SOL lending). A two-line stake may still flip off a front trunk at placement (layout.ts stakeSide)
   const rowX = (c: PlantId) => withSign.filter((o) => ROW_OF[o] === ROW_OF[c]).map((o) => xs[o]!);
   for (const c of present) parts.push({ kind: "plant", plant: c, species: PLANT_SPECIES[c], row: ROW_OF[c], x: xs[c]!, shoots: keptOf(c).length });
   for (const c of withSign) parts.push({ kind: "sign", plant: c, row: ROW_OF[c], x: xs[c]!, side: signSide(xs[c]!, rowX(c), 1), lines: signLabel(c, g.lendSigns) });
