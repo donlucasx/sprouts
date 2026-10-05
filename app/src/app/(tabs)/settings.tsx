@@ -23,7 +23,7 @@ import { readAppearance, writeAppearance, readNotify, writeNotify } from '@/lib/
 import type { NoticeKind } from '@/lib/notices'
 import { DISCLOSURES, VENUES_EMPTY } from '@/lib/settings-copy'
 import { PUBLIC_GUARANTEE } from '@/lib/relink'
-import { venueLines } from '@/model/venues'
+import { venueCard } from '@/model/venues'
 import { spacing, switchColors, useTheme } from '@/theme'
 import { schemeFor, type Appearance as AppearanceChoice } from '@/theme/appearance'
 
@@ -52,6 +52,7 @@ export default function Settings() {
   const [signing, setSigning] = useState(false)
   const [walletError, setWalletError] = useState<string | null>(null)
   const venues = useQuery({ queryKey: ['venues'], queryFn: () => api<VenuesResponse>('/api/venues'), retry: false })
+  const card = venueCard(venues.data, venues.isError, VENUES_EMPTY)
 
   /** R153: the choice is saved, applied to the phone's scheme at once (the theme and the native controls follow), and shown. */
   function setAppearance(a: AppearanceChoice) {
@@ -164,10 +165,10 @@ export default function Settings() {
       <Card>
         {/* R275, R276: the rates the Yield Manager reads, its verdicts and today's pick (GET /api/venues) */}
         <ThemedText variant="heading">Lending venues today</ThemedText>
-        {venues.data ? (
+        {'lines' in card ? (
           <>
-            {venues.data.why ? <ThemedText tone="secondary">{venues.data.why}</ThemedText> : null}
-            {venueLines(venues.data).map((v) => (
+            {card.why ? <ThemedText tone="secondary">{card.why}</ThemedText> : null}
+            {card.lines.map((v) => (
               <View key={v.key} style={{ gap: 2, paddingVertical: spacing.xs }}>
                 <ThemedText>{v.title}</ThemedText>
                 <ThemedText variant="caption" tone="secondary">
@@ -177,7 +178,7 @@ export default function Settings() {
             ))}
           </>
         ) : (
-          <ThemedText tone="secondary">{venues.isError ? VENUES_EMPTY : 'Loading the venues.'}</ThemedText>
+          <ThemedText tone="secondary">{card.message}</ThemedText>
         )}
       </Card>
       <Card>
