@@ -22,8 +22,14 @@ export const PIN_MAX: Record<LiveAsset, number> = { SKR: 100, stORE: 50, USDC_LE
 export const PIN_STEP = 5;
 
 export const SWITCH_LABEL = "Yield Manager";
-/** R178: the one line under the Yield Manager heading on Rules. */
-export const MANAGER_LINE = "Moves new change toward the coins paying more. Never sells what you hold.";
+/** R348: the one line under the Yield Manager switch on Rules (replaces R178's). */
+export const MANAGER_LINE =
+  "Each morning, AI picks how your new change is split, leaning toward the coins paying more, within the limit you choose below. It never sells what you hold.";
+/** R347: the manager is branded Pro and included for everyone during launch. */
+export const PRO_BADGE = "Pro";
+export const PRO_LINE = "Included free during launch.";
+/** R348: the one line above the split rows, so each control says what it does. */
+export const ROWS_LINE = { on: "Switch a coin off and the manager won't buy it.", off: "Set your own split." } as const;
 export const STOP_LINE = "Careful keeps at least 50% in SKR, Balanced 35%, Bold 25%.";
 export const UNDONE_TEXT = "Yesterday's split is back. The Yield Manager is off until you turn it on.";
 export const SPLIT_SECTION = { title: "Your split", sub: "Each time the split changed, by the Yield Manager or by you.", empty: "No change yet." } as const;
@@ -46,13 +52,6 @@ export function splitRows(r: RulesView, preview?: Split): Row[] {
     const bound = asset === "SKR" ? `at least ${STOP_FLOOR[r.stop]}%` : `at most ${STOP_MAX[r.stop][asset]}%`;
     return { asset, pct: (preview ?? r.allocation)[asset], mode: "auto", bound };
   });
-}
-
-/** The caption beside a split row's percent (his note 5): nothing while the manager is off (every row is the user's own); on, "pinned", or the manager's bound, or nothing. */
-export function modeWord(row: { mode: string; bound: string | null }, managed: boolean): string {
-  if (!managed) return "";
-  if (row.mode === "pinned") return "pinned";
-  return row.bound ?? "";
 }
 
 /** R346: with the manager on, the only pins are 0 pins (the coins switched off); an old non-zero pin from before R346 becomes "on" at the next save. */

@@ -15,7 +15,6 @@ import { formatUsd, COIN_NAME_LONG } from '@/lib/format'
 import { undoSplit } from '@/lib/manager-api'
 import {
   splitRows,
-  modeWord,
   setCoinOn,
   managedPins,
   managedPreview,
@@ -24,6 +23,9 @@ import {
   undoLine,
   SWITCH_LABEL,
   MANAGER_LINE,
+  PRO_BADGE,
+  PRO_LINE,
+  ROWS_LINE,
   STOP_LINE,
   UNDONE_TEXT,
   STORE_ROW_NOTE,
@@ -154,7 +156,31 @@ export default function Rules() {
   }
 
   return (
-    <Screen inset="top" title="Rules">
+    <Screen
+      inset="top"
+      title="Rules"
+      footer={
+        dirty ? (
+          <>
+            {raises ? (
+              <ThemedText variant="caption" tone="secondary">
+                Raising the daily limit asks your Seeker to sign in once.
+              </ThemedText>
+            ) : null}
+            {signing ? (
+              <ThemedText variant="caption" tone="secondary">
+                Waiting for your Seeker.
+              </ThemedText>
+            ) : null}
+            {error ? <ThemedText tone="error">{error}</ThemedText> : null}
+            <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+              <Button title="Discard" kind="quiet" disabled={busy} onPress={() => setDraft({})} style={{ flex: 1 }} />
+              <Button title="Save changes" loading={busy} onPress={saveAll} style={{ flex: 2 }} />
+            </View>
+          </>
+        ) : null
+      }
+    >
       {SHOW_BOX && (
         <Card>
           <ThemedText>Say it in your words</ThemedText>
@@ -232,7 +258,19 @@ export default function Rules() {
         />
       </Card>
       <Card>
-        <ThemedText variant="heading">{SWITCH_LABEL}</ThemedText>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+          <ThemedText variant="heading">{SWITCH_LABEL}</ThemedText>
+          <View
+            style={{ borderWidth: 1, borderColor: colors.accentText, borderRadius: 999, paddingHorizontal: spacing.sm, paddingVertical: 2 }}
+          >
+            <ThemedText variant="caption" tone="accentText">
+              {PRO_BADGE}
+            </ThemedText>
+          </View>
+        </View>
+        <ThemedText variant="caption" tone="secondary">
+          {PRO_LINE}
+        </ThemedText>
         <Row label={r.managed ? "On" : "Off"}>
           <Switch
             {...toggle}
@@ -263,6 +301,9 @@ export default function Rules() {
         <ThemedText variant="heading" style={{ marginTop: spacing.xs }}>
           {saved.managed && !coinsChanged ? "Today's split" : r.managed ? 'The split after you save' : 'Your split'}
         </ThemedText>
+        <ThemedText variant="caption" tone="secondary">
+          {r.managed ? ROWS_LINE.on : ROWS_LINE.off}
+        </ThemedText>
         {splitRows(r, preview).map((row) => (
           <View
             key={row.asset}
@@ -280,11 +321,6 @@ export default function Rules() {
             <ThemedText numeric style={{ width: 48, textAlign: 'right' }}>
               {row.pct}%
             </ThemedText>
-            {modeWord(row, r.managed) !== '' && (
-              <ThemedText variant="caption" tone="secondary">
-                {modeWord(row, r.managed)}
-              </ThemedText>
-            )}
             {r.managed && (
               <Switch
                 {...toggle}
@@ -335,30 +371,15 @@ export default function Rules() {
           </ThemedText>
         ) : null}
       </Card>
-      {/* The save and its reason sit under the last control (audit fix F5). */}
-      <View style={{ gap: spacing.sm }}>
-        {dirty ? (
-          <>
-            {raises ? (
-              <ThemedText variant="caption" tone="secondary">
-                Raising the daily limit asks your Seeker to sign in once.
-              </ThemedText>
-            ) : null}
-            <Button title="Save changes" loading={busy} onPress={saveAll} />
-            {signing ? (
-              <ThemedText variant="caption" tone="secondary">
-                Waiting for your Seeker.
-              </ThemedText>
-            ) : null}
-            <Button title="Discard" kind="quiet" disabled={busy} onPress={() => setDraft({})} />
-          </>
-        ) : (
+      {/* R348: unsaved changes get a bar fixed under the scroll (10-05: the switch looked saved while Save sat off screen). */}
+      {!dirty ? (
+        <View style={{ gap: spacing.sm }}>
           <ThemedText variant="caption" tone="secondary">
             Change what you like, then save.
           </ThemedText>
-        )}
-        {error ? <ThemedText tone="error">{error}</ThemedText> : null}
-      </View>
+          {error ? <ThemedText tone="error">{error}</ThemedText> : null}
+        </View>
+      ) : null}
     </Screen>
   )
 }

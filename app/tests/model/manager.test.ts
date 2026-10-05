@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { ASSETS, type Split, type Pins, type Stop } from "@/lib/coins";
 import {
-  STOP_FLOOR, STOP_MAX, PIN_MAX, PIN_STEP, MANAGER_LINE, STOP_LINE, UNDONE_TEXT,
-  splitRows, modeWord, setCoinOn, managedPins, stepPin, canStepUp, undoLine, changeSummary, splitRowLine, pinsForOn,
+  STOP_FLOOR, STOP_MAX, PIN_MAX, PIN_STEP, MANAGER_LINE, PRO_BADGE, PRO_LINE, ROWS_LINE, STOP_LINE, UNDONE_TEXT,
+  splitRows, setCoinOn, managedPins, stepPin, canStepUp, undoLine, changeSummary, splitRowLine, pinsForOn,
 } from "@/model/manager";
 
 const split = (p: Partial<Split>): Split => ({ SKR: 0, stORE: 0, hSOL: 0, USDC_LEND: 0, SOL_LEND: 0, cbBTC: 0, ...p });
@@ -16,7 +16,10 @@ describe("the tables", () => {
     expect(STOP_MAX.bold.cbBTC).toBe(20);
     expect(PIN_MAX).toEqual({ SKR: 100, stORE: 50, hSOL: 75, USDC_LEND: 75, SOL_LEND: 75, cbBTC: 75 });
     expect(PIN_STEP).toBe(5);
-    expect(MANAGER_LINE).toBe("Moves new change toward the coins paying more. Never sells what you hold.");
+    expect(MANAGER_LINE).toBe("Each morning, AI picks how your new change is split, leaning toward the coins paying more, within the limit you choose below. It never sells what you hold.");  // R348
+    expect(PRO_BADGE).toBe("Pro");
+    expect(PRO_LINE).toBe("Included free during launch.");  // R347
+    expect(ROWS_LINE).toEqual({ on: "Switch a coin off and the manager won't buy it.", off: "Set your own split." });  // R348
     expect(STOP_LINE).toBe("Careful keeps at least 50% in SKR, Balanced 35%, Bold 25%.");
     expect(UNDONE_TEXT).toBe("Yesterday's split is back. The Yield Manager is off until you turn it on.");
   });
@@ -154,14 +157,3 @@ describe("the sentence, the undo line, Activity's rows", () => {
   });
 });
 
-describe('modeWord (his note 5: the mode word only when it says something)', () => {
-  it('off: nothing on any row, pinned or not', () => {
-    expect(modeWord({ mode: 'pinned', bound: null }, false)).toBe('')
-    expect(modeWord({ mode: 'the rest', bound: null }, false)).toBe('')
-  })
-  it('on: pinned rows say pinned, auto rows say their bound, the rest says nothing', () => {
-    expect(modeWord({ mode: 'pinned', bound: null }, true)).toBe('pinned')
-    expect(modeWord({ mode: 'auto', bound: 'at most 15%' }, true)).toBe('at most 15%')
-    expect(modeWord({ mode: 'the rest', bound: null }, true)).toBe('')
-  })
-})
