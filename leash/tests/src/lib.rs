@@ -186,3 +186,6 @@ pub fn expect_custom(r: Result<u64, String>, ix: u8, code: u32) {
 pub fn token_amount(svm: &LiteSVM, at: &Pubkey) -> u64 {
     u64_at(&svm.get_account(at).expect("token account").data, 64)
 }
+
+pub mod planting;
+pub use planting::*;
