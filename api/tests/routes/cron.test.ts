@@ -156,6 +156,24 @@ describe("cron route", () => {
     expect(body.planting.planted).toEqual([]);
   });
 
+  it("K-M10: a failure whose message carries the RPC URL is redacted in the 500 body and the log", async () => {
+    const FAKE = "https://rpc.example.test/?api-key=FAKEKEY-0000-1111";
+    vi.stubEnv("HELIUS_RPC_URL", FAKE);
+    venuesMock.mockRejectedValueOnce(new TypeError(`Failed to parse URL from ${FAKE}`));
+    repo.listActiveWallets = async () => { throw new TypeError(`Failed to parse URL from ${FAKE}`); };
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = await GET(new Request("http://x/api/cron/plant", { headers: { authorization: `Bearer ${SECRET}` } }));
+    expect(res.status).toBe(500);
+    const body = JSON.stringify(await res.json());
+    expect(body).not.toContain("FAKEKEY");
+    expect(body).toContain("[rpc url]");
+    const logged = err.mock.calls.flat().map(String).join("\n");
+    expect(logged).toContain("venues failed: TypeError: Failed to parse URL from [rpc url]".replace("TypeError: ", ""));
+    expect(logged).not.toContain("FAKEKEY");
+    err.mockRestore();
+    vi.unstubAllEnvs();
+  });
+
   it("answers a JSON 500 with the reason when the run throws, never an empty body", async () => {
     repo.listActiveWallets = async () => { throw new Error("database away"); };
     const res = await GET(new Request("http://x/api/cron/plant", { headers: { authorization: `Bearer ${SECRET}` } }));

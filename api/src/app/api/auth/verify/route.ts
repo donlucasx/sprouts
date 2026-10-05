@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getRepo } from "@/db/repo";
 import { config } from "@/lib/config";
+import { redactError } from "@/lib/redact";
 import { verifySignIn, type SignInInput } from "@/lib/siws";
 import { verifyAnyGenesisHolder } from "@/lib/genesis";
 import { skrNameOf } from "@/lib/skr";
@@ -44,10 +45,11 @@ export async function POST(request: Request) {
   if (!(await repo.useNonce(input.nonce, output.address))) return NextResponse.json({ error: "This sign-in request expired. Try again." }, { status: 401 });
 
   const rpcUrl = config().heliusRpcUrl;
-  const genesis = await verifyAnyGenesisHolder(rpcUrl, output.address);
+  // K-M10: these two take the URL itself (web3.js Connection, a raw fetch); an error that quotes it is redacted before it propagates.
+  const genesis = await verifyAnyGenesisHolder(rpcUrl, output.address).catch((e: unknown) => { throw redactError(e); });
   if (!genesis) return NextResponse.json({ error: "This wallet holds no Genesis Token. The vault needs a Seeker or a Saga." }, { status: 403 });
 
-  const skrName = await skrNameOf(rpcUrl, output.address);
+  const skrName = await skrNameOf(rpcUrl, output.address).catch((e: unknown) => { throw redactError(e); });
   let created: boolean;
   try {
     ({ created } = await repo.upsertUser({ seedVaultPubkey: output.address, sgtMint: genesis.mint, skrName }));

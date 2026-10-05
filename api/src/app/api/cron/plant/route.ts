@@ -3,6 +3,7 @@ import { timingSafeEqual } from "node:crypto";
 import { address } from "@solana/kit";
 import { getRepo, type Repo } from "@/db/repo";
 import { config } from "@/lib/config";
+import { errorText } from "@/lib/redact";
 import { rpc } from "@/lib/rpc";
 import { runPlanting, type Chain } from "@/lib/plant-run";
 import { runWithdrawCrank } from "@/lib/withdraw-run";
@@ -90,7 +91,7 @@ async function step<T>(name: string, fn: () => Promise<T>): Promise<T | null> {
   try {
     return await fn();
   } catch (e) {
-    console.error(`cron: ${name} failed: ${e instanceof Error ? e.message : String(e)}`);
+    console.error(`cron: ${name} failed: ${errorText(e)}`);
     return null;
   }
 }
@@ -150,7 +151,7 @@ export async function GET(request: Request) {
     console.log(`cron: venues ${summary.venues ?? "failed"}, coins ${summary.coins ?? "failed"}, splits ${summary.splits ? summary.splits.map((s) => `${s.stop}${s.fallback ? `(${s.fallback})` : ""}`).join(" ") : "failed"}, applied ${summary.applied ?? "failed"}, moves ${movesLine}, planted ${planting.planted.length}, skipped ${planting.skipped.length}, cranked ${withdrawals.cranked.length}, failed ${withdrawals.failed.length}, closed ${withdrawals.skipped.length}, reconciled ${reconciled.adjusted.length} (skipped ${reconciled.skipped.length}, deferred ${reconciled.deferred.length})`);
     return NextResponse.json(json({ ...summary, planting, withdrawals, reconciled }));
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
+    const message = errorText(e);   // K-M10: never the RPC URL's key, in the log or the body
     console.error(`cron failed: ${message}`);
     return NextResponse.json({ error: `Cron failed: ${message}` }, { status: 500 });
   }
