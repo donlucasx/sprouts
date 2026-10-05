@@ -6,7 +6,9 @@ import { ataOf, ix, jlendDepositIxs, jlendWithdrawIxs, JRES, klendDepositIxs, kl
 
 type Kind = 'move_klend_to_jlend' | 'move_jlend_to_klend'
 type Asset = 'USDC_LEND' | 'SOL_LEND'
-const flow = (kind: Kind, asset: Asset, part: MovePart, receiptRaw: string, depositRaw: string): SignFlow => ({ kind, user: USER, asset, receiptRaw, depositRaw, part })
+/** The cap defaults to the deposit itself (at the cap signs); the cap tests below set it. */
+const flow = (kind: Kind, asset: Asset, part: MovePart, receiptRaw: string, depositRaw: string, depositCapRaw: string = depositRaw): SignFlow =>
+  ({ kind, user: USER, asset, receiptRaw, depositRaw, depositCapRaw, part })
 async function refused(base64: string, f: SignFlow, why: keyof typeof REFUSED) {
   const sign = vi.fn(async (tx: Transaction) => tx)
   const out = makeSigner(sign, f)(base64)
@@ -55,7 +57,7 @@ describe('a move between lending venues (contracts 6, R279: same asset, Kamino a
     const tx = wire(await jlendDepositIxs({ asset: 'USDC_LEND', amount: 1999000n }))
     for (const d of ['0', '-1', '1e6', '']) await refused(tx, flow('move_klend_to_jlend', 'USDC_LEND', 'deposit', '1661200', d), 'plan')
     await refused(tx, flow('move_klend_to_jlend', 'USDC_LEND', 'both' as never, '1661200', '1999000'), 'plan')
-    await refused(tx, { kind: 'move_klend_to_jlend', user: USER, asset: 'cbBTC' as never, receiptRaw: '1661200', depositRaw: '1999000', part: 'deposit' }, 'plan')
+    await refused(tx, { kind: 'move_klend_to_jlend', user: USER, asset: 'cbBTC' as never, receiptRaw: '1661200', depositRaw: '1999000', depositCapRaw: '1999000', part: 'deposit' }, 'plan')
   })
   it('a System transfer added after the deposit', async () => {
     const drain = ix(L.SYSTEM, [USER, OTHER], [2, 0, 0, 0, 0, 202, 154, 59, 0, 0, 0, 0])
@@ -64,6 +66,57 @@ describe('a move between lending venues (contracts 6, R279: same asset, Kamino a
   it('a SOL deposit whose close pays the lamports to someone else', async () => {
     const ixs = await klendDepositIxs({ asset: 'SOL_LEND', amount: 9999000n })
     await refused(wire([...ixs.slice(0, -1), ix(L.TOKEN, [await ataOf(USER, L.WSOL), OTHER, USER], [9])]), flow('move_jlend_to_klend', 'SOL_LEND', 'deposit', '9408000', '9999000'), 'plan')
+  })
+})
+
+/**
+ * T14 fix round 1 (controller ruling): the deposit draws from the user's own USDC/WSOL account, so an inflated amount would land on chain,
+ * and in the two-transaction batch the deposit can be sent alone. The cap is the source position's underlyingRaw from /api/me.
+ */
+describe('the deposit never exceeds the position the card is based on', () => {
+  const cases = [
+    { kind: 'move_klend_to_jlend', asset: 'USDC_LEND', receipt: 1661200n, cap: 1999752n },
+    { kind: 'move_klend_to_jlend', asset: 'SOL_LEND', receipt: 1340000n, cap: 1600000n },
+    { kind: 'move_jlend_to_klend', asset: 'USDC_LEND', receipt: 940000n, cap: 999140n },
+    { kind: 'move_jlend_to_klend', asset: 'SOL_LEND', receipt: 9408000n, cap: 9999904n },
+  ] as const
+  const parts = async (c: (typeof cases)[number], deposit: bigint) => {
+    const fromK = c.kind === 'move_klend_to_jlend'
+    const redeem = fromK ? await klendWithdrawIxs({ asset: c.asset, amount: c.receipt, close: false }) : await jlendWithdrawIxs({ asset: c.asset, amount: c.receipt, close: false })
+    const dep = fromK ? await jlendDepositIxs({ asset: c.asset, amount: deposit }) : await klendDepositIxs({ asset: c.asset, amount: deposit })
+    return { redeem, dep }
+  }
+  it('one unit over the cap is refused, in every part, both venues, both assets', async () => {
+    for (const c of cases) {
+      const over = c.cap + 1n
+      const { redeem, dep } = await parts(c, over)
+      const f = (part: MovePart) => flow(c.kind, c.asset, part, String(c.receipt), String(over), String(c.cap))
+      await refused(wire(dep), f('deposit'), 'amount')
+      await refused(wire([...redeem, ...dep]), f('whole'), 'amount')
+      await refused(wire(redeem), f('redeem'), 'amount')
+    }
+  })
+  it('a deposit at the cap signs, in every part', async () => {
+    for (const c of cases) {
+      const { redeem, dep } = await parts(c, c.cap)
+      const f = (part: MovePart) => flow(c.kind, c.asset, part, String(c.receipt), String(c.cap), String(c.cap))
+      await signed(wire(dep), f('deposit'))
+      await signed(wire([...redeem, ...dep]), f('whole'))
+      await signed(wire(redeem), f('redeem'))
+    }
+  })
+  it('a move with no usable cap is refused', async () => {
+    const tx = wire(await jlendDepositIxs({ asset: 'USDC_LEND', amount: 1999000n }))
+    for (const cap of ['', '0', '-1', '1e9']) await refused(tx, flow('move_klend_to_jlend', 'USDC_LEND', 'deposit', '1661200', '1999000', cap), 'plan')
+    await refused(tx, { kind: 'move_klend_to_jlend', user: USER, asset: 'USDC_LEND', receiptRaw: '1661200', depositRaw: '1999000', part: 'deposit' } as unknown as SignFlow, 'plan')
+  })
+  it('the batch with an over-cap deposit never reaches the wallet', async () => {
+    const a = wire(await klendWithdrawIxs({ asset: 'USDC_LEND', amount: 1661200n }))
+    const b = wire(await jlendDepositIxs({ asset: 'USDC_LEND', amount: 1999753n }))
+    const wallet = vi.fn(async (txs: Transaction[]) => txs)
+    const fl = (part: MovePart) => flow('move_klend_to_jlend', 'USDC_LEND', part, '1661200', '1999753', '1999752')
+    await expect(makeBatchSigner(wallet, [fl('redeem'), fl('deposit')])([a, b])).rejects.toThrow(REFUSED.amount)
+    expect(wallet).not.toHaveBeenCalled()
   })
 })
 

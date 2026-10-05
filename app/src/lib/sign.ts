@@ -102,9 +102,12 @@ export type SignFlow =
    * (/api/me moveProposal.receiptRaw); depositRaw is the build's (contracts 5.4: about 99.9% of the redeem's expected out, into the user's
    * own receipt account). part: S3 passed ONE, so the API sends [redeem, deposit] in one wallet session; 'whole' is both in one tx.
    * One member per direction (T14 carry-in), each routed by name below; nothing falls through to the withdraw checks.
+   * depositCapRaw (T14 fix round 1, controller ruling): the source position's underlyingRaw from /api/me positions, the amount the card is
+   * based on. The deposit draws from the user's own underlying ATA (for USDC the account plantings pull from), so an inflated depositRaw
+   * would land on chain; anything above the cap is refused 'amount', and a move with no cap is refused 'plan'.
    */
-  | { kind: 'move_klend_to_jlend'; user: string; asset: LendAsset; receiptRaw: string; depositRaw: string; part: MovePart }
-  | { kind: 'move_jlend_to_klend'; user: string; asset: LendAsset; receiptRaw: string; depositRaw: string; part: MovePart }
+  | { kind: 'move_klend_to_jlend'; user: string; asset: LendAsset; receiptRaw: string; depositRaw: string; depositCapRaw: string; part: MovePart }
+  | { kind: 'move_jlend_to_klend'; user: string; asset: LendAsset; receiptRaw: string; depositRaw: string; depositCapRaw: string; part: MovePart }
   /** R287, contracts 6: the Seed Vault wallet (delegator == user) moves its approval to the leash; web-linked wallets re-link on the link page. */
   | { kind: 'relink'; user: string }
 
@@ -118,6 +121,7 @@ export const REFUSED = {
   lookup: 'This transaction uses a lookup table Sprouts did not build. Nothing was signed.',
   program: 'This transaction touches a program Sprouts does not use here. Nothing was signed.',
   plan: 'This transaction does not match what the screen shows. Nothing was signed.',
+  amount: 'This transaction moves more than your position holds. Nothing was signed.',
 } as const
 
 /** A check before signing failed; `message` is one of REFUSED, safe to show as is. */
@@ -350,6 +354,8 @@ async function checkInstructions(ixs: Ix[], flow: SignFlow): Promise<void> {
     if (!isLend(flow.asset)) return refuse('plan')
     const receipt = amountOf(flow.receiptRaw)
     const deposit = amountOf(flow.depositRaw)
+    // Every part (the deposit tx can be sent without its redeem): never more than the position the card is based on, no upward tolerance.
+    if (deposit > amountOf(flow.depositCapRaw)) return refuse('amount')
     if (flow.kind === 'move_klend_to_jlend')
       return movePart(ixs, flow.part, await klendRedeemSteps(user, flow.asset, receipt, false), await jlendDepositSteps(user, flow.asset, deposit))
     if (flow.kind === 'move_jlend_to_klend')

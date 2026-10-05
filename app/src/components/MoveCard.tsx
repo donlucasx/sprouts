@@ -8,7 +8,7 @@ import { ThemedText } from './ThemedText'
 import { api, ApiError, type MeResponse } from '@/lib/api'
 import { makeBatchSigner, SignRefused } from '@/lib/sign'
 import { useInvalidateMe } from '@/lib/me'
-import { MOVE_FAILED, MOVED_LINE, moveAtTap, moveCopy, type MoveBuild } from '@/lib/moves'
+import { MOVE_FAILED, MOVED_LINE, moveAtTap, moveCopy, MoveSent, type MoveBuild } from '@/lib/moves'
 import { oneAtATime } from '@/lib/withdraw-flow'
 import { spacing } from '@/theme'
 
@@ -32,6 +32,7 @@ export function MoveCard({ me }: { me: MeResponse }) {
       const out = await moveAtTap({
         user: me.user.pubkey,
         proposal: p,
+        positions: me.positions,
         build: (id) => api<MoveBuild>('/api/moves/build', { method: 'POST', body: { id } }),
         signAll: (flows) => makeBatchSigner((txs) => signTransactions(txs) as Promise<Transaction[]>, flows),
         confirm: (body) => api('/api/moves/confirm', { method: 'POST', body }),
@@ -43,7 +44,7 @@ export function MoveCard({ me }: { me: MeResponse }) {
         setLine({ text: MOVED_LINE, error: false })
       }
     } catch (e) {
-      setLine({ text: e instanceof ApiError || e instanceof SignRefused ? e.message : MOVE_FAILED, error: true })
+      setLine({ text: e instanceof ApiError || e instanceof SignRefused || e instanceof MoveSent ? e.message : MOVE_FAILED, error: true })
     } finally {
       setPhase(null)
       gate.leave()
