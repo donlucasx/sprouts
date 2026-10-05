@@ -6,7 +6,7 @@ use base64::Engine as _;
 use leash_tests::*;
 
 /// (file under config/, enabled legs). Only `mainnet-day1.hex` is an installable Config (via the golden path's set_legs);
-/// `mainnet-init.hex` is the header-only state right after init_config (every leg disabled).
+/// `mainnet-init.hex` is the state after init_config + set_leg 0..7 with every leg OFF (`leash-admin.ts init`).
 const VARIANTS: [(&str, &[usize]); 3] = [
     ("mainnet-init.hex", &[]),
     ("mainnet-day1.hex", &[2, 6, 7]),
