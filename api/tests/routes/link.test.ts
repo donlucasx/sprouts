@@ -292,7 +292,7 @@ describe("link flow", () => {
   });
 
   // The leash PDA is seeded by the garden's key, so these two tests use a garden whose id is a real address.
-  const GARDEN = "HJCJKRQLV2HVKfe3sFdTF5jjBY1xfWgnK8cLcjH7qnHd";
+  const GARDEN = "FoFUtBCi8Z7g8Nb5bsbY4fSH1NDXiRenp77MA2TBTNMG";
   async function gardenCode() {
     await repo.upsertUser({ seedVaultPubkey: GARDEN, sgtMint: "M2", skrName: null });
     const res = await newCode(new Request("http://x/api/link/new", { method: "POST", headers: { authorization: `Bearer ${await issueSession(GARDEN, "M2")}` } }));
@@ -318,5 +318,28 @@ describe("link flow", () => {
     expect(body.delegatee).toBe("4wiD3N7FrBNJSmZUQDkGHM4CsvDrvyvx7G1FApLGEbJ1");
     await confirm(new Request("http://x/api/link/confirm", { method: "POST", body: JSON.stringify({ code, wallet: WALLET, waitMs: 0 }) }));
     expect((await repo.getWallet(WALLET))!.linkModel).toBe("puller");
+  });
+  it("fix round 1 (I3): link_model is leash only on a positive match; a code bound to a rotated puller confirms as puller", async () => {
+    const { pullerSigner } = await import("@/lib/puller");
+    const { code } = await gardenCode();
+    await getTx(new Request(`http://x/api/link/${code}?wallet=${WALLET}`), { params: Promise.resolve({ code }) });   // bound to puller 4wiD...
+    vi.mocked(pullerSigner).mockResolvedValue({ address: "8KiTtZXjcpxUGuH93G12iMVNcTYteTbRvaovdeQdfjc6" } as Awaited<ReturnType<typeof pullerSigner>>);
+    try {
+      const ok = await confirm(new Request("http://x/api/link/confirm", { method: "POST", body: JSON.stringify({ code, wallet: WALLET, waitMs: 0 }) }));
+      expect(ok.status).toBe(200);
+      expect((await repo.getWallet(WALLET))!.linkModel).toBe("puller");
+    } finally {
+      vi.mocked(pullerSigner).mockResolvedValue({ address: "4wiD3N7FrBNJSmZUQDkGHM4CsvDrvyvx7G1FApLGEbJ1" } as Awaited<ReturnType<typeof pullerSigner>>);
+    }
+  });
+  it("fix round 1: a code bound before go-live and fetched again after it says to get a new code", async () => {
+    const { code } = await gardenCode();
+    expect((await getTx(new Request(`http://x/api/link/${code}?wallet=${WALLET}`), { params: Promise.resolve({ code }) })).status).toBe(200);
+    process.env.LEASH_LIVE = "1";
+    try {
+      const again = await getTx(new Request(`http://x/api/link/${code}?wallet=${WALLET}`), { params: Promise.resolve({ code }) });
+      expect(again.status).toBe(409);
+      expect((await again.json()).error).toBe("This code was made before Sprouts changed how links work. Get a new code in the app, then try again.");
+    } finally { delete process.env.LEASH_LIVE; }
   });
 });

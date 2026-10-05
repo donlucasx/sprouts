@@ -37,20 +37,24 @@ export async function connectWith(w: StdWallet): Promise<StdAccount> {
 
 const SUBSCRIPTIONS = "De1egAFMkMWZSN5rYXRj9CAdheBamobVNubTsi9avR44";
 
-/** The programs an approval or a revoke may touch; anything else is refused before the wallet is asked [A10]. */
+/**
+ * The programs an approval or a revoke may touch; anything else is refused before the wallet is asked [A10]. No ComputeBudget (review
+ * T19 minor 2): no web-signed build adds one, and a server-built priority fee could drain the wallet's SOL. A wallet adds its own fee
+ * after this check, and verify-tx sets wallet-added ComputeBudget instructions aside on the way back.
+ */
 const ALLOWED = new Set([
   SUBSCRIPTIONS,
   "11111111111111111111111111111111", // System
   "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", // Token
   "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL", // Associated Token
-  "ComputeBudget111111111111111111111111111111",
 ]);
 
 /**
  * The API built the transaction; the chosen wallet signs it; the API sends it. Every program id is checked before the wallet is asked.
  * `expectedDelegatee` (contracts 5.5): the delegate the page was told the approval names (the puller before go-live, leashPda(wallet,
- * user) after); a CreateRecurringDelegation naming any other account (account 3) is refused unsigned. The page is served by the same
- * API, so this guards a wrong build, not a hostile server.
+ * user) after); a CreateRecurringDelegation naming any other account (account 3) is refused unsigned. The page takes it from the same
+ * GET answer as the transaction, so the check is tautological against the server: it catches a page/route mismatch, not a server-side
+ * derivation bug or a hostile server. The user's real check is the address the page shows against the app's re-link card.
  */
 export async function signWith(w: StdWallet, account: StdAccount, base64: string, expectedDelegatee?: string): Promise<string> {
   const bytes = new Uint8Array(getBase64Encoder().encode(base64));

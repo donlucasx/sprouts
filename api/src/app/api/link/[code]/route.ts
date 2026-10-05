@@ -53,6 +53,10 @@ export async function GET(request: Request, ctx: { params: Promise<{ code: strin
   // R297 / contracts 3.4: after go-live new links point at the leash PDA of (this wallet, this garden); before, at the puller.
   const delegatee = leashLive() ? await leashPda(wallet, address(link.userPubkey)) : puller;
   const pda = await delegationPda({ delegator: wallet, delegatee, nonce: link.nonce });
+  if (link.walletPubkey && link.delegationPda && link.delegationPda !== pda) {
+    // Bound before the go-live switch flipped (or the puller rotated): the confirm would look for the old delegation, so stop here.
+    return NextResponse.json({ error: "This code was made before Sprouts changed how links work. Get a new code in the app, then try again." }, { status: 409 });
+  }
 
   // A wallet that linked before already has its USDC authority on chain: re-init would fail, so the create carries its init id.
   // A wallet with no USDC account yet gets it created in the same approval (the init needs it).

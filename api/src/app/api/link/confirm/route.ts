@@ -5,7 +5,7 @@ import { getRepo } from "@/db/repo";
 import { clientIp, rateLimited } from "@/lib/auth-guard";
 import { config } from "@/lib/config";
 import { delegationPda, waitForDelegation } from "@/lib/subscriptions";
-import { pullerSigner } from "@/lib/puller";
+import { leashPda } from "@/lib/leash";
 import { heliusAddAddress } from "@/lib/helius";
 import { verifyPostedTransaction } from "@/lib/verify-tx";
 import { rpc } from "@/lib/rpc";
@@ -16,6 +16,17 @@ export const runtime = "nodejs";
 export const maxDuration = 60; // the delegation poll (up to 10 s) plus the send
 
 const Body = z.object({ code: z.string().length(6), wallet: z.string().min(32).max(44), waitMs: z.number().int().min(0).max(10_000).optional(), signedTransaction: z.string().optional() });
+/** The delegation a leash link for (wallet, garden) names, or null when the garden id is not an address. */
+async function leashDelegationPda(wallet: Address, garden: string, nonce: bigint): Promise<Address | null> {
+  let user: Address;
+  try {
+    user = address(garden);
+  } catch {
+    return null;
+  }
+  return delegationPda({ delegator: wallet, delegatee: await leashPda(wallet, user), nonce });
+}
+
 /** Links the wallet once its delegation is on chain: consumes the code, records the wallet, adds it to the swap webhook. */
 export async function POST(request: Request) {
   // Per caller IP (R207 #7): the confirm can hold a function for up to 10 s, so a loop from one address is slowed here.
@@ -50,7 +61,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 400 });
     }
     const boundPda = address(link.delegationPda);
-    if (!posted.instructions.some((ix) => ix.accounts.includes(boundPda))) return NextResponse.json({ error: "This approval is for another delegation." }, { status: 400 });
+    if (!posted.instructions.some((ix) => ix.accounts.includes(boundPda))) return NextResponse.json({ error: "This approval is for another delegation. Get a new code in the app, then try again." }, { status: 400 });
     try {
       await rpc().sendTransaction(posted.wire as Base64EncodedWireTransaction, { encoding: "base64", preflightCommitment: "confirmed" }).send();
     } catch (e) {
@@ -73,10 +84,10 @@ export async function POST(request: Request) {
     webhookAdded = false;
     console.error(`helius add address failed for ${wallet}: ${e instanceof Error ? e.message : String(e)}`);
   }
-  // R297 / contracts 3.4: a link is either the puller's or, after go-live, the leash's; the bound delegation says which (the GET derived
-  // it from the delegatee it chose), so the garden id is never parsed here.
-  const pullerPda = await delegationPda({ delegator: wallet, delegatee: (await pullerSigner()).address, nonce: link.nonce });
-  const linkModel = link.delegationPda !== pullerPda ? "leash" : "puller";
+  // R297 / contracts 3.4, review I3: 'leash' only when the bound delegation is exactly the one named for leashPda(wallet, garden);
+  // anything else (the puller, a rotated puller, a garden id that is not an address) is 'puller', which after go-live plants nothing
+  // and asks for a re-link: the classification fails toward the safe side.
+  const linkModel = (await leashDelegationPda(wallet, link.userPubkey, link.nonce)) === link.delegationPda ? "leash" : "puller";
   await repo.addWallet({ pubkey: wallet, userPubkey: link.userPubkey, delegationPda: link.delegationPda, dailyCapCents: Number(delegation.amountPerPeriodRaw / 10_000n), webhookAdded, linkModel });
   await repo.addEvent({ userPubkey: link.userPubkey, walletPubkey: wallet, kind: "wallet_linked", detail: { webhookAdded, linkModel } });
   const user = await repo.getUser(link.userPubkey);
