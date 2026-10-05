@@ -8,14 +8,17 @@ import { verifyPostedTransaction, type PostedTx } from "@/lib/verify-tx";
 import { buildUserTransaction, sendPosted, waitConfirmed, settleUnconfirmed, userAddress } from "@/lib/user-tx";
 import { json } from "@/lib/json";
 import { buildMove, buildUnwrapWsol } from "@/lib/venues/user-builders";
-import { latestMoveBuild, moveDetail } from "@/lib/moves";
+import { finishMove, latestMoveBuild, moveBuiltDetail, recentMoveBuilds, type MoveCarry } from "@/lib/moves";
 import { KLEND_PROGRAM, JLEND_PROGRAM } from "@/lib/constants";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 const Body = z.object({ id: z.string().min(1), signedTransactions: z.array(z.string()).length(2) });
 const PROGRAMS = [KLEND_PROGRAM, JLEND_PROGRAM, ASSOCIATED_TOKEN_PROGRAM_ADDRESS, TOKEN_PROGRAM_ADDRESS];
-const MAY_STILL = "It may still go through. Check Activity in a minute before you try again.";
+// Review minor 3: Home, not Activity: the open card (with its stored signatures) is what shows a move in flight.
+const MAY_STILL = "It may still go through. Check Home in a minute before you try again.";
+/** Fix round 1: 12 x 1.5 s per transaction, so two polls plus the sends and RPC reads fit the 60 s function limit. */
+const POLL_TRIES = 12;
 const same = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((x, i) => x === b[i]);
 
 /** The posted transaction carries exactly the instructions the server builds (program, data, every account, in order). */
@@ -30,7 +33,7 @@ async function land(posted: PostedTx): Promise<"confirmed" | "failed" | "pending
   let status;
   try {
     await sendPosted(posted.wire);
-    status = await waitConfirmed(posted.signature);
+    status = await waitConfirmed(posted.signature, POLL_TRIES);
   } catch {
     status = await waitConfirmed(posted.signature, 3);
   }
@@ -54,8 +57,11 @@ export async function POST(request: Request) {
   if (!p || p.userPubkey !== user.seedVaultPubkey) return NextResponse.json({ error: "No such move." }, { status: 404 });
   if (p.status === "done") return NextResponse.json({ move: { id: p.id, status: "done", redeemSignature: p.redeemSignature, depositSignature: p.depositSignature } });
   if (p.status !== "open") return NextResponse.json({ error: "This move is no longer open." }, { status: 409 });
-  const built = await latestMoveBuild(repo, user.seedVaultPubkey, p.id);
-  if (!built) return NextResponse.json({ error: "Build this move first." }, { status: 409 });
+  // Review minor 4: any recent build of this move (each is the server's own amounts), newest first; none recent, the newest one.
+  const recent = await recentMoveBuilds(repo, user.seedVaultPubkey, p.id, new Date());
+  const latest = recent[0] ?? (await latestMoveBuild(repo, user.seedVaultPubkey, p.id));
+  if (!latest) return NextResponse.json({ error: "Build this move first." }, { status: 409 });
+  const candidates = recent.length ? recent : [latest];
   const owner = userAddress(user.seedVaultPubkey);
   let redeem: PostedTx;
   let deposit: PostedTx;
@@ -65,9 +71,14 @@ export async function POST(request: Request) {
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 400 });
   }
-  const parts = { user: owner, asset: built.asset, from: built.from, to: built.to, receiptRaw: built.receiptRaw, depositRaw: built.depositRaw };
-  if (!matches(redeem, await buildMove({ ...parts, part: "redeem" })) || !matches(deposit, await buildMove({ ...parts, part: "deposit" })))
-    return NextResponse.json({ error: "That move is not the one Sprouts built." }, { status: 400 });
+  let built: MoveCarry | null = null;
+  for (const c of candidates) {
+    const parts = { user: owner, asset: c.asset, from: c.from, to: c.to, receiptRaw: c.receiptRaw, depositRaw: c.depositRaw };
+    if (matches(redeem, await buildMove({ ...parts, part: "redeem" })) && matches(deposit, await buildMove({ ...parts, part: "deposit" }))) { built = c; break; }
+  }
+  if (!built) return NextResponse.json({ error: "That move is not the one Sprouts built. Try the move again." }, { status: 400 });
+  // An older build matched: record it again as the newest, so the carry reads the amounts that are about to be sent.
+  if (built !== latest) await repo.addEvent({ userPubkey: user.seedVaultPubkey, walletPubkey: null, kind: "move_built", detail: moveBuiltDetail(built) });
 
   const coin = p.asset === "USDC_LEND" ? "USDC" : "SOL";
   let redeemStatus;
@@ -79,7 +90,9 @@ export async function POST(request: Request) {
   }
   if (redeemStatus !== "confirmed")
     return NextResponse.json({ error: redeemStatus === "failed" ? "The move failed on chain. Nothing moved." : redeemStatus === "expired" ? "It did not go through. Nothing moved. Try again." : MAY_STILL }, { status: 409 });
-  await repo.setMoveProposalStatus(p.id, "open", { redeem: redeem.signature });
+  // Fix round 1 (review I1): both signatures are stored BEFORE the deposit goes out, so a deposit that settles after this function
+  // (pending, or the function limit) is settled by the cron's proposeMoves: done with the carry, or failed; never expired.
+  await repo.setMoveProposalStatus(p.id, "open", { redeem: redeem.signature, deposit: deposit.signature });
 
   let depositStatus;
   try {
@@ -99,11 +112,6 @@ export async function POST(request: Request) {
     }
     return NextResponse.json({ error: `Your ${coin} is back in your wallet; the move did not finish.`, partial: true, ...(unwrapTransaction ? { unwrapTransaction } : {}) }, { status: 409 });
   }
-  await repo.setMoveProposalStatus(p.id, "done", { redeem: redeem.signature, deposit: deposit.signature });
-  try {
-    await repo.addEvent({ userPubkey: user.seedVaultPubkey, walletPubkey: null, kind: "move_done", detail: moveDetail({ ...p, receiptRaw: built.receiptRaw }, "done") });
-  } catch (e) {
-    console.error(`moves confirm: CONFIRMED ${p.id} but the move_done event was not written for ${user.seedVaultPubkey}: ${e instanceof Error ? e.message : String(e)}`);
-  }
+  await finishMove(repo, p, { redeem: redeem.signature, deposit: deposit.signature }, built.receiptRaw);
   return NextResponse.json(json({ move: { id: p.id, status: "done", redeemSignature: redeem.signature, depositSignature: deposit.signature } }));
 }
