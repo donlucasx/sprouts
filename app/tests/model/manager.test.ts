@@ -120,6 +120,14 @@ describe("the sentence, the undo line, Activity's rows", () => {
     expect(changeSummary({ SKR: 40, JitoSOL: 10 }, { SKR: 50, JitoSOL: 0 })).toBe("SKR 40 to 50");   // an old row's retired key is not named
   });
 
+  it("a two-lending-leg why of about 200 characters reaches the screen whole (the Text has no numberOfLines and sits in a flex:1 column, so it wraps by word)", () => {
+    const from = split({ SKR: 45, hSOL: 15, USDC_LEND: 15, SOL_LEND: 15, cbBTC: 10 });
+    const to = split({ SKR: 45, hSOL: 15, USDC_LEND: 20, SOL_LEND: 20, cbBTC: 0 });
+    const why = "USDC lending went to Kamino, which paid 4.4% over 7 days against 3.9% on Jupiter Lend, and SOL lending went to Jupiter Lend at 3.9% against 3.4% on Kamino, both inside the 60% limit.";
+    expect(why.length).toBeGreaterThan(180);
+    expect(splitRowLine({ ts: "2026-10-03T14:00:00.000Z", by: "manager", from, to, stop: "balanced", why, fallback: null }).endsWith(` ${why}`)).toBe(true);
+  });
+
   it("splitRowLine: the manager with a why, a fallback day, your change, an undo (spec 3.2)", () => {
     const from = split({ SKR: 45, hSOL: 15, USDC_LEND: 15, SOL_LEND: 15, cbBTC: 10 });
     const to = split({ SKR: 45, hSOL: 20, USDC_LEND: 15, SOL_LEND: 15, cbBTC: 5 });
