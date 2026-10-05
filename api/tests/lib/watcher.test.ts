@@ -146,3 +146,13 @@ describe("reserveWatcherCall", () => {
     expect((await repo.listWatcherCalls()).length).toBe(0);
   });
 });
+
+describe("the compile prompt after lending (spec 11)", () => {
+  it("no longer says Sprouts never withdraws; it says money moves only when the person signs", async () => {
+    let system = "";
+    await compileRule({ text: "round up to 2 dollars", current, model: async (req) => { system = req.system; return { input: { understood: "ok" }, usage: { inputTokens: 1, outputTokens: 1 } }; } });
+    expect(system).not.toMatch(/never withdraws/);
+    expect(system).toMatch(/only when you sign/);
+    expect(system).toMatch(/lending/);
+  });
+});
