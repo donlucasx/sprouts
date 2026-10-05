@@ -58,13 +58,13 @@ pub fn rate_now(svm: &LiteSVM, leg: usize, accounts: &[Pubkey]) -> (u128, u128) 
     readers::rate(leg, &cfg.legs[leg], &views, svm.get_sysvar::<Clock>().epoch).expect("reader on the snapshot")
 }
 
-/// The dumped sponsored bytes (same feed, price, conf, Full) at a fresh address with a fresh publish_time (now - 1).
-/// R324 retired posting; feed_account is zero on every leg, so any receiver-owned account with the right feed is read.
-pub fn posted_copy(svm: &mut LiteSVM, sponsored: &str) -> Pubkey {
+/// The dumped sponsored bytes (same feed, price, conf, Full) rewritten IN PLACE with a fresh publish_time (now - 1).
+/// Final review I1: every priced leg pins its sponsored account (feed_account), so the fork reads it at its own address.
+pub fn fresh_sponsored(svm: &mut LiteSVM, sponsored: &str) -> Pubkey {
     let mut a = must_fixture(sponsored);
     let now = svm.get_sysvar::<Clock>().unix_timestamp;
     a.data[93..101].copy_from_slice(&(now - 1).to_le_bytes());
-    let at = Pubkey::new_unique();
+    let at = b58(sponsored);
     svm.set_account(at, a).unwrap();
     at
 }

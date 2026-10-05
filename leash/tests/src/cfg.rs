@@ -6,8 +6,13 @@ use crate::*;
 /// Day 1 enables legs 2 (USDC K-Lend), 6 (hSOL) and 7 (cbBTC) (spec 6.5).
 pub const DAY1: [bool; 8] = [false, false, true, false, false, false, true, true];
 
+/// The price account each priced leg must read (final review I1): the sponsored PriceUpdateV2 account, so a compromised
+/// server cannot pick a posted update (or another protocol's) from the age window. Leg 0 has no price source (R324);
+/// legs 2 and 3 are unpriced (their price slot is the System Program id). Those three stay zero.
+pub const FEED_ACCOUNT_OF_LEG: [&str; 8] = ["", addr::PYTH_ORE, "", "", addr::PYTH_SOL, addr::PYTH_SOL, addr::PYTH_SOL, addr::PYTH_CBBTC];
+
 #[allow(clippy::too_many_arguments)]
-fn leg(reader: u8, dec: u8, fee: u16, tol: u16, receipt: &str, rate: &str, extra: &str, feed: [u8; 32], on: bool) -> LegConfig {
+fn leg(reader: u8, dec: u8, fee: u16, tol: u16, receipt: &str, rate: &str, extra: &str, feed: [u8; 32], feed_acct: &str, on: bool) -> LegConfig {
     let k = |s: &str| if s.is_empty() { ZERO } else { bytes(s) };
     LegConfig {
         enabled: on as u8,
@@ -21,7 +26,7 @@ fn leg(reader: u8, dec: u8, fee: u16, tol: u16, receipt: &str, rate: &str, extra
         rate_account: k(rate),
         extra: k(extra),
         feed_id: feed,
-        feed_account: ZERO,
+        feed_account: k(feed_acct),
     }
 }
 
@@ -31,14 +36,14 @@ pub fn mainnet_config(puller: &Pubkey, puller_usdc: &Pubkey, e: [bool; 8]) -> Co
         puller_usdc: puller_usdc.to_bytes(),
         max_pull_raw: 5_000_000,
         legs: [
-            leg(1, 6, 50, 100, "", addr::STAKE_CONFIG, addr::GUARDIAN_POOL, c::FEED_SKR, e[0]),
-            leg(5, 11, 50, 100, addr::STORE_MINT, addr::ORE_STAKE, addr::STORE_MINT, c::FEED_ORE, e[1]),
-            leg(3, 6, 0, 10, addr::KUSDC, addr::RESERVE_USDC, "", ZERO, e[2]),
-            leg(4, 6, 0, 10, addr::JLUSDC, addr::JL_LENDING_USDC, "", ZERO, e[3]),
-            leg(3, 9, 0, 150, addr::KSOL, addr::RESERVE_SOL, "", c::FEED_SOL, e[4]),
-            leg(4, 9, 0, 150, addr::JLWSOL, addr::JL_LENDING_SOL, "", c::FEED_SOL, e[5]),
-            leg(2, 9, 50, 100, addr::HSOL, addr::HSOL_POOL, "", c::FEED_SOL, e[6]),
-            leg(0, 8, 50, 100, addr::CBBTC, "", "", c::FEED_CBBTC, e[7]),
+            leg(1, 6, 50, 100, "", addr::STAKE_CONFIG, addr::GUARDIAN_POOL, c::FEED_SKR, "", e[0]),
+            leg(5, 11, 50, 100, addr::STORE_MINT, addr::ORE_STAKE, addr::STORE_MINT, c::FEED_ORE, addr::PYTH_ORE, e[1]),
+            leg(3, 6, 0, 10, addr::KUSDC, addr::RESERVE_USDC, "", ZERO, "", e[2]),
+            leg(4, 6, 0, 10, addr::JLUSDC, addr::JL_LENDING_USDC, "", ZERO, "", e[3]),
+            leg(3, 9, 0, 150, addr::KSOL, addr::RESERVE_SOL, "", c::FEED_SOL, addr::PYTH_SOL, e[4]),
+            leg(4, 9, 0, 150, addr::JLWSOL, addr::JL_LENDING_SOL, "", c::FEED_SOL, addr::PYTH_SOL, e[5]),
+            leg(2, 9, 50, 100, addr::HSOL, addr::HSOL_POOL, "", c::FEED_SOL, addr::PYTH_SOL, e[6]),
+            leg(0, 8, 50, 100, addr::CBBTC, "", "", c::FEED_CBBTC, addr::PYTH_CBBTC, e[7]),
         ],
     };
     for (i, l) in cfg.legs.iter_mut().enumerate() {

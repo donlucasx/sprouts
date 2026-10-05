@@ -80,6 +80,20 @@ fn golden_path_payloads_match_files() {
     assert_eq!(std::fs::read_to_string(dir.join("config.hex")).unwrap().trim(), std::fs::read_to_string(root().join("config/mainnet-day1.hex")).unwrap().trim());
 }
 
+/// Final review I1: every golden Config pins the sponsored price account on the priced legs 1, 4, 5, 6, 7 and leaves legs
+/// 0 (no price source), 2 and 3 (unpriced) zero. Read from the files, against the literal addresses.
+#[test]
+fn golden_feed_accounts_are_pinned() {
+    let want = ["", addr::PYTH_ORE, "", "", addr::PYTH_SOL, addr::PYTH_SOL, addr::PYTH_SOL, addr::PYTH_CBBTC];
+    for (name, _) in VARIANTS {
+        let cfg = decode_body(&unhex(std::fs::read_to_string(root().join("config").join(name)).unwrap().trim())).unwrap();
+        for (i, w) in want.iter().enumerate() {
+            let pin = if w.is_empty() { ZERO } else { bytes(w) };
+            assert_eq!(cfg.legs[i].feed_account, pin, "{name} leg {i}");
+        }
+    }
+}
+
 #[test]
 #[ignore]
 fn print_addresses() {

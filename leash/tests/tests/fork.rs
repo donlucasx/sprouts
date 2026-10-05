@@ -51,7 +51,7 @@ fn fork_leg2_usdc_klend_real_deposit() {
 fn fork_leg4_sol_klend_real_deposit() {
     let (mut w, l, sink) = fork(4);
     let receipt = user_receipt(&mut w, &l.user, addr::KSOL);
-    let price = posted_copy(&mut w.svm, addr::PYTH_SOL);
+    let price = fresh_sponsored(&mut w.svm, addr::PYTH_SOL);
     let (p, conf, expo) = price_of(&w.svm, &price);
     let amount = 5_000_000u64;
     let lamports = fair_out(amount, p, expo, 9) as u64;
@@ -89,7 +89,7 @@ fn jl_leg(leg: usize, j: &JlAsset, amount: u64, priced: bool) {
     let lending = b58(j.lending);
     let (rn, rd) = rate_now(&w.svm, leg, &[lending]);
     let (price, px, assets, source, swap) = if priced {
-        let price = posted_copy(&mut w.svm, addr::PYTH_SOL);
+        let price = fresh_sponsored(&mut w.svm, addr::PYTH_SOL);
         let (p, conf, expo) = price_of(&w.svm, &price);
         let lamports = fair_out(amount, p, expo, 9) as u64;
         let wsol = ata(&puller, &b58(addr::WSOL));
@@ -171,11 +171,13 @@ fn fork_leg0_skr_real_stake() {
     assert!(shares >= min_out as u128 && shares <= expected + 1, "shares {shares} outside [{min_out}, {}]", expected + 1);
 }
 
-/// Swap legs: the stand-in swap delivers the oracle mid minus 0.5%; first one raw unit under the floor (reverts), then the floor.
+/// Swap legs (Kimi F2: the floor boundary through leash.so for leg 1 too): min_out = floor - 1 is refused at the pull (0, 6008),
+/// floor - 1 delivered against min_out = floor is refused at the settle (3, 6009), and exactly the floor passes. The margin
+/// printed is what the stand-in swap (oracle mid minus 0.5%) would deliver over the floor: arithmetic, not a route measurement.
 fn swap_leg(leg: usize, mint: &str, sponsored: &str, readers_: Vec<Pubkey>, dec: u32, fee: u16, tol: u16) {
     let (mut w, l, sink) = fork(leg);
     let receipt = user_receipt(&mut w, &l.user, mint);
-    let price = posted_copy(&mut w.svm, sponsored);
+    let price = fresh_sponsored(&mut w.svm, sponsored);
     let (p, conf, expo) = price_of(&w.svm, &price);
     let (rn, rd) = rate_now(&w.svm, leg, &readers_);
     let amount = 5_000_000u64;
@@ -188,11 +190,15 @@ fn swap_leg(leg: usize, mint: &str, sponsored: &str, readers_: Vec<Pubkey>, dec:
     let plant = |w: &World, min_out: u64, give: u64| {
         [vec![pull_ix(w, &l, &g, amount, min_out)], fake_swap(w, &g, amount, give, sink), vec![settle_ix(w, &l.user, &g, 0, min_out, amount)]].concat()
     };
+    let low = plant(&w, floor - 1, out);
+    expect_custom(send(&mut w.svm, &puller, &low), 0, 6008);
     let under = plant(&w, floor, floor - 1);
     expect_custom(send(&mut w.svm, &puller, &under), 3, 6009);
-    let ok = plant(&w, floor, out);
-    let cu = send(&mut w.svm, &puller, &ok).unwrap_or_else(|e| panic!("leg {leg} on the mainnet fork: {e}"));
-    report(leg, cu, out as u128, floor as u128);
+    let exact = plant(&w, floor, floor);
+    let cu = send(&mut w.svm, &puller, &exact).unwrap_or_else(|e| panic!("leg {leg}: exactly the floor must pass: {e}"));
+    assert_eq!(token_amount(&w.svm, &receipt), floor);
+    println!("FORK leg {leg} boundary (fee {fee} + tol {tol}): floor {floor}; floor-1 min_out refused (0, 6008); floor-1 delivered refused (3, 6009); floor passes ({cu} CU)");
+    println!("FORK leg {leg}: {cu} CU, the 0.5%-cost swap would deliver {out}, floor {floor}, margin {:.3}%", (out as f64 / floor as f64 - 1.0) * 100.0);
 }
 
 #[test]
@@ -244,64 +250,84 @@ fn fork_sponsored_cbbtc_price_reads_within_600s() {
     assert_eq!(price::read_price(&key, &owner, &a.data, &leg, t + 601), Err(LeashError::StalePrice));
 }
 
-/// Carry-in (Task 6 review minor 4): the tol 150 legs (4, 5) through leash.so on the fork. The real venue mints into a
-/// puller-held receipt account, then exactly `give` moves to the user's receipt: the pull refuses min_out = floor - 1
-/// (ix 0, BelowFloor 6008), delivering floor - 1 against min_out = floor is refused at the settle (Underdelivered 6009),
-/// and exactly the floor passes. `floor` is price::floor_raw over the leash's own reader at the snapshot (tol 150).
-fn sol_lend_floor_boundary(leg: usize) {
+/// Carry-in (Task 6 review minor 4) + Kimi F2: the lending legs 3 (tol 10, unpriced, real Jupiter Lend USDC), 4 and 5 (tol 150)
+/// through leash.so on the fork. The real venue mints into a puller-held receipt account, then exactly `give` moves to the
+/// user's receipt: the pull refuses min_out = floor - 1 (ix 0, BelowFloor 6008), delivering floor - 1 against min_out = floor
+/// is refused at the settle (Underdelivered 6009), and exactly the floor passes. `floor` is price::floor_raw over the
+/// leash's own reader at the snapshot, with the installed Config's tol.
+fn lend_floor_boundary(leg: usize) {
     let (mut w, l, sink) = fork(leg);
-    let klend = leg == 4;
-    let fmint = if klend { addr::KSOL } else { JL_SOL.fmint };
+    let priced = leg != 3;
+    let jl = match leg {
+        3 => Some(&JL_USDC),
+        4 => None,
+        5 => Some(&JL_SOL),
+        _ => unreachable!("lending legs 3, 4, 5"),
+    };
+    let fmint = jl.map_or(addr::KSOL, |j| j.fmint);
+    let reader = b58(jl.map_or(addr::RESERVE_SOL, |j| j.lending));
     let receipt = user_receipt(&mut w, &l.user, fmint);
-    let price = posted_copy(&mut w.svm, addr::PYTH_SOL);
-    let (p, conf, expo) = price_of(&w.svm, &price);
-    let amount = 5_000_000u64;
-    let lamports = fair_out(amount, p, expo, 9) as u64;
     let puller = w.puller;
     let wsol = ata(&puller, &b58(addr::WSOL));
-    let reader = b58(if klend { addr::RESERVE_SOL } else { JL_SOL.lending });
+    let (amount, tol, dec) = if priced { (5_000_000u64, 150u16, 9u8) } else { (2_000_000u64, 10u16, 6u8) };
+    let (price, px, assets, source) = if priced {
+        let price = fresh_sponsored(&mut w.svm, addr::PYTH_SOL);
+        let (p, conf, expo) = price_of(&w.svm, &price);
+        (price, Some(((p as u64) - conf, expo)), fair_out(amount, p, expo, 9) as u64, wsol)
+    } else {
+        (system_program(), None, amount, w.puller_usdc) // leg 3 deposits the pulled USDC itself
+    };
     let (rn, rd) = rate_now(&w.svm, leg, &[reader]);
     let on_chain = decode_account(&w.svm.get_account(&w.config).unwrap().data).unwrap().legs[leg];
-    assert_eq!((on_chain.tol_bps, on_chain.fee_bps), (150, 0), "leg {leg}: tol/fee in the installed Config");
-    let floor = price::floor_raw(amount, rn, rd, Some(((p as u64) - conf, expo)), 0, 150, 9).unwrap() as u64;
+    assert_eq!((on_chain.tol_bps, on_chain.fee_bps), (tol, 0), "leg {leg}: tol/fee in the installed Config");
+    let floor = price::floor_raw(amount, rn, rd, px, 0, tol, dec).unwrap() as u64;
     let held = Pubkey::new_unique(); // the puller's receipt-mint account the real venue mints into
     put(&mut w.svm, held, token_program(), token_data(&b58(fmint), &puller, 0));
     let g = Leg { leg: leg as u8, receipt, price, readers: vec![reader], stock: Pubkey::default() };
     let venue = |w: &World| -> Vec<Instruction> {
-        if klend {
-            vec![klend_refresh_ix(reader), klend_deposit_ix(puller, &KLEND_SOL, wsol, held, lamports)]
-        } else {
-            let shares = (lamports as u128 * 9_998 / 10_000 * rd / rn) as u64;
-            vec![jl_mint_ix(puller, wsol, held, &JL_SOL, shares, lamports)]
+        let mut v = match jl {
+            None => vec![klend_refresh_ix(reader), klend_deposit_ix(puller, &KLEND_SOL, wsol, held, assets)],
+            Some(j) => vec![jl_mint_ix(puller, source, held, j, (assets as u128 * 9_998 / 10_000 * rd / rn) as u64, assets)],
+        };
+        if priced {
+            v.push(token_transfer(w.puller_usdc, sink, puller, amount)); // the stand-in USDC->WSOL swap's USDC side
         }
-        .into_iter()
-        .chain(std::iter::once(token_transfer(w.puller_usdc, sink, puller, amount)))
-        .collect()
+        v
     };
     let plant = |w: &World, min_out: u64, give: u64| -> Vec<Instruction> {
         [vec![pull_ix(w, &l, &g, amount, min_out)], venue(w), vec![token_transfer(held, receipt, puller, give), settle_ix(w, &l.user, &g, 0, min_out, amount)]].concat()
     };
+    let refill = |w: &mut World| {
+        if priced {
+            put_native_wsol(&mut w.svm, wsol, puller, assets);
+        }
+    };
     let settle_at = (plant(&w, floor, floor).len() - 1) as u8;
-    put_native_wsol(&mut w.svm, wsol, puller, lamports);
+    refill(&mut w);
     let ixs = plant(&w, floor - 1, floor - 1);
     expect_custom(send(&mut w.svm, &puller, &ixs), 0, 6008);
-    put_native_wsol(&mut w.svm, wsol, puller, lamports);
+    refill(&mut w);
     let ixs = plant(&w, floor, floor - 1);
     expect_custom(send(&mut w.svm, &puller, &ixs), settle_at, 6009);
-    put_native_wsol(&mut w.svm, wsol, puller, lamports);
+    refill(&mut w);
     let ixs = plant(&w, floor, floor);
     let cu = send_logged(&mut w.svm, &puller, &ixs).unwrap_or_else(|e| panic!("leg {leg}: exactly the floor must pass: {e}"));
     assert_eq!(token_amount(&w.svm, &receipt), floor);
     let minted = token_amount(&w.svm, &held) as u128 + floor as u128;
-    println!("FORK leg {leg} boundary (tol 150): floor {floor}; floor-1 min_out refused (0, 6008); floor-1 delivered refused ({settle_at}, 6009); floor passes ({cu} CU); the venue minted {minted} ({:.3}% over the floor)", (minted as f64 / floor as f64 - 1.0) * 100.0);
+    println!("FORK leg {leg} boundary (tol {tol}): floor {floor}; floor-1 min_out refused (0, 6008); floor-1 delivered refused ({settle_at}, 6009); floor passes ({cu} CU); the venue minted {minted} ({:.3}% over the floor)", (minted as f64 / floor as f64 - 1.0) * 100.0);
+}
+
+#[test]
+fn fork_leg3_floor_boundary_through_leash() {
+    lend_floor_boundary(3);
 }
 
 #[test]
 fn fork_leg4_floor_boundary_through_leash() {
-    sol_lend_floor_boundary(4);
+    lend_floor_boundary(4);
 }
 
 #[test]
 fn fork_leg5_floor_boundary_through_leash() {
-    sol_lend_floor_boundary(5);
+    lend_floor_boundary(5);
 }
