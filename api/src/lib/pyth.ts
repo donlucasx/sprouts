@@ -40,11 +40,22 @@ export function priceRefusal(p: ParsedPrice, confCapBps = CONF_CAP_BPS): string 
   return null;
 }
 
+/**
+ * T8 review minors, taken in T9: the account read at `confirmed`, and WHY it is unusable kept apart (missing vs owned by another
+ * program), so the run's log tells an absent sponsor account from a hijacked one. An RPC failure is not caught here: it throws
+ * with its own message, which priceSourceFor labels as an RPC error (not as a stale or refused price).
+ * A receiver-owned account with the wrong length or discriminator throws.
+ */
+export async function readPriceAccountOrWhy(account: Address): Promise<{ price: ParsedPrice } | { why: string }> {
+  const info = await rpc().getAccountInfo(account, { encoding: "base64", commitment: "confirmed" }).send();
+  if (!info.value) return { why: "is missing" };
+  if (info.value.owner !== PYTH_RECEIVER) return { why: `is owned by ${info.value.owner}, not the Pyth receiver` };
+  return { price: parsePriceUpdate(new Uint8Array(Buffer.from(info.value.data[0], "base64"))) };
+}
 /** The account if it is receiver-owned; null otherwise. A receiver-owned account with the wrong length or discriminator throws. */
 export async function readPriceAccount(account: Address): Promise<ParsedPrice | null> {
-  const info = await rpc().getAccountInfo(account, { encoding: "base64" }).send();
-  if (!info.value || info.value.owner !== PYTH_RECEIVER) return null;
-  return parsePriceUpdate(new Uint8Array(Buffer.from(info.value.data[0], "base64")));
+  const r = await readPriceAccountOrWhy(account);
+  return "price" in r ? r.price : null;
 }
 export async function readSponsoredPrice(account: Address): Promise<ParsedPrice> {
   const p = await readPriceAccount(account);
@@ -61,6 +72,9 @@ export async function fetchHermesUpdate(feedId: string): Promise<{ data: string[
   if (!res.ok) throw new Error(`Hermes answered ${res.status} for feed ${feedId.slice(0, 8)}: ${(await res.text()).slice(0, 80)}`);
   const body = (await res.json()) as { binary: { data: string[] }; parsed: { id: string; price: { price: string; conf: string; expo: number; publish_time: number } }[] };
   const p = body.parsed[0].price;
+  // `full: true` is an assertion about the account a post WOULD create, not something Hermes reports: the receiver's post_update
+  // writes Full verification only after the VAA is fully verified (the pre-txs). This parser is dormant (R324, nothing posts); a
+  // future SKR source must re-read the posted account (byte 40) rather than trust this flag.
   return { data: body.binary.data, price: { feedId: body.parsed[0].id.replace(/^0x/, ""), price: BigInt(p.price), conf: BigInt(p.conf), exponent: p.expo, publishTime: BigInt(p.publish_time), full: true } };
 }
 

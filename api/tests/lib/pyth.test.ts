@@ -51,9 +51,28 @@ describe("priceSourceFor: the feed rule (contracts 1.4, AMEND 10-04 s20 R324: sp
     accounts.set(PYTH_ACCOUNT.SOL, { data: priceUpdate({ feedId: PYTH_FEED.SOL, price: 1n, conf: 0n, exponent: -8, publishTime: NOW - 5, full: false }), owner: RECEIVER });
     await expect(priceSourceFor(4, NOW)).rejects.toThrow(/Full/);
     accounts.set(PYTH_ACCOUNT.SOL, { data: priceUpdate({ feedId: PYTH_FEED.CBBTC, price: 1n, conf: 0n, exponent: -8, publishTime: NOW - 5 }), owner: RECEIVER });
-    await expect(priceSourceFor(5, NOW)).rejects.toThrow(/Full/);
+    await expect(priceSourceFor(5, NOW)).rejects.toThrow(/holds feed 2817d7bf, not the pinned SOL feed/);
     accounts.set(PYTH_ACCOUNT.SOL, { data: priceUpdate({ feedId: PYTH_FEED.SOL, price: 1n, conf: 0n, exponent: -8, publishTime: NOW - 5 }), owner: "11111111111111111111111111111111" });
-    await expect(priceSourceFor(6, NOW)).rejects.toThrow(/Full/);
+    await expect(priceSourceFor(6, NOW)).rejects.toThrow(/is owned by 11111111111111111111111111111111, not the Pyth receiver/);
+  });
+  it("T8 minors: each cause has its own message (missing, wrong owner, not Full, RPC error, stale) so the run's log tells them apart", async () => {
+    await expect(priceSourceFor(6, NOW)).rejects.toThrow(/7UVimffx\w+ is missing \(leg 6 skips this run\)/);
+    accounts.set(PYTH_ACCOUNT.SOL, { data: priceUpdate({ feedId: PYTH_FEED.SOL, price: 1n, conf: 0n, exponent: -8, publishTime: NOW - 5, full: false }), owner: RECEIVER });
+    await expect(priceSourceFor(6, NOW)).rejects.toThrow(/is not Full \(partial verification\)/);
+    live.set(PYTH_ACCOUNT.SOL, () => { throw new Error("fetch failed: 429 Too Many Requests"); });
+    await expect(priceSourceFor(6, NOW)).rejects.toThrow(/^RPC error reading the sponsored SOL account .*429/);
+    live.clear();
+    accounts.set(PYTH_ACCOUNT.SOL, { data: priceUpdate({ feedId: PYTH_FEED.SOL, price: 1n, conf: 0n, exponent: -8, publishTime: NOW - 45 }), owner: RECEIVER });
+    const stale = await priceSourceFor(6, NOW).catch((e: Error) => e.message);
+    expect(stale).toMatch(/45 s old/);
+    expect(stale).not.toMatch(/RPC error|missing|owned by|Full/);
+  });
+  it("T8 carry: the on-chain max_age_s and conf_cap_bps (readLeashConfig) override the shipped defaults", async () => {
+    accounts.set(PYTH_ACCOUNT.SOL, { data: priceUpdate({ feedId: PYTH_FEED.SOL, price: 10_000n, conf: 150n, exponent: -8, publishTime: NOW - 45 }), owner: RECEIVER });
+    await expect(priceSourceFor(6, NOW)).rejects.toThrow(/45 s old \(usable under 40 s\)/);
+    await expect(priceSourceFor(6, NOW, 60, { maxAgeS: 120 })).rejects.toThrow(/confidence 150 is over 100 bps/);
+    expect(await priceSourceFor(6, NOW, 60, { maxAgeS: 120, confCapBps: 200 })).toEqual({ kind: "sponsored", account: PYTH_ACCOUNT.SOL });
+    await expect(priceSourceFor(6, NOW, 60, { maxAgeS: 60, confCapBps: 200 })).rejects.toThrow(/usable under 40 s/);
   });
   it("cbBTC uses its sponsored account under 580 s (max_age_s 600, R324)", async () => {
     accounts.set(PYTH_ACCOUNT.CBBTC, { data: priceUpdate({ feedId: PYTH_FEED.CBBTC, price: 1n, conf: 0n, exponent: -8, publishTime: NOW - 288 }), owner: RECEIVER });
@@ -68,7 +87,7 @@ describe("priceSourceFor: the feed rule (contracts 1.4, AMEND 10-04 s20 R324: sp
     expect(LEG_SPEC[7].maxAgeS - FRESH_MARGIN_S).toBe(580);
   });
   it("a missing account, a wrong length or a wrong discriminator throws", async () => {
-    await expect(priceSourceFor(6, NOW)).rejects.toThrow(/Full/);
+    await expect(priceSourceFor(6, NOW)).rejects.toThrow(/is missing/);
     accounts.set(PYTH_ACCOUNT.SOL, { data: Buffer.alloc(100), owner: RECEIVER });
     await expect(priceSourceFor(6, NOW)).rejects.toThrow(/134/);
     const bad = priceUpdate({ feedId: PYTH_FEED.SOL, price: 1n, conf: 0n, exponent: -8, publishTime: NOW - 5 });
@@ -173,6 +192,32 @@ describe("priceSourceFor: waiting for the next sponsored update (measured gaps)"
     expect(out.v).toEqual({ kind: "sponsored", account: PYTH_ACCOUNT.CBBTC });
     expect(out.waitedMs).toBe(0);
     expect(reads).toBe(1);
+  });
+  it("T8 minor: a fresh price the program would REFUSE (conf over the cap) is waited on, and used once the next update is acceptable", async () => {
+    vi.useFakeTimers({ now: T0 });
+    live.set(PYTH_ACCOUNT.SOL, () => {
+      const t = Math.floor(Date.now() / 1000);
+      // a wide-confidence print at NOW - 5, replaced by a tight one 7 s later
+      const tight = t >= NOW + 7;
+      return { data: priceUpdate({ feedId: PYTH_FEED.SOL, price: 15_000_000_000n, conf: tight ? 5_000_000n : 900_000_000n, exponent: -8, publishTime: tight ? NOW + 7 : NOW - 5 }), owner: RECEIVER };
+    });
+    const r = settle(priceSourceFor(6));
+    await vi.advanceTimersByTimeAsync(12_000);
+    const out = await r;
+    expect(out.e).toBeNull();
+    expect(out.v).toEqual({ kind: "sponsored", account: PYTH_ACCOUNT.SOL });
+    expect(out.waitedMs).toBeGreaterThanOrEqual(7_000);
+    expect(out.waitedMs).toBeLessThanOrEqual(8_000);
+    expect(reads).toBe(5);   // 0, 2, 4, 6 s refused; 8 s accepted
+  });
+  it("a refused value that never clears skips the leg after the wait, naming the refusal (not the age)", async () => {
+    vi.useFakeTimers({ now: T0 });
+    live.set(PYTH_ACCOUNT.SOL, () => ({ data: priceUpdate({ feedId: PYTH_FEED.SOL, price: 15_000_000_000n, conf: 900_000_000n, exponent: -8, publishTime: Math.floor(Date.now() / 1000) - 1 }), owner: RECEIVER }));
+    const r = settle(priceSourceFor(6, undefined, 10));
+    await vi.advanceTimersByTimeAsync(20_000);
+    const out = await r;
+    expect(out.e!.message).toMatch(/confidence 900000000 is over 100 bps.*leg 6 skips this run/);
+    expect(out.waitedMs).toBeLessThanOrEqual(10_000);
   });
   it("a Partial or wrong-feed account fails at once, without waiting (the next update will not fix it)", async () => {
     vi.useFakeTimers({ now: T0 });

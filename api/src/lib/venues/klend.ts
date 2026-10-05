@@ -98,7 +98,7 @@ const refuse = (why: string): never => { throw new Error(`K-Lend refused: ${why}
 const same = (ix: Instruction, want: string[]) => { const got = (ix.accounts ?? []).map((x) => x.address as string); return got.length === want.length && got.every((x, i) => x === want[i]); };
 
 /** Contracts 3.3: program, discriminators, every account position, destination = the user's canonical kToken ATA, source = the puller's. */
-export async function checkKlendDepositInstructions(ixs: readonly Instruction[], a: { puller: Address; user: Address; asset: LendAsset }): Promise<void> {
+export async function checkKlendDepositInstructions(ixs: readonly Instruction[], a: { puller: Address; user: Address; asset: LendAsset; amountRaw: bigint }): Promise<void> {
   const k = KLEND[a.asset];
   const mine = ixs.filter((ix) => ix.programAddress === KLEND_PROGRAM);
   if (mine.length !== 2) refuse(`expected refresh + deposit, found ${mine.length} K-Lend instructions`);
@@ -108,6 +108,10 @@ export async function checkKlendDepositInstructions(ixs: readonly Instruction[],
   if (!same(refresh, [k.reserve, KLEND_MARKET, KLEND_PROGRAM, KLEND_PROGRAM, KLEND_PROGRAM, k.scopePrices])) refuse("refresh accounts are not the pinned reserve's");
   const dd = Buffer.from(deposit.data ?? []);
   if (dd.length !== 16 || !dd.subarray(0, 8).equals(DISC.deposit) || dd.readBigUInt64LE(8) === 0n) refuse("the second K-Lend instruction is not a deposit");
+  // Carry-in (T6 review): the amount is bound to the leg's own (pull + this user's carry). The puller's source account pools every
+  // user's float, so a larger deposit would credit this user with other users' USDC / WSOL.
+  if (a.amountRaw <= 0n) refuse(`the leg's deposit amount ${a.amountRaw} is not positive`);
+  if (dd.readBigUInt64LE(8) !== a.amountRaw) refuse(`deposit of ${dd.readBigUInt64LE(8)}, not the leg's ${a.amountRaw}`);
   const source = await pullerSourceOf(a.puller, a.asset);
   const destination = await ata(a.user, k.collateralMint);
   if (!same(deposit, [a.puller, k.reserve, KLEND_MARKET, KLEND_LMA, k.liquidityMint, k.supplyVault, k.collateralMint, source, destination, TOKEN_PROGRAM_ADDRESS, TOKEN_PROGRAM_ADDRESS, SYSVAR_INSTRUCTIONS])) refuse("deposit accounts are not the pinned ones (source, destination, reserve)");
