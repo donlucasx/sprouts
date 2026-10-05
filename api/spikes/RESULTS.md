@@ -117,3 +117,11 @@ Row-level security enabled on all twelve tables (`0002_rls.sql`, pushed 2026-09-
 ## The ledger catches up with the spikes (2026-09-28, Plan 2 Task 2)
 
 The spike plantings above never wrote `plantings` rows; the daily reconciliation (R61) compares the chain's share count with what the ledger says was minted, so they had to be booked. `spikes/book-planting.ts` books one as a confirmed row with its real signature, its time read from the chain, one SKR leg (change = pulled minus the 3c network fee, as the cron books) and the wallet's ledger bump; `spikes/set-joined.ts` then records the shares each confirmed planting minted (all but the newest estimated from the leg at today's share price 1,145,995,530; the newest takes the remainder) and the position at join (0 shares). Result: four confirmed plantings (10c, $4.90, the cron's 23c, $5), minted 4,586,567 + 232,109,655 + 10,898,151 + 230,499,160 = 478,093,533 shares = the chain, delta 0. The first reconciliation on production may now find nothing to adjust.
+
+## 2026-10-05 S4 gate (lending + leash, Task 0)
+- Hermes auth: `Authorization: Bearer` (x-api-key = 401). Entitlement: SOL, CBBTC, ORE, SKR each `403 Not entitled: feed ... (no grant accepts this feed ...)`; entitled 0/4.
+- Sponsored ages (R324; 120 rounds, 15 s apart, run 2026-10-04 17:56 to 18:25 PDT):
+  - SOL max age 55s; updates seen 35; gaps (s) min 50 max 55; not Full/missing 0
+  - CBBTC max age 280s; updates seen 8; gaps (s) min 270 max 271; not Full/missing 0
+  - ORE max age 55s; updates seen 35; gaps (s) min 50 max 55; not Full/missing 0
+- Consequence (R324, nothing posts): cbBTC leg 7 keeps `max_age_s` 600 (yes: max age 280 s, plus 60 = 340, at or under 600); SKR leg 0 has no source (contracts 10 item 15); SOL/ORE legs use the sponsored account under 40 s old and wait up to 60 s otherwise (Task 8). Note: SOL/ORE max age 55 s with 50-55 s gaps, so the under-40 s rule will skip some runs and wait for the next update.
