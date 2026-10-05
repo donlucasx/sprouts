@@ -114,16 +114,21 @@ export async function GET(request: Request) {
     const splits = await step("decide", () => decideSplits({ repo, now, model: process.env.ANTHROPIC_API_KEY ? callConversation : null, scout: () => scoutYields(realVenueReads()) }));
     const applied = await step("apply", () => applyToUsers({ repo, now }));
     const movesDeadlineMs = startedMs + MOVES_DEADLINE_MS;
-    const moves = process.env.MOVES_ENABLED === "false" ? null : await step("moves", async () => proposeMoves({
-      repo,
-      now,
-      // Past the deadline a read fails, which proposeMoves treats as "skip this user", so a slow RPC never eats the planting window.
-      positions: async (u) => {
-        if (Date.now() >= movesDeadlineMs) throw new Error("moves deadline passed");
-        return readLendingPositions(address(u));
-      },
-      solUsd: (await repo.getCoinDay(dayOf(now), "SOL_LEND"))?.priceUsd ?? 0,
-    }));
+    const moves = process.env.MOVES_ENABLED === "false" ? null : await step("moves", async () => {
+      // A move's cost is priced in SOL; with no SOL price today a zero would make every move look free, so the step is skipped (logged).
+      const solUsd = (await repo.getCoinDay(dayOf(now), "SOL_LEND"))?.priceUsd;
+      if (!solUsd || solUsd <= 0) throw new Error("no SOL price today, moves skipped");
+      return proposeMoves({
+        repo,
+        now,
+        // Past the deadline a read fails, which proposeMoves treats as "skip this user", so a slow RPC never eats the planting window.
+        positions: async (u) => {
+          if (Date.now() >= movesDeadlineMs) throw new Error("moves deadline passed");
+          return readLendingPositions(address(u));
+        },
+        solUsd,
+      });
+    });
     const planting = await runPlanting({ repo, now, chain: realChain(), deadlineMs: startedMs + 240_000 });
     const withdrawals = await runWithdrawCrank({ repo, now, chain: { readPosition: (u) => readPosition(address(u)), crankWithdraw: (u) => crankWithdraw(address(u)) } });
     // R61: stakes and unstakes the Seed Vault made from its own wallet, found by comparing the chain's share count with the ledger's.

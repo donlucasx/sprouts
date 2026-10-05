@@ -118,8 +118,9 @@ export async function scoutYields(reads: VenueReads): Promise<FoundPool[]> {
     .map((p) => ({ poolId: p.pool, project: p.project, symbol: p.symbol, asset: p.symbol as "USDC" | "SOL", apyBasePct: p.apyBase as number, tvlUsd: p.tvlUsd }));
 }
 
-const getJson = async (url: string, headers: Record<string, string> = {}) => {
-  const res = await fetch(url, { headers });
+/** One venue or scout read; bounded at 10 s so a hung host cannot starve the cron's planting window. */
+export const getJson = async (url: string, headers: Record<string, string> = {}) => {
+  const res = await fetch(url, { headers, signal: AbortSignal.timeout(10_000) });
   if (!res.ok) throw new Error(`${url.split("?")[0]} answered ${res.status}`);
   return res.json();
 };
