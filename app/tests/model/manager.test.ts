@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { ASSETS, type Split, type Pins, type Stop } from "@/lib/coins";
 import {
   STOP_FLOOR, STOP_MAX, PIN_MAX, PIN_STEP, MANAGER_LINE, STOP_LINE, UNDONE_TEXT,
-  splitRows, modeWord, togglePin, stepPin, canStepUp, undoLine, changeSummary, splitRowLine, pinsForOn,
+  splitRows, modeWord, setCoinOn, managedPins, stepPin, canStepUp, undoLine, changeSummary, splitRowLine, pinsForOn,
 } from "@/model/manager";
 
 const split = (p: Partial<Split>): Split => ({ SKR: 0, stORE: 0, hSOL: 0, USDC_LEND: 0, SOL_LEND: 0, cbBTC: 0, ...p });
@@ -43,16 +43,17 @@ describe("splitRows (spec 3.1)", () => {
     expect(rows[5]).toEqual({ asset: "cbBTC", pct: 10, mode: "auto", bound: "at most 25%" });
   });
 
-  // Review Focus 2: a pin above the stop's max is the user's authority.
-  it("on: a pin above the stop max keeps its row; the pinned value is the pin, not the allocation", () => {
-    const rows = splitRows(rules({ managed: true, stop: "balanced", pins: { stORE: 50 }, allocation: split({ SKR: 35, stORE: 50, hSOL: 8, USDC_LEND: 4, SOL_LEND: 2, cbBTC: 1 }) }));
-    expect(rows[1]).toEqual({ asset: "stORE", pct: 50, mode: "pinned", bound: null });
+  // R346: on, a 0 pin is a coin switched off; an old non-zero pin reads as on (it becomes on at the next save).
+  it("on: a coin pinned at 0 reads off; an old non-zero pin reads on with its bound", () => {
+    const rows = splitRows(rules({ managed: true, stop: "balanced", pins: { hSOL: 0, stORE: 50 }, allocation: split({ SKR: 35, stORE: 50, USDC_LEND: 15 }) }));
+    expect(rows[4]).toEqual({ asset: "hSOL", pct: 0, mode: "off", bound: null });
+    expect(rows[1]).toEqual({ asset: "stORE", pct: 50, mode: "auto", bound: "at most 20%" });
     expect(rows[0].mode).toBe("auto");
   });
 
-  it("on with SKR pinned: SKR reads pinned with no bound", () => {
-    const rows = splitRows(rules({ managed: true, stop: "careful", pins: { SKR: 70 }, allocation: split({ SKR: 70, hSOL: 10, USDC_LEND: 10, SOL_LEND: 10 }) }));
-    expect(rows[0]).toEqual({ asset: "SKR", pct: 70, mode: "pinned", bound: null });
+  it("on: SKR is never off, even with a stray 0 pin", () => {
+    const rows = splitRows(rules({ managed: true, stop: "careful", pins: { SKR: 0 }, allocation: split({ SKR: 70, hSOL: 30 }) }));
+    expect(rows[0]).toEqual({ asset: "SKR", pct: 70, mode: "auto", bound: "at least 50%" });
   });
 
   // Audit fix F1: the unsaved ON draft reads the stop's split, not the saved OFF allocation.
@@ -63,9 +64,9 @@ describe("splitRows (spec 3.1)", () => {
     expect(rows[0]).toEqual({ asset: "SKR", pct: 45, mode: "auto", bound: "at least 35%" });
     expect(rows[4]).toEqual({ asset: "hSOL", pct: 20, mode: "auto", bound: "at most 25%" });
   });
-  it("on with a preview: a pinned row keeps its pin", () => {
-    const rows = splitRows(rules({ managed: true, stop: "balanced", pins: { stORE: 50 } }), preview);
-    expect(rows[1]).toEqual({ asset: "stORE", pct: 50, mode: "pinned", bound: null });
+  it("on with a preview: an off coin reads 0 and off, the rest read the preview", () => {
+    const rows = splitRows(rules({ managed: true, stop: "balanced", pins: { stORE: 0 } }), preview);
+    expect(rows[1]).toEqual({ asset: "stORE", pct: 0, mode: "off", bound: null });
     expect(rows[4].pct).toBe(20);
   });
   it("off ignores the preview", () => {
@@ -88,9 +89,15 @@ describe("pins", () => {
     expect(canStepUp(on({ SKR: 60, hSOL: 40 }), "hSOL")).toBe(false);      // 105
     expect(canStepUp(on({ hSOL: 75 }), "hSOL")).toBe(false);
   });
-  it("togglePin pins a coin at its current percent and unpins it", () => {
-    expect(togglePin({}, "hSOL", true, 23)).toEqual({ hSOL: 23 });
-    expect(togglePin({ hSOL: 23, cbBTC: 10 }, "hSOL", false, 23)).toEqual({ cbBTC: 10 });
+  it("setCoinOn (R346): off is a 0 pin, on removes it, SKR never changes, old non-zero pins drop", () => {
+    expect(setCoinOn({}, "hSOL", false)).toEqual({ hSOL: 0 });
+    expect(setCoinOn({ hSOL: 0, cbBTC: 0 }, "hSOL", true)).toEqual({ cbBTC: 0 });
+    expect(setCoinOn({}, "SKR", false)).toEqual({});
+    expect(setCoinOn({ stORE: 50 }, "cbBTC", false)).toEqual({ cbBTC: 0 });
+  });
+  it("managedPins keeps only the non-SKR 0 pins", () => {
+    expect(managedPins({ SKR: 60, stORE: 50, hSOL: 0, cbBTC: 0 })).toEqual({ hSOL: 0, cbBTC: 0 });
+    expect(managedPins({})).toEqual({});
   });
   it("stepPin moves by 5 inside 0 and the coin's pin max", () => {
     expect(stepPin({ hSOL: 20 }, "hSOL", 1)).toEqual({ hSOL: 25 });
@@ -99,8 +106,8 @@ describe("pins", () => {
     expect(stepPin({ hSOL: 3 }, "hSOL", -1)).toEqual({ hSOL: 0 });
     expect(stepPin({}, "cbBTC", 1)).toEqual({ cbBTC: 5 });
   });
-  it("pinsForOn drops zero pins so the manager is free to buy those coins (Ruling P5)", () => {
-    expect(pinsForOn({ hSOL: 0, stORE: 50, cbBTC: 0 })).toEqual({ stORE: 50 });
+  it("pinsForOn (R346): turning the manager on starts every coin on; the off-mode manual split is not carried", () => {
+    expect(pinsForOn({ hSOL: 0, stORE: 50, cbBTC: 0 })).toEqual({});
     expect(pinsForOn({})).toEqual({});
   });
 });
