@@ -6,16 +6,19 @@ import { WEB_LINK_TRUST } from './relink'
 export const PRECISE_GUARANTEE =
   "Once you re-link, Sprouts' server can only pull through the Sprouts program: at most your $5 daily limit, and only in a transaction that leaves at least 98.5% of that value (99.9% for USDC lending), at a live oracle price, in your own allowed coins, lending positions or SKR stake; otherwise it reverts. The server still chooses when, which leg and how much up to the limit; rounding remainders carry to your next planting. Only Sprouts' offline admin key can change these rules."
 
-/** Contracts 2.6 and R324: where the program's prices come from, cbBTC's looser age, SKR's missing price source. Build-written copy, awaiting his ruling. */
-export const PRICE_LINE =
-  "Prices come from Pyth's free price accounts; cbBTC is priced at most 10 minutes ago. SKR has no price source yet, so the program does not check its price."
+/** Contracts 2.6 and R324: where the program's prices come from and cbBTC's looser age. Build-written copy, awaiting his ruling. The SKR price line waits on contracts 10 item 15 (fix round 1, I1). */
+export const PRICE_LINE = "Prices come from Pyth's free price accounts; cbBTC is priced at most 10 minutes ago."
+
+/** R299, build-written (awaiting his ruling): where the admin key lives. Goes stale when the key moves to Squads. */
+export const ADMIN_KEY_LINE = "The admin key is kept on the owner's laptop, never on the server."
 
 /** Settings > About Sprouts, the disclosures (spec 3.5 and 9; R60; RECONCILED rules 10 to 12; R81; R84; the lending build, spec 6.2 and 11). */
 export const DISCLOSURES: [string, string][] = [
   [
     'How Sprouts holds your money',
-    `${PRECISE_GUARANTEE} ${WEB_LINK_TRUST} ${PRICE_LINE} The admin key is kept on the owner's laptop, never on the server. Your SKR is staked under your Seeker's key; only that key can unstake it. Your coins and lending receipts sit in your Seeker wallet. An approval you made before re-linking stays on chain under the old rules until you re-link or revoke it.`,
+    `${PRECISE_GUARANTEE} ${WEB_LINK_TRUST} Your SKR is staked under your Seeker's key; only that key can unstake it. Your coins and lending receipts sit in your Seeker wallet. An approval you made before re-linking stays on chain under the old rules until you re-link or revoke it.`,
   ],
+  ['Prices and keys', `${PRICE_LINE} ${ADMIN_KEY_LINE}`],
   [
     'What "earned" means',
     "Rewards are paid by the staking program every two days into the share price. Sprouts draws what the program shows and nothing else; a fruit is earned SKR since you joined, in SKR, with today's dollar value beside it. Lending earns from borrowers: your receipt is worth a little more USDC or SOL each day at the venue's rate. The dollar value of your garden moves with prices and can be lower than what you put in.",
