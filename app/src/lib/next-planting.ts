@@ -23,9 +23,15 @@ function clock(d: Date): string {
 }
 
 /** The job's next run after `now`, in the phone's time zone: "Today, 7 AM" when it is later today there, else "Tomorrow, 7 AM". */
-export function nextRunLabel(now: Date): string {
+function nextRun(now: Date): Date {
   const run = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), RUN_HOUR_UTC));
   if (run.getTime() <= now.getTime()) run.setUTCDate(run.getUTCDate() + 1);
+  return run;
+}
+/** The job's next run as the phone's clock alone, "7 AM": the widget's short form of nextRunLabel (R363, "Next: 7 AM"). */
+export const nextRunClock = (now: Date): string => clock(nextRun(now));
+export function nextRunLabel(now: Date): string {
+  const run = nextRun(now);
   const sameDay = run.getFullYear() === now.getFullYear() && run.getMonth() === now.getMonth() && run.getDate() === now.getDate();
   return `${sameDay ? "Today" : "Tomorrow"}, ${clock(run)}`;
 }
