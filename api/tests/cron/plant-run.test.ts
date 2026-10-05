@@ -107,75 +107,93 @@ describe("runPlanting", () => {
     expect((await repo.unplantedSwaps("W")).length).toBe(3);   // nothing claimed: the round-ups wait for the USDC
   });
 
-  // Owner 10-05 ("yes, fix the gap"): the balance bounds the pull like the cap. A short balance that still covers the minimum
-  // plants what it covers; before, the run paused, the resume brought it back, and the next run asked for everything again.
-  it("plants what the USDC balance covers: $2.00 waiting, $0.50 in the wallet pulls 50 cents (47 + the fee) and stays active", async () => {
-    const repo = await seeded([100, 100]);
+  // R361 (owner 10-05, "Carry the rest to a later planting"): a short balance that still covers the minimum plants the round-ups it
+  // covers, whole and oldest first; the round-ups it does not cover stay waiting (unclaimed) and plant after a top-up. Before, the run
+  // paused, the resume brought it back, and the next run asked for everything again.
+  const many = (n: number, c: number) => Array.from({ length: n }, () => c);
+
+  it("$2.00 waiting, $0.50 in the wallet: plants the round-ups 47 cents covers, the rest waits, the wallet stays active", async () => {
+    const repo = await seeded(many(10, 20));
     await repo.saveRules("U", { plantThresholdCents: 10 });
     const builds: bigint[] = [];
     const base = fakeChain({ usdcBalanceRaw: async () => 500_000n });
     const r = await runPlanting({ repo, now: NOW, chain: { ...base, buildPlantingTx: async (a) => { builds.push(a.pullRaw); return base.buildPlantingTx(a); } } });
-    expect(r.planted).toEqual([{ wallet: "W", asset: "SKR", pullCents: 50, signature: "sig1" }]);
-    expect(builds).toEqual([500_000n]);
-    expect([...repo.plantings.values()][0]).toMatchObject({ usdcPulledCents: 50 });
-    expect(repo.legs[0]).toMatchObject({ usdcInCents: 47 });
+    expect(r.planted).toEqual([{ wallet: "W", asset: "SKR", pullCents: 43, signature: "sig1" }]);
+    expect(builds).toEqual([430_000n]);
+    expect([...repo.plantings.values()][0]).toMatchObject({ usdcPulledCents: 43 });
+    expect(repo.legs[0]).toMatchObject({ usdcInCents: 40 });
     expect((await repo.getWallet("W"))!.status).toBe("active");
     expect(repo.events.some((e) => e.kind === "paused_no_usdc")).toBe(false);
-    // As with a cap-bounded planting, this planting claims every pending round-up; the uncovered rest is never pulled.
-    expect((await repo.unplantedSwaps("W")).length).toBe(0);
-    expect((await repo.getWallet("W"))!.ledgerCents).toEqual({ SKR: 47 });
+    expect((await repo.unplantedSwaps("W")).length).toBe(8);
   });
 
-  it("at the default threshold, a balance between the minimum and the full pull plants what it covers (the old pause/resume loop)", async () => {
-    // 500 cents waiting (497 + fee fits the $5 cap); $3.00 in the wallet: today's resume (>= 203) and the old pause (< 500) looped.
-    const repo = await seeded([250, 250]);
-    const r = await runPlanting({ repo, now: NOW, chain: fakeChain({ usdcBalanceRaw: async () => 3_000_000n }) });
-    expect(r.planted[0].pullCents).toBe(300);
-    expect((await repo.getWallet("W"))!.ledgerCents).toEqual({ SKR: 297 });
+  it("the old loop ($5.00 waiting, $3.00 in the wallet): plants what is covered, then after a top-up the rest, each round-up once", async () => {
+    const repo = await seeded(many(10, 50));
+    const r1 = await runPlanting({ repo, now: NOW, chain: fakeChain({ usdcBalanceRaw: async () => 3_000_000n }) });
+    expect(r1.planted[0].pullCents).toBe(253);   // 5 round-ups (250) fit under 297
     expect((await repo.getWallet("W"))!.status).toBe("active");
+    expect((await repo.unplantedSwaps("W")).length).toBe(5);
+    // The next day, still $0.53 short of the rest: 0 fit under 50 - 3, below the minimum: paused, nothing claimed.
+    const day2 = new Date(NOW.getTime() + 86_400_000);
+    const r2 = await runPlanting({ repo, now: day2, chain: fakeChain({ usdcBalanceRaw: async () => 500_000n }) });
+    expect(r2.skipped[0].reason).toBe("no usdc");
+    expect((await repo.unplantedSwaps("W")).length).toBe(5);
+    // Topped up: the run resumes it and plants the waiting 250 (+3), and nothing is planted twice.
+    const day3 = new Date(NOW.getTime() + 2 * 86_400_000);
+    const r3 = await runPlanting({ repo, now: day3, chain: fakeChain({ usdcBalanceRaw: async () => 50_000_000n }) });
+    expect(r3.planted[0].pullCents).toBe(253);
+    expect((await repo.unplantedSwaps("W")).length).toBe(0);
+    expect((await repo.getWallet("W"))!.ledgerCents).toEqual({ SKR: 500 });
+    const r4 = await runPlanting({ repo, now: new Date(day3.getTime() + 86_400_000), chain: fakeChain() });
+    expect(r4.planted).toEqual([]);
   });
 
   it("a balance in fractions of a cent rounds down: never a pull above the balance", async () => {
-    const repo = await seeded([250, 250]);
-    const r = await runPlanting({ repo, now: NOW, chain: fakeChain({ usdcBalanceRaw: async () => 2_509_999n }) });
-    expect(r.planted[0].pullCents).toBe(250);
+    const repo = await seeded(many(10, 50));
+    const r = await runPlanting({ repo, now: NOW, chain: fakeChain({ usdcBalanceRaw: async () => 2_529_999n }) });
+    expect(r.planted[0].pullCents).toBe(203);   // 252 cents: 249 of change fit, so 4 round-ups (200), not 5
+    expect((await repo.unplantedSwaps("W")).length).toBe(6);
   });
 
-  it("a balance exactly at the minimum plants it; one cent under pauses", async () => {
-    const at = await seeded([250, 250]);
+  it("a balance exactly at the minimum plants it; one cent under pauses and claims nothing", async () => {
+    const at = await seeded(many(10, 50));
     expect((await runPlanting({ repo: at, now: NOW, chain: fakeChain({ usdcBalanceRaw: async () => 2_030_000n }) })).planted[0].pullCents).toBe(203);
-    const under = await seeded([250, 250]);
+    const under = await seeded(many(10, 50));
     const r = await runPlanting({ repo: under, now: NOW, chain: fakeChain({ usdcBalanceRaw: async () => 2_029_999n }) });
     expect(r.skipped[0].reason).toBe("no usdc");
     expect((await under.getWallet("W"))!.status).toBe("paused");
     expect(under.events.find((e) => e.kind === "paused_no_usdc")!.detail).toEqual({ needCents: 500 });
+    expect((await under.unplantedSwaps("W")).length).toBe(10);
   });
 
-  it("the 7-day rule (minimum zero) plants whatever change the balance covers above the fee; at or under the fee it pauses", async () => {
+  it("the 7-day rule never drops round-ups: 4 cents covers none, so it pauses; a partial balance plants the oldest that fit", async () => {
     const old = { ago: 8 * 86_400_000 };
     const four = await seeded([83, 62], old);
-    expect((await runPlanting({ repo: four, now: NOW, chain: fakeChain({ usdcBalanceRaw: async () => 40_000n }) })).planted[0].pullCents).toBe(4);
-    expect((await four.unplantedSwaps("W")).length).toBe(0);   // as with the cap: every round-up is claimed, 1 cent of change planted
-    const three = await seeded([83, 62], old);
-    expect((await runPlanting({ repo: three, now: NOW, chain: fakeChain({ usdcBalanceRaw: async () => 30_000n }) })).skipped[0].reason).toBe("no usdc");
-    expect((await three.unplantedSwaps("W")).length).toBe(2);
+    expect((await runPlanting({ repo: four, now: NOW, chain: fakeChain({ usdcBalanceRaw: async () => 40_000n }) })).skipped[0].reason).toBe("no usdc");
+    expect((await four.unplantedSwaps("W")).length).toBe(2);
+    const part = await seeded([83, 62], old);
+    expect((await runPlanting({ repo: part, now: NOW, chain: fakeChain({ usdcBalanceRaw: async () => 1_000_000n }) })).planted[0].pullCents).toBe(86);
+    expect((await part.unplantedSwaps("W")).map((s) => s.roundupCents)).toEqual([62]);
+    // Topped up the next day: the waiting 62 (still past 7 days) plants on its own.
+    const r = await runPlanting({ repo: part, now: new Date(NOW.getTime() + 86_400_000), chain: fakeChain() });
+    expect(r.planted[0].pullCents).toBe(65);
+    expect((await part.getWallet("W"))!.ledgerCents).toEqual({ SKR: 145 });
   });
 
-  it("the run after a balance-bounded planting behaves like the run after a cap-bounded one: nothing pending, no pull, no pause", async () => {
-    const repo = await seeded([100, 100]);
-    await repo.saveRules("U", { plantThresholdCents: 10 });
-    const chain = fakeChain({ usdcBalanceRaw: async () => 500_000n });
-    await runPlanting({ repo, now: NOW, chain });
-    const r2 = await runPlanting({ repo, now: new Date(NOW.getTime() + 86_400_000), chain });
-    expect(r2.planted).toEqual([]);
-    expect(r2.skipped[0].reason).toBe("below threshold");
+  it("a balance above the minimum that covers no whole round-up waits without pausing (the resume would undo a pause at once)", async () => {
+    const repo = await seeded([300]);
+    const chain = fakeChain({ usdcBalanceRaw: async () => 2_500_000n });
+    for (const day of [0, 1]) {
+      const r = await runPlanting({ repo, now: new Date(NOW.getTime() + day * 86_400_000), chain });
+      expect(r.skipped[0].reason).toBe("no usdc");
+    }
     expect((await repo.getWallet("W"))!.status).toBe("active");
-    expect(repo.events.some((e) => e.kind === "paused_no_usdc")).toBe(false);
-    // New round-ups after it plant normally.
-    await repo.insertSwap({ signature: "s9", walletPubkey: "W", ts: NOW, inMint: "a", inAmount: 1, outMint: "b", outAmount: 1, usdSizeCents: 100, class: "major", roundupCents: 30 });
-    const r3 = await runPlanting({ repo, now: new Date(NOW.getTime() + 2 * 86_400_000), chain });
-    expect(r3.planted[0].pullCents).toBe(33);
+    expect(repo.events.some((e) => e.kind === "paused_no_usdc" || e.kind === "resumed")).toBe(false);
+    expect((await repo.unplantedSwaps("W")).length).toBe(1);
+    const r = await runPlanting({ repo, now: new Date(NOW.getTime() + 2 * 86_400_000), chain: fakeChain() });
+    expect(r.planted[0].pullCents).toBe(303);
   });
+
 
   it("resumes a wallet the run paused for want of USDC once the USDC is back", async () => {
     const repo = await seeded([83, 62, 70]);
@@ -862,20 +880,24 @@ describe("venues, the leash and the carry in the run (contracts 3.2-3.4)", () =>
     await repo.setWalletLink("W", { delegationPda: "D", linkModel: "leash" });
     await repo.saveRules("U", { plantThresholdCents: 100, allocation: lendOnly });
     const builds: BuildArgs[] = [];
+    // $1.50: 147 cents of change fit; 83 + 62 = 145 are planted, the 70 waits.
     const r = await runPlanting({ repo, now: NOW, chain: recording(builds, { usdcBalanceRaw: async () => 1_500_000n, readLeashConfig: async () => leashCfg([3, 6]) }) });
-    expect(builds[0]).toMatchObject({ asset: "USDC_LEND", leashed: true, pullRaw: 1_500_000n });
-    expect(r.planted[0]).toMatchObject({ pullCents: 150 });
-    expect(repo.legs[0]).toMatchObject({ usdcInCents: 147 });
+    expect(builds[0]).toMatchObject({ asset: "USDC_LEND", leashed: true, pullRaw: 1_480_000n });
+    expect(r.planted[0]).toMatchObject({ pullCents: 148 });
+    expect(repo.legs[0]).toMatchObject({ usdcInCents: 145 });
+    expect((await repo.unplantedSwaps("W")).map((s) => s.roundupCents)).toEqual([70]);
   });
 
-  it("the share-bounded recompute (R336) is bounded by the balance too", async () => {
-    const repo = await seeded([150, 150, 150]);   // 450 cents of change; 45% is 202
+  it("the share-bounded recompute (R336) works on the covered round-ups only", async () => {
+    const repo = await seeded([150, 150, 150]);
     await repo.setWalletLink("W", { delegationPda: "D", linkModel: "leash" });
     await repo.saveRules("U", { plantThresholdCents: 100, stop: "careful", allocation: { SKR: 60, stORE: 0, USDC_LEND: 10, SOL_LEND: 0, hSOL: 10, cbBTC: 20 } });
     const builds: BuildArgs[] = [];
-    const r = await runPlanting({ repo, now: NOW, chain: recording(builds, { usdcBalanceRaw: async () => 1_500_000n, readLeashConfig: async () => leashCfg([6, 7]) }) });
-    expect(builds[0]).toMatchObject({ asset: "cbBTC", leashed: true, pullRaw: 1_500_000n });
-    expect(r.planted[0]).toMatchObject({ pullCents: 150 });
+    // $3.10 covers two round-ups (300); 45% of 300 is 135 + 3 fee. The third round-up waits.
+    const r = await runPlanting({ repo, now: NOW, chain: recording(builds, { usdcBalanceRaw: async () => 3_100_000n, readLeashConfig: async () => leashCfg([6, 7]) }) });
+    expect(builds[0]).toMatchObject({ asset: "cbBTC", leashed: true, pullRaw: 1_380_000n });
+    expect(r.planted[0]).toMatchObject({ pullCents: 138 });
+    expect((await repo.unplantedSwaps("W")).length).toBe(1);
   });
 
   it("a leashed user's USDC goes to Jupiter Lend when only its leash leg is enabled (the Day-1 fallback venue)", async () => {
