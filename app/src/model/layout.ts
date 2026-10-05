@@ -141,6 +141,19 @@ export const STAKE_WALK = 48, STAKE_CLEAR = 1.5;
 export const STAKE_FRONT_W = 3;
 /** The angles the clearance holds a plant at: still and its steady sway either way (motion SWAY.deg; the gust is momentary). */
 const STAKE_SWAY = [-5, 0, 5] as const;
+/** R357: how far past its own plant's drawn edge a moved back-row board's centre may stand, in board widths. */
+export const STAKE_NEAR = 0.6;
+/** A plant's drawn x extent (canvas px, still, at PLANT_SCALE about its foot; a stem padded by its half width), its foot included. */
+function ownSpan(p: PlantOnStage | undefined, foot: number, width: number): [number, number] {
+  if (!p) return [foot, foot];
+  let lo = foot, hi = foot;
+  const fx = p.x * width;
+  for (const q of p.layout.parts) {
+    const pad = q.kind === "stem" ? (Math.max(q.w0, q.w1) * PLANT_SCALE) / 2 : 0;
+    for (const [x] of partCorners(q)) { lo = Math.min(lo, fx + x * PLANT_SCALE - pad); hi = Math.max(hi, fx + x * PLANT_SCALE + pad); }
+  }
+  return [lo, hi];
+}
 /** R356: front parts over a back board are measured still (a sway brushes a board only for a moment); the whole row has room for it. */
 const STILL = [0] as const;
 /** Each drawn part's x span (canvas px) inside the vertical band [y0, y1], at PLANT_SCALE about its foot and at each STAKE_SWAY angle:
@@ -214,7 +227,13 @@ function searchSpots(scene: Scene, plants: readonly PlantOnStage[], width: numbe
     const frontPl = plants.filter((pl) => pl.row === "front"), front = drawnSpans(frontPl, width, y0, y1, STILL), swayed = drawnSpans(frontPl, width, y0, y1), back = drawnSpans(plants.filter((pl) => pl.row === "back"), width, y0, y1);
     const lo = Math.max(h + 1, span.lo + h), hi = Math.min(width - h - 1, span.hi - h), near = ([-1, 1] as const).map((sd) => signX(q.x * width, sd, width, a.scale, a.boardX));
     const own = q.x * width, feet = signs.filter((o) => o !== q && o.row === "back").map((o) => o.x * width);
-    const xs = lo > hi ? [a.x] : [...new Set([Math.min(Math.max(a.x, lo), hi), ...Array.from({ length: Math.floor(hi - lo) + 1 }, (_, i) => lo + i), hi])];
+    // R357 (10-05, "the USDC/kamino is legible but its too far from the plant and cant tell what it belongs to"): the board's centre
+    // stays within STAKE_NEAR of a board's width past its own plant's drawn edge (still), either side of its stem, and short of the
+    // nearest other back-row stem
+    const [l0, r0] = ownSpan(plants.find((pl) => pl.plant === q.plant), own, width), reach = STAKE_NEAR * 2 * h;
+    const leftFoot = Math.max(-Infinity, ...feet.filter((f) => f < own)), rightFoot = Math.min(Infinity, ...feet.filter((f) => f > own));
+    const bLo = Math.max(lo, l0 - reach, leftFoot + 1), bHi = Math.min(hi, r0 + reach, rightFoot - 1);
+    const xs = bLo > bHi ? [a.x] : [...new Set([Math.min(Math.max(a.x, bLo), bHi), ...Array.from({ length: Math.floor(bHi - bLo) + 1 }, (_, i) => bLo + i), bHi])];
     return xs.map((c) => ({ c, h, plant: q.plant, foot: own,
       front: overlap(c - h - STAKE_CLEAR, c + h + STAKE_CLEAR, front), swayed: overlap(c - h - STAKE_CLEAR, c + h + STAKE_CLEAR, swayed),
       stray: feet.some((f) => Math.abs(c - f) <= Math.abs(c - own)) ? 1 : 0,
