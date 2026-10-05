@@ -193,7 +193,7 @@ CU: unleashed `units=` max 187,434 (SOL_LEND:kamino_klend). Leashed units cannot
 
 After `feat/lend-api` is merged, from `build/sprouts/api` (until then the same lines run from `build/sprouts-lend-api/api`). Every line here is simulateTransaction only; none sends a planting. Exit code: 0 all passed, 1 a leg failed, 2 none failed but a leg was skipped (a skip is not a pass).
 
-**AMEND 10-05 (final fix wave; C-I4, R337, R338, R339):** every line below uses the Saga's **Seed Vault wallet** (`--wallet` = the Seed Vault itself, linked in the app), never the web-linked Phantom `887d...`: before go-live a link-page code links to the puller again, so that wallet cannot be re-linked to the leash. Oct 6 re-links exactly ONE wallet (this one, through the app's re-link card, which shows because `RELINK_PILOT` names it); `LEASH_LIVE` is NOT set; every other wallet stays on the puller and keeps planting SKR, stORE and everything. `MOVES_ENABLED` stays unset (off). Day-1 legs: 1,2,6,7 (stORE stays only if step 5's ORE sample and its leashed line pass; else 2,6,7).
+**AMEND 10-05 (final fix wave; C-I4, R337, R338, R339):** every line below uses the Saga's **Seed Vault wallet** (`--wallet` = the Seed Vault itself, linked in the app), never the web-linked Phantom `887d...`: before go-live a link-page code links to the puller again, so that wallet cannot be re-linked to the leash. Oct 6 re-links exactly ONE wallet (this one, through the app's re-link card, which shows because `RELINK_PILOT` names it); `LEASH_LIVE` is NOT set; every other wallet stays on the puller and keeps planting SKR, stORE and everything. `MOVES_ENABLED` stays unset (off). Day-1 legs: 2,6,7, plus 1 (stORE, if step 5's ORE sample and its leashed line pass) and 3 (USDC on Jupiter Lend, if its leashed line in step 4 is `ok=true`; R343). The owner's runbook B3/B4 gives the four exact lists (2,6,7 / 1,2,6,7 / 2,3,6,7 / 1,2,3,6,7).
 
 0. The Seed Vault wallet is linked (prints its wallet row; `wallet row: none` means link it in the app first):
 
@@ -219,7 +219,7 @@ cd /Users/lucasgarzoli/Documents/claude/seekerhackathon/build/sprouts/api && pnp
 cd /Users/lucasgarzoli/Documents/claude/seekerhackathon/build/sprouts/api && pnpm tsx --env-file=.env.local spikes/db-peek.ts DjRpjufi1BNBaYXPu5ybGQu9cHhxgpPkHJb1UJbePcTR | head -1
 ```
 
-4. Leashed, every enabled leg (put the PDA from step 3 in place of `<NEW_PDA>`; list only the legs `leash-admin.ts` enabled: Day 1 = legs 1,2,6,7). Nothing posts: SKR stays off (no price source, R324) and the priced legs read the sponsored accounts:
+4. Leashed, every enabled leg (put the PDA from step 3 in place of `<NEW_PDA>`; list only the legs `leash-admin.ts` enabled: Day 1 = legs 2,6,7 plus 1 and/or 3 when enabled; add `USDC_LEND:jupiter_lend` for leg 3). Nothing posts: SKR stays off (no price source, R324) and the priced legs read the sponsored accounts:
 
 ```
 cd /Users/lucasgarzoli/Documents/claude/seekerhackathon/build/sprouts/api && pnpm tsx --env-file=.env.local scripts/simulate-legs.ts --user DjRpjufi1BNBaYXPu5ybGQu9cHhxgpPkHJb1UJbePcTR --wallet DjRpjufi1BNBaYXPu5ybGQu9cHhxgpPkHJb1UJbePcTR --delegation <NEW_PDA> --leashed --pull 1000000 USDC_LEND:kamino_klend cbBTC hSOL stORE
