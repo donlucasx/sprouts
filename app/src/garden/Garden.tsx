@@ -19,7 +19,7 @@ import { Appear } from "./Strip";
 import { Wind } from "./Wind";
 import { packScene } from "@/model/spread";
 import { frameGround } from "@/model/soil-clip";
-import { Soil, SoilClip, Ring, Seed, Sign, Basket, SpriteAt } from "./parts";
+import { Soil, SoilClip, Ring, Seed, Sign, Basket, SpriteAt, SpriteLoadContext, type SpriteLoad } from "./parts";
 
 const MOUNT_FADE_MS = 300;
 const RING_MS = 1350;      // gen11_motion.py:163: every present plant's ring rises over 1.35 s after a watering
@@ -63,7 +63,7 @@ function useReduceMotion() {
  * row directly under the garden, and the can sits at its bar's end in an overlay over both (the garden view's top-left its origin).
  * R196: the overlay reaches into the screen's right gutter (the garden's box is that much wider, its margin giving it back), so the
  * finger may carry the can to the screen's edge. R195: `wobble` is bumped on every landing on Home and every pull-to-refresh. */
-export function Garden({ scene: incoming, live, canReady, onWater, onNudge, row, tempo = 1, wobble = 0, labelFor }: { scene: Scene; live: boolean; canReady: boolean; onWater: (target: PlantId | null) => Promise<boolean>; onNudge: () => void; row: (can: CanRow) => ReactNode; tempo?: number; wobble?: number; labelFor?: (plant: PlantId, budWaiting: boolean) => string[] }) {
+export function Garden({ scene: incoming, live, canReady, onWater, onNudge, row, tempo = 1, wobble = 0, labelFor, onReady }: { scene: Scene; live: boolean; canReady: boolean; onWater: (target: PlantId | null) => Promise<boolean>; onNudge: () => void; row: (can: CanRow) => ReactNode; tempo?: number; wobble?: number; labelFor?: (plant: PlantId, budWaiting: boolean) => string[]; onReady?: () => void }) {
   const { width } = useWindowDimensions(); const w = width - 40;
   const { colors } = useTheme();
   const reduced = useReduceMotion();
@@ -268,7 +268,17 @@ export function Garden({ scene: incoming, live, canReady, onWater, onNudge, row,
     waiters.current.push(x);
   });
 
+  // `onReady` (the splash): fires once, when every sprite mounted so far has loaded (all of the first frame mount together).
+  const tally = useRef({ pending: 0, started: 0, fired: false });
+  const onReadyRef = useRef(onReady);
+  useEffect(() => { onReadyRef.current = onReady; }, [onReady]);
+  const spriteLoad = useMemo<SpriteLoad>(() => {
+    const check = () => { const t = tally.current; if (!t.fired && t.started > 0 && t.pending === 0) { t.fired = true; onReadyRef.current?.(); } };
+    return { start: () => { tally.current.pending++; tally.current.started++; }, done: () => { tally.current.pending--; check(); } };
+  }, []);
+
   return (
+    <SpriteLoadContext.Provider value={spriteLoad}>
     <View style={{ width: w + SIDE_GUTTER, marginRight: -SIDE_GUTTER }}>
     <Animated.View style={[{ width: w }, outer]}>
      <GestureDetector gesture={zoomGesture}>
@@ -336,5 +346,6 @@ export function Garden({ scene: incoming, live, canReady, onWater, onNudge, row,
       </Animated.View>
     ) : null}
     </View>
+    </SpriteLoadContext.Provider>
   );
 }
