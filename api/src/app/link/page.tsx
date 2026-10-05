@@ -17,6 +17,7 @@ export default function LinkPage() {
   const [confirmed, setConfirmed] = useState(false);          // the user said the owner is them
   const [state, setState] = useState<"idle" | "busy" | "done">("idle");
   const [message, setMessage] = useState<string>("");
+  const [leash, setLeash] = useState<string | null>(null);    // contracts 5.5: the leash PDA this wallet's delegation names (after go-live)
   const wallets = useWallets();
   const c = code.trim().toUpperCase();
 
@@ -25,6 +26,7 @@ export default function LinkPage() {
     setOwner(null);
     setConfirmed(false);
     setMessage("");
+    setLeash(null);
   }
 
   async function check() {
@@ -45,9 +47,12 @@ export default function LinkPage() {
     try {
       const account = await connectWith(w);
       const wallet = account.address;
-      const t = await call<{ transaction: string; cap: number; revokes: string | null; owner: string }>(`/api/link/${c}?wallet=${wallet}`);
+      const t = await call<{ transaction: string; cap: number; revokes: string | null; owner: string; puller: string; delegatee: string }>(`/api/link/${c}?wallet=${wallet}`);
       if (t.owner !== owner) throw new Error(`This code now links to ${t.owner}, not ${owner}. Nothing was signed. Check the code again.`);
-      const signed = await signWith(w, account, t.transaction);
+      // After go-live the delegate is leashPda(wallet, garden), shown before the wallet is asked so it can be compared with the app's
+      // re-link card (contracts 5.5, Kimi #4); the signer refuses an approval naming any other delegate.
+      setLeash(t.delegatee !== t.puller ? t.delegatee : null);
+      const signed = await signWith(w, account, t.transaction, t.delegatee);
       const done = await call<{ skrName: string | null }>("/api/link/confirm", {
         method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ code: c, wallet, signedTransaction: signed }),
       });
@@ -85,6 +90,12 @@ export default function LinkPage() {
           </div>
         )}
       </div>
+      {leash ? (
+        <p style={{ marginTop: 16, fontSize: 14 }}>
+          Your delegation names this Sprouts program address, not a Sprouts server key.<br />
+          <code style={{ wordBreak: "break-all" }}>{leash}</code>
+        </p>
+      ) : null}
       {message ? <p style={{ marginTop: 16, fontWeight: state === "done" ? 600 : 400, color: state === "done" ? "#2F5D3A" : undefined }}>{message}</p> : null}
       <p style={{ marginTop: 32, fontSize: 14, color: "#555" }}>
         To revoke later: <a href="/revoke">the revoke page</a> on this site, with the wallet that approved.

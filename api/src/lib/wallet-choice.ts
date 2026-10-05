@@ -1,5 +1,6 @@
 import { VersionedTransaction } from "@solana/web3.js";
 import { getBase64Encoder, getBase64Decoder } from "@solana/kit";
+import { CREATE_RECURRING_DELEGATION_DISCRIMINATOR } from "@solana/subscriptions";
 
 /** Wallet Standard feature names the pages need: connect, and sign a transaction without sending it (the API sends). */
 export const CONNECT = "standard:connect";
@@ -34,22 +35,39 @@ export async function connectWith(w: StdWallet): Promise<StdAccount> {
   throw new Error(`${w.name} did not share an account. Unlock it and try again.`);
 }
 
-/** The programs an approval or a revoke may touch; anything else is refused before the wallet is asked [A10]. */
+const SUBSCRIPTIONS = "De1egAFMkMWZSN5rYXRj9CAdheBamobVNubTsi9avR44";
+
+/**
+ * The programs an approval or a revoke may touch; anything else is refused before the wallet is asked [A10]. No ComputeBudget (review
+ * T19 minor 2): no web-signed build adds one, and a server-built priority fee could drain the wallet's SOL. A wallet adds its own fee
+ * after this check, and verify-tx sets wallet-added ComputeBudget instructions aside on the way back.
+ */
 const ALLOWED = new Set([
-  "De1egAFMkMWZSN5rYXRj9CAdheBamobVNubTsi9avR44", // Subscriptions
+  SUBSCRIPTIONS,
   "11111111111111111111111111111111", // System
   "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", // Token
   "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL", // Associated Token
-  "ComputeBudget111111111111111111111111111111",
 ]);
 
-/** The API built the transaction; the chosen wallet signs it; the API sends it. Every program id is checked before the wallet is asked. */
-export async function signWith(w: StdWallet, account: StdAccount, base64: string): Promise<string> {
+/**
+ * The API built the transaction; the chosen wallet signs it; the API sends it. Every program id is checked before the wallet is asked.
+ * `expectedDelegatee` (contracts 5.5): the delegate the page was told the approval names (the puller before go-live, leashPda(wallet,
+ * user) after); a CreateRecurringDelegation naming any other account (account 3) is refused unsigned. The page takes it from the same
+ * GET answer as the transaction, so the check is tautological against the server: it catches a page/route mismatch, not a server-side
+ * derivation bug or a hostile server. The user's real check is the address the page shows against the app's re-link card.
+ */
+export async function signWith(w: StdWallet, account: StdAccount, base64: string, expectedDelegatee?: string): Promise<string> {
   const bytes = new Uint8Array(getBase64Encoder().encode(base64));
   const tx = VersionedTransaction.deserialize(bytes);
   const keys = tx.message.staticAccountKeys.map((k) => k.toBase58());
   for (const ix of tx.message.compiledInstructions) {
     if (!ALLOWED.has(keys[ix.programIdIndex])) throw new Error("This approval touches a program Sprouts does not use. Nothing was signed.");
+  }
+  if (expectedDelegatee) {
+    for (const ix of tx.message.compiledInstructions) {
+      if (keys[ix.programIdIndex] !== SUBSCRIPTIONS || ix.data[0] !== Number(CREATE_RECURRING_DELEGATION_DISCRIMINATOR)) continue;
+      if (keys[ix.accountKeyIndexes[3]] !== expectedDelegatee) throw new Error("This approval names an unexpected delegate. Nothing was signed.");
+    }
   }
   // Called as a method: some wallets implement the feature as a class and need `this`.
   const feature = w.features[SIGN] as { signTransaction(input: { account: StdAccount; transaction: Uint8Array; chain: string }): Promise<readonly { signedTransaction: Uint8Array }[]> };
