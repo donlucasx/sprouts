@@ -3,7 +3,7 @@ import { findAssociatedTokenPda, TOKEN_PROGRAM_ADDRESS } from "@solana-program/t
 import { findEventAuthorityPda, findSubscriptionAuthorityPda } from "@solana/subscriptions";
 import { GUARDIAN_POOL, LEASH_PROGRAM, ORE_STAKE_ACCOUNT, STAKE_CONFIG, STORE_MINT, SUBSCRIPTIONS_PROGRAM, SYSTEM_PROGRAM, SYSVAR_INSTRUCTIONS, USDC_MINT } from "./constants";
 import { JLEND, KLEND, PYTH_ACCOUNT, PYTH_FEED } from "./venues/addresses";
-import { readPriceAccountOrWhy, priceRefusal, FRESH_MARGIN_S, CONF_CAP_BPS } from "./pyth";
+import { readPriceAccountOrWhy, priceRefusal, FRESH_MARGIN_S, CONF_CAP_BPS, type ParsedPrice } from "./pyth";
 import { sharePrice, userStakePda } from "./staking";
 import { parseStakePool } from "./stake-pool";
 import { storeRedeemRate } from "./store";
@@ -96,6 +96,21 @@ export async function priceSourceFor(leg: LeashLegByte, nowS?: number, waitS = 6
     if (nowS !== undefined || Date.now() + 2_000 > deadline) throw new Error(`sponsored ${feed} price ${why}: leg ${leg} skips this run`);
     await new Promise((r) => setTimeout(r, 2_000));
   }
+}
+
+/**
+ * T9 review M5: the checks priceSourceFor makes, on an already parsed sponsored price, for the leg's own pinned feed under the
+ * on-chain `cfg`. The builder applies it to its SECOND read of the account (the one the floor is computed from), so the floor is
+ * never computed from a price the program would refuse. Null: usable.
+ */
+export function sponsoredPriceRefusal(leg: LeashLegByte, p: ParsedPrice, cfg: { confCapBps?: number; maxAgeS?: number } = {}, nowS?: number): string | null {
+  const feed = LEG_SPEC[leg].feed;
+  if (!feed || feed === "SKR") return `leg ${leg} has no sponsored feed`;
+  if (!p.full) return "is not Full (partial verification)";
+  if (p.feedId !== PYTH_FEED[feed]) return `holds feed ${p.feedId.slice(0, 8)}, not the pinned ${feed} feed`;
+  const freshS = (cfg.maxAgeS ?? LEG_SPEC[leg].maxAgeS) - FRESH_MARGIN_S;
+  const age = (nowS ?? Math.floor(Date.now() / 1000)) - Number(p.publishTime);
+  return age >= freshS ? `is ${age} s old (usable under ${freshS} s)` : priceRefusal(p, cfg.confCapBps ?? CONF_CAP_BPS);
 }
 
 /** R297 go-live switch: new links point at the leash, old puller links stop planting. Off until the owner sets LEASH_LIVE=1. */

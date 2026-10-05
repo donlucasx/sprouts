@@ -61,3 +61,13 @@ describe("avg7 (bootstrap: spot while fewer than 2 rows, Kimi round 2 #10)", () 
     expect(avg7([{ supplyPct: null, ok: false }])).toEqual({ avg7Pct: null, daysMeasured: 0 });
   });
 });
+
+import { venueCandidates } from "@/domain/venues";
+describe("venueCandidates (spec 3: an out-of-band rate is no data, yesterday's row stands)", () => {
+  const row = (venue: "kamino_klend" | "jupiter_lend", supplyPct: number | null, avg7Pct: number, verdict: "ok" | "avoid" | null = null) => ({ venue, asset: "USDC_LEND" as const, supplyPct, avg7Pct, eligible: supplyPct !== null && supplyPct <= 15, verdict });
+  it("uses today's row, falls back to yesterday's when today's rate is out of band, and keeps today's veto", () => {
+    const c = venueCandidates("USDC_LEND", [row("kamino_klend", 40, 40, "avoid"), row("jupiter_lend", 4.19, 4.19)], [row("kamino_klend", 4.43, 4.43)]);
+    expect(c).toEqual([{ venue: "kamino_klend", avg7Pct: 4.43, eligible: true, verdict: "avoid" }, { venue: "jupiter_lend", avg7Pct: 4.19, eligible: true, verdict: null }]);
+    expect(venueCandidates("USDC_LEND", [], [])).toEqual([{ venue: "kamino_klend", avg7Pct: null, eligible: false, verdict: null }, { venue: "jupiter_lend", avg7Pct: null, eligible: false, verdict: null }]);
+  });
+});

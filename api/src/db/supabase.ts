@@ -1,5 +1,6 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { Repo, NewPlanting, NewWithdrawal, NewWatcherCall } from "./repo";
+import { checkLegVenues } from "./repo";
 import type * as T from "./types";
 import type { Asset, LiveAsset, LendAsset, Stop } from "@/domain/coins";
 import type { Venue } from "@/domain/venues";
@@ -191,6 +192,7 @@ export class SupabaseRepo implements Repo {
   }
 
   async insertPlanting(p: NewPlanting, legs: Omit<T.PlantingLegRow, "plantingId">[]) {
+    checkLegVenues(legs);
     const row = await this.one(this.db.from("plantings").insert({
       user_pubkey: p.userPubkey, wallet_pubkey: p.walletPubkey, signature: p.signature, usdc_pulled_cents: p.usdcPulledCents,
       network_fee_cents: p.networkFeeCents, status: p.status, ai_line: p.aiLine, shares_before: p.sharesBefore == null ? null : p.sharesBefore.toString(),
@@ -198,18 +200,29 @@ export class SupabaseRepo implements Repo {
       // R207 #2 (0007): sent only when there is a carry, so a planting without one never depends on the column.
       ...(p.skrCarryInRaw ? { skr_carry_in_raw: p.skrCarryInRaw.toString() } : {}),
     }).select().single(), plantingRow);
-    if (legs.length) {
-      const { error } = await this.db.from("planting_legs").insert(legs.map((l) => ({
-        planting_id: row.id, asset: l.asset, usdc_in_cents: l.usdcInCents, amount_out_raw: l.amountOutRaw.toString(), staked: l.staked, fee_amount_raw: l.feeAmountRaw.toString(), fee_cents: l.feeCents, rate_at_planting: l.rateAtPlanting, venue: l.venue,
-      })));
-      if (error) throw new Error(error.message);
-    }
-    const carry = (Object.entries(p.carryIn ?? {}) as [string, bigint][]).filter(([, v]) => v > 0n);
-    if (carry.length) {
-      const { error } = await this.db.from("carry").insert(carry.map(([kind, v]) => ({ planting_id: row.id, user_pubkey: p.userPubkey, kind, carry_in_raw: v.toString() })));
-      if (error) throw new Error(error.message);
+    try {
+      if (legs.length) {
+        const { error } = await this.db.from("planting_legs").insert(legs.map((l) => ({
+          planting_id: row.id, asset: l.asset, usdc_in_cents: l.usdcInCents, amount_out_raw: l.amountOutRaw.toString(), staked: l.staked, fee_amount_raw: l.feeAmountRaw.toString(), fee_cents: l.feeCents, rate_at_planting: l.rateAtPlanting, venue: l.venue,
+        })));
+        if (error) throw new Error(error.message);
+      }
+      const carry = (Object.entries(p.carryIn ?? {}) as [string, bigint][]).filter(([, v]) => v > 0n);
+      if (carry.length) {
+        const { error } = await this.db.from("carry").insert(carry.map(([kind, v]) => ({ planting_id: row.id, user_pubkey: p.userPubkey, kind, carry_in_raw: v.toString() })));
+        if (error) throw new Error(error.message);
+      }
+    } catch (e) {
+      // A half-written planting must not stay `sent`: `failed` gives its carry back at once and keeps it out of listSentPlantings.
+      await this.setPlantingStatus(row.id, "failed").catch((e2) => console.error(`planting ${row.id}: not marked failed after an insert error (${e2 instanceof Error ? e2.message : String(e2)}); the reconciler gives it up later`));
+      throw e;
     }
     return row;
+  }
+
+  async plantingCarry(plantingId: string) {
+    const rows = await this.many(this.db.from("carry").select("kind, carry_in_raw").eq("planting_id", plantingId), (r) => [String(r.kind), BigInt(String(r.carry_in_raw))] as const);
+    return Object.fromEntries(rows) as Partial<Record<"WSOL" | "USDC", bigint>>;
   }
 
   async setPlantingStatus(plantingId: string, status: T.PlantingStatus, signature?: string) {

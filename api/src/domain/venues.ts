@@ -58,3 +58,15 @@ export function avg7(rows: { supplyPct: number | null; ok: boolean }[]): { avg7P
   if (!good.length) return { avg7Pct: null, daysMeasured: 0 };
   return { avg7Pct: Math.round((good.reduce((s, x) => s + x, 0) / good.length) * 1e6) / 1e6, daysMeasured: good.length };
 }
+
+export type VenueRowLike = { venue: Venue; asset: string; supplyPct: number | null; avg7Pct: number | null; eligible: boolean; verdict: "ok" | "avoid" | null };
+/** Spec 3: today's row per auto venue; a rate outside 0-15% today is no data, so yesterday's row stands; today's AI verdict always applies. */
+export function venueCandidates(asset: string, today: readonly VenueRowLike[], yesterday: readonly VenueRowLike[]): VenueCandidate[] {
+  return AUTO_VENUES.map((venue) => {
+    const t = today.find((r) => r.venue === venue && r.asset === asset);
+    const inBand = !!t && t.supplyPct !== null && t.supplyPct >= RATE_BAND_PCT.min && t.supplyPct <= RATE_BAND_PCT.max;
+    const r = inBand ? t : yesterday.find((x) => x.venue === venue && x.asset === asset) ?? t;
+    if (!r) return { venue, avg7Pct: null, eligible: false, verdict: null };
+    return { venue, avg7Pct: r.avg7Pct, eligible: r.eligible, verdict: t?.verdict ?? r.verdict };
+  });
+}

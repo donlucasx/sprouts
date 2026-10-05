@@ -6,19 +6,19 @@ import {
 } from "@solana/kit";
 import { getSetComputeUnitLimitInstruction, getSetComputeUnitPriceInstruction } from "@solana-program/compute-budget";
 import { ASSOCIATED_TOKEN_PROGRAM_ADDRESS, findAssociatedTokenPda, TOKEN_PROGRAM_ADDRESS, getCreateAssociatedTokenIdempotentInstruction } from "@solana-program/token";
-import { getQuote, getSwapInstructions, checkSwapInstructions, checkQuoteMints } from "./jupiter";
+import { getQuote, getSwapInstructions, checkSwapInstructions, checkQuoteMints, JUPITER_AGGREGATOR } from "./jupiter";
 import { buildTransferRecurringIx } from "./subscriptions";
 import { buildStakeIx, sharePrice, skrAta } from "./staking";
 import { klendRate, klendMinOut, buildKlendDepositIxs, checkKlendDepositInstructions } from "./venues/klend";
 import { jlendRate, buildJlendDepositIxs, checkJlendDepositInstructions, JL_EXPECTED_LEFTOVER } from "./venues/jlend";
 import { KLEND, JLEND } from "./venues/addresses";
-import { leashLegOf, legAccounts, legRate, readReceipt, buildPullIx, buildSettleIx, checkLeashInstructions, floorRaw, LEG_SPEC, priceSourceFor, type LeashLegByte } from "./leash";
+import { leashLegOf, legAccounts, legRate, readReceipt, buildPullIx, buildSettleIx, checkLeashInstructions, floorRaw, LEG_SPEC, priceSourceFor, sponsoredPriceRefusal, type LeashLegByte } from "./leash";
 import { buildPriceUpdate, readSponsoredPrice, sendPriceTxs, type ParsedPrice, type SignedTx } from "./pyth";
 import type { Simulation } from "./plant-run";
 import { pullerSigner } from "./puller";
 import { rpc } from "./rpc";
 import { config } from "./config";
-import { USDC_MINT, SKR_MINT, WSOL_MINT } from "./constants";
+import { USDC_MINT, SKR_MINT, WSOL_MINT, LEASH_PROGRAM, SUBSCRIPTIONS_PROGRAM, SKR_STAKING_PROGRAM, KLEND_PROGRAM, JLEND_PROGRAM, PYTH_RECEIVER } from "./constants";
 import { COINS, isLendAsset, type Asset, type LendAsset, type LiveAsset } from "@/domain/coins";
 import type { AutoVenue } from "@/domain/venues";
 import type { CarryKind } from "@/db/types";
@@ -62,8 +62,10 @@ export type BuiltPlanting = {
   signature: string; expectedOutRaw: bigint; minOutRaw: bigint; lookupTables: Address[]; lastValidBlockHeight: bigint;
   /** Where the delivery guard reads: the user's ATA (wallet coin), the user's receipt ATA (lending), the puller's SKR float (SKR). */
   deliveryAccount: Address;
-  /** Puller accounts whose fall the guards bound (USDC or WSOL float; the jl account that must end closed). */
+  /** Puller accounts whose fall the guards bound: the USDC float (every leg, T9 review I2), the WSOL float (SOL lending), the jl account that must end closed. */
   watched: Address[];
+  /** The puller's USDC pull receiver (every leg) and WSOL swap output (SOL lending only), both in `watched`. */
+  usdcFloat: Address; wsolFloat: Address | null;
   asset: LiveAsset; venue: AutoVenue | null; leg: LeashLegByte | null; preRaw: bigint | null;
   leashMinOutRaw: bigint | null; pullerJl: Address | null; jlLeftover: 0n | 1n | null; cleanup: Instruction[]; carryIn: Partial<Record<CarryKind, bigint>>; sizeBytes: number;
 };
@@ -99,7 +101,13 @@ export async function buildPlantingTx(a: { delegator: Address; user: Address; as
     // `priceOpts` (additive, T8 carry): the run passes the leg's on-chain conf_cap_bps / max_age_s from its one readLeashConfig() and
     // waitS 0 once it has waited for the feed itself (once per feed per run, Task 11). Absent: the shipped defaults and a 60 s wait.
     const src = await priceSourceFor(leg, undefined, a.priceOpts?.waitS ?? 60, { ...(a.priceOpts?.confCapBps !== undefined ? { confCapBps: a.priceOpts.confCapBps } : {}), ...(a.priceOpts?.maxAgeS !== undefined ? { maxAgeS: a.priceOpts.maxAgeS } : {}) });
-    if (src.kind === "sponsored") { priceAccount = src.account; price = await readSponsoredPrice(src.account); }
+    if (src.kind === "sponsored") {
+      priceAccount = src.account;
+      price = await readSponsoredPrice(src.account);
+      // T9 review M5: the floor is computed from this SECOND read of the account; it is checked exactly as the first was.
+      const why = sponsoredPriceRefusal(leg, price, { ...(a.priceOpts?.confCapBps !== undefined ? { confCapBps: a.priceOpts.confCapBps } : {}), ...(a.priceOpts?.maxAgeS !== undefined ? { maxAgeS: a.priceOpts.maxAgeS } : {}) });
+      if (why) throw new Error(`${a.asset}: the sponsored price read for the floor ${why}; the leg skips today`);
+    }
     if (src.kind === "post") { const u = await buildPriceUpdate({ puller, feedId: src.feedId }); priceAccount = u.account; price = u.price; postIx = u.postIx; cleanup = u.closeIxs; preTxs = u.preTxs; }
   }
 
@@ -109,7 +117,9 @@ export async function buildPlantingTx(a: { delegator: Address; user: Address; as
   // The venue builders' ATA creates move to the ATA slot (contracts 3.2 step 2); Jupiter's own setup stays where Jupiter put it.
   const isCreate = (ix: Instruction) => ix.programAddress === ASSOCIATED_TOKEN_PROGRAM_ADDRESS;
   const venueIxs = (v: Instruction[]) => { atas.push(...v.filter(isCreate)); body.push(...v.filter((ix) => !isCreate(ix))); };
-  const watched: Address[] = a.asset === "USDC_LEND" ? [pullerUsdc] : a.asset === "SOL_LEND" ? [pullerWsol] : [];
+  // T9 review I2: the puller's USDC is watched on EVERY leg. On a swap leg it may not fall (the swap spends exactly the pull, so its
+  // input is bound to pullRaw and cannot drain the pooled float); on USDC lending it may fall by this user's USDC carry only.
+  const watched: Address[] = a.asset === "SOL_LEND" ? [pullerUsdc, pullerWsol] : [pullerUsdc];
   let lookupTables: Address[] = [];
   let expectedOutRaw = 0n;
   let swapMin = 0n;
@@ -197,6 +207,9 @@ export async function buildPlantingTx(a: { delegator: Address; user: Address; as
     getSetComputeUnitLimitInstruction({ units: PLANTING_CU_LIMIT }), getSetComputeUnitPriceInstruction({ microLamports: 1_000n }),
     ...atas, ...(postIx ? [postIx] : []), pull, ...body, ...(settle ? [settle] : []),
   ];
+  // T7 carry: the whole transaction against an allowlist (every program, every ATA create, every Token instruction), then each part's own checker.
+  checkPlantingInstructions(ixs, { puller: puller.address, user: a.user, asset: a.asset, venue: a.venue, leashed: leg !== null, pullerWsol, pullerJl,
+    userMints: lend ? [LEG_RECEIPT_MINT(a.asset as LendAsset, a.venue as AutoVenue)] : coin.held === "wallet" ? [coin.mint] : [], posted: postIx !== null });
   if (leg !== null) checkLeashInstructions(ixs, { user: a.user, leg, amountRaw: a.pullRaw, minOutRaw: leashMinOutRaw as bigint });
   // Carry-in (T6 review): the K-Lend deposit amount is BOUND to this leg's own amount (the pull, plus this user's own carry). The
   // puller's USDC / WSOL account is pooled across users, so a larger deposit would draw other users' float into this user's receipt.
@@ -219,9 +232,65 @@ export async function buildPlantingTx(a: { delegator: Address; user: Address; as
   const sizeBytes = getTransactionEncoder().encode(tx).length;
   if (sizeBytes > MAX_TX_BYTES) throw new Error(`${a.asset} planting is ${sizeBytes} bytes, over ${MAX_TX_BYTES}`);
   return {
-    tx, signature: getSignatureFromTransaction(tx), expectedOutRaw, minOutRaw, lookupTables: tableAddrs, lastValidBlockHeight, deliveryAccount, watched,
+    tx, signature: getSignatureFromTransaction(tx), expectedOutRaw, minOutRaw, lookupTables: tableAddrs, lastValidBlockHeight, deliveryAccount, watched, usdcFloat: pullerUsdc, wsolFloat: a.asset === "SOL_LEND" ? pullerWsol : null,
     asset: a.asset, venue: a.venue, leg, preRaw, leashMinOutRaw, pullerJl, jlLeftover, cleanup, carryIn: a.carryIn, sizeBytes,
   };
+}
+
+const LEG_RECEIPT_MINT = (asset: LendAsset, venue: AutoVenue): Address => (venue === "kamino_klend" ? KLEND[asset].collateralMint : JLEND[asset].fTokenMint);
+const COMPUTE_BUDGET = "ComputeBudget111111111111111111111111111111";
+const TOKEN_PROGRAMS = new Set<string>([TOKEN_PROGRAM_ADDRESS, "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"]);
+const SYNC_NATIVE = 17;
+const CLOSE_ACCOUNT = 9;
+
+/**
+ * Task 7 carry, contracts 3.3: the whole transaction against an allowlist, on top of each part's own checker (Jupiter's response,
+ * the venue's deposit, the leash pair). Every top-level program must be one this leg uses, each the expected number of times.
+ * Every ATA instruction is a create paid by the puller, for the puller's own account or for THIS user's account of this leg's coin
+ * or receipt mint. Every Token instruction is either on the puller's jl account (checkJlendDepositInstructions rules on each one)
+ * or Jupiter's SyncNative / CloseAccount-to-the-puller on the puller's WSOL account; a Transfer, Approve, SetAuthority, Burn or
+ * Close on any other account (another user's, the puller's USDC float) is refused.
+ */
+export function checkPlantingInstructions(ixs: readonly Instruction[], a: { puller: Address; user: Address; asset: LiveAsset; venue: AutoVenue | null; leashed: boolean; pullerWsol: Address; pullerJl: Address | null; userMints: Address[]; posted: boolean }): void {
+  const refuse = (why: string): never => { throw new Error(`Planting refused: ${why}`); };
+  // Each program this leg may call at the top level, and how many times (a range).
+  const expected = new Map<string, [number, number]>([
+    [a.leashed ? LEASH_PROGRAM : SUBSCRIPTIONS_PROGRAM, a.leashed ? [2, 2] : [1, 1]],
+    ...(a.asset !== "USDC_LEND" ? [[JUPITER_AGGREGATOR, [1, 1]] as [string, [number, number]]] : []),
+    ...(a.venue === "kamino_klend" ? [[KLEND_PROGRAM, [2, 2]] as [string, [number, number]]] : []),
+    ...(a.venue === "jupiter_lend" ? [[JLEND_PROGRAM, [1, 1]] as [string, [number, number]]] : []),
+    ...(a.asset === "SKR" ? [[SKR_STAKING_PROGRAM, [1, 1]] as [string, [number, number]]] : []),
+    ...(a.posted ? [[PYTH_RECEIVER, [1, 1]] as [string, [number, number]]] : []),
+  ]);
+  const seen = new Map<string, number>();
+  for (const ix of ixs) {
+    const prog = ix.programAddress as string;
+    const data = ix.data ?? new Uint8Array();
+    const acc = (i: number) => ix.accounts?.[i]?.address as string | undefined;
+    if (prog === COMPUTE_BUDGET) continue;
+    if (prog === ASSOCIATED_TOKEN_PROGRAM_ADDRESS) {
+      if (!(data.length === 0 || (data.length === 1 && (data[0] === 0 || data[0] === 1)))) refuse(`associated-token instruction ${data[0]} is not a create`);
+      if (acc(0) !== a.puller) refuse(`an account creation paid by ${acc(0)}, not the puller`);
+      const owner = acc(2);
+      if (owner === a.puller) continue;
+      if (owner !== a.user) refuse(`an account creation for ${owner}, who is neither the puller nor this user`);
+      if (!a.userMints.includes(acc(3) as Address)) refuse(`an account creation for this user's ${acc(3)}, not this leg's coin or receipt`);
+      continue;
+    }
+    if (TOKEN_PROGRAMS.has(prog)) {
+      const target = acc(0);
+      if (a.pullerJl && target === a.pullerJl) continue;
+      if (data.length === 1 && data[0] === SYNC_NATIVE && target === a.pullerWsol) continue;
+      if (data.length === 1 && data[0] === CLOSE_ACCOUNT && target === a.pullerWsol && acc(1) === a.puller && acc(2) === a.puller) continue;
+      refuse(`Token instruction ${data[0]} on ${target} is not allowed in a planting`);
+    }
+    if (!expected.has(prog)) refuse(`program ${prog} is not allowed in a ${a.asset} planting`);
+    seen.set(prog, (seen.get(prog) ?? 0) + 1);
+  }
+  for (const [prog, [lo, hi]] of expected) {
+    const n = seen.get(prog) ?? 0;
+    if (n < lo || n > hi) refuse(`${n} instructions of ${prog}, expected ${lo === hi ? lo : `${lo}-${hi}`}`);
+  }
 }
 
 /** Mainnet simulation, no side effects; reads the delivery account and every watched account before, and as the simulation leaves them. */
@@ -265,6 +334,28 @@ export async function pullerSkrChangeRaw(signature: string): Promise<bigint> {
   const tx = await rpc().getTransaction(signature as Parameters<ReturnType<typeof rpc>["getTransaction"]>[0], { encoding: "json", maxSupportedTransactionVersion: 0, commitment: "confirmed" }).send();
   if (!tx?.meta) throw new Error(`transaction ${signature} not found`);
   return skrChangeFromMeta(tx.meta as Parameters<typeof skrChangeFromMeta>[0], puller.address);
+}
+
+/** The puller's change of one mint inside one confirmed transaction, from that transaction's own balances (skrChangeFromMeta generalised). */
+// PREFLIGHT 10-04 s20 (Kimi F6, refuted): `TokenBalance` is the module-local type already in planting.ts (beside skrChangeFromMeta).
+// Do NOT import a `TokenBalance` from @solana/kit: it would be a duplicate identifier.
+export async function pullerTokenChangeRaw(signature: string, mint: Address): Promise<bigint> {
+  const puller = await pullerSigner();
+  const tx = await rpc().getTransaction(signature as Parameters<ReturnType<typeof rpc>["getTransaction"]>[0], { encoding: "json", maxSupportedTransactionVersion: 0, commitment: "confirmed" }).send();
+  if (!tx?.meta) throw new Error(`transaction ${signature} not found`);
+  const meta = tx.meta as { preTokenBalances?: readonly TokenBalance[] | null; postTokenBalances?: readonly TokenBalance[] | null };
+  const mine = (list: readonly TokenBalance[] | null | undefined) => (list ?? []).filter((b) => b.mint === mint && b.owner === puller.address);
+  const sum = (l: TokenBalance[]) => l.reduce((s, b) => s + BigInt(b.uiTokenAmount.amount), 0n);
+  return sum(mine(meta.postTokenBalances)) - sum(mine(meta.preTokenBalances));
+}
+
+/** After the planting: reclaim the posted price's rent (best effort, puller only, no funds). Dormant while posting is deferred (R324). */
+export async function cleanupPlanting(b: BuiltPlanting): Promise<void> {
+  if (!b.cleanup.length) return;
+  const puller = await pullerSigner();
+  const { value: { blockhash, lastValidBlockHeight } } = await rpc().getLatestBlockhash().send();
+  const tx = await signTransactionMessageWithSigners(pipe(createTransactionMessage({ version: 0 }), (m) => setTransactionMessageFeePayerSigner(puller, m), (m) => setTransactionMessageLifetimeUsingBlockhash({ blockhash, lastValidBlockHeight }, m), (m) => appendTransactionMessageInstructions(b.cleanup, m)));
+  await sendPriceTxs([tx]);
 }
 
 /** An SPL token account's amount (u64 little-endian at byte 64); no account is zero. */

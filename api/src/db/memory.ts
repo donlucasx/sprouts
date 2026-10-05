@@ -1,4 +1,5 @@
 import type { Repo, NewPlanting, NewWithdrawal, NewWatcherCall } from "./repo";
+import { checkLegVenues } from "./repo";
 import type * as T from "./types";
 import type { LiveAsset, LendAsset, Stop } from "@/domain/coins";
 import type { Venue } from "@/domain/venues";
@@ -199,13 +200,29 @@ export class MemoryRepo implements Repo {
     return this.legs.filter((l) => l.plantingId === plantingId);
   }
 
+  /** Test seam (AMEND 10-04 s20, T3 review I3): the next insertPlanting fails after the planting row is written, as a Postgres legs/carry insert error would. One-shot. */
+  insertFault: "legs" | "carry" | null = null;
+
   async insertPlanting(p: NewPlanting, legs: Omit<T.PlantingLegRow, "plantingId">[]): Promise<T.PlantingRow> {
+    checkLegVenues(legs);
     const { sharesBefore = null, ts, carryIn, ...rest } = p;
     const row: T.PlantingRow = { ...rest, id: id(), ts: ts ?? new Date(), sharesBefore, sharesAfter: null, sharesMinted: null, skrCarryInRaw: rest.skrCarryInRaw ?? 0n, skrSurplusRaw: null };
     this.plantings.set(row.id, row);
-    for (const leg of legs) this.legs.push({ ...leg, plantingId: row.id });
-    for (const [kind, raw] of Object.entries(carryIn ?? {}) as ["WSOL" | "USDC", bigint][]) if (raw > 0n) this.carry.push({ plantingId: row.id, userPubkey: row.userPubkey, kind, carryInRaw: raw, surplusRaw: null });
+    try {
+      if (this.insertFault === "legs") throw new Error("planting_legs insert failed (insertFault)");
+      for (const leg of legs) this.legs.push({ ...leg, plantingId: row.id });
+      if (this.insertFault === "carry") throw new Error("carry insert failed (insertFault)");
+      for (const [kind, raw] of Object.entries(carryIn ?? {}) as ["WSOL" | "USDC", bigint][]) if (raw > 0n) this.carry.push({ plantingId: row.id, userPubkey: row.userPubkey, kind, carryInRaw: raw, surplusRaw: null });
+    } catch (e) {
+      this.insertFault = null;
+      await this.setPlantingStatus(row.id, "failed");
+      throw e;
+    }
     return row;
+  }
+
+  async plantingCarry(plantingId: string) {
+    return Object.fromEntries(this.carry.filter((c) => c.plantingId === plantingId).map((c) => [c.kind, c.carryInRaw])) as Partial<Record<"WSOL" | "USDC", bigint>>;
   }
 
   async setPlantingStatus(plantingId: string, status: T.PlantingStatus, signature?: string) {

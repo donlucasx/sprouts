@@ -7,7 +7,8 @@ import { rpc } from "@/lib/rpc";
 import { runPlanting, type Chain } from "@/lib/plant-run";
 import { runWithdrawCrank } from "@/lib/withdraw-run";
 import { readDelegation, usdcAta } from "@/lib/subscriptions";
-import { buildPlantingTx, simulatePlanting, sendPlanting, signatureStatus, pullerSkrChangeRaw, type BuiltPlanting } from "@/lib/planting";
+import { buildPlantingTx, simulatePlanting, sendPlanting, signatureStatus, pullerSkrChangeRaw, pullerTokenChangeRaw, cleanupPlanting, type BuiltPlanting } from "@/lib/planting";
+import { readLeashConfig, priceSourceFor, type LeashLegByte } from "@/lib/leash";
 import { readPosition, crankWithdraw, sharePrice } from "@/lib/staking";
 import { reconcileOwnStakes } from "@/lib/reconcile";
 import { snapshotCoins, IMPACT_LIMIT_PCT, type CoinReads } from "@/lib/coin-data";
@@ -15,9 +16,9 @@ import { decideSplits, applyToUsers } from "@/lib/split-run";
 import { callTool } from "@/lib/anthropic";
 import { getQuote, pricesUsd } from "@/lib/jupiter";
 import { storeRedeemRate } from "@/lib/store";
-import { assetBalanceRaw } from "@/lib/holdings";
-import { COINS, type Asset } from "@/domain/coins";
-import { USDC_MINT } from "@/lib/constants";
+import { assetBalanceRaw, receiptBalanceRaw, readLendingPositions } from "@/lib/holdings";
+import { COINS, type Asset, type LendAsset } from "@/domain/coins";
+import { USDC_MINT, WSOL_MINT } from "@/lib/constants";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -46,8 +47,14 @@ function realChain(): Chain {
     signatureStatus,
     readShares: async (u) => (await readPosition(address(u))).shares,
     sharePrice,
-    assetBalanceRaw: (owner, asset) => assetBalanceRaw(address(owner), asset),
+    assetBalanceRaw: (owner, asset, venue) => (venue ? receiptBalanceRaw(address(owner), asset as LendAsset, venue) : assetBalanceRaw(address(owner), asset)),
     pullerSkrChangeRaw: (sig) => pullerSkrChangeRaw(sig),
+    readLeashConfig: () => readLeashConfig().catch(() => null),
+    lendingPositions: (u) => readLendingPositions(address(u)),
+    pullerCarryChangeRaw: (sig, kind) => pullerTokenChangeRaw(sig, kind === "WSOL" ? WSOL_MINT : USDC_MINT),
+    cleanup: (b) => cleanupPlanting(b as BuiltPlanting),
+    // T8 carry: the run's one wait per feed (waitS 60) and the checks with no wait (before a build, before a send); leg 0 throws (R324).
+    priceFresh: async (leg, cfg, waitS) => { await priceSourceFor(leg as LeashLegByte, undefined, waitS, cfg); },
   };
 }
 
