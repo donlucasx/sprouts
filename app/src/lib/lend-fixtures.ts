@@ -63,7 +63,16 @@ export function mockMe(real: MeResponse, now: Date, o: { move: boolean; termsAcc
     },
     rules: { ...real.rules, allocation: { SKR: 45, stORE: 0, USDC_LEND: 15, SOL_LEND: 10, hSOL: 20, cbBTC: 10 } },
     manager: { ...real.manager, picks: FIXTURE_VENUES.picks, legsEnabled: null },
-    relink: { needed: true, wallets: [{ pubkey: real.user.pubkey, via: "app" }] },
+    // Before go-live every wallet is on the old puller link (Task 2 minor carried to T9); each one the API would ask to re-link: this
+    // phone's in the app, any other on the link page (contracts 5.5).
+    wallets: real.wallets.map((w) => ({ ...w, linkModel: "puller" as const })),
+    relink: {
+      needed: true,
+      wallets: [
+        { pubkey: real.user.pubkey, via: "app" },
+        ...real.wallets.filter((w) => w.status !== "revoked" && w.pubkey !== real.user.pubkey).map((w) => ({ pubkey: w.pubkey, via: "link_page" as const })),
+      ],
+    },
     terms: { currentVersion: FIXTURE_TERMS_VERSION, acceptedVersion: o.termsAccepted ? FIXTURE_TERMS_VERSION : null },
     moveProposal: o.move ? FIXTURE_MOVE : null,
   };
