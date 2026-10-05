@@ -121,33 +121,62 @@ cd ~/Documents/claude/seekerhackathon/build/sprouts/leash && ./scripts/check-con
 Expected: `chain enabled legs []; config/mainnet-init.hex enabled legs []` and
 `Config matches config/mainnet-init.hex byte for byte (...)`. `MISMATCH`: stop and send the output.
 
-**B3. Which legs turn on today: 2 (USDC on K-Lend), 6 (hSOL), 7 (cbBTC)**
+**B3. Which legs turn on today: 1 (stORE) only if its ORE price sample passed, plus 2 (USDC on K-Lend), 6 (hSOL), 7 (cbBTC)**
 
-This is `config/mainnet-day1.hex`. Every priced leg in it reads only its sponsored Pyth price account (pinned in the Config).
-All three passed their gates in `leash/GATES.md` (cbBTC also its price-age sample:
-280 s at most, under the 600 s limit). Legs 0, 1, 3, 4, 5 stay off. If the coordinator tells you one of 2, 6, 7 failed a
-gate, leave it out of B4 (for example `--enable 2,6`) and in B5 run `./scripts/check-config.sh legs 2,6` instead of `day1`.
+Every priced leg reads only its sponsored Pyth price account (pinned in the Config). Legs 2, 6, 7 passed their gates in
+`leash/GATES.md` (cbBTC also its price-age sample: 280 s at most, under the 600 s limit). Leg 1 (stORE) turns on today
+only if stORE's S4 ORE price-age sample has passed (owner ruling R339): in `leash/GATES.md`, the row `1 stORE` of the
+second table says `PASS` in its S4 column (`ORE max age` 55 s or less), and the coordinator confirms it. Legs 0, 3, 4, 5
+stay off.
 
-**B4. Turn on the Day-1 legs (3 transactions)**
+- S4 passed: use **B4 line A** (legs 1, 2, 6, 7) and **B5 line A**.
+- S4 not passed, or you are not sure: use **B4 line B** (legs 2, 6, 7) and **B5 line B**. Leg 1 can be added later in C2.
+
+If the coordinator tells you one of 2, 6, 7 failed a gate, leave it out of B4 (for example `--enable 1,2,6`) and in B5 use
+the `legs` line with that same list (for example `./scripts/check-config.sh legs 1,2,6`).
+
+**B4. Turn on the Day-1 legs (run ONE of these two lines)**
+
+Line A, stORE's sample passed (4 transactions):
+```
+cd ~/Documents/claude/seekerhackathon/build/sprouts/api && pnpm tsx scripts/leash-admin.ts set --enable 1,2,6,7 --admin ~/.config/solana/sprouts-admin.json
+```
+Expected: `step 1/4 set_leg 1 confirmed <sig> (436 B)`, `step 2/4 set_leg 2 confirmed <sig> (436 B)`,
+`step 3/4 set_leg 6 confirmed <sig> (436 B)`, `step 4/4 set_leg 7 confirmed <sig> (436 B)`, then `Config matches ...`.
+
+Line B, stORE's sample not passed (3 transactions):
 ```
 cd ~/Documents/claude/seekerhackathon/build/sprouts/api && pnpm tsx scripts/leash-admin.ts set --enable 2,6,7 --admin ~/.config/solana/sprouts-admin.json
 ```
 Expected: `step 1/3 set_leg 2 confirmed <sig> (436 B)`, `step 2/3 set_leg 6 confirmed <sig> (436 B)`,
-`step 3/3 set_leg 7 confirmed <sig> (436 B)`, then `Config matches ...`. If it stops: rerun the same line.
+`step 3/3 set_leg 7 confirmed <sig> (436 B)`, then `Config matches ...`.
 
-**B5. Final check against the Day-1 file (read-only)**
+If it stops: rerun the same line.
+
+**B5. Final check (read-only; the line that matches the B4 line you ran)**
+
+Line A (you ran B4 line A, legs 1, 2, 6, 7):
+```
+cd ~/Documents/claude/seekerhackathon/build/sprouts/leash && ./scripts/check-config.sh legs 1,2,6,7
+```
+Expected: `on-chain Config OK: legs [1, 2, 6, 7] enabled, puller <the current puller>` and `test result: ok. 1 passed`.
+
+Line B (you ran B4 line B, legs 2, 6, 7: this is the file `config/mainnet-day1.hex`):
 ```
 cd ~/Documents/claude/seekerhackathon/build/sprouts/leash && ./scripts/check-config.sh day1
 ```
 Expected: `chain enabled legs [2, 6, 7]; config/mainnet-day1.hex enabled legs [2, 6, 7]` and
 `Config matches config/mainnet-day1.hex byte for byte (1488 B body, magic, version 1, bump 255, owner = leash)`.
+
+Then, for either line:
 ```
 cd ~/Documents/claude/seekerhackathon/build/sprouts/api && pnpm tsx scripts/leash-admin.ts show --admin ~/.config/solana/sprouts-admin.json
 ```
-Expected: `leg 2 ON`, `leg 6 ON`, `leg 7 ON`, every other leg `off`, no `UNSET` line.
+Expected: `leg 2 ON`, `leg 6 ON`, `leg 7 ON`, and `leg 1 ON` only after line A; every other leg `off`, no `UNSET` line.
+`MISMATCH`, a failed test, or a leg ON that you did not turn on: stop and send the output.
 
 **B6. Write it down**
-In `leash/GATES.md`: each leg's `set_leg` signature in its "Enabled on chain" cell (legs 2, 6, 7), and the B1 signatures in
+In `leash/GATES.md`: each leg's `set_leg` signature in its "Enabled on chain" cell (legs 1, 2, 6, 7, or 2, 6, 7), and the B1 signatures in
 "Mainnet deploy record". The next session commits it.
 
 ---
@@ -164,12 +193,16 @@ cd ~/Documents/claude/seekerhackathon/build/sprouts/leash && ./scripts/check-con
 ```
 
 **C2. Day 2: one more leg at a time, only when the coordinator says its gates passed**
+
+The list is the FULL list that should be on: the legs on now plus the new one. Leg 0 (SKR) is never in the list.
+For example, adding leg 3 (USDC on Jupiter Lend) after B4 line A (legs 1, 2, 6, 7 on):
 ```
-cd ~/Documents/claude/seekerhackathon/build/sprouts/api && pnpm tsx scripts/leash-admin.ts set --enable 1,2,6,7 --admin ~/.config/solana/sprouts-admin.json
-cd ~/Documents/claude/seekerhackathon/build/sprouts/leash && ./scripts/check-config.sh legs 1,2,6,7
+cd ~/Documents/claude/seekerhackathon/build/sprouts/api && pnpm tsx scripts/leash-admin.ts set --enable 1,2,3,6,7 --admin ~/.config/solana/sprouts-admin.json
+cd ~/Documents/claude/seekerhackathon/build/sprouts/leash && ./scripts/check-config.sh legs 1,2,3,6,7
 ```
-The list is the full list that should be on. Expected: one `set_leg 1 confirmed` line, then
-`on-chain Config OK: legs [1, 2, 6, 7] enabled, ...` and `test result: ok. 1 passed`. Leg 0 (SKR) is never in the list.
+Expected: one `set_leg 3 confirmed` line, then `on-chain Config OK: legs [1, 2, 3, 6, 7] enabled, ...` and
+`test result: ok. 1 passed`. After B4 line B (legs 2, 6, 7 on), the same example is `--enable 2,3,6,7` and `legs 2,3,6,7`;
+leg 1 (stORE) is added the same way, only once its S4 ORE price sample has passed (for example `--enable 1,2,6,7`).
 
 **C3. Go-live only (after D7 is green for every enabled leg): new puller (one transaction)**
 
@@ -241,7 +274,7 @@ data on chain: answer `n` (that upload is a transaction from ADMIN, a separate d
   under `leash/` (for example in `target/`): `solana-verify build` builds the first crate named `leash` it finds, and
   `verify_build` stops if that is not `leash/program`.
 - Gates: legs 2, 6, 7 are enabled from their GATES rows (leg 2: Task 7 actual-deposit PASS supersedes its S2 FAIL; leg 7:
-  S4 max age 280 s in `api/spikes/RESULTS.md`). Contracts 8 invariant 3 (one simulated leashed planting per enabled leg)
+  S4 max age 280 s in `api/spikes/RESULTS.md`); leg 1 on Day 1 only when its S4 ORE price-age sample passed (R339). Contracts 8 invariant 3 (one simulated leashed planting per enabled leg)
   can only run on an enabled leg (the program answers LegDisabled 6015 otherwise), so it gates the relink and go-live
   (API D7, D8), not the enable; a leg that fails it is turned off in C1. Legs 4, 5 also need S1; leg 1 the ORE sample;
   leg 3 is a Day-2 leg in GATES; leg 0 has no price source (R324). Nothing moves money before go-live: no delegation names
