@@ -1,8 +1,9 @@
-import { getBase64Encoder, getTransactionDecoder, type Transaction } from '@solana/kit'
-import { checkBeforeSigning, SignRefused, REFUSED } from './sign'
+import { getAddressEncoder, getBase64Encoder, getProgramDerivedAddress, getTransactionDecoder, type Address, type Transaction } from '@solana/kit'
+import { ATA_PROGRAM, checkBeforeSigning, SignRefused, REFUSED, WSOL_MINT } from './sign'
 
 export const UNWRAP_BUTTON = 'Unwrap your SOL'
 export const UNWRAP_DONE = 'Your SOL is back in your wallet.'
+/** Only for an on-chain failure the chain itself reported. */
 export const UNWRAP_FAILED = 'Could not unwrap it. Your next withdraw or move closes it too.'
 
 /**
@@ -19,7 +20,12 @@ export function partialUnwrap(e: unknown): string | null {
 
 export const UNWRAP_SENT = 'Sent. Check Home in a minute.'
 export const UNWRAP_NOT_SENT = 'Not sent. Tap again to try once more.'
-/** The unwrap carries a blockhash that lives 60 to 90 s; past the short end of it a retry cannot land. */
+export const UNWRAP_NOT_YET = 'Not unwrapped yet. Check Home in a minute.'
+export const UNWRAP_UNSURE = 'Sent? Check Home in a minute.'
+/**
+ * The unwrap carries a blockhash that lives 60 to 90 s; past the short end of it a retry cannot land. The age is measured from the moment
+ * the app RECEIVED the unwrapTransaction (the 409), the closest the app can get to when the API took the blockhash.
+ */
 export const UNWRAP_VALID_MS = 60_000
 
 export type UnwrapStatus = 'confirmed' | 'failed' | 'pending'
@@ -65,3 +71,38 @@ export async function unwrapAtTap(a: {
 
 /** After a wallet error with the transaction `ageMs` old: the button stays while a retry could still land. */
 export const unwrapRetryable = (ageMs: number) => ageMs < UNWRAP_VALID_MS
+
+/** The user's WSOL associated token account, derived on the phone (the account the unwrap closes). */
+export async function wsolAccount(user: string): Promise<string> {
+  const enc = getAddressEncoder()
+  const token = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA'
+  const [a] = await getProgramDerivedAddress({ programAddress: ATA_PROGRAM as Address, seeds: [enc.encode(user as Address), enc.encode(token as Address), enc.encode(WSOL_MINT as Address)] })
+  return a
+}
+
+/** The wallet's own explicit "no" before anything was sent: MWA ERROR_NOT_SIGNED (-3, the user declined) or a closed wallet sheet. */
+export function isWalletDecline(e: unknown): boolean {
+  const code = e instanceof Error ? (e as { code?: unknown }).code : undefined
+  return code === -3 || code === 'ERROR_ASSOCIATION_CANCELLED'
+}
+
+export type UnwrapAfterError = { text: string; error: boolean; keepButton: boolean; invalidate: boolean }
+
+/**
+ * What to say after the wallet step threw. Read state, never guess from the error: only our own refusal and the wallet's explicit
+ * decline mean nothing was sent. Any other error (a send error, a timeout, a dropped session) can come after the wallet submitted, so the
+ * user's WSOL account is read: gone means the unwrap landed; still there means not yet (the button stays only while the blockhash can
+ * land); a read that fails says nothing.
+ */
+export async function unwrapAfterError(a: { error: unknown; ageMs: number; accountExists: () => Promise<boolean> }): Promise<UnwrapAfterError> {
+  if (a.error instanceof SignRefused) return { text: a.error.message, error: true, keepButton: false, invalidate: false }
+  if (isWalletDecline(a.error)) return { text: UNWRAP_NOT_SENT, error: true, keepButton: unwrapRetryable(a.ageMs), invalidate: false }
+  let exists: boolean
+  try {
+    exists = await a.accountExists()
+  } catch {
+    return { text: UNWRAP_UNSURE, error: false, keepButton: false, invalidate: true }
+  }
+  if (!exists) return { text: UNWRAP_DONE, error: false, keepButton: false, invalidate: true }
+  return { text: UNWRAP_NOT_YET, error: true, keepButton: unwrapRetryable(a.ageMs), invalidate: true }
+}
