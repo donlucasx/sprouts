@@ -53,3 +53,31 @@ fn decode_account_guards() {
         assert_eq!(decode_account(&d), Err(LeashError::BadConfig), "{name}");
     }
 }
+
+#[test]
+fn header_and_leg_codecs_compose_the_body() {
+    use leash::config::{decode_header, decode_leg, encode_header, encode_leg, EMPTY_LEG};
+    let cfg = base();
+    let body = encode_body(&cfg);
+    assert_eq!(&body[..80], &encode_header(&cfg.header())[..]);
+    for i in 0..8 {
+        let o = 80 + 176 * i;
+        assert_eq!(&body[o..o + 176], &encode_leg(&cfg.legs[i])[..], "leg {i}");
+        assert_eq!(decode_leg(&body[o..o + 176]), cfg.legs[i]);
+    }
+    assert_eq!(decode_header(&body[..80]), Ok(cfg.header()));
+    assert_eq!(decode_header(&body[..79]), Err(LeashError::BadData));
+    assert_eq!(decode_header(&body[..81]), Err(LeashError::BadData));
+    assert_eq!(encode_leg(&EMPTY_LEG), [0u8; 176]);
+    // R324: the golden ages
+    assert_eq!(cfg.legs.iter().map(|l| l.max_age_s).collect::<Vec<_>>(), vec![60, 60, 60, 60, 60, 60, 60, 600]);
+}
+
+#[test]
+fn an_unset_leg_is_never_valid() {
+    use leash::config::{validate_leg, EMPTY_LEG};
+    for i in 0..8 {
+        assert_eq!(validate_leg(i, &EMPTY_LEG), Err(LeashError::BadConfig), "leg {i}");
+        validate_leg(i, &base().legs[i]).unwrap();
+    }
+}

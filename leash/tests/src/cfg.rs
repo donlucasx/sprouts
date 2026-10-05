@@ -26,7 +26,7 @@ fn leg(reader: u8, dec: u8, fee: u16, tol: u16, receipt: &str, rate: &str, extra
 }
 
 pub fn mainnet_config(puller: &Pubkey, puller_usdc: &Pubkey, e: [bool; 8]) -> Config {
-    Config {
+    let mut cfg = Config {
         puller: puller.to_bytes(),
         puller_usdc: puller_usdc.to_bytes(),
         max_pull_raw: 5_000_000,
@@ -40,7 +40,11 @@ pub fn mainnet_config(puller: &Pubkey, puller_usdc: &Pubkey, e: [bool; 8]) -> Co
             leg(2, 9, 50, 100, addr::HSOL, addr::HSOL_POOL, "", c::FEED_SOL, e[6]),
             leg(0, 8, 50, 100, addr::CBBTC, "", "", c::FEED_CBBTC, e[7]),
         ],
+    };
+    for (i, l) in cfg.legs.iter_mut().enumerate() {
+        l.max_age_s = c::MAX_AGE_S_OF_LEG[i]; // R324: 60 s, 600 s on cbBTC
     }
+    cfg
 }
 
 /// One invalid Config per validation rule (the name is the guard id in program/src/config.rs).
@@ -62,7 +66,8 @@ pub fn invalid_configs() -> Vec<(&'static str, Config)> {
         ("V_CONF_MIN", |x| x.legs[6].conf_cap_bps = 0),
         ("V_CONF_MAX", |x| x.legs[6].conf_cap_bps = 201),
         ("V_AGE_MIN", |x| x.legs[0].max_age_s = 0),
-        ("V_AGE_MAX", |x| x.legs[0].max_age_s = 3601),
+        ("V_AGE_MAX", |x| x.legs[0].max_age_s = 61),
+        ("V_AGE_MAX", |x| x.legs[7].max_age_s = 3601),
         ("V_RECEIPT_USDC", |x| x.legs[7].receipt_mint = *c::USDC.as_array()),
         ("V_RECEIPT_ZERO", |x| x.legs[0].receipt_mint = bytes(addr::SKR)),
         ("V_RECEIPT_ZERO", |x| x.legs[7].receipt_mint = ZERO),

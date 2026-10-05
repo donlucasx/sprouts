@@ -39,8 +39,9 @@ pub fn process_instruction(program_id: &Address, accounts: &mut [AccountView], d
     if stack_height() != 1 { return Err(LeashError::NotTopLevel.into()); } // GUARD:TOP_LEVEL
     match data.first() {
         Some(&IX_INIT_CONFIG) => init_config(program_id, accounts, data),
-        Some(&IX_SET_CONFIG) => set_config(program_id, accounts, data),
-        _ => Err(LeashError::BadData.into()),
+        Some(&IX_SET_HEADER) => set_header(program_id, accounts, data),
+        Some(&IX_SET_LEG) => set_leg(program_id, accounts, data),
+        _ => Err(LeashError::BadData.into()), // tag 3 (the retired full-body set_config) lands here
     }
 }
 
@@ -57,8 +58,9 @@ pub fn load_config(program_id: &Address, a: &AccountView) -> Result<Config, Prog
     Ok(config::decode_account(&d)?)
 }
 
-/// accounts: [admin s w (payer), config w, system_program]. Pre-funding the PDA cannot wedge it (contracts audit 7).
-/// The stored body is the RE-ENCODED validated struct, never the raw payload: pad bytes are always zero.
+/// accounts: [admin s w (payer), config w, system_program]; data [2][Config bytes 16..96].
+/// Creates the Config with the header only; bytes 96..1504 stay zero, so every leg is unset (disabled, fails validate_leg)
+/// until its set_leg lands. Pre-funding the PDA cannot wedge it (contracts audit 7).
 fn init_config(program_id: &Address, accounts: &mut [AccountView], data: &[u8]) -> ProgramResult {
     let [admin, config, system, ..] = accounts else {
         return Err(ProgramError::NotEnoughAccountKeys);
@@ -69,8 +71,8 @@ fn init_config(program_id: &Address, accounts: &mut [AccountView], data: &[u8]) 
     let (expected, bump) = Address::find_program_address(&[CONFIG_SEED], program_id);
     if config.address() != &expected { return Err(LeashError::BadPda.into()); } // GUARD:INIT_PDA
     if config.owned_by(program_id) || !config.is_data_empty() { return Err(LeashError::AlreadyInitialized.into()); } // GUARD:INIT_ONCE
-    let cfg = config::decode_body(&data[1..])?;
-    config::validate(&cfg)?; // GUARD:INIT_VALIDATE
+    let h = config::decode_header(&data[1..])?;
+    config::validate_header(&h)?; // GUARD:INIT_VALIDATE
     let needed = Rent::get()?.try_minimum_balance(CONFIG_LEN)?;
     let bump_b = [bump];
     let seeds = [Seed::from(CONFIG_SEED), Seed::from(&bump_b)];
@@ -89,21 +91,42 @@ fn init_config(program_id: &Address, accounts: &mut [AccountView], data: &[u8]) 
     d[0..8].copy_from_slice(&MAGIC);
     d[8] = VERSION;
     d[9] = bump;
-    d[16..].copy_from_slice(&config::encode_body(&cfg)); // GUARD:INIT_REENCODE
+    d[16..LEGS_OFF].copy_from_slice(&config::encode_header(&h)); // GUARD:INIT_REENCODE
     Ok(())
 }
 
-/// accounts: [admin s, config w]. Full replace of bytes 16..1504 (re-encoded, pads zero) after the same validation as init.
-fn set_config(program_id: &Address, accounts: &mut [AccountView], data: &[u8]) -> ProgramResult {
+/// accounts: [admin s, config w]; data [4][Config bytes 16..96]. Full replace of the header (re-encoded, reserved zero)
+/// after validate_header; the legs are not touched. Puller rotation (contracts 8.3) is this instruction.
+fn set_header(program_id: &Address, accounts: &mut [AccountView], data: &[u8]) -> ProgramResult {
     let [admin, config, ..] = accounts else {
         return Err(ProgramError::NotEnoughAccountKeys);
     };
-    if !admin.is_signer() { return Err(LeashError::NotAdmin.into()); } // GUARD:SET_SIGNER
-    if admin.address() != &ADMIN { return Err(LeashError::NotAdmin.into()); } // GUARD:SET_ADMIN
+    if !admin.is_signer() { return Err(LeashError::NotAdmin.into()); } // GUARD:SETHDR_SIGNER
+    if admin.address() != &ADMIN { return Err(LeashError::NotAdmin.into()); } // GUARD:SETHDR_ADMIN
     load_config(program_id, config)?;
-    let cfg = config::decode_body(&data[1..])?;
-    config::validate(&cfg)?; // GUARD:SET_VALIDATE
+    let h = config::decode_header(&data[1..])?;
+    config::validate_header(&h)?; // GUARD:SETHDR_VALIDATE
     let mut d = config.try_borrow_mut()?;
-    d[16..].copy_from_slice(&config::encode_body(&cfg)); // GUARD:SET_REENCODE
+    d[16..LEGS_OFF].copy_from_slice(&config::encode_header(&h)); // GUARD:SETHDR_REENCODE
+    Ok(())
+}
+
+/// accounts: [admin s, config w]; data [5][leg u8][LegConfig 176 B]. Full replace of legs[leg] (re-encoded, pads zero)
+/// after validate_leg, every per-leg rule of contracts 2.3 including the leg-fixed ones. Disabling a leg = enabled 0 here.
+fn set_leg(program_id: &Address, accounts: &mut [AccountView], data: &[u8]) -> ProgramResult {
+    let [admin, config, ..] = accounts else {
+        return Err(ProgramError::NotEnoughAccountKeys);
+    };
+    if !admin.is_signer() { return Err(LeashError::NotAdmin.into()); } // GUARD:SETLEG_SIGNER
+    if admin.address() != &ADMIN { return Err(LeashError::NotAdmin.into()); } // GUARD:SETLEG_ADMIN
+    load_config(program_id, config)?;
+    if data.len() != SET_LEG_DATA_LEN { return Err(LeashError::BadData.into()); } // GUARD:SETLEG_LEN
+    let i = data[1] as usize;
+    if i >= NUM_LEGS { return Err(LeashError::BadData.into()); } // GUARD:SETLEG_INDEX
+    let l = config::decode_leg(&data[2..]);
+    config::validate_leg(i, &l)?; // GUARD:SETLEG_VALIDATE
+    let o = LEGS_OFF + LEG_LEN * i;
+    let mut d = config.try_borrow_mut()?;
+    d[o..o + LEG_LEN].copy_from_slice(&config::encode_leg(&l)); // GUARD:SETLEG_REENCODE
     Ok(())
 }
