@@ -3,16 +3,18 @@
 # rebuild (svm rows), run the row's test, and require it to FAIL. No args = every row; args = guard ids.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-BIN="${AGAVE_BIN:-$HOME/.local/share/agave-v3.1.11/solana-release/bin}"
 TSV=tests/mutations.tsv
 mkdir -p target
+. scripts/sbf.sh # BIN, sbf_build: a stack-overflow build is a BUILDFAIL, never a false RED
 # Restore every guard a mutation pass removed, however the run ends (EXIT, Ctrl-C, kill); touch so cargo rebuilds.
 restore() { find program/src -name '*.mutbak' -print0 | while IFS= read -r -d '' b; do mv "$b" "${b%.mutbak}" && touch "${b%.mutbak}"; done; }
 trap restore EXIT
 trap 'restore; exit 130' INT
 trap 'restore; exit 143' TERM
-build() { "$BIN/cargo-build-sbf" --manifest-path program/Cargo.toml --sbf-out-dir target/deploy >target/mutate-build.log 2>&1; }
+build() { sbf_build program/Cargo.toml target/mutate-build.log quiet; }
 rows() { if [ $# -eq 0 ]; then grep -v '^#' "$TSV" | grep -v '^[[:space:]]*$'; else for g in "$@"; do awk -v g="$g" '$1==g' "$TSV"; done; fi; }
+# the CPI wrapper (cpi.rs rows) is never mutated; build it once so those rows never run a stale or missing .so
+if [ -d tests/cpi-wrapper ]; then sbf_build tests/cpi-wrapper/Cargo.toml target/build-cpi-wrapper.log quiet || exit 1; fi
 fail=0; red=0; total=0
 while read -r id kind file testfile testname; do
   [ -z "${id:-}" ] && continue
@@ -34,7 +36,7 @@ while read -r id kind file testfile testname; do
   fi
   mv "$file.mutbak" "$file" && touch "$file" # the backup's old mtime would make cargo keep the mutated build
 done < <(rows "$@")
-build
+build || { echo "BUILDFAIL restored program (target/mutate-build.log)"; fail=1; }
 if [ -n "$(git status --porcelain -- program)" ]; then echo "TREE DIRTY after mutation run"; git status --porcelain -- program; fail=1; fi
 echo "mutation rows RED: $red / $total"
 exit $fail
