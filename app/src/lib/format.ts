@@ -1,4 +1,4 @@
-import { isLend, VENUE_NAME, type AutoVenue, type LiveAsset } from "./coins";
+import { isLend, VENUE_NAME, type AutoVenue, type LendAsset, type LiveAsset } from "./coins";
 import type { Holding, LendingPosition } from "./api";
 
 /** Display decimals per leg (the mints', read on chain; stORE is 11; lending legs show the UNDERLYING, USDC 6 and SOL 9, never the receipt). Never money math: the API computes, the app formats. */
@@ -150,4 +150,9 @@ export function positionAmount(p: LendingPosition): string {
 export function positionNote(p: LendingPosition): string {
   const where = p.ratePct === null ? VENUE_NAME[p.venue] : `${VENUE_NAME[p.venue]} ${p.ratePct.toFixed(1)}%`;
   return p.earnedUsd !== null && p.earnedUsd >= 0.005 ? `${where}, earned ${formatUsd(Math.round(p.earnedUsd * 100))}` : where;
+}
+
+/** An underlying amount of a lending leg, "0.0010 SOL" (USDC 6 / SOL 9 decimals). */
+export function underlyingAmount(asset: LendAsset, raw: string): string {
+  return `${(Number(raw) / 10 ** DECIMALS[asset]).toFixed(SHOWN[asset])} ${COIN_NAME[asset]}`;
 }

@@ -8,51 +8,66 @@ import { Button } from '@/components/Button'
 import { ThemedText } from '@/components/ThemedText'
 import { api, ApiError, type ActivityResponse } from '@/lib/api'
 import { useMe, useInvalidateMe, useApplyRules } from '@/lib/me'
-import { splitRowLine, SPLIT_SECTION } from '@/model/manager'
-import { plantingRowLine, swapRowLine, withdrawalRowLine, visibleRows, WITHDRAWN_LINE } from '@/model/activity'
+import { SPLIT_SECTION } from '@/model/manager'
+import { foundRow, FOUND_SECTION, lendWithdrawalRow, moveRow, plantingRow, splitRow, swapRow, visibleRows, withdrawalRow, WITHDRAWN_LINE, type ActivityRow } from '@/model/activity'
 import { undoSplit } from '@/lib/manager-api'
 import { spacing, TARGET, useTheme } from '@/theme'
 
 const day = (iso: string) => new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-const solscan = (sig: string) => Linking.openURL(`https://solscan.io/tx/${sig}`)
-const solscanAccount = (pubkey: string) => Linking.openURL(`https://solscan.io/account/${pubkey}`)
 
-/** One row: its text, and the transaction on Solscan as a real target. A row with no signature (a wallet-started withdrawal not yet delivered) links the user's wallet account instead (R165). */
-function Line({ text, signature, accountPubkey }: { text: string; signature?: string | null; accountPubkey?: string | null }) {
+/** R284: one plain line; a tap opens its details and its transaction on Solscan (a wallet-started withdrawal not yet delivered: the wallet, R165). */
+function Row({ row, accountPubkey, right }: { row: ActivityRow; accountPubkey?: string | null; right?: ReactNode }) {
   const { colors } = useTheme()
-  const link = signature
-    ? { open: () => solscan(signature), label: 'Open on Solscan' }
+  const [open, setOpen] = useState(false)
+  const link = row.signature
+    ? { url: `https://solscan.io/tx/${row.signature}`, label: 'Open on Solscan' }
     : accountPubkey
-      ? { open: () => solscanAccount(accountPubkey), label: 'Open your wallet on Solscan' }
+      ? { url: `https://solscan.io/account/${accountPubkey}`, label: 'Open your wallet on Solscan' }
       : null
+  const opens = row.details.length > 0 || link !== null
   return (
-    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: spacing.sm }}>
-      <ThemedText style={{ flex: 1 }}>{text}</ThemedText>
-      {link ? (
+    <View>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
         <Pressable
-          onPress={link.open}
-          accessibilityRole="link"
-          accessibilityLabel={link.label}
-          hitSlop={8}
-          style={({ pressed }) => ({
-            minHeight: TARGET - spacing.xs,
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: spacing.xs,
-            opacity: pressed ? 0.6 : 1,
-          })}
+          disabled={!opens}
+          onPress={() => setOpen((o) => !o)}
+          accessibilityRole={opens ? 'button' : 'text'}
+          accessibilityState={opens ? { expanded: open } : undefined}
+          style={({ pressed }) => ({ flex: 1, minHeight: TARGET - spacing.xs, flexDirection: 'row', alignItems: 'center', gap: spacing.xs, opacity: pressed ? 0.6 : 1 })}
         >
-          <ThemedText variant="label" tone="accentText">
-            Solscan
-          </ThemedText>
-          <MaterialCommunityIcons name="open-in-new" size={14} color={colors.accentText} />
+          <ThemedText style={{ flex: 1 }}>{row.line}</ThemedText>
+          {opens ? <MaterialCommunityIcons name={open ? 'chevron-up' : 'chevron-down'} size={18} color={colors.textSecondary} /> : null}
         </Pressable>
+        {right}
+      </View>
+      {open ? (
+        <View style={{ gap: 2, paddingBottom: spacing.sm }}>
+          {row.details.map((d, i) => (
+            <ThemedText key={i} variant="caption" tone="secondary">
+              {d}
+            </ThemedText>
+          ))}
+          {link ? (
+            <Pressable
+              onPress={() => Linking.openURL(link.url)}
+              accessibilityRole="link"
+              accessibilityLabel={link.label}
+              hitSlop={8}
+              style={({ pressed }) => ({ minHeight: TARGET - spacing.xs, flexDirection: 'row', alignItems: 'center', gap: spacing.xs, opacity: pressed ? 0.6 : 1 })}
+            >
+              <ThemedText variant="label" tone="accentText">
+                Solscan
+              </ThemedText>
+              <MaterialCommunityIcons name="open-in-new" size={14} color={colors.accentText} />
+            </Pressable>
+          ) : null}
+        </View>
       ) : null}
     </View>
   )
 }
 
-/** One section: the heading, its one-line explainer, the latest five rows, and "Show N more" when more wait (his note 6; "more", not "all", since the API caps at fifty). */
+/** One section: the heading, its one-line explainer, the latest five rows, and "Show N more" when more wait (his note 6). */
 function Section<T>({ title, sub, rows, empty, render }: { title: string; sub: string; rows: T[]; empty: string; render: (row: T, i: number) => ReactNode }) {
   const [open, setOpen] = useState(false)
   const { shown, hidden } = visibleRows(rows, open)
@@ -69,7 +84,7 @@ function Section<T>({ title, sub, rows, empty, render }: { title: string; sub: s
   )
 }
 
-/** Every planting, split change, swap and withdrawal of the signed-in Seeker, newest first. */
+/** Every planting, split change, swap, withdrawal, move and found venue of the signed-in Seeker, newest first, one line each. */
 export default function Activity() {
   const { data: me } = useMe()
   const { colors } = useTheme()
@@ -86,7 +101,6 @@ export default function Activity() {
     setUndoError(null)
     try {
       const answer = await undoSplit()
-      // The answer lands on the cached read at once; the rows refresh before the button settles.
       applyRules(answer, { managed: false, undoAvailable: false, changedDay: null })
       void invalidate()
       await q.refetch()
@@ -96,35 +110,27 @@ export default function Activity() {
       setBusy(false)
     }
   }
+  const plantings = a ? a.plantings.flatMap((p) => { const r = plantingRow(day(p.ts), p); return r ? [r] : [] }) : []
+  const withdrawals = a
+    ? [
+        ...a.withdrawals.map((w) => ({ ts: w.ts, row: withdrawalRow(day(w.ts), w, skrUsd, me?.basket?.id === w.id ? me.basket.readyAt : undefined), wallet: true })),
+        ...(a.lendWithdrawals ?? []).map((w) => ({ ts: w.ts, row: lendWithdrawalRow(day(w.ts), w), wallet: false })),
+      ].sort((x, y) => (x.ts < y.ts ? 1 : x.ts > y.ts ? -1 : 0))
+    : []
+  const moves = a?.moves ? a.moves.flatMap((m) => { const r = moveRow(day(m.ts), m); return r ? [r] : [] }) : []
+  const found = a?.found ? a.found.map(foundRow) : []
   return (
     <Screen
       inset="top"
       title="Activity"
-      refreshControl={
-        <RefreshControl
-          refreshing={q.isRefetching}
-          onRefresh={() => q.refetch()}
-          colors={[colors.accent]}
-          progressBackgroundColor={colors.surface}
-          tintColor={colors.accent}
-        />
-      }
+      refreshControl={<RefreshControl refreshing={q.isRefetching} onRefresh={() => q.refetch()} colors={[colors.accent]} progressBackgroundColor={colors.surface} tintColor={colors.accent} />}
     >
       {!a ? (
-        <ThemedText tone="secondary">
-          {q.isError ? 'Could not load your activity just now. Pull down to try again.' : 'Loading your activity.'}
-        </ThemedText>
+        <ThemedText tone="secondary">{q.isError ? 'Could not load your activity just now. Pull down to try again.' : 'Loading your activity.'}</ThemedText>
       ) : null}
       {a ? (
         <>
-          {/* R94: one plain line under each section title saying what it lists. */}
-          <Section
-            title="Plantings"
-            sub="Each time your change became a coin in your garden."
-            rows={a.plantings}
-            empty="No planting yet."
-            render={(p) => <Line key={p.id} text={plantingRowLine(day(p.ts), p)} signature={p.signature} />}
-          />
+          <Section title="Plantings" sub="Each time your change was planted." rows={plantings} empty="No planting yet." render={(r) => <Row key={r.key} row={r} />} />
           <Section
             title={SPLIT_SECTION.title}
             sub={SPLIT_SECTION.sub}
@@ -132,32 +138,15 @@ export default function Activity() {
             empty={SPLIT_SECTION.empty}
             render={(s, i) => (
               <Fragment key={`${s.ts}-${i}`}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm }}>
-                  <ThemedText style={{ flex: 1 }}>{splitRowLine(s)}</ThemedText>
-                  {i === 0 && s.by === 'manager' && me?.manager.undoAvailable ? (
-                    <Button title="Undo" kind="quiet" loading={busy} onPress={undo} />
-                  ) : null}
-                </View>
+                <Row row={splitRow(s, i)} right={i === 0 && s.by === 'manager' && me?.manager.undoAvailable ? <Button title="Undo" kind="quiet" loading={busy} onPress={undo} /> : null} />
                 {i === 0 && undoError ? <ThemedText tone="error">{undoError}</ThemedText> : null}
               </Fragment>
             )}
           />
-          <Section
-            title="Swaps"
-            sub="Each swap and the change it set aside."
-            rows={a.swaps}
-            empty="No swap seen yet."
-            render={(s) => <Line key={s.signature} text={swapRowLine(day(s.ts), s)} signature={s.signature} />}
-          />
-          <Section
-            title="Withdrawals"
-            sub={WITHDRAWN_LINE}
-            rows={a.withdrawals}
-            empty="No withdrawal yet."
-            render={(w) => (
-              <Line key={w.id} text={withdrawalRowLine(day(w.ts), w, skrUsd, me?.basket?.id === w.id ? me.basket.readyAt : undefined)} signature={w.withdrawSignature ?? w.unstakeSignature} accountPubkey={me?.user.pubkey} />
-            )}
-          />
+          <Section title="Swaps" sub="Each swap and the change it set aside." rows={a.swaps} empty="No swap seen yet." render={(s) => <Row key={s.signature} row={swapRow(day(s.ts), s)} />} />
+          <Section title="Withdrawals" sub={WITHDRAWN_LINE} rows={withdrawals} empty="No withdrawal yet." render={(w) => <Row key={w.row.key} row={w.row} accountPubkey={w.wallet ? me?.user.pubkey : null} />} />
+          {moves.length > 0 ? <Section title="Moves" sub="Moves between lending venues you were asked about." rows={moves} empty="" render={(r) => <Row key={r.key} row={r} />} /> : null}
+          {found.length > 0 ? <Section title={FOUND_SECTION.title} sub={FOUND_SECTION.sub} rows={found} empty="" render={(r) => <Row key={r.key} row={r} />} /> : null}
         </>
       ) : null}
     </Screen>
