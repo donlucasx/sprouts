@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { View, Pressable, RefreshControl, Image } from 'react-native'
 import { Link, Redirect, router, useFocusEffect } from 'expo-router'
 import { MaterialCommunityIcons } from '@expo/vector-icons'
@@ -8,6 +8,7 @@ import { recordWatering, wateredPlantsFor } from '@/lib/last-watering'
 import { plantLabel } from '@/lib/plant-label'
 import { api, ApiError, type MeResponse } from '@/lib/api'
 import { buildScene } from '@/model/garden'
+import { withDevBud, type DevBud } from '@/lib/dev-bud'
 import { watcherLine } from '@/model/watcher'
 import { Garden } from '@/garden/Garden'
 import { SPRITES } from '@/garden/sprites'
@@ -70,8 +71,24 @@ export default function Home() {
   const [landed, setLanded] = useState(0) // R195: every landing here and every pull-to-refresh replays the can's wobble
   const now = new Date()
   const today = now.toDateString()
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- `now` is taken once per render on purpose; the scene follows the local date
-  const scene = useMemo(() => (me ? buildScene(toGardenInput(me, now, wateredPlantsFor(me.user.wateredAt))) : null), [me, today])
+  // R351's device check, DEV builds only: the dev menu's "Grow a bud" adds a local SKR bud; the can then waters it locally (nothing is sent)
+  const [devBud, setDevBud] = useState<DevBud | null>(null)
+  useEffect(() => {
+    if (typeof __DEV__ === 'undefined' || !__DEV__) return
+    void import('expo-dev-menu')
+      .then(({ registerDevMenuItems }) =>
+        registerDevMenuItems([
+          { name: 'Grow a bud (SKR, local)', callback: () => setDevBud({ budAt: new Date(Date.now() - 1000), wateredAt: null }), shouldCollapse: true },
+          { name: 'Clear the dev bud', callback: () => setDevBud(null), shouldCollapse: true },
+        ]),
+      )
+      .catch(() => {})
+  }, [])
+  const scene = useMemo(
+    () => (me ? buildScene(withDevBud(toGardenInput(me, now, wateredPlantsFor(me.user.wateredAt)), devBud)) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `now` is taken once per render on purpose; the scene follows the local date
+    [me, today, devBud],
+  )
   // Coming back to Home reads again: a wallet linked on the web, a planting, a withdrawal show without a pull-down. Leaving it
   // forgets a failed watering and the greyed can's hint (audits/watering-ux, finding 10).
   useFocusEffect(
@@ -94,6 +111,10 @@ export default function Home() {
    */
   async function water(): Promise<boolean> {
     if (!me || !scene) return false
+    if (devBud && !devBud.wateredAt) {
+      setDevBud({ ...devBud, wateredAt: new Date() }) // DEV only: the dev bud is watered locally, the API is never called
+      return true
+    }
     setFailed(false)
     // R249: the plants with a bud as the watering begins are the ones it opens; kept with the answer's time for the rings
     const buds = [...new Set(scene.parts.flatMap((q) => (q.kind === 'sprout' && q.bud ? [q.plant] : [])))]
