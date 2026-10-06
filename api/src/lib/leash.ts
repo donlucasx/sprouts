@@ -10,6 +10,7 @@ import { storeRedeemRate } from "./store";
 import { klendRate } from "./venues/klend";
 import { jlendRate } from "./venues/jlend";
 import { rpc } from "./rpc";
+import { config } from "./config";
 import { COINS, type LendAsset, type LiveAsset } from "@/domain/coins";
 import { AUTO_VENUES, type AutoVenue } from "@/domain/venues";
 
@@ -55,12 +56,13 @@ export { buildPriceUpdate } from "./pyth";
 
 export type PriceSource = { kind: "none" } | { kind: "sponsored"; account: Address } | { kind: "post"; feedId: string };
 /**
- * Contracts 1.4 feed rule, AMEND 10-04 s20 (R324): sponsored only, never "post". Legs 2/3: no price. SOL, ORE, cbBTC: the sponsored
+ * Contracts 1.4 feed rule, AMEND 10-04 s20 (R324), with SKR posted (contracts 10 item 15, 10-05). Legs 2/3: no price. SKR (leg 0):
+ * "post" when PYTH_API_KEY is set (skrPriceSource), else it throws as before (no source). SOL, ORE, cbBTC: the sponsored
  * account, checked the way the program's read_price (price.rs) will check it at pull: receiver-owned, 134-byte PriceUpdateV2, Full,
  * the leg's pinned feed id (these fail at once: the next update will not fix them), then younger than LEG_SPEC[leg].maxAgeS -
  * FRESH_MARGIN_S (40 s; cbBTC 580 s) and the value checks (price > 0, exponent, the conf cap, p_low > 0). A stale or refused price is
  * polled every 2 s for up to `waitS` (measured 10-04: SOL/ORE update every 50-55 s, so a read at 40-55 s waits up to ~16 s), then
- * this throws and the leg skips the run (`leg_skipped`). `nowS` (tests) disables the wait. SKR (leg 0): no source, throws.
+ * this throws and the leg skips the run (`leg_skipped`). `nowS` (tests) disables the wait.
  *
  * T8 review carry (taken in T9): `cfg` takes the leg's ON-CHAIN `conf_cap_bps` and `max_age_s` (readLeashConfig().legs[leg], read
  * once per run): set_leg can change them, and the API must judge a price exactly as the program will. Absent, the shipped
@@ -73,11 +75,12 @@ export async function priceSourceFor(leg: LeashLegByte, nowS?: number, waitS = 6
   const feed = LEG_SPEC[leg].feed;
   if (!feed) return { kind: "none" };
   if (feed === "SKR") {
-    // SKR PRICE PLUG-IN POINT (contracts 10 item 15): the ONE place an SKR source goes. Today there is none: SKR has no sponsored
-    // account and posting is deferred (R324, the key is 403 for crypto feeds). When a crypto-entitled Pyth key exists, re-implement
-    // buildPriceUpdate (lib/pyth.ts) and return { kind: "post", feedId: PYTH_FEED.SKR } here; planting's dormant "post" branch
-    // then posts it (the program's read_price checks a posted account exactly like a sponsored one).
-    throw new Error("leg 0 (SKR) has no price source: posting is deferred (R324) and SKR has no sponsored account (contracts 10 item 15)");
+    // SKR PRICE PLUG-IN POINT (contracts 10 item 15): the ONE place an SKR source goes. SKR has no sponsored account; with the
+    // crypto-entitled Pyth key (10-05) it is POSTED: buildPlantingTx's "post" branch calls buildPriceUpdate (lib/pyth.ts), lands the
+    // pre-txs, re-reads the fresh account and hands it to pull/settle (the program's read_price checks a posted account exactly like
+    // a sponsored one). Its age and value are judged on Hermes's answer at build time, not here: nothing exists yet to read.
+    if (skrPriceSource()) return { kind: "post", feedId: PYTH_FEED.SKR };
+    throw new Error("leg 0 (SKR) has no price source: PYTH_API_KEY is not set, so nothing can post it, and SKR has no sponsored account (R324, contracts 10 item 15)");
   }
   const account = PYTH_ACCOUNT[feed];
   const freshS = (cfg.maxAgeS ?? LEG_SPEC[leg].maxAgeS) - FRESH_MARGIN_S;
@@ -120,8 +123,26 @@ export function sponsoredPriceRefusal(leg: LeashLegByte, p: ParsedPrice, cfg: { 
   return age >= freshS ? `is ${age} s old (usable under ${freshS} s)` : priceRefusal(p, cfg.confCapBps ?? CONF_CAP_BPS);
 }
 
-/** Whether leg 0 (SKR) has a price source. False until a crypto-entitled Pyth key exists (R324): priceSourceFor throws for leg 0. Flip it together with the SKR plug-in point above. */
-export const SKR_PRICE_SOURCE = false;
+/**
+ * Whether leg 0 (SKR) has a price source: a Pyth key is configured (PYTH_API_KEY, the crypto-entitled key, 10-05), so it is posted.
+ * Read at call time, never cached: without the key every SKR behaviour is exactly the R324 one (priceSourceFor throws for leg 0, a
+ * leashed user never falls back to SKR, the go-live gate skips it). It does not prove the key is entitled: a 403 throws in the build
+ * and the leg skips that run.
+ */
+export const skrPriceSource = (): boolean => !!config().pythApiKey;
+/**
+ * The checks the program's read_price makes, on the POSTED account re-read after the pre-txs landed (the floor is computed from this
+ * read): Full, the leg's pinned feed, younger than max_age_s - FRESH_MARGIN_S, the value checks. Null: usable.
+ */
+export function postedPriceRefusal(leg: LeashLegByte, p: ParsedPrice, cfg: { confCapBps?: number; maxAgeS?: number } = {}, nowS?: number): string | null {
+  const feed = LEG_SPEC[leg].feed;
+  if (!feed) return `leg ${leg} has no feed`;
+  if (!p.full) return "is not Full (partial verification)";
+  if (p.feedId !== PYTH_FEED[feed]) return `holds feed ${p.feedId.slice(0, 8)}, not the pinned ${feed} feed`;
+  const freshS = (cfg.maxAgeS ?? LEG_SPEC[leg].maxAgeS) - FRESH_MARGIN_S;
+  const age = (nowS ?? Math.floor(Date.now() / 1000)) - Number(p.publishTime);
+  return age >= freshS ? `is ${age} s old (usable under ${freshS} s)` : priceRefusal(p, cfg.confCapBps ?? CONF_CAP_BPS);
+}
 
 /** R297 go-live switch: new links point at the leash, old puller links stop planting. Off until the owner sets LEASH_LIVE=1. */
 export const leashLive = (): boolean => process.env.LEASH_LIVE === "1";

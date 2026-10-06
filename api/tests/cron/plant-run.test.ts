@@ -1428,3 +1428,102 @@ describe("Task 11 fix round 1 (review I1, I2, M1-M4, M7, M9)", () => {
     expect(await repo.carryCreditRaw("U", "WSOL")).toBe(777n);
   });
 });
+
+describe("SKR posted (leg 0, contracts 10 item 15): the run with a Pyth key", () => {
+  type BuildArgs = Parameters<Chain["buildPlantingTx"]>[0];
+  const SKR_FEED = "38846ec4d0dbe808091817f5c0d6ab8058e25422348ddf97db52b6c378a93bf9";
+  const skrOnly = { SKR: 100, stORE: 0, USDC_LEND: 0, SOL_LEND: 0, hSOL: 0, cbBTC: 0 };
+  const posted = (ageS = 1) => ({ feedId: SKR_FEED, price: 1_830_000n, conf: 1_216n, exponent: -8, publishTime: BigInt(Math.floor(Date.now() / 1000) - ageS), full: true });
+  const leashedRepo = async (allocation: typeof skrOnly = skrOnly) => {
+    const repo = await seeded([83, 62, 70]);
+    await seedVenues(repo);
+    await repo.setWalletLink("W", { delegationPda: "D", linkModel: "leash" });
+    await repo.saveRules("U", { allocation });
+    return repo;
+  };
+  /** A chain whose SKR builds carry a posted price (reclaim pending) as buildPlantingTx returns them; every cleanup is recorded. */
+  const postingChain = (o: { builds: BuildArgs[]; cleaned: string[]; ageS?: number; over?: Partial<Chain> }) => {
+    // The shipped conf cap (100 bps) on leg 0: leashCfg's 0 would refuse any posted price at the pre-send check.
+    const cfg = leashCfg([0, 6]);
+    cfg.legs[0].confCapBps = 100;
+    const base = fakeChain({ readLeashConfig: async () => cfg, ...o.over });
+    return { ...base,
+      buildPlantingTx: async (a: BuildArgs) => { o.builds.push(a); const b = await base.buildPlantingTx(a); return a.asset === "SKR" ? { ...b, cleanup: ["reclaim"], postedPrice: posted(o.ageS) } : b; },
+      cleanup: async (b) => { o.cleaned.push(b.signature); },
+    } as Chain;
+  };
+  const withKey = async <T,>(f: () => Promise<T>) => { process.env.PYTH_API_KEY = "k"; try { return await f(); } finally { delete process.env.PYTH_API_KEY; } };
+
+  it("a leashed SKR leg is planted with its posted price (no source error), and the price account is reclaimed after the planting", async () => {
+    const repo = await leashedRepo();
+    const builds: BuildArgs[] = [], cleaned: string[] = [];
+    const r = await withKey(() => runPlanting({ repo, now: NOW, chain: postingChain({ builds, cleaned }) }));
+    expect(r.planted.map((p) => p.asset)).toEqual(["SKR"]);
+    expect(builds.map((b) => [b.asset, b.leashed, b.priceOpts?.maxAgeS])).toEqual([["SKR", true, 60]]);   // the on-chain max age reaches the post
+    expect(cleaned).toEqual([r.planted[0].signature]);
+  });
+
+  it("the posted price is judged again right before the send: too old, nothing is sent, the round-ups go back, the price is reclaimed", async () => {
+    const repo = await leashedRepo();
+    const builds: BuildArgs[] = [], cleaned: string[] = [];
+    let sent = 0;
+    const r = await withKey(() => runPlanting({ repo, now: NOW, chain: postingChain({ builds, cleaned, ageS: 41, over: { sendPlanting: async () => { sent++; } } }) }));
+    expect(r.skipped).toEqual([{ wallet: "W", reason: "leg failed" }]);
+    expect(sent).toBe(0);
+    expect([...repo.plantings.values()].map((p) => p.status)).toEqual(["failed"]);
+    expect((await repo.unplantedSwaps("W")).length).toBe(3);
+    expect(JSON.stringify(repo.events.find((e) => e.kind === "leg_skipped")?.detail)).toMatch(/price unusable at send: the posted SKR price is 41 s old \(usable under 40 s\)/);
+    expect(cleaned).toEqual(["sig1"]);
+    // Positive control: 39 s old is sent.
+    const repo2 = await leashedRepo();
+    const r2 = await withKey(() => runPlanting({ repo: repo2, now: NOW, chain: postingChain({ builds: [], cleaned: [], ageS: 39 }) }));
+    expect(r2.planted.length).toBe(1);
+  });
+
+  it("every build that is not sent reclaims its price: a failed simulation, and the first build of a SettleMismatch rebuild", async () => {
+    const repo = await leashedRepo();
+    const builds: BuildArgs[] = [], cleaned: string[] = [];
+    const r = await withKey(() => runPlanting({ repo, now: NOW, chain: postingChain({ builds, cleaned, over: { simulatePlanting: async () => ({ ok: false, err: { Custom: 1 }, logs: [], units: 1 }) } }) }));
+    expect(r.skipped).toEqual([{ wallet: "W", reason: "simulation failed" }]);
+    expect(cleaned).toEqual(["sig1"]);
+    const repo2 = await leashedRepo();
+    const cleaned2: string[] = [];
+    let sims = 0;
+    const settleMismatch = { ok: false, err: { InstructionError: [7, { Custom: 6007 }] }, logs: [`Program ${LEASH_PROGRAM} failed: custom program error: 0x1777`], units: 1 };
+    const base = fakeChain();
+    const r2 = await withKey(() => runPlanting({ repo: repo2, now: NOW, chain: postingChain({ builds: [], cleaned: cleaned2, over: { simulatePlanting: async (b) => (sims++ === 0 ? settleMismatch : base.simulatePlanting(b)) } }) }));
+    expect(r2.planted.map((p) => p.signature)).toEqual(["sig2"]);
+    expect(cleaned2).toEqual(["sig1", "sig2"]);   // the discarded first build at once, the sent one after the planting
+  });
+
+  it("review I2: a throw between the build and the send (a share read, the planting insert) reclaims the posted price, then propagates", async () => {
+    const repo = await leashedRepo();
+    const cleaned: string[] = [];
+    await expect(withKey(() => runPlanting({ repo, now: NOW, chain: postingChain({ builds: [], cleaned, over: { readShares: async () => { throw new Error("rpc down"); } } }) }))).resolves.toBeDefined();
+    expect(cleaned).toEqual(["sig1"]);
+    const repo2 = await leashedRepo();
+    repo2.insertPlanting = async () => { throw new Error("db down"); };
+    const cleaned2: string[] = [];
+    await withKey(() => runPlanting({ repo: repo2, now: NOW, chain: postingChain({ builds: [], cleaned: cleaned2 }) }));
+    expect(cleaned2).toEqual(["sig1"]);
+  });
+
+  it("with a key, a leashed coin leg that fails falls back to SKR (it has a source now); without one it is skipped as before (review M4)", async () => {
+    const repo = await leashedRepo({ ...skrOnly, SKR: 0, hSOL: 100 });
+    const builds: BuildArgs[] = [], cleaned: string[] = [];
+    const chain = postingChain({ builds, cleaned });
+    const failing = { ...chain, buildPlantingTx: async (a: BuildArgs) => { if (a.asset === "hSOL") { builds.push(a); throw new Error("Jupiter: no route"); } return chain.buildPlantingTx(a); } } as Chain;
+    const r = await withKey(() => runPlanting({ repo, now: NOW, chain: failing }));
+    expect(builds.map((b) => b.asset)).toEqual(["hSOL", "SKR"]);
+    expect(r.planted.map((p) => p.asset)).toEqual(["SKR"]);
+    expect(repo.events.map((e) => e.kind)).toContain("leg_fallback");
+    // Without the key: today's behaviour, skipped with no fallback.
+    const repo2 = await leashedRepo({ ...skrOnly, SKR: 0, hSOL: 100 });
+    const builds2: BuildArgs[] = [];
+    const chain2 = postingChain({ builds: builds2, cleaned: [] });
+    const r2 = await runPlanting({ repo: repo2, now: NOW, chain: { ...chain2, buildPlantingTx: async (a: BuildArgs) => { builds2.push(a); throw new Error("Jupiter: no route"); } } as Chain });
+    expect(builds2.map((b) => b.asset)).toEqual(["hSOL"]);
+    expect(r2.skipped).toEqual([{ wallet: "W", reason: "leg failed" }]);
+    expect(repo2.events.map((e) => e.kind)).toEqual(["leg_skipped"]);
+  });
+});

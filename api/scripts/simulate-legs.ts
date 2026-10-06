@@ -1,7 +1,9 @@
 // The go-live gate (spec 6.5): build and SIMULATE a real planting per leg on mainnet. Never sends a planting.
-// --no-post is the DEFAULT: a leg whose price must be posted (SKR leashed today, or any leg whose source answers "post") is skipped
+// --no-post is the DEFAULT: a leg whose price must be posted (SKR leashed, or any leg whose source answers "post") is skipped
 // and printed `skipped=needs-post`, so nothing at all is sent. Only the owner passes --allow-post, in his own Terminal: a posted
-// price then sends its puller-paid VAA pre-txs and reclaims the rent after (no user funds move).
+// price then sends its puller-paid VAA pre-txs and reclaims the rent after (no user funds move). It needs PYTH_API_KEY (the
+// crypto-entitled key) in the env file, else SKR has no source and its build fails. With --size-only (or --assume-alt) the post
+// is built and sized but NOT sent (`priceTxs=... (built, not sent)`).
 // --size-only builds and measures (size, account locks) without simulating: the leashed size before the leash program is deployed.
 // --assume-alt (implies --size-only): sizes with the Sprouts ALT's address list compressed in memory, before the owner creates the
 // ALT (Task 22 D1). COMPUTED, not measured on chain. Refused when SPROUTS_ALT is set (then the real table is used: measure that).
@@ -29,7 +31,7 @@ const d = await readDelegation(delegation);
 console.log(d.exists
   ? `delegation ${delegation}: delegator ${d.delegator}, allowance ${Number(d.amountPerPeriodRaw) / 1e6} USDC per period, pulled this period ${Number(d.pulledInPeriodRaw) / 1e6}`
   : `delegation ${delegation}: NOT FOUND on chain (unleashed simulations will fail at the pull)`);
-console.log(`mode ${o.leashed ? "leashed" : "unleashed"}${o.sizeOnly ? " size-only" : ""}${measureAlt ? ` assume-alt (${measureAlt.length} addresses in memory, COMPUTED)` : ` SPROUTS_ALT ${altSet ? "set" : "NOT set (Jupiter's tables only)"}`}, pull ${o.pullRaw} raw USDC, ${o.noPost ? "no-post (nothing is sent)" : "ALLOW-POST (posted prices send puller-paid VAA txs)"}`);
+console.log(`mode ${o.leashed ? "leashed" : "unleashed"}${o.sizeOnly ? " size-only" : ""}${measureAlt ? ` assume-alt (${measureAlt.length} addresses in memory, COMPUTED)` : ` SPROUTS_ALT ${altSet ? "set" : "NOT set (Jupiter's tables only)"}`}, pull ${o.pullRaw} raw USDC, ${o.noPost ? "no-post (nothing is sent)" : o.sizeOnly ? "allow-post size-only (posted prices are built and sized, NOT sent)" : "ALLOW-POST (posted prices send puller-paid VAA txs)"}`);
 
 const results: LegResult[] = [];
 for (const leg of o.legs) {
@@ -39,8 +41,8 @@ for (const leg of o.legs) {
     priceSource: async (l) => (await priceSourceFor(leashLegOf(l.asset, l.venue))).kind,
     build: async (l, jlLeftover) => {
       b = null;
-      b = await buildPlantingTx({ delegator: wallet, user, asset: l.asset, venue: l.venue, pullRaw: o.pullRaw, delegationPda: delegation, leashed: o.leashed, carryIn: {}, ...(jlLeftover !== undefined ? { jlLeftover } : {}), ...(measureAlt ? { measureAlt } : {}) });
-      return { sizeBytes: b.sizeBytes, locks: accountLocks(new Uint8Array(b.tx.messageBytes)), minOut: b.leashMinOutRaw ?? b.minOutRaw, cleanupCount: b.cleanup.length, floor: b.leashFloorRaw };
+      b = await buildPlantingTx({ delegator: wallet, user, asset: l.asset, venue: l.venue, pullRaw: o.pullRaw, delegationPda: delegation, leashed: o.leashed, carryIn: {}, ...(jlLeftover !== undefined ? { jlLeftover } : {}), ...(measureAlt ? { measureAlt } : {}), ...(o.sizeOnly ? { dryPost: true } : {}) });
+      return { sizeBytes: b.sizeBytes, locks: accountLocks(new Uint8Array(b.tx.messageBytes)), minOut: b.leashMinOutRaw ?? b.minOutRaw, cleanupCount: b.cleanup.length, floor: b.leashFloorRaw, priceTxBytes: b.priceTxBytes };
     },
     simulate: async () => { sim = await simulatePlanting(b as unknown as BuiltPlanting); return sim; },
     guard: () => legShortfall(sim as unknown as Simulation, b as unknown as BuiltPlanting, leg.asset, leg.venue, {}),

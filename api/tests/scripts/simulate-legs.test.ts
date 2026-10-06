@@ -48,7 +48,7 @@ describe("parseLeg", () => {
 });
 
 describe("needsPost", () => {
-  it("unleashed never posts; leashed SKR always does (no source, R324); others only on a live 'post'", () => {
+  it("unleashed never posts; leashed SKR always does (its only source is a post, with or without the key); others only on a live 'post'", () => {
     expect(needsPost(parseLeg("SKR"), false)).toBe(false);
     expect(needsPost(parseLeg("SKR"), true)).toBe(true);
     expect(needsPost(parseLeg("hSOL"), true, "sponsored")).toBe(false);
@@ -161,6 +161,28 @@ describe("runLeg", () => {
     expect(r.status).toBe("ok");
     expect(calls.cleanup).toBe(1);
     expect(calls.logs).toEqual(["  price cleanup failed: rpc down"]);
+  });
+  it("allow-post, leashed SKR (contracts 10 item 15): the post landed in the build, the planting is simulated, the price reclaimed; the pre-tx sizes print", async () => {
+    const { d, calls } = deps({ builds: [() => built({ cleanupCount: 1, priceTxBytes: [790, 620], floor: 93_745_350n })] });
+    const r = await runLeg(parseLeg("SKR"), { leashed: true, noPost: false, sizeOnly: false }, d);
+    expect(r.status).toBe("ok");
+    expect(r.line).toBe("LEG SKR leashed size=1100 ok=true units=150000 guard=null leashError=null minOut=123 floor=93745350 priceTxs=790,620 locks=40");
+    expect(calls.source).toBe(0);   // the source is only asked under no-post, to skip before a build could send
+    expect(calls.cleanup).toBe(1);
+  });
+  it("allow-post: a simulation that THROWS still reclaims the posted price (review minor)", async () => {
+    const { d, calls } = deps({ builds: [() => built({ cleanupCount: 1, priceTxBytes: [790, 620] })] });
+    d.simulate = async () => { throw new Error("rpc 429"); };
+    await expect(runLeg(parseLeg("SKR"), { leashed: true, noPost: false, sizeOnly: false }, d)).rejects.toThrow(/rpc 429/);
+    expect(calls.cleanup).toBe(1);
+  });
+  it("allow-post + size-only: the post is built dry (nothing sent) and sized; never simulated, nothing to reclaim", async () => {
+    const { d, calls } = deps({ builds: [() => built({ priceTxBytes: [790, 620] })] });
+    const r = await runLeg(parseLeg("SKR"), { leashed: true, noPost: false, sizeOnly: true, assumeAlt: true }, d);
+    expect(r).toMatchObject({ status: "built", sizeBytes: 1100 });
+    expect(r.line).toBe("LEG SKR leashed size=1100 locks=40 ok=n/a (computed with the Sprouts ALT in memory, not simulated) minOut=123 priceTxs=790,620 (built, not sent)");
+    expect(calls.sim).toBe(0);
+    expect(calls.cleanup).toBe(0);
   });
   it("size-only: built and measured, never simulated", async () => {
     const { d, calls } = deps();
