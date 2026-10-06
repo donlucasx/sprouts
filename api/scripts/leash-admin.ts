@@ -5,9 +5,12 @@
 // Optional on every command: --rpc <url> (else HELIUS_RPC_URL if exported, else https://api.mainnet-beta.solana.com).
 // The admin key must be GrHSwzYpgiFzuTpwR6539NpNXktXNEUfVU9UYvHdDKLY or nothing happens; the key file is read by path and never printed.
 // One admin instruction per tx (contracts 2.5, R325): each is size-checked (<= 1,232 B) and simulated before it is sent; a failure stops
-// the run, and rerunning the same command resumes from the chain. Leg 0 (SKR) is refused unless the scary flag (SKR_OVERRIDE_FLAG) is passed.
+// the run, and rerunning the same command resumes from the chain. Leg 0 (SKR) is refused unless SKR has a price source: run with
+// --env-file=.env.local so PYTH_API_KEY is set, and Hermes must serve the SKR feed with it (skrPriceProof; contracts 10 item 15), e.g.
+//   cd api && pnpm tsx --env-file=.env.local scripts/leash-admin.ts set --admin ~/.config/solana/sprouts-admin.json --enable 0,1,2,3,6,7
+// (the scary flag SKR_OVERRIDE_FLAG still overrides without a key).
 import { address, createSolanaRpc, createSolanaRpcSubscriptions, sendAndConfirmTransactionFactory, assertIsTransactionWithBlockhashLifetime } from "@solana/kit";
-import { loadAdmin, configFor, parseLegs, assertInstallable, assertInitSafe, configAccountBytes, runAdminSteps, PULLER_MAINNET, SKR_OVERRIDE_FLAG, type AdminChain } from "./leash-admin-lib";
+import { loadAdmin, configFor, parseLegs, assertInstallable, assertInitSafe, configAccountBytes, runAdminSteps, skrPriceProof, PULLER_MAINNET, SKR_OVERRIDE_FLAG, type AdminChain } from "./leash-admin-lib";
 import { decodeConfig, leashConfigPda, LEASH_IX, type LeashConfig } from "../src/lib/leash";
 
 const fail = (msg: string, code = 1): never => { console.error(msg); process.exit(code); };
@@ -21,7 +24,11 @@ async function main(): Promise<number> {
   const enable = cmd === "set" ? opt("enable") : undefined;
   if (cmd === "set" && enable === undefined) fail("set needs --enable <comma-separated legs> (the full list that should be on; \"\" for none). Nothing was sent.");
   const enabledLegs = enable !== undefined ? parseLegs(enable) : [];
-  const allowSkr = rest.includes(SKR_OVERRIDE_FLAG);
+  const override = rest.includes(SKR_OVERRIDE_FLAG);
+  // Leg 0: without a key this refuses offline, before the admin key is read; with one, one read-only Hermes GET proves the SKR feed.
+  const skrProof = enabledLegs.includes(0) && !override ? await skrPriceProof() : null;
+  if (skrProof) console.log(skrProof);
+  const allowSkr = override || skrProof !== null;
   if (enabledLegs.includes(0) && !allowSkr) assertInstallable(await configFor({ puller: address(PULLER_MAINNET), enabled: enabledLegs }), false);
 
   const admin = await loadAdmin(opt("admin") ?? "");   // throws before any network call for any other key

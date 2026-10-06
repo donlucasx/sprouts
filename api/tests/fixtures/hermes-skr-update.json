@@ -1,0 +1,30 @@
+{
+  "binary": {
+    "data": [
+      "UE5BVQEAAAABJAEAAAABAwH78GMK2SLVdhRDhzdXNmZ8HMgtkvzIfUnuzaHCriArTysAE3gkqaXnocnB0dEAJTNbJuY631Ph9+RTTvvg9g4gAQLTGiltxsBPCAN/PixgVFWEbfAYhHoshPqPPyQtwy9cTE0LE2T5Lp353MdZzevwPKPTh9BfBHWwTf5l7YcYZLChAQTkXAnCoYydyggHCZR+kezjVkYNlb0np55+HWj2mJy0TBdcsKGS2ATPK9i+cjzN0r1kVa/m5S8O/xhauAr/niymAWrDxf0AAAAAABpQeXRobmV0UHl0aG5ldFB5dGhuZXRQeXRobmV0UHl0aAAAAAhXS3fEAEFVV1YAAAAACFdLd8QAAAAA9O9ptMIvjz4V/KS89ClWcHPz3woBAFUAOIRuxNDb6AgJGBf1wNargFjiVCI0jd+X21K2w3ipO/kAAAAAABtVpgAAAAAAAATA////+AAAAABqw8X9AAAAAGrDxfwAAAAAABtwogAAAAAAAAPhDH4CfeQ+x4XTaiNPF+daVAFIcFyUCiYcz2uLoNaX07ZpqQM0DhiFOU6VkH4RdlDmEwYY7R2SVjLEEme4mQ8tPiTQ7+/+CgeHzSNCsV83yt2ZvO+dQiErCHnyFhIvHLf+H5cYRrGz/vFE35emFUMM3S0P+1QzBkgVo9or7TZTwYp8FCAlxz5Lx04GhbJR6HU3BPRl7dUsnPX3JJuftNQgwXhqpihwGWVEaOAs6i3zKNMcu3eg0aujl7EwOzoG1EHxhyT+h+OjQCBCtjRvhHO2OE2uoNjyR0Vv3Z5nhBixXFOe0YAqeH0DpV7j2uZOSsxVpw=="
+    ],
+    "encoding": "base64"
+  },
+  "parsed": [
+    {
+      "ema_price": {
+        "conf": "993",
+        "expo": -8,
+        "price": "1798306",
+        "publish_time": 1791215101
+      },
+      "id": "38846ec4d0dbe808091817f5c0d6ab8058e25422348ddf97db52b6c378a93bf9",
+      "metadata": {
+        "prev_publish_time": 1791215100,
+        "proof_available_time": 1791215101,
+        "slot": 35824302020
+      },
+      "price": {
+        "conf": "1216",
+        "expo": -8,
+        "price": "1791398",
+        "publish_time": 1791215101
+      }
+    }
+  ]
+}

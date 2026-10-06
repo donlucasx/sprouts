@@ -30,7 +30,19 @@ const simClosed = new Set<string>();
 const simClosedLamports = new Map<string, bigint>();
 const simCalls: string[][] = [];
 const stakes: bigint[] = [];
-const postIx: Instruction = { programAddress: address("rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ"), accounts: [], data: new Uint8Array([7]) };
+// The posted SKR price (contracts 10 item 15): the buildPriceUpdate double's shape, as the real one returns it (tests/lib/pyth.test.ts).
+// post_update rides the pre-txs (postIx null); the price is SKR-sized so the fixture's SKR route clears the floor.
+const RECEIVER = "rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ";
+const POSTED = address("9vSkHk7mY2ZcWg1sVQyPn5PpfwrGJmKQyHqH4u3LwZbx");
+const reclaimIx: Instruction = { programAddress: address(RECEIVER), accounts: [], data: new Uint8Array([7]) };
+const closeVaaIx: Instruction = { programAddress: address("HDwcJBJXjL9FpJ7UBsYBtaDjsBUhuLCUYoz3zr8SWWaQ"), accounts: [], data: new Uint8Array([8]) };
+const SKR_FEED = "38846ec4d0dbe808091817f5c0d6ab8058e25422348ddf97db52b6c378a93bf9";
+const SKR_PRICE = { feedId: SKR_FEED, price: 1_830_000n, conf: 1_216n, exponent: -8, publishTime: BigInt(Math.floor(Date.now() / 1000)), full: true };
+const BTC_PRICE = { ...SOL_PRICE, feedId: "2817d7bfe5c64b8ea956e9a26f573ef64e72e4d7891f2d6af9bcc93f7aff9a97", price: 6_200_000_000_000n, conf: 1_000_000_000n };
+/** What the re-read of the posted account answers (null = the account is missing). */
+let postedRead: typeof SKR_PRICE | null = SKR_PRICE;
+/** Every puller-signed send in order: "pre:<n>" for a price pre-tx double, "tx" for a tx the builder signed itself (a reclaim). */
+const sendLog: string[] = [];
 
 vi.mock("@/lib/puller", () => ({ pullerSigner: vi.fn(async () => puller) }));
 vi.mock("@/lib/config", () => ({ config: () => ({ feeWallet: "8KiTtZXjcpxUGuH93G12iMVNcTYteTbRvaovdeQdfjc6", heliusRpcUrl: "https://x", pythApiKey: "k" }) }));
@@ -66,15 +78,17 @@ vi.mock("@/lib/venues/klend", async (orig) => {
 vi.mock("@/lib/venues/jlend", async (orig) => ({ ...(await orig<object>()), jlendRate: vi.fn(async () => ({ rn: 1_050_000_000_000n, rd: 1_000_000_000_000n })) }));
 vi.mock("@/lib/pyth", async (orig) => ({
   ...(await orig<object>()),
-  readSponsoredPrice: vi.fn(async () => SOL_PRICE),
-  sendPriceTxs: vi.fn(async (txs: unknown[]) => { sentPre.push(...txs); }),
-  buildPriceUpdate: vi.fn(async () => ({ preTxs: [{ pre: 1 }], postIx, account: address("7oqYpv5YbjJ2PEsNeVVB5ZEZ8ZE6ufkj8hAvAiaiftbe"), closeIxs: [postIx], price: { ...SOL_PRICE, feedId: "2817d7bfe5c64b8ea956e9a26f573ef64e72e4d7891f2d6af9bcc93f7aff9a97", price: 6_200_000_000_000n, conf: 1_000_000_000n } })),
+  readSponsoredPrice: vi.fn(async (acct: string) => (acct === "7oqYpv5YbjJ2PEsNeVVB5ZEZ8ZE6ufkj8hAvAiaiftbe" ? BTC_PRICE : SOL_PRICE)),
+  readPostedPrice: vi.fn(async (acct: string) => { if (!postedRead) throw new Error(`price account ${acct} is missing or not the receiver's`); return postedRead; }),
+  sendPriceTxs: vi.fn(async (txs: unknown[]) => { sentPre.push(...txs); for (const t of txs) sendLog.push((t as { pre?: number }).pre !== undefined ? `pre:${(t as { pre: number }).pre}` : "tx"); }),
+  buildPriceUpdate: vi.fn(async () => ({ preTxs: [{ pre: 1 }, { pre: 2 }], postIx: null, account: POSTED, closeIxs: [reclaimIx], rescueIxs: [closeVaaIx, reclaimIx], price: SKR_PRICE, preTxBytes: [790, 620] })),
 }));
 vi.mock("@/lib/leash", async (orig) => {
   const real = await orig<typeof import("@/lib/leash")>();
   return {
     ...real,
-    priceSourceFor: vi.fn(async (leg: number) => (leg === 2 || leg === 3 ? { kind: "none" } : leg === 7 || leg === 0 ? { kind: "post", feedId: "x" } : { kind: "sponsored", account: "7UVimffxr9ow1uXYxsr4LHAcV58mLzhmwaeKvJ1pjLiE" })),
+    // The real feed rule's answers: SKR posts (a key is configured), cbBTC/ORE/SOL legs read their pinned sponsored accounts.
+    priceSourceFor: vi.fn(async (leg: number) => (leg === 2 || leg === 3 ? { kind: "none" } : leg === 0 ? { kind: "post", feedId: SKR_FEED } : leg === 7 ? { kind: "sponsored", account: "7oqYpv5YbjJ2PEsNeVVB5ZEZ8ZE6ufkj8hAvAiaiftbe" } : { kind: "sponsored", account: "7UVimffxr9ow1uXYxsr4LHAcV58mLzhmwaeKvJ1pjLiE" })),
     checkLeashInstructions: vi.fn((ixs: Instruction[], a: Parameters<typeof real.checkLeashInstructions>[1]) => { signedIxs.push([...ixs]); return real.checkLeashInstructions(ixs, a); }),
     legRate: vi.fn(async (leg: number) => (leg === 2 ? { rn: 12_038n, rd: 10_000n } : leg === 5 || leg === 3 ? { rn: 1_050_000_000_000n, rd: 1_000_000_000_000n } : leg === 6 ? { rn: 1_189_400_000n, rd: 1_000_000_000n } : leg === 0 ? { rn: 1_149_090_094n, rd: 1_000_000_000n } : { rn: 1n, rd: 1n })),
   };
@@ -189,10 +203,11 @@ describe("buildPlantingTx: one v0 tx, one pull/settle pair (contracts 3.2)", () 
     expect(vi.mocked(getQuote).mock.calls[0][0]).not.toHaveProperty("slippageBps");
   });
 
-  it("cbBTC, leashed, posted price: the pre-txs go out first and the rent cleanup is returned", async () => {
+  it("cbBTC, leashed: its pinned sponsored account prices it; nothing is posted, nothing to clean up", async () => {
     const b = await buildPlantingTx({ ...base, asset: "cbBTC", venue: null, leashed: true });
-    expect(sentPre).toEqual([{ pre: 1 }]);
-    expect(b.cleanup).toEqual([postIx]);
+    expect(sentPre).toEqual([]);
+    expect(b.cleanup).toEqual([]);
+    expect(b.priceTxBytes).toEqual([]);
     expect(b.leashFloorRaw).toBe(3_178n);
     expect(b.leashMinOutRaw).toBe(3_193n);   // ruling A (corrected): roomBps 142 > 100, so the 100 bps minimum stands (3_225 x 0.99)
   });
@@ -200,9 +215,10 @@ describe("buildPlantingTx: one v0 tx, one pull/settle pair (contracts 3.2)", () 
   it("SKR, leashed: the delivery check stays on the puller's SKR float; leash min_out is shares", async () => {
     const b = await buildPlantingTx({ ...base, asset: "SKR", venue: null, leashed: true, carryIn: { SKR: 1234n } });
     expect(b.deliveryAccount).toBe(await ata(puller.address, SKR_MINT));
-    // Ruling A (corrected): the SKR floor maps to SKR as ceil((floor + 1) x sharePrice / 1e9). This fixture's posted price (a BTC-sized
-    // price on the SKR feed) makes the floor 28 shares, far under the route: roomBps 9_999 is capped at 100, so the 100 bps quote stands.
-    expect(b.leashFloorRaw).toBe(28n);
+    // The floor from the posted price: net 1_970_000 (2 USDC less 50 + 100 bps) x 1e9 x 1e6 x 1e2 / (1_149_090_094 x (1_830_000 - 1_216)),
+    // ceil = 93_745_350 shares. Ruling A (corrected): in SKR that is ceil((93_745_350 + 1) x 1.149090094) = 107_721_855, under the
+    // 100 bps minimum 108_196_721: roomBps = (109_289_617 - 107_721_855 - 1) x 10_000 / 109_289_617 = 143 > 100, so one quote stands.
+    expect(b.leashFloorRaw).toBe(93_745_350n);
     expect(getQuote).toHaveBeenCalledTimes(1);
     expect(b.leashMinOutRaw).toBe(94_158_604n);   // 108_196_721 x 1e9 / 1_149_090_094 - 1
     expect(b.leashMinOutRaw).toBe((b.minOutRaw * 1_000_000_000n) / 1_149_090_094n - 1n);
@@ -579,5 +595,102 @@ describe("leashSwapSlippageBps (ruling A, Task 12)", () => {
       expect(minAt(out, bps)).toBeGreaterThanOrEqual(minAt(out, 100));
       expect(minAt(out, bps)).toBeLessThanOrEqual(out);
     }
+  });
+});
+
+import { buildPriceUpdate, readPostedPrice, sendPriceTxs } from "@/lib/pyth";
+import { LEASH_PROGRAM } from "@/lib/constants";
+
+describe("the posted price (SKR, leg 0; contracts 3.2 row 2b, 10 item 15): pre-txs, re-read, pull/settle, reclaim", () => {
+  const skr = { ...base, asset: "SKR" as const, venue: null, leashed: true };
+  beforeEach(async () => {
+    puller = await generateKeyPairSigner(); checks.length = 0; sentPre.length = 0; signedIxs.length = 0; sendLog.length = 0; postedRead = { ...SKR_PRICE, publishTime: BigInt(Math.floor(Date.now() / 1000)) };
+    vi.mocked(getQuote).mockClear(); vi.mocked(sendPriceTxs).mockClear(); vi.mocked(readPostedPrice).mockClear(); vi.mocked(buildPriceUpdate).mockClear();
+    altContent = await sproutsAltAddresses(puller.address);
+    process.env.SPROUTS_ALT = ALT_ADDR;
+  });
+
+  it("the pre-txs land first, then the posted account is re-read (the floor's price), then the swap is quoted; pull and settle name that account", async () => {
+    const b = await buildPlantingTx(skr);
+    expect(vi.mocked(buildPriceUpdate)).toHaveBeenCalledWith(expect.objectContaining({ puller, feedId: SKR_FEED, maxAgeS: 60, confCapBps: 100 }));
+    expect(sendLog).toEqual(["pre:1", "pre:2"]);   // in order; nothing else sent (the reclaim waits for the planting)
+    const order = (f: { mock: { invocationCallOrder: number[] } }) => f.mock.invocationCallOrder[0];
+    expect(order(vi.mocked(sendPriceTxs))).toBeLessThan(order(vi.mocked(readPostedPrice)));
+    expect(order(vi.mocked(readPostedPrice))).toBeLessThan(order(vi.mocked(getQuote)));
+    expect(vi.mocked(readPostedPrice)).toHaveBeenCalledWith(POSTED);
+    // The planting: one pull and one settle, both reading the posted account; no receiver instruction (post_update rode the pre-txs).
+    const ixs = signedIxs[signedIxs.length - 1];
+    const leash = ixs.filter((ix) => ix.programAddress === LEASH_PROGRAM);
+    expect(leash).toHaveLength(2);
+    for (const ix of leash) expect(ix.accounts!.map((x) => x.address)).toContain(POSTED);
+    expect(ixs.some((ix) => ix.programAddress === RECEIVER)).toBe(false);
+    expect(b.leashFloorRaw).toBe(93_745_350n);   // from the re-read (SKR_PRICE), the derivation in the SKR test above
+    expect(b.cleanup).toEqual([reclaimIx]);
+    expect(b.priceTxBytes).toEqual([790, 620]);
+    expect(b.postedPrice).toEqual(postedRead);
+    expect(b.sizeBytes).toBeLessThanOrEqual(1232);
+  });
+
+  it("the run's on-chain conf cap and max age reach the post (judged on Hermes's answer before anything is sent)", async () => {
+    await buildPlantingTx({ ...skr, priceOpts: { waitS: 0, confCapBps: 80, maxAgeS: 50 } });
+    expect(vi.mocked(buildPriceUpdate)).toHaveBeenCalledWith(expect.objectContaining({ feedId: SKR_FEED, maxAgeS: 50, confCapBps: 80 }));
+  });
+
+  it("the re-read is judged as the program will (missing, not Full, another feed, stale, over the cap): the leg skips and the price account is reclaimed", async () => {
+    const now = BigInt(Math.floor(Date.now() / 1000));
+    const cases: [typeof postedRead, RegExp][] = [
+      [null, /missing or not the receiver's/],
+      [{ ...SKR_PRICE, full: false }, /posted price is not Full/],
+      [{ ...SKR_PRICE, feedId: BTC_PRICE.feedId }, /posted price holds feed 2817d7bf, not the pinned SKR feed/],
+      [{ ...SKR_PRICE, publishTime: now - 41n }, /posted price is 41 s old \(usable under 40 s\)/],
+      [{ ...SKR_PRICE, publishTime: now, conf: SKR_PRICE.price / 50n }, /posted price .*confidence .* is over 100 bps/],
+    ];
+    for (const [read, why] of cases) {
+      postedRead = read; sendLog.length = 0;
+      await expect(buildPlantingTx(skr)).rejects.toThrow(why);
+      expect(sendLog).toEqual(["pre:1", "pre:2", "tx"]);   // the pre-txs, then ONE reclaim tx (best effort)
+    }
+    expect(getQuote).not.toHaveBeenCalled();
+  });
+
+  it("any refusal AFTER the post (here: the route under the floor) reclaims the price account before throwing", async () => {
+    QUOTES.SKRbvo6Gf7GondiT3BbTfuRDPqLWei4j2Qy2NPGZhW3 = ["100000000", "99000000"];
+    await expect(buildPlantingTx(skr)).rejects.toThrow(/route under floor/);
+    QUOTES.SKRbvo6Gf7GondiT3BbTfuRDPqLWei4j2Qy2NPGZhW3 = ["109289617", "108196721"];
+    expect(sendLog).toEqual(["pre:1", "pre:2", "tx"]);
+  });
+
+  it("a pre-tx that fails midway: the VAA close and the reclaim go out one per tx (either may not exist), then the leg skips", async () => {
+    vi.mocked(sendPriceTxs).mockImplementationOnce(async () => { sendLog.push("pre:1"); throw new Error("blockhash not found"); });
+    await expect(buildPlantingTx(skr)).rejects.toThrow(/SKR: posting the price failed: blockhash not found/);
+    expect(sendLog).toEqual(["pre:1", "tx", "tx"]);
+    expect(readPostedPrice).not.toHaveBeenCalled();
+  });
+
+  it("a failed reclaim never hides the reason the leg skipped", async () => {
+    postedRead = null;
+    vi.mocked(sendPriceTxs).mockImplementationOnce(async (txs) => { sendLog.push(...txs.map(() => "pre")); }).mockImplementationOnce(async () => { throw new Error("reclaim down"); });
+    await expect(buildPlantingTx(skr)).rejects.toThrow(/missing or not the receiver's/);
+  });
+
+  it("dryPost (the gate's --size-only) and measureAlt: the post is BUILT and sized, nothing is sent, Hermes's price stands in, nothing to reclaim", async () => {
+    for (const extra of [{ dryPost: true }, { measureAlt: altContent.map((x) => address(x)) }]) {
+      sendLog.length = 0; vi.mocked(readPostedPrice).mockClear();
+      const b = await buildPlantingTx({ ...skr, ...extra });
+      expect(sendLog).toEqual([]);
+      expect(readPostedPrice).not.toHaveBeenCalled();
+      expect(b.cleanup).toEqual([]);
+      expect(b.priceTxBytes).toEqual([790, 620]);
+      expect(b.leashFloorRaw).toBe(93_745_350n);
+      expect(signedIxs[signedIxs.length - 1].filter((ix) => ix.programAddress === LEASH_PROGRAM).every((ix) => ix.accounts!.some((x) => x.address === POSTED))).toBe(true);
+    }
+  });
+
+  it("unleashed SKR (today's links) never posts", async () => {
+    const b = await buildPlantingTx({ ...skr, leashed: false });
+    expect(buildPriceUpdate).not.toHaveBeenCalled();
+    expect(sendLog).toEqual([]);
+    expect(b.priceTxBytes).toEqual([]);
+    expect(b.postedPrice).toBeNull();
   });
 });
