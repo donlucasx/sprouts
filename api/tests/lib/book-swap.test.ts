@@ -168,3 +168,54 @@ describe("a swap Helius did not label SWAP", () => {
     expect((await repo.unplantedSwaps(PHANTOM)).length).toBe(0);
   });
 });
+
+// 10-06 (2xYqKn37…, the Seeker's Seed Vault wallet): the wallet app took its fee in the swap, so USDC left the wallet in TWO
+// transfers, 0.01215 (the fee, first) and 1.48785 (the swap). Reading only the first booked a $1.50 swap as 1 cent (99-cent
+// round-up). A leg is every transfer of that coin out of (or into) the wallet, added up.
+describe("a swap whose wallet app takes a fee in the same coin", () => {
+  const USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  const WSOL_MINT = "So11111111111111111111111111111111111111112";
+  const SEED = "SEEDVAULT";
+
+  it("adds up every USDC transfer out of the wallet (no swap event)", () => {
+    const tx: HeliusEnhancedTx = {
+      signature: "2xYqKn37", timestamp: 1791323206, type: "UNKNOWN", feePayer: SEED,
+      tokenTransfers: [
+        { fromUserAccount: SEED, toUserAccount: "FEE", mint: USDC, tokenAmount: 0.01215 },
+        { fromUserAccount: SEED, toUserAccount: "POOL", mint: USDC, tokenAmount: 1.48785 },
+      ],
+      nativeTransfers: [{ fromUserAccount: "POOL", toUserAccount: SEED, amount: 12_277_022 }],
+    };
+    const legs = extractSwapLegs(tx, SEED)!;
+    expect(legs.inMint).toBe(USDC);
+    expect(legs.inAmount).toBeCloseTo(1.5, 9);
+    expect(legs.outMint).toBe(WSOL_MINT);
+    expect(legs.outAmount).toBeCloseTo(0.012277022, 9);
+  });
+
+  it("adds up every token input of the wallet in the swap event", () => {
+    const leg = (amount: string) => ({ userAccount: SEED, mint: USDC, rawTokenAmount: { tokenAmount: amount, decimals: 6 } });
+    const tx: HeliusEnhancedTx = {
+      signature: "2xYqKn37", timestamp: 1791323206, type: "SWAP", feePayer: SEED, tokenTransfers: [],
+      events: { swap: { nativeInput: null, nativeOutput: { account: SEED, amount: "12277022" }, tokenInputs: [leg("12150"), leg("1487850")], tokenOutputs: [] } },
+    };
+    const legs = extractSwapLegs(tx, SEED)!;
+    expect(legs.inMint).toBe(USDC);
+    expect(legs.inAmount).toBeCloseTo(1.5, 9);
+  });
+
+  it("books it as a $1.50 swap: a 50-cent round-up, not 99", async () => {
+    const repo = new MemoryRepo();
+    await repo.upsertUser({ seedVaultPubkey: "U", sgtMint: "M", skrName: null });
+    await repo.addWallet({ pubkey: SEED, userPubkey: "U", delegationPda: "D", dailyCapCents: 500 });
+    const tx: HeliusEnhancedTx = {
+      signature: "2xYqKn37", timestamp: 1791323206, type: "UNKNOWN", feePayer: SEED,
+      tokenTransfers: [
+        { fromUserAccount: SEED, toUserAccount: "FEE", mint: USDC, tokenAmount: 0.01215 },
+        { fromUserAccount: SEED, toUserAccount: "POOL", mint: USDC, tokenAmount: 1.48785 },
+      ],
+      nativeTransfers: [{ fromUserAccount: "POOL", toUserAccount: SEED, amount: 12_277_022 }],
+    };
+    expect(roundup(await bookSwap({ repo, tx, priceUsd: prices }))).toBe(50);
+  });
+});

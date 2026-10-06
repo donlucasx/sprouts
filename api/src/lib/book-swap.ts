@@ -36,10 +36,16 @@ const legAmount = (t: SwapTokenLeg) => Number(t.rawTokenAmount.tokenAmount) / 10
 export function extractSwapLegs(tx: HeliusEnhancedTx, wallet: string): SwapLegs | null {
   const ev = tx.events?.swap;
   if (ev) {
-    const tokenInLeg = ev.tokenInputs?.find((t) => t.userAccount === wallet);
-    const tokenOutLeg = ev.tokenOutputs?.find((t) => t.userAccount === wallet);
-    const tokenIn = tokenInLeg && { mint: tokenInLeg.mint, tokenAmount: legAmount(tokenInLeg) };
-    const tokenOut = tokenOutLeg && { mint: tokenOutLeg.mint, tokenAmount: legAmount(tokenOutLeg) };
+    // A leg is the SUM of the wallet's entries in that coin: a wallet app that takes its fee in the swap lists it as its own
+    // entry (10-06, 2xYqKn37…: 0.01215 + 1.48785 USDC), and reading only the first booked a $1.50 swap as 1 cent.
+    const sumLeg = (legs: SwapTokenLeg[] | undefined) => {
+      const mine = (legs ?? []).filter((t) => t.userAccount === wallet);
+      if (mine.length === 0) return undefined;
+      const mint = mine[0].mint;
+      return { mint, tokenAmount: mine.filter((t) => t.mint === mint).reduce((s, t) => s + legAmount(t), 0) };
+    };
+    const tokenIn = sumLeg(ev.tokenInputs);
+    const tokenOut = sumLeg(ev.tokenOutputs);
     const nativeIn = ev.nativeInput && ev.nativeInput.account === wallet ? { mint: WSOL, tokenAmount: Number(ev.nativeInput.amount) / LAMPORTS } : undefined;
     const nativeOut = ev.nativeOutput && ev.nativeOutput.account === wallet ? { mint: WSOL, tokenAmount: Number(ev.nativeOutput.amount) / LAMPORTS } : undefined;
     const inn = tokenIn ?? nativeIn;
@@ -56,8 +62,12 @@ export function extractSwapLegs(tx: HeliusEnhancedTx, wallet: string): SwapLegs 
   const tokenIn = [...tx.tokenTransfers].reverse().find((t) => t.toUserAccount === wallet);
   const nativeOut = largest(natives.filter((t) => t.fromUserAccount === wallet));
   const nativeIn = largest(natives.filter((t) => t.toUserAccount === wallet));
-  const out = tokenOut ? { mint: tokenOut.mint, amount: tokenOut.tokenAmount } : nativeOut ? { mint: WSOL, amount: nativeOut.amount / LAMPORTS } : null;
-  const inn = tokenIn ? { mint: tokenIn.mint, amount: tokenIn.tokenAmount } : nativeIn ? { mint: WSOL, amount: nativeIn.amount / LAMPORTS } : null;
+  // The coin is the first transfer out (last in); the amount is every transfer of that coin out of (into) the wallet, added up,
+  // so a fee the wallet app takes in the same coin counts as spent (10-06, 2xYqKn37…).
+  const sumOf = (dir: "fromUserAccount" | "toUserAccount", mint: string) =>
+    tx.tokenTransfers.filter((t) => t[dir] === wallet && t.mint === mint).reduce((s, t) => s + t.tokenAmount, 0);
+  const out = tokenOut ? { mint: tokenOut.mint, amount: sumOf("fromUserAccount", tokenOut.mint) } : nativeOut ? { mint: WSOL, amount: nativeOut.amount / LAMPORTS } : null;
+  const inn = tokenIn ? { mint: tokenIn.mint, amount: sumOf("toUserAccount", tokenIn.mint) } : nativeIn ? { mint: WSOL, amount: nativeIn.amount / LAMPORTS } : null;
   if (!out || !inn || out.mint === inn.mint) return null;
   return { wallet, inMint: out.mint, inAmount: out.amount, outMint: inn.mint, outAmount: inn.amount };
 }
