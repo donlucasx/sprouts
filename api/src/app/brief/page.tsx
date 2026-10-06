@@ -44,6 +44,9 @@ const CSS = `
 .brief ol li { background:var(--sheet); padding:.8rem 1rem; border-radius:.5rem; }
 .brief footer { border-top:1px solid var(--rule); padding-top:1rem; font-size:.9rem; color:var(--muted); display:flex; flex-wrap:wrap; gap:.5rem 1.5rem; }
 .brief a { color:var(--leaf-ink); }
+.brief .year { margin:0; display:grid; gap:.5rem; }
+.brief .year video { width:100%; height:auto; border-radius:.75rem; background:#FFFCF6; display:block; }
+.brief .year figcaption { font-size:.85rem; color:var(--muted); }
 .brief a:focus-visible { outline:2px solid var(--leaf); outline-offset:2px; }
 `;
 
@@ -77,11 +80,28 @@ export default function Brief() {
             <p>An on-chain leash lets our server move only your daily round-up (up to $5), and only into your own savings. Build verified against the public source.</p>
           </section>
           <section>
-            <h2>Two questions</h2>
-            <ol>
-              <li>Sprouts keeps adding SKR to your own wallet from every swap, with SKR at least a quarter of the split. Does that count as an SKR integration?</li>
-              <li>The AI Yield Manager deposits into Kamino, which geoblocks the US/UK on its own site; our deposits are on-chain, opt-in. OK for the hackathon, or skip Kamino there?</li>
-            </ol>
+            <h2>A year in the garden</h2>
+            <figure className="year">
+              <video src="/brief/year.mp4" poster="/brief/year.webp" autoPlay muted loop playsInline preload="metadata" aria-label="A simulated year of round-ups growing the garden: $247 saved, $14.72 earned" />
+              <figcaption>Simulated year of a typical saver: 102 plantings, $247 saved, $14.72 earned.</figcaption>
+            </figure>
+          </section>
+          <section>
+            <h2>Live on mainnet</h2>
+            <ul>
+              <li>Real round-ups plant every morning on Solana mainnet, from our own phones.</li>
+              <li>The leash program is deployed and its build verified: <a href="https://solscan.io/account/GyBmDLN72kg6xwAnZfj9c7fjeaJ3GvhkHNhFns83f8f7">GyBm...f8f7</a>.</li>
+              <li>dApp Store publisher set up and App NFT minted.</li>
+              <li>Open source: <a href="https://github.com/donlucasx/sprouts">github.com/donlucasx/sprouts</a>.</li>
+            </ul>
+          </section>
+          <section>
+            <h2>Why it sticks</h2>
+            <p>Set it up once and it runs. The garden on your home screen gives you a reason to look every day, and it grows every time you swap.</p>
+          </section>
+          <section>
+            <h2>Business model</h2>
+            <p>A 0.5% fee on each planting, paid in USDC. Later, the AI Yield Manager becomes a Pro subscription.</p>
           </section>
         </div>
         <figure className="phone" style={{ margin: 0 }}>
