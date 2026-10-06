@@ -44,18 +44,21 @@ const LEND_SIGNS = { USDC_LEND: { line2: "Kamino 4.4%" }, SOL_LEND: { line2: "Ju
 /** R370 ("hSOL ... move to the left a bit (currently covered by SKR)", "cbBTC ... to the right a tad, w its stake"): nudges in shares of the width. */
 // R372: the back row spread so USDC clears SKR's tree and SOL clears stORE
 // (the USDC stake moved on alone, out from behind SKR's trunk)
-const NUDGE: Record<string, number> = { hsol: -0.08, jitosol: 0.06, jupsol: 0.2 };
+const NUDGE: Record<string, number> = { hsol: -0.11, jitosol: 0.09, jupsol: 0.25 };   // R374: hSOL further left, USDC and SOL further right
 /** Moves of a placed stake board in canvas units (the stake slots are assigned by order, so moving the stake's x reshuffles them). */
-const BOARD_NUDGE: Record<string, number> = { jitosol: 54 };
+const BOARD_NUDGE: Record<string, number> = { hsol: -100, jitosol: -48, jupsol: 30 };   // R374: hSOL's off its stem, USDC's clear of SKR, SOL's clear of stORE
+const PLANTINGS = 200;   // 340 made SKR swallow the back row and hSOL a column of leaves (a heavy-user art finding)
 const LABEL: Record<LiveAsset, string> = { SKR: "SKR", stORE: "stORE", hSOL: "hSOL", USDC_LEND: "USDC", SOL_LEND: "SOL", cbBTC: "cbBTC" };
 function mulberry32(seed: number) { let a = seed >>> 0; return () => { a = (a + 0x6d2b79f5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
-/** medianYear's history (102 plantings, bands 55 / 35 / 10, a watering a week) with this split. */
+/** medianYear's shape (seeded, a watering a week) with this split and a heavier saver. */
 function year(seed = 7) {
   const rnd = mulberry32(seed); const plantings: GardenInput["plantings"] = []; const putInCents = { SKR: 0, stORE: 0, hSOL: 0, USDC_LEND: 0, SOL_LEND: 0, cbBTC: 0 } as Record<LiveAsset, number>;
-  for (let i = 0; i < 102; i++) {
-    const day = (i + 0.5) * (365 / 102) + (rnd() - 0.5) * 1.6; const r = rnd(); let acc = 0; let asset: LiveAsset = "SKR";
+  // R374 ("$247 saved and $14.72 is not a lot for a whole year"): a heavy Seeker user, a planting every other day or so of $3.50 to $5 (the $5-a-day
+  // ceiling, R341, caps a year at $1,825)
+  for (let i = 0; i < PLANTINGS; i++) {
+    const day = (i + 0.5) * (365 / PLANTINGS) + (rnd() - 0.5) * 0.6; const r = rnd(); let acc = 0; let asset: LiveAsset = "SKR";
     for (const [a, share] of SPLIT) { acc += share; if (r < acc) { asset = a; break; } }
-    const b = rnd(); const cents = b < 0.55 ? 40 + Math.floor(rnd() * 59) : b < 0.9 ? 100 + Math.floor(rnd() * 400) : 501 + Math.floor(rnd() * 600);
+    const b = rnd(); const cents = b < 0.4 ? 350 + Math.floor(rnd() * 100) : 450 + Math.floor(rnd() * 51);
     putInCents[asset] += cents;
     plantings.push({ id: `tl${i}`, ts: new Date(START + day * 86_400_000), asset, amountOutRaw: BigInt(cents) * 1000n, usdcInCents: cents });
   }
@@ -93,10 +96,10 @@ describe.skipIf(!process.env.TIMELAPSE)("timelapse frames", () => {
       const put = (a: LiveAsset) => input.plantings.filter((p) => p.asset === a).reduce((s, p) => s + p.usdcInCents, 0) / 100;
       const total = SPLIT.reduce((s, [a]) => s + put(a), 0);
       const earned = input.plantings.reduce((s, p) => s + (p.usdcInCents / 100) * RATE[p.asset] * ((input.now.getTime() - p.ts.getTime()) / (365 * 86_400_000)), 0);
-      const coins = SPLIT.map(([a]) => `<span>${LABEL[a]} <b>$${put(a).toFixed(0)}</b></span>`).join("");
+      const coins = SPLIT.map(([a]) => `<span>${LABEL[a]} <b>$${Math.round(put(a)).toLocaleString("en-US")}</b></span>`).join("");
       const page = `<!doctype html><meta charset="utf-8"><body style="margin:0;width:1080px;height:940px;background:${SOIL.paper};font-family:Helvetica,Arial,sans-serif;color:${SOIL.ink}">
 <div style="height:720px">${svg}</div>
-<div style="padding:24px 40px 0;display:flex;justify-content:space-between;align-items:baseline"><span style="font-size:44px;font-weight:700">Day ${Math.floor(day)}</span><span style="font-size:44px">$${total.toFixed(2)} saved &middot; <b style="color:#3F7D3A">$${earned.toFixed(2)} earned</b></span></div>
+<div style="padding:24px 40px 0;display:flex;justify-content:space-between;align-items:baseline"><span style="font-size:44px;font-weight:700">Day ${Math.floor(day)}</span><span style="font-size:44px">$${total.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} saved &middot; <b style="color:#3F7D3A">$${earned.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} earned</b></span></div>
 <div style="padding:18px 40px 0;display:flex;justify-content:space-between;font-size:28px;color:#6B5340">${coins}</div>
 <div style="padding:14px 40px 0;font-size:20px;color:#9a8a78">Simulated year, ${input.plantings.length} plantings. Split SKR 35%, stORE 30%, USDC 15%, hSOL 10%, SOL 10%. Earned at SKR 16.4%, stORE 17%, hSOL 7%, USDC 4.4%, SOL 3.9% a year.</div></body>`;
       writeFileSync(path.join(out, `f${String(n++).padStart(4, "0")}.html`), page);
