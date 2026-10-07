@@ -1,4 +1,4 @@
-import { store } from './me'
+import { store } from './store'
 import { parseAppearance, type Appearance } from '@/theme/appearance'
 import type { NoticeKind } from './notices'
 
@@ -15,8 +15,15 @@ const NOTIFY_KEY: Record<NoticeKind, string> = {
 export function readAppearance(): Appearance {
   return parseAppearance(store.getString(APPEARANCE))
 }
+const appearanceListeners = new Set<() => void>()
+/** For the theme hook (useSyncExternalStore): every write tells the listeners, so the colours follow the choice at once. */
+export function subscribeAppearance(listener: () => void): () => void {
+  appearanceListeners.add(listener)
+  return () => void appearanceListeners.delete(listener)
+}
 export function writeAppearance(a: Appearance) {
   store.set(APPEARANCE, a)
+  for (const l of appearanceListeners) l()
 }
 /** Every notice defaults to on. */
 export function readNotify(kind: NoticeKind): boolean {
