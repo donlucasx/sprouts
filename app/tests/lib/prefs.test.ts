@@ -1,14 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const mem = new Map<string, string | boolean>()
-vi.mock('@/lib/me', () => ({
+vi.mock('@/lib/store', () => ({
   store: {
     getString: (k: string) => (typeof mem.get(k) === 'string' ? mem.get(k) : undefined),
     getBoolean: (k: string) => (typeof mem.get(k) === 'boolean' ? mem.get(k) : undefined),
     set: (k: string, v: string | boolean) => void mem.set(k, v),
   },
 }))
-import { readAppearance, writeAppearance, readNotify, writeNotify } from '@/lib/prefs'
+import { readAppearance, writeAppearance, readNotify, writeNotify, subscribeAppearance } from '@/lib/prefs'
 
 describe('prefs (R153)', () => {
   beforeEach(() => mem.clear())
@@ -28,5 +28,17 @@ describe('prefs (R153)', () => {
   it('the planting switch keeps the key R153 shipped, so an earlier off stays off', () => {
     mem.set('prefs.notifyPlantings', false)
     expect(readNotify('plantings')).toBe(false)
+  })
+})
+
+describe('subscribeAppearance (10-06: the theme re-renders from the choice itself)', () => {
+  beforeEach(() => mem.clear())
+  it('a write tells every listener; an unsubscribed one hears nothing', () => {
+    const heard: string[] = []
+    const off = subscribeAppearance(() => heard.push(readAppearance()))
+    writeAppearance('dark')
+    off()
+    writeAppearance('system')
+    expect(heard).toEqual(['dark'])
   })
 })
