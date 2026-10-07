@@ -69,7 +69,7 @@
     ],
     "scheme": "sprouts",
     "slug": "sprouts",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "web": {
       "favicon": "./assets/images/favicon.png",
       "output": "static"
