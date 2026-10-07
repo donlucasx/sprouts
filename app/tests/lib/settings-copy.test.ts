@@ -65,9 +65,10 @@ describe('Settings > About Sprouts (spec 6.2, 11)', () => {
     )
     expect(RELINK.body).toBe(PUBLIC_GUARANTEE)
   })
-  it('fees: no Sprouts fee on lending, the network fee passes through (R266, R318)', () => {
+  it('fees: no Sprouts fee on lending; Sprouts pays the network fee and rent, as the Terms say (R266, audits/fee-model)', () => {
     const fees = DISCLOSURES.find(([h]) => h === 'Fees')![1]
     expect(fees).toContain('Lending is free')
-    expect(fees).toContain('passes through the network fee (about $0.03)')
+    expect(fees).toContain('Sprouts pays the network fee and the one-time account rent')
+    expect(fees).not.toMatch(/passes through|about \$0\.03/)
   })
 })

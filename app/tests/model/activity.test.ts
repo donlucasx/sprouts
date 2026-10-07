@@ -16,10 +16,11 @@ const all: ActivityRow[] = []
 const keep = <T extends ActivityRow | null>(r: T) => { if (r) all.push(r); return r }
 
 describe('R362: a planting is one short line (what, amount); the long line lives behind the tap', () => {
-  it('a coin: "Planted hSOL" and its dollars; the details say what it became, the fee clause and the network fee', () => {
+  // The fixture's legacy networkFeeCents: no "Network fee" line, old rows included (that money was planted, audits/fee-model).
+  it('a coin: "Planted hSOL" and its dollars; the details say what it became and the fee clause, no network fee line', () => {
     expect(keep(plantingRow(planting([hsol])))).toEqual({
       key: 'p', ts: '2026-10-05T15:00:00Z', label: 'Planted hSOL', amount: '$2.00',
-      details: ['$2.00 became 0.0123 hSOL ($2.07), fee under 1 cent', 'Network fee $0.03'], signature: 's',
+      details: ['$2.00 became 0.0123 hSOL ($2.07), fee under 1 cent'], signature: 's',
     })
   })
   it('SKR: the coin amount ("235.21 SKR ($4.28)") moves into the details', () => {
@@ -35,7 +36,7 @@ describe('R362: a planting is one short line (what, amount); the long line lives
     const skr = { asset: 'SKR' as const, usdcInCents: 90, amountOutRaw: '4920000', feeCents: 0, feeAmountRaw: '0', usdPrice: 0.0183 }
     const r = keep(plantingRow(planting([skr, { ...usdc, usdcInCents: 110 }])))
     expect(r).toMatchObject({ label: 'Planted 2 coins', amount: '$2.00' })
-    expect(r?.details).toHaveLength(3)
+    expect(r?.details).toHaveLength(2)
     expect(r?.details[1]).toBe('$1.10 went into USDC lending (Kamino), no Sprouts fee')
   })
   it("a retired coin's planting is not shown (R281); a failed one moved nothing; one in flight says so", () => {

@@ -17,8 +17,12 @@ import type { ParsedPrice } from "./pyth";
 import { klendDeliveryShortfall } from "./venues/klend";
 import { jlendDeliveryShortfall } from "./venues/jlend";
 
-/** The pass-through network fee, in cents, added to every pull and shown on the receipt. */
-export const NETWORK_FEE_CENTS = 3;
+/**
+ * Cents added to a pull on top of the change: 0. Sprouts pays the network fee (Terms 2026-10-07). Until 10-06 this was 3 and the
+ * receipt called it a "network fee", but the whole pull was planted (planting.ts: "not withheld"), so it was never a fee
+ * (audits/fee-model). The leash floor would refuse a withheld flat fee at small pulls anyway; Sprouts' only fee is the 0.5%.
+ */
+export const NETWORK_FEE_CENTS = 0;
 const USDC_PER_CENT = 10_000n;
 const CONCURRENCY = 8;
 /** After this many build failures in a row the run stops: that is a Jupiter or RPC outage, not a wallet problem. */

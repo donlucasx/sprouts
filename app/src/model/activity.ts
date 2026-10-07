@@ -26,7 +26,7 @@ export function plantingRow(p: Planting): ActivityRow | null {
   const total = legs.reduce((s, l) => s + l.usdcInCents, 0)
   const label = legs.length === 1 ? `Planted ${COIN_NAME_LONG[legs[0].asset]}` : `Planted ${legs.length} coins`
   const details = legs.map((l) => plantedLine({ usdcInCents: l.usdcInCents, asset: l.asset, amountOutRaw: l.amountOutRaw, usdPrice: l.usdPrice ?? null, feeCents: l.feeCents, feeAmountRaw: l.feeAmountRaw, venue: l.venue }))
-  if (p.networkFeeCents > 0) details.push(`Network fee ${formatUsd(p.networkFeeCents)}`)
+  // No "Network fee" line, old rows included: until 10-06 the 3 cents it named was planted with the rest, never kept (audits/fee-model).
   return { ...base, label, amount: formatUsd(total), details }
 }
 
