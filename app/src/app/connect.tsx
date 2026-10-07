@@ -8,6 +8,7 @@ import { Card } from '@/components/Card'
 import { ThemedText } from '@/components/ThemedText'
 import { api, ApiError } from '@/lib/api'
 import { makeSigner, SignRefused } from '@/lib/sign'
+import { DROPPED_NOTHING_SENT, isSessionDropped } from '@/lib/wallet-errors'
 import { useInvalidateMe, useMe } from '@/lib/me'
 import { newlyLinked } from '@/lib/newly-linked'
 import { confirmWithRetries, LINK_NOT_ON_CHAIN_YET } from '@/lib/confirm-retry'
@@ -59,7 +60,7 @@ export default function Connect() {
       await invalidate()
       router.replace('/home')
     } catch (e) {
-      setError(e instanceof ApiError || e instanceof SignRefused ? e.message : 'The approval did not go through. Try again.')
+      setError(e instanceof ApiError || e instanceof SignRefused ? e.message : isSessionDropped(e) ? DROPPED_NOTHING_SENT : 'The approval did not go through. Try again.')
     } finally {
       setApproving(false)
     }

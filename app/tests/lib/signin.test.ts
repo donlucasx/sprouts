@@ -58,3 +58,28 @@ describe("signInWithSeeker (R283: the Terms are accepted at sign-in)", () => {
     expect((verify?.[1] as { body: { termsVersion?: string } }).body.termsVersion).toBe("2026-10-07");
   });
 });
+
+// 10-06 (audits/signin-drop): a cold, locked Solflare tears the session down after the user approves; the immediate retry works.
+describe("freshSignIn retries once when the wallet drops the session", () => {
+  const dropped = () => Object.assign(new Error("java.util.concurrent.CancellationException"), { name: "SolanaMobileWalletAdapterError" });
+  const ok = { account: { address: "DjRp" }, signedMessage: message, signature: sig };
+
+  it("a drop, then a fresh nonce and one more wallet request, which signs", async () => {
+    vi.mocked(api).mockClear();
+    const signIn = vi.fn().mockRejectedValueOnce(dropped()).mockResolvedValueOnce(ok);
+    const r = await freshSignIn(signIn);
+    expect(signIn).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(api).mock.calls.filter(([path]) => path === "/api/auth/nonce")).toHaveLength(2);   // the retry signs a new nonce
+    expect(r.output.address).toBe("DjRp");
+  });
+  it("two drops: the second one is thrown, no third request", async () => {
+    const signIn = vi.fn().mockRejectedValue(dropped());
+    await expect(freshSignIn(signIn)).rejects.toThrow("CancellationException");
+    expect(signIn).toHaveBeenCalledTimes(2);
+  });
+  it("a real decline is never retried", async () => {
+    const signIn = vi.fn().mockRejectedValue(Object.assign(new Error("authorization request failed"), { code: -1 }));
+    await expect(freshSignIn(signIn)).rejects.toThrow("authorization request failed");
+    expect(signIn).toHaveBeenCalledTimes(1);
+  });
+});

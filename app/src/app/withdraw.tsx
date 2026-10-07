@@ -14,6 +14,7 @@ import { api, ApiError } from '@/lib/api'
 import { useMe, useInvalidateMe } from '@/lib/me'
 import { useSession } from '@/lib/session'
 import { makeSigner, SignRefused } from '@/lib/sign'
+import { DROPPED_NOTHING_SENT, isSessionDropped } from '@/lib/wallet-errors'
 import { arrivalLine, formatSkr } from '@/lib/format'
 import { withdrawRows } from '@/lib/withdraw-list'
 import { oneAtATime, withdrawAtTap, type WithdrawPlan, type WithdrawRequest } from '@/lib/withdraw-flow'
@@ -107,7 +108,7 @@ export default function Withdraw() {
       await invalidate()
       router.replace('/home')
     } catch (e) {
-      setError(e instanceof ApiError || e instanceof SignRefused ? e.message : 'The withdrawal did not go through. Nothing moved.')
+      setError(e instanceof ApiError || e instanceof SignRefused ? e.message : isSessionDropped(e) ? DROPPED_NOTHING_SENT : 'The withdrawal did not go through. Nothing moved.')
     } finally {
       gate.leave()
       setBusy(false)
@@ -124,7 +125,7 @@ export default function Withdraw() {
       await invalidate()
       router.replace('/home')
     } catch (e) {
-      setError(e instanceof ApiError || e instanceof SignRefused ? e.message : 'Could not put it back. Try again.')
+      setError(e instanceof ApiError || e instanceof SignRefused ? e.message : isSessionDropped(e) ? DROPPED_NOTHING_SENT : 'Could not put it back. Try again.')
     } finally {
       gate.leave()
       setBusy(false)
