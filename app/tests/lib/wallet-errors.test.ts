@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isSessionDropped, isWalletDeclined } from "@/lib/wallet-errors";
+import { DROPPED_NOTHING_SENT, isSessionDropped, isWalletDeclined, SIGN_IN_DID_NOT_FINISH } from "@/lib/wallet-errors";
 
 // The two errors the Saga showed on 10-06 (audits/signin-drop): Solflare tore its session down after the user approved (no reply),
 // versus a wallet that answered "no".
@@ -22,5 +22,14 @@ describe("isSessionDropped / isWalletDeclined", () => {
       expect(isSessionDropped(e)).toBe(false);
       expect(isWalletDeclined(e)).toBe(false);
     }
+  });
+});
+
+// Neither line may claim which happened: the wallets send a cancel and a lost approval alike (device tests, 10-06).
+describe("the copy after a wallet ends without a signature", () => {
+  it("never says the wallet closed or that the user declined", () => {
+    for (const line of [DROPPED_NOTHING_SENT, SIGN_IN_DID_NOT_FINISH]) expect(line).not.toMatch(/closed before answering|declined|did not sign\. Try again, or/);
+    expect(SIGN_IN_DID_NOT_FINISH).toBe("Sign-in didn't finish in your wallet. Tap Sign in to try again.");
+    expect(DROPPED_NOTHING_SENT).toBe("Your wallet didn't sign, so nothing was sent. Try again.");
   });
 });
