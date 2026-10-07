@@ -787,12 +787,66 @@ describe("lending legs pay nothing and never fall back to SKR (spec 2, R266)", (
     const built: string[] = [];
     const chain = fakeChain({ buildPlantingTx: async (a) => { built.push(a.asset); throw new Error("venue down"); } });
     const r = await runPlanting({ repo, now: NOW, chain });
-    expect(built).toEqual(["USDC_LEND"]);
+    expect(built).toEqual(["USDC_LEND", "USDC_LEND"]);   // R439: its other venue once, never another asset
     expect(r.planted).toEqual([]);
     expect(r.skipped).toEqual([{ wallet: "W", reason: "leg failed" }]);
     expect(repo.events.map((e) => e.kind)).toContain("leg_skipped");
     expect(repo.events.map((e) => e.kind)).not.toContain("leg_fallback");
     expect((await repo.unplantedSwaps("W")).length).toBe(3);
+  });
+
+  // R439 (10-07): a lending leg that fails (weather, not a guard refusal) tries the same asset on the other venue once; then it waits.
+  it("R439: a failed lending venue retries the same asset on the other venue, which plants", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await seedVenues(repo);
+    await repo.saveRules("U", { allocation: { ...lendOnly, USDC_LEND: 0, SOL_LEND: 100 } });
+    const built: [string, string | null][] = [];
+    const base = fakeChain();
+    const chain = fakeChain({ buildPlantingTx: async (a) => { built.push([a.asset, a.venue]); if (a.venue === "kamino_klend") throw new Error("Transaction too large: 1267 bytes"); return base.buildPlantingTx(a); } });
+    const r = await runPlanting({ repo, now: NOW, chain });
+    expect(built).toEqual([["SOL_LEND", "kamino_klend"], ["SOL_LEND", "jupiter_lend"]]);
+    expect(r.planted).toEqual([{ wallet: "W", asset: "SOL_LEND", pullCents: 215, signature: "sig1" }]);
+    expect(repo.events.find((e) => e.kind === "venue_fallback")?.detail).toMatchObject({ asset: "SOL_LEND", from: "kamino_klend", to: "jupiter_lend" });
+    expect(repo.events.map((e) => e.kind)).not.toContain("leg_skipped");
+  });
+
+  it("R439: when the other venue fails too, the planting waits for the next run with an ALERT; no third try", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await seedVenues(repo);
+    await repo.saveRules("U", { allocation: lendOnly });
+    const built: (string | null)[] = [];
+    const errors: string[] = [];
+    const spy = vi.spyOn(console, "error").mockImplementation((m: string) => { errors.push(m); });
+    try {
+      const r = await runPlanting({ repo, now: NOW, chain: fakeChain({ buildPlantingTx: async (a) => { built.push(a.venue); throw new Error("venue down"); } }) });
+      expect(r.skipped).toEqual([{ wallet: "W", reason: "leg failed" }]);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(built).toEqual(["kamino_klend", "jupiter_lend"]);
+    expect(errors.some((m) => m.startsWith("ALERT: lending leg USDC_LEND skipped"))).toBe(true);
+    expect((await repo.unplantedSwaps("W")).length).toBe(3);
+  });
+
+  it("R439: a guard refusal is not retried on the other venue", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await seedVenues(repo);
+    await repo.saveRules("U", { allocation: lendOnly });
+    const built: (string | null)[] = [];
+    const r = await runPlanting({ repo, now: NOW, chain: fakeChain({ buildPlantingTx: async (a) => { built.push(a.venue); throw new Error("K-Lend refused: deposit account mismatch"); } }) });
+    expect(built).toEqual(["kamino_klend"]);
+    expect(r.skipped[0].reason).toBe("leg failed");
+  });
+
+  it("R439: a leashed user whose other venue's leg is off is not retried there", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await seedVenues(repo);
+    await repo.saveRules("U", { allocation: lendOnly });
+    await repo.setWalletLink("W", { delegationPda: "D", linkModel: "leash" });
+    const built: (string | null)[] = [];
+    const r = await runPlanting({ repo, now: NOW, chain: fakeChain({ readLeashConfig: async () => leashCfg([2]), buildPlantingTx: async (a) => { built.push(a.venue); throw new Error("venue down"); } }) });
+    expect(r.skipped[0].reason).toBe("leg failed");
+    expect(built).toEqual(["kamino_klend"]);
   });
 
   it("a lending leg that fails simulation is skipped the same way", async () => {

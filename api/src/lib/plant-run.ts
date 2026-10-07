@@ -10,7 +10,7 @@ import { redistributeDisabled } from "@/domain/split";
 import { lendingUsdByProtocol } from "./user-routing";
 import { errorText } from "./redact";
 export { lendingUsdByProtocol } from "./user-routing";
-import { VENUE_PROTOCOL, pickVenue, venueCandidates, type AutoVenue, type Protocol } from "@/domain/venues";
+import { AUTO_VENUES, VENUE_PROTOCOL, pickVenue, venueCandidates, type AutoVenue, type Protocol } from "@/domain/venues";
 import { LEASH_PROGRAM } from "./constants";
 import { enabledLegs, leashAllowedVenues, leashLegOf, leashLive, LEASH_ERRORS, LEG_SPEC, postedPriceRefusal, skrPriceSource, type LeashConfig, type LeashLegByte } from "./leash";
 import type { ParsedPrice } from "./pyth";
@@ -621,7 +621,27 @@ async function plantOneOrThrow(a: { repo: Repo; now: Date; chain: Chain }, w: Wa
   const simError = (r: Attempt) => `simulation: ${json(r.sim.err)} ${r.sim.logs.slice(-2).join(" | ")}`;
   // A leg that cannot be planted today: a lending leg, a coin leg whose SKR fallback is off for this leashed user, and (carry-in 9)
   // a leashed SKR leg are skipped; an unleashed coin leg falls back to SKR (spec 7.3); an unleashed SKR build error is "build failed".
+  // R439 (10-07): a lending leg that fails for weather (not a guard refusal) tries the same asset once on the other venue, if that
+  // venue is eligible, under its 60% cap and (leashed) its leash leg is on; never another asset (spec: a lending leg waits).
+  const retriedVenue = new Set<LendAsset>();
+  const otherVenue = (leg: LendAsset, not: AutoVenue): AutoVenue | null => {
+    if (!positionsUsd) return null;
+    const allowed = (enabled ? leashAllowedVenues(enabled, leg) : AUTO_VENUES).filter((v) => v !== not);
+    return pickVenue({ candidates: venueCandidates(leg, ctx.venueDays, ctx.yesterday), lendingUsdByProtocol: positionsUsd, addUsd: amount.pullCents / 100, allowed });
+  };
   const fallbackOrSkip = async (failed: LiveAsset, err: string): Promise<Attempt | null> => {
+    if (isLendAsset(failed) && !retriedVenue.has(failed) && !GUARD_REFUSAL.test(err)) {
+      const from = venues[failed] ?? null;
+      const to = from ? otherVenue(failed, from) : null;
+      if (from && to) {
+        retriedVenue.add(failed);
+        console.error(`${failed} on ${from} for ${w.pubkey} failed (${err}); trying ${to}`);
+        await a.repo.addEvent({ userPubkey: w.userPubkey, walletPubkey: w.pubkey, kind: "venue_fallback", detail: { asset: failed, from, to, err } });
+        venues[failed] = to;
+        return tryLeg(failed);
+      }
+    }
+    if (isLendAsset(failed)) console.error(`ALERT: lending leg ${failed} skipped for ${w.pubkey}${retriedVenue.has(failed) ? " on both venues" : ""}; the planting waits for the next run: ${err}`);
     // Review M4: a leashed user never falls back to SKR while leg 0 has no price source (no PYTH_API_KEY, R324): it would be skipped there anyway.
     if (isLendAsset(failed) || disabled.includes("SKR") || (leashed && !skrPriceSource())) {
       await legSkipped(a, w, failed, err);
