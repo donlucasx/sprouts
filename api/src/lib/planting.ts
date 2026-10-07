@@ -73,9 +73,10 @@ export const MEASURE_ALT = address("SproutsA1tMeasure11111111111111111111111111"
 /**
  * Task 12 Step 4 (10-05, the owner's leashed run on mainnet, legs 1,2,3,6,7): the highest leashed `units=` was 146,757 (stORE);
  * + 75_000 for the leash (pull + settle; Task 6's 72.6k worst case at 3,000 users, ruling B), rounded up to the next 10,000.
- * Unleashed SOL_LEND measured 193,590 the same morning: re-measure before legs 4/5 go on the leash (Day 2).
+ * 10-06 ~23:1x PDT, legs 4/5 (SOL lending) switched on and re-measured leashed (Saga 887d, limit raised locally to 400k): highest
+ * 238,591 (SOL_LEND jupiter_lend); at 230,000 about half the SOL builds ran out of compute. Same rule: 238,591 + 75,000 -> 320,000.
  */
-export const PLANTING_CU_LIMIT = 230_000;
+export const PLANTING_CU_LIMIT = 320_000;
 
 export type BuiltPlanting = {
   tx: Awaited<ReturnType<typeof signTransactionMessageWithSigners>>;
