@@ -10,7 +10,7 @@ import { ThemedText } from '@/components/ThemedText'
 import { Lockup } from '@/components/Lockup'
 import { useSession } from '@/lib/session'
 import { signInWithSeeker } from '@/lib/signin'
-import { isSessionDropped, isWalletDeclined } from '@/lib/wallet-errors'
+import { isSessionDropped, isWalletDeclined, SIGN_IN_DID_NOT_FINISH } from '@/lib/wallet-errors'
 import { ApiError } from '@/lib/api'
 import { spacing } from '@/theme'
 import { SLOGAN } from '@/lib/slogan'
@@ -65,12 +65,11 @@ export default function Welcome() {
                     e,
                   )
                 // A wallet that declines (a scam-screen block reports as a cancel) gets its own line instead of silence (10-01 device check).
-                // A drop already had its one retry inside freshSignIn (audits/signin-drop); a decline is the wallet's own no.
+                // A drop already had its one retry inside freshSignIn; a drop and a decline get the same line, since the wallets
+                // send a user's cancel as a drop too (audits/signin-drop, 10-06).
                 setError(
-                  isSessionDropped(e)
-                    ? 'Your wallet closed before answering. Tap Sign in to try again.'
-                    : isWalletDeclined(e)
-                    ? "Your wallet did not sign. Try again, or sign in with another wallet app that holds your Seeker's seed."
+                  isSessionDropped(e) || isWalletDeclined(e)
+                    ? SIGN_IN_DID_NOT_FINISH
                     : e instanceof ApiError
                       ? e.message
                       : 'Sign-in did not go through. Try again.',
