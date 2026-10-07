@@ -10,23 +10,11 @@ import { ThemedText } from '@/components/ThemedText'
 import { Lockup } from '@/components/Lockup'
 import { useSession } from '@/lib/session'
 import { signInWithSeeker } from '@/lib/signin'
+import { isSessionDropped, isWalletDeclined } from '@/lib/wallet-errors'
 import { ApiError } from '@/lib/api'
 import { spacing } from '@/theme'
 import { SLOGAN } from '@/lib/slogan'
 import { termsSummary } from '@/lib/terms'
-
-function isCanceled(e: unknown) {
-  const code = e !== null && typeof e === 'object' && 'code' in e ? String((e as { code: unknown }).code) : ''
-  const m = e instanceof Error ? e.message : ''
-  // -1 is the Mobile Wallet Adapter's ERROR_AUTHORIZATION_FAILED: the wallet declined the request (10-01: Solflare on the Saga answered it for sprouts.money).
-  return (
-    code === 'ERROR_ASSOCIATION_CANCELLED' ||
-    code === '-1' ||
-    m.includes('authorization request failed') ||
-    m.includes('CancellationException') ||
-    m.includes('cancelled by user')
-  )
-}
 
 /** Welcome, the manual's specimen (section 7): the stacked lockup, the slogan under it in Albert Sans 500 at half the word size, the one button. */
 export default function Welcome() {
@@ -77,8 +65,11 @@ export default function Welcome() {
                     e,
                   )
                 // A wallet that declines (a scam-screen block reports as a cancel) gets its own line instead of silence (10-01 device check).
+                // A drop already had its one retry inside freshSignIn (audits/signin-drop); a decline is the wallet's own no.
                 setError(
-                  isCanceled(e)
+                  isSessionDropped(e)
+                    ? 'Your wallet closed before answering. Tap Sign in to try again.'
+                    : isWalletDeclined(e)
                     ? "Your wallet did not sign. Try again, or sign in with another wallet app that holds your Seeker's seed."
                     : e instanceof ApiError
                       ? e.message

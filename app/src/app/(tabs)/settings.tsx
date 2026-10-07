@@ -18,6 +18,7 @@ import { useSession } from '@/lib/session'
 import { useMobileWallet } from '@wallet-ui/react-native-kit'
 import { formatWallet, HOLDINGS_NOTE } from '@/lib/format'
 import { makeSigner, SignRefused } from '@/lib/sign'
+import { DROPPED_NOTHING_SENT, isSessionDropped } from '@/lib/wallet-errors'
 import { freshSignIn } from '@/lib/signin'
 import { freshWalletSignIn } from '@/lib/reauth'
 import { identity } from '@/lib/identity'
@@ -97,7 +98,7 @@ export default function Settings() {
       await api(`/api/revoke/${wallet}`, { method: 'POST', body: { signedTransaction: signed } })
       await invalidate()
     } catch (e) {
-      setWalletError(e instanceof ApiError || e instanceof SignRefused ? e.message : 'The revoke did not go through. Try again.')
+      setWalletError(e instanceof ApiError || e instanceof SignRefused ? e.message : isSessionDropped(e) ? DROPPED_NOTHING_SENT : 'The revoke did not go through. Try again.')
     } finally {
       setWalletBusy(false)
       setSigning(false)

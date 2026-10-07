@@ -2,6 +2,7 @@ import { fromUint8Array, toUint8Array, type SignInPayload } from "@wallet-ui/rea
 import { api } from "./api";
 import { TERMS_VERSION } from "./terms";
 import { installationId, type Session } from "./session";
+import { isSessionDropped } from "./wallet-errors";
 
 type SignInInput = { domain: string; address?: string; statement: string; uri: string; version: string; chainId: string; nonce: string; issuedAt: string; expirationTime: string };
 
@@ -30,8 +31,22 @@ export type SignInFn = (payload: SignInPayload) => Promise<{ account: { address:
 /** What the API verifies: the payload it issued (with the address the wallet filled) and the wallet's signature over it. */
 export type SignedIn = { input: SignInInput & { address: string }; output: { address: string; signedMessage: string; signature: string } };
 
-/** One fingerprint: the server's nonce, rendered and signed by the Seed Vault Wallet. The API verifies and consumes the nonce once. */
+/**
+ * One fingerprint: the server's nonce, rendered and signed by the Seed Vault Wallet. The API verifies and consumes the nonce once.
+ * A dropped wallet session (audits/signin-drop: a cold, locked Solflare closes it after the user approved) runs the whole thing once
+ * more, with a NEW nonce: the first signature never left the wallet, so nothing is replayed. A decline is never retried.
+ */
 export async function freshSignIn(signIn: SignInFn): Promise<SignedIn> {
+  try {
+    return await signOnce(signIn);
+  } catch (e) {
+    if (!isSessionDropped(e)) throw e;
+    if (typeof __DEV__ !== "undefined" && __DEV__) console.warn("[signin] the wallet dropped the session; asking once more");
+    return await signOnce(signIn);
+  }
+}
+
+async function signOnce(signIn: SignInFn): Promise<SignedIn> {
   const input = await api<SignInInput>("/api/auth/nonce", { method: "POST", body: {}, auth: false });
   const output = await signIn({ ...input, chainId: "solana:mainnet" } as SignInPayload);
   const address = output.account.address;
