@@ -216,7 +216,9 @@ Expected: one `set_leg <n> confirmed` line per leg turned off, then `on-chain Co
 **C2. Day 2: one more leg at a time, only when the coordinator says its gates passed**
 
 Legs 1 (stORE) and 3 (USDC on Jupiter Lend) are Day-1 legs now (B3), so Day 2 is for legs 4 and 5 (SOL lending) only. The
-list is the FULL list that should be on: the legs on now plus the new one. Leg 0 (SKR) is never in the list.
+list is the FULL list that should be on: the legs on now plus the new one. Leg 0 (SKR) is never in the list. (SUPERSEDED 10-06: leg 0
+is ON since feat/skr-post; it must now be IN every list, or the line switches SKR off. Order that works, used 10-06 for legs 4/5:
+enable the leg, simulate it leashed at a locally raised CU limit, deploy the new limit before the next cron, else undo the leg.)
 For example, adding leg 4 after B4 line A (legs 1, 2, 3, 6, 7 on; R343):
 ```
 cd ~/Documents/claude/seekerhackathon/build/sprouts/api && pnpm tsx scripts/leash-admin.ts set --enable 1,2,3,4,6,7 --admin ~/.config/solana/sprouts-admin.json

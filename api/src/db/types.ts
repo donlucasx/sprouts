@@ -133,6 +133,7 @@ export type EventKind =
   | "split_changed"
   | "split_undone"
   | "leg_fallback"
+  | "venue_fallback"   // R439: a lending leg retried on its other venue
   | "leg_skipped"
   | "coin_no_data"
   | "lend_withdrawn"

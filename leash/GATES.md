@@ -41,12 +41,12 @@ Enable preconditions, recorded status (Kimi F2). A leg turns on only when every 
 
 | Leg | Floor boundary through leash.so | Real-route mainnet sim (inv. 3, API D7) | S1 (legs 4, 5) | S4 age sample (legs 1, 7) | Price account pinned (I1) |
 |---|---|---|---|---|---|
-| 0 SKR | n/a: stays off (R324) | n/a | n/a | n/a: no source | n/a |
+| 0 SKR | n/a: stays off (R324). SUPERSEDED 10-06: ON with a posted Pyth price (feat/skr-post, contracts 10 item 15; real leashed SKR plantings 10-06) | PASS 10-06 (real plantings) | n/a | n/a: posted price | n/a: posted |
 | 1 stORE | PASS 2026-10-04 fork (`swap_leg`) | PENDING | n/a | PASS 2026-10-04 (API RESULTS.md "S4 gate", 3ed0375: ORE max age 55 s) | PASS (golden Config) |
 | 2 USDC K-Lend | PASS synthetic (`floor_boundary_synthetic_legs`) + fork actual deposit | PENDING (Day 1: C1 D7) | n/a | n/a | n/a: unpriced |
 | 3 USDC JL | PASS 2026-10-04 fork (real JL mint) | PENDING | n/a | n/a | n/a: unpriced |
-| 4 SOL K-Lend | PASS fork (real K-Lend deposit) | PENDING | PENDING | n/a | PASS (golden Config) |
-| 5 SOL JL | PASS fork (real JL mint) | PENDING | PENDING | n/a | PASS (golden Config) |
+| 4 SOL K-Lend | PASS fork (real K-Lend deposit) | PASS 10-06 leashed mainnet sims (after enable; audits/sol-legs/MEASUREMENTS) | PASS with exceptions: 846-1,085 B, once 1,267 B (1 of ~10 routes; refused pre-send) | n/a | PASS (golden Config) |
+| 5 SOL JL | PASS fork (real JL mint) | PASS 10-06 leashed mainnet sims (CU up to 238,591 -> PLANTING_CU_LIMIT 320k, e1e24a4) | PASS 970-1,192 B | n/a | PASS (golden Config) |
 | 6 hSOL | PASS fork (`swap_leg`) + synthetic | PENDING (Day 1: C1 D7) | n/a | n/a | PASS (golden Config) |
 | 7 cbBTC | PASS fork (`swap_leg`) + synthetic | PENDING (Day 1: C1 D7) | n/a | PASS 2026-10-04 (API RESULTS.md "S4 gate", 3ed0375: max age 280 s, under 600) | PASS (golden Config) |
 
@@ -76,3 +76,4 @@ S2 notes (Task 0, 2026-10-04): "+ pyth" = `s2_pyth_accounts_layout` also PASS fo
    lag 8.25e-3 vs 5e-4, while the Kamino API's totalSupply did not move across reads as the chain moved ~1.24M USDC and sits below the API's own totalBorrow.
    rn/rd = 1.20385 at both slots. Leg 4 S2 is PASS(mint-supply) from its own test (`s2_klend_sol_reserve_matches_mint_supply_and_api`).
 2. FEED_SKR's PriceUpdateV2 account is not fetched by fetch.py, so no S2 test reads it; leg 0's price leg is unverified by T0.
+- 10-06 C2 (owner, after the S1/CU measurement was found impossible before enabling: a disabled leg simulates LegDisabled): set_leg 4 4PXsY3pBuhuuAJTGo3rYbk6qHsLwb2u1LAeY6VzK7uWFGhu7rtvSkcWDoQ2nujrPu6vUjn1H6KGqV9cVe6gqxPKW; set_leg 5 4QF5Su6geEJzVnKk51Hi7dMWVLgTMbyic1KEM2XKKgFWLHnAJbcZrbgXWvANYA6gdxFzsxy8nCAwaL96qL9SPvg1; check-config: legs [0..7] enabled. No cron ran between enable and the CU deploy (e1e24a4). Review: audits/sol-legs/RECONCILED.md (in the project folder).

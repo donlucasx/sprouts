@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { generateKeyPairSigner, address } from "@solana/kit";
 import { ASSOCIATED_TOKEN_PROGRAM_ADDRESS, findAssociatedTokenPda, TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
-import { coinAccountInstructions } from "@/lib/planting";
+import { coinAccountInstructions, PLANTING_CU_LIMIT } from "@/lib/planting";
 import { COINS } from "@/domain/coins";
 
 const USER = address("52vzF8A1qEL7qTY7HiRnvTrXSMN4FkTANZ1DYKQBiF6e");
@@ -53,5 +53,16 @@ describe("skrChangeFromMeta", () => {
   });
   it("throws when the puller's SKR account is not in the transaction at all", () => {
     expect(() => skrChangeFromMeta({ preTokenBalances: [bal(USER, "1")], postTokenBalances: null }, PULLER)).toThrow(/no SKR account/);
+  });
+});
+
+// Review 10-07 (audits/sol-legs, Kimi F4): the limit must cover the highest leashed measurement + 75,000 (Task 12's rule). The
+// highest so far: SOL_LEND on Jupiter Lend, 238,591 units (10-06, audits/sol-legs record). Re-measure and raise this floor together.
+describe("PLANTING_CU_LIMIT", () => {
+  it("covers the highest measured leashed planting plus the 75,000 margin", () => {
+    expect(PLANTING_CU_LIMIT).toBeGreaterThanOrEqual(238_591 + 75_000);
+  });
+  it("stays under Solana's 1.4M per-transaction ceiling", () => {
+    expect(PLANTING_CU_LIMIT).toBeLessThanOrEqual(1_400_000);
   });
 });
