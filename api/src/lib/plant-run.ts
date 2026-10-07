@@ -458,7 +458,17 @@ async function plantOneOrThrow(a: { repo: Repo; now: Date; chain: Chain }, w: Wa
   const rules = rulesRowToRules(await a.repo.getRules(w.userPubkey));
   const oldestMs = swaps.length ? Math.min(...swaps.map((s) => s.ts.getTime())) : a.now.getTime();
   let forced = a.now.getTime() - oldestMs >= rules.plantMaxDays * 86_400_000;
-  if (pending <= 0 || (!forced && pending < rules.plantThresholdCents)) return { wallet: w.pubkey, reason: "below threshold" };
+  if (pending <= 0 || (!forced && pending < rules.plantThresholdCents)) {
+    // 10-07: a revoke made outside the app is seen on a wallet with nothing due too (else it stays active and the app keeps asking
+    // for a re-link). A failed read changes nothing: it is no outage and records no event; the next run reads it again.
+    const gone = await a.chain.readDelegation(w.delegationPda).then((d) => !d.exists, () => false);
+    if (gone) {
+      await a.repo.setWalletStatus(w.pubkey, "revoked");
+      await a.repo.addEvent({ userPubkey: w.userPubkey, walletPubkey: w.pubkey, kind: "revoke_seen", detail: null });
+      return { wallet: w.pubkey, reason: "revoked" };
+    }
+    return { wallet: w.pubkey, reason: "below threshold" };
+  }
   const leashed = w.linkModel === "leash";
   // R297: from go-live the API refuses to plant on old puller-key links (the app shows "Re-link to keep planting"); nothing is read or pulled.
   if (!leashed && leashLive()) return { wallet: w.pubkey, reason: "relink needed" };

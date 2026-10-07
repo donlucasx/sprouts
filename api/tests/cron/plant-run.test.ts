@@ -290,6 +290,32 @@ describe("runPlanting", () => {
     expect((await repo.getWallet("W"))!.status).toBe("revoked");
   });
 
+  // 10-07: a revoke made outside the app on a wallet with nothing due was never seen (the threshold returned first): 9ZKi stayed
+  // active and the Seeker kept its re-link card. The run now reads the delegation of a wallet with nothing due too.
+  const GONE = { exists: false, amountPerPeriodRaw: 0n, pulledInPeriodRaw: 0n, periodStartTs: 0n, periodLengthS: 0n };
+  it("marks a wallet with nothing due revoked when its delegation is gone", async () => {
+    const repo = await seeded([]);
+    const r = await runPlanting({ repo, now: NOW, chain: fakeChain({ readDelegation: async () => GONE }) });
+    expect(r.skipped).toEqual([{ wallet: "W", reason: "revoked" }]);
+    expect((await repo.getWallet("W"))!.status).toBe("revoked");
+    expect(repo.events.map((e) => e.kind)).toContain("revoke_seen");
+  });
+
+  it("a wallet below the threshold with its delegation in place stays active, waiting", async () => {
+    const repo = await seeded([83, 62]);
+    const r = await runPlanting({ repo, now: NOW, chain: fakeChain() });
+    expect(r.skipped).toEqual([{ wallet: "W", reason: "below threshold" }]);
+    expect((await repo.getWallet("W"))!.status).toBe("active");
+  });
+
+  it("a failed delegation read on a wallet with nothing due is ignored: no event, not an outage", async () => {
+    const repo = await seeded([]);
+    const r = await runPlanting({ repo, now: NOW, chain: fakeChain({ readDelegation: async () => { throw new Error("rpc 429"); } }) });
+    expect(r.skipped).toEqual([{ wallet: "W", reason: "below threshold" }]);
+    expect(repo.events).toEqual([]);
+    expect((await repo.getWallet("W"))!.status).toBe("active");
+  });
+
   it("a failed simulation records a failed planting and leaves swaps unplanted", async () => {
     const repo = await seeded([83, 62, 70]);
     const r = await runPlanting({ repo, now: NOW, chain: fakeChain({ simulatePlanting: async () => ({ ok: false, err: { InstructionError: [2, "Custom"] }, logs: ["x"], units: 0 }) }) });
