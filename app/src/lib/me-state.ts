@@ -133,7 +133,7 @@ export function walletsLine(wallets: { status: string }[]): string | null {
 export function lastPlantingLine(r: MeResponse['lastReceipt']): string | null {
   if (!r || isRetired(r.asset)) return null   // a retired coin shows nowhere (R281)
   const day = new Date(r.ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-  return `Last planting ${day}: ${plantedWhat({ usdcInCents: r.usdcPulledCents - r.networkFeeCents, asset: r.asset, amountOutRaw: r.amountOutRaw, usdPrice: r.usdPrice, venue: r.venue })}`
+  return `Last planting ${day}: ${plantedWhat({ usdcInCents: r.usdcPulledCents, asset: r.asset, amountOutRaw: r.amountOutRaw, usdPrice: r.usdPrice, venue: r.venue })}`
 }
 
 /**

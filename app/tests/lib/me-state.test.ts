@@ -223,9 +223,10 @@ describe('Home as numbers (R150)', () => {
     expect(walletsLine([{ status: 'revoked' }])).toBeNull()
     expect(walletsLine([])).toBeNull()
   })
+  // A legacy receipt with networkFeeCents 3: the whole pull was planted (audits/fee-model), so the line shows all of it.
   it('lastPlantingLine: the date, what the change became, no fee clause', () => {
     const r = { ts: '2026-10-01T14:00:00Z', usdcPulledCents: 206, networkFeeCents: 3, asset: 'hSOL', amountOutRaw: '12300000', feeCents: 1, usdPrice: 168.3, signature: 's' } as MeResponse['lastReceipt']
-    expect(lastPlantingLine(r)).toBe('Last planting Oct 1: $2.03 became 0.0123 hSOL ($2.07)')
+    expect(lastPlantingLine(r)).toBe('Last planting Oct 1: $2.06 became 0.0123 hSOL ($2.07)')
     expect(lastPlantingLine(null)).toBeNull()
   })
 })

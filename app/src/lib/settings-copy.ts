@@ -26,7 +26,7 @@ export const DISCLOSURES: [string, string][] = [
   ['Watering', 'Watering moves no money and signs nothing. It opens new growth on the screen.'],
   [
     'Fees',
-    'Sprouts takes 0.5% of each SKR, stORE, hSOL and cbBTC planting, in USDC, inside the swap, and passes through the network fee (about $0.03). Lending is free: no Sprouts fee on USDC or SOL lending, and nothing on interest, withdrawals or moves. Leftovers from rounding carry to your next planting. Fees are on every receipt. The Yield Manager is a Pro feature, included free during launch.',
+    'Sprouts takes 0.5% of each SKR, stORE, hSOL and cbBTC planting, in USDC, inside the swap. Lending is free: no Sprouts fee on USDC or SOL lending, and nothing on interest, withdrawals or moves. Sprouts pays the network fee and the one-time account rent for your coin and lending accounts. Leftovers from rounding carry to your next planting. Fees are on every receipt. The Yield Manager is a Pro feature, included free during launch.',
   ],
   [
     'Where your lending goes',
