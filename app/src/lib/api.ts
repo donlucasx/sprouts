@@ -37,6 +37,8 @@ export async function api<T>(path: string, init: { method?: "GET" | "POST" | "PU
   } catch (e) {
     // A dropped connection can land after the request was sent: the outcome is unknown, so it is never "Nothing moved." (an abort is the caller's own).
     if (init.signal?.aborted) throw e;
+    // Dev builds only: the real network error behind the generic line (10-07: the Seeker's sign-in got 200 at the API, the app saw nothing).
+    if (typeof __DEV__ !== "undefined" && __DEV__) console.warn(`[api] ${path} threw: ${e instanceof Error ? `${e.name}: ${e.message}` : String(e)}`);
     throw new ApiError(0, API_UNANSWERED);
   }
   let json: { error?: string } = {};
@@ -47,6 +49,7 @@ export async function api<T>(path: string, init: { method?: "GET" | "POST" | "PU
       if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) throw new Error("not an object");
       json = parsed as { error?: string };
     } catch {
+      if (typeof __DEV__ !== "undefined" && __DEV__) console.warn(`[api] ${path} ${res.status} not JSON: ${text.slice(0, 160)}`);
       throw new ApiError(res.status, API_UNANSWERED);
     }
   }
