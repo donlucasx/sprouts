@@ -1,5 +1,5 @@
-import { Fragment, useState, type ReactNode } from 'react'
-import { Linking, Pressable, RefreshControl, useWindowDimensions, View } from 'react-native'
+import { useState, type ReactNode } from 'react'
+import { Linking, Pressable, RefreshControl, View } from 'react-native'
 import { MaterialCommunityIcons } from '@expo/vector-icons'
 import { useQuery } from '@tanstack/react-query'
 import { Screen } from '@/components/Screen'
@@ -8,21 +8,27 @@ import { Button } from '@/components/Button'
 import { ThemedText } from '@/components/ThemedText'
 import { api, ApiError, type ActivityResponse } from '@/lib/api'
 import { useMe, useInvalidateMe, useApplyRules } from '@/lib/me'
-import { SPLIT_SECTION } from '@/model/manager'
-import { foundRow, FOUND_SECTION, groupByDay, lendWithdrawalRow, moveRow, plantingRow, rowTime, spokenLabel, splitRow, swapRow, visibleRows, withdrawalRow, WITHDRAWN_LINE, type ActivityRow } from '@/model/activity'
+import { coinColor } from '@/lib/coin-colors'
+import { filterRows, foundRow, groupByDay, KIND_FILTERS, KIND_TAG, lendWithdrawalRow, mergeRows, moveRow, plantingRow, rowTime, spokenLabel, splitRow, swapRow, visibleRows, withdrawalRow, type ActivityKind, type ActivityRow } from '@/model/activity'
 import { undoSplit } from '@/lib/manager-api'
-import { spacing, TARGET, useTheme } from '@/theme'
+import { radius, spacing, TARGET, useTheme } from '@/theme'
 
-/** R362: the time column fits "11:13 AM" in the label step (47 dp measured); it grows with the phone's font scale so the time never cuts. */
-const TIME_WIDTH = 60 // "10:50 AM" at label size was cut at 52 (Seeker, 10-05)
+/** R450: the type tag's colour per kind (plantings take the coin green; lending tones for moves and finds). */
+const KIND_COLOR: Record<ActivityKind, string> = {
+  plant: coinColor('SKR'),
+  swap: '#7A6248',
+  withdraw: '#9E4B3F',
+  split: coinColor('SOL_LEND'),
+  move: coinColor('USDC_LEND'),
+  found: '#6E6A64',
+}
 
 /**
  * R362: ONE line (time, a short label, the amount on the right); a tap opens its details and its transaction on Solscan (a
  * wallet-started withdrawal not yet delivered: the wallet, R165). TalkBack hears the full date, since the day is in the header.
  */
-function Row({ row, accountPubkey, right }: { row: ActivityRow; accountPubkey?: string | null; right?: ReactNode }) {
+function Row({ row, kind, accountPubkey, right }: { row: ActivityRow; kind: ActivityKind; accountPubkey?: string | null; right?: ReactNode }) {
   const { colors } = useTheme()
-  const { fontScale } = useWindowDimensions()
   const [open, setOpen] = useState(false)
   const link = row.signature
     ? { url: `https://solscan.io/tx/${row.signature}`, label: 'Open on Solscan' }
@@ -30,7 +36,6 @@ function Row({ row, accountPubkey, right }: { row: ActivityRow; accountPubkey?: 
       ? { url: `https://solscan.io/account/${accountPubkey}`, label: 'Open your wallet on Solscan' }
       : null
   const opens = row.details.length > 0 || link !== null
-  const timeWidth = TIME_WIDTH * Math.max(1, fontScale)
   return (
     <View>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
@@ -42,12 +47,19 @@ function Row({ row, accountPubkey, right }: { row: ActivityRow; accountPubkey?: 
           accessibilityState={opens ? { expanded: open } : undefined}
           style={({ pressed }) => ({ flex: 1, minHeight: TARGET - spacing.sm, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, opacity: pressed ? 0.6 : 1 })}
         >
-          <ThemedText variant="label" tone="secondary" numeric numberOfLines={1} style={{ width: timeWidth, textAlign: 'right' }}>
-            {rowTime(row.ts)}
-          </ThemedText>
-          <ThemedText variant="label" numberOfLines={1} ellipsizeMode="tail" style={{ flex: 1 }}>
-            {row.label}
-          </ThemedText>
+          <View style={{ width: 26, height: 26, borderRadius: radius.sm, backgroundColor: KIND_COLOR[kind], alignItems: 'center', justifyContent: 'center' }}>
+            <ThemedText variant="caption" style={{ color: '#FFFFFF', fontWeight: '700' }}>
+              {KIND_TAG[kind]}
+            </ThemedText>
+          </View>
+          <View style={{ flex: 1 }}>
+            <ThemedText variant="label" numberOfLines={1} ellipsizeMode="tail">
+              {row.label}
+            </ThemedText>
+            <ThemedText variant="caption" tone="secondary" numeric numberOfLines={1}>
+              {rowTime(row.ts)}
+            </ThemedText>
+          </View>
           {row.amount ? (
             <ThemedText variant="label" numeric numberOfLines={1}>
               {row.amount}
@@ -58,7 +70,7 @@ function Row({ row, accountPubkey, right }: { row: ActivityRow; accountPubkey?: 
         {right}
       </View>
       {open ? (
-        <View style={{ gap: 2, paddingBottom: spacing.sm, paddingLeft: timeWidth + spacing.sm }}>
+        <View style={{ gap: 2, paddingBottom: spacing.sm, paddingLeft: 26 + spacing.sm }}>
           {row.details.map((d, i) => (
             <ThemedText key={i} variant="caption" tone="secondary">
               {d}
@@ -84,37 +96,6 @@ function Row({ row, accountPubkey, right }: { row: ActivityRow; accountPubkey?: 
   )
 }
 
-/**
- * One section: the heading, its one-line explainer, the latest five rows under their day headers (R362), and "Show N more" when
- * more wait (his note 6; it counts rows, not headers). `render` gets each row with its index in the whole section.
- */
-function Section({ title, sub, rows, empty, render }: { title: string; sub: string; rows: ActivityRow[]; empty: string; render?: (row: ActivityRow, i: number) => ReactNode }) {
-  const [open, setOpen] = useState(false)
-  const { shown, hidden } = visibleRows(rows, open)
-  let i = 0
-  return (
-    <Card>
-      <ThemedText variant="heading">{title}</ThemedText>
-      <ThemedText variant="caption" tone="secondary">
-        {sub}
-      </ThemedText>
-      {rows.length === 0 ? <ThemedText tone="secondary">{empty}</ThemedText> : null}
-      {groupByDay(shown).map((day, d) => (
-        <View key={`${day.key}-${d}`}>
-          <ThemedText variant="caption" tone="secondary" accessibilityRole="header" style={{ textTransform: 'uppercase', letterSpacing: 0.6, paddingTop: spacing.xs }}>
-            {day.header}
-          </ThemedText>
-          {day.rows.map((r) => {
-            const at = i++
-            return render ? <Fragment key={r.key}>{render(r, at)}</Fragment> : <Row key={r.key} row={r} />
-          })}
-        </View>
-      ))}
-      {hidden > 0 ? <Button title={`Show ${hidden} more`} kind="quiet" onPress={() => setOpen(true)} style={{ alignSelf: 'flex-start' }} /> : null}
-    </Card>
-  )
-}
-
 /** Every planting, split change, swap, withdrawal, move and found venue of the signed-in Seeker, newest first, one line each. */
 export default function Activity() {
   const { data: me } = useMe()
@@ -126,6 +107,8 @@ export default function Activity() {
   const applyRules = useApplyRules()
   const [busy, setBusy] = useState(false)
   const [undoError, setUndoError] = useState<string | null>(null)
+  const [filter, setFilter] = useState<'all' | ActivityKind>('all')
+  const [more, setMore] = useState(false)
 
   async function undo() {
     setBusy(true)
@@ -141,18 +124,22 @@ export default function Activity() {
       setBusy(false)
     }
   }
-  const plantings = a ? a.plantings.flatMap((p) => { const r = plantingRow(p); return r ? [r] : [] }) : []
-  const splits = a ? a.splits.map(splitRow) : []
-  const swaps = a ? a.swaps.map(swapRow) : []
+  const plantings = a ? a.plantings.flatMap((p) => { const r = plantingRow(p); return r ? [{ row: r }] : [] }) : []
+  const splits = a ? a.splits.map((x, i) => ({ row: splitRow(x, i) })) : []
+  const swaps = a ? a.swaps.map((x) => ({ row: swapRow(x) })) : []
   const withdrawals = a
     ? [
-        ...a.withdrawals.map((w) => ({ row: withdrawalRow(w, skrUsd, me?.basket?.id === w.id ? me.basket.readyAt : undefined), wallet: true })),
-        ...(a.lendWithdrawals ?? []).map((w) => ({ row: lendWithdrawalRow(w), wallet: false })),
-      ].sort((x, y) => Date.parse(y.row.ts) - Date.parse(x.row.ts))
+        ...a.withdrawals.map((w) => ({ row: withdrawalRow(w, skrUsd, me?.basket?.id === w.id ? me.basket.readyAt : undefined), walletAccount: true })),
+        ...(a.lendWithdrawals ?? []).map((w) => ({ row: lendWithdrawalRow(w), walletAccount: false })),
+      ]
     : []
-  const walletRows = new Set(withdrawals.filter((w) => w.wallet).map((w) => w.row.key))
-  const moves = a?.moves ? a.moves.flatMap((m) => { const r = moveRow(m); return r ? [r] : [] }) : []
-  const found = a?.found ? a.found.map(foundRow) : []
+  const moves = a?.moves ? a.moves.flatMap((m) => { const r = moveRow(m); return r ? [{ row: r }] : [] }) : []
+  const found = a?.found ? a.found.map((f) => ({ row: foundRow(f) })) : []
+  const all = mergeRows({ plant: plantings, split: splits, swap: swaps, withdraw: withdrawals, move: moves, found })
+  const rows = filterRows(all, filter)
+  const { shown, hidden } = visibleRows(rows, more, 25)
+  // The undo sits on the newest split row when the manager made it (as before, now in the one list)
+  const undoKey = a?.splits[0]?.by === 'manager' && me?.manager.undoAvailable ? splits[0]?.row.key : null
   return (
     <Screen
       inset="top"
@@ -164,26 +151,58 @@ export default function Activity() {
       ) : null}
       {a ? (
         <>
-          <Section title="Plantings" sub="Each time your change was planted." rows={plantings} empty="No planting yet." />
-          <Section
-            title={SPLIT_SECTION.title}
-            sub={SPLIT_SECTION.sub}
-            rows={splits}
-            empty={SPLIT_SECTION.empty}
-            render={(r, i) => {
-              const undoable = i === 0 && a.splits[0]?.by === 'manager' && me?.manager.undoAvailable
+          {/* R450: one list with filter chips (Jupiter Mobile's pattern); every row the same shape, a tap shows details + Solscan */}
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs }}>
+            {KIND_FILTERS.map((f) => {
+              const on = filter === f.value
               return (
-                <>
-                  <Row row={r} right={undoable ? <Button title="Undo" kind="quiet" loading={busy} onPress={undo} style={{ paddingHorizontal: spacing.sm }} /> : null} />
-                  {i === 0 && undoError ? <ThemedText tone="error">{undoError}</ThemedText> : null}
-                </>
+                <Pressable
+                  key={f.value}
+                  onPress={() => { setFilter(f.value); setMore(false) }}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: on }}
+                  style={{
+                    minHeight: TARGET - spacing.sm,
+                    justifyContent: 'center',
+                    paddingHorizontal: spacing.md,
+                    borderRadius: radius.full,
+                    borderWidth: 1,
+                    borderColor: on ? colors.accent : colors.hairline,
+                    backgroundColor: on ? colors.accent : 'transparent',
+                  }}
+                >
+                  <ThemedText variant="label" style={{ color: on ? colors.onAccent : colors.text }}>
+                    {f.label}
+                  </ThemedText>
+                </Pressable>
               )
-            }}
-          />
-          <Section title="Swaps" sub="Each swap and the change it set aside." rows={swaps} empty="No swap seen yet." />
-          <Section title="Withdrawals" sub={WITHDRAWN_LINE} rows={withdrawals.map((w) => w.row)} empty="No withdrawal yet." render={(r) => <Row row={r} accountPubkey={walletRows.has(r.key) ? me?.user.pubkey : null} />} />
-          {moves.length > 0 ? <Section title="Moves" sub="Moves between lending venues you were asked about." rows={moves} empty="" /> : null}
-          {found.length > 0 ? <Section title={FOUND_SECTION.title} sub={FOUND_SECTION.sub} rows={found} empty="" /> : null}
+            })}
+          </View>
+          {rows.length === 0 ? <ThemedText tone="secondary">Nothing here yet.</ThemedText> : null}
+          {groupByDay(shown.map((t) => t.row)).map((day, d) => (
+            <View key={`${day.key}-${d}`} style={{ gap: spacing.xs }}>
+              <ThemedText variant="caption" tone="secondary" accessibilityRole="header" style={{ textTransform: 'uppercase', letterSpacing: 0.6, paddingTop: spacing.xs }}>
+                {day.header}
+              </ThemedText>
+              <Card>
+                {day.rows.map((r) => {
+                  const t = shown.find((x) => x.row.key === r.key)!
+                  return (
+                    <View key={r.key}>
+                      <Row
+                        row={r}
+                        kind={t.kind}
+                        accountPubkey={t.walletAccount ? me?.user.pubkey : null}
+                        right={r.key === undoKey ? <Button title="Undo" kind="quiet" loading={busy} onPress={undo} style={{ paddingHorizontal: spacing.sm }} /> : null}
+                      />
+                      {r.key === undoKey && undoError ? <ThemedText tone="error">{undoError}</ThemedText> : null}
+                    </View>
+                  )
+                })}
+              </Card>
+            </View>
+          ))}
+          {hidden > 0 ? <Button title={`Show ${hidden} more`} kind="quiet" onPress={() => setMore(true)} style={{ alignSelf: 'flex-start' }} /> : null}
         </>
       ) : null}
     </Screen>
