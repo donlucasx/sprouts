@@ -69,6 +69,8 @@ export function WelcomeView() {
                 // Drop the kit's cached authorization (storage only): the next transaction authorizes afresh instead of reusing a stale token.
                 await disconnect().catch(() => {})
                 await setSession(session)
+                // Home either way (the redirect above does it too; the dev preview route has no redirect: 10-08, 'back on the sign in screen')
+                router.replace('/home')
               } catch (e) {
                 // Dev builds only: the raw error for Metro's terminal (10-01: the Saga showed the generic line and nothing else).
                 if (typeof __DEV__ !== 'undefined' && __DEV__)
