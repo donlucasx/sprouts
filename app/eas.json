@@ -11,7 +11,8 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_ORIGIN": "https://sprouts.money"
+        "EXPO_PUBLIC_API_ORIGIN": "https://sprouts.money",
+        "ICON_TEST": "1"
       }
     },
     "preview": {
