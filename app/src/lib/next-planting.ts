@@ -13,6 +13,8 @@ export type NextPlantingRow = {
   value: string;
   /** 0 to 1, how far the saved change is toward the threshold. */
   fraction: number;
+  /** R466: Home's one line over the bar, "$1.20 saved · planted tomorrow morning" (the widget keeps `label` and `value`). */
+  line: string;
 };
 
 /** "7 AM" on the hour, "7:30 AM" otherwise: the phone's own clock. */
@@ -30,6 +32,14 @@ function nextRun(now: Date): Date {
 }
 /** The job's next run as the phone's clock alone, "7 AM": the widget's short form of nextRunLabel (R363, "Next: 7 AM"). */
 export const nextRunClock = (now: Date): string => clock(nextRun(now));
+/** R466: when the next run lands in the phone's words, "tomorrow morning" (7 AM in California; the part of day follows the clock elsewhere). */
+export function nextRunWords(now: Date): string {
+  const run = nextRun(now);
+  const sameDay = run.getFullYear() === now.getFullYear() && run.getMonth() === now.getMonth() && run.getDate() === now.getDate();
+  const h = run.getHours();
+  const part = h < 12 ? "morning" : h < 17 ? "afternoon" : "evening";
+  return sameDay ? (part === "evening" ? "tonight" : `this ${part}`) : `tomorrow ${part}`;
+}
 export function nextRunLabel(now: Date): string {
   const run = nextRun(now);
   const sameDay = run.getFullYear() === now.getFullYear() && run.getMonth() === now.getMonth() && run.getDate() === now.getDate();
@@ -40,12 +50,14 @@ export function nextRunLabel(now: Date): string {
 export function nextPlantingRow(p: { pendingCents: number; thresholdCents: number; hasPlant: boolean; now: Date; paused?: boolean }): NextPlantingRow {
   const { pendingCents: pending, thresholdCents: threshold } = p;
   const label = p.hasPlant ? "Next planting" : "First planting";
+  // R466: the threshold left Rules, so Home names only what was saved and, once it is enough, when it is planted.
+  const saved = `${formatUsd(Math.max(0, pending))} saved`;
   // His note 10-05: paused, the row says so instead of a run time; the bar keeps what was saved, dimmed (NextPlanting).
-  if (p.paused) return { state: "paused", label, value: "Paused", fraction: Math.min(1, Math.max(0, pending) / Math.max(1, threshold)) };
-  if (pending >= threshold) return { state: "reached", label, value: nextRunLabel(p.now), fraction: 1 };
+  if (p.paused) return { state: "paused", label, value: "Paused", fraction: Math.min(1, Math.max(0, pending) / Math.max(1, threshold)), line: `${saved} · paused` };
+  if (pending >= threshold) return { state: "reached", label, value: nextRunLabel(p.now), fraction: 1, line: `${saved} · planted ${nextRunWords(p.now)}` };
   const of = `${formatUsd(Math.max(0, pending))} of ${formatUsd(threshold)}`;
-  if (pending <= 0) return { state: "empty", label, value: of, fraction: 0 };
-  return { state: "saving", label, value: of, fraction: pending / threshold };
+  if (pending <= 0) return { state: "empty", label, value: of, fraction: 0, line: saved };
+  return { state: "saving", label, value: of, fraction: pending / threshold, line: saved };
 }
 
 /** The Next planting row from one read, Home's and the widget's alike (his note 10-05: the widget said "$1.35 of $0.10" where Home said

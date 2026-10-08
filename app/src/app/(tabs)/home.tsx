@@ -213,8 +213,8 @@ export default function Home() {
       }
     >
       <MarkedTitle size={22}>{name ? `${name}'s garden` : 'Your garden'}</MarkedTitle>
-      {/* R448: the switch lives at the top of Rules; Home keeps its state as a chip that opens it */}
-      {pause.shown ? (
+      {/* R448: the switch lives at the top of Rules; R459: Home shows a chip that opens it only while Sprouts is paused */}
+      {pause.shown && !pause.on ? (
         <Pressable
           onPress={() => router.push('/rules')}
           accessibilityRole="button"
