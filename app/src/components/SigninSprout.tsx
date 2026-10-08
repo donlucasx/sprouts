@@ -1,5 +1,6 @@
 import { useEvent } from 'expo'
-import { Image, View } from 'react-native'
+import { useEffect } from 'react'
+import { AppState, Image, View } from 'react-native'
 import { useReducedMotion } from 'react-native-reanimated'
 import { useVideoPlayer, VideoView } from 'expo-video'
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg'
@@ -36,6 +37,14 @@ function SproutClip({ source }: { source: number }) {
   })
   // the clip stays invisible until it is really playing, so the poster never gives way to an empty frame
   const { isPlaying } = useEvent(player, 'playingChange', { isPlaying: player.playing })
+  // Android pauses the player while the app is in the background (the wallet's approval screen): play again on the way back
+  // (device 10-08: the sprout stood still after the wallet)
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') player.play()
+    })
+    return () => sub.remove()
+  }, [player])
   return (
     <VideoView
       player={player}
