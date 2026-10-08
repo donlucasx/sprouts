@@ -132,8 +132,9 @@ export default function Rules() {
   const preview = coinsChanged ? managedPreview(me.manager.stopSplit, managedPins(r.pins), r.stop) : undefined
   const pause = pauseState(me.wallets)
   const rows = splitRows(r, preview)
-  // Coins at 0% fold into one line (10-08), unless switched on in the draft or unfolded
-  const hiddenRows = showAll ? [] : rows.filter((row) => row.pct === 0 && row.asset !== 'SKR')
+  // With the manager on, coins at 0% fold into one line (10-08). With it off every coin shows with its steppers: that is
+  // how a free user sets their own split (device review 10-08: folding left SKR alone and looked like the only choice).
+  const hiddenRows = showAll || !r.managed ? [] : rows.filter((row) => row.pct === 0 && row.asset !== 'SKR')
   const shownRows = rows.filter((row) => !hiddenRows.includes(row))
   const showDisclosure =
     (r.managed && !saved.managed) || (!r.managed && (r.pins.stORE ?? 0) > 0 && (saved.pins.stORE ?? 0) === 0)
@@ -298,7 +299,7 @@ export default function Rules() {
         {/* The limit and the planting amount as two chips; a tap opens the stepper under them (10-08: a third of the height) */}
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }}>
           <Chip
-            label={`Up to ${chipUsd(r.dailyCapCents)} a day`}
+            label={`Daily limit ${chipUsd(r.dailyCapCents)}`}
             open={picker === 'cap'}
             onPress={() => setPicker((p) => (p === 'cap' ? null : 'cap'))}
           />
