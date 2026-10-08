@@ -190,6 +190,16 @@ export class SupabaseRepo implements Repo {
   async plantingLegs(plantingId: string) {
     return this.many(this.db.from("planting_legs").select().eq("planting_id", plantingId), legRow);
   }
+  async plantingLegsFor(plantingIds: string[]) {
+    const ids = [...new Set(plantingIds)];
+    // Chunks of 100 ids keep the PostgREST URL short; the chunks run at once.
+    const chunks: string[][] = [];
+    for (let i = 0; i < ids.length; i += 100) chunks.push(ids.slice(i, i + 100));
+    const rows = (await Promise.all(chunks.map((c) => this.many(this.db.from("planting_legs").select().in("planting_id", c), legRow)))).flat();
+    const byId = new Map<string, T.PlantingLegRow[]>();
+    for (const r of rows) byId.set(r.plantingId, [...(byId.get(r.plantingId) ?? []), r]);
+    return ids.flatMap((id) => byId.get(id) ?? []);
+  }
 
   async insertPlanting(p: NewPlanting, legs: Omit<T.PlantingLegRow, "plantingId">[]) {
     checkLegVenues(legs);
@@ -310,6 +320,12 @@ export class SupabaseRepo implements Repo {
     const { data, error } = await this.db.from("coin_days").select().eq("day", day).eq("asset", asset).maybeSingle();
     if (error) throw new Error(error.message);
     return data ? coinDayRow(data as Row) : null;
+  }
+  async getCoinDaysFor(keys: { day: string; asset: LiveAsset }[]) {
+    if (!keys.length) return [];
+    const want = new Set(keys.map((k) => `${k.day}|${k.asset}`));
+    const rows = await this.many(this.db.from("coin_days").select().in("day", [...new Set(keys.map((k) => k.day))]).in("asset", [...new Set(keys.map((k) => k.asset))]), coinDayRow);
+    return rows.filter((r) => want.has(`${r.day}|${r.asset}`));
   }
   async listCoinDays(asset: LiveAsset, sinceDay: string) {
     return this.many(this.db.from("coin_days").select().eq("asset", asset).gte("day", sinceDay).order("day"), coinDayRow);

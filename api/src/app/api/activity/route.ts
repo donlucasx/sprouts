@@ -3,8 +3,7 @@ import { getRepo } from "@/db/repo";
 import type { Asset, LiveAsset, Split } from "@/domain/coins";
 import { addDays, dayOf } from "@/domain/day";
 import { requireSession } from "@/lib/auth-guard";
-import { priceUsd } from "@/lib/jupiter";
-import { latestCoinDays } from "@/lib/holdings";
+import { sharedPriceUsd, sharedLatestCoinDays } from "@/lib/shared-reads";
 import { underlyingOutRaw, receiptOutRaw } from "@/lib/lend-view";
 import { isLendAsset } from "@/domain/coins";
 import { isAutoVenue } from "@/domain/venues";
@@ -21,34 +20,40 @@ export async function GET(request: Request) {
   const session = await requireSession(request);
   if (session instanceof NextResponse) return session;
   const repo = await getRepo();
-  const [swaps, plantings, withdrawals] = await Promise.all([
+  // Everything that needs only the user starts at once: the lists, both event reads, the scout's finds and the live SKR price.
+  const skrUsdRead = sharedPriceUsd(SKR_MINT).catch(() => null);
+  const [swaps, plantings, withdrawals, events, lendEvents, foundRows] = await Promise.all([
     repo.listSwaps(session.pubkey, LIMIT), repo.listPlantings(session.pubkey, LIMIT), repo.listWithdrawals(session.pubkey, LIMIT),
+    repo.listEvents(session.pubkey, ["split_changed", "split_undone"], LIMIT),
+    // Contracts 5.7: a lending position back to the wallet (underlyingRaw = what came back, from the confirmed tx; null when unknown),
+    // the moves the user approved or turned down, and the scout's finds of the last 7 days.
+    repo.listEvents(session.pubkey, ["lend_withdrawn", "move_proposed", "move_done", "move_dismissed", "move_failed"], LIMIT),
+    repo.listFoundVenues(addDays(dayOf(new Date()), -7), 20),
   ]);
-  const legs = await Promise.all(plantings.map((p) => repo.plantingLegs(p.id)));
+  // Every leg of the listed plantings in one read (was one read per planting), grouped back per planting in list order.
+  const legRows = plantings.length ? await repo.plantingLegsFor(plantings.map((p) => p.id)) : [];
+  const legs = plantings.map((p) => legRows.filter((l) => l.plantingId === p.id));
   // R140: the dollar beside every planting row, the four new coins included. SKR at the live SKR price, as Home shows it; the
   // other coins at that day's snapshot price, read once per day and coin, all at once. A planting from before its coin's first
   // snapshot takes the week's latest row, then the live stORE price, as /api/me prices the receipt; null when nothing is known.
   const wanted = new Map<string, { day: string; asset: Asset }>();
   for (const [i, p] of plantings.entries()) for (const l of legs[i]) if (l.asset !== "SKR") wanted.set(`${dayOf(p.ts)}|${l.asset}`, { day: dayOf(p.ts), asset: l.asset });
-  const skrUsdRead = priceUsd(SKR_MINT).catch(() => null);
-  const dayPrices = new Map<string, number | null>();
-  await Promise.all([...wanted].map(async ([key, { day, asset }]) => { dayPrices.set(key, (await repo.getCoinDay(day, asset as LiveAsset))?.priceUsd ?? null); }));   // a retired leg reads its own history rows (0008 keeps them)
+  const dayPrices = new Map<string, number | null>([...wanted.keys()].map((k) => [k, null]));
+  // One read for every (day, coin) the rows need; a retired leg reads its own history rows (0008 keeps them).
+  const dayRows = wanted.size ? await repo.getCoinDaysFor([...wanted.values()].map(({ day, asset }) => ({ day, asset: asset as LiveAsset }))) : [];
+  for (const r of dayRows) dayPrices.set(`${r.day}|${r.asset}`, r.priceUsd ?? null);
   const skrUsd = await skrUsdRead;
   const missing = [...wanted.values()].filter(({ day, asset }) => dayPrices.get(`${day}|${asset}`) === null).map(({ asset }) => asset);
-  const latest = missing.length ? await latestCoinDays(repo, dayOf(new Date())) : {};
-  const storeUsd = missing.includes("stORE") && latest.stORE?.priceUsd == null ? await priceUsd(STORE_MINT).catch(() => null) : null;
+  const latest = missing.length ? await sharedLatestCoinDays(repo, dayOf(new Date())) : {};
+  const storeUsd = missing.includes("stORE") && latest.stORE?.priceUsd == null ? await sharedPriceUsd(STORE_MINT).catch(() => null) : null;
   const priceOf = (day: string, asset: Asset): number | null =>
     asset === "SKR" ? skrUsd : (dayPrices.get(`${day}|${asset}`) ?? latest[asset]?.priceUsd ?? (asset === "stORE" ? storeUsd : null));
-  const events = await repo.listEvents(session.pubkey, ["split_changed", "split_undone"], LIMIT);
   type Detail = { by?: "manager" | "you"; from: Split; to: Split; stop?: string; why?: string | null; fallback?: string | null; managed?: boolean; managedWas?: boolean };
   const splits = events.map((e) => {
     const d = e.detail as Detail;
     // `managed` is the switch after a save by you; `turnedOn` only when that save moved it off to on ("you: Balanced, on.", spec 3.2).
     return { ts: e.ts, by: e.kind === "split_undone" ? "undo" : (d.by ?? "manager"), from: d.from, to: d.to, stop: d.stop ?? null, why: d.why ?? null, fallback: d.fallback ?? null, managed: d.managed ?? null, turnedOn: d.managed === true && d.managedWas === false };
   });
-  // Contracts 5.7: a lending position back to the wallet (underlyingRaw = what came back, from the confirmed tx; null when unknown),
-  // the moves the user approved or turned down, and the scout's finds of the last 7 days.
-  const lendEvents = await repo.listEvents(session.pubkey, ["lend_withdrawn", "move_proposed", "move_done", "move_dismissed", "move_failed"], LIMIT);
   // Event details are validated, never cast through: a malformed row is skipped rather than served with undefined fields.
   type EvDetail = Record<string, unknown>;
   const digits = (v: unknown): v is string => typeof v === "string" && /^\d+$/.test(v);
@@ -69,7 +74,7 @@ export async function GET(request: Request) {
     if (!status) return [];
     return [{ ts: e.ts, asset: d.asset, from: d.from, to: d.to, receiptRaw: digits(d.receiptRaw) ? d.receiptRaw : "0", status }];
   });
-  const found = (await repo.listFoundVenues(addDays(dayOf(new Date()), -7), 20)).map((f) => ({ day: f.day, project: f.project, symbol: f.symbol, asset: f.asset, apyBasePct: f.apyBasePct, tvlUsd: f.tvlUsd, note: f.note }));
+  const found = foundRows.map((f) => ({ day: f.day, project: f.project, symbol: f.symbol, asset: f.asset, apyBasePct: f.apyBasePct, tvlUsd: f.tvlUsd, note: f.note }));
   return NextResponse.json(str({
     splits,
     swaps: swaps.map((s) => ({ signature: s.signature, ts: s.ts, walletPubkey: s.walletPubkey, usdSizeCents: s.usdSizeCents, class: s.class, roundupCents: s.roundupCents, plantingId: s.plantingId })),

@@ -67,10 +67,11 @@ computePot.nextFruitProgress = nextFruitProgress;
 
 /** The ledger side of the pot for one user, so the route, the reconciliation and the withdraw routes share one formula. */
 export async function potInputs(repo: Repo, user: UserRow) {
-  const plantings = await repo.listConfirmedPlantings(user.seedVaultPubkey);
-  const legs = (await Promise.all(plantings.map((p) => repo.plantingLegs(p.id)))).flat();
-  const withdrawals = await repo.listWithdrawals(user.seedVaultPubkey, 10_000);
-  const adjustments = await repo.listStakeAdjustments(user.seedVaultPubkey);
+  // Independent reads at once; the legs of every planting in one batched read (was one read per planting).
+  const [plantings, withdrawals, adjustments] = await Promise.all([
+    repo.listConfirmedPlantings(user.seedVaultPubkey), repo.listWithdrawals(user.seedVaultPubkey, 10_000), repo.listStakeAdjustments(user.seedVaultPubkey),
+  ]);
+  const legs = plantings.length ? await repo.plantingLegsFor(plantings.map((p) => p.id)) : [];
   return { plantings, legs, withdrawals, adjustments };
 }
 
