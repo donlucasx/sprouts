@@ -9,8 +9,8 @@ import { Button } from '@/components/Button'
 import { ThemedText } from '@/components/ThemedText'
 import { Disclosure } from '@/components/Disclosure'
 import { TwoWay } from '@/components/TwoWay'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { api, ApiError, type MeResponse, type VenuesResponse } from '@/lib/api'
+import { useQueryClient } from '@tanstack/react-query'
+import { api, ApiError, type MeResponse } from '@/lib/api'
 import { useMe, store, useInvalidateMe } from '@/lib/me'
 import { refreshWidget } from '@/lib/widget-refresh'
 import { unregisterBackgroundRefresh } from '@/lib/background'
@@ -24,9 +24,8 @@ import { freshWalletSignIn } from '@/lib/reauth'
 import { identity } from '@/lib/identity'
 import { readAppearance, writeAppearance, readNotify, writeNotify } from '@/lib/prefs'
 import type { NoticeKind } from '@/lib/notices'
-import { DISCLOSURES, VENUES_EMPTY } from '@/lib/settings-copy'
+import { DISCLOSURES, HOW_IT_WORKS, NOT_ADVICE } from '@/lib/settings-copy'
 import { PUBLIC_GUARANTEE } from '@/lib/relink'
-import { venueCard } from '@/model/venues'
 import { spacing, switchColors, useTheme } from '@/theme'
 import { schemeFor, type Appearance as AppearanceChoice } from '@/theme/appearance'
 
@@ -54,8 +53,6 @@ export default function Settings() {
   const [walletBusy, setWalletBusy] = useState(false)
   const [signing, setSigning] = useState(false)
   const [walletError, setWalletError] = useState<string | null>(null)
-  const venues = useQuery({ queryKey: ['venues'], queryFn: () => api<VenuesResponse>('/api/venues'), retry: false })
-  const card = venueCard(venues.data, venues.isError, VENUES_EMPTY)
 
   /** R153: the choice is saved, applied to the phone's scheme at once (the theme and the native controls follow), and shown. */
   function setAppearance(a: AppearanceChoice) {
@@ -129,7 +126,7 @@ export default function Settings() {
   return (
     <Screen inset="top" title="Settings">
       <Card>
-        <ThemedText variant="heading">Your Seeker</ThemedText>
+        <ThemedText variant="heading">Your wallet</ThemedText>
         <ThemedText numeric>
           {me?.user.skrName ?? (session ? `${session.pubkey.slice(0, 4)}...${session.pubkey.slice(-4)}` : '')}
         </ThemedText>
@@ -157,32 +154,13 @@ export default function Settings() {
         </ThemedText>
         {signing ? (
           <ThemedText variant="caption" tone="secondary">
-            Waiting for your Seeker.
+            Waiting for your wallet.
           </ThemedText>
         ) : null}
         {walletError ? <ThemedText tone="error">{walletError}</ThemedText> : null}
         <Link href="/connect" asChild>
           <Button title="Link a wallet" kind="quiet" onPress={() => {}} style={{ alignSelf: 'flex-start' }} />
         </Link>
-      </Card>
-      <Card>
-        {/* R275, R276: the rates the Yield Manager reads, its verdicts and today's pick (GET /api/venues) */}
-        <ThemedText variant="heading">Lending venues today</ThemedText>
-        {'lines' in card ? (
-          <>
-            {card.why ? <ThemedText tone="secondary">{card.why}</ThemedText> : null}
-            {card.lines.map((v) => (
-              <View key={v.key} style={{ gap: 2, paddingVertical: spacing.xs }}>
-                <ThemedText>{v.title}</ThemedText>
-                <ThemedText variant="caption" tone="secondary">
-                  {v.detail}
-                </ThemedText>
-              </View>
-            ))}
-          </>
-        ) : (
-          <ThemedText tone="secondary">{card.message}</ThemedText>
-        )}
       </Card>
       <Card>
         <ThemedText variant="heading">Appearance</ThemedText>
@@ -218,12 +196,20 @@ export default function Settings() {
         ))}
       </Card>
       <Card>
-        {/* His note 10-05: Export for taxes is a Pro feature too (R347's badge and line). */}
+        {/* R446: one Pro bundle (the Yield Manager, automatic lending, the tax pack), free during launch; R457: Add money is coming */}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
-          <ThemedText variant="heading">Export for taxes</ThemedText>
+          <ThemedText variant="heading">Sprouts Pro</ThemedText>
           <ProBadge />
         </View>
-        <ThemedText tone="secondary">Coming soon. {PRO_LINE}</ThemedText>
+        <ThemedText>Your money works by itself.</ThemedText>
+        {['The AI Yield Manager splits new change each morning', 'Automatic lending at the best safe rate', 'The tax pack for Koinly and other tax tools'].map((l) => (
+          <ThemedText key={l} tone="secondary">
+            {`\u2022 ${l}`}
+          </ThemedText>
+        ))}
+        <ThemedText variant="caption" tone="secondary">
+          {PRO_LINE} Coming soon: add money to your garden anytime.
+        </ThemedText>
       </Card>
       <Card style={{ gap: 0 }}>
         {/* R145 and R153: the disclosures as rows that open in place, grouped as About at the end; R300's promise above them, the precise rule inside. */}
@@ -231,11 +217,16 @@ export default function Settings() {
         <ThemedText variant="caption" tone="secondary" style={{ marginTop: spacing.xs, marginBottom: spacing.sm }}>
           {PUBLIC_GUARANTEE}
         </ThemedText>
+        {/* R452: three lines on how it works before the questions */}
+        <ThemedText style={{ marginBottom: spacing.sm }}>{HOW_IT_WORKS}</ThemedText>
         {DISCLOSURES.map(([h, p], i) => (
           <Disclosure key={h} title={h} first={i === 0}>
             {p}
           </Disclosure>
         ))}
+        <ThemedText variant="caption" tone="secondary" style={{ marginTop: spacing.sm }}>
+          {NOT_ADVICE}
+        </ThemedText>
       </Card>
       <Button title="Terms and Privacy" kind="quiet" onPress={() => router.push('/terms')} />
       <Button title="Sign out" kind="quiet" disabled={busy} onPress={() => signOut(false)} />
