@@ -25,6 +25,7 @@ import { identity } from '@/lib/identity'
 import { readAppearance, writeAppearance, readNotify, writeNotify } from '@/lib/prefs'
 import type { NoticeKind } from '@/lib/notices'
 import { DISCLOSURES, HOW_IT_WORKS, NOT_ADVICE } from '@/lib/settings-copy'
+import { exportTaxCsv } from '@/lib/tax-export'
 import { PUBLIC_GUARANTEE } from '@/lib/relink'
 import { spacing, switchColors, useTheme } from '@/theme'
 import { schemeFor, type Appearance as AppearanceChoice } from '@/theme/appearance'
@@ -38,6 +39,9 @@ const NOTICES: [NoticeKind, string][] = [
 ]
 
 export default function Settings() {
+  const taxYear = new Date().getFullYear()
+  const [taxBusy, setTaxBusy] = useState(false)
+  const [taxError, setTaxError] = useState<string | null>(null)
   const { data: me } = useMe()
   const { session, setSession } = useSession()
   // The kit's cached wallet authorization goes with the session: a stale token is declined by Solflare (-1) on the next sign-in or transaction (10-01).
@@ -210,6 +214,31 @@ export default function Settings() {
         <ThemedText variant="caption" tone="secondary">
           {PRO_LINE} Coming soon: add money to your garden anytime.
         </ThemedText>
+      </Card>
+      <Card>
+        {/* R447: the plain record, free (R446 keeps the formatted tax pack in Pro) */}
+        <ThemedText variant="heading">Export for taxes</ThemedText>
+        <ThemedText tone="secondary">
+          {"Every planting and withdrawal as a CSV in Koinly's format, ready to import into your tax tool. A record, not a filing."}
+        </ThemedText>
+        <Button
+          title={`Export ${taxYear}`}
+          kind="quiet"
+          loading={taxBusy}
+          onPress={async () => {
+            setTaxBusy(true)
+            setTaxError(null)
+            try {
+              await exportTaxCsv(taxYear)
+            } catch (e) {
+              setTaxError(e instanceof ApiError ? e.message : 'Could not export just now. Try again.')
+            } finally {
+              setTaxBusy(false)
+            }
+          }}
+          style={{ alignSelf: 'flex-start' }}
+        />
+        {taxError ? <ThemedText tone="error">{taxError}</ThemedText> : null}
       </Card>
       <Card style={{ gap: 0 }}>
         {/* R145 and R153: the disclosures as rows that open in place, grouped as About at the end; R300's promise above them, the precise rule inside. */}

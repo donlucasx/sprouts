@@ -1,4 +1,5 @@
-import { Share } from "react-native";
+import { File, Paths } from "expo-file-system";
+import { shareAsync } from "expo-sharing";
 import { loadSession } from "./session";
 import { API_ORIGIN, API_UNANSWERED, ApiError } from "./api";
 
@@ -34,14 +35,15 @@ export async function fetchTaxCsv(year?: number): Promise<{ csv: string; filenam
 }
 
 /**
- * Fetches the CSV and opens the share sheet with it. No native file module is installed (expo-sharing and expo-file-system are
- * not dependencies, and adding one needs a new native build), so this uses React Native's built-in Share: the CSV goes as the
- * message text, with the filename as the title. The user saves it from the sheet (Drive, Files, email) and imports it as a CSV.
- * Returns what the sheet reported. Settings calls it from its "Export for taxes" row, e.g. `onPress={() => exportTaxCsv(2026)}`
- * inside a try/catch that shows the ApiError's message.
+ * Fetches the CSV, writes it as a real .csv file in the app's cache, and opens the share sheet on it (Drive, Files, email), so a
+ * tax tool imports it as a file. expo-file-system + expo-sharing were added 10-08 with the release's native build. Settings calls
+ * it from its "Export for taxes" row inside a try/catch that shows the ApiError's message.
  */
-export async function exportTaxCsv(year?: number): Promise<{ filename: string; action: string }> {
+export async function exportTaxCsv(year?: number): Promise<{ filename: string }> {
   const { csv, filename } = await fetchTaxCsv(year);
-  const r = await Share.share({ message: csv, title: filename }, { dialogTitle: filename, subject: filename });
-  return { filename, action: r.action };
+  const file = new File(Paths.cache, filename);
+  file.create({ overwrite: true });
+  file.write(csv);
+  await shareAsync(file.uri, { mimeType: "text/csv", dialogTitle: filename, UTI: "public.comma-separated-values-text" });
+  return { filename };
 }
