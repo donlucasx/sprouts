@@ -5,7 +5,18 @@ const { sessionMock, shareMock } = vi.hoisted(() => ({
   shareMock: vi.fn(async (_c: unknown, _o?: unknown) => ({ action: 'sharedAction' })),
 }))
 vi.mock('@/lib/session', () => ({ loadSession: () => sessionMock() }))
-vi.mock('react-native', () => ({ Share: { share: (c: unknown, o?: unknown) => shareMock(c, o) } }))
+const written: { name: string; text: string }[] = []
+vi.mock('expo-file-system', () => ({
+  Paths: { cache: 'file:///cache' },
+  File: class {
+    name: string
+    uri: string
+    constructor(_dir: string, name: string) { this.name = name; this.uri = `file:///cache/${name}` }
+    create() {}
+    write(text: string) { written.push({ name: this.name, text }) }
+  },
+}))
+vi.mock('expo-sharing', () => ({ shareAsync: (u: unknown, o?: unknown) => shareMock(u, o) }))
 import { fetchTaxCsv, exportTaxCsv } from '@/lib/tax-export'
 import { ApiError } from '@/lib/api'
 
@@ -44,10 +55,11 @@ describe('fetchTaxCsv', () => {
 })
 
 describe('exportTaxCsv', () => {
-  it('opens the share sheet with the CSV text and the filename', async () => {
+  it('writes the CSV as a .csv file and shares that file', async () => {
     answer(200, CSV, { 'content-disposition': 'attachment; filename="sprouts-tax-all-2026-10-08.csv"' })
     const r = await exportTaxCsv()
-    expect(r).toEqual({ filename: 'sprouts-tax-all-2026-10-08.csv', action: 'sharedAction' })
-    expect(shareMock).toHaveBeenCalledWith({ message: CSV, title: 'sprouts-tax-all-2026-10-08.csv' }, expect.objectContaining({ dialogTitle: 'sprouts-tax-all-2026-10-08.csv' }))
+    expect(r).toEqual({ filename: 'sprouts-tax-all-2026-10-08.csv' })
+    expect(written.at(-1)).toEqual({ name: 'sprouts-tax-all-2026-10-08.csv', text: CSV })
+    expect(shareMock).toHaveBeenCalledWith('file:///cache/sprouts-tax-all-2026-10-08.csv', expect.objectContaining({ mimeType: 'text/csv' }))
   })
 })
