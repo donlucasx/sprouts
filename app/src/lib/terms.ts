@@ -2,7 +2,7 @@ import type { MeResponse } from "./api";
 import { TERMS_MD } from "./terms-text";
 
 /** Contracts 5.6 (DECIDED 10-04): the version the API records at sign-in and on POST /api/terms. */
-export const TERMS_VERSION = "2026-10-07";
+export const TERMS_VERSION = "2026-10-08";
 export type TermsBlock = { kind: "title" | "heading" | "para" | "bullet"; text: string };
 const SUMMARY = "## In three lines";
 

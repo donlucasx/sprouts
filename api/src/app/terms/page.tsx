@@ -6,7 +6,7 @@ import { TERMS_MD } from "@/lib/terms-text";
 const outfit = Outfit({ subsets: ["latin"], weight: ["600"], variable: "--font-display" });
 const albert = Albert_Sans({ subsets: ["latin"], weight: ["400", "600"], variable: "--font-body" });
 
-export const metadata: Metadata = { title: "Sprouts: Terms of Use and Privacy", description: "The Terms of Use and Privacy for Sprouts, version 2026-10-07." };
+export const metadata: Metadata = { title: "Sprouts: Terms of Use and Privacy", description: "The Terms of Use and Privacy for Sprouts, version 2026-10-08." };
 
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 
