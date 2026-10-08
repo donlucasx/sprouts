@@ -4,21 +4,15 @@ import { POOL_FULL_LINE } from '@/lib/lend-withdraw'
 import { MANAGER_LINE } from '@/model/manager'
 import { PUBLIC_GUARANTEE, RELINK, WEB_LINK_TRUST } from '@/lib/relink'
 
-describe('Settings > About Sprouts (spec 6.2, 11)', () => {
+describe('Settings > About Sprouts (spec 6.2, 11; R452: six questions)', () => {
   it('the titles, in order', () =>
     expect(DISCLOSURES.map(([h]) => h)).toEqual([
-      'How Sprouts holds your money',
-      'Prices and keys',
-      'What "earned" means',
-      'Watering',
-      'Fees',
-      'Where your lending goes',
-      'If a pool is full',
-      'Kamino and where you live',
-      'Signed in',
-      'ORE, if you choose it',
-      'What the Yield Manager can buy',
-      'Not advice',
+      'Who holds my money?',
+      'What does it cost?',
+      'Where does lending go?',
+      'What does "earned" mean?',
+      'What can Sprouts buy?',
+      'How do I stop it?',
     ]))
   it('How Sprouts holds your money opens with the precise sentence, verbatim, and says what an old approval still allows', () => {
     expect(PRECISE_GUARANTEE).toBe(
@@ -35,7 +29,7 @@ describe('Settings > About Sprouts (spec 6.2, 11)', () => {
       '60%',
       'marginfi and Lulo',
       'restricts some regions',   // R367 (10-05): softened, no named countries
-      'Lending is free',
+      'No Sprouts fee on USDC or SOL lending',
       "Sprouts' offline admin key",
       POOL_FULL_LINE,
     ])
@@ -43,7 +37,7 @@ describe('Settings > About Sprouts (spec 6.2, 11)', () => {
   })
   it('the stale lines are gone: no "withdraw them for you", no retired coin, no "six coins"; no dashes; never sells stays', () => {
     for (const [h, p] of DISCLOSURES) {
-      if (h !== 'ORE, if you choose it') expect(p).not.toMatch(/withdraw (them|it) for you/)
+      if (h !== 'What can Sprouts buy?') expect(p).not.toMatch(/withdraw (them|it) for you/)
       expect(p).not.toMatch(/JitoSOL|JupSOL|six coins/)
       expect(h + p).not.toMatch(/[–—]/)
     }
@@ -51,12 +45,13 @@ describe('Settings > About Sprouts (spec 6.2, 11)', () => {
   })
   it("the guarantee carries C6's web-link line from the one shared constant, right after the precise sentence", () =>
     expect(DISCLOSURES[0][1].startsWith(`${PRECISE_GUARANTEE} ${WEB_LINK_TRUST}`)).toBe(true))
-  it('price honesty (contracts 2.6, R324) and the admin key (R299) sit in their own row, not in the guarantee; no SKR price line yet (fix round 1, I1)', () => {
+  it('price honesty (contracts 2.6, R324) and the admin key (R299) are their own paragraph, never inside the guarantee; no SKR price line yet (fix round 1, I1)', () => {
     expect(PRICE_LINE).toBe("Prices come from Pyth. cbBTC's price can be up to 10 minutes old.")
     expect(ADMIN_KEY_LINE).toBe("The admin key lives on the owner's laptop, not the server.")
-    expect(DISCLOSURES[1]).toEqual(['Prices and keys', `${PRICE_LINE} ${ADMIN_KEY_LINE}`])
-    expect(DISCLOSURES[0][1]).not.toContain(PRICE_LINE)
-    expect(DISCLOSURES[0][1]).not.toContain(ADMIN_KEY_LINE)
+    const [guarantee, prices] = DISCLOSURES[0][1].split('\n\n')
+    expect(prices).toBe(`${PRICE_LINE} ${ADMIN_KEY_LINE}`)
+    expect(guarantee).not.toContain(PRICE_LINE)
+    expect(guarantee).not.toContain(ADMIN_KEY_LINE)
     expect(DISCLOSURES.map(([, p]) => p).join(' ')).not.toMatch(/price source|does not check its price/)
   })
   it("R300's public promise is one constant, shared with the re-link card", () => {
@@ -66,8 +61,8 @@ describe('Settings > About Sprouts (spec 6.2, 11)', () => {
     expect(RELINK.body).toBe(PUBLIC_GUARANTEE)
   })
   it('fees: no Sprouts fee on lending; Sprouts pays the network fee and rent, as the Terms say (R266, audits/fee-model)', () => {
-    const fees = DISCLOSURES.find(([h]) => h === 'Fees')![1]
-    expect(fees).toContain('Lending is free')
+    const fees = DISCLOSURES.find(([h]) => h === 'What does it cost?')![1]
+    expect(fees).toContain('No Sprouts fee on USDC or SOL lending')
     expect(fees).toContain('Sprouts pays the network fee and the one-time account rent')
     expect(fees).not.toMatch(/passes through|about \$0\.03/)
   })
