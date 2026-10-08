@@ -53,3 +53,9 @@ export function venueCard(
   if (data && data.venues.length > 0) return { why: data.why, lines: venueLines(data) }
   return { message: isError || data ? empty : 'Loading the venues.' }
 }
+
+/** R451 (venues moved under the Yield Manager): the venues Sprouts can use first, the ones it only compares after. */
+export function venueGroups(v: VenuesResponse): { used: ReturnType<typeof venueLines>; compared: ReturnType<typeof venueLines> } {
+  const lines = venueLines(v)
+  return { used: lines.filter((_, i) => v.venues[i].auto), compared: lines.filter((_, i) => !v.venues[i].auto) }
+}

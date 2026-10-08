@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { venueCard, venueLines } from '@/model/venues'
+import { venueCard, venueGroups, venueLines } from '@/model/venues'
 import { FIXTURE_VENUES } from '@/lib/lend-fixtures'
 
 describe('the venue card (R275, R276, R278: the rates the AI reads, its verdicts, the pick)', () => {
@@ -69,5 +69,14 @@ describe('the venue card (R275, R276, R278: the rates the AI reads, its verdicts
     expect(venueCard({ ...FIXTURE_VENUES, venues: [] }, false, 'E')).toEqual({ message: 'E' })
     expect(venueCard(undefined, true, 'E')).toEqual({ message: 'E' })
     expect(venueCard(undefined, false, 'E')).toEqual({ message: 'Loading the venues.' })
+  })
+})
+
+describe('venueGroups (R451)', () => {
+  it('puts the venues Sprouts can use first and the compared-only ones after, keeping every line', () => {
+    const g = venueGroups(FIXTURE_VENUES)
+    expect(g.used.length + g.compared.length).toBe(FIXTURE_VENUES.venues.length)
+    expect(g.used.every((l) => !l.detail.includes('Compared only'))).toBe(true)
+    expect(g.compared.every((l) => l.detail.includes('Compared only'))).toBe(true)
   })
 })

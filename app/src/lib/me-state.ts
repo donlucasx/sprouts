@@ -64,7 +64,7 @@ export function pauseState(wallets: { status: string }[]): { shown: boolean; on:
   return {
     shown: true,
     on,
-    line: on ? 'On. Planting your change.' : 'Paused. Round-ups are off.'   // one line (his note 10-05); the Next planting row says Paused too,
+    line: on ? 'Sprouts is on' : 'Sprouts is paused'   // R448: the switch turns the round-ups on and off; "planting" names the daily step only   // one line (his note 10-05); the Next planting row says Paused too,
   }
 }
 
