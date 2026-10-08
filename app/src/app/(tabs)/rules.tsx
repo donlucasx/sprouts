@@ -55,6 +55,9 @@ const Row = ({ label, children }: { label: string; children: React.ReactNode }) 
   </View>
 )
 
+/** "$5" for whole dollars, "$0.10" otherwise: the chips fit side by side (device 10-08). */
+const chipUsd = (c: number) => (c % 100 === 0 ? `$${c / 100}` : formatUsd(c))
+
 /** A setting shown as its value; a tap opens its stepper under the chips (10-08 Rules redesign). */
 function Chip({ label, open, onPress }: { label: string; open: boolean; onPress: () => void }) {
   const { colors } = useTheme()
@@ -68,7 +71,7 @@ function Chip({ label, open, onPress }: { label: string; open: boolean; onPress:
         alignItems: 'center',
         gap: 4,
         minHeight: TARGET,
-        paddingHorizontal: spacing.md,
+        paddingHorizontal: spacing.sm + 2,
         borderRadius: radius.full,
         borderWidth: 1,
         borderColor: open ? colors.accent : colors.hairline,
@@ -284,7 +287,7 @@ export default function Rules() {
             accessibilityLabel="Round up each swap to the next dollar"
           />
         </Row>
-        <Row label={`Add 1% of swaps over ${formatUsd(r.pctThresholdCents)}`}>
+        <Row label={`Add 1% of swaps over ${chipUsd(r.pctThresholdCents)}`}>
           <Switch
             {...toggle}
             value={r.pctOn}
@@ -295,12 +298,12 @@ export default function Rules() {
         {/* The limit and the planting amount as two chips; a tap opens the stepper under them (10-08: a third of the height) */}
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }}>
           <Chip
-            label={`Up to ${formatUsd(r.dailyCapCents)} a day`}
+            label={`Up to ${chipUsd(r.dailyCapCents)} a day`}
             open={picker === 'cap'}
             onPress={() => setPicker((p) => (p === 'cap' ? null : 'cap'))}
           />
           <Chip
-            label={`Plant every ${formatUsd(r.plantThresholdCents)}`}
+            label={`Plant every ${chipUsd(r.plantThresholdCents)}`}
             open={picker === 'plant'}
             onPress={() => setPicker((p) => (p === 'plant' ? null : 'plant'))}
           />

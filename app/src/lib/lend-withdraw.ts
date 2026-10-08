@@ -10,8 +10,8 @@ export const POSITION_CHANGED = 'Your position changed since you opened this. Ch
 export const AMOUNT_CHANGED_LEND = 'The amount changed. Review it and tap Withdraw again.'
 /** R359: an API from before partial withdrawals answers an amount with the whole position; the app never signs that. */
 export const PARTIAL_NOT_YET = 'Taking out part of a position arrives with the next update. Choose All, or try again later.'
-export const WITHDRAWN_LEND_LINE = 'Withdrawn. It is in your Seeker wallet.'
-export const WITHDRAWN_PART_LINE = 'Withdrawn. It is in your Seeker wallet; the rest keeps earning.'
+export const WITHDRAWN_LEND_LINE = 'Withdrawn. It is in your wallet.'
+export const WITHDRAWN_PART_LINE = 'Withdrawn. It is in your wallet; the rest keeps earning.'
 const KEEPS_EARNING = 'What stays keeps earning.'
 
 /** What POST /api/lend/withdraw/build answers (contracts 5.3; R359 adds `all`: the transaction takes the whole position). */
@@ -66,7 +66,7 @@ export function lendScreenLines(p: LendingPosition): { title: string; value: str
   return {
     title: `Withdraw ${coin} from ${VENUE_NAME[p.venue]}`,
     value: positionAmount(p),
-    venue: `From ${VENUE_NAME[p.venue]} back to your Seeker wallet as ${coin}.`,
+    venue: `From ${VENUE_NAME[p.venue]} back to your wallet as ${coin}.`,
     notes: [KEEPS_EARNING, POOL_FULL_LINE],
     poolFull: p.poolFull,
   }

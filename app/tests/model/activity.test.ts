@@ -88,11 +88,11 @@ describe('R362: withdrawals', () => {
     expect(WITHDRAWN_LINE).toBe('What you withdrew.')
   })
   it('a lending withdrawal: the coin in the label, its amount on the right, the venue behind the tap', () => {
-    expect(keep(lendWithdrawalRow({ ts: 't', asset: 'SOL_LEND', venue: 'jupiter_lend', receiptRaw: '940800', underlyingRaw: '1000000', signature: 'w' }))).toEqual({ key: 'lw-w', ts: 't', label: 'Withdrew SOL', amount: '0.0010 SOL', details: ['From Jupiter.', 'Back in your Seeker wallet.'], signature: 'w' })
+    expect(keep(lendWithdrawalRow({ ts: 't', asset: 'SOL_LEND', venue: 'jupiter_lend', receiptRaw: '940800', underlyingRaw: '1000000', signature: 'w' }))).toEqual({ key: 'lw-w', ts: 't', label: 'Withdrew SOL', amount: '0.0010 SOL', details: ['From Jupiter.', 'Back in your wallet.'], signature: 'w' })
     expect(keep(lendWithdrawalRow({ ts: 't', asset: 'USDC_LEND', venue: 'kamino_klend', receiptRaw: '1', signature: 'x' }))).toMatchObject({ label: 'Withdrew USDC', amount: null })
     // R359: a part says so in the details; the whole (or a row from before the flag) does not
-    expect(lendWithdrawalRow({ ts: 't', asset: 'USDC_LEND', venue: 'jupiter_lend', receiptRaw: '1', underlyingRaw: '500000', signature: 'p', whole: false }).details).toEqual(['From Jupiter.', 'Part of the position; the rest keeps earning.', 'Back in your Seeker wallet.'])
-    expect(lendWithdrawalRow({ ts: 't', asset: 'USDC_LEND', venue: 'jupiter_lend', receiptRaw: '1', signature: 'q', whole: true }).details).toEqual(['From Jupiter.', 'Back in your Seeker wallet.'])
+    expect(lendWithdrawalRow({ ts: 't', asset: 'USDC_LEND', venue: 'jupiter_lend', receiptRaw: '1', underlyingRaw: '500000', signature: 'p', whole: false }).details).toEqual(['From Jupiter.', 'Part of the position; the rest keeps earning.', 'Back in your wallet.'])
+    expect(lendWithdrawalRow({ ts: 't', asset: 'USDC_LEND', venue: 'jupiter_lend', receiptRaw: '1', signature: 'q', whole: true }).details).toEqual(['From Jupiter.', 'Back in your wallet.'])
     expect(lendWithdrawalRow({ ts: 't', asset: 'USDC_LEND', venue: 'kamino_klend', receiptRaw: '1', underlyingRaw: null, signature: 'x' }).amount).toBeNull()
   })
 })

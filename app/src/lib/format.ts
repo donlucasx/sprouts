@@ -83,7 +83,7 @@ export function holdingAmount(h: Holding): string {
   return `${fixed(amount, SHOWN[h.asset])} ${COIN_NAME[h.asset]}${value}`;
 }
 /** Under Home's holdings (spec 3.3, said once): the wallet coins are not locked and Sprouts cannot sell them. */
-export const HOLDINGS_NOTE = "These sit in your Seeker wallet, not locked. Sprouts cannot sell them for you.";
+export const HOLDINGS_NOTE = "These sit in your wallet, not locked. Sprouts cannot sell them for you.";
 
 type Planted = { usdcInCents: number; asset: LiveAsset; amountOutRaw: string; usdPrice: number | null; venue?: AutoVenue | null };
 /** What a planting became, no fee clause (Home's receipt row, the push, the widget). A lending leg's amountOutRaw is in RECEIPT units

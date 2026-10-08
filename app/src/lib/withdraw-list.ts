@@ -20,11 +20,11 @@ export function withdrawRows(me: Pick<MeResponse, 'pot' | 'basket' | 'holdings' 
     const positions = isLend(asset) ? livePositions(me, asset) : []
     if (positions.length > 0) {
       for (const p of positions)
-        rows.push({ key: `${asset}:${p.venue}`, asset, label: `Withdraw ${COIN_NAME[asset]} from ${VENUE_NAME[p.venue]}`, amount: positionAmount(p), note: p.poolFull ? POOL_FULL_LINE : `Back to your Seeker wallet as ${COIN_NAME[asset]}.`, opens: true, position: p })
+        rows.push({ key: `${asset}:${p.venue}`, asset, label: `Withdraw ${COIN_NAME[asset]} from ${VENUE_NAME[p.venue]}`, amount: positionAmount(p), note: p.poolFull ? POOL_FULL_LINE : `Back to your wallet as ${COIN_NAME[asset]}.`, opens: true, position: p })
       continue
     }
     const h = me.holdings.find((x) => x.asset === asset)
-    if (h && asset !== 'SKR') rows.push({ key: asset, asset, amount: holdingAmount(h), note: 'in your Seeker wallet. Trade or send it from your wallet app.', opens: false })
+    if (h && asset !== 'SKR') rows.push({ key: asset, asset, amount: holdingAmount(h), note: 'in your wallet. Trade or send it from your wallet app.', opens: false })
   }
   return rows
 }

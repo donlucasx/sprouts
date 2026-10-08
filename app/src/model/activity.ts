@@ -67,7 +67,7 @@ export function withdrawalRow(w: Withdrawal, skrUsd: number | null, readyAt?: st
 /** Spec 7: a lending position back to the wallet. underlyingRaw is null when the API does not know the amount; then no amount shows. */
 export function lendWithdrawalRow(w: LendWithdrawal): ActivityRow {
   const amount = w.underlyingRaw && /^\d+$/.test(w.underlyingRaw) ? underlyingAmount(w.asset, w.underlyingRaw) : null
-  return { key: `lw-${w.signature}`, ts: w.ts, label: `Withdrew ${COIN_NAME[w.asset]}`, amount, details: [`From ${VENUE_NAME[w.venue]}.`, ...(w.whole === false ? ['Part of the position; the rest keeps earning.'] : []), 'Back in your Seeker wallet.'], signature: w.signature }
+  return { key: `lw-${w.signature}`, ts: w.ts, label: `Withdrew ${COIN_NAME[w.asset]}`, amount, details: [`From ${VENUE_NAME[w.venue]}.`, ...(w.whole === false ? ['Part of the position; the rest keeps earning.'] : []), 'Back in your wallet.'], signature: w.signature }
 }
 
 /** Spec 7: a move the user approved or turned down; an open or expired proposal is the card's, not a row. */

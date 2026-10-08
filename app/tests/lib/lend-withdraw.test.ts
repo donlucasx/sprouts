@@ -42,7 +42,7 @@ describe('the amount on the lending withdraw screen (R359, the same control as S
     const l = lendScreenLines(kamino)
     expect(l.title).toBe('Withdraw USDC from Kamino')
     expect(l.value).toBe('2.00 USDC ($2.00)')
-    expect(l.venue).toBe('From Kamino back to your Seeker wallet as USDC.')
+    expect(l.venue).toBe('From Kamino back to your wallet as USDC.')
     expect(l.notes).toContain(POOL_FULL_LINE)
     expect(l.notes).toContain('What stays keeps earning.')
     expect(lendScreenLines(full).poolFull).toBe(true)
@@ -147,7 +147,7 @@ describe('withdrawRows with lending positions (R359: one pattern, a row with a >
   it('one row per position after SKR, each opening its own screen; a full pool says so; no aggregated lending row', () => {
     const rows = withdrawRows({ pot: { skrStakedRaw: '34900000', skrUsd: 0.0183 } as MeResponse['pot'], basket: null, holdings: FIXTURE_LEND_HOLDINGS, positions: FIXTURE_POSITIONS })
     expect(rows.map((r) => r.key)).toEqual(['SKR', 'USDC_LEND:kamino_klend', 'USDC_LEND:jupiter_lend', 'SOL_LEND:jupiter_lend'])
-    expect(rows[1]).toMatchObject({ label: 'Withdraw USDC from Kamino', amount: '2.00 USDC ($2.00)', note: 'Back to your Seeker wallet as USDC.', opens: true })
+    expect(rows[1]).toMatchObject({ label: 'Withdraw USDC from Kamino', amount: '2.00 USDC ($2.00)', note: 'Back to your wallet as USDC.', opens: true })
     expect(rows.filter((r) => r.position).every((r) => r.opens)).toBe(true)
     expect(rows[0].opens).toBe(true)
     expect(rows[2].note).toBe(POOL_FULL_LINE)

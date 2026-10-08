@@ -66,7 +66,7 @@ describe("six coins", () => {
   });
 
   it("HOLDINGS_NOTE says where the wallet coins sit, once", () => {
-    expect(HOLDINGS_NOTE).toBe("These sit in your Seeker wallet, not locked. Sprouts cannot sell them for you.");
+    expect(HOLDINGS_NOTE).toBe("These sit in your wallet, not locked. Sprouts cannot sell them for you.");
   });
 
   it("plantedLine: what the change became, dollars first, the fee clause as ruled (R139); never the word pulled (manual 6)", () => {
