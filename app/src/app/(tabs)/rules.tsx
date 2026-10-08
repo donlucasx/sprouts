@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Switch, TextInput, View } from 'react-native'
+import { Pressable, Switch, TextInput, View } from 'react-native'
+import { useQuery } from '@tanstack/react-query'
 import { Screen } from '@/components/Screen'
 import { Card } from '@/components/Card'
 import { ProBadge } from '@/components/ProBadge'
@@ -7,7 +8,7 @@ import { Button } from '@/components/Button'
 import { ThemedText } from '@/components/ThemedText'
 import { Stepper, StepButtons } from '@/components/Stepper'
 import { TwoWay } from '@/components/TwoWay'
-import { api, ApiError, type MeResponse } from '@/lib/api'
+import { api, ApiError, type ActivityResponse, type MeResponse } from '@/lib/api'
 import { useMe, useInvalidateMe, useApplyRules } from '@/lib/me'
 import { freshSignIn } from '@/lib/signin'
 import { freshWalletSignIn } from '@/lib/reauth'
@@ -33,7 +34,13 @@ import {
 } from '@/model/manager'
 import { ORE_DISCLOSURE } from '@/lib/ore-copy'
 import { rulesChanges } from '@/lib/forms'
-import { spacing, switchColors, useTheme } from '@/theme'
+import { pauseState } from '@/lib/me-state'
+import { usePauseToggle } from '@/lib/use-pause'
+import { weekLine } from '@/lib/week'
+import { coinColor } from '@/lib/coin-colors'
+import { PauseRow } from '@/components/PauseRow'
+import { VenuesPanel } from '@/components/VenuesPanel'
+import { radius, spacing, switchColors, TARGET, useTheme } from '@/theme'
 
 type RulesShape = MeResponse['rules']
 
@@ -46,6 +53,32 @@ const Row = ({ label, children }: { label: string; children: React.ReactNode }) 
     {children}
   </View>
 )
+
+/** A setting shown as its value; a tap opens its stepper under the chips (10-08 Rules redesign). */
+function Chip({ label, open, onPress }: { label: string; open: boolean; onPress: () => void }) {
+  const { colors } = useTheme()
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityState={{ expanded: open }}
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        minHeight: TARGET,
+        paddingHorizontal: spacing.md,
+        borderRadius: radius.full,
+        borderWidth: 1,
+        borderColor: open ? colors.accent : colors.hairline,
+        backgroundColor: open ? colors.surface : 'transparent',
+      }}
+    >
+      <ThemedText>{label}</ThemedText>
+      <ThemedText tone="secondary">{open ? '▴' : '▾'}</ThemedText>
+    </Pressable>
+  )
+}
 
 export default function Rules() {
   const { data: me } = useMe()
@@ -64,6 +97,11 @@ export default function Rules() {
   const [ask, setAsk] = useState('')
   const [asking, setAsking] = useState(false)
   const [watcher, setWatcher] = useState<{ understood: string; notes: string[] } | null>(null)
+  // 10-08 redesign: which chip's stepper is open, and whether the 0% coins are unfolded
+  const [picker, setPicker] = useState<'cap' | 'plant' | null>(null)
+  const [showAll, setShowAll] = useState(false)
+  const { pausing, pauseError, togglePaused } = usePauseToggle()
+  const activity = useQuery({ queryKey: ['activity'], queryFn: () => api<ActivityResponse>('/api/activity') })
   if (!me)
     return (
       <Screen inset="top" title="Rules">
@@ -88,6 +126,11 @@ export default function Rules() {
     r.managed &&
     (unsavedOn || r.stop !== saved.stop || JSON.stringify(managedPins(r.pins)) !== JSON.stringify(managedPins(saved.pins)))
   const preview = coinsChanged ? managedPreview(me.manager.stopSplit, managedPins(r.pins), r.stop) : undefined
+  const pause = pauseState(me.wallets)
+  const rows = splitRows(r, preview)
+  // Coins at 0% fold into one line (10-08), unless switched on in the draft or unfolded
+  const hiddenRows = showAll ? [] : rows.filter((row) => row.pct === 0 && row.asset !== 'SKR')
+  const shownRows = rows.filter((row) => !hiddenRows.includes(row))
   const showDisclosure =
     (r.managed && !saved.managed) || (!r.managed && (r.pins.stORE ?? 0) > 0 && (saved.pins.stORE ?? 0) === 0)
 
@@ -164,12 +207,12 @@ export default function Rules() {
           <>
             {raises ? (
               <ThemedText variant="caption" tone="secondary">
-                Raising the daily limit asks your Seeker to sign in once.
+                Raising the daily limit asks your wallet to sign in once.
               </ThemedText>
             ) : null}
             {signing ? (
               <ThemedText variant="caption" tone="secondary">
-                Waiting for your Seeker.
+                Waiting for your wallet.
               </ThemedText>
             ) : null}
             {error ? <ThemedText tone="error">{error}</ThemedText> : null}
@@ -217,95 +260,108 @@ export default function Rules() {
           </ThemedText>
         </Card>
       )}
+      {/* R448: Sprouts' own switch leads Rules; R455: this week's round-ups under it */}
+      {pause.shown ? (
+        <Card>
+          <PauseRow
+            on={pause.on}
+            line={pause.line}
+            detail={pause.on ? weekLine(activity.data?.swaps) : 'Round-ups are off. Nothing moves until you turn it back on.'}
+            busy={pausing}
+            error={pauseError}
+            onChange={togglePaused}
+          />
+        </Card>
+      ) : null}
       <Card>
-        <Row label="Round up to the next dollar">
+        <ThemedText variant="heading">Round-ups</ThemedText>
+        <Row label="Each swap to the next dollar">
           <Switch
             {...toggle}
             value={r.roundupOn}
             onValueChange={(v) => edit({ roundupOn: v })}
-            accessibilityLabel="Round up to the next dollar"
+            accessibilityLabel="Round up each swap to the next dollar"
           />
         </Row>
-        <Row label={`1% on swaps of ${formatUsd(r.pctThresholdCents)} or more`}>
+        <Row label={`Add 1% of swaps over ${formatUsd(r.pctThresholdCents)}`}>
           <Switch
             {...toggle}
             value={r.pctOn}
             onValueChange={(v) => edit({ pctOn: v })}
-            accessibilityLabel="1% on larger swaps"
+            accessibilityLabel="Add 1% of larger swaps"
           />
         </Row>
-        <Stepper
-          label="Daily limit"
-          what="daily limit"
-          value={r.dailyCapCents}
-          step={100}
-          min={100}
-          max={500}
-          format={formatUsd}
-          onChange={(v) => edit({ dailyCapCents: v })}
-          disabled={busy}
-        />
-        <Stepper
-          label="Plant at"
-          what="planting amount"
-          value={r.plantThresholdCents}
-          step={50}
-          min={50}
-          max={2000}
-          format={formatUsd}
-          onChange={(v) => edit({ plantThresholdCents: v })}
-          disabled={busy}
-        />
+        {/* The limit and the planting amount as two chips; a tap opens the stepper under them (10-08: a third of the height) */}
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }}>
+          <Chip
+            label={`Up to ${formatUsd(r.dailyCapCents)} a day`}
+            open={picker === 'cap'}
+            onPress={() => setPicker((p) => (p === 'cap' ? null : 'cap'))}
+          />
+          <Chip
+            label={`Plant every ${formatUsd(r.plantThresholdCents)}`}
+            open={picker === 'plant'}
+            onPress={() => setPicker((p) => (p === 'plant' ? null : 'plant'))}
+          />
+        </View>
+        {picker === 'cap' ? (
+          <Stepper
+            label="Daily limit"
+            what="daily limit"
+            value={r.dailyCapCents}
+            step={100}
+            min={100}
+            max={500}
+            format={formatUsd}
+            onChange={(v) => edit({ dailyCapCents: v })}
+            disabled={busy}
+          />
+        ) : null}
+        {picker === 'plant' ? (
+          <Stepper
+            label="Plant every"
+            what="planting amount"
+            value={r.plantThresholdCents}
+            step={50}
+            min={50}
+            max={2000}
+            format={formatUsd}
+            onChange={(v) => edit({ plantThresholdCents: v })}
+            disabled={busy}
+          />
+        ) : null}
       </Card>
       <Card>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
-          <ThemedText variant="heading">{SWITCH_LABEL}</ThemedText>
-          <ProBadge />
+        <ThemedText variant="heading">Where it grows</ThemedText>
+        {/* One bar for the split: where the money goes at a glance */}
+        <View
+          accessible
+          accessibilityLabel={rows.map((row) => `${COIN_NAME_LONG[row.asset]} ${row.pct}%`).join(', ')}
+          style={{ flexDirection: 'row', height: 10, borderRadius: 5, overflow: 'hidden', backgroundColor: colors.hairline }}
+        >
+          {rows
+            .filter((row) => row.pct > 0)
+            .map((row) => (
+              <View key={row.asset} style={{ flex: row.pct, backgroundColor: coinColor(row.asset) }} />
+            ))}
         </View>
         <ThemedText variant="caption" tone="secondary">
-          {PRO_LINE}
-        </ThemedText>
-        <Row label={r.managed ? "On" : "Off"}>
-          <Switch
-            {...toggle}
-            value={r.managed}
-            onValueChange={(v) => edit(v ? { managed: true, pins: pinsForOn(r.pins) } : { managed: false })}
-            accessibilityLabel={SWITCH_LABEL}
-          />
-        </Row>
-        <ThemedText variant="caption" tone="secondary">
-          {MANAGER_LINE}
-        </ThemedText>
-        {r.managed && (
-          <>
-            <TwoWay
-              options={[
-                { value: 'careful', label: 'Careful' },
-                { value: 'balanced', label: 'Balanced' },
-                { value: 'bold', label: 'Bold' },
-              ]}
-              value={r.stop}
-              onChange={(v) => edit({ stop: v })}
-            />
-            <ThemedText variant="caption" tone="secondary">
-              {STOP_LINE}
-            </ThemedText>
-          </>
-        )}
-        <ThemedText variant="heading" style={{ marginTop: spacing.xs }}>
-          {saved.managed && !coinsChanged ? "Today's split" : r.managed ? 'The split after you save' : 'Your split'}
-        </ThemedText>
-        <ThemedText variant="caption" tone="secondary">
+          {saved.managed && !coinsChanged ? "Today's split. " : r.managed ? 'The split after you save. ' : ''}
           {r.managed ? ROWS_LINE.on : ROWS_LINE.off}
         </ThemedText>
-        {splitRows(r, preview).map((row) => (
+        {shownRows.map((row) => (
           <View
             key={row.asset}
             style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.xs }}
           >
+            <View style={{ width: 10, height: 10, borderRadius: 3, backgroundColor: coinColor(row.asset) }} />
             {/* The coin on one line; stORE's note on its own line under it (10-01 device check: it wrapped to three lines). */}
             <View style={{ flex: 1 }}>
-              <ThemedText>{COIN_NAME_LONG[row.asset]}</ThemedText>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
+                <ThemedText>{COIN_NAME_LONG[row.asset]}</ThemedText>
+                {/* R446: automatic lending is part of Pro (free during launch) */}
+                {row.asset === 'USDC_LEND' || row.asset === 'SOL_LEND' ? <ProBadge /> : null}
+              </View>
               {row.asset === 'stORE' ? (
                 <ThemedText variant="caption" tone="secondary">
                   {STORE_ROW_NOTE}
@@ -335,8 +391,51 @@ export default function Rules() {
             )}
           </View>
         ))}
+        {hiddenRows.length > 0 ? (
+          <Pressable onPress={() => setShowAll(true)} accessibilityRole="button" style={{ minHeight: TARGET, justifyContent: 'center' }}>
+            <ThemedText variant="caption" style={{ color: colors.accentText }}>
+              {`${hiddenRows.map((row) => COIN_NAME_LONG[row.asset]).join(', ')} at 0%. Show`}
+            </ThemedText>
+          </Pressable>
+        ) : null}
+        <View style={{ height: 1, backgroundColor: colors.hairline, marginVertical: spacing.xs }} />
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+          <ThemedText variant="heading" style={{ flex: 1 }}>
+            {SWITCH_LABEL}
+          </ThemedText>
+          <ProBadge />
+          <Switch
+            {...toggle}
+            value={r.managed}
+            onValueChange={(v) => edit(v ? { managed: true, pins: pinsForOn(r.pins) } : { managed: false })}
+            accessibilityLabel={SWITCH_LABEL}
+          />
+        </View>
+        <ThemedText variant="caption" tone="secondary">
+          {MANAGER_LINE} {PRO_LINE}
+        </ThemedText>
+        {r.managed && (
+          <>
+            <TwoWay
+              options={[
+                { value: 'careful', label: 'Careful' },
+                { value: 'balanced', label: 'Balanced' },
+                { value: 'bold', label: 'Bold' },
+              ]}
+              value={r.stop}
+              onChange={(v) => edit({ stop: v })}
+            />
+            <ThemedText variant="caption" tone="secondary">
+              {STOP_LINE}
+            </ThemedText>
+          </>
+        )}
         {saved.managed && me.manager.why ? (
-          <ThemedText style={{ marginTop: spacing.xs }}>{me.manager.why}</ThemedText>
+          <View style={{ borderLeftWidth: 2, borderLeftColor: colors.hairline, paddingLeft: spacing.sm }}>
+            <ThemedText variant="caption" tone="secondary">
+              {me.manager.why}
+            </ThemedText>
+          </View>
         ) : null}
         {undone ? (
           <ThemedText variant="caption" tone="secondary">
@@ -350,7 +449,6 @@ export default function Rules() {
               alignItems: 'center',
               justifyContent: 'space-between',
               gap: spacing.sm,
-              marginTop: spacing.xs,
             }}
           >
             <ThemedText variant="caption" tone="secondary">
@@ -364,6 +462,7 @@ export default function Rules() {
             {ORE_DISCLOSURE}
           </ThemedText>
         ) : null}
+        <VenuesPanel />
       </Card>
       {/* R348: unsaved changes get a bar fixed under the scroll (10-05: the switch looked saved while Save sat off screen). */}
       {!dirty ? (

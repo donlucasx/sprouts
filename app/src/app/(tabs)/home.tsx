@@ -2,12 +2,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { View, Pressable, RefreshControl, Image, useWindowDimensions } from 'react-native'
 import { Link, Redirect, router, useFocusEffect } from 'expo-router'
 import { MaterialCommunityIcons } from '@expo/vector-icons'
-import { useQueryClient } from '@tanstack/react-query'
 import { useMe, useInvalidateMe, toGardenInput } from '@/lib/me'
 import { recordWatering, wateredPlantsFor } from '@/lib/last-watering'
 import { readZeroMarks } from '@/lib/zero-marks'
 import { plantLabel } from '@/lib/plant-label'
-import { api, ApiError, type MeResponse } from '@/lib/api'
+import { api } from '@/lib/api'
 import { buildScene } from '@/model/garden'
 import { withDevBud, type DevBud } from '@/lib/dev-bud'
 import { frameFor, skyAbove, valuePull } from '@/model/layout'
@@ -25,16 +24,12 @@ import { WatcherLine } from '@/components/WatcherLine'
 import { NextPlanting, roomUnderBar } from '@/components/NextPlanting'
 import { canSlot } from '@/model/can'
 import { nextPlantingFor } from '@/lib/next-planting'
-import { PauseRow } from '@/components/PauseRow'
 import { RelinkCard } from '@/components/RelinkCard'
 import { MoveCard } from '@/components/MoveCard'
 import { termsNeeded, termsSummary } from '@/lib/terms'
 import { arrivalLine, formatSkr, formatAsOf } from '@/lib/format'
 import { useSession } from '@/lib/session'
 import { gardenTotals, pauseState, coinRows, valueBlock, walletsLine, lastPlantingLine } from '@/lib/me-state'
-import { setPaused } from '@/lib/pause-api'
-import { freshWalletSignIn } from '@/lib/reauth'
-import { identity } from '@/lib/identity'
 import { FONT, radius, spacing, TARGET, useTheme } from '@/theme'
 import type { LiveAsset } from '@/lib/coins'
 
@@ -68,11 +63,10 @@ export default function Home() {
   const { colors } = useTheme()
   const { data: me, stale, fresh, refetch, asOf, loading, unauthorized } = useMe()
   const invalidate = useInvalidateMe()
-  const queryClient = useQueryClient()
   const [failed, setFailed] = useState(false)
   const [nudged, setNudged] = useState(false)
-  const [pausing, setPausing] = useState(false)
-  const [pauseError, setPauseError] = useState<string | null>(null)
+  // R457: "Add money" is a Pro feature still to come; the greyed button explains itself on a tap instead of doing nothing
+  const [addMoneyNote, setAddMoneyNote] = useState(false)
   const [landed, setLanded] = useState(0) // R195: every landing here and every pull-to-refresh replays the can's wobble
   const now = new Date()
   const today = now.toDateString()
@@ -143,36 +137,6 @@ export default function Home() {
     }
   }
 
-  /** The switch (R147): the answer's statuses land on the cached read at once, so the row settles with the switch; the fresh read reconciles after. */
-  async function togglePaused(on: boolean) {
-    setPausing(true)
-    setPauseError(null)
-    try {
-      const answer = await setPaused(!on, freshWalletSignIn(identity))
-      queryClient.setQueryData<MeResponse>(['me'], (old) =>
-        old
-          ? {
-              ...old,
-              wallets: old.wallets.map((w) => ({
-                ...w,
-                status: answer.wallets.find((a) => a.pubkey === w.pubkey)?.status ?? w.status,
-              })),
-            }
-          : old,
-      )
-      void invalidate()
-    } catch (e) {
-      setPauseError(
-        e instanceof ApiError
-          ? e.message
-          : on
-            ? 'Could not turn Sprouts back on. Try again.'
-            : 'Could not pause. Try again.',
-      )
-    } finally {
-      setPausing(false)
-    }
-  }
 
   if (unauthorized) {
     // The token expired or was revoked (R84): back to Welcome.
@@ -242,8 +206,22 @@ export default function Home() {
       }
     >
       <MarkedTitle size={22}>{name ? `${name}'s garden` : 'Your garden'}</MarkedTitle>
+      {/* R448: the switch lives at the top of Rules; Home keeps its state as a chip that opens it */}
       {pause.shown ? (
-        <PauseRow on={pause.on} line={pause.line} busy={pausing} error={pauseError} onChange={togglePaused} />
+        <Pressable
+          onPress={() => router.push('/rules')}
+          accessibilityRole="button"
+          accessibilityLabel={`${pause.line}. Open Rules to change it.`}
+          style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, alignSelf: 'flex-start', minHeight: TARGET }}
+        >
+          <View
+            style={{ width: 8, height: 8, borderRadius: radius.full, backgroundColor: pause.on ? colors.success : colors.attention }}
+          />
+          <ThemedText variant="caption" tone="secondary">
+            {pause.line}
+          </ThemedText>
+          <MaterialCommunityIcons name="chevron-right" size={16} color={colors.textSecondary} />
+        </Pressable>
       ) : null}
       <RelinkCard me={me} />
       {termsNeeded(me) ? (
@@ -362,9 +340,23 @@ export default function Home() {
             </View>
           ))}
         </View>
-        <Link href="/withdraw" asChild>
-          <Button title="Withdraw" kind="quiet" onPress={() => {}} />
-        </Link>
+        <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+          <Link href="/withdraw" asChild>
+            <Button title="Withdraw" kind="quiet" onPress={() => {}} style={{ flex: 1 }} />
+          </Link>
+          <Button
+            title="Add money"
+            kind="quiet"
+            onPress={() => setAddMoneyNote((v) => !v)}
+            accessibilityLabel="Add money, coming with Pro"
+            style={{ flex: 1, opacity: 0.45 }}
+          />
+        </View>
+        {addMoneyNote ? (
+          <ThemedText variant="caption" tone="secondary" style={{ textAlign: 'center' }}>
+            Coming with Pro: add money to your garden anytime.
+          </ThemedText>
+        ) : null}
       </Card>
       <MoveCard me={me} />
       {walletsRow ? (

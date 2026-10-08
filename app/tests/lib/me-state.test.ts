@@ -162,7 +162,7 @@ describe('gardenTotals', () => {
   })
 })
 
-// R147: the switch on Home, decided from the wallets' statuses, so it always agrees with what the puller will do.
+// R147 + R448: the Sprouts switch (Rules since 10-08), decided from the wallets' statuses, so it always agrees with what the puller will do.
 describe('pauseState', () => {
   const w = (status: 'active' | 'paused' | 'revoked') => ({ pubkey: status, status, dailyCapCents: 500 })
   it('is hidden with no wallet to pause', () => {
@@ -170,11 +170,11 @@ describe('pauseState', () => {
     expect(pauseState([w('revoked')])).toEqual({ shown: false, on: false, line: '' })
   })
   it('is on while any wallet is active, off when every linked wallet is paused', () => {
-    expect(pauseState([w('active'), w('paused')])).toEqual({ shown: true, on: true, line: 'On. Planting your change.' })
+    expect(pauseState([w('active'), w('paused')])).toEqual({ shown: true, on: true, line: 'Sprouts is on' })
     expect(pauseState([w('paused'), w('revoked')])).toEqual({
       shown: true,
       on: false,
-      line: 'Paused. Round-ups are off.',
+      line: 'Sprouts is paused',
     })
   })
 })
