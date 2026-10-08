@@ -102,7 +102,7 @@ export default function Rules() {
   const [asking, setAsking] = useState(false)
   const [watcher, setWatcher] = useState<{ understood: string; notes: string[] } | null>(null)
   // 10-08 redesign: which chip's stepper is open, and whether the 0% coins are unfolded
-  const [picker, setPicker] = useState<'cap' | 'plant' | null>(null)
+  const [picker, setPicker] = useState<'cap' | null>(null)
   const [showAll, setShowAll] = useState(false)
   const { pausing, pauseError, togglePaused } = usePauseToggle()
   const activity = useQuery(activityQuery)
@@ -280,14 +280,18 @@ export default function Rules() {
       ) : null}
       <Card>
         <ThemedText variant="heading">Round-ups</ThemedText>
-        <Row label="Each swap to the next dollar">
+        {/* R460: any swap rounds up, the daily limit caps it; an example says what that means */}
+        <Row label="Round up every swap">
           <Switch
             {...toggle}
             value={r.roundupOn}
             onValueChange={(v) => edit({ roundupOn: v })}
-            accessibilityLabel="Round up each swap to the next dollar"
+            accessibilityLabel="Round up every swap"
           />
         </Row>
+        <ThemedText variant="caption" tone="secondary" style={{ marginTop: -spacing.sm }}>
+          A $3.40 swap saves $0.60.
+        </ThemedText>
         <Row label={`Add 1% of swaps over ${chipUsd(r.pctThresholdCents)}`}>
           <Switch
             {...toggle}
@@ -296,17 +300,12 @@ export default function Rules() {
             accessibilityLabel="Add 1% of larger swaps"
           />
         </Row>
-        {/* The limit and the planting amount as two chips; a tap opens the stepper under them (10-08: a third of the height) */}
+        {/* The limit as a chip; a tap opens the stepper under it. R466: the planting amount left Rules (the saved value stands). */}
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }}>
           <Chip
             label={`Daily limit ${chipUsd(r.dailyCapCents)}`}
             open={picker === 'cap'}
             onPress={() => setPicker((p) => (p === 'cap' ? null : 'cap'))}
-          />
-          <Chip
-            label={`Plant every ${chipUsd(r.plantThresholdCents)}`}
-            open={picker === 'plant'}
-            onPress={() => setPicker((p) => (p === 'plant' ? null : 'plant'))}
           />
         </View>
         {picker === 'cap' ? (
@@ -322,19 +321,10 @@ export default function Rules() {
             disabled={busy}
           />
         ) : null}
-        {picker === 'plant' ? (
-          <Stepper
-            label="Plant every"
-            what="planting amount"
-            value={r.plantThresholdCents}
-            step={50}
-            min={50}
-            max={2000}
-            format={formatUsd}
-            onChange={(v) => edit({ plantThresholdCents: v })}
-            disabled={busy}
-          />
-        ) : null}
+        {/* R466: what "planting" means, once, where the change is set aside */}
+        <ThemedText variant="caption" tone="secondary">
+          Each morning, saved change is planted: Sprouts buys the coins in your split below.
+        </ThemedText>
       </Card>
       <Card>
         <ThemedText variant="heading">Where it grows</ThemedText>

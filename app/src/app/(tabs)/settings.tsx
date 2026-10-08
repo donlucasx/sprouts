@@ -25,7 +25,8 @@ import { identity } from '@/lib/identity'
 import { readAppearance, writeAppearance, readNotify, writeNotify } from '@/lib/prefs'
 import type { NoticeKind } from '@/lib/notices'
 import { DISCLOSURES, HOW_IT_WORKS, NOT_ADVICE } from '@/lib/settings-copy'
-import { exportTaxCsv } from '@/lib/tax-export'
+import { prepareTaxCsv, shareTaxCsv, type TaxFile } from '@/lib/tax-export'
+import { notify } from '@/lib/notify'
 import { PUBLIC_GUARANTEE } from '@/lib/relink'
 import { spacing, switchColors, useTheme } from '@/theme'
 import { schemeFor, type Appearance as AppearanceChoice } from '@/theme/appearance'
@@ -39,8 +40,9 @@ const NOTICES: [NoticeKind, string][] = [
 ]
 
 export default function Settings() {
-  const taxYear = new Date().getFullYear()
   const [taxBusy, setTaxBusy] = useState(false)
+  const [taxFile, setTaxFile] = useState<TaxFile | null>(null)
+  const [proNote, setProNote] = useState(false)
   const [taxError, setTaxError] = useState<string | null>(null)
   const { data: me } = useMe()
   const { session, setSession } = useSession()
@@ -130,13 +132,44 @@ export default function Settings() {
   return (
     <Screen inset="top" title="Settings">
       <Card>
-        <ThemedText variant="heading">Your wallet</ThemedText>
+        {/* R462: the wallet that signs in is the Seed Vault */}
+        <ThemedText variant="heading">Your Seed Vault</ThemedText>
+        <ThemedText tone="secondary">Where your savings live. Only you can move them.</ThemedText>
         <ThemedText numeric>
           {me?.user.skrName ?? (session ? `${session.pubkey.slice(0, 4)}...${session.pubkey.slice(-4)}` : '')}
         </ThemedText>
         {/* R150: the holdings note moved here from Home (both audits): where the wallet coins sit, said once. */}
         <ThemedText variant="caption" tone="secondary">
           {HOLDINGS_NOTE}
+        </ThemedText>
+      </Card>
+      <Card>
+        {/* R446: one Pro bundle (the Yield Manager, automatic lending, the tax pack), free during launch; R457: Add money is coming.
+            R464: near the top, under the Seed Vault, with a greyed "Get Pro" that explains itself on a tap */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+          <ThemedText variant="heading">Sprouts Pro</ThemedText>
+          <ProBadge />
+        </View>
+        <ThemedText>Your money works by itself.</ThemedText>
+        {['The AI Yield Manager splits new change each morning', 'Automatic lending at the best safe rate', 'The tax pack for your tax tool'].map((l) => (
+          <ThemedText key={l} tone="secondary">
+            {`\u2022 ${l}`}
+          </ThemedText>
+        ))}
+        <Button
+          title="Get Pro"
+          kind="quiet"
+          onPress={() => setProNote((v) => !v)}
+          accessibilityLabel="Get Pro, not needed during launch"
+          style={{ alignSelf: 'flex-start', opacity: 0.45 }}
+        />
+        {proNote ? (
+          <ThemedText variant="caption" tone="secondary">
+            {PRO_LINE} Nothing to buy yet: every Pro feature is already on.
+          </ThemedText>
+        ) : null}
+        <ThemedText variant="caption" tone="secondary">
+          Coming soon: add money to your garden anytime.
         </ThemedText>
       </Card>
       <Card>
@@ -200,44 +233,37 @@ export default function Settings() {
         ))}
       </Card>
       <Card>
-        {/* R446: one Pro bundle (the Yield Manager, automatic lending, the tax pack), free during launch; R457: Add money is coming */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
-          <ThemedText variant="heading">Sprouts Pro</ThemedText>
-          <ProBadge />
-        </View>
-        <ThemedText>Your money works by itself.</ThemedText>
-        {['The AI Yield Manager splits new change each morning', 'Automatic lending at the best safe rate', 'The tax pack for Koinly and other tax tools'].map((l) => (
-          <ThemedText key={l} tone="secondary">
-            {`\u2022 ${l}`}
-          </ThemedText>
-        ))}
-        <ThemedText variant="caption" tone="secondary">
-          {PRO_LINE} Coming soon: add money to your garden anytime.
-        </ThemedText>
-      </Card>
-      <Card>
-        {/* R447: the plain record, free (R446 keeps the formatted tax pack in Pro) */}
+        {/* R447: the plain record, free (R446 keeps the formatted tax pack in Pro). R463: request it, the phone says when it is ready,
+            then download; the whole history, no year button */}
         <ThemedText variant="heading">Export for taxes</ThemedText>
-        <ThemedText tone="secondary">
-          {"Every planting and withdrawal as a CSV in Koinly's format, ready to import into your tax tool. A record, not a filing."}
-        </ThemedText>
+        <ThemedText tone="secondary">Every planting and withdrawal, for your tax tool.</ThemedText>
         <Button
-          title={`Export ${taxYear}`}
+          title={taxFile ? 'Download' : 'Request history'}
           kind="quiet"
           loading={taxBusy}
           onPress={async () => {
             setTaxBusy(true)
             setTaxError(null)
             try {
-              await exportTaxCsv(taxYear)
+              if (taxFile) {
+                await shareTaxCsv(taxFile)
+              } else {
+                setTaxFile(await prepareTaxCsv())
+                await notify('Your tax record is ready', 'Open Settings to download it.').catch(() => {})
+              }
             } catch (e) {
-              setTaxError(e instanceof ApiError ? e.message : 'Could not export just now. Try again.')
+              setTaxError(e instanceof ApiError ? e.message : 'Could not prepare it just now. Try again.')
             } finally {
               setTaxBusy(false)
             }
           }}
           style={{ alignSelf: 'flex-start' }}
         />
+        {taxFile ? (
+          <ThemedText variant="caption" tone="secondary">
+            Ready: {taxFile.filename}
+          </ThemedText>
+        ) : null}
         {taxError ? <ThemedText tone="error">{taxError}</ThemedText> : null}
       </Card>
       <Card style={{ gap: 0 }}>

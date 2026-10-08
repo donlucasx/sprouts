@@ -34,16 +34,20 @@ export async function fetchTaxCsv(year?: number): Promise<{ csv: string; filenam
   return { csv: text, filename: named ?? `sprouts-tax-${year ?? "all"}.csv` };
 }
 
+export type TaxFile = { uri: string; filename: string };
+
 /**
- * Fetches the CSV, writes it as a real .csv file in the app's cache, and opens the share sheet on it (Drive, Files, email), so a
- * tax tool imports it as a file. expo-file-system + expo-sharing were added 10-08 with the release's native build. Settings calls
- * it from its "Export for taxes" row inside a try/catch that shows the ApiError's message.
+ * R463, request then notify: fetches the whole history's CSV and writes it as a real .csv file in the app's cache. Settings calls it
+ * from "Request history", tells the phone when it is ready, then offers the file through shareTaxCsv (Drive, Files, email), so a tax
+ * tool imports it as a file. expo-file-system + expo-sharing were added 10-08 with the release's native build.
  */
-export async function exportTaxCsv(year?: number): Promise<{ filename: string }> {
-  const { csv, filename } = await fetchTaxCsv(year);
+export async function prepareTaxCsv(): Promise<TaxFile> {
+  const { csv, filename } = await fetchTaxCsv();
   const file = new File(Paths.cache, filename);
   file.create({ overwrite: true });
   file.write(csv);
-  await shareAsync(file.uri, { mimeType: "text/csv", dialogTitle: filename, UTI: "public.comma-separated-values-text" });
-  return { filename };
+  return { uri: file.uri, filename };
 }
+
+export const shareTaxCsv = (f: TaxFile) =>
+  shareAsync(f.uri, { mimeType: "text/csv", dialogTitle: f.filename, UTI: "public.comma-separated-values-text" });
