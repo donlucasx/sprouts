@@ -8,7 +8,8 @@ import { Button } from '@/components/Button'
 import { ThemedText } from '@/components/ThemedText'
 import { Stepper, StepButtons } from '@/components/Stepper'
 import { TwoWay } from '@/components/TwoWay'
-import { api, ApiError, type ActivityResponse, type MeResponse } from '@/lib/api'
+import { api, ApiError, type MeResponse } from '@/lib/api'
+import { activityQuery } from '@/lib/activity-query'
 import { useMe, useInvalidateMe, useApplyRules } from '@/lib/me'
 import { freshSignIn } from '@/lib/signin'
 import { freshWalletSignIn } from '@/lib/reauth'
@@ -101,7 +102,7 @@ export default function Rules() {
   const [picker, setPicker] = useState<'cap' | 'plant' | null>(null)
   const [showAll, setShowAll] = useState(false)
   const { pausing, pauseError, togglePaused } = usePauseToggle()
-  const activity = useQuery({ queryKey: ['activity'], queryFn: () => api<ActivityResponse>('/api/activity') })
+  const activity = useQuery(activityQuery)
   if (!me)
     return (
       <Screen inset="top" title="Rules">

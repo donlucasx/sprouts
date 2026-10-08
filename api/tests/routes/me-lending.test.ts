@@ -13,6 +13,7 @@ vi.mock("@/lib/subscriptions", () => ({ readDelegation: vi.fn(async () => ({ exi
 vi.mock("@/lib/leash", async (orig) => ({ ...(await orig<object>()), readLeashConfig: vi.fn(async () => { throw new Error("not deployed"); }) }));
 
 import { GET as me } from "@/app/api/me/route";
+import { clearSharedReads } from "@/lib/memo";
 import { readLeashConfig, LEG_BYTES, type LeashConfig } from "@/lib/leash";
 import { readHoldings, readLendingPositions } from "@/lib/holdings";
 
@@ -34,7 +35,8 @@ describe("GET /api/me, lending (contracts 5.2)", () => {
     await repo.putCoinDay({ day, asset: "USDC_LEND", rate: null, ratePrev: null, ratePrevDays: null, priceUsd: 1, liquidityUsd: null, priceChange24h: null, tradeable: true, lastUpdateEpoch: null, ok: true });
     await repo.putSplitDay({ day, stop: "balanced", split: { SKR: 45, stORE: 0, USDC_LEND: 15, SOL_LEND: 10, hSOL: 20, cbBTC: 10 }, modelAnswer: null, why: "w", fallback: null, callId: null, venuePick: { USDC_LEND: "kamino_klend", SOL_LEND: null } });
   });
-  const get = async () => (await me(new Request("http://x/api/me", { headers: { authorization: `Bearer ${await issueSession(U, "M")}` } }))).json();
+  // These tests change venue rows and the leash config between calls: each call reads past the shared-read memo's TTL.
+  const get = async () => { clearSharedReads(); return (await me(new Request("http://x/api/me", { headers: { authorization: `Bearer ${await issueSession(U, "M")}` } }))).json() };
 
   it("positions, the aggregated holding, the two-line sign, terms and picks", async () => {
     const body = await get();

@@ -3,13 +3,13 @@ import { address } from "@solana/kit";
 import { getRepo } from "@/db/repo";
 import { rulesRowToRules } from "@/db/types";
 import { requireSession } from "@/lib/auth-guard";
-import { readPosition, sharePrice } from "@/lib/staking";
-import { priceUsd } from "@/lib/jupiter";
-import { storeBalanceRaw, storeRedeemRate } from "@/lib/store";
+import { readPosition } from "@/lib/staking";
+import { storeBalanceRaw } from "@/lib/store";
 import { readDelegation } from "@/lib/subscriptions";
-import { readHoldings, latestCoinDays, holdingsFrom, rateFacts, readLendingPositions, lendingFrom, lendHoldings, latestVenueRows } from "@/lib/holdings";
+import { readHoldings, holdingsFrom, readLendingPositions, lendingFrom, lendHoldings } from "@/lib/holdings";
 import { lendSignsFor, underlyingOutRaw, receiptOutRaw } from "@/lib/lend-view";
-import { readLeashConfig, enabledLegs, LEG_SPEC, leashLive, relinkPilot, type LeashConfig } from "@/lib/leash";
+import { enabledLegs, LEG_SPEC, leashLive, relinkPilot, type LeashConfig } from "@/lib/leash";
+import { sharedSharePrice, sharedPriceUsd, sharedStoreRedeemRate, sharedLeashConfig, sharedLatestCoinDays, sharedRateFacts, sharedLatestVenueRows } from "@/lib/shared-reads";
 import { TERMS_VERSION } from "@/lib/terms";
 import { carryMoves, moveCarriesFor } from "@/lib/moves";
 import { leashAllowedFor, userRouting } from "@/lib/user-routing";
@@ -36,22 +36,29 @@ export async function GET(request: Request) {
 
   const owner = address(user.seedVaultPubkey);
   const day = dayOf(new Date());
-  const [position, price, skrUsd, storeUsd, storeRaw, inputs, held, days, facts] = await Promise.all([
-    readPosition(owner), sharePrice(), priceUsd(SKR_MINT), priceUsd(STORE_MINT), storeBalanceRaw(owner), potInputs(repo, user), readHoldings(owner), latestCoinDays(repo, day), rateFacts(repo, day),
+  // Every read that needs only the user runs at once. Reads the same for every user (share price, coin prices, snapshot rows)
+  // come from a short server-side memo (`shared-reads`); this user's chain reads (position, balances, receipts) stay fresh.
+  // Spec 8, contracts 5.2: each lending position valued at the newest venue snapshot of the last 7 days (`latestVenueRows`):
+  // underlyingRaw = receipt x that exchange rate, floored. The rate only rises, so this never overstates what a redeem returns.
+  const [position, price, skrUsd, storeUsd, storeRaw, inputs, held, days, facts, venueRows, lendRead, carries, wallets, rules, pendingBasket, open] = await Promise.all([
+    readPosition(owner), sharedSharePrice(), sharedPriceUsd(SKR_MINT), sharedPriceUsd(STORE_MINT), storeBalanceRaw(owner), potInputs(repo, user), readHoldings(owner),
+    sharedLatestCoinDays(repo, day), sharedRateFacts(repo, day), sharedLatestVenueRows(repo, day),
+    readLendingPositions(owner).catch((e: unknown) => {
+      console.error(`/api/me: the lending receipts could not be read (${e instanceof Error ? e.message : String(e)})`);
+      return null;
+    }),
+    moveCarriesFor(repo, user.seedVaultPubkey),
+    repo.listWalletsOf(user.seedVaultPubkey), // every status, so a revoked wallet stays visible [A20]
+    repo.getRules(user.seedVaultPubkey),
+    repo.pendingWithdrawal(user.seedVaultPubkey),
+    repo.openMoveProposal(user.seedVaultPubkey),
   ]);
   const pot = potFromInputs(user, inputs, { position, sharePrice: price });
   const { plantings, legs, withdrawals } = inputs;
   const holdings = holdingsFrom({ held, legs, days, facts });
-  // Spec 8, contracts 5.2: each lending position valued at the newest venue snapshot of the last 7 days (`latestVenueRows`):
-  // underlyingRaw = receipt x that exchange rate, floored. The rate only rises, so this never overstates what a redeem returns.
-  const venueRows = await latestVenueRows(repo, day);
-  const lendRead = await readLendingPositions(owner).catch((e: unknown) => {
-    console.error(`/api/me: the lending receipts could not be read (${e instanceof Error ? e.message : String(e)})`);
-    return null;
-  });
   const lendPositions = lendRead ?? [];
   // T20: a done move carries its basis and earned to the new venue (legs are matched by (asset, venue)); history keeps the real legs.
-  const lendLegs = carryMoves(legs, await moveCarriesFor(repo, user.seedVaultPubkey));
+  const lendLegs = carryMoves(legs, carries);
   const positionsOut = lendingFrom({ positions: lendPositions, legs: lendLegs, rows: venueRows, prices: { USDC_LEND: days.USDC_LEND?.priceUsd ?? null, SOL_LEND: days.SOL_LEND?.priceUsd ?? null } });
   // Live coins only (R281, R321: a retired coin's value never reaches a total); one aggregated row per lending leg.
   const allHoldings = [...holdings.filter((h) => COINS[h.asset].live), ...lendHoldings(positionsOut)].sort((p, q) => ASSETS.indexOf(p.asset as LiveAsset) - ASSETS.indexOf(q.asset as LiveAsset));
@@ -59,47 +66,43 @@ export async function GET(request: Request) {
   const storePutInRaw = storeRaw < storePlantedRaw ? storeRaw : storePlantedRaw;   // R159: what left takes its share of the basis
   const storeEarnedRaw = holdings.find((h) => h.asset === "stORE")?.earnedUnderlyingRaw ?? 0n;
 
-  const wallets = await repo.listWalletsOf(user.seedVaultPubkey); // every status, so a revoked wallet stays visible [A20]
-  const rules = await repo.getRules(user.seedVaultPubkey);
-  const pending = (await Promise.all(wallets.map((w) => repo.unplantedSwaps(w.pubkey)))).flat().reduce((s, x) => s + x.roundupCents, 0);
-  const pendingBasket = await repo.pendingWithdrawal(user.seedVaultPubkey);
   const ledgerWallet = wallets.find((w) => w.status === "active") ?? wallets[0];
   const nextAsset = pickAsset(ledgerWallet?.ledgerCents ?? {}, rules.allocation);
-  // Queue item 12: what the delegation has actually pulled this period, so "left today" is a number the chain backs.
-  let capLeft = capLeftCents(rules.dailyCapCents, 0);
-  if (ledgerWallet) {
-    try {
-      const d = await readDelegation(address(ledgerWallet.delegationPda));
-      const periodEndMs = Number(d.periodStartTs + d.periodLengthS) * 1000;
-      const pulled = d.exists && Date.now() < periodEndMs ? Number(d.pulledInPeriodRaw / 10_000n) : 0;
-      capLeft = capLeftCents(Math.min(rules.dailyCapCents, ledgerWallet.dailyCapCents, d.exists ? Number(d.amountPerPeriodRaw / 10_000n) : rules.dailyCapCents), pulled);
-    } catch {
-      // the chain could not be read just now: the rule's limit stands, as before
-    }
-  }
+  // Contracts 5.2: legsEnabled is null for a user with no leashed wallet; [] when the leash config cannot be read (nothing is enabled we can show).
+  const leashWallets = wallets.filter((w) => w.linkModel === "leash" && w.status !== "revoked");
+  // Second wave, at once: the reads that need the wallets, the rules or the stORE basis from the first.
+  const [pending, capLeft, splitRow, leashCfg, storeRedeem] = await Promise.all([
+    Promise.all(wallets.map((w) => repo.unplantedSwaps(w.pubkey))).then((r) => r.flat().reduce((s, x) => s + x.roundupCents, 0)),
+    // Queue item 12: what the delegation has actually pulled this period, so "left today" is a number the chain backs.
+    (async () => {
+      if (!ledgerWallet) return capLeftCents(rules.dailyCapCents, 0);
+      try {
+        const d = await readDelegation(address(ledgerWallet.delegationPda));
+        const periodEndMs = Number(d.periodStartTs + d.periodLengthS) * 1000;
+        const pulled = d.exists && Date.now() < periodEndMs ? Number(d.pulledInPeriodRaw / 10_000n) : 0;
+        return capLeftCents(Math.min(rules.dailyCapCents, ledgerWallet.dailyCapCents, d.exists ? Number(d.amountPerPeriodRaw / 10_000n) : rules.dailyCapCents), pulled);
+      } catch {
+        return capLeftCents(rules.dailyCapCents, 0); // the chain could not be read just now: the rule's limit stands, as before
+      }
+    })(),
+    (async () => (await repo.getSplitDay(day, rules.stop)) ?? (await repo.latestSplitDay(rules.stop)))(),
+    leashWallets.length ? sharedLeashConfig().catch((): LeashConfig | null => null) : Promise.resolve<LeashConfig | null>(null),
+    storePutInRaw > 0n ? sharedStoreRedeemRate().catch(() => null) : Promise.resolve(null),
+  ]);
   // R281: a retired coin's planting is history the app hides; Home's rows and receipt come from live legs only.
   const legOf = (id: string) => legs.find((x) => x.plantingId === id);
   const livePlantings = plantings.filter((p) => { const l = legOf(p.id); return !l || COINS[l.asset].live; });
   const last = livePlantings[livePlantings.length - 1] ?? null; // the newest confirmed live planting, never one in flight or failed [A20]
   const lastLegs = last ? legs.filter((l) => l.plantingId === last.id) : [];
   const lastAsset = lastLegs[0]?.asset ?? "SKR";
-  const splitRow = (await repo.getSplitDay(day, rules.stop)) ?? (await repo.latestSplitDay(rules.stop));
   // K-I5: the picks and the routing sentence after THIS user's 60% venue cap (the stored pick is the stop's, before it).
   const prices = { USDC_LEND: days.USDC_LEND?.priceUsd ?? null, SOL_LEND: days.SOL_LEND?.priceUsd ?? null };
-  // Contracts 5.2: legsEnabled is null for a user with no leashed wallet; [] when the leash config cannot be read (nothing is enabled we can show).
-  const leashWallets = wallets.filter((w) => w.linkModel === "leash" && w.status !== "revoked");
-  let legsEnabled: LiveAsset[] | null = null;
-  let leashCfg: LeashConfig | null = null;
-  if (leashWallets.length) {
-    leashCfg = await readLeashConfig().catch(() => null);
-    legsEnabled = leashCfg ? [...new Set(enabledLegs(leashCfg).map((b) => LEG_SPEC[b].asset))] : [];
-  }
+  const legsEnabled: LiveAsset[] | null = leashWallets.length ? (leashCfg ? [...new Set(enabledLegs(leashCfg).map((b) => LEG_SPEC[b].asset))] : []) : null;
   // Residual O2: a leashed user is shown only venues the leash allows (the run's set).
   const routing = await userRouting({ repo, splitRow, positions: lendRead, prices, addUsd: Math.min(pending, rules.dailyCapCents) / 100, leash: leashAllowedFor(leashWallets.length > 0, leashCfg) });
   const picks = routing.picks;
   // Re-link (contracts 5.5, R287): this user's wallets still on the puller; a wallet on the leash or revoked never needs it.
   const pullerWallets = wallets.filter((w) => w.linkModel === "puller" && w.status !== "revoked");
-  const open = await repo.openMoveProposal(user.seedVaultPubkey);
   // R339 pilot: before go-live (LEASH_LIVE unset) a Seed Vault listed in RELINK_PILOT is asked to re-link its OWN wallet in the app
   // (the one leash proof, runbook D6); never a web wallet, whose link page still names the puller before go-live.
   const seedOnPuller = pullerWallets.filter((w) => w.pubkey === user.seedVaultPubkey);
@@ -110,7 +113,7 @@ export async function GET(request: Request) {
   return NextResponse.json(str({
     user: { pubkey: user.seedVaultPubkey, skrName: user.skrName, joinedAt: user.createdAt, wateredAt: user.wateredAt },
     pot: {
-      ...pot, storeRaw, storePutInRaw, storeEarnedRaw, storeRedeemRate: storePutInRaw > 0n ? await storeRedeemRate().catch(() => null) : null,
+      ...pot, storeRaw, storePutInRaw, storeEarnedRaw, storeRedeemRate: storeRedeem,
       skrUsd, storeUsd, asOf: new Date(),
     },
     holdings: allHoldings,

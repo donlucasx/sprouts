@@ -33,6 +33,8 @@ export function useMe() {
     },
     placeholderData: () => readLastMe() ?? undefined,
     retry: 1,
+    // Perf (10-08): a tab switch within 30 s shows the cached pot without a new read; later it shows it at once and refreshes.
+    staleTime: 30_000,
   });
   const { data, stale } = pickMeState(q.isPlaceholderData ? undefined : q.data, readLastMe(), q.isError);
   return {
