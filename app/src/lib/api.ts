@@ -31,6 +31,7 @@ export async function api<T>(path: string, init: { method?: "GET" | "POST" | "PU
   }
   let res: Response;
   let text: string;
+  const t0 = Date.now();
   try {
     res = await fetch(`${API_ORIGIN}${path}`, { method: init.method ?? "GET", headers, body: init.body === undefined ? undefined : JSON.stringify(init.body), signal: init.signal });
     text = await res.text();
@@ -41,6 +42,7 @@ export async function api<T>(path: string, init: { method?: "GET" | "POST" | "PU
     if (typeof __DEV__ !== "undefined" && __DEV__) console.warn(`[api] ${path} threw: ${e instanceof Error ? `${e.name}: ${e.message}` : String(e)}`);
     throw new ApiError(0, API_UNANSWERED);
   }
+  if (typeof __DEV__ !== "undefined" && __DEV__) console.log(`[api] ${init.method ?? "GET"} ${path} ${res.status} ${Date.now() - t0} ms`);
   let json: { error?: string } = {};
   if (text) {
     try {
