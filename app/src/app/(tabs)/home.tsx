@@ -3,6 +3,8 @@ import { View, Pressable, RefreshControl, Image, useWindowDimensions } from 'rea
 import { Link, Redirect, router, useFocusEffect } from 'expo-router'
 import { MaterialCommunityIcons } from '@expo/vector-icons'
 import { useMe, useInvalidateMe, toGardenInput } from '@/lib/me'
+import { useQueryClient } from '@tanstack/react-query'
+import { activityQuery } from '@/lib/activity-query'
 import { recordWatering, wateredPlantsFor } from '@/lib/last-watering'
 import { readZeroMarks } from '@/lib/zero-marks'
 import { plantLabel } from '@/lib/plant-label'
@@ -72,6 +74,11 @@ export default function Home() {
   const today = now.toDateString()
   // R351's device check, DEV builds only: the dev menu's "Grow a bud" adds a local SKR bud; the can then waters it locally (nothing is sent)
   const [devBud, setDevBud] = useState<DevBud | null>(null)
+  const queryClient = useQueryClient()
+  // Perf (10-08): Activity's list is read while Home is up, so the tab opens on data (a failed prefetch is silent; the tab reads again).
+  useEffect(() => {
+    void queryClient.prefetchQuery(activityQuery)
+  }, [queryClient])
   useEffect(() => {
     if (typeof __DEV__ !== 'undefined' && __DEV__) {
       void import('expo-dev-menu')

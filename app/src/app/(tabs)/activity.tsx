@@ -6,9 +6,10 @@ import { Screen } from '@/components/Screen'
 import { Card } from '@/components/Card'
 import { Button } from '@/components/Button'
 import { ThemedText } from '@/components/ThemedText'
-import { api, ApiError, type ActivityResponse } from '@/lib/api'
+import { ApiError } from '@/lib/api'
 import { useMe, useInvalidateMe, useApplyRules } from '@/lib/me'
 import { coinColor } from '@/lib/coin-colors'
+import { activityQuery } from '@/lib/activity-query'
 import { filterRows, foundRow, groupByDay, KIND_FILTERS, KIND_TAG, lendWithdrawalRow, mergeRows, moveRow, plantingRow, rowTime, spokenLabel, splitRow, swapRow, visibleRows, withdrawalRow, type ActivityKind, type ActivityRow } from '@/model/activity'
 import { undoSplit } from '@/lib/manager-api'
 import { radius, spacing, TARGET, useTheme } from '@/theme'
@@ -101,7 +102,7 @@ export default function Activity() {
   const { data: me } = useMe()
   const { colors } = useTheme()
   const skrUsd = me?.pot.skrUsd ?? null
-  const q = useQuery({ queryKey: ['activity'], queryFn: () => api<ActivityResponse>('/api/activity') })
+  const q = useQuery(activityQuery)
   const a = q.data
   const invalidate = useInvalidateMe()
   const applyRules = useApplyRules()

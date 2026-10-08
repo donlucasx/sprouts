@@ -74,6 +74,8 @@ export interface Repo {
   /** Oldest first. */
   listConfirmedPlantings(userPubkey: string): Promise<T.PlantingRow[]>;
   plantingLegs(plantingId: string): Promise<T.PlantingLegRow[]>;
+  /** Every leg of the given plantings in one read (no N+1), grouped in the order of `plantingIds`. */
+  plantingLegsFor(plantingIds: string[]): Promise<T.PlantingLegRow[]>;
 
   addStakeAdjustment(a: Omit<T.StakeAdjustmentRow, "id" | "ts">): Promise<void>;
   listStakeAdjustments(userPubkey: string): Promise<T.StakeAdjustmentRow[]>;
@@ -132,6 +134,8 @@ export interface Repo {
   // The Yield Manager's tables (spec 5.2, 6.7).
   putCoinDay(row: T.CoinDayRow): Promise<void>;
   getCoinDay(day: string, asset: LiveAsset): Promise<T.CoinDayRow | null>;
+  /** The rows for the given (day, asset) pairs in one read; a pair with no row is simply absent. */
+  getCoinDaysFor(keys: { day: string; asset: LiveAsset }[]): Promise<T.CoinDayRow[]>;
   /** One asset's rows from `sinceDay` on, oldest first. */
   listCoinDays(asset: LiveAsset, sinceDay: string): Promise<T.CoinDayRow[]>;
   putSplitDay(row: T.SplitDayRow): Promise<void>;

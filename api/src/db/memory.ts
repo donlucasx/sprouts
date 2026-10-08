@@ -199,6 +199,9 @@ export class MemoryRepo implements Repo {
   async plantingLegs(plantingId: string) {
     return this.legs.filter((l) => l.plantingId === plantingId);
   }
+  async plantingLegsFor(plantingIds: string[]) {
+    return plantingIds.flatMap((id) => this.legs.filter((l) => l.plantingId === id));
+  }
 
   /** Test seam (AMEND 10-04 s20, T3 review I3): the next insertPlanting fails after the planting row is written, as a Postgres legs/carry insert error would. One-shot. */
   insertFault: "legs" | "carry" | null = null;
@@ -288,6 +291,9 @@ export class MemoryRepo implements Repo {
   }
   async getCoinDay(day: string, asset: LiveAsset) {
     return this.coinDays.get(`${day}|${asset}`) ?? null;
+  }
+  async getCoinDaysFor(keys: { day: string; asset: LiveAsset }[]) {
+    return [...new Set(keys.map((k) => `${k.day}|${k.asset}`))].flatMap((k) => { const r = this.coinDays.get(k); return r ? [r] : []; });
   }
   async listCoinDays(asset: LiveAsset, sinceDay: string) {
     return [...this.coinDays.values()].filter((r) => r.asset === asset && r.day >= sinceDay).sort((a, b) => a.day.localeCompare(b.day));
