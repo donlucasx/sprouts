@@ -65,7 +65,8 @@
             }
           ]
         }
-      ]
+      ],
+      "expo-video"
     ],
     "scheme": "sprouts",
     "slug": "sprouts",

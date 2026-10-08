@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { View } from 'react-native'
+import { Text, View } from 'react-native'
 import { Redirect, router } from 'expo-router'
 import { useMobileWallet } from '@wallet-ui/react-native-kit'
 import { freshWalletSignIn } from '@/lib/reauth'
@@ -7,47 +7,59 @@ import { identity } from '@/lib/identity'
 import { Screen } from '@/components/Screen'
 import { Button } from '@/components/Button'
 import { ThemedText } from '@/components/ThemedText'
-import { Lockup } from '@/components/Lockup'
+import { Wordmark } from '@/components/Lockup'
+import { SigninSprout } from '@/components/SigninSprout'
+import { SLOGAN_LINES } from '@/lib/slogan'
 import { useSession } from '@/lib/session'
 import { signInWithSeeker } from '@/lib/signin'
 import { isSessionDropped, isWalletDeclined, SIGN_IN_DID_NOT_FINISH } from '@/lib/wallet-errors'
 import { ApiError } from '@/lib/api'
-import { spacing } from '@/theme'
-import { SLOGAN } from '@/lib/slogan'
-import { termsSummary } from '@/lib/terms'
+import { spacing, useTheme } from '@/theme'
 
-/** Welcome, the manual's specimen (section 7): the stacked lockup, the slogan under it in Albert Sans 500 at half the word size, the one button. */
+
+/** Welcome (R445, design B2 of 10-07): the swaying sprout over the wordmark, the slogan under it, the agreement and the one button. */
 export default function Welcome() {
-  const { session, setSession } = useSession()
+  const { session } = useSession()
+  if (session) return <Redirect href="/home" />
+  return <WelcomeView />
+}
+
+/** The screen itself, apart from the redirect, so a dev build can preview it signed in (src/app/dev-welcome.tsx). */
+export function WelcomeView() {
+  const { setSession } = useSession()
   const [busy, setBusy] = useState(false)
   const { disconnect } = useMobileWallet()
   const [error, setError] = useState<string | null>(null)
-  if (session) return <Redirect href="/home" />
+  const { colors } = useTheme()
   return (
     <Screen scroll={false}>
-      <View
-        style={{ flex: 1, justifyContent: 'center', alignItems: 'center', gap: spacing.xl, paddingBottom: spacing.xxl }}
-      >
-        <Lockup wordSize={40} />
-        <ThemedText variant="label" style={{ fontSize: 20, lineHeight: 28, textAlign: 'center', maxWidth: 320 }}>
-          {SLOGAN}
+      {/* 10-07 redesign (R440-R445): the sprout, the wordmark and the slogan centred in the open space (B2's spacing: the art, 32 dp,
+          the word at 48, 10 dp, the slogan); the agreement and the button held together at the bottom, all centred. */}
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <SigninSprout />
+        <View style={{ height: 32 }} />
+        <Wordmark size={48} />
+        <View style={{ height: 10 }} />
+        <ThemedText variant="label" style={{ fontSize: 19, lineHeight: 27, textAlign: 'center' }}>
+          {SLOGAN_LINES.join('\n')}
         </ThemedText>
-        {/* R283: signing in accepts the Terms; the three lines say what, the full page is one tap away */}
-        <View style={{ alignSelf: 'stretch', gap: spacing.xs }}>
-          <ThemedText variant="caption" tone="secondary">
-            By signing in you agree to the Terms and Privacy:
-          </ThemedText>
-          {termsSummary().map((l) => (
-            <ThemedText key={l} variant="caption" tone="secondary">
-              {`• ${l}`}
-            </ThemedText>
-          ))}
-          <Button title="Read the Terms and Privacy" kind="quiet" onPress={() => router.push('/terms')} style={{ alignSelf: 'flex-start' }} />
-        </View>
-        <View style={{ alignSelf: 'stretch', gap: spacing.sm, marginTop: spacing.lg }}>
-          <Button
-            title="Sign in with your Seeker"
-            loading={busy}
+      </View>
+      <View style={{ alignSelf: 'stretch', gap: spacing.md, paddingBottom: spacing.xl }}>
+        {/* R283 + R440: signing in accepts the Terms; the notice sits right above the button, the full page one tap away */}
+        <ThemedText variant="caption" tone="secondary" style={{ textAlign: 'center' }}>
+          {'By signing in you agree to the '}
+          <Text
+            accessibilityRole="link"
+            onPress={() => router.push('/terms')}
+            style={{ color: colors.accentText, textDecorationLine: 'underline' }}
+          >
+            Terms and Privacy
+          </Text>
+          .
+        </ThemedText>
+        <Button
+          title="Sign in with your Seeker"
+          loading={busy}
             onPress={async () => {
               setBusy(true)
               setError(null)
@@ -79,20 +91,16 @@ export default function Welcome() {
               }
             }}
           />
-          {busy ? (
-            <ThemedText variant="caption" tone="secondary" style={{ textAlign: 'center' }}>
-              Waiting for your Seeker.
-            </ThemedText>
-          ) : null}
-          {error ? (
-            <ThemedText tone="error" style={{ textAlign: 'center' }}>
-              {error}
-            </ThemedText>
-          ) : null}
-        </View>
-        <ThemedText variant="caption" tone="secondary" style={{ textAlign: 'center' }}>
-          No transaction, no fee. Sprouts needs a Seeker, or a Saga with its Genesis Token.
-        </ThemedText>
+        {busy ? (
+          <ThemedText variant="caption" tone="secondary" style={{ textAlign: 'center' }}>
+            Waiting for your Seeker.
+          </ThemedText>
+        ) : null}
+        {error ? (
+          <ThemedText tone="error" style={{ textAlign: 'center' }}>
+            {error}
+          </ThemedText>
+        ) : null}
       </View>
     </Screen>
   )
