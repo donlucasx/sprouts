@@ -33,11 +33,11 @@ export function WelcomeView() {
   const { colors } = useTheme()
   return (
     <Screen scroll={false}>
-      {/* 10-07 redesign (R440-R445): the sprout, the wordmark and the slogan centred in the open space (B2's spacing: the art, 32 dp,
+      {/* 10-07 redesign (R440-R445): the sprout, the wordmark and the slogan centred in the open space (B2's spacing: the art (its clip has 15 dp of paper below the soil), 17 dp,
           the word at 48, 10 dp, the slogan); the agreement and the button held together at the bottom, all centred. */}
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
         <SigninSprout />
-        <View style={{ height: 32 }} />
+        <View style={{ height: 17 }} />
         <Wordmark size={48} />
         <View style={{ height: 10 }} />
         <ThemedText variant="label" style={{ fontSize: 19, lineHeight: 27, textAlign: 'center' }}>
