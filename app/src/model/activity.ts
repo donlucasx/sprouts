@@ -148,3 +148,28 @@ export function visibleRows<T>(rows: T[], open: boolean, limit = 5): { shown: T[
   if (open || rows.length <= limit) return { shown: rows, hidden: 0 }
   return { shown: rows.slice(0, limit), hidden: rows.length - limit }
 }
+
+/** R450 (10-08): Activity as ONE list, newest first, each row tagged with its kind; the chips filter by kind. */
+export type ActivityKind = 'plant' | 'swap' | 'withdraw' | 'split' | 'move' | 'found'
+export type TaggedRow = { kind: ActivityKind; row: ActivityRow; walletAccount?: boolean }
+export const KIND_FILTERS: { value: 'all' | ActivityKind; label: string }[] = [
+  { value: 'all', label: 'All' },
+  { value: 'plant', label: 'Plant' },
+  { value: 'swap', label: 'Swap' },
+  { value: 'withdraw', label: 'Withdraw' },
+  { value: 'split', label: 'Split' },
+]
+/** The one-letter tag on each row (the colour comes from the screen). */
+export const KIND_TAG: Record<ActivityKind, string> = { plant: 'P', swap: 'S', withdraw: 'W', split: 'AI', move: 'M', found: 'F' }
+
+export function mergeRows(groups: Partial<Record<ActivityKind, { row: ActivityRow; walletAccount?: boolean }[]>>): TaggedRow[] {
+  const all: TaggedRow[] = []
+  for (const [kind, rows] of Object.entries(groups) as [ActivityKind, { row: ActivityRow; walletAccount?: boolean }[]][])
+    for (const r of rows ?? []) all.push({ kind, ...r })
+  return all.sort((x, y) => Date.parse(y.row.ts) - Date.parse(x.row.ts))
+}
+
+/** The chips: "All" keeps every kind (moves and found venues only show there). */
+export function filterRows(rows: TaggedRow[], filter: 'all' | ActivityKind): TaggedRow[] {
+  return filter === 'all' ? rows : rows.filter((r) => r.kind === filter)
+}
