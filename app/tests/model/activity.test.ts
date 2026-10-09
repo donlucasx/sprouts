@@ -180,3 +180,10 @@ describe('audit 10-08: one group per day', () => {
     expect(groups.map((g) => [g.key, g.rows.map((x) => x.key).join('')])).toEqual([['2026-10-07', 'afc'], ['2026-10-06', 'b']])
   })
 })
+
+describe('R484: a whole-dollar swap saves nothing', () => {
+  it('its row has no amount and says why, never "+$0.00, waiting to be planted"', () => {
+    const r = swapRow({ signature: 's15', ts: '2026-10-09T03:26:49Z', usdSizeCents: 1500, roundupCents: 0, plantingId: null })
+    expect(r).toMatchObject({ label: 'Swap $15.00', amount: null, details: ['No spare change on a whole-dollar swap.'] })
+  })
+})

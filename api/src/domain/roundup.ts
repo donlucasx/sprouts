@@ -36,7 +36,7 @@ export const DEFAULT_RULES: Rules = {
 };
 
 /**
- * The change a swap produces: up to the next dollar (a whole-dollar swap rounds up a full dollar, Acorns' rule),
+ * The change a swap produces: up to the next dollar; a whole-dollar swap has no spare change and saves nothing (R484, his call 10-08),
  * plus the percentage when the swap is at least the threshold. An unpriced swap (null) produces nothing.
  */
 export function computeRoundupCents(sizeCents: number | null, rules: Rules): number {
@@ -44,7 +44,7 @@ export function computeRoundupCents(sizeCents: number | null, rules: Rules): num
   let out = 0;
   if (rules.roundupOn) {
     const remainder = sizeCents % rules.roundupToCents;
-    out += remainder === 0 ? rules.roundupToCents : rules.roundupToCents - remainder;
+    out += remainder === 0 ? 0 : rules.roundupToCents - remainder;
   }
   if (rules.pctOn && sizeCents >= rules.pctThresholdCents) out += Math.floor((sizeCents * rules.pctBps) / 10_000);
   return out;

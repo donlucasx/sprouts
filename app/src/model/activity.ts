@@ -45,6 +45,8 @@ export function splitRow(s: SplitRow, i: number): ActivityRow {
 /** "Swap $10.00" and its change "+$1.00"; planted or waiting behind the tap. */
 export function swapRow(s: Swap): ActivityRow {
   const label = s.usdSizeCents === null ? 'Unpriced swap' : `Swap ${formatUsd(s.usdSizeCents)}`
+  // R484: a whole-dollar swap saves nothing; its row says so instead of "+$0.00, waiting to be planted"
+  if (s.roundupCents <= 0) return { key: s.signature, ts: s.ts, label, amount: null, details: ['No spare change on a whole-dollar swap.'], signature: s.signature }
   const change = formatUsd(s.roundupCents)
   return { key: s.signature, ts: s.ts, label, amount: `+${change}`, details: [`Change ${change}, ${s.plantingId ? 'planted' : 'waiting to be planted'}.`], signature: s.signature }
 }

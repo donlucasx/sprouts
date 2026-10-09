@@ -146,10 +146,10 @@ export function arrivalLine(readyAt: Date | string, now: Date = new Date(), capi
   return capital ? text.charAt(0).toUpperCase() + text.slice(1) : text;
 }
 
-/** The change on one swap: the distance to the next multiple of `toCents`; a whole multiple gives a whole step (R29). */
+/** The change on one swap: the distance to the next multiple of `toCents`; a whole multiple has no change (R484, the API's rule). */
 export function roundUpTo(cents: number, toCents: number): number {
   const rest = cents % toCents;
-  return rest === 0 ? toCents : toCents - rest;
+  return rest === 0 ? 0 : toCents - rest;
 }
 
 /** One linked wallet in a line: the short address, its status, its daily limit. Home and Settings say it the same way. */
