@@ -1,0 +1,185 @@
+import { describe, it, expect } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
+import { CANVAS, DRAW_ORDER, OVERLAYS, PLANTS } from "@/garden2/layout";
+import { LADDER, allStages, clampStage, composeLayers, grown, onePerPlant, paintsAt, plantAt, plantedDollars, scaleRect, stageForDollars, stagesFor, viewHeight, clampZoom2, type Planting2, type Stages } from "@/model/garden2";
+
+const ASSETS = path.resolve(__dirname, "../../assets/garden2");
+const day = (d: number, h = 12) => new Date(2026, 9, d, h);   // local time (vitest pins TZ to Los Angeles)
+const at = (d: number, asset: Planting2["asset"], cents: number, h = 12): Planting2 => ({ ts: day(d, h), asset, usdcInCents: cents });
+
+describe("the stage ladder (R484G, approved R485G)", () => {
+  it("is the approved 14 steps: $0.01 to $5 over stages 1-7, $5 to $30 over 8-14", () => {
+    expect([...LADDER]).toEqual([0.01, 0.5, 1, 1.75, 2.5, 3.5, 5, 6.45, 8.3, 10.7, 13.8, 17.8, 23, 30]);
+    expect(stageForDollars(5)).toBe(7);
+  });
+  it("counts the thresholds a coin's dollars reach, each one exactly at its threshold", () => {
+    expect(stageForDollars(0)).toBe(0);
+    expect(stageForDollars(0.009)).toBe(0);
+    LADDER.forEach((t, i) => {
+      expect(stageForDollars(t)).toBe(i + 1);
+      expect(stageForDollars(t - 0.001)).toBe(i);
+    });
+    expect(stageForDollars(30)).toBe(14);
+    expect(stageForDollars(10_000)).toBe(14);
+  });
+  it("takes another ladder (the pacing decision is open: one swappable function)", () => {
+    expect(stageForDollars(3, [1, 2, 4])).toBe(2);
+    expect(onePerPlant("mandarin", 1, allStages(0))).toBe(3);
+  });
+});
+
+describe("stages from plantings (planted dollars, R458's end of day)", () => {
+  const now = day(10, 9);
+  it("is 0 everywhere before any planting", () => {
+    expect(stagesFor({ plantings: [], now, wateredAt: null })).toEqual(allStages(0));
+  });
+  it("maps each coin to its plant (layout.json's coins) and sums its dollars", () => {
+    const plantings = [at(5, "SKR", 30), at(6, "SKR", 30), at(5, "stORE", 100), at(5, "hSOL", 175), at(5, "USDC_LEND", 250), at(5, "SOL_LEND", 500), at(5, "cbBTC", 3000)];
+    expect(stagesFor({ plantings, now, wateredAt: null })).toEqual({ mandarin: 2, store: 3, pothos: 4, azalea: 5, maple: 7, orchid: 14 });
+  });
+  it("a planting grows at the end of its local day, or earlier once a watering opened it", () => {
+    const today = at(10, "SKR", 100, 8);
+    expect(grown(today, now, null)).toBe(false);
+    expect(grown(today, day(10, 23), null)).toBe(false);
+    expect(grown(today, day(11, 0), null)).toBe(true);
+    expect(grown(today, now, day(10, 8))).toBe(true);
+    expect(stagesFor({ plantings: [today], now, wateredAt: null }).mandarin).toBe(0);
+    expect(stagesFor({ plantings: [today], now: day(11, 0), wateredAt: null }).mandarin).toBe(3);
+  });
+  it("a planted coin shows at least stage 1 (a legacy row with no dollar leg), never above 14", () => {
+    expect(stagesFor({ plantings: [at(5, "stORE", 0)], now, wateredAt: null }).store).toBe(1);
+    expect(stagesFor({ plantings: [at(5, "cbBTC", 99_999)], now, wateredAt: null }).orchid).toBe(14);
+  });
+  it("counts dollars put in only (no price input exists), never a negative leg", () => {
+    const { dollars, planted } = plantedDollars([at(5, "hSOL", 120), at(6, "hSOL", -50)], now, null);
+    expect(dollars.pothos).toBeCloseTo(1.2, 9);
+    expect([...planted]).toEqual(["pothos"]);
+  });
+  it("uses the pacing it is given", () => {
+    const skrLeads = (p: string, d: number) => (p === "mandarin" ? 14 : stageForDollars(d));
+    expect(stagesFor({ plantings: [at(5, "SKR", 1), at(5, "SOL_LEND", 1)], now, wateredAt: null }, skrLeads)).toMatchObject({ mandarin: 14, maple: 1 });
+  });
+});
+
+describe("clampStage", () => {
+  it("keeps a tree at 0 (nothing drawn) and every stage inside the plant's range", () => {
+    expect(clampStage("mandarin", 0)).toBe(0);
+    expect(clampStage("store", -3)).toBe(0);
+    expect(clampStage("maple", -3)).toBe(0);
+    expect(clampStage("orchid", 22)).toBe(14);
+    expect(clampStage("azalea", 6.6)).toBe(7);
+    expect(clampStage("pothos", Number.NaN)).toBe(0);
+  });
+});
+
+describe("the layer plan (draw order and positions from the approved export)", () => {
+  const keys = (s: Partial<Stages>) => composeLayers(s).map((l) => (l.kind === "plant" ? `${l.key}${l.stage}` : l.key));
+  it("draws plate, then the plants back to front, the stand right after stORE and the cords right before the pothos", () => {
+    expect(DRAW_ORDER).toEqual(["maple", "store", "mandarin", "pothos", "orchid", "azalea"]);
+    expect(keys(allStages(14))).toEqual(["plate", "maple14", "store14", "stand", "mandarin14", "cords", "pothos14", "orchid14", "azalea14"]);
+  });
+  it("before any planting: no trees, the companions' bare ground, the stand and cords still drawn", () => {
+    expect(keys(allStages(0))).toEqual(["plate", "maple0", "stand", "cords", "pothos0", "orchid0", "azalea0"]);
+    expect(keys({})).toEqual(keys(allStages(0)));
+  });
+  it("places every plant at its export box, the plate over the whole 1328 x 896 canvas", () => {
+    expect(CANVAS).toEqual({ w: 1328, h: 896 });
+    const L = composeLayers(allStages(14));
+    expect(L[0]).toMatchObject({ kind: "plate", x: 0, y: 0, w: 1328, h: 896 });
+    expect(L.find((l) => l.key === "maple")).toMatchObject({ x: 597, y: 446, w: 276, h: 263 });
+    expect(L.find((l) => l.key === "store")).toMatchObject({ x: 618, y: 5, w: 639, h: 708 });
+    expect(L.find((l) => l.key === "mandarin")).toMatchObject({ x: 143, y: 35, w: 637, h: 705 });
+    expect(L.find((l) => l.key === "pothos")).toMatchObject({ x: 1126, y: 381, w: 204, h: 260 });
+    expect(L.find((l) => l.key === "orchid")).toMatchObject({ x: 928, y: 478, w: 265, h: 384 });
+    expect(L.find((l) => l.key === "azalea")).toMatchObject({ x: 71, y: 532, w: 319, h: 287 });
+    expect(L.find((l) => l.key === "stand")).toMatchObject({ x: OVERLAYS.stand.x, y: OVERLAYS.stand.y });
+  });
+  it("scales every rect by one factor, the view keeping the canvas aspect", () => {
+    expect(viewHeight(1328)).toBe(896);
+    expect(viewHeight(412)).toBeCloseTo(277.976, 3);
+    expect(scaleRect({ x: 597, y: 446, w: 276, h: 263 }, 664)).toEqual({ x: 298.5, y: 223, w: 138, h: 131.5 });
+  });
+});
+
+/** A WebP file's pixel size from its header (VP8 lossy, VP8L lossless, VP8X extended). */
+function webpSize(file: string): { w: number; h: number } {
+  const b = fs.readFileSync(file);
+  expect(b.toString("ascii", 0, 4)).toBe("RIFF");
+  const kind = b.toString("ascii", 12, 16);
+  if (kind === "VP8X") return { w: 1 + b.readUIntLE(24, 3), h: 1 + b.readUIntLE(27, 3) };
+  if (kind === "VP8L") { const v = b.readUInt32LE(21); return { w: (v & 0x3fff) + 1, h: ((v >> 14) & 0x3fff) + 1 }; }
+  return { w: b.readUInt16LE(26) & 0x3fff, h: b.readUInt16LE(28) & 0x3fff };
+}
+const pngSize = (file: string) => { const b = fs.readFileSync(file); return { w: b.readUInt32BE(16), h: b.readUInt32BE(20) }; };
+
+describe("the bundled layers", () => {
+  it("has one layer per stage in each plant's range, cut to its box", () => {
+    let n = 0;
+    for (const p of DRAW_ORDER) for (let s = PLANTS[p].first; s <= PLANTS[p].last; s++, n++) {
+      expect(webpSize(path.join(ASSETS, p, `stage${String(s).padStart(2, "0")}.webp`))).toEqual({ w: PLANTS[p].w, h: PLANTS[p].h });
+    }
+    expect(n).toBe(88);
+  });
+  it("has the plate at canvas size and each overlay at its box", () => {
+    expect(pngSize(path.join(ASSETS, "plate.png"))).toEqual({ w: 1328, h: 896 });
+    for (const k of ["stand", "cords"] as const) expect(pngSize(path.join(ASSETS, OVERLAYS[k].file))).toEqual({ w: OVERLAYS[k].w, h: OVERLAYS[k].h });
+  });
+  it("requires every layer in sources.ts", () => {
+    const src = fs.readFileSync(path.resolve(__dirname, "../../src/garden2/sources.ts"), "utf8");
+    for (const p of DRAW_ORDER) for (let s = PLANTS[p].first; s <= PLANTS[p].last; s++) expect(src).toContain(`assets/garden2/${p}/stage${String(s).padStart(2, "0")}.webp`);
+  });
+});
+
+describe("tap a plant (R483G): the front-most painted plant", () => {
+  const full = allStages(14);
+  it("finds nothing in the empty sky or on the bare sand", () => {
+    expect(plantAt(full, 5, 5)).toBeNull();
+    expect(plantAt(full, 1300, 880)).toBeNull();
+    expect(plantAt(full, 657, 760)).toBeNull();   // the raked sand below the maple
+  });
+  it("where two plants overlap, the one drawn later wins", () => {
+    let both: [number, number] | null = null;
+    for (let x = 618; x < 780 && !both; x += 8) for (let y = 40; y < 700 && !both; y += 8) if (paintsAt("store", 14, x, y) && paintsAt("mandarin", 14, x, y)) both = [x, y];
+    expect(both).not.toBeNull();
+    expect(plantAt(full, both![0], both![1])).toBe("mandarin");
+    expect(plantAt({ ...full, mandarin: 0 }, both![0], both![1])).toBe("store");
+  });
+  it("hits each plant at the centre of its painted area, and never a tree at stage 0", () => {
+    for (const p of DRAW_ORDER) {
+      const b = PLANTS[p];
+      let hit = 0;
+      for (let x = b.x; x < b.x + b.w; x += 8) for (let y = b.y; y < b.y + b.h; y += 8) if (plantAt(full, x, y) === p) hit++;
+      expect(hit, p).toBeGreaterThan(20);
+    }
+    const none = allStages(0);
+    for (let x = 0; x < CANVAS.w; x += 16) for (let y = 0; y < CANVAS.h; y += 16) expect(["mandarin", "store"]).not.toContain(plantAt(none, x, y));
+  });
+});
+
+describe("the hit grid follows the layer's own paint", () => {
+  // opaque (alpha >= 128) bounding boxes measured on the export's webps, canvas px (brand/garden2/app-export, 10-09)
+  const painted: [Parameters<typeof paintsAt>[0], number, [number, number, number, number]][] = [
+    ["mandarin", 1, [262, 555, 692, 709]], ["store", 1, [830, 540, 1096, 661]], ["maple", 1, [634, 538, 833, 632]],
+    ["orchid", 0, [944, 685, 1176, 845]], ["pothos", 14, [1142, 405, 1296, 624]],
+  ];
+  it.each(painted)("%s stage %i hits only inside its painted bounds (one cell of slack) and fills them", (p, s, [x0, y0, x1, y1]) => {
+    const b = PLANTS[p];
+    let inside = 0;
+    for (let x = b.x; x < b.x + b.w; x += 4) for (let y = b.y; y < b.y + b.h; y += 4) {
+      if (!paintsAt(p, s, x, y)) continue;
+      expect(x >= x0 - 16 && x <= x1 + 16 && y >= y0 - 16 && y <= y1 + 16, `${p}${s} at ${x},${y}`).toBe(true);
+      inside++;
+    }
+    expect(inside).toBeGreaterThan(((x1 - x0) * (y1 - y0)) / 16 / 8);
+    expect(paintsAt(p, s, b.x - 1, b.y + 10)).toBe(false);
+  });
+});
+
+describe("pinch zoom (R487G)", () => {
+  it("is capped at 1.5x and never below the fitted view", () => {
+    expect(clampZoom2(3)).toBe(1.5);
+    expect(clampZoom2(1.2)).toBe(1.2);
+    expect(clampZoom2(0.5)).toBe(1);
+  });
+});

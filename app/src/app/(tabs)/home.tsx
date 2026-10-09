@@ -9,7 +9,10 @@ import { recordWatering, wateredPlantsFor } from '@/lib/last-watering'
 import { readZeroMarks } from '@/lib/zero-marks'
 import { plantLabel } from '@/lib/plant-label'
 import { api } from '@/lib/api'
-import { buildScene } from '@/model/garden'
+import { buildScene, PLANT_OF } from '@/model/garden'
+import { ASSET_OF_PLANT, stagesFor } from '@/model/garden2'
+import { Garden2 } from '@/garden2/Garden2'
+import { GARDEN2 } from '@/garden2/flag'
 import { withDevBud, type DevBud } from '@/lib/dev-bud'
 import { frameFor, skyAbove, valuePull } from '@/model/layout'
 import { packScene } from '@/model/spread'
@@ -62,7 +65,7 @@ const RECEIPT_SLOP = spacing.sm
 
 export default function Home() {
   const { setSession } = useSession()
-  const { colors } = useTheme()
+  const { colors, dark } = useTheme()
   const { data: me, stale, fresh, refetch, asOf, loading, unauthorized } = useMe()
   const invalidate = useInvalidateMe()
   const [failed, setFailed] = useState(false)
@@ -86,21 +89,26 @@ export default function Home() {
           registerDevMenuItems([
             { name: 'Grow a bud (SKR, local)', callback: () => setDevBud({ budAt: new Date(Date.now() - 1000), wateredAt: null }), shouldCollapse: true },
             { name: 'Clear the dev bud', callback: () => setDevBud(null), shouldCollapse: true },
+            { name: 'Garden2 stages', callback: () => router.push('/dev-garden2'), shouldCollapse: true },
           ]),
         )
         .catch(() => {})
     }
   }, [])
-  const scene = useMemo(
-    () => (me ? buildScene(withDevBud(toGardenInput(me, now, wateredPlantsFor(me.user.wateredAt), readZeroMarks()), devBud)) : null),
+  const input = useMemo(
+    () => (me ? withDevBud(toGardenInput(me, now, wateredPlantsFor(me.user.wateredAt), readZeroMarks()), devBud) : null),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `now` is taken once per render on purpose; the scene follows the local date
     [me, today, devBud],
   )
+  const scene = useMemo(() => (input ? buildScene(input) : null), [input])
+  // Garden2 (behind GARDEN2): each coin's stage from its planted dollars (model/garden2.ts stagesFor, the R484G ladder)
+  const stages = useMemo(() => (input && GARDEN2 ? stagesFor(input) : null), [input])
   // R356, R357 (10-05, the gap above the garden tightened "a bit", then "by another half"): the garden pulled up under the value block
   // into its own empty sky, never closer than SKY_KEEP to its tallest part (layout.ts valuePull); framed as Garden.tsx frames it
   const { width: screenW } = useWindowDimensions()
   const pull = useMemo(() => {
     if (!scene) return spacing.lg
+    if (GARDEN2) return 0 // Garden2's plate keeps its own paper sky above the trees
     const packed = packScene(scene), plants = plantLayouts(packed)
     return valuePull(skyAbove(plants, frameFor(packed, plants, screenW - 2 * spacing.edge)))
   }, [scene, screenW])
@@ -169,7 +177,7 @@ export default function Home() {
   // R186: the Next planting row draws inside the garden (directly under it, the can at its bar's end). R199: the line rides in that
   // row too, tucked into the paper under the bar beside the can (WatcherLine's `tuck`).
   const watcher = watcherLine({
-    unrevealed: scene.unrevealed,
+    unrevealed: GARDEN2 ? 0 : scene.unrevealed, // Garden2 has no can and no buds to water (R458: growth needs no action)
     failed,
     nudged,
   })
@@ -277,6 +285,20 @@ export default function Home() {
           </ThemedText>
         ) : null}
       </View>
+      {GARDEN2 && stages ? (
+        <>
+          {/* Light: full bleed (the plate's paper is the page's); dark: a paper card inside the screen's gutters (Garden2.tsx) */}
+          <View style={{ marginHorizontal: dark ? 0 : -spacing.edge }}>
+            <Garden2
+              stages={stages}
+              width={dark ? screenW - 2 * spacing.edge : screenW}
+              labelFor={(p) => plantLabel(me, PLANT_OF[ASSET_OF_PLANT[p]], false)}
+            />
+          </View>
+          <NextPlanting row={nextRow} pendingCents={me.nextPlanting.pendingCents} thresholdCents={me.nextPlanting.thresholdCents} />
+          {watcher.line ? <WatcherLine text={watcher.line} /> : null}
+        </>
+      ) : (
       <Garden
         scene={scene}
         labelFor={(plant, bud) => plantLabel(me, plant, bud)}
@@ -301,7 +323,8 @@ export default function Home() {
           </>
         )}
       />
-      {watcher.line ? receipt() : null}
+      )}
+      {watcher.line || GARDEN2 ? receipt() : null}
       {/* R199: one small step more than the screen's gap before the coins card, so the garden section reads as one block above it. */}
       {/* R236 (10-04, his note): closer under the Last planting row; the row's own touch height already leaves room */}
       <Card style={{ marginTop: -spacing.xs }}>
