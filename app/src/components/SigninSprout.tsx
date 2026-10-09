@@ -45,6 +45,12 @@ function SproutClip({ source }: { source: number }) {
     })
     return () => sub.remove()
   }, [player])
+  // Device 10-08 (his note): after a sign-out the sprout stood still. The screen mounts mid-navigation, and the play() in the setup
+  // can land before the clip is loaded; play again once it is ready, and whenever it stops while this screen is up.
+  const { status } = useEvent(player, 'statusChange', { status: player.status })
+  useEffect(() => {
+    if (status === 'readyToPlay' && !isPlaying) player.play()
+  }, [status, isPlaying, player])
   return (
     <VideoView
       player={player}
