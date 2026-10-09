@@ -191,4 +191,68 @@ describe("reconcileOwnStakes (R61, [A16])", () => {
     expect(r.deferred).toEqual([]);
     expect((await repo.listStakeAdjustments("U")).map((x) => x.kind)).toEqual(["own_unstake", "own_stake"]);
   });
+  // R499 audit F1: a cancel has no time of its own and can land any time in the cooldown; recency on the unstake's time missed it.
+  it("a cancel of a 30-hour-old pick not yet finalized defers the user: the restored shares are not booked as a wallet unstake", async () => {
+    const repo = new MemoryRepo();
+    await repo.upsertUser({ seedVaultPubkey: "U", sgtMint: "M", skrName: null });
+    await repo.setJoinedPosition("U", { shares: 1_000_000_000n, sharePrice: SP });
+    const w = await repo.insertWithdrawal({ userPubkey: "U", asset: "SKR", source: "sprouts", unstakeSignature: "x", sharesUnstaked: 100_000_000n, amountRaw: 114_600_000n, principalRaw: 0n });
+    await repo.setWithdrawalCancelled(w.id, "c");
+    let asked: string[] = [];
+    // The finalized read still shows the pick: 900M shares, its cooldown open.
+    const chain = { ...chainAt(900_000_000n, 114_600_000n), finalized: async (sigs: string[]) => { asked = sigs; return false; } };
+    const r = await reconcileOwnStakes({ repo, now: new Date(w.unstakeTs.getTime() + 30 * 3_600_000), chain });
+    expect(r.deferred).toEqual(["U"]);
+    expect(asked).toEqual(["c"]);
+    expect(await repo.listStakeAdjustments("U")).toEqual([]);
+    expect((await repo.listWithdrawals("U", 5)).filter((x) => x.source === "wallet")).toEqual([]);
+  });
+
+  // R499 audit F2: a planting left `sent` may have landed; the ledger does not count it yet, so the chain's extra shares are not the user's.
+  it("a planting still marked sent defers the user without reading the chain", async () => {
+    const repo = await seeded(1_000_000_000n);
+    await repo.insertPlanting({ userPubkey: "U", walletPubkey: "W", signature: "s2", usdcPulledCents: 50, networkFeeCents: 0, status: "sent", aiLine: null }, []);
+    let reads = 0;
+    const chain = { ...chainAt(1_500_000_000n), readPosition: async () => { reads++; return { shares: 1_500_000_000n, stakedRaw: 0n, unstakingRaw: 0n, unstakeTs: null }; } };
+    const r = await reconcileOwnStakes({ repo, now: LATER, chain });
+    expect(r.deferred).toEqual(["U"]);
+    expect(reads).toBe(0);
+    expect(await repo.listStakeAdjustments("U")).toEqual([]);
+  });
+
+  // R499 audit F3: a pick posted while the reconcile waited or read is counted once by the chain and once by the ledger.
+  it("a ledger that moves during the read defers the user", async () => {
+    const repo = await seeded(1_000_000_000n);
+    const chain = {
+      ...chainAt(900_000_000n, 114_600_000n),
+      readPosition: async () => {
+        await repo.insertWithdrawal({ userPubkey: "U", asset: "SKR", source: "sprouts", unstakeSignature: "x", sharesUnstaked: 100_000_000n, amountRaw: 114_600_000n, principalRaw: 0n });
+        return { shares: 900_000_000n, stakedRaw: 0n, unstakingRaw: 114_600_000n, unstakeTs: 1n };
+      },
+    };
+    const r = await reconcileOwnStakes({ repo, now: LATER, chain });
+    expect(r.deferred).toEqual(["U"]);
+    expect(await repo.listStakeAdjustments("U")).toEqual([]);
+    expect((await repo.listWithdrawals("U", 5)).filter((x) => x.source === "wallet")).toEqual([]);
+  });
+
+  // R499 audit F4: the route's time limit. Past the deadline nobody is started; the finality wait never runs past it.
+  it("past the deadline every user is deferred without a read", async () => {
+    const repo = await seeded(1_000_000_000n);
+    let reads = 0;
+    const chain = { ...chainAt(1_500_000_000n), readPosition: async () => { reads++; return { shares: 1_500_000_000n, stakedRaw: 0n, unstakingRaw: 0n, unstakeTs: null }; } };
+    const r = await reconcileOwnStakes({ repo, now: LATER, deadlineMs: Date.now() - 1, chain });
+    expect(r.deferred).toEqual(["U"]);
+    expect(reads).toBe(0);
+  });
+
+  it("the finality wait is capped by the time left before the deadline", async () => {
+    const repo = await seeded(1_000_000_000n);
+    const p = (await repo.listConfirmedPlantings("U"))[0];
+    let waited = -1;
+    const chain = { ...chainAt(1_000_000_000n), finalized: async (_s: string[], waitMs: number) => { waited = waitMs; return true; } };
+    await reconcileOwnStakes({ repo, now: new Date(p.ts.getTime() + 4_000), deadlineMs: Date.now() + 5_000, chain });
+    expect(waited).toBeGreaterThan(0);
+    expect(waited).toBeLessThanOrEqual(5_000);
+  });
 });

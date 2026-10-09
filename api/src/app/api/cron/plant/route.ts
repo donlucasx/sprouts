@@ -8,10 +8,11 @@ import { rpc } from "@/lib/rpc";
 import { runPlanting, type Chain } from "@/lib/plant-run";
 import { runWithdrawCrank } from "@/lib/withdraw-run";
 import { readDelegation, usdcAta } from "@/lib/subscriptions";
-import { buildPlantingTx, simulatePlanting, sendPlanting, signatureStatus, signaturesFinalized, pullerSkrChangeRaw, pullerTokenChangeRaw, cleanupPlanting, type BuiltPlanting } from "@/lib/planting";
+import { buildPlantingTx, simulatePlanting, sendPlanting, signatureStatus, pullerSkrChangeRaw, pullerTokenChangeRaw, cleanupPlanting, type BuiltPlanting } from "@/lib/planting";
 import { readLeashConfig, priceSourceFor, type LeashLegByte } from "@/lib/leash";
 import { readPosition, crankWithdraw, sharePrice } from "@/lib/staking";
 import { reconcileOwnStakes } from "@/lib/reconcile";
+import { signaturesFinalized } from "@/lib/finality";
 import { snapshotCoins, IMPACT_LIMIT_PCT, type CoinReads } from "@/lib/coin-data";
 import { snapshotVenues, scoutYields, realVenueReads } from "@/lib/venues/rates";
 import { chainTxStatus, movesEnabled, proposeMoves } from "@/lib/moves";
@@ -141,7 +142,8 @@ export async function GET(request: Request) {
     const planting = await runPlanting({ repo, now, chain: realChain(), deadlineMs: startedMs + 240_000 });
     const withdrawals = await runWithdrawCrank({ repo, now, chain: { readPosition: (u) => readPosition(address(u)), crankWithdraw: (u) => crankWithdraw(address(u)) } });
     // R61: stakes and unstakes the Seed Vault made from its own wallet, found by comparing the chain's share count with the ledger's.
-    const reconciled = await reconcileOwnStakes({ repo, now: new Date(), chain: { readPosition: (u) => readPosition(address(u), "finalized"), sharePrice, finalized: (sigs) => signaturesFinalized(sigs, 30_000) } });
+    // R499 F4: the reconcile stops starting users 15 s before the route's 300 s limit, so the cleanup and the keepalive always run.
+    const reconciled = await reconcileOwnStakes({ repo, now: new Date(), deadlineMs: startedMs + 285_000, chain: { readPosition: (u) => readPosition(address(u), "finalized"), sharePrice, finalized: signaturesFinalized } });
     await repo.cleanupExpired();
     // The first production run (2026-09-28) planted and then answered 500 here: reading rules for a made-up user violates the
     // rules -> users foreign key. The keepalive is now a read that needs no row.
