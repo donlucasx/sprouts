@@ -18,9 +18,9 @@ describe("format", () => {
     expect(formatAsOf(new Date("2026-09-27T09:41:00-07:00"), now)).toBe("as of yesterday 9:41 AM");
     expect(formatAsOf(new Date("2026-09-20T09:41:00-07:00"), now)).toBe("as of Sep 20");
   });
-  it("round up to the next dollar: a whole dollar rounds up a whole dollar", () => {
+  it("round up to the next dollar: a whole dollar has no change (R484)", () => {
     expect(roundUpTo(117, 100)).toBe(83);
-    expect(roundUpTo(2000, 100)).toBe(100);
+    expect(roundUpTo(2000, 100)).toBe(0);
   });
 });
 
