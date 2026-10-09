@@ -7,6 +7,9 @@
 import { address } from "@solana/kit";
 import { createClient } from "@supabase/supabase-js";
 import { readPosition } from "../src/lib/staking";
+import { writeFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const send = process.argv.includes("--send");
 const db = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_KEY!, { auth: { persistSession: false } });
@@ -46,6 +49,15 @@ if (chain - expected <= -10_000n || chain - expected >= 10_000n) fail("the books
 
 console.log(`to delete: withdrawal ${WITHDRAWAL} (wallet, skipped, ${row.amount_raw} raw SKR); adjustments ${[...pairIds].join(", ")}`);
 if (!send) { console.log("dry run: add --send to write"); process.exit(0); }
-if (pairIds.size > 0) must(await db.from("stake_adjustments").delete().in("id", [...pairIds]).select("id"));
-must(await db.from("withdrawals").delete().eq("id", WITHDRAWAL).select("id"));
+// The rows as they stand, kept beside this script before anything is deleted (audit F7). Run away from the 7 AM cron window.
+const backup = path.join(path.dirname(fileURLToPath(import.meta.url)), `repair-r499-backup-${Date.now()}.json`);
+writeFileSync(backup, JSON.stringify({ withdrawal: row, adjustments: adj }, null, 2));
+console.log(`backup of the rows: ${backup}`);
+if (pairIds.size > 0) {
+  const gone = must(await db.from("stake_adjustments").delete().in("id", [...pairIds]).select("id"));
+  if (gone.length !== pairIds.size) fail(`deleted ${gone.length} of ${pairIds.size} adjustments; rerun to finish`);
+}
+const goneW = must(await db.from("withdrawals").delete().eq("id", WITHDRAWAL).select("id"));
+if (goneW.length !== 1) fail(`the withdrawal delete removed ${goneW.length} rows; rerun to finish`);
+// The withdraw_skipped event (10-09 14:12 UTC) still names this withdrawal id; events are a log and nothing joins on it.
 console.log("done: removed the phantom withdrawal and the adjustment pair; rerun without --send to confirm 'already repaired'");

@@ -44,3 +44,6 @@ spikes/keys/
 
 # local run logs (scheduled plantings etc.)
 *.log
+
+# R499 repair: row backups written before deletes (production data)
+spikes/repair-r499-backup-*.json
