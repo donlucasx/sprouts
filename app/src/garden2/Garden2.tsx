@@ -15,7 +15,7 @@ import { ThemedText } from '@/components/ThemedText'
 import { radius, spacing, useTheme } from '@/theme'
 import { pinchOffset } from '@/model/motion'
 import { CANVAS } from './layout'
-import { OVERLAY_SRC, OVERLAY_SRC_DARK, PLATE, PLATE_DARK, STAGE_SRC, STAGE_SRC_DARK } from './sources'
+import { FRUIT_SRC, OVERLAY_SRC, OVERLAY_SRC_DARK, PLATE, PLATE_DARK, STAGE_SRC, STAGE_SRC_DARK } from './sources'
 import {
   clampZoom2,
   composeLayers,
@@ -23,6 +23,7 @@ import {
   plantAt,
   scaleRect,
   viewHeight,
+  type Fruit,
   type Layer,
   type Plant2,
   type Stages,
@@ -44,7 +45,9 @@ const sourceOf = (l: Layer, night: boolean) =>
       : PLATE
     : l.kind === 'overlay'
       ? (night && OVERLAY_SRC_DARK[l.key]) || OVERLAY_SRC[l.key]
-      : (night && STAGE_SRC_DARK[l.key]?.[l.stage]) || STAGE_SRC[l.key][l.stage]
+      : l.kind === 'fruit'
+        ? FRUIT_SRC[l.key]
+        : (night && STAGE_SRC_DARK[l.key]?.[l.stage]) || STAGE_SRC[l.key][l.stage]
 
 /**
  * Garden2 (R508G): the painted garden composed from the approved mockup v8 at the canvas aspect (1328 x 896), `width` wide: the
@@ -57,10 +60,13 @@ const sourceOf = (l: Layer, night: boolean) =>
  */
 export function Garden2({
   stages,
+  fruit,
   width,
   labelFor,
 }: {
   stages: Stages
+  /** R533: the trees' earned fruit (mandarin) and flowers (store); none drawn when absent. */
+  fruit?: Fruit
   width: number
   labelFor?: (plant: Plant2) => string[]
 }) {
@@ -73,8 +79,8 @@ export function Garden2({
   const k = width / CANVAS.w
   const h = viewHeight(width) - top * k
   const layers = useMemo(
-    () => composeLayers(stages).map((l) => ({ ...scaleRect(l, width), y: (l.y - top) * (width / CANVAS.w) })),
-    [stages, width, top],
+    () => composeLayers(stages, fruit).map((l) => ({ ...scaleRect(l, width), y: (l.y - top) * (width / CANVAS.w) })),
+    [stages, fruit, width, top],
   )
 
   const ps = useSharedValue(1),
@@ -148,7 +154,7 @@ export function Garden2({
           <Animated.View style={[{ width, height: h, transformOrigin: [0, 0, 0] }, zoomed]}>
             {layers.map((l) => (
               <Image
-                key={l.kind === 'plant' ? `p-${l.key}` : l.key}
+                key={l.kind === 'plant' ? `p-${l.key}` : l.kind === 'fruit' ? `f-${l.key}-${l.index}` : l.key}
                 source={sourceOf(l, night)}
                 fadeDuration={0}
                 style={{ position: 'absolute', left: l.x, top: l.y, width: l.w, height: l.h }}

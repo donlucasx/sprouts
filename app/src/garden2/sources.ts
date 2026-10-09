@@ -114,6 +114,12 @@ export const STAGE_SRC: Record<Plant2, Record<number, number>> = {
   },
 }
 
+/** R533: the trees' earnings sprites, one per tree (the ripe mandarin, the open ORE-gold flower). */
+export const FRUIT_SRC = {
+  mandarin: require('../../assets/garden2/mandarin-fruit.png'),
+  store: require('../../assets/garden2/store-fruit.png'),
+} as const
+
 /** R529 dark mode: the dark plate (null until one is exported) and any dark variants of overlays and stage layers. */
 export const PLATE_DARK: number | null = null
 export const OVERLAY_SRC_DARK: Partial<Record<'stand' | 'cords', number>> = {

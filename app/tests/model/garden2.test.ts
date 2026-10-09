@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { CANVAS, DRAW_ORDER, OVERLAYS, PLANTS } from "@/garden2/layout";
-import { FRAME_PAD, frameTop, paintedTop, LADDER, allStages, clampStage, composeLayers, onePerPlant, paintsAt, plantAt, plantedDollars, scaleRect, stageForDollars, stagesFor, viewHeight, clampZoom2, type Pick2, type Planting2, type Stages } from "@/model/garden2";
+import { CANVAS, DRAW_ORDER, OVERLAYS, PLANTS, SPOTS } from "@/garden2/layout";
+import { FRAME_PAD, frameTop, paintedTop, LADDER, allStages, clampStage, composeLayers, onePerPlant, paintsAt, plantAt, plantedDollars, scaleRect, stageForDollars, stagesFor, viewHeight, clampZoom2, fruitOn, FRUIT_FROM, type Pick2, type Planting2, type Stages } from "@/model/garden2";
 
 const ASSETS = path.resolve(__dirname, "../../assets/garden2");
 const day = (d: number, h = 12) => new Date(2026, 9, d, h);   // local time (vitest pins TZ to Los Angeles)
@@ -224,3 +224,34 @@ describe("the frame grows with the garden (R525)", () => {
   });
 });
 
+
+describe("the trees' fruit and flowers (R533, R547-R549)", () => {
+  it("R548: no mandarin fruit before stage 8, whatever was earned", () => {
+    expect(FRUIT_FROM.mandarin).toBe(8);
+    for (let s = 0; s < 8; s++) expect(fruitOn("mandarin", s, 12)).toEqual([]);
+    expect(fruitOn("mandarin", 8, 12).length).toBe(SPOTS.mandarin[8]!.at.length);
+  });
+  it("draws min(count, the stage's spots), none at 0 earned, and stORE only where its stage has spots", () => {
+    expect(fruitOn("mandarin", 14, 0)).toEqual([]);
+    expect(fruitOn("mandarin", 14, 3).length).toBe(3);
+    expect(fruitOn("mandarin", 14, 40).length).toBe(SPOTS.mandarin[14]!.at.length);
+    expect(fruitOn("store", 5, 12)).toEqual([]);
+    expect(fruitOn("store", 6, 12).length).toBe(SPOTS.store[6]!.at.length);
+  });
+  it("each sprite is 2r square, centred on its spot in the tree's box (the board's size)", () => {
+    const [f] = fruitOn("store", 14, 1), sp = SPOTS.store[14]!;
+    expect(f!.w).toBe(sp.r * 2);
+    expect(f!.x + f!.w / 2).toBeCloseTo(PLANTS.store.x + sp.at[0]![0]);
+    expect(f!.y + f!.h / 2).toBeCloseTo(PLANTS.store.y + sp.at[0]![1]);
+  });
+  it("the fruit draws right after its tree: flowers before the stand (pole in front), mandarins before the pothos", () => {
+    const keys = composeLayers(allStages(14), { mandarin: 2, store: 2 }).map((l) => (l.kind === "fruit" ? `f-${l.key}` : l.key));
+    expect(keys.indexOf("f-store")).toBe(keys.indexOf("store") + 1);
+    expect(keys.indexOf("f-store")).toBeLessThan(keys.indexOf("stand"));
+    expect(keys.indexOf("f-mandarin")).toBe(keys.indexOf("mandarin") + 1);
+    expect(composeLayers(allStages(14)).some((l) => l.kind === "fruit")).toBe(false);
+  });
+  it("bundles one sprite per tree", () => {
+    for (const t of ["mandarin", "store"]) expect(fs.existsSync(path.join(ASSETS, `${t}-fruit.png`))).toBe(true);
+  });
+});
