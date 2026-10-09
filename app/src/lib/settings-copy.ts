@@ -24,7 +24,7 @@ export const DISCLOSURES: [string, string][] = [
   ],
   [
     'What does it cost?',
-    'Sprouts takes 0.5% of each SKR, stORE, hSOL and cbBTC planting, in USDC, inside the swap. No Sprouts fee on USDC or SOL lending, and nothing on interest, withdrawals or moves. Sprouts pays the network fee and the one-time account rent for your coin and lending accounts. Leftovers from rounding carry to your next planting. Fees are on every receipt. Pro (the Yield Manager, automatic lending and the tax pack) is included free during launch.',
+    'Sprouts takes 0.5% of each SKR, stORE, hSOL and cbBTC planting, in USDC, inside the swap. No Sprouts fee on USDC or SOL lending, and nothing on interest, withdrawals or moves. Sprouts pays the network fee and the one-time account rent for your coin and lending accounts. Leftovers from rounding carry to your next planting. Fees are on every receipt. Pro (the Yield Manager, automatic lending and tax reports) is included free during launch.',
   ],
   [
     'Where does lending go?',
@@ -45,6 +45,6 @@ export const DISCLOSURES: [string, string][] = [
 ]
 
 /** The line under the questions (R452: "Not advice" became the footer). */
-export const NOT_ADVICE = 'Sprouts is not tax or investment advice. Tax exports are a record for your tax tool, not a filing.'
+export const NOT_ADVICE = 'Sprouts is not tax or investment advice. Tax reports are a record for your tax tool, not a filing.'
 
 export const VENUES_EMPTY = 'The venues show here once the Yield Manager has read their rates.'

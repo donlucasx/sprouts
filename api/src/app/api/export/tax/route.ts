@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getRepo } from "@/db/repo";
 import { dayOf } from "@/domain/day";
-import { requireSession } from "@/lib/auth-guard";
+import { rateLimited, requireSession } from "@/lib/auth-guard";
 import { plantingRows, withdrawalRows, lendWithdrawalRows, selectRows, toCsv, type TaxRow } from "@/lib/tax-export";
 
 export const runtime = "nodejs";
@@ -22,13 +22,15 @@ const MAX_ROWS = 1000;
 export async function GET(request: Request) {
   const session = await requireSession(request);
   if (session instanceof NextResponse) return session;
+  // The heaviest read per call (audit 10-08): a few exports a minute per user is plenty
+  if (rateLimited(`export-tax:${session.pubkey}`, 10)) return NextResponse.json({ error: "Too many requests. Try again in a minute." }, { status: 429 });
   const yearParam = new URL(request.url).searchParams.get("year");
   if (yearParam !== null && !/^\d{4}$/.test(yearParam)) return NextResponse.json({ error: "year must be four digits, like 2026." }, { status: 400 });
   const year = yearParam === null ? null : Number(yearParam);
 
   const repo = await getRepo();
   const [plantings, withdrawals, lendEvents] = await Promise.all([
-    repo.listConfirmedPlantings(session.pubkey),
+    repo.listConfirmedPlantings(session.pubkey, MAX_ROWS),
     repo.listWithdrawals(session.pubkey, MAX_ROWS),
     repo.listEvents(session.pubkey, ["lend_withdrawn"], MAX_ROWS),
   ]);
@@ -41,8 +43,9 @@ export async function GET(request: Request) {
 
   // The stored SKR price of each withdrawal's day, for the earned SKR's worth; none stored leaves the worth blank.
   const days = [...new Set(withdrawals.map((w) => dayOf(w.unstakeTs)))];
-  const skrPrice = new Map<string, number | null>();
-  await Promise.all(days.map(async (d) => skrPrice.set(d, (await repo.getCoinDay(d, "SKR"))?.priceUsd ?? null)));
+  // One batched read for every day (audit 10-08: was one read per day)
+  const dayRows = days.length ? await repo.getCoinDaysFor(days.map((day) => ({ day, asset: "SKR" as const }))) : [];
+  const skrPrice = new Map<string, number | null>(days.map((d) => [d, dayRows.find((r) => r.day === d && r.asset === "SKR")?.priceUsd ?? null]));
 
   const rows: TaxRow[] = [
     ...plantings.flatMap((p, i) => plantingRows(p, legs[i])),

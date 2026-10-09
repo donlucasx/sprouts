@@ -31,7 +31,6 @@ export const PRO_LINE = "Included free during launch.";
 export const ROWS_LINE = { on: "Switch a coin off and the manager won't buy it.", off: "Set your own split." } as const;
 export const STOP_LINE = "Careful keeps at least 50% in SKR, Balanced 35%, Bold 25%.";
 export const UNDONE_TEXT = "Yesterday's split is back. The Yield Manager is off until you turn it on.";
-export const SPLIT_SECTION = { title: "Your split", sub: "Each time the split changed, by the Yield Manager or by you.", empty: "No change yet." } as const;
 export const STORE_ROW_NOTE = "ORE staked in ORE's program";
 
 export type Row = { asset: LiveAsset; pct: number; mode: "auto" | "off" | "pinned" | "the rest"; bound: string | null };

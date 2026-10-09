@@ -85,7 +85,6 @@ export function moveRow(m: Move): ActivityRow | null {
 
 /** R278: what the Yield Manager found; shown, never routed to. */
 export const FOUND_NOTE = 'Not used: Sprouts lends only on Kamino and Jupiter.'
-export const FOUND_SECTION = { title: 'Found by the Yield Manager', sub: 'Places it found paying more. Sprouts does not put money there.' } as const
 export function foundRow(f: FoundVenue): ActivityRow {
   return {
     key: `f-${f.day}-${f.project}-${f.symbol}`,
@@ -122,14 +121,20 @@ export function dayHeader(day: string, now: Date = new Date()): string {
   return `${MONTHS[m - 1]} ${d}${y === now.getFullYear() ? '' : `, ${y}`}`
 }
 
-/** R362: rows (newest first) under their local day, in order. */
+/** R362: rows (newest first) under their local day, in order. One group per day: a found venue's day-only stamp sorts as UTC
+ *  midnight, so behind UTC it lands between two rows of another day; it still joins its own day's group (audit 10-08). */
 export function groupByDay(rows: ActivityRow[], now: Date = new Date()): { key: string; header: string; rows: ActivityRow[] }[] {
   const out: { key: string; header: string; rows: ActivityRow[] }[] = []
+  const byKey = new Map<string, (typeof out)[number]>()
   for (const r of rows) {
     const key = rowDay(r.ts)
-    const last = out[out.length - 1]
-    if (last && last.key === key) last.rows.push(r)
-    else out.push({ key, header: dayHeader(key, now), rows: [r] })
+    const g = byKey.get(key)
+    if (g) g.rows.push(r)
+    else {
+      const n = { key, header: dayHeader(key, now), rows: [r] }
+      byKey.set(key, n)
+      out.push(n)
+    }
   }
   return out
 }
@@ -140,10 +145,7 @@ export function spokenLabel(r: ActivityRow): string {
   return [`${MONTHS_LONG[m - 1]} ${d}, ${y}`, rowTime(r.ts), r.label, r.amount ?? ''].filter(Boolean).join(', ')
 }
 
-/** R156 (supersedes R94's third line): the one-line explainer under the withdrawals; R171 names it Withdraw. */
-export const WITHDRAWN_LINE = 'What you withdrew.'
-
-/** A section shows its latest five rows (the API serves fifty, newest first); "Show N more" opens the rest in place (his note 6). */
+/** The list shows its latest `limit` rows (the API serves fifty, newest first); "Show N more" opens the rest in place (his note 6). */
 export function visibleRows<T>(rows: T[], open: boolean, limit = 5): { shown: T[]; hidden: number } {
   if (open || rows.length <= limit) return { shown: rows, hidden: 0 }
   return { shown: rows.slice(0, limit), hidden: rows.length - limit }

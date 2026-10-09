@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   plantingRow, splitRow, lendWithdrawalRow, moveRow, foundRow, swapRow, withdrawalRow, visibleRows, groupByDay, dayHeader, rowTime, spokenLabel,
-  WITHDRAWN_LINE, FOUND_NOTE, type ActivityRow,
+  FOUND_NOTE, type ActivityRow,
 } from '@/model/activity'
 import type { ActivityResponse, SplitRow } from '@/lib/api'
 
@@ -87,7 +87,6 @@ describe('R362: withdrawals', () => {
     expect(withdrawalRow({ ...on, source: 'wallet' }, 0.0183, undefined, NOW).details).toEqual(['12.48 SKR ($0.23)', 'Arriving today.', 'Started from your wallet.'])
     expect(keep(withdrawalRow({ ...w, cancelled: true }, 0.0183))).toMatchObject({ label: 'Withdrawal put back', details: ['12.48 SKR ($0.23)', 'Put back.'] })
     expect(withdrawalRow({ ...w, amountRaw: null }, 0.0183)).toMatchObject({ amount: null, details: ['Delivered.'] })
-    expect(WITHDRAWN_LINE).toBe('What you withdrew.')
   })
   it('a lending withdrawal: the coin in the label, its amount on the right, the venue behind the tap', () => {
     expect(keep(lendWithdrawalRow({ ts: 't', asset: 'SOL_LEND', venue: 'jupiter_lend', receiptRaw: '940800', underlyingRaw: '1000000', signature: 'w' }))).toEqual({ key: 'lw-w', ts: 't', label: 'Withdrew SOL', amount: '0.0010 SOL', details: ['From Jupiter.', 'Back in your wallet.'], signature: 'w' })
@@ -170,5 +169,14 @@ describe('visibleRows (his note 6: the latest five, the rest behind Show more)',
     expect(visibleRows(rows, false)).toEqual({ shown: [0, 1, 2, 3, 4], hidden: 7 })
     expect(visibleRows(rows, true)).toEqual({ shown: rows, hidden: 0 })
     expect(visibleRows([1, 2, 3], false)).toEqual({ shown: [1, 2, 3], hidden: 0 })
+  })
+})
+
+describe('audit 10-08: one group per day', () => {
+  it("a found venue's day-only row sorted between two rows of another day still joins its own day", () => {
+    process.env.TZ = 'America/Los_Angeles'
+    const r = (key: string, ts: string): ActivityRow => ({ key, ts, label: key, amount: null, details: [], signature: null })
+    const groups = groupByDay([r('a', '2026-10-07T16:00:00Z'), r('f', '2026-10-07'), r('b', '2026-10-07T01:00:00Z'), r('c', '2026-10-07T15:00:00Z')], new Date('2026-10-08T20:00:00Z'))
+    expect(groups.map((g) => [g.key, g.rows.map((x) => x.key).join('')])).toEqual([['2026-10-07', 'afc'], ['2026-10-06', 'b']])
   })
 })
