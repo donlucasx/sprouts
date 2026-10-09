@@ -19,6 +19,7 @@ import { OVERLAY_SRC, PLATE, STAGE_SRC } from './sources'
 import {
   clampZoom2,
   composeLayers,
+  frameTop,
   plantAt,
   scaleRect,
   viewHeight,
@@ -55,8 +56,14 @@ export function Garden2({
 }) {
   const { colors, dark } = useTheme()
   const reduced = useReducedMotion()
-  const h = viewHeight(width)
-  const layers = useMemo(() => composeLayers(stages).map((l) => scaleRect(l, width)), [stages, width])
+  // R525: the view starts just above the tallest thing drawn (frameTop), so a young garden sits tight and the frame opens as it grows.
+  const top = useMemo(() => frameTop(stages), [stages])
+  const k = width / CANVAS.w
+  const h = viewHeight(width) - top * k
+  const layers = useMemo(
+    () => composeLayers(stages).map((l) => ({ ...scaleRect(l, width), y: (l.y - top) * (width / CANVAS.w) })),
+    [stages, width, top],
+  )
 
   const ps = useSharedValue(1),
     px = useSharedValue(0),
@@ -96,8 +103,7 @@ export function Garden2({
     return () => clearTimeout(id)
   }, [label])
   const onTapAt = (x: number, y: number) => {
-    const k = CANVAS.w / width
-    const plant = labelFor ? plantAt(stages, x * k, y * k) : null
+    const plant = labelFor ? plantAt(stages, x / k, y / k + top) : null
     if (!plant || label?.plant === plant) return setLabel(null)
     const l = layers.find((q) => q.kind === 'plant' && q.key === plant)
     setLabel((old) => ({ plant, lines: labelFor!(plant), n: (old?.n ?? 0) + 1, x: l ? l.x + l.w / 2 : x }))

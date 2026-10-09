@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { CANVAS, DRAW_ORDER, OVERLAYS, PLANTS } from "@/garden2/layout";
-import { LADDER, allStages, clampStage, composeLayers, onePerPlant, paintsAt, plantAt, plantedDollars, scaleRect, stageForDollars, stagesFor, viewHeight, clampZoom2, type Pick2, type Planting2, type Stages } from "@/model/garden2";
+import { FRAME_PAD, frameTop, paintedTop, LADDER, allStages, clampStage, composeLayers, onePerPlant, paintsAt, plantAt, plantedDollars, scaleRect, stageForDollars, stagesFor, viewHeight, clampZoom2, type Pick2, type Planting2, type Stages } from "@/model/garden2";
 
 const ASSETS = path.resolve(__dirname, "../../assets/garden2");
 const day = (d: number, h = 12) => new Date(2026, 9, d, h);   // local time (vitest pins TZ to Los Angeles)
@@ -196,3 +196,31 @@ describe("pinch zoom (R487G)", () => {
     expect(clampZoom2(0.5)).toBe(1);
   });
 });
+
+describe("the frame grows with the garden (R525)", () => {
+  it("an empty garden starts just above the bamboo stand, the tallest thing drawn", () => {
+    expect(frameTop(allStages(0))).toBe(OVERLAYS.stand.y - FRAME_PAD);
+    expect(frameTop({})).toBe(OVERLAYS.stand.y - FRAME_PAD);
+  });
+  it("a mature garden opens the frame to just above the tallest crown (stORE's)", () => {
+    expect(frameTop(allStages(14))).toBe(Math.floor(paintedTop("store", 14) - FRAME_PAD));
+    expect(frameTop(allStages(14))).toBeLessThan(FRAME_PAD);
+  });
+  it("only rises: a taller stage never starts the frame lower", () => {
+    for (const p of DRAW_ORDER) {
+      let prev = Number.POSITIVE_INFINITY;
+      for (let st = 0; st <= 14; st++) {
+        const t = frameTop({ ...allStages(0), [p]: st });
+        expect(t, `${p} ${st}`).toBeLessThanOrEqual(prev);
+        prev = t;
+      }
+    }
+  });
+  it("follows the painted top of a plant that grows above the stand", () => {
+    const tall = DRAW_ORDER.flatMap((p) => Array.from({ length: 15 }, (_, st) => [p, st] as const)).find(([p, st]) => paintedTop(p, st) < OVERLAYS.stand.y);
+    expect(tall).toBeDefined();
+    const [p, st] = tall!;
+    expect(frameTop({ ...allStages(0), [p]: st })).toBe(Math.max(0, Math.floor(paintedTop(p, st) - FRAME_PAD)));
+  });
+});
+

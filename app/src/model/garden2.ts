@@ -149,6 +149,32 @@ export function paintsAt(p: Plant2, s: number, cx: number, cy: number): boolean 
   const i = row * m.cols + col
   return ((bitsOf(m.bits)[i >> 3]! >> (7 - (i & 7))) & 1) === 1
 }
+/** The canvas y of the first painted row of plant `p` at stage `s` (its hit grid), or Infinity when the layer paints nothing. */
+export function paintedTop(p: Plant2, s: number): number {
+  const m = HIT[p][s]
+  if (!m) return Number.POSITIVE_INFINITY
+  const bits = bitsOf(m.bits)
+  for (let row = 0; row < m.rows; row++)
+    for (let col = 0; col < m.cols; col++) {
+      const i = row * m.cols + col
+      if (((bits[i >> 3]! >> (7 - (i & 7))) & 1) === 1) return PLANTS[p].y + row * HIT_CELL
+    }
+  return Number.POSITIVE_INFINITY
+}
+
+/** Breathing room above the tallest painted thing, canvas px (R525). */
+export const FRAME_PAD = 48
+/**
+ * R525 (his ruling: the frame grows with the garden): the canvas row the view starts at, just above the tallest thing drawn now (each
+ * plant at its stage, and the bamboo stand, which always draws), less FRAME_PAD; 0 once a tree reaches the top. A young garden sits
+ * tight under its stand; the frame opens as the trees grow.
+ */
+export function frameTop(stages: Partial<Stages>): number {
+  let top: number = OVERLAYS.stand.y
+  for (const l of composeLayers(stages)) if (l.kind === 'plant') top = Math.min(top, paintedTop(l.key, l.stage))
+  return Math.max(0, Math.floor(top - FRAME_PAD))
+}
+
 /** The plant a tap at canvas point (cx, cy) lands on: the front-most drawn plant whose paint covers it, else null. */
 export function plantAt(stages: Partial<Stages>, cx: number, cy: number): Plant2 | null {
   const layers = composeLayers(stages)
