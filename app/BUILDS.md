@@ -11,3 +11,4 @@ One line per EAS build: date, profile, id, what it carried.
 - Note (2026-10-02): the notification small icon (the mark, white on transparent) and its tint were added to app.json; they take effect at the next native build (the release build), not through Metro.
 - 2026-10-08 dapp-store `18aae428-1cdb-483c-8fc5-a3d26980ca01` versionCode 4 from main 54b264f: the UI review, R459-R466, device-check fixes, final icon R477 (ICON_TEST off).
 - 2026-10-08 dapp-store `516c78c4-e12f-4b16-bc7e-456c02c3fcbd` versionCode 5 from main d2b9517: everything in 18aae428 plus both day-audit fix waves (R479). 18aae428 (vc4) finished but is SUPERSEDED: do not publish it.
+- 2026-10-08 dapp-store `1ddfe479-8fe8-4e09-8499-bf94bc7f57e4` versionCode 6 from main 24732d7: both audit fix waves, Terms 2026-10-09 (R481), tags R480/R482, Rules switched-off coins. 516c78c4 (vc5) CANCELLED, 18aae428 (vc4) superseded.
