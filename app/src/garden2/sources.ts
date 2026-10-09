@@ -28,6 +28,7 @@ export const STAGE_SRC: Record<Plant2, Record<number, number>> = {
     14: require('../../assets/garden2/maple/stage14.webp'),
   },
   store: {
+    0: require('../../assets/garden2/store/stage00.webp'),
     1: require('../../assets/garden2/store/stage01.webp'),
     2: require('../../assets/garden2/store/stage02.webp'),
     3: require('../../assets/garden2/store/stage03.webp'),
@@ -44,6 +45,7 @@ export const STAGE_SRC: Record<Plant2, Record<number, number>> = {
     14: require('../../assets/garden2/store/stage14.webp'),
   },
   mandarin: {
+    0: require('../../assets/garden2/mandarin/stage00.webp'),
     1: require('../../assets/garden2/mandarin/stage01.webp'),
     2: require('../../assets/garden2/mandarin/stage02.webp'),
     3: require('../../assets/garden2/mandarin/stage03.webp'),

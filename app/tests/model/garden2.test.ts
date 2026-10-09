@@ -2,11 +2,13 @@ import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { CANVAS, DRAW_ORDER, OVERLAYS, PLANTS } from "@/garden2/layout";
-import { LADDER, allStages, clampStage, composeLayers, grown, onePerPlant, paintsAt, plantAt, plantedDollars, scaleRect, stageForDollars, stagesFor, viewHeight, clampZoom2, type Planting2, type Stages } from "@/model/garden2";
+import { LADDER, allStages, clampStage, composeLayers, onePerPlant, paintsAt, plantAt, plantedDollars, scaleRect, stageForDollars, stagesFor, viewHeight, clampZoom2, type Pick2, type Planting2, type Stages } from "@/model/garden2";
 
 const ASSETS = path.resolve(__dirname, "../../assets/garden2");
 const day = (d: number, h = 12) => new Date(2026, 9, d, h);   // local time (vitest pins TZ to Los Angeles)
-const at = (d: number, asset: Planting2["asset"], cents: number, h = 12): Planting2 => ({ ts: day(d, h), asset, usdcInCents: cents });
+/** A planting of `cents` that bought `raw` of the coin (raw defaults to 1,000 per cent, so tests read in round numbers). */
+const at = (d: number, asset: Planting2["asset"], cents: number, h = 12, raw = BigInt(Math.max(0, cents)) * 1000n): Planting2 => ({ ts: day(d, h), asset, usdcInCents: cents, amountOutRaw: raw });
+const g = (plantings: Planting2[], picks: Pick2[] = [], skrPrincipalPickedRaw = 0n) => ({ plantings, picks, skrPrincipalPickedRaw });
 
 describe("the stage ladder (R484G, approved R485G)", () => {
   it("is the approved 14 steps: $0.01 to $5 over stages 1-7, $5 to $30 over 8-14", () => {
@@ -29,47 +31,56 @@ describe("the stage ladder (R484G, approved R485G)", () => {
   });
 });
 
-describe("stages from plantings (planted dollars, R458's end of day)", () => {
-  const now = day(10, 9);
+describe("stages from plantings (dollars put in, R518; right away, R521; withdrawals shrink, R519)", () => {
   it("is 0 everywhere before any planting", () => {
-    expect(stagesFor({ plantings: [], now, wateredAt: null })).toEqual(allStages(0));
+    expect(stagesFor(g([]))).toEqual(allStages(0));
   });
   it("maps each coin to its plant (layout.json's coins) and sums its dollars", () => {
     const plantings = [at(5, "SKR", 30), at(6, "SKR", 30), at(5, "stORE", 100), at(5, "hSOL", 175), at(5, "USDC_LEND", 250), at(5, "SOL_LEND", 500), at(5, "cbBTC", 3000)];
-    expect(stagesFor({ plantings, now, wateredAt: null })).toEqual({ mandarin: 2, store: 3, pothos: 4, azalea: 5, maple: 7, orchid: 14 });
+    expect(stagesFor(g(plantings))).toEqual({ mandarin: 2, store: 3, pothos: 4, azalea: 5, maple: 7, orchid: 14 });
   });
-  it("a planting grows at the end of its local day, or earlier once a watering opened it", () => {
-    const today = at(10, "SKR", 100, 8);
-    expect(grown(today, now, null)).toBe(false);
-    expect(grown(today, day(10, 23), null)).toBe(false);
-    expect(grown(today, day(11, 0), null)).toBe(true);
-    expect(grown(today, now, day(10, 8))).toBe(true);
-    expect(stagesFor({ plantings: [today], now, wateredAt: null }).mandarin).toBe(0);
-    expect(stagesFor({ plantings: [today], now: day(11, 0), wateredAt: null }).mandarin).toBe(3);
+  it("a planting grows the plant as soon as it is confirmed, with no end-of-day wait (R521)", () => {
+    expect(stagesFor(g([at(10, "SKR", 100, 8)])).mandarin).toBe(3);
   });
   it("a planted coin shows at least stage 1 (a legacy row with no dollar leg), never above 14", () => {
-    expect(stagesFor({ plantings: [at(5, "stORE", 0)], now, wateredAt: null }).store).toBe(1);
-    expect(stagesFor({ plantings: [at(5, "cbBTC", 99_999)], now, wateredAt: null }).orchid).toBe(14);
+    expect(stagesFor(g([at(5, "stORE", 0)])).store).toBe(1);
+    expect(stagesFor(g([at(5, "cbBTC", 99_999)])).orchid).toBe(14);
   });
   it("counts dollars put in only (no price input exists), never a negative leg", () => {
-    const { dollars, planted } = plantedDollars([at(5, "hSOL", 120), at(6, "hSOL", -50)], now, null);
+    const { dollars, planted } = plantedDollars(g([at(5, "hSOL", 120), at(6, "hSOL", -50)]));
     expect(dollars.pothos).toBeCloseTo(1.2, 9);
     expect([...planted]).toEqual(["pothos"]);
   });
   it("uses the pacing it is given", () => {
     const skrLeads = (p: string, d: number) => (p === "mandarin" ? 14 : stageForDollars(d));
-    expect(stagesFor({ plantings: [at(5, "SKR", 1), at(5, "SOL_LEND", 1)], now, wateredAt: null }, skrLeads)).toMatchObject({ mandarin: 14, maple: 1 });
+    expect(stagesFor(g([at(5, "SKR", 1), at(5, "SOL_LEND", 1)]), skrLeads)).toMatchObject({ mandarin: 14, maple: 1 });
+  });
+  it("a withdrawal shrinks the plant by the share of its planted tokens taken out (R519)", () => {
+    // $10 of hSOL (10,000,000 raw) is stage 9 ($10.70 is the 10th step); half withdrawn leaves $5, stage 7; all of it leaves the minimum 1 while planted.
+    const p = [at(5, "hSOL", 1000)];
+    expect(stagesFor(g(p)).pothos).toBe(9);
+    expect(stagesFor(g(p, [{ asset: "hSOL", amountRaw: 500_000n }])).pothos).toBe(7);
+    expect(plantedDollars(g(p, [{ asset: "hSOL", amountRaw: 500_000n }])).dollars.pothos).toBeCloseTo(5, 9);
+    expect(plantedDollars(g(p, [{ asset: "hSOL", amountRaw: 2_000_000n }])).dollars.pothos).toBe(0);
+    // a withdrawal of another coin leaves this one alone
+    expect(stagesFor(g(p, [{ asset: "cbBTC", amountRaw: 500_000n }])).pothos).toBe(9);
+  });
+  it("SKR shrinks by principal withdrawn only: picking the fruit never prunes [A13]", () => {
+    const p = [at(5, "SKR", 1000)];
+    expect(stagesFor(g(p, [{ asset: "SKR", amountRaw: 900_000n }], 0n)).mandarin).toBe(9);
+    expect(stagesFor(g(p, [{ asset: "SKR", amountRaw: 900_000n }], 500_000n)).mandarin).toBe(7);
   });
 });
 
 describe("clampStage", () => {
-  it("keeps a tree at 0 (nothing drawn) and every stage inside the plant's range", () => {
+  it("keeps every stage inside the plant's range; every plant has a stage 0 (the trees' soil mound, R517)", () => {
     expect(clampStage("mandarin", 0)).toBe(0);
     expect(clampStage("store", -3)).toBe(0);
     expect(clampStage("maple", -3)).toBe(0);
     expect(clampStage("orchid", 22)).toBe(14);
     expect(clampStage("azalea", 6.6)).toBe(7);
     expect(clampStage("pothos", Number.NaN)).toBe(0);
+    for (const p of DRAW_ORDER) expect(PLANTS[p].first, p).toBe(0);
   });
 });
 
@@ -79,8 +90,8 @@ describe("the layer plan (draw order and positions from the approved export)", (
     expect(DRAW_ORDER).toEqual(["maple", "store", "mandarin", "pothos", "orchid", "azalea"]);
     expect(keys(allStages(14))).toEqual(["plate", "maple14", "store14", "stand", "mandarin14", "cords", "pothos14", "orchid14", "azalea14"]);
   });
-  it("before any planting: no trees, the companions' bare ground, the stand and cords still drawn", () => {
-    expect(keys(allStages(0))).toEqual(["plate", "maple0", "stand", "cords", "pothos0", "orchid0", "azalea0"]);
+  it("before any planting: every plant's bare ground (the trees' soil mound, R517), the stand and cords still drawn", () => {
+    expect(keys(allStages(0))).toEqual(["plate", "maple0", "store0", "stand", "mandarin0", "cords", "pothos0", "orchid0", "azalea0"]);
     expect(keys({})).toEqual(keys(allStages(0)));
   });
   it("places every plant at its export box, the plate over the whole 1328 x 896 canvas", () => {
@@ -119,7 +130,7 @@ describe("the bundled layers", () => {
     for (const p of DRAW_ORDER) for (let s = PLANTS[p].first; s <= PLANTS[p].last; s++, n++) {
       expect(webpSize(path.join(ASSETS, p, `stage${String(s).padStart(2, "0")}.webp`))).toEqual({ w: PLANTS[p].w, h: PLANTS[p].h });
     }
-    expect(n).toBe(88);
+    expect(n).toBe(90);
   });
   it("has the plate at canvas size and each overlay at its box", () => {
     expect(pngSize(path.join(ASSETS, "plate.png"))).toEqual({ w: 1328, h: 896 });
@@ -145,7 +156,7 @@ describe("tap a plant (R483G): the front-most painted plant", () => {
     expect(plantAt(full, both![0], both![1])).toBe("mandarin");
     expect(plantAt({ ...full, mandarin: 0 }, both![0], both![1])).toBe("store");
   });
-  it("hits each plant at the centre of its painted area, and never a tree at stage 0", () => {
+  it("hits each plant at the centre of its painted area, and a tree's bare mound at stage 0 (R517)", () => {
     for (const p of DRAW_ORDER) {
       const b = PLANTS[p];
       let hit = 0;
@@ -153,7 +164,9 @@ describe("tap a plant (R483G): the front-most painted plant", () => {
       expect(hit, p).toBeGreaterThan(20);
     }
     const none = allStages(0);
-    for (let x = 0; x < CANVAS.w; x += 16) for (let y = 0; y < CANVAS.h; y += 16) expect(["mandarin", "store"]).not.toContain(plantAt(none, x, y));
+    const seen = new Set<string>();
+    for (let x = 0; x < CANVAS.w; x += 16) for (let y = 0; y < CANVAS.h; y += 16) { const h = plantAt(none, x, y); if (h) seen.add(h); }
+    expect(seen.has("mandarin") && seen.has("store")).toBe(true);
   });
 });
 
