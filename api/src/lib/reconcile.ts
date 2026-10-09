@@ -8,6 +8,13 @@ export type ReconcileChain = { readPosition(user: string): Promise<Position>; sh
 const DUST_SHARES = 10_000n;
 
 /**
+ * The position is read at `finalized`, which trails `confirmed` by seconds; Sprouts' own plantings and picks are booked at `confirmed`.
+ * A user whose ledger moved shares this recently is left for the next run: on 10-06 a read 4 s after a planting's stake missed its
+ * shares and, with an older cooldown open, booked them as a wallet unstake (R499).
+ */
+const SETTLE_MS = 10 * 60_000;
+
+/**
  * Once a day (R61, [A16]): the position's share count changes only on a stake or an unstake, never on rewards. Expected shares =
  * the shares at join, plus the shares each confirmed planting minted, minus the shares Sprouts' own picks burned (non-cancelled),
  * plus every adjustment found before. More shares than expected is a stake the user made from the wallet (put in, not fruit);
@@ -15,7 +22,7 @@ const DUST_SHARES = 10_000n;
  * difference is valued at today's share price, at most two days off the real price. A user with a confirmed planting whose minted
  * shares were never recorded is skipped and logged, never adjusted [A1].
  */
-export async function reconcileOwnStakes(a: { repo: Repo; chain: ReconcileChain }): Promise<{ adjusted: string[]; skipped: string[]; deferred: string[] }> {
+export async function reconcileOwnStakes(a: { repo: Repo; chain: ReconcileChain; now: Date }): Promise<{ adjusted: string[]; skipped: string[]; deferred: string[] }> {
   const adjusted: string[] = [];
   const skipped: string[] = [];
   const deferred: string[] = [];
@@ -28,9 +35,15 @@ export async function reconcileOwnStakes(a: { repo: Repo; chain: ReconcileChain 
         skipped.push(user.seedVaultPubkey);
         continue;
       }
+      const withdrawals = await a.repo.listWithdrawals(user.seedVaultPubkey, 10_000);
+      const settled = a.now.getTime() - SETTLE_MS;
+      if (plantings.some((p) => p.ts.getTime() > settled) || withdrawals.some((w) => w.source === "sprouts" && w.unstakeTs.getTime() > settled)) {
+        deferred.push(user.seedVaultPubkey);
+        continue;
+      }
       const position = await a.chain.readPosition(user.seedVaultPubkey);
       const minted = plantings.reduce((s, p) => s + (p.sharesMinted ?? 0n), 0n);
-      const burned = (await a.repo.listWithdrawals(user.seedVaultPubkey, 10_000))
+      const burned = withdrawals
         .filter((w) => w.source === "sprouts" && w.cancelSignature === null)
         .reduce((s, w) => s + (w.sharesUnstaked ?? 0n), 0n);
       const own = (await a.repo.listStakeAdjustments(user.seedVaultPubkey)).reduce((s, x) => s + x.sharesDelta, 0n);
