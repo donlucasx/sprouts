@@ -2,17 +2,24 @@ import type { Repo } from "@/db/repo";
 import type { Position } from "./staking";
 import { sharesToRaw, potForUser } from "./pot";
 
-export type ReconcileChain = { readPosition(user: string): Promise<Position>; sharePrice(): Promise<bigint> };
+export type ReconcileChain = {
+  readPosition(user: string): Promise<Position>;
+  sharePrice(): Promise<bigint>;
+  /** True once every signature given is finalized (the real one waits a little for them). */
+  finalized(signatures: string[]): Promise<boolean>;
+};
 
 /** Share dust from share-price rounding on a stake; anything under this is not a stake or an unstake. */
 const DUST_SHARES = 10_000n;
 
 /**
- * The position is read at `finalized`, which trails `confirmed` by seconds; Sprouts' own plantings and picks are booked at `confirmed`.
- * A user whose ledger moved shares this recently is left for the next run: on 10-06 a read 4 s after a planting's stake missed its
- * shares and, with an older cooldown open, booked them as a wallet unstake (R499).
+ * The position is read at `finalized`, which trails `confirmed` by seconds; Sprouts books its own plantings and picks at `confirmed`.
+ * On 10-06 a read 4 s after a planting's stake missed its shares and, with an older cooldown open, booked them as a wallet unstake
+ * (R499). So Sprouts' share moves of the last RECENT_MS must be finalized before the read; if they are not, the user waits for the
+ * next run. Older moves are long finalized. The same cron that plants also reconciles, so the check is on finality, not on age:
+ * an age rule would never reconcile a user who plants every day.
  */
-const SETTLE_MS = 10 * 60_000;
+const RECENT_MS = 10 * 60_000;
 
 /**
  * Once a day (R61, [A16]): the position's share count changes only on a stake or an unstake, never on rewards. Expected shares =
@@ -36,8 +43,14 @@ export async function reconcileOwnStakes(a: { repo: Repo; chain: ReconcileChain;
         continue;
       }
       const withdrawals = await a.repo.listWithdrawals(user.seedVaultPubkey, 10_000);
-      const settled = a.now.getTime() - SETTLE_MS;
-      if (plantings.some((p) => p.ts.getTime() > settled) || withdrawals.some((w) => w.source === "sprouts" && w.unstakeTs.getTime() > settled)) {
+      const since = a.now.getTime() - RECENT_MS;
+      const recent = [
+        ...plantings.filter((p) => p.ts.getTime() > since).map((p) => p.signature),
+        ...withdrawals.filter((w) => w.source === "sprouts" && w.unstakeTs.getTime() > since).flatMap((w) => [w.unstakeSignature, ...(w.cancelSignature ? [w.cancelSignature] : [])]),
+      ];
+      // A recent row without a signature cannot be proven finalized: wait for the next run.
+      if (recent.length > 0 && (recent.some((s) => s === null) || !(await a.chain.finalized(recent as string[])))) {
+        console.error(`reconcile: ${user.seedVaultPubkey} has Sprouts share moves not yet finalized; deferred to the next run`);
         deferred.push(user.seedVaultPubkey);
         continue;
       }
