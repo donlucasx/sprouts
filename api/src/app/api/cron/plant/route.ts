@@ -144,7 +144,7 @@ export async function GET(request: Request) {
     // R61: stakes and unstakes the Seed Vault made from its own wallet, found by comparing the chain's share count with the ledger's.
     // R499 F4: the reconcile stops starting users 25 s before the route's 300 s limit (the last one may still spend ~10 s on its
     // final status call); as a step, a throw is logged and the cleanup and the keepalive still run (round 2, R2-1).
-    const reconciled = (await step("reconcile", () => reconcileOwnStakes({ repo, now: new Date(), deadlineMs: startedMs + 275_000, chain: { readPosition: (u) => readPosition(address(u), "finalized"), sharePrice, finalized: signaturesFinalized } }))) ?? { adjusted: [], skipped: [], deferred: [] };
+    const reconciled = (await step("reconcile", () => reconcileOwnStakes({ repo, now: new Date(), deadlineMs: startedMs + 275_000, chain: { readPosition: (u) => readPosition(address(u), "finalized"), sharePrice, finalized: signaturesFinalized } })));
     await repo.cleanupExpired();
     // The first production run (2026-09-28) planted and then answered 500 here: reading rules for a made-up user violates the
     // rules -> users foreign key. The keepalive is now a read that needs no row.
@@ -152,7 +152,7 @@ export async function GET(request: Request) {
     const summary = { coins: coins ? coins.filter((c) => c.ok).length : null, splits: splits ? splits.map((s) => ({ stop: s.stop, fallback: s.fallback })) : null, applied: applied ? applied.changed.length : null, venues: venues ? venues.filter((v) => v.ok).length : null, moves: moves ? moves.proposed.length : null };
     // Review M8: expired and settled cards are logged too, so a move stuck in flight shows in the log.
     const movesLine = moves ? `${moves.proposed.length} (expired ${moves.expired.length}, settled ${moves.settled.length ? moves.settled.join(" ") : 0})` : movesOn ? "failed" : "off";
-    console.log(`cron: venues ${summary.venues ?? "failed"}, coins ${summary.coins ?? "failed"}, splits ${summary.splits ? summary.splits.map((s) => `${s.stop}${s.fallback ? `(${s.fallback})` : ""}`).join(" ") : "failed"}, applied ${summary.applied ?? "failed"}, moves ${movesLine}, planted ${planting.planted.length}, skipped ${planting.skipped.length}, cranked ${withdrawals.cranked.length}, failed ${withdrawals.failed.length}, closed ${withdrawals.skipped.length}, reconciled ${reconciled.adjusted.length} (skipped ${reconciled.skipped.length}, deferred ${reconciled.deferred.length})`);
+    console.log(`cron: venues ${summary.venues ?? "failed"}, coins ${summary.coins ?? "failed"}, splits ${summary.splits ? summary.splits.map((s) => `${s.stop}${s.fallback ? `(${s.fallback})` : ""}`).join(" ") : "failed"}, applied ${summary.applied ?? "failed"}, moves ${movesLine}, planted ${planting.planted.length}, skipped ${planting.skipped.length}, cranked ${withdrawals.cranked.length}, failed ${withdrawals.failed.length}, closed ${withdrawals.skipped.length}, reconciled ${reconciled ? `${reconciled.adjusted.length} (skipped ${reconciled.skipped.length}, deferred ${reconciled.deferred.length})` : "failed"}`);
     return NextResponse.json(json({ ...summary, planting, withdrawals, reconciled }));
   } catch (e) {
     const message = errorText(e);   // K-M10: never the RPC URL's key, in the log or the body

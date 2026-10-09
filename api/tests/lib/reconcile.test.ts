@@ -269,7 +269,7 @@ describe("reconcileOwnStakes (R61, [A16])", () => {
   });
 
   // R499 round 2 (R2-4): a cooldown stays open while the crank fails, so a cancel can land weeks after its unstake.
-  it("a cancel of a 30-day-old pick is still finality-checked", async () => {
+  it("a cancel of a 29-day-old pick is still finality-checked", async () => {
     const repo = new MemoryRepo();
     await repo.upsertUser({ seedVaultPubkey: "U", sgtMint: "M", skrName: null });
     await repo.setJoinedPosition("U", { shares: 1_000_000_000n, sharePrice: SP });
@@ -277,8 +277,34 @@ describe("reconcileOwnStakes (R61, [A16])", () => {
     await repo.setWithdrawalCancelled(w.id, "c");
     let asked: string[] = [];
     const chain = { ...chainAt(900_000_000n, 114_600_000n), finalized: async (sigs: string[]) => { asked = sigs; return false; } };
-    const r = await reconcileOwnStakes({ repo, now: new Date(w.unstakeTs.getTime() + 30 * 86_400_000), chain });
+    const r = await reconcileOwnStakes({ repo, now: new Date(w.unstakeTs.getTime() + 29 * 86_400_000), chain });
     expect(r.deferred).toEqual(["U"]);
     expect(asked).toEqual(["c"]);
+  });
+
+  // R499 round 3 (R3-1): a cancel is checked without waiting, so a stale or unseen one costs one call and never the 30 s budget.
+  it("cancels are asked with no wait; recent moves with the capped wait", async () => {
+    const repo = await seeded(1_000_000_000n);
+    const p = (await repo.listConfirmedPlantings("U"))[0];
+    const w = await repo.insertWithdrawal({ userPubkey: "U", asset: "SKR", source: "sprouts", unstakeSignature: "x", sharesUnstaked: 100_000_000n, amountRaw: 114_600_000n, principalRaw: 0n });
+    await repo.setWithdrawalCancelled(w.id, "c");
+    const calls: [string[], number][] = [];
+    const chain = { ...chainAt(1_000_000_000n), finalized: async (sigs: string[], waitMs: number) => { calls.push([[...sigs].sort(), waitMs]); return true; } };
+    await reconcileOwnStakes({ repo, now: new Date(p.ts.getTime() + 4_000), chain });
+    expect(calls.find(([s]) => s.join() === "c")?.[1]).toBe(0);
+    expect(calls.find(([s]) => s.includes("s"))?.[1]).toBeGreaterThan(0);
+  });
+
+  it("a cancel older than 30 days is not asked about", async () => {
+    const repo = new MemoryRepo();
+    await repo.upsertUser({ seedVaultPubkey: "U", sgtMint: "M", skrName: null });
+    await repo.setJoinedPosition("U", { shares: 1_000_000_000n, sharePrice: SP });
+    const w = await repo.insertWithdrawal({ userPubkey: "U", asset: "SKR", source: "sprouts", unstakeSignature: "x", sharesUnstaked: 100_000_000n, amountRaw: 114_600_000n, principalRaw: 0n });
+    await repo.setWithdrawalCancelled(w.id, "c");
+    let asked = false;
+    const chain = { ...chainAt(1_000_000_000n), finalized: async () => { asked = true; return false; } };
+    const r = await reconcileOwnStakes({ repo, now: new Date(w.unstakeTs.getTime() + 31 * 86_400_000), chain });
+    expect(asked).toBe(false);
+    expect(r.deferred).toEqual([]);
   });
 });

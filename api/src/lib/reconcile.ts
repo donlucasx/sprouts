@@ -19,10 +19,12 @@ const DUST_SHARES = 10_000n;
  * (R499). So Sprouts' recent share moves must be finalized before the read; if they are not, the user waits for the next run.
  * The same cron that plants also reconciles, so the check is on finality, not on age: an age rule would never reconcile a user who
  * plants every day. Plantings and unstakes count as recent for RECENT_MS. A cancel has no time of its own (only the unstake's), and
- * it can land any time the cooldown stays open (48 h, longer while the crank fails), so EVERY cancel signature is checked, at any age;
- * an old one is finalized and costs one status entry (round 2, R2-4).
+ * it can land any time the cooldown stays open (48 h, longer while the crank fails), so every cancel of a pick from the last CANCEL_MS
+ * is checked (round 2, R2-4) WITHOUT waiting: an unfinalized one defers the user to the next run, and one the RPC no longer returns
+ * costs one call, not the 30 s wait, so it cannot eat the run's budget (round 3, R3-1).
  */
 const RECENT_MS = 10 * 60_000;
+const CANCEL_MS = 30 * 86_400_000;
 /** The longest one user's finality check may wait. */
 const FINALITY_WAIT_MS = 30_000;
 
@@ -82,16 +84,15 @@ export async function reconcileOwnStakes(a: { repo: Repo; chain: ReconcileChain;
       const recent = [
         ...plantings.filter((p) => p.ts.getTime() > since).map((p) => p.signature),
         ...sprouts.filter((w) => w.unstakeTs.getTime() > since).map((w) => w.unstakeSignature),
-        ...sprouts.filter((w) => w.cancelSignature !== null).map((w) => w.cancelSignature),
       ];
+      const cancels = sprouts.filter((w) => w.cancelSignature !== null && w.unstakeTs.getTime() > a.now.getTime() - CANCEL_MS).map((w) => w.cancelSignature as string);
       // A recent row without a signature cannot be proven finalized: wait for the next run.
-      if (recent.length > 0) {
-        const waitMs = Math.max(0, Math.min(FINALITY_WAIT_MS, deadline - Date.now()));
-        if (recent.some((s) => s === null) || !(await a.chain.finalized(recent as string[], waitMs))) {
-          console.error(`reconcile: ${user.seedVaultPubkey} has Sprouts share moves not yet finalized; deferred to the next run`);
-          deferred.push(user.seedVaultPubkey);
-          continue;
-        }
+      const waitMs = Math.max(0, Math.min(FINALITY_WAIT_MS, deadline - Date.now()));
+      if ((recent.length > 0 && (recent.some((s) => s === null) || !(await a.chain.finalized(recent as string[], waitMs))))
+        || (cancels.length > 0 && !(await a.chain.finalized(cancels, 0)))) {
+        console.error(`reconcile: ${user.seedVaultPubkey} has Sprouts share moves not yet finalized; deferred to the next run`);
+        deferred.push(user.seedVaultPubkey);
+        continue;
       }
       const position = await a.chain.readPosition(user.seedVaultPubkey);
       // A pick, cancel or planting booked while we waited or read would be counted on one side only (R499 F3).
