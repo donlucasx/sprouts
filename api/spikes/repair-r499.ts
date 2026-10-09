@@ -15,7 +15,7 @@ const send = process.argv.includes("--send");
 const db = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_KEY!, { auth: { persistSession: false } });
 const WITHDRAWAL = "0f704060-8703-4754-891d-c6ef94913fda";
 const SHARES = "55278224";
-const fail = (why: string): never => { console.error(`STOP: ${why}; nothing written`); process.exit(1); };
+const fail = (why: string): never => { console.error(`STOP: ${why}`); process.exit(1); };
 const must = <T>(r: { data: T | null; error: { message: string } | null }): T => { if (r.error) fail(r.error.message); return r.data as T; };
 
 const users = must(await db.from("users").select("seed_vault_pubkey,joined_shares").like("seed_vault_pubkey", "52vz%"));
@@ -49,6 +49,7 @@ if (chain - expected <= -10_000n || chain - expected >= 10_000n) fail("the books
 
 console.log(`to delete: withdrawal ${WITHDRAWAL} (wallet, skipped, ${row.amount_raw} raw SKR); adjustments ${[...pairIds].join(", ")}`);
 if (!send) { console.log("dry run: add --send to write"); process.exit(0); }
+// From here a STOP may follow a partial write: rerun, the guards above accept a half-done repair and finish it.
 // The rows as they stand, kept beside this script before anything is deleted (audit F7). Run away from the 7 AM cron window.
 const backup = path.join(path.dirname(fileURLToPath(import.meta.url)), `repair-r499-backup-${Date.now()}.json`);
 writeFileSync(backup, JSON.stringify({ withdrawal: row, adjustments: adj }, null, 2));
