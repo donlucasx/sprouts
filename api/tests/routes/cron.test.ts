@@ -189,7 +189,7 @@ describe("cron route", () => {
     const keepalive = vi.spyOn(repo, "keepalive");
     const res = await GET(new Request("http://x/api/cron/plant", { headers: { authorization: `Bearer ${SECRET}` } }));
     expect(res.status).toBe(200);
-    expect((await res.json()).reconciled).toEqual({ adjusted: [], skipped: [], deferred: [] });
+    expect((await res.json()).reconciled).toBeNull();
     expect(cleanup).toHaveBeenCalled();
     expect(keepalive).toHaveBeenCalled();
   });
