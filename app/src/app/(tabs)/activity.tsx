@@ -50,8 +50,9 @@ function Row({ row, kind, accountPubkey, right }: { row: ActivityRow; kind: Acti
           accessibilityState={opens ? { expanded: open } : undefined}
           style={({ pressed }) => ({ flex: 1, minHeight: TARGET - spacing.sm, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, opacity: pressed ? 0.6 : 1 })}
         >
-          <View style={{ width: 26, height: 26, borderRadius: radius.sm, backgroundColor: KIND_COLOR[kind], alignItems: 'center', justifyContent: 'center' }}>
-            <ThemedText variant="caption" style={{ color: '#FFFFFF', fontWeight: '700' }}>
+          {/* R480: one width for every tag, so the labels line up */}
+          <View style={{ width: 68, height: 24, borderRadius: radius.sm, backgroundColor: KIND_COLOR[kind], alignItems: 'center', justifyContent: 'center' }}>
+            <ThemedText variant="caption" numberOfLines={1} style={{ color: '#FFFFFF', fontWeight: '700' }}>
               {row.tag ?? KIND_TAG[kind]}
             </ThemedText>
           </View>

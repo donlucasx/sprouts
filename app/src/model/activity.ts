@@ -161,8 +161,8 @@ export const KIND_FILTERS: { value: 'all' | ActivityKind; label: string }[] = [
   { value: 'withdraw', label: 'Withdraw' },
   { value: 'split', label: 'Split' },
 ]
-/** The one-letter tag on each row (the colour comes from the screen); a split the AI made carries its own "AI" tag (audit 10-08). */
-export const KIND_TAG: Record<ActivityKind, string> = { plant: 'P', swap: 'S', withdraw: 'W', split: '%', move: 'M', found: 'F' }
+/** R480: the tag on each row, spelled out so no legend is needed (the colour comes from the screen); a split the AI made carries "AI". */
+export const KIND_TAG: Record<ActivityKind, string> = { plant: 'Plant', swap: 'Swap', withdraw: 'Withdraw', split: 'Split', move: 'Move', found: 'Found' }
 
 export function mergeRows(groups: Partial<Record<ActivityKind, { row: ActivityRow; walletAccount?: boolean }[]>>): TaggedRow[] {
   const all: TaggedRow[] = []
