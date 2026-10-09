@@ -247,9 +247,10 @@ describe("the AI's tools, verdicts and found venues (spec 4, R275-R278)", () => 
     exchangeRate: async (v) => (v === "kamino_klend" ? 1.2038 : 1.0629),
     llamaPools: async () => ({ data: [] }),
   };
-  const POOL: FoundPool = { poolId: "525b2dab-ea6a-4cbc-a07f-84ce561d1f83", project: "kamino-lend", symbol: "SOL", asset: "SOL", apyBasePct: 5.6418, tvlUsd: 25_399_214 };
+  // A real find: not Kamino or Jupiter, and above Sprouts' best SOL rate in these reads (Kamino 5.62%)
+  const POOL: FoundPool = { poolId: "m1", project: "marginfi-lending", symbol: "SOL", asset: "SOL", apyBasePct: 7.1418, tvlUsd: 45_210_000 };
   const finalWith = (over: Record<string, unknown> = {}) => ({ ...good, SKR: 40, stORE: 5, USDC_LEND: 15, SOL_LEND: 10, hSOL: 25, cbBTC: 5,
-    verdicts: [{ venue: "jupiter_lend", asset: "USDC_LEND", verdict: "avoid", reason: "incentive_spike" }], found: [{ poolId: POOL.poolId, note: "Kamino SOL pool at 5.6% a year." }],
+    verdicts: [{ venue: "jupiter_lend", asset: "USDC_LEND", verdict: "avoid", reason: "incentive_spike" }], found: [{ poolId: POOL.poolId, note: "Marginfi SOL pool at 7.1% a year." }],
     why: "Your USDC goes to Kamino, 4.4% vs Jupiter 4.2%.", ...over });
   /** Three turns per stop: read Kamino; read Jupiter and scout together; answer. Decided by the conversation's length. */
   const scripted = (final: Record<string, unknown>): ConversationCall => async (req) => {
@@ -281,7 +282,7 @@ describe("the AI's tools, verdicts and found venues (spec 4, R275-R278)", () => 
     ]));
     expect(rows[1].venuePick).toEqual({ USDC_LEND: "kamino_klend", SOL_LEND: "kamino_klend" });
     expect(rows[1].why).toBe(`${USDC_ROUTE} ${SOL_ROUTE}`);
-    expect(await repo.listFoundVenues(DAY, 5)).toEqual([{ day: DAY, poolId: POOL.poolId, project: "kamino-lend", symbol: "SOL", asset: "SOL", apyBasePct: 5.6418, tvlUsd: 25_399_214, note: "Kamino SOL pool at 5.6% a year." }]);
+    expect(await repo.listFoundVenues(DAY, 5)).toEqual([{ day: DAY, poolId: POOL.poolId, project: "marginfi-lending", symbol: "SOL", asset: "SOL", apyBasePct: 7.1418, tvlUsd: 45_210_000, note: "7.1% base, $45.2M deposited" }]);
   });
 
   it("a second run the same day calls no model and keeps the day's avoid, its reason and what was served", async () => {
@@ -318,14 +319,11 @@ describe("the AI's tools, verdicts and found venues (spec 4, R275-R278)", () => 
     expect(rows[1].why!.split(". ")[0].length).toBeLessThanOrEqual(140);
   });
 
-  it("found notes are stored as the checked string; markup, domains and invisible characters never reach display (review I3)", async () => {
-    const repo = await venueRepo();
-    await decideSplits({ repo, now: NOW, model: scripted(finalWith({ found: [{ poolId: POOL.poolId, note: "Kamino SOL pool\nat 5.6% a year https://x.example/claim" }] })), scout: async () => [POOL] });
-    expect((await repo.listFoundVenues(DAY, 5)).map((f) => f.note)).toEqual(["Kamino SOL pool at 5.6% a year"]);
-    for (const note of ["Kamino SOL pool at 5.6%, see kamino-bonus.xyz", "Kamino <b>risk free</b> at 5.6%", "Kamino SOL\u202E at 5.6%", "Kamino\u200B SOL at 5.6%"]) {
+  it("the model's note never reaches display: the stored note is code's, from the pool's numbers (review I3 by construction; his note 10-08)", async () => {
+    for (const note of ["Kamino SOL pool\nat 5.6% a year https://x.example/claim", "SOL pool, see kamino-bonus.xyz", "<b>risk free</b> at 7.1%", "SOL\u202E at 7.1%", "$45.2M TVL at 7.1%"]) {
       const r = await venueRepo();
       await decideSplits({ repo: r, now: NOW, model: scripted(finalWith({ found: [{ poolId: POOL.poolId, note }] })), scout: async () => [POOL] });
-      expect(await r.listFoundVenues(DAY, 5)).toEqual([]);
+      expect((await r.listFoundVenues(DAY, 5)).map((f) => f.note)).toEqual(["7.1% base, $45.2M deposited"]);
     }
     expect(safeLine("hSOL grew 4.4% a year.", [4.4])).toBe("hSOL grew 4.4% a year.");
     expect(safeLine("hSOL grew 4.4% at hsol.fund", [4.4])).toBeNull();
@@ -340,11 +338,11 @@ describe("the AI's tools, verdicts and found venues (spec 4, R275-R278)", () => 
     for (const bad of [{ project: "kamino\u202Elend" }, { project: "kamino\u200Blend" }, { project: "<b>kamino</b>" }, { project: "kamino-bonus.xyz" }, { symbol: "SOL\nclaim at x" }, { project: "x".repeat(41) }]) {
       const r = await venueRepo();
       const pool = { ...POOL, ...bad };
-      await decideSplits({ repo: r, now: NOW, model: scripted(finalWith({ found: [{ poolId: pool.poolId, note: "Kamino SOL pool at 5.6% a year." }] })), scout: async () => [pool] });
+      await decideSplits({ repo: r, now: NOW, model: scripted(finalWith({ found: [{ poolId: pool.poolId, note: "Marginfi SOL pool at 7.1% a year." }] })), scout: async () => [pool] });
       expect(await r.listFoundVenues(DAY, 5)).toEqual([]);
     }
     const ok = await venueRepo();
-    await decideSplits({ repo: ok, now: NOW, model: scripted(finalWith({ found: [{ poolId: POOL.poolId, note: "Kamino SOL pool at 5.6% a year." }] })), scout: async () => [{ ...POOL, project: "save_v2", symbol: "JitoSOL" }] });
+    await decideSplits({ repo: ok, now: NOW, model: scripted(finalWith({ found: [{ poolId: POOL.poolId, note: "Marginfi SOL pool at 7.1% a year." }] })), scout: async () => [{ ...POOL, project: "save_v2", symbol: "JitoSOL" }] });
     expect((await ok.listFoundVenues(DAY, 5)).map((f) => [f.project, f.symbol])).toEqual([["save_v2", "JitoSOL"]]);
   });
 
@@ -353,6 +351,14 @@ describe("the AI's tools, verdicts and found venues (spec 4, R275-R278)", () => 
     const rows = await decideSplits({ repo, now: NOW, model: scripted(finalWith({ verdicts: [{ venue: "kamino_klend", asset: "USDC_LEND", verdict: "avoid" }] })), scout: async () => [POOL] });
     expect(rows.every((r) => r.fallback === "schema")).toBe(true);
     expect((await repo.listVenueDays(DAY)).find((r) => r.venue === "kamino_klend" && r.asset === "USDC_LEND")!.verdict).toBeNull();
+  });
+
+  it("his note 10-08: a pool paying no more than Sprouts' own best rate today is not a find", async () => {
+    for (const pct of [5.0, 5.62]) {
+      const r = await venueRepo();
+      await decideSplits({ repo: r, now: NOW, model: scripted(finalWith()), scout: async () => [{ ...POOL, apyBasePct: pct }] });
+      expect(await r.listFoundVenues(DAY, 5)).toEqual([]);
+    }
   });
 
   it("a found pool the scout never served is dropped; a model that never answers falls back after the turn limit", async () => {

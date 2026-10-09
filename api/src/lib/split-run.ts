@@ -159,6 +159,17 @@ export function safeLine(line: string, facts: number[]): string | null {
  * word follows (a sentence end is ". " then a capital in every line we keep, so "a year. SKR" stays two sentences).
  */
 const joinDots = (s: string) => s.replace(/\s+\.\s*/g, ".").replace(/\.\s+(?=[a-z])/g, ".");
+/** "$45.2M" / "$850K": a deposit total as the Found row shows it. */
+const usdShort = (n: number) => (n >= 1e9 ? `$${(n / 1e9).toFixed(1)}B` : n >= 1e6 ? `$${(n / 1e6).toFixed(1)}M` : `$${Math.round(n / 1e3)}K`);
+/** The Found row's note, from the pool's own numbers: "9.1% base, $45.2M deposited". */
+export const foundNote = (f: { apyBasePct: number | null; tvlUsd: number | null }): string =>
+  [f.apyBasePct !== null ? `${f.apyBasePct.toFixed(1)}% base` : null, f.tvlUsd !== null ? `${usdShort(f.tvlUsd)} deposited` : null].filter(Boolean).join(", ");
+/** A find counts only when its base rate beats the best rate Sprouts' own venues show today for that coin (unknown rates: not a find). */
+export function beatsSprouts(f: { asset: "USDC" | "SOL"; apyBasePct: number | null }, venueRows: VenueDayRow[]): boolean {
+  const lend: LendAsset = f.asset === "USDC" ? "USDC_LEND" : "SOL_LEND";
+  const ours = venueRows.filter((r) => r.asset === lend && isAutoVenue(r.venue) && r.supplyPct !== null).map((r) => r.supplyPct as number);
+  return f.apyBasePct !== null && ours.length > 0 && f.apyBasePct > Math.max(...ours);
+}
 /** K-M3: a scouted pool's project and symbol (DefiLlama's raw strings) are stored only as plain names: no markup, no invisible or bidi characters, no domain. */
 const PLAIN_NAME = /^[A-Za-z0-9][A-Za-z0-9 _-]{0,39}$/;
 export const plainName = (s: string): boolean => PLAIN_NAME.test(s) && !DOMAIN_SHAPED.test(joinDots(s));
@@ -313,8 +324,10 @@ export async function decideSplits(a: { repo: Repo; now: Date; model: Conversati
     await a.repo.putSplitDay(p.row);
     out.push(p.row);
   }
-  // Review I3: a note is stored as the checked string (URLs stripped, one line, allowlisted), never the raw model text.
-  const notes = foundRows.flatMap((f) => { const note = f.note === null ? null : safeLine(f.note, servedNumbers); return note === null ? [] : [{ ...f, note }]; });
+  // His note 10-08 (no Found row had ever been stored: every model note failed the number check on "$23.6M"): a find is kept only
+  // when it pays more than Sprouts' best rate for that coin today, and its note is written by code from the pool's own numbers, so
+  // no model text reaches display at all (review I3 holds by construction).
+  const notes = foundRows.flatMap((f) => (beatsSprouts(f, after) ? [{ ...f, note: foundNote(f) }] : []));
   await a.repo.putFoundVenues([...new Map(notes.map((f) => [f.poolId, f])).values()]);
   return STOP_ORDER.map((s) => out.find((r) => r.stop === s) as SplitDayRow);
 }
