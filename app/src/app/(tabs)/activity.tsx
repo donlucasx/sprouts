@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react'
 import { Linking, Pressable, RefreshControl, View } from 'react-native'
 import { MaterialCommunityIcons } from '@expo/vector-icons'
 import { useQuery } from '@tanstack/react-query'
+import { SigninSprout } from '@/components/SigninSprout'
 import { Screen } from '@/components/Screen'
 import { Card } from '@/components/Card'
 import { Button } from '@/components/Button'
@@ -147,8 +148,15 @@ export default function Activity() {
       title="Activity"
       refreshControl={<RefreshControl refreshing={q.isRefetching} onRefresh={() => q.refetch()} colors={[colors.accent]} progressBackgroundColor={colors.surface} tintColor={colors.accent} />}
     >
-      {!a ? (
-        <ThemedText tone="secondary">{q.isError ? 'Could not load your activity just now. Pull down to try again.' : 'Loading your activity.'}</ThemedText>
+      {!a && q.isError ? <ThemedText tone="secondary">Could not load your activity just now. Pull down to try again.</ThemedText> : null}
+      {/* His note 10-08: the first read can take a few seconds; the sign-in sprout sways meanwhile instead of a near-empty page */}
+      {!a && !q.isError ? (
+        <View style={{ alignItems: 'center', gap: spacing.sm, paddingTop: spacing.xl }} accessibilityLabel="Loading your activity">
+          <SigninSprout />
+          <ThemedText variant="caption" tone="secondary">
+            Loading your activity
+          </ThemedText>
+        </View>
       ) : null}
       {a ? (
         <>

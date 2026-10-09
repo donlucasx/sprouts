@@ -134,13 +134,13 @@ export default function Settings() {
       <Card>
         {/* R462: the wallet that signs in is the Seed Vault */}
         <ThemedText variant="heading">Your Seed Vault</ThemedText>
-        <ThemedText tone="secondary">Where your savings live. Only you can move them.</ThemedText>
         <ThemedText numeric>
           {me?.user.skrName ?? (session ? `${session.pubkey.slice(0, 4)}...${session.pubkey.slice(-4)}` : '')}
         </ThemedText>
         {/* R150: the holdings note moved here from Home (both audits): where the wallet coins sit, said once. */}
+        {/* His note 10-08: one small caption under the address, so the address leads */}
         <ThemedText variant="caption" tone="secondary">
-          {HOLDINGS_NOTE}
+          {`Where your savings live. Only you can move them. ${HOLDINGS_NOTE}`}
         </ThemedText>
       </Card>
       <Card>
@@ -151,7 +151,7 @@ export default function Settings() {
           <ProBadge />
         </View>
         <ThemedText>Your money works by itself.</ThemedText>
-        {['The AI Yield Manager splits new change each morning', 'Automatic lending at the best safe rate', 'The tax pack for your tax tool'].map((l) => (
+        {['The AI Yield Manager splits new change each morning', 'Automatic lending at the best safe rate', 'Tax reports'].map((l) => (
           <ThemedText key={l} tone="secondary">
             {`\u2022 ${l}`}
           </ThemedText>
@@ -235,7 +235,11 @@ export default function Settings() {
       <Card>
         {/* R447: the plain record, free (R446 keeps the formatted tax pack in Pro). R463: request it, the phone says when it is ready,
             then download; the whole history, no year button */}
-        <ThemedText variant="heading">Export for taxes</ThemedText>
+        {/* His note 10-08: "Tax reports", with the Pro pill the Yield Manager carries */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+          <ThemedText variant="heading">Tax reports</ThemedText>
+          <ProBadge />
+        </View>
         <ThemedText tone="secondary">Every planting and withdrawal, for your tax tool.</ThemedText>
         <Button
           title={taxFile ? 'Download' : 'Request history'}
