@@ -4,7 +4,7 @@ import { Redirect } from 'expo-router'
 import { Screen } from '@/components/Screen'
 import { ThemedText } from '@/components/ThemedText'
 import { StepButtons } from '@/components/Stepper'
-import { Garden2 } from '@/garden2/Garden2'
+import { Garden2, garden2Bleeds } from '@/garden2/Garden2'
 import { DRAW_ORDER, PLANTS } from '@/garden2/layout'
 import { ASSET_OF_PLANT, allStages, clampStage, LADDER, type Plant2, type Stages } from '@/model/garden2'
 import { radius, spacing, useTheme } from '@/theme'
@@ -36,10 +36,10 @@ export default function DevGarden2() {
   )
   return (
     <Screen back title="Garden2 stages">
-      <View style={{ marginHorizontal: dark ? 0 : -spacing.edge }}>
+      <View style={{ marginHorizontal: garden2Bleeds(dark) ? -spacing.edge : 0 }}>
         <Garden2
           stages={stages}
-          width={dark ? width - 2 * spacing.edge : width}
+          width={garden2Bleeds(dark) ? width : width - 2 * spacing.edge}
           labelFor={(p) => [`${p} (${ASSET_OF_PLANT[p]})`, `Stage ${stages[p]} of ${PLANTS[p].last}`]}
         />
       </View>

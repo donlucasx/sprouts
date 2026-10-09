@@ -11,7 +11,7 @@ import { plantLabel } from '@/lib/plant-label'
 import { api } from '@/lib/api'
 import { buildScene, PLANT_OF } from '@/model/garden'
 import { ASSET_OF_PLANT, stagesFor } from '@/model/garden2'
-import { Garden2 } from '@/garden2/Garden2'
+import { Garden2, garden2Bleeds } from '@/garden2/Garden2'
 import { GARDEN2 } from '@/garden2/flag'
 import { withDevBud, type DevBud } from '@/lib/dev-bud'
 import { frameFor, skyAbove, valuePull } from '@/model/layout'
@@ -287,11 +287,11 @@ export default function Home() {
       </View>
       {GARDEN2 && stages ? (
         <>
-          {/* Light: full bleed (the plate's paper is the page's); dark: a paper card inside the screen's gutters (Garden2.tsx) */}
-          <View style={{ marginHorizontal: dark ? 0 : -spacing.edge }}>
+          {/* Full bleed in light, and in dark once a dark plate exists (R529); else a paper card inside the gutters (Garden2.tsx) */}
+          <View style={{ marginHorizontal: garden2Bleeds(dark) ? -spacing.edge : 0 }}>
             <Garden2
               stages={stages}
-              width={dark ? screenW - 2 * spacing.edge : screenW}
+              width={garden2Bleeds(dark) ? screenW : screenW - 2 * spacing.edge}
               labelFor={(p) => plantLabel(me, PLANT_OF[ASSET_OF_PLANT[p]], false)}
             />
           </View>
