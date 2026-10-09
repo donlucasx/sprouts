@@ -142,8 +142,9 @@ export async function GET(request: Request) {
     const planting = await runPlanting({ repo, now, chain: realChain(), deadlineMs: startedMs + 240_000 });
     const withdrawals = await runWithdrawCrank({ repo, now, chain: { readPosition: (u) => readPosition(address(u)), crankWithdraw: (u) => crankWithdraw(address(u)) } });
     // R61: stakes and unstakes the Seed Vault made from its own wallet, found by comparing the chain's share count with the ledger's.
-    // R499 F4: the reconcile stops starting users 15 s before the route's 300 s limit, so the cleanup and the keepalive always run.
-    const reconciled = await reconcileOwnStakes({ repo, now: new Date(), deadlineMs: startedMs + 285_000, chain: { readPosition: (u) => readPosition(address(u), "finalized"), sharePrice, finalized: signaturesFinalized } });
+    // R499 F4: the reconcile stops starting users 25 s before the route's 300 s limit (the last one may still spend ~10 s on its
+    // final status call); as a step, a throw is logged and the cleanup and the keepalive still run (round 2, R2-1).
+    const reconciled = (await step("reconcile", () => reconcileOwnStakes({ repo, now: new Date(), deadlineMs: startedMs + 275_000, chain: { readPosition: (u) => readPosition(address(u), "finalized"), sharePrice, finalized: signaturesFinalized } }))) ?? { adjusted: [], skipped: [], deferred: [] };
     await repo.cleanupExpired();
     // The first production run (2026-09-28) planted and then answered 500 here: reading rules for a made-up user violates the
     // rules -> users foreign key. The keepalive is now a read that needs no row.

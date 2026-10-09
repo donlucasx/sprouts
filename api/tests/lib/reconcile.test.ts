@@ -255,4 +255,30 @@ describe("reconcileOwnStakes (R61, [A16])", () => {
     expect(waited).toBeGreaterThan(0);
     expect(waited).toBeLessThanOrEqual(5_000);
   });
+
+  // R499 round 2 (R2-1): MemoryRepo compares dates as numbers, so it cannot see what Postgres refuses: a year past 9999.
+  it("asks for sent plantings with a bound Postgres accepts", async () => {
+    const repo = await seeded(1_000_000_000n);
+    let bound: Date | null = null;
+    const orig = repo.listSentPlantings.bind(repo);
+    repo.listSentPlantings = async (olderThan: Date) => { bound = olderThan; return orig(olderThan); };
+    await reconcileOwnStakes({ repo, now: LATER, chain: chainAt(1_000_000_000n) });
+    expect(bound).not.toBeNull();
+    expect(bound!.toISOString()).toMatch(/^\d{4}-/);
+    expect(bound!.getTime()).toBeGreaterThan(LATER.getTime());
+  });
+
+  // R499 round 2 (R2-4): a cooldown stays open while the crank fails, so a cancel can land weeks after its unstake.
+  it("a cancel of a 30-day-old pick is still finality-checked", async () => {
+    const repo = new MemoryRepo();
+    await repo.upsertUser({ seedVaultPubkey: "U", sgtMint: "M", skrName: null });
+    await repo.setJoinedPosition("U", { shares: 1_000_000_000n, sharePrice: SP });
+    const w = await repo.insertWithdrawal({ userPubkey: "U", asset: "SKR", source: "sprouts", unstakeSignature: "x", sharesUnstaked: 100_000_000n, amountRaw: 114_600_000n, principalRaw: 0n });
+    await repo.setWithdrawalCancelled(w.id, "c");
+    let asked: string[] = [];
+    const chain = { ...chainAt(900_000_000n, 114_600_000n), finalized: async (sigs: string[]) => { asked = sigs; return false; } };
+    const r = await reconcileOwnStakes({ repo, now: new Date(w.unstakeTs.getTime() + 30 * 86_400_000), chain });
+    expect(r.deferred).toEqual(["U"]);
+    expect(asked).toEqual(["c"]);
+  });
 });
