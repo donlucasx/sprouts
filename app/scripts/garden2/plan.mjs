@@ -25,12 +25,13 @@ const sets = {
   first: g.allStages(1),
   mid: g.allStages(7),
   mature: g.allStages(14),
-  mixed: g.stagesFor({ plantings, now, wateredAt: null }),
+  mixed: g.stagesFor({ plantings, picks: [], skrPrincipalPickedRaw: 0n }),
 }
 const out = {}
 const widths = process.argv.slice(2).map(Number) // view widths to scale the plan to (Garden2.tsx's scaleRect), px
 for (const [name, stages] of Object.entries(sets)) {
-  const layers = g.composeLayers(stages)
+  // R533: the trees' earned fruit/flowers at the ladder's cap (12) wherever a stage has spots; none on the bare sets
+  const layers = g.composeLayers(stages, name === 'empty' || name === 'first' ? {} : { mandarin: 12, store: 12 })
   out[name] = {
     stages,
     layers,

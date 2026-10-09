@@ -1,5 +1,5 @@
 import type { LiveAsset } from '../lib/coins'
-import { CANVAS, DRAW_ORDER, HIT, HIT_CELL, OVERLAYS, PLANTS, type Plant2 } from '../garden2/layout'
+import { CANVAS, DRAW_ORDER, HIT, HIT_CELL, OVERLAYS, PLANTS, SPOTS, type Plant2 } from '../garden2/layout'
 export type { Plant2 } from '../garden2/layout'
 
 /**
@@ -98,13 +98,37 @@ export type Layer =
   | { kind: 'plate'; key: 'plate'; x: number; y: number; w: number; h: number }
   | { kind: 'overlay'; key: 'stand' | 'cords'; x: number; y: number; w: number; h: number }
   | { kind: 'plant'; key: Plant2; stage: number; x: number; y: number; w: number; h: number }
+  | { kind: 'fruit'; key: Tree; index: number; x: number; y: number; w: number; h: number }
+
+/** The two trees that show earnings in the garden (R533): SKR's mandarins and stORE's ORE-gold flowers; the companions show none. */
+export type Tree = 'mandarin' | 'store'
+/** How many earned fruit (mandarin) or flowers (store) each tree has: the shared ladder's count (garden-input.ts earned). */
+export type Fruit = Partial<Record<Tree, number>>
+/** R548: the mandarin bears fruit from stage 8 (its crown has leaves); stages 3-7 are bare branches. stORE flowers wherever it has spots. */
+export const FRUIT_FROM: Record<Tree, number> = { mandarin: 8, store: 0 }
 
 /**
- * The draw list, back to front, in canvas px: the plate, then each plant in DRAW_ORDER at its box (at stage 0 every plant draws its
+ * The fruit drawn on a tree at a stage, in canvas px: the first `count` of that stage's measured spots (R416: each stage has its own
+ * spots, fruit never slides), each sprite 2r square centred on its spot (R547/R549: the board's size). Earned beyond the stage's spots
+ * is not drawn (Claude's build rule; R412's clusters of 2-3 not built).
+ */
+export function fruitOn(tree: Tree, stage: number, count: number): Extract<Layer, { kind: 'fruit' }>[] {
+  if (stage < FRUIT_FROM[tree] || !(count > 0)) return []
+  const at = SPOTS[tree][stage]
+  if (!at || at.r <= 0) return []
+  const b = PLANTS[tree],
+    d = at.r * 2
+  return at.at
+    .slice(0, Math.floor(count))
+    .map(([x, y], index) => ({ kind: 'fruit', key: tree, index, x: b.x + x - d / 2, y: b.y + y - d / 2, w: d, h: d }))
+}
+
+/**
+ * The draw list, back to front, in canvas px: the plate, then each plant in DRAW_ORDER at its box (a tree's fruit right after it) (at stage 0 every plant draws its
  * bare ground: the trees' soil mound since R517), the stand right after `store`, the cords right before `pothos`. Overlays always draw (before a
  * first hSOL planting the pothos hangs its bare pot, stage 0).
  */
-export function composeLayers(stages: Partial<Stages>): Layer[] {
+export function composeLayers(stages: Partial<Stages>, fruit: Fruit = {}): Layer[] {
   const out: Layer[] = [{ kind: 'plate', key: 'plate', x: 0, y: 0, w: CANVAS.w, h: CANVAS.h }]
   const overlay = (key: 'stand' | 'cords'): Layer => {
     const o = OVERLAYS[key]
@@ -114,6 +138,7 @@ export function composeLayers(stages: Partial<Stages>): Layer[] {
     if (OVERLAYS.cords.before === p) out.push(overlay('cords'))
     const s = clampStage(p, stages[p] ?? 0)
     out.push({ kind: 'plant', key: p, stage: s, ...box(p) })
+    if (p === 'mandarin' || p === 'store') out.push(...fruitOn(p, s, fruit[p] ?? 0))
     if (OVERLAYS.stand.after === p) out.push(overlay('stand'))
   }
   return out

@@ -25,6 +25,7 @@ if os.path.exists(EXPORT):   # the plan's boxes are the approved export's
 def src(l):
     if l["kind"] == "plate": return os.path.join(A, "plate.png")
     if l["kind"] == "overlay": return os.path.join(A, f"{l['key']}.png")
+    if l["kind"] == "fruit": return os.path.join(A, f"{l['key']}-fruit.png")
     return os.path.join(A, l["key"], f"stage{l['stage']:02d}.webp")
 
 def render(scaled):

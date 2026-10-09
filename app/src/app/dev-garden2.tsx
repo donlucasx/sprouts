@@ -17,6 +17,7 @@ export default function DevGarden2() {
   const { width } = useWindowDimensions()
   const { colors, dark } = useTheme()
   const [stages, setStages] = useState<Stages>(allStages(0))
+  const [fruit, setFruit] = useState(12) // R533: earned fruit/flowers on both trees (12 = the ladder's cap)
   if (typeof __DEV__ === 'undefined' || !__DEV__) return <Redirect href="/" />
   const set = (p: Plant2, s: number) => setStages((old) => ({ ...old, [p]: clampStage(p, s) }))
   const all = (s: number) => setStages(Object.fromEntries(DRAW_ORDER.map((p) => [p, clampStage(p, s)])) as Stages)
@@ -39,6 +40,7 @@ export default function DevGarden2() {
       <View style={{ marginHorizontal: garden2Bleeds(dark) ? -spacing.edge : 0 }}>
         <Garden2
           stages={stages}
+          fruit={{ mandarin: fruit, store: fruit }}
           width={garden2Bleeds(dark) ? width : width - 2 * spacing.edge}
           labelFor={(p) => [`${p} (${ASSET_OF_PLANT[p]})`, `Stage ${stages[p]} of ${PLANTS[p].last}`]}
         />
@@ -48,6 +50,7 @@ export default function DevGarden2() {
         {chip('All 1', () => all(1))}
         {chip('All 7', () => all(7))}
         {chip('All 14', () => all(14))}
+        {chip(`Fruit ${fruit}`, () => setFruit((f) => (f >= 12 ? 0 : f === 0 ? 3 : 12)))}
         {chip('All +1', () =>
           setStages((old) => Object.fromEntries(DRAW_ORDER.map((p) => [p, clampStage(p, old[p] + 1)])) as Stages),
         )}
