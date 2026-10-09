@@ -24,13 +24,23 @@ const KIND_COLOR: Record<ActivityKind, string> = {
   move: coinColor('USDC_LEND'),
   found: '#6E6A64',
 }
+/** R482: the same hues lightened for the dark ground, so the small-caps word stays readable (Claude's picks, shown on the options page). */
+const KIND_COLOR_DARK: Record<ActivityKind, string> = {
+  plant: '#78D696',
+  swap: '#D6BA96',
+  withdraw: '#F09687',
+  split: '#C4ACF0',
+  move: '#9CC3EE',
+  found: '#BEBAB2',
+}
 
 /**
  * R362: ONE line (time, a short label, the amount on the right); a tap opens its details and its transaction on Solscan (a
  * wallet-started withdrawal not yet delivered: the wallet, R165). TalkBack hears the full date, since the day is in the header.
  */
 function Row({ row, kind, accountPubkey, right }: { row: ActivityRow; kind: ActivityKind; accountPubkey?: string | null; right?: ReactNode }) {
-  const { colors } = useTheme()
+  const { colors, dark } = useTheme()
+  const tint = (dark ? KIND_COLOR_DARK : KIND_COLOR)[kind]
   const [open, setOpen] = useState(false)
   const link = row.signature
     ? { url: `https://solscan.io/tx/${row.signature}`, label: 'Open on Solscan' }
@@ -50,9 +60,13 @@ function Row({ row, kind, accountPubkey, right }: { row: ActivityRow; kind: Acti
           accessibilityState={opens ? { expanded: open } : undefined}
           style={({ pressed }) => ({ flex: 1, minHeight: TARGET - spacing.sm, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, opacity: pressed ? 0.6 : 1 })}
         >
-          {/* R480: one width for every tag, so the labels line up */}
-          <View style={{ width: 68, height: 24, borderRadius: radius.sm, backgroundColor: KIND_COLOR[kind], alignItems: 'center', justifyContent: 'center' }}>
-            <ThemedText variant="caption" numberOfLines={1} style={{ color: '#FFFFFF', fontWeight: '700' }}>
+          {/* R482: no box; a thin colour bar and the word in small caps, in one fixed column so the labels line up */}
+          <View style={{ width: 84, flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+            <View style={{ width: 3, height: 22, borderRadius: 2, backgroundColor: tint }} />
+            <ThemedText
+              numberOfLines={1}
+              style={{ fontFamily: 'AlbertSans_500Medium', fontSize: 11, lineHeight: 14, letterSpacing: 0.9, textTransform: 'uppercase', color: tint }}
+            >
               {row.tag ?? KIND_TAG[kind]}
             </ThemedText>
           </View>
