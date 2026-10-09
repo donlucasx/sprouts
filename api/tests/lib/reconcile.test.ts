@@ -3,9 +3,9 @@ import { MemoryRepo } from "@/db/memory";
 import { reconcileOwnStakes } from "@/lib/reconcile";
 
 const SP = 1_146_000_000n;
-/** Past the settle window of every row a test writes: the ledger is settled and the read is current. */
+/** Past the recent window of every row a test writes: no finality check is needed. */
 const LATER = new Date(Date.now() + 3_600_000);
-const chainAt = (shares: bigint, unstakingRaw = 0n) => ({ readPosition: async () => ({ shares, stakedRaw: 0n, unstakingRaw, unstakeTs: unstakingRaw ? 1n : null }), sharePrice: async () => SP });
+const chainAt = (shares: bigint, unstakingRaw = 0n, finalized = true) => ({ readPosition: async () => ({ shares, stakedRaw: 0n, unstakingRaw, unstakeTs: unstakingRaw ? 1n : null }), sharePrice: async () => SP, finalized: async () => finalized });
 
 /** A user with one confirmed planting that minted `minted` shares (before 0, after `minted`), or none. */
 async function seeded(minted: bigint | null) {
@@ -130,49 +130,65 @@ describe("reconcileOwnStakes (R61, [A16])", () => {
     expect((await repo.listStakeAdjustments("U")).length).toBe(0);
   });
   // R499: the 10-06 race on 52vz. A planting's stake booked at `confirmed`, the read at `finalized` 4 s later still without it, and an
-  // older cooldown open: the missing shares were booked as a wallet unstake. A ledger this fresh waits for the next run.
-  it("a planting inside the settle window defers the user: a lagging read is not booked as a wallet unstake", async () => {
+  // older cooldown open: the missing shares were booked as a wallet unstake. A recent move not yet finalized waits for the next run.
+  it("a recent planting not yet finalized defers the user before the read: the lag is not booked as a wallet unstake", async () => {
     const repo = await seeded(1_000_000_000n);
     const p2 = await repo.insertPlanting({ userPubkey: "U", walletPubkey: "W", signature: "s2", usdcPulledCents: 106, networkFeeCents: 0, status: "confirmed", aiLine: null }, []);
     await repo.setPlantingShares(p2.id, { before: 1_000_000_000n, after: 1_055_278_224n, minted: 55_278_224n });
     let reads = 0;
-    const lagging = { readPosition: async () => { reads++; return { shares: 1_000_000_000n, stakedRaw: 0n, unstakingRaw: 10_000_000n, unstakeTs: 1n }; }, sharePrice: async () => SP };
+    let asked: string[] = [];
+    const lagging = {
+      readPosition: async () => { reads++; return { shares: 1_000_000_000n, stakedRaw: 0n, unstakingRaw: 10_000_000n, unstakeTs: 1n }; },
+      sharePrice: async () => SP,
+      finalized: async (sigs: string[]) => { asked = sigs; return false; },
+    };
     const r = await reconcileOwnStakes({ repo, now: new Date(p2.ts.getTime() + 4_000), chain: lagging });
     expect(r.deferred).toEqual(["U"]);
     expect(r.adjusted).toEqual([]);
     expect(reads).toBe(0);
+    expect(asked.sort()).toEqual(["s", "s2"]);
     expect(await repo.listStakeAdjustments("U")).toEqual([]);
     expect(await repo.listWithdrawals("U", 5)).toEqual([]);
-    // Settled, the read carries the planting's shares: nothing to book.
-    const r2 = await reconcileOwnStakes({ repo, now: LATER, chain: chainAt(1_055_278_224n, 10_000_000n) });
-    expect(r2.deferred).toEqual([]);
-    expect(await repo.listStakeAdjustments("U")).toEqual([]);
   });
 
-  it("a Sprouts pick inside the settle window defers the user: a read still holding its shares is not an own stake", async () => {
+  // The cron plants and reconciles in the same run: an age rule would never reconcile a user who plants every day.
+  it("a recent planting already finalized does not defer: a real wallet unstake the same day is booked", async () => {
+    const repo = await seeded(1_000_000_000n);
+    const p = (await repo.listConfirmedPlantings("U"))[0];
+    const r = await reconcileOwnStakes({ repo, now: new Date(p.ts.getTime() + 30_000), chain: chainAt(400_000_000n, 687_600_000n, true) });
+    expect(r.deferred).toEqual([]);
+    expect((await repo.listStakeAdjustments("U"))[0].kind).toBe("own_unstake");
+  });
+
+  it("a recent Sprouts pick not yet finalized defers the user: a read still holding its shares is not an own stake", async () => {
     // No planting at all (shares from the join), so only the pick can defer the user.
     const repo = new MemoryRepo();
     await repo.upsertUser({ seedVaultPubkey: "U", sgtMint: "M", skrName: null });
     await repo.setJoinedPosition("U", { shares: 1_000_000_000n, sharePrice: SP });
     const w = await repo.insertWithdrawal({ userPubkey: "U", asset: "SKR", source: "sprouts", unstakeSignature: "x", sharesUnstaked: 100_000_000n, amountRaw: 114_600_000n, principalRaw: 0n });
-    const r = await reconcileOwnStakes({ repo, now: new Date(w.unstakeTs.getTime() + 4_000), chain: chainAt(1_000_000_000n) });
+    const r = await reconcileOwnStakes({ repo, now: new Date(w.unstakeTs.getTime() + 4_000), chain: chainAt(1_000_000_000n, 0n, false) });
     expect(r.deferred).toEqual(["U"]);
     expect(await repo.listStakeAdjustments("U")).toEqual([]);
   });
 
-  it("a recent wallet-source row does not defer: only Sprouts' own sends lag the read", async () => {
-    const repo = await seeded(1_000_000_000n);
-    await reconcileOwnStakes({ repo, now: LATER, chain: chainAt(400_000_000n, 687_600_000n) });
-    const r = await reconcileOwnStakes({ repo, now: LATER, chain: chainAt(1_000_000_000n) });
-    expect(r.deferred).toEqual([]);
-    expect((await repo.listStakeAdjustments("U")).map((x) => x.kind)).toEqual(["own_unstake", "own_stake"]);
+  it("a recent row without a signature cannot be proven finalized: deferred without asking the chain", async () => {
+    const repo = new MemoryRepo();
+    await repo.upsertUser({ seedVaultPubkey: "U", sgtMint: "M", skrName: null });
+    await repo.setJoinedPosition("U", { shares: 0n, sharePrice: SP });
+    const p = await repo.insertPlanting({ userPubkey: "U", walletPubkey: "W", signature: null as unknown as string, usdcPulledCents: 23, networkFeeCents: 3, status: "confirmed", aiLine: null }, []);
+    await repo.setPlantingShares(p.id, { before: 0n, after: 1_000_000_000n, minted: 1_000_000_000n });
+    let asked = false;
+    const r = await reconcileOwnStakes({ repo, now: new Date(p.ts.getTime() + 4_000), chain: { ...chainAt(400_000_000n, 687_600_000n), finalized: async () => { asked = true; return true; } } });
+    expect(r.deferred).toEqual(["U"]);
+    expect(asked).toBe(false);
+    expect(await repo.listStakeAdjustments("U")).toEqual([]);
   });
 
-  it("the settle window ends: a planting 10 minutes and 1 second old is reconciled", async () => {
+  it("a recent wallet-source row needs no finality check: only Sprouts' own sends are booked at confirmed", async () => {
     const repo = await seeded(1_000_000_000n);
-    const p = (await repo.listConfirmedPlantings("U"))[0];
-    const r = await reconcileOwnStakes({ repo, now: new Date(p.ts.getTime() + 601_000), chain: chainAt(1_500_000_000n) });
+    await reconcileOwnStakes({ repo, now: LATER, chain: chainAt(400_000_000n, 687_600_000n) });
+    const r = await reconcileOwnStakes({ repo, now: LATER, chain: chainAt(1_000_000_000n, 0n, false) });
     expect(r.deferred).toEqual([]);
-    expect((await repo.listStakeAdjustments("U"))[0].kind).toBe("own_stake");
+    expect((await repo.listStakeAdjustments("U")).map((x) => x.kind)).toEqual(["own_unstake", "own_stake"]);
   });
 });

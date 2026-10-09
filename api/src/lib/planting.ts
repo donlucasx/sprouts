@@ -1,5 +1,5 @@
 import {
-  address, pipe, createTransactionMessage, setTransactionMessageFeePayerSigner, setTransactionMessageLifetimeUsingBlockhash,
+  address, signature as toSignature, pipe, createTransactionMessage, setTransactionMessageFeePayerSigner, setTransactionMessageLifetimeUsingBlockhash,
   appendTransactionMessageInstructions, compressTransactionMessageUsingAddressLookupTables, signTransactionMessageWithSigners,
   getBase64EncodedWireTransaction, getSignatureFromTransaction, fetchAddressesForLookupTables, sendAndConfirmTransactionFactory,
   createSolanaRpcSubscriptions, assertIsTransactionWithBlockhashLifetime, getTransactionEncoder, type Address, type Instruction, type TransactionSigner,
@@ -496,6 +496,17 @@ export async function sendPlanting(b: BuiltPlanting): Promise<void> {
   assertIsTransactionWithBlockhashLifetime(tx);
   const send = sendAndConfirmTransactionFactory({ rpc: rpc(), rpcSubscriptions: createSolanaRpcSubscriptions(config().heliusRpcUrl.replace("https://", "wss://")) });
   await send(tx, { commitment: "confirmed" });
+}
+
+/** True once every signature is finalized, polling every 2 s for up to `waitMs` (finality trails confirmation by ~13 s). */
+export async function signaturesFinalized(sigs: string[], waitMs: number): Promise<boolean> {
+  const end = Date.now() + waitMs;
+  for (;;) {
+    const { value } = await rpc().getSignatureStatuses(sigs.map((x) => toSignature(x)), { searchTransactionHistory: true }).send();
+    if (value.every((s) => s?.confirmationStatus === "finalized")) return true;
+    if (Date.now() + 2_000 > end) return false;
+    await new Promise((r) => setTimeout(r, 2_000));
+  }
 }
 
 /** What the chain says about a signature: landed, landed and failed, or not seen (still in flight or never sent). */
