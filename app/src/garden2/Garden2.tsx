@@ -33,8 +33,8 @@ const LABEL_MS = 4500,
   LABEL_W = 260
 const SNAP_MS = 250 // R173: the zoom snaps back on release or a double tap
 
-/** True when the garden draws full bleed (light, or dark with a dark plate, R529); false = R516's paper card inside the gutters. */
-export const garden2Bleeds = (dark: boolean): boolean => !dark || PLATE_DARK !== null
+/** The garden always draws full bleed: light, and dark (R530, option B: the light plate edge to edge, square, on the dark page). */
+export const garden2Bleeds = (_dark: boolean): boolean => true
 
 /** R529: in dark mode with a dark plate exported, the dark plate and any dark variant of a layer; otherwise the light art. */
 const sourceOf = (l: Layer, night: boolean) =>
@@ -65,9 +65,8 @@ export function Garden2({
   labelFor?: (plant: Plant2) => string[]
 }) {
   const { colors, dark } = useTheme()
-  // R529: a dark plate draws full bleed on the dark page (its sky and bottom fade are the page colour); without one, R516's paper card.
+  // R530 (option B): dark draws the light plate full bleed and square; a dark plate, if one is ever exported, replaces it (R529 plumbing).
   const night = dark && PLATE_DARK !== null
-  const card = dark && !night
   const reduced = useReducedMotion()
   // R525: the view starts just above the tallest thing drawn (frameTop), so a young garden sits tight and the frame opens as it grows.
   const top = useMemo(() => frameTop(stages), [stages])
@@ -140,7 +139,7 @@ export function Garden2({
             width,
             height: h,
             overflow: 'hidden',
-            borderRadius: card ? radius.lg : 0,
+            borderRadius: 0,
             backgroundColor: night ? colors.background : '#FFFCF6',
           }}
           accessible
