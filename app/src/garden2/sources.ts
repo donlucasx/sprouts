@@ -113,3 +113,10 @@ export const STAGE_SRC: Record<Plant2, Record<number, number>> = {
     14: require('../../assets/garden2/azalea/stage14.webp'),
   },
 }
+
+/** R529 dark mode: the dark plate (null until one is exported) and any dark variants of overlays and stage layers. */
+export const PLATE_DARK: number | null = null
+export const OVERLAY_SRC_DARK: Partial<Record<'stand' | 'cords', number>> = {
+}
+export const STAGE_SRC_DARK: Partial<Record<Plant2, Record<number, number>>> = {
+}

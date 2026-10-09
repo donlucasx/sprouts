@@ -22,6 +22,11 @@ W, H = L["canvas"]["w"], L["canvas"]["h"]
 if os.path.isdir(OUT): shutil.rmtree(OUT)
 os.makedirs(OUT)
 shutil.copyfile(os.path.join(SRC, "plate.png"), os.path.join(OUT, "plate.png"))
+# R529: dark-mode variants, all optional: plate-dark.png, an overlay's "<stem>-dark<ext>", a stage layer's "<stem>-dark.webp".
+HAS_DARK_PLATE = os.path.exists(os.path.join(SRC, "plate-dark.png"))
+if HAS_DARK_PLATE: shutil.copyfile(os.path.join(SRC, "plate-dark.png"), os.path.join(OUT, "plate-dark.png"))
+dark_variant = lambda rel: (lambda d: d if os.path.exists(os.path.join(SRC, d)) else None)(os.path.splitext(rel)[0] + "-dark" + os.path.splitext(rel)[1])
+dark_overlays, dark_stages = {}, {}
 
 overlays = {}
 for name, rule in L["overlays"].items():
@@ -30,6 +35,11 @@ for name, rule in L["overlays"].items():
     x0, y0, x1, y1 = im.getchannel("A").getbbox()
     key = "stand" if name.startswith("stand") else "cords"
     im.crop((x0, y0, x1, y1)).save(os.path.join(OUT, f"{key}.png"), optimize=True)
+    dv = dark_variant(name)
+    if dv:  # cut at the light layer's box, so the dark one draws in exactly the same place
+        dim = Image.open(os.path.join(SRC, dv)).convert("RGBA"); assert dim.size == (W, H), dv
+        dim.crop((x0, y0, x1, y1)).save(os.path.join(OUT, f"{key}-dark.png"), optimize=True)
+        dark_overlays[key] = f"{key}-dark.png"
     overlays[key] = {"file": f"{key}.png", "x": x0, "y": y0, "w": x1 - x0, "h": y1 - y0, **rule}
 
 def mask(im, w, h):
@@ -50,6 +60,11 @@ for p in L["draw_order"]:
         im = Image.open(src).convert("RGBA")
         assert im.size == (b["w"], b["h"]), (p, s, im.size)
         shutil.copyfile(src, os.path.join(OUT, p, f"stage{s:02d}.webp"))
+        dv = dark_variant(b["stages"][str(s)])
+        if dv:
+            assert Image.open(os.path.join(SRC, dv)).size == (b["w"], b["h"]), (p, s, "dark")
+            shutil.copyfile(os.path.join(SRC, dv), os.path.join(OUT, p, f"stage{s:02d}-dark.webp"))
+            dark_stages.setdefault(p, []).append(s)
         masks[p][s] = mask(im, b["w"], b["h"])
     plants[p] = {"x": b["x"], "y": b["y"], "w": b["w"], "h": b["h"], "first": stages[0], "last": stages[-1]}
     assert stages == list(range(stages[0], stages[-1] + 1)), (p, stages)
@@ -83,6 +98,16 @@ for p in L["draw_order"]:
     lines.append(f"  {p}: {{")
     for s in range(plants[p]["first"], plants[p]["last"] + 1):
         lines.append(f"    {s}: require('../../assets/garden2/{p}/stage{s:02d}.webp'),")
+    lines.append("  },")
+lines.append("}")
+lines += ["", "/** R529 dark mode: the dark plate (null until one is exported) and any dark variants of overlays and stage layers. */",
+          "export const PLATE_DARK: number | null = " + ("require('../../assets/garden2/plate-dark.png')" if HAS_DARK_PLATE else "null"),
+          "export const OVERLAY_SRC_DARK: Partial<Record<'stand' | 'cords', number>> = {",
+          *[f"  {k}: require('../../assets/garden2/{v}')," for k, v in dark_overlays.items()], "}",
+          "export const STAGE_SRC_DARK: Partial<Record<Plant2, Record<number, number>>> = {"]
+for p, ss in dark_stages.items():
+    lines.append(f"  {p}: {{")
+    for s in ss: lines.append(f"    {s}: require('../../assets/garden2/{p}/stage{s:02d}-dark.webp'),")
     lines.append("  },")
 lines.append("}")
 open(os.path.join(APP, "src", "garden2", "sources.ts"), "w").write("\n".join(lines) + "\n")

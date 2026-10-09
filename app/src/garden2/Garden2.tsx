@@ -15,7 +15,7 @@ import { ThemedText } from '@/components/ThemedText'
 import { radius, spacing, useTheme } from '@/theme'
 import { pinchOffset } from '@/model/motion'
 import { CANVAS } from './layout'
-import { OVERLAY_SRC, PLATE, STAGE_SRC } from './sources'
+import { OVERLAY_SRC, OVERLAY_SRC_DARK, PLATE, PLATE_DARK, STAGE_SRC, STAGE_SRC_DARK } from './sources'
 import {
   clampZoom2,
   composeLayers,
@@ -33,8 +33,18 @@ const LABEL_MS = 4500,
   LABEL_W = 260
 const SNAP_MS = 250 // R173: the zoom snaps back on release or a double tap
 
-const sourceOf = (l: Layer) =>
-  l.kind === 'plate' ? PLATE : l.kind === 'overlay' ? OVERLAY_SRC[l.key] : STAGE_SRC[l.key][l.stage]
+/** True when the garden draws full bleed (light, or dark with a dark plate, R529); false = R516's paper card inside the gutters. */
+export const garden2Bleeds = (dark: boolean): boolean => !dark || PLATE_DARK !== null
+
+/** R529: in dark mode with a dark plate exported, the dark plate and any dark variant of a layer; otherwise the light art. */
+const sourceOf = (l: Layer, night: boolean) =>
+  l.kind === 'plate'
+    ? night && PLATE_DARK !== null
+      ? PLATE_DARK
+      : PLATE
+    : l.kind === 'overlay'
+      ? (night && OVERLAY_SRC_DARK[l.key]) || OVERLAY_SRC[l.key]
+      : (night && STAGE_SRC_DARK[l.key]?.[l.stage]) || STAGE_SRC[l.key][l.stage]
 
 /**
  * Garden2 (R508G): the painted garden composed from the approved mockup v8 at the canvas aspect (1328 x 896), `width` wide: the
@@ -55,6 +65,9 @@ export function Garden2({
   labelFor?: (plant: Plant2) => string[]
 }) {
   const { colors, dark } = useTheme()
+  // R529: a dark plate draws full bleed on the dark page (its sky and bottom fade are the page colour); without one, R516's paper card.
+  const night = dark && PLATE_DARK !== null
+  const card = dark && !night
   const reduced = useReducedMotion()
   // R525: the view starts just above the tallest thing drawn (frameTop), so a young garden sits tight and the frame opens as it grows.
   const top = useMemo(() => frameTop(stages), [stages])
@@ -127,8 +140,8 @@ export function Garden2({
             width,
             height: h,
             overflow: 'hidden',
-            borderRadius: dark ? radius.lg : 0,
-            backgroundColor: '#FFFCF6',
+            borderRadius: card ? radius.lg : 0,
+            backgroundColor: night ? colors.background : '#FFFCF6',
           }}
           accessible
           accessibilityLabel="Your garden"
@@ -137,7 +150,7 @@ export function Garden2({
             {layers.map((l) => (
               <Image
                 key={l.kind === 'plant' ? `p-${l.key}` : l.key}
-                source={sourceOf(l)}
+                source={sourceOf(l, night)}
                 fadeDuration={0}
                 style={{ position: 'absolute', left: l.x, top: l.y, width: l.w, height: l.h }}
               />
