@@ -94,22 +94,22 @@ describe("the layer plan (draw order and positions from the approved export)", (
     expect(keys(allStages(0))).toEqual(["plate", "maple0", "store0", "stand", "mandarin0", "cords", "pothos0", "orchid0", "azalea0"]);
     expect(keys({})).toEqual(keys(allStages(0)));
   });
-  it("places every plant at its export box, the plate over the whole 1438 x 896 canvas (110 px of paper added right of the pole, R522b)", () => {
-    expect(CANVAS).toEqual({ w: 1438, h: 896 });
+  it("places every plant at its export box, the plate over the whole 1518 x 896 canvas (190 px of sand right of the original pole, R522b/R545)", () => {
+    expect(CANVAS).toEqual({ w: 1518, h: 896 });
     const L = composeLayers(allStages(14));
-    expect(L[0]).toMatchObject({ kind: "plate", x: 0, y: 0, w: 1438, h: 896 });
+    expect(L[0]).toMatchObject({ kind: "plate", x: 0, y: 0, w: 1518, h: 896 });
     expect(L.find((l) => l.key === "maple")).toMatchObject({ x: 597, y: 446, w: 276, h: 263 });
     expect(L.find((l) => l.key === "store")).toMatchObject({ x: 618, y: 5, w: 639, h: 708 });
     expect(L.find((l) => l.key === "mandarin")).toMatchObject({ x: 143, y: 35, w: 637, h: 705 });
-    expect(L.find((l) => l.key === "pothos")).toMatchObject({ x: 1126, y: 381, w: 204, h: 260 });
+    expect(L.find((l) => l.key === "pothos")).toMatchObject({ x: 1251, y: 381, w: 204, h: 260 });   // R545: moved 125 px right with the pole
     expect(L.find((l) => l.key === "orchid")).toMatchObject({ x: 928, y: 478, w: 265, h: 384 });
     expect(L.find((l) => l.key === "azalea")).toMatchObject({ x: 71, y: 532, w: 319, h: 287 });
     expect(L.find((l) => l.key === "stand")).toMatchObject({ x: OVERLAYS.stand.x, y: OVERLAYS.stand.y });
   });
   it("scales every rect by one factor, the view keeping the canvas aspect", () => {
-    expect(viewHeight(1438)).toBe(896);
-    expect(viewHeight(412)).toBeCloseTo(256.712, 3);
-    expect(scaleRect({ x: 597, y: 446, w: 276, h: 263 }, 719)).toEqual({ x: 298.5, y: 223, w: 138, h: 131.5 });
+    expect(viewHeight(1518)).toBe(896);
+    expect(viewHeight(412)).toBeCloseTo(243.183, 3);
+    expect(scaleRect({ x: 597, y: 446, w: 276, h: 263 }, 759)).toEqual({ x: 298.5, y: 223, w: 138, h: 131.5 });
   });
 });
 
@@ -133,7 +133,7 @@ describe("the bundled layers", () => {
     expect(n).toBe(90);
   });
   it("has the plate at canvas size and each overlay at its box", () => {
-    expect(pngSize(path.join(ASSETS, "plate.png"))).toEqual({ w: 1438, h: 896 });
+    expect(pngSize(path.join(ASSETS, "plate.png"))).toEqual({ w: 1518, h: 896 });
     for (const k of ["stand", "cords"] as const) expect(pngSize(path.join(ASSETS, OVERLAYS[k].file))).toEqual({ w: OVERLAYS[k].w, h: OVERLAYS[k].h });
   });
   it("requires every layer in sources.ts", () => {
@@ -174,7 +174,7 @@ describe("the hit grid follows the layer's own paint", () => {
   // opaque (alpha >= 128) bounding boxes measured on the export's webps, canvas px (brand/garden2/app-export, 10-09)
   const painted: [Parameters<typeof paintsAt>[0], number, [number, number, number, number]][] = [
     ["mandarin", 1, [262, 555, 692, 709]], ["store", 1, [830, 540, 1096, 661]], ["maple", 1, [634, 538, 833, 632]],
-    ["orchid", 0, [944, 685, 1176, 845]], ["pothos", 14, [1142, 405, 1296, 624]],
+    ["orchid", 0, [944, 685, 1176, 845]], ["pothos", 14, [1267, 405, 1421, 624]],
   ];
   it.each(painted)("%s stage %i hits only inside its painted bounds (one cell of slack) and fills them", (p, s, [x0, y0, x1, y1]) => {
     const b = PLANTS[p];
