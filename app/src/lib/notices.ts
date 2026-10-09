@@ -34,7 +34,7 @@ export function noticesFor(before: MeResponse | null, me: MeResponse, on: (k: No
   // A basket also leaves on a cancel, which drops its pick (cancelSignature set); only a basket whose pick stays was delivered.
   const b = before.basket;
   if (b && !me.basket && me.history.picks.some((p) => p.ts === b.unstakeTs))
-    out.push({ kind: "withdrawals", title: "Withdrawal delivered", body: `${formatSkr(BigInt(b.amountRaw), me.pot.skrUsd)} is in your Seeker's wallet.` });
+    out.push({ kind: "withdrawals", title: "Withdrawal delivered", body: `${formatSkr(BigInt(b.amountRaw), me.pot.skrUsd)} is in your wallet.` });
   // Only the daily run sets changedDay; any save of yours clears it to null, so a new non-null day is the manager's move.
   if (me.manager.changedDay && me.manager.changedDay !== before.manager.changedDay) {
     const why = me.manager.why ? ` ${me.manager.why}` : "";

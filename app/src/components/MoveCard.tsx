@@ -140,7 +140,7 @@ export function MoveCard({ me }: { me: MeResponse }) {
       </View>
       {phase === 'seeker' || phase === 'chain' ? (
         <ThemedText variant="caption" tone="secondary">
-          {phase === 'seeker' ? 'Waiting for your Seeker.' : 'Moving. This can take a minute.'}
+          {phase === 'seeker' ? 'Waiting for your wallet.' : 'Moving. This can take a minute.'}
         </ThemedText>
       ) : null}
       {line ? <ThemedText tone={line.error ? 'error' : 'accentText'}>{line.text}</ThemedText> : null}

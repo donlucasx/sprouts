@@ -34,7 +34,11 @@ export async function fetchTaxCsv(year?: number): Promise<{ csv: string; filenam
   return { csv: text, filename: named ?? `sprouts-tax-${year ?? "all"}.csv` };
 }
 
-export type TaxFile = { uri: string; filename: string };
+export type TaxFile = { uri: string; filename: string; madeAt: number };
+
+/** Audit 10-08: a prepared file is offered for 10 minutes; after that Download prepares a fresh one, so a shared record is never days old. */
+export const TAX_FILE_FRESH_MS = 10 * 60_000;
+export const taxFileFresh = (f: TaxFile | null, now = Date.now()): f is TaxFile => f !== null && now - f.madeAt < TAX_FILE_FRESH_MS;
 
 /**
  * R463, request then notify: fetches the whole history's CSV and writes it as a real .csv file in the app's cache. Settings calls it
@@ -46,7 +50,7 @@ export async function prepareTaxCsv(): Promise<TaxFile> {
   const file = new File(Paths.cache, filename);
   file.create({ overwrite: true });
   file.write(csv);
-  return { uri: file.uri, filename };
+  return { uri: file.uri, filename, madeAt: Date.now() };
 }
 
 export const shareTaxCsv = (f: TaxFile) =>

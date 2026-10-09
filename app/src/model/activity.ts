@@ -8,7 +8,7 @@ import { changeSummary, STOP_LABEL } from './manager'
  * everything else (the coin amount, the venue, the why) and the transaction open with a tap.
  * `ts` is the row's ISO time, or a found venue's `YYYY-MM-DD` day (no time).
  */
-export type ActivityRow = { key: string; ts: string; label: string; amount: string | null; details: string[]; signature: string | null }
+export type ActivityRow = { key: string; ts: string; label: string; amount: string | null; details: string[]; signature: string | null; tag?: string }
 type Planting = ActivityResponse['plantings'][number]
 type Leg = Planting['legs'][number] & { asset: LiveAsset }
 type Swap = Pick<ActivityResponse['swaps'][number], 'signature' | 'ts' | 'usdSizeCents' | 'roundupCents' | 'plantingId'>
@@ -39,7 +39,7 @@ export function splitRow(s: SplitRow, i: number): ActivityRow {
   if (s.by === 'you' && s.turnedOn) return { ...base, label: 'You turned on the AI', details: [stop, summary].filter(Boolean) }
   if (s.by === 'you') return { ...base, label: 'You changed your split', details: summary ? [summary] : stop ? [stop] : [] }
   if (s.fallback) return { ...base, label: 'Split moved by rule', details: [summary, 'Chosen by rule today.'].filter(Boolean) }
-  return { ...base, label: 'AI moved your split', details: [summary, s.why ?? ''].filter(Boolean) }
+  return { ...base, tag: 'AI', label: 'AI moved your split', details: [summary, s.why ?? ''].filter(Boolean) }
 }
 
 /** "Swap $10.00" and its change "+$1.00"; planted or waiting behind the tap. */
@@ -159,8 +159,8 @@ export const KIND_FILTERS: { value: 'all' | ActivityKind; label: string }[] = [
   { value: 'withdraw', label: 'Withdraw' },
   { value: 'split', label: 'Split' },
 ]
-/** The one-letter tag on each row (the colour comes from the screen). */
-export const KIND_TAG: Record<ActivityKind, string> = { plant: 'P', swap: 'S', withdraw: 'W', split: 'AI', move: 'M', found: 'F' }
+/** The one-letter tag on each row (the colour comes from the screen); a split the AI made carries its own "AI" tag (audit 10-08). */
+export const KIND_TAG: Record<ActivityKind, string> = { plant: 'P', swap: 'S', withdraw: 'W', split: '%', move: 'M', found: 'F' }
 
 export function mergeRows(groups: Partial<Record<ActivityKind, { row: ActivityRow; walletAccount?: boolean }[]>>): TaggedRow[] {
   const all: TaggedRow[] = []

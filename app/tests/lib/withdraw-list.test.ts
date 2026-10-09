@@ -9,7 +9,7 @@ describe('withdrawRows (R159, R171: every coin listed; only SKR leaves through S
   it('SKR first and opening the flow, then each held coin with where it sits', () => {
     const rows = withdrawRows({ pot, basket: null, holdings: [{ ...hsol, asset: 'cbBTC', heldRaw: '2389', valueUsd: null }, hsol] })
     expect(rows.map((r) => [r.asset, r.opens])).toEqual([['SKR', true], ['hSOL', false], ['cbBTC', false]])
-    expect(rows[0]).toMatchObject({ label: 'Withdraw SKR', amount: '34.90 SKR ($0.64)', note: 'locked to your Seeker, 48 hours to leave' })
+    expect(rows[0]).toMatchObject({ label: 'Withdraw SKR', amount: '34.90 SKR ($0.64)', note: 'locked to your Seed Vault, 48 hours to leave' })
     expect(rows[1]).toMatchObject({ amount: '0.0123 hSOL ($2.07)', note: 'in your wallet. Trade or send it from your wallet app.' })
     expect(rows[2].amount).toBe('0.00002389 cbBTC')
     expect(rows[1].label).toBeUndefined()   // a wallet coin does not leave through Sprouts: no Withdraw label

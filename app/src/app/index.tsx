@@ -95,7 +95,7 @@ export function WelcomeView() {
           />
         {busy ? (
           <ThemedText variant="caption" tone="secondary" style={{ textAlign: 'center' }}>
-            Waiting for your Seeker.
+            Waiting for your wallet.
           </ThemedText>
         ) : null}
         {error ? (

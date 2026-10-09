@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Appearance, Switch, View } from 'react-native'
+import { Appearance, AppState, Switch, View } from 'react-native'
 import { Link, router } from 'expo-router'
 import { Screen } from '@/components/Screen'
 import { Card } from '@/components/Card'
@@ -25,7 +25,7 @@ import { identity } from '@/lib/identity'
 import { readAppearance, writeAppearance, readNotify, writeNotify } from '@/lib/prefs'
 import type { NoticeKind } from '@/lib/notices'
 import { DISCLOSURES, HOW_IT_WORKS, NOT_ADVICE } from '@/lib/settings-copy'
-import { prepareTaxCsv, shareTaxCsv, type TaxFile } from '@/lib/tax-export'
+import { prepareTaxCsv, shareTaxCsv, taxFileFresh, type TaxFile } from '@/lib/tax-export'
 import { notify } from '@/lib/notify'
 import { PUBLIC_GUARANTEE } from '@/lib/relink'
 import { spacing, switchColors, useTheme } from '@/theme'
@@ -233,7 +233,7 @@ export default function Settings() {
         ))}
       </Card>
       <Card>
-        {/* R447: the plain record, free (R446 keeps the formatted tax pack in Pro). R463: request it, the phone says when it is ready,
+        {/* R447 + R476: Tax reports, Pro (free during launch). R463: request it, the phone says when it is ready,
             then download; the whole history, no year button */}
         {/* His note 10-08: "Tax reports", with the Pro pill the Yield Manager carries */}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
@@ -242,18 +242,19 @@ export default function Settings() {
         </View>
         <ThemedText tone="secondary">Every planting and withdrawal, for your tax tool.</ThemedText>
         <Button
-          title={taxFile ? 'Download' : 'Request history'}
+          title={taxFileFresh(taxFile) ? 'Download' : 'Request history'}
           kind="quiet"
           loading={taxBusy}
           onPress={async () => {
             setTaxBusy(true)
             setTaxError(null)
             try {
-              if (taxFile) {
+              if (taxFileFresh(taxFile)) {
                 await shareTaxCsv(taxFile)
               } else {
                 setTaxFile(await prepareTaxCsv())
-                await notify('Your tax record is ready', 'Open Settings to download it.').catch(() => {})
+                // The notice is for someone who left the app while it was prepared; on screen the button turning to Download says it
+                if (AppState.currentState !== 'active') await notify('Your tax report is ready', 'Open Settings to download it.').catch(() => {})
               }
             } catch (e) {
               setTaxError(e instanceof ApiError ? e.message : 'Could not prepare it just now. Try again.')
@@ -263,7 +264,7 @@ export default function Settings() {
           }}
           style={{ alignSelf: 'flex-start' }}
         />
-        {taxFile ? (
+        {taxFileFresh(taxFile) ? (
           <ThemedText variant="caption" tone="secondary">
             Ready: {taxFile.filename}
           </ThemedText>

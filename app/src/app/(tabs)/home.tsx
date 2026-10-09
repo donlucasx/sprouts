@@ -306,7 +306,7 @@ export default function Home() {
             <View
               key={r.key}
               accessible
-              accessibilityLabel={`${COIN_FULL_NAME[r.asset]}, ${r.amount}${r.locked ? ', locked to your Seeker' : r.note ? `, ${r.note}` : ''}`}
+              accessibilityLabel={`${COIN_FULL_NAME[r.asset]}, ${r.amount}${r.locked ? ', locked to your Seed Vault' : r.note ? `, ${r.note}` : ''}`}
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
@@ -339,7 +339,7 @@ export default function Home() {
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                     <MaterialCommunityIcons name={r.locked ? 'lock-outline' : r.venue ? 'bank-outline' : 'pickaxe'} size={12} color={colors.textSecondary} />
                     <ThemedText variant="caption" tone="secondary" numberOfLines={1}>
-                      {r.locked ? 'Locked to your Seeker' : r.note}
+                      {r.locked ? 'Locked to your Seed Vault' : r.note}
                     </ThemedText>
                   </View>
                 ) : null}

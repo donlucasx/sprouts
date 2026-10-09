@@ -15,7 +15,7 @@ export function withdrawRows(me: Pick<MeResponse, 'pot' | 'basket' | 'holdings' 
   const staked = BigInt(me.pot.skrStakedRaw)
   const rows: WithdrawRow[] = []
   if (me.basket) rows.push({ key: 'SKR', asset: 'SKR', label: 'Withdraw SKR', amount: formatSkr(BigInt(me.basket.amountRaw), me.pot.skrUsd), note: `in the basket, ${arrivalLine(me.basket.readyAt, now)}`, opens: true })
-  else if (staked > 0n) rows.push({ key: 'SKR', asset: 'SKR', label: 'Withdraw SKR', amount: formatSkr(staked, me.pot.skrUsd), note: 'locked to your Seeker, 48 hours to leave', opens: true })
+  else if (staked > 0n) rows.push({ key: 'SKR', asset: 'SKR', label: 'Withdraw SKR', amount: formatSkr(staked, me.pot.skrUsd), note: 'locked to your Seed Vault, 48 hours to leave', opens: true })
   for (const asset of ASSETS) {
     const positions = isLend(asset) ? livePositions(me, asset) : []
     if (positions.length > 0) {

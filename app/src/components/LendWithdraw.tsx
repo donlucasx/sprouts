@@ -154,7 +154,7 @@ export function LendWithdraw(props: {
           <Button title="Withdraw" loading={busy} onPress={sign} />
           {busy ? (
             <ThemedText variant="caption" tone="secondary">
-              Waiting for your Seeker.
+              Waiting for your wallet.
             </ThemedText>
           ) : null}
           <Button title="Change amount" kind="quiet" disabled={busy} onPress={() => setPlan(null)} />

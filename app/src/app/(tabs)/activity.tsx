@@ -51,7 +51,7 @@ function Row({ row, kind, accountPubkey, right }: { row: ActivityRow; kind: Acti
         >
           <View style={{ width: 26, height: 26, borderRadius: radius.sm, backgroundColor: KIND_COLOR[kind], alignItems: 'center', justifyContent: 'center' }}>
             <ThemedText variant="caption" style={{ color: '#FFFFFF', fontWeight: '700' }}>
-              {KIND_TAG[kind]}
+              {row.tag ?? KIND_TAG[kind]}
             </ThemedText>
           </View>
           <View style={{ flex: 1 }}>

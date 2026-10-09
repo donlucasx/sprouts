@@ -30,7 +30,7 @@ describe("noticesFor (R161)", () => {
   });
   it("a withdrawal is delivered when the basket goes", () => {
     expect(noticesFor(me({ basket: true }), me(), all)).toEqual([
-      { kind: "withdrawals", title: "Withdrawal delivered", body: "5.00 SKR ($0.10) is in your Seeker's wallet." },
+      { kind: "withdrawals", title: "Withdrawal delivered", body: "5.00 SKR ($0.10) is in your wallet." },
     ]);
   });
   it("a cancelled withdrawal (its pick gone) is not a delivery (review finding 4)", () => {
