@@ -180,4 +180,17 @@ describe("cron route", () => {
     expect(res.status).toBe(500);
     expect(((await res.json()) as { error: string }).error).toContain("database away");
   });
+
+  // R499 round 2 (R2-1): a reconcile that throws (a Postgres refusal, the RPC) must not skip the cleanup and the keepalive.
+  it("a failed reconcile is logged and the run still answers 200 with the cleanup and the keepalive done", async () => {
+    const { reconcileOwnStakes } = await import("@/lib/reconcile");
+    vi.mocked(reconcileOwnStakes).mockRejectedValueOnce(new Error("time zone displacement out of range"));
+    const cleanup = vi.spyOn(repo, "cleanupExpired");
+    const keepalive = vi.spyOn(repo, "keepalive");
+    const res = await GET(new Request("http://x/api/cron/plant", { headers: { authorization: `Bearer ${SECRET}` } }));
+    expect(res.status).toBe(200);
+    expect((await res.json()).reconciled).toEqual({ adjusted: [], skipped: [], deferred: [] });
+    expect(cleanup).toHaveBeenCalled();
+    expect(keepalive).toHaveBeenCalled();
+  });
 });

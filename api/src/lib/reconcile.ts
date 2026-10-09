@@ -19,11 +19,10 @@ const DUST_SHARES = 10_000n;
  * (R499). So Sprouts' recent share moves must be finalized before the read; if they are not, the user waits for the next run.
  * The same cron that plants also reconciles, so the check is on finality, not on age: an age rule would never reconcile a user who
  * plants every day. Plantings and unstakes count as recent for RECENT_MS. A cancel has no time of its own (only the unstake's), and
- * it can land any time the cooldown is open (48 h, plus up to a day until the crank runs), so every cancel of the last CANCEL_MS is
- * checked; older ones are long finalized.
+ * it can land any time the cooldown stays open (48 h, longer while the crank fails), so EVERY cancel signature is checked, at any age;
+ * an old one is finalized and costs one status entry (round 2, R2-4).
  */
 const RECENT_MS = 10 * 60_000;
-const CANCEL_MS = 7 * 24 * 3_600_000;
 /** The longest one user's finality check may wait. */
 const FINALITY_WAIT_MS = 30_000;
 
@@ -53,7 +52,8 @@ export async function reconcileOwnStakes(a: { repo: Repo; chain: ReconcileChain;
   const deadline = a.deadlineMs ?? Number.POSITIVE_INFINITY;
   const sharePrice = await a.chain.sharePrice();
   // Every `sent` planting, any age: one whose send threw may still have landed, and the next planting run settles it (R499 F2).
-  const unsettled = new Set((await a.repo.listSentPlantings(new Date(8.64e15))).map((p) => p.userPubkey));
+  // The bound is a day ahead of now, never a far-future sentinel: Postgres rejects a year past 9999 (round 2, R2-1).
+  const unsettled = new Set((await a.repo.listSentPlantings(new Date(a.now.getTime() + 86_400_000))).map((p) => p.userPubkey));
   for (const user of await a.repo.listUsers()) {
     if (Date.now() >= deadline) {
       deferred.push(user.seedVaultPubkey);
@@ -82,7 +82,7 @@ export async function reconcileOwnStakes(a: { repo: Repo; chain: ReconcileChain;
       const recent = [
         ...plantings.filter((p) => p.ts.getTime() > since).map((p) => p.signature),
         ...sprouts.filter((w) => w.unstakeTs.getTime() > since).map((w) => w.unstakeSignature),
-        ...sprouts.filter((w) => w.cancelSignature !== null && w.unstakeTs.getTime() > a.now.getTime() - CANCEL_MS).map((w) => w.cancelSignature),
+        ...sprouts.filter((w) => w.cancelSignature !== null).map((w) => w.cancelSignature),
       ];
       // A recent row without a signature cannot be proven finalized: wait for the next run.
       if (recent.length > 0) {
