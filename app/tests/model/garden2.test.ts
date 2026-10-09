@@ -94,10 +94,10 @@ describe("the layer plan (draw order and positions from the approved export)", (
     expect(keys(allStages(0))).toEqual(["plate", "maple0", "store0", "stand", "mandarin0", "cords", "pothos0", "orchid0", "azalea0"]);
     expect(keys({})).toEqual(keys(allStages(0)));
   });
-  it("places every plant at its export box, the plate over the whole 1328 x 896 canvas", () => {
-    expect(CANVAS).toEqual({ w: 1328, h: 896 });
+  it("places every plant at its export box, the plate over the whole 1438 x 896 canvas (110 px of paper added right of the pole, R522b)", () => {
+    expect(CANVAS).toEqual({ w: 1438, h: 896 });
     const L = composeLayers(allStages(14));
-    expect(L[0]).toMatchObject({ kind: "plate", x: 0, y: 0, w: 1328, h: 896 });
+    expect(L[0]).toMatchObject({ kind: "plate", x: 0, y: 0, w: 1438, h: 896 });
     expect(L.find((l) => l.key === "maple")).toMatchObject({ x: 597, y: 446, w: 276, h: 263 });
     expect(L.find((l) => l.key === "store")).toMatchObject({ x: 618, y: 5, w: 639, h: 708 });
     expect(L.find((l) => l.key === "mandarin")).toMatchObject({ x: 143, y: 35, w: 637, h: 705 });
@@ -107,9 +107,9 @@ describe("the layer plan (draw order and positions from the approved export)", (
     expect(L.find((l) => l.key === "stand")).toMatchObject({ x: OVERLAYS.stand.x, y: OVERLAYS.stand.y });
   });
   it("scales every rect by one factor, the view keeping the canvas aspect", () => {
-    expect(viewHeight(1328)).toBe(896);
-    expect(viewHeight(412)).toBeCloseTo(277.976, 3);
-    expect(scaleRect({ x: 597, y: 446, w: 276, h: 263 }, 664)).toEqual({ x: 298.5, y: 223, w: 138, h: 131.5 });
+    expect(viewHeight(1438)).toBe(896);
+    expect(viewHeight(412)).toBeCloseTo(256.712, 3);
+    expect(scaleRect({ x: 597, y: 446, w: 276, h: 263 }, 719)).toEqual({ x: 298.5, y: 223, w: 138, h: 131.5 });
   });
 });
 
@@ -133,7 +133,7 @@ describe("the bundled layers", () => {
     expect(n).toBe(90);
   });
   it("has the plate at canvas size and each overlay at its box", () => {
-    expect(pngSize(path.join(ASSETS, "plate.png"))).toEqual({ w: 1328, h: 896 });
+    expect(pngSize(path.join(ASSETS, "plate.png"))).toEqual({ w: 1438, h: 896 });
     for (const k of ["stand", "cords"] as const) expect(pngSize(path.join(ASSETS, OVERLAYS[k].file))).toEqual({ w: OVERLAYS[k].w, h: OVERLAYS[k].h });
   });
   it("requires every layer in sources.ts", () => {
