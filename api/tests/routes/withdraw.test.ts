@@ -233,8 +233,9 @@ describe("withdraw routes", () => {
     expect(sendMock).not.toHaveBeenCalled();
     // The reconcile: shares 2e9 minted - 80_279_232 burned once = what the chain shows; nothing to book.
     const { reconcileOwnStakes } = await import("@/lib/reconcile");
-    const out = await reconcileOwnStakes({ repo, chain: { readPosition: async () => staked(1_919_720_768n, 92_000_000n, 1_790_000_000n), sharePrice: async () => SP } });
+    const out = await reconcileOwnStakes({ repo, now: new Date(Date.now() + 3_600_000), chain: { readPosition: async () => staked(1_919_720_768n, 92_000_000n, 1_790_000_000n), sharePrice: async () => SP } });
     expect(out.adjusted).toEqual([]);
+    expect(out.deferred).toEqual([]);
     expect(await repo.listStakeAdjustments(U)).toEqual([]);
   });
 
