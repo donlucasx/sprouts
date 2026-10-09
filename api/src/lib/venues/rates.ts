@@ -107,12 +107,14 @@ export async function getVenueRates(repo: Repo, day: string, venue: Venue): Prom
 }
 
 const EXCLUDED = ["save", "solend", "drift", "carrot", "loopscale"];   // R267, hacked (spec 3)
+/** His note 10-08: a "find" is somewhere Sprouts does NOT lend; Kamino and Jupiter are where it already does. */
+const OWN_VENUES = ["kamino", "jupiter", "jup-"];
 const SCOUT_MIN_TVL = 10_000_000;
 /** The scout_yields tool: DefiLlama filtered in code before the model sees anything; display only, never routed to (R278). */
 export async function scoutYields(reads: VenueReads): Promise<FoundPool[]> {
   const pools = ((await reads.llamaPools()) as { data: { pool: string; chain: string; project: string; symbol: string; tvlUsd: number; apyBase: number | null; exposure: string }[] }).data;
   return pools
-    .filter((p) => p.chain === "Solana" && p.exposure === "single" && (p.symbol === "USDC" || p.symbol === "SOL") && typeof p.apyBase === "number" && p.tvlUsd >= SCOUT_MIN_TVL && !EXCLUDED.some((x) => p.project.toLowerCase().includes(x)))
+    .filter((p) => p.chain === "Solana" && p.exposure === "single" && (p.symbol === "USDC" || p.symbol === "SOL") && typeof p.apyBase === "number" && p.tvlUsd >= SCOUT_MIN_TVL && !EXCLUDED.some((x) => p.project.toLowerCase().includes(x)) && !OWN_VENUES.some((x) => p.project.toLowerCase().includes(x)))
     .sort((p, q) => (q.apyBase as number) - (p.apyBase as number))
     .slice(0, 10)
     .map((p) => ({ poolId: p.pool, project: p.project, symbol: p.symbol, asset: p.symbol as "USDC" | "SOL", apyBasePct: p.apyBase as number, tvlUsd: p.tvlUsd }));

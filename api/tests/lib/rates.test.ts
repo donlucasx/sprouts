@@ -17,6 +17,7 @@ const LULO = { regular: { CURRENT: 6.62 }, protected: { CURRENT: 3.8559868942261
 const LLAMA = { data: [
   { pool: "525b2dab-ea6a-4cbc-a07f-84ce561d1f83", chain: "Solana", project: "kamino-lend", symbol: "SOL", tvlUsd: 25399214, apyBase: 5.6418, exposure: "single" },
   { pool: "s1", chain: "Solana", project: "save", symbol: "USDC", tvlUsd: 50000000, apyBase: 9, exposure: "single" },
+  { pool: "j1", chain: "Solana", project: "jupiter-lend", symbol: "USDC", tvlUsd: 400000000, apyBase: 6, exposure: "single" },
   { pool: "s2", chain: "Solana", project: "credix", symbol: "USDC", tvlUsd: 13406766, apyBase: 0.07463, exposure: "single" },
   { pool: "s3", chain: "Solana", project: "x", symbol: "USDC", tvlUsd: 9_000_000, apyBase: 7, exposure: "single" },
   { pool: "s4", chain: "Ethereum", project: "aave-v3", symbol: "USDC", tvlUsd: 1e9, apyBase: 5, exposure: "single" },
@@ -100,9 +101,8 @@ describe("snapshotVenues (one row per venue per asset per day)", () => {
 });
 
 describe("scoutYields (filtered in code, Kimi round 2 #10, Claude F15)", () => {
-  it("Solana, single exposure, USDC or SOL, apyBase, TVL >= $10M, never the excluded protocols; best first", async () => {
+  it("Solana, single exposure, USDC or SOL, apyBase, TVL >= $10M, never the excluded protocols nor Kamino / Jupiter (his note 10-08); best first", async () => {
     expect(await scoutYields(reads())).toEqual([
-      { poolId: "525b2dab-ea6a-4cbc-a07f-84ce561d1f83", project: "kamino-lend", symbol: "SOL", asset: "SOL", apyBasePct: 5.6418, tvlUsd: 25_399_214 },
       { poolId: "s2", project: "credix", symbol: "USDC", asset: "USDC", apyBasePct: 0.07463, tvlUsd: 13_406_766 },
     ]);
   });
