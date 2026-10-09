@@ -35,7 +35,9 @@ export async function GET(request: Request) {
   if (plantings.length >= MAX_ROWS || withdrawals.length >= MAX_ROWS || lendEvents.length >= MAX_ROWS) {
     return NextResponse.json({ error: "Your history is too long for one export yet. Contact support for the full file." }, { status: 503 });
   }
-  const legs = await Promise.all(plantings.map((p) => repo.plantingLegs(p.id)));
+  // Every leg in one batched read (audit 10-08: was one read per planting, up to 999 at once), grouped back per planting.
+  const legRows = plantings.length ? await repo.plantingLegsFor(plantings.map((p) => p.id)) : [];
+  const legs = plantings.map((p) => legRows.filter((l) => l.plantingId === p.id));
 
   // The stored SKR price of each withdrawal's day, for the earned SKR's worth; none stored leaves the worth blank.
   const days = [...new Set(withdrawals.map((w) => dayOf(w.unstakeTs)))];

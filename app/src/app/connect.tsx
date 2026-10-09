@@ -95,7 +95,7 @@ export default function Connect() {
         <Button title="Approve" loading={approving} onPress={linkThisPhone} />
         {approving ? (
           <ThemedText variant="caption" tone="secondary">
-            Waiting for your Seeker.
+            Waiting for your wallet.
           </ThemedText>
         ) : null}
       </Card>

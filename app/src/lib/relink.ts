@@ -22,7 +22,7 @@ export const RELINK = {
   title: 'Re-link to keep planting',
   body: PUBLIC_GUARANTEE,
   button: 'Re-link',
-  waiting: 'Waiting for your Seeker.',
+  waiting: 'Waiting for your wallet.',
   /** After the signature returned, while the confirm (and its retries) runs: the Seeker is done. */
   checking: 'Approved. Checking the chain.',
   disclosure: 'Linked a wallet on a computer?',

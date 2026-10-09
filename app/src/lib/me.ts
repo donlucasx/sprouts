@@ -49,7 +49,8 @@ export function useMe() {
 
 export function useInvalidateMe() {
   const qc = useQueryClient();
-  return () => qc.invalidateQueries({ queryKey: ["me"] });
+  // Audit 10-08: Activity is cached for a minute and prefetched by Home, so every money action refreshes it with the read
+  return () => Promise.all([qc.invalidateQueries({ queryKey: ["me"] }), qc.invalidateQueries({ queryKey: ["activity"] })]);
 }
 
 /** Puts a save's or an undo's answer straight into the cached read, so the screen moves once; the invalidate after it reconciles in the background. */

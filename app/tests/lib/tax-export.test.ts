@@ -17,7 +17,7 @@ vi.mock('expo-file-system', () => ({
   },
 }))
 vi.mock('expo-sharing', () => ({ shareAsync: (u: unknown, o?: unknown) => shareMock(u, o) }))
-import { fetchTaxCsv, prepareTaxCsv, shareTaxCsv } from '@/lib/tax-export'
+import { fetchTaxCsv, prepareTaxCsv, shareTaxCsv, taxFileFresh, TAX_FILE_FRESH_MS } from '@/lib/tax-export'
 import { ApiError } from '@/lib/api'
 
 const CSV = 'Date,Sent Amount\r\n2026-01-01 00:00:00,1.00\r\n'
@@ -59,7 +59,10 @@ describe('prepareTaxCsv then shareTaxCsv (R463: request, notify, download)', () 
     answer(200, CSV, { 'content-disposition': 'attachment; filename="sprouts-tax-all-2026-10-08.csv"' })
     const f = await prepareTaxCsv()
     expect(fetchMock.mock.calls[0][0]).toMatch(/\/api\/export\/tax$/)
-    expect(f).toEqual({ uri: 'file:///cache/sprouts-tax-all-2026-10-08.csv', filename: 'sprouts-tax-all-2026-10-08.csv' })
+    expect(f).toMatchObject({ uri: 'file:///cache/sprouts-tax-all-2026-10-08.csv', filename: 'sprouts-tax-all-2026-10-08.csv' })
+    expect(taxFileFresh(f)).toBe(true)
+    expect(taxFileFresh(f, f.madeAt + TAX_FILE_FRESH_MS)).toBe(false)
+    expect(taxFileFresh(null)).toBe(false)
     expect(written.at(-1)).toEqual({ name: 'sprouts-tax-all-2026-10-08.csv', text: CSV })
     expect(shareMock).not.toHaveBeenCalled()
     await shareTaxCsv(f)

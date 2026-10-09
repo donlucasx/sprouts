@@ -50,7 +50,9 @@ describe('R362: the split, one short line, chevron only (no amount)', () => {
   const ts = '2026-10-03T14:00:00.000Z'
   const row = (o: Partial<SplitRow>): SplitRow => ({ ts, by: 'manager', from: { SKR: 45, USDC_LEND: 10, hSOL: 20, JitoSOL: 5 }, to: { SKR: 45, USDC_LEND: 15, hSOL: 15, JitoSOL: 5 }, stop: 'balanced', why: 'Kamino paid more this week.', fallback: null, ...o })
   it("the manager's move: what changed and its why behind the tap; retired keys never named", () => {
-    expect(keep(splitRow(row({}), 0))).toEqual({ key: `${ts}-0`, ts, label: 'AI moved your split', amount: null, details: ['USDC lending 10 to 15, hSOL 20 to 15', 'Kamino paid more this week.'], signature: null })
+    expect(keep(splitRow(row({}), 0))).toEqual({ key: `${ts}-0`, ts, label: 'AI moved your split', amount: null, details: ['USDC lending 10 to 15, hSOL 20 to 15', 'Kamino paid more this week.'], signature: null, tag: 'AI' })
+    // audit 10-08: only the AI's own move carries the AI tag; a split the user made takes the kind's tag
+    expect(splitRow(row({ by: 'you' }), 0).tag).toBeUndefined()
     expect(splitRow(row({ from: { SKR: 40, JitoSOL: 10 }, to: { SKR: 50, JitoSOL: 0 }, why: null }), 1).details).toEqual(['SKR 40 to 50'])
   })
   it('an undo, the AI turned on, a change by rule, your own change', () => {

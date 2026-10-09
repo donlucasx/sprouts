@@ -5,7 +5,7 @@ import { ThemedText } from './ThemedText'
 /**
  * Sprouts' own switch (R147), at the top of Rules since 10-08 (R448): a dot, "Sprouts is on / paused", a native switch, and one
  * detail line under it (R455: this week's round-ups; paused: what that means). Off pauses every
- * linked wallet (nothing moves until it is turned back on); on asks the Seeker once. The state comes from the wallets, never
+ * linked wallet (nothing moves until it is turned back on); on asks the wallet once. The state comes from the wallets, never
  * from the tap, so the row always says what the puller will do.
  */
 export function PauseRow({

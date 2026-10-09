@@ -23,7 +23,7 @@ import { spacing, TARGET, type as ramp, useTheme } from '@/theme'
 
 const Waiting = () => (
   <ThemedText variant="caption" tone="secondary">
-    Waiting for your Seeker.
+    Waiting for your wallet.
   </ThemedText>
 )
 
@@ -275,7 +275,7 @@ export default function Withdraw() {
             </>
           )}
           <ThemedText variant="caption" tone="secondary">
-            {"It arrives in your Seeker's wallet 48 hours after you sign."}
+            {"It arrives in your wallet 48 hours after you sign."}
           </ThemedText>
           <Button
             title="Continue"
