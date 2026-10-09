@@ -44,6 +44,7 @@ function Row({ row, kind, accountPubkey, right }: { row: ActivityRow; kind: Acti
         <Pressable
           disabled={!opens}
           onPress={() => setOpen((o) => !o)}
+          hitSlop={{ top: spacing.xs, bottom: spacing.xs }}
           accessibilityRole={opens ? 'button' : 'text'}
           accessibilityLabel={spokenLabel(row)}
           accessibilityState={opens ? { expanded: open } : undefined}
@@ -168,6 +169,7 @@ export default function Activity() {
                 <Pressable
                   key={f.value}
                   onPress={() => { setFilter(f.value); setMore(false) }}
+                  hitSlop={{ top: spacing.xs, bottom: spacing.xs }}
                   accessibilityRole="button"
                   accessibilityState={{ selected: on }}
                   style={{

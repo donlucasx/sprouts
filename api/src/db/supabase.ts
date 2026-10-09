@@ -254,8 +254,9 @@ export class SupabaseRepo implements Repo {
     return this.many(this.db.from("plantings").select().eq("user_pubkey", userPubkey).order("ts", { ascending: false }).limit(limit), plantingRow);
   }
 
-  async listConfirmedPlantings(userPubkey: string) {
-    return this.many(this.db.from("plantings").select().eq("user_pubkey", userPubkey).eq("status", "confirmed").order("ts"), plantingRow);
+  async listConfirmedPlantings(userPubkey: string, limit?: number) {
+    const q = this.db.from("plantings").select().eq("user_pubkey", userPubkey).eq("status", "confirmed").order("ts");
+    return this.many(limit === undefined ? q : q.limit(limit), plantingRow);
   }
 
   async addStakeAdjustment(a: Omit<T.StakeAdjustmentRow, "id" | "ts">) {

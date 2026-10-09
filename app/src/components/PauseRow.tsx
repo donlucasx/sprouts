@@ -43,7 +43,7 @@ export function PauseRow({
           value={on}
           disabled={busy}
           onValueChange={onChange}
-          accessibilityLabel="Sprouts on"
+          accessibilityLabel={line}
           accessibilityState={{ busy }}
         />
       </View>

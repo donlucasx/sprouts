@@ -6,24 +6,29 @@ const { sessionMock, shareMock } = vi.hoisted(() => ({
 }))
 vi.mock('@/lib/session', () => ({ loadSession: () => sessionMock() }))
 const written: { name: string; text: string }[] = []
-vi.mock('expo-file-system', () => ({
-  Paths: { cache: 'file:///cache' },
-  File: class {
+const cacheFiles: { name: string; deleted: boolean }[] = []
+vi.mock('expo-file-system', () => {
+  class File {
     name: string
     uri: string
     constructor(_dir: string, name: string) { this.name = name; this.uri = `file:///cache/${name}` }
     create() {}
     write(text: string) { written.push({ name: this.name, text }) }
-  },
-}))
+    delete() { const f = cacheFiles.find((c) => c.name === this.name); if (f) f.deleted = true }
+  }
+  class Directory {
+    list() { return cacheFiles.map((c) => Object.assign(new File('', c.name))) }
+  }
+  return { Paths: { cache: 'file:///cache' }, File, Directory }
+})
 vi.mock('expo-sharing', () => ({ shareAsync: (u: unknown, o?: unknown) => shareMock(u, o) }))
-import { fetchTaxCsv, prepareTaxCsv, shareTaxCsv, taxFileFresh, TAX_FILE_FRESH_MS } from '@/lib/tax-export'
+import { clearTaxFiles, fetchTaxCsv, prepareTaxCsv, shareTaxCsv, taxFileFresh, TAX_FILE_FRESH_MS } from '@/lib/tax-export'
 import { ApiError } from '@/lib/api'
 
 const CSV = 'Date,Sent Amount\r\n2026-01-01 00:00:00,1.00\r\n'
 let fetchMock: ReturnType<typeof vi.fn>
 const answer = (status: number, body: string, headers: Record<string, string> = {}) => {
-  fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => new Response(body, { status, headers }))
+  fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => new Response(body, { status, headers: { 'content-type': status === 200 ? 'text/csv; charset=utf-8' : 'application/json', ...headers } }))
   vi.stubGlobal('fetch', fetchMock)
 }
 beforeEach(() => { sessionMock.mockClear(); shareMock.mockClear() })
@@ -67,5 +72,19 @@ describe('prepareTaxCsv then shareTaxCsv (R463: request, notify, download)', () 
     expect(shareMock).not.toHaveBeenCalled()
     await shareTaxCsv(f)
     expect(shareMock).toHaveBeenCalledWith('file:///cache/sprouts-tax-all-2026-10-08.csv', expect.objectContaining({ mimeType: 'text/csv' }))
+  })
+})
+
+describe('audit 10-08: the tax file is handled as a secret record', () => {
+  it('a 200 that is not CSV is refused; a served name is made a plain file name', async () => {
+    answer(200, '<html>login</html>', { 'content-type': 'text/html' })
+    await expect(fetchTaxCsv()).rejects.toBeInstanceOf(ApiError)
+    answer(200, CSV, { 'content-disposition': 'attachment; filename="../../x/sprouts-tax.csv"' })
+    expect((await fetchTaxCsv()).filename).toBe('.._.._x_sprouts-tax.csv')
+  })
+  it('clearTaxFiles deletes only the tax files', () => {
+    cacheFiles.splice(0, cacheFiles.length, { name: 'sprouts-tax-all-2026-10-07.csv', deleted: false }, { name: 'other.png', deleted: false })
+    clearTaxFiles()
+    expect(cacheFiles.map((c) => c.deleted)).toEqual([true, false])
   })
 })

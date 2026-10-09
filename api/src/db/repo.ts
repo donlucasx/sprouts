@@ -72,7 +72,8 @@ export interface Repo {
   /** Newest first, any status. */
   listPlantings(userPubkey: string, limit: number): Promise<T.PlantingRow[]>;
   /** Oldest first. */
-  listConfirmedPlantings(userPubkey: string): Promise<T.PlantingRow[]>;
+  /** `limit` caps the read explicitly (the tax export; audit 10-08): without it the read is the server's own row cap. */
+  listConfirmedPlantings(userPubkey: string, limit?: number): Promise<T.PlantingRow[]>;
   plantingLegs(plantingId: string): Promise<T.PlantingLegRow[]>;
   /** Every leg of the given plantings in one read (no N+1), grouped in the order of `plantingIds`. */
   plantingLegsFor(plantingIds: string[]): Promise<T.PlantingLegRow[]>;

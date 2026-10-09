@@ -237,7 +237,7 @@ export default function Rules() {
             onChangeText={setAsk}
             multiline
             maxLength={300}
-            placeholder="Plant every $5, and add 1% of swaps over $50"
+            placeholder="Add 1% of swaps over $50"
             placeholderTextColor={colors.textSecondary}
             accessibilityLabel="Your rule in plain English"
             editable={!busy && !asking}

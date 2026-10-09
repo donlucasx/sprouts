@@ -154,7 +154,7 @@ export function roundUpTo(cents: number, toCents: number): number {
 
 /** One linked wallet in a line: the short address, its status, its daily limit. Home and Settings say it the same way. */
 export function formatWallet(w: { pubkey: string; status: string; dailyCapCents: number }): string {
-  return `${w.pubkey.slice(0, 4)}...${w.pubkey.slice(-4)}, ${w.status}, up to ${formatUsd(w.dailyCapCents)} a day`;
+  return `${w.pubkey.slice(0, 4)}...${w.pubkey.slice(-4)}, ${w.status}, daily limit ${formatUsd(w.dailyCapCents)}`;
 }
 
 /** A lending position in UNDERLYING units with its value: "2.00 USDC ($2.00)" (contracts 5.2: underlyingRaw is USDC 6 / SOL 9). */

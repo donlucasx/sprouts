@@ -192,8 +192,8 @@ export class MemoryRepo implements Repo {
     return [...this.plantings.values()].filter((p) => p.userPubkey === userPubkey).sort((a, b) => b.ts.getTime() - a.ts.getTime()).slice(0, limit);
   }
 
-  async listConfirmedPlantings(userPubkey: string) {
-    return [...this.plantings.values()].filter((p) => p.userPubkey === userPubkey && p.status === "confirmed").sort((a, b) => a.ts.getTime() - b.ts.getTime());
+  async listConfirmedPlantings(userPubkey: string, limit?: number) {
+    return [...this.plantings.values()].filter((p) => p.userPubkey === userPubkey && p.status === "confirmed").sort((a, b) => a.ts.getTime() - b.ts.getTime()).slice(0, limit);
   }
 
   async plantingLegs(plantingId: string) {

@@ -1,4 +1,4 @@
-import { File, Paths } from "expo-file-system";
+import { Directory, File, Paths } from "expo-file-system";
 import { shareAsync } from "expo-sharing";
 import { loadSession } from "./session";
 import { API_ORIGIN, API_UNANSWERED, ApiError } from "./api";
@@ -30,7 +30,10 @@ export async function fetchTaxCsv(year?: number): Promise<{ csv: string; filenam
     }
     throw new ApiError(res.status, message);
   }
-  const named = /filename="([^"]+)"/.exec(res.headers.get("content-disposition") ?? "")?.[1];
+  // Audit 10-08: a 200 that is not the CSV (a captive portal's page) is refused, not saved as a .csv; the served name becomes a
+  // plain file name before it touches the file system.
+  if (!(res.headers.get("content-type") ?? "").includes("text/csv")) throw new ApiError(0, API_UNANSWERED);
+  const named = /filename="([^"]+)"/.exec(res.headers.get("content-disposition") ?? "")?.[1]?.replace(/[^\w.-]/g, "_");
   return { csv: text, filename: named ?? `sprouts-tax-${year ?? "all"}.csv` };
 }
 
@@ -45,8 +48,18 @@ export const taxFileFresh = (f: TaxFile | null, now = Date.now()): f is TaxFile 
  * from "Request history", tells the phone when it is ready, then offers the file through shareTaxCsv (Drive, Files, email), so a tax
  * tool imports it as a file. expo-file-system + expo-sharing were added 10-08 with the release's native build.
  */
+/** Audit 10-08: deletes every tax file this app wrote (a full financial history), before a new one and on sign-out. Best effort. */
+export function clearTaxFiles(): void {
+  try {
+    for (const f of new Directory(Paths.cache).list()) if (f instanceof File && /^sprouts-tax-.*\.csv$/.test(f.name)) f.delete();
+  } catch {
+    // nothing to clear, or the cache is unreadable: the OS clears it in time
+  }
+}
+
 export async function prepareTaxCsv(): Promise<TaxFile> {
   const { csv, filename } = await fetchTaxCsv();
+  clearTaxFiles();
   const file = new File(Paths.cache, filename);
   file.create({ overwrite: true });
   file.write(csv);

@@ -25,7 +25,7 @@ import { identity } from '@/lib/identity'
 import { readAppearance, writeAppearance, readNotify, writeNotify } from '@/lib/prefs'
 import type { NoticeKind } from '@/lib/notices'
 import { DISCLOSURES, HOW_IT_WORKS, NOT_ADVICE } from '@/lib/settings-copy'
-import { prepareTaxCsv, shareTaxCsv, taxFileFresh, type TaxFile } from '@/lib/tax-export'
+import { clearTaxFiles, prepareTaxCsv, shareTaxCsv, taxFileFresh, type TaxFile } from '@/lib/tax-export'
 import { notify } from '@/lib/notify'
 import { PUBLIC_GUARANTEE } from '@/lib/relink'
 import { spacing, switchColors, useTheme } from '@/theme'
@@ -121,6 +121,7 @@ export default function Settings() {
     } finally {
       await setSession(null)
       store.remove('me.last')
+      clearTaxFiles()
       queryClient.clear()
       await disconnect().catch(() => {})
       await Promise.all([refreshWidget(null).catch(() => {}), unregisterBackgroundRefresh().catch(() => {})])

@@ -27,8 +27,8 @@ describe("format", () => {
 // Home lists the linked wallets (Lucas, 2026-09-29: "Would be great to have info on existing wallets connected on the sprouts dashboard").
 describe("formatWallet", () => {
   it("short address, status, daily limit", () => {
-    expect(formatWallet({ pubkey: "887dEPR85vfSZ45zFrxttJ6cLomwvnYbh5HnyGbTAXVu", status: "active", dailyCapCents: 500 })).toBe("887d...AXVu, active, up to $5.00 a day");
-    expect(formatWallet({ pubkey: "9ZKiQdmEvTKxt9e5yWRT1XbZW1b1D7n2AySLU5HyUZtZ", status: "paused", dailyCapCents: 250 })).toBe("9ZKi...UZtZ, paused, up to $2.50 a day");
+    expect(formatWallet({ pubkey: "887dEPR85vfSZ45zFrxttJ6cLomwvnYbh5HnyGbTAXVu", status: "active", dailyCapCents: 500 })).toBe("887d...AXVu, active, daily limit $5.00");
+    expect(formatWallet({ pubkey: "9ZKiQdmEvTKxt9e5yWRT1XbZW1b1D7n2AySLU5HyUZtZ", status: "paused", dailyCapCents: 250 })).toBe("9ZKi...UZtZ, paused, daily limit $2.50");
   });
 });
 

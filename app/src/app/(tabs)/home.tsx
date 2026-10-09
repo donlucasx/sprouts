@@ -151,6 +151,14 @@ export default function Home() {
     return <Redirect href="/" />
   }
   // The first read comes from the cache in one frame; a blank paper ground is quieter than a loading line that would flash (slop: the spinner blink).
+  // Audit 10-08: a first read that failed with nothing cached used to leave this blank page for good (no pull-to-refresh either)
+  if (!loading && !me)
+    return (
+      <Screen inset="top">
+        <ThemedText tone="secondary">Sprouts could not reach your garden just now.</ThemedText>
+        <Button title="Try again" kind="quiet" onPress={() => void refetch()} style={{ alignSelf: 'flex-start' }} />
+      </Screen>
+    )
   if (loading || !me || !scene) return <View style={{ flex: 1, backgroundColor: colors.background }} />
   const skrUsd = me.pot.skrUsd
   const name = me.user.skrName
@@ -222,7 +230,7 @@ export default function Home() {
           style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, alignSelf: 'flex-start', minHeight: TARGET }}
         >
           <View
-            style={{ width: 8, height: 8, borderRadius: radius.full, backgroundColor: pause.on ? colors.success : colors.attention }}
+            style={{ width: 8, height: 8, borderRadius: radius.full, backgroundColor: colors.attention }}
           />
           <ThemedText variant="caption" tone="secondary">
             {pause.line}
