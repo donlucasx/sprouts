@@ -145,7 +145,7 @@ export default function Settings() {
         </ThemedText>
       </Card>
       <Card>
-        {/* R446: one Pro bundle (the Yield Manager, automatic lending, the tax pack), free during launch; R457: Add money is coming.
+        {/* R446: one Pro bundle (the Yield Manager, automatic lending, tax reports), free during launch; R457: Add money is coming.
             R464: near the top, under the Seed Vault, with a greyed "Get Pro" that explains itself on a tap */}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
           <ThemedText variant="heading">Sprouts Pro</ThemedText>

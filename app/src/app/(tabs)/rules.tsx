@@ -134,7 +134,8 @@ export default function Rules() {
   const rows = splitRows(r, preview)
   // With the manager on, coins at 0% fold into one line (10-08). With it off every coin shows with its steppers: that is
   // how a free user sets their own split (device review 10-08: folding left SKR alone and looked like the only choice).
-  const hiddenRows = showAll || !r.managed ? [] : rows.filter((row) => row.pct === 0 && row.asset !== 'SKR')
+  // His note 10-08: a coin he switched off stays in the list with its switch off; only coins the manager left at 0% fold.
+  const hiddenRows = showAll || !r.managed ? [] : rows.filter((row) => row.pct === 0 && row.asset !== 'SKR' && row.mode !== 'off')
   const shownRows = rows.filter((row) => !hiddenRows.includes(row))
   const showDisclosure =
     (r.managed && !saved.managed) || (!r.managed && (r.pins.stORE ?? 0) > 0 && (saved.pins.stORE ?? 0) === 0)

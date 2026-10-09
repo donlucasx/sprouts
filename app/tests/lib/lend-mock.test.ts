@@ -23,7 +23,7 @@ describe('the dev mock (EXPO_PUBLIC_LEND_MOCK=1 only)', () => {
     expect(me.positions).toEqual(FIXTURE_POSITIONS)
     expect(me.lendSigns?.USDC_LEND?.line2).toBe('Kamino 4.4%')
     expect(me.relink).toEqual({ needed: true, wallets: [{ pubkey: 'U', via: 'app' }] })
-    expect(me.terms).toEqual({ currentVersion: '2026-10-08', acceptedVersion: null })
+    expect(me.terms).toEqual({ currentVersion: '2026-10-09', acceptedVersion: null })
     expect(me.rules.allocation).toEqual({ SKR: 45, stORE: 0, USDC_LEND: 15, SOL_LEND: 10, hSOL: 20, cbBTC: 10 })
     expect(me.holdings.map((h) => h.asset)).toEqual(['hSOL', 'USDC_LEND', 'SOL_LEND'])
     expect(me.history.plantings.map((p) => p.asset)).toEqual(['USDC_LEND', 'SOL_LEND'])
@@ -36,7 +36,7 @@ describe('the dev mock (EXPO_PUBLIC_LEND_MOCK=1 only)', () => {
     expect(me.relink).toEqual({ needed: true, wallets: [{ pubkey: 'U', via: 'app' }, { pubkey: 'W', via: 'link_page' }] })
   })
   it('Terms accepted through the mock stay accepted', () => {
-    expect(mockBefore('/api/terms', 'POST', { version: '2026-10-08' })).toMatchObject({ answer: { acceptedVersion: '2026-10-08' } })
+    expect(mockBefore('/api/terms', 'POST', { version: '2026-10-09' })).toMatchObject({ answer: { acceptedVersion: '2026-10-09' } })
     expect((mockAfter('/api/me', real) as MeResponse).terms?.acceptedVersion).toBe(FIXTURE_TERMS_VERSION)
   })
   it('never builds a transaction: withdraw answers the pool-full sentence for a full pool, else says it needs the live API', () => {
