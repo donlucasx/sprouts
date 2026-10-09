@@ -37,6 +37,12 @@ function holdAppearance() {
   if (want !== 'system' && Appearance.getColorScheme() !== want) Appearance.setColorScheme(want)
 }
 
+/** What a signed-in app runs: the closed-app refresh (notifications, widget) and the one notification permission prompt. */
+function startSignedIn() {
+  registerBackgroundRefresh().catch(() => {})
+  askNotificationPermissionOnce().catch(() => {})
+}
+
 export default function Layout() {
   const [session, setSessionState] = useState<Session | null>(null)
   const [ready, setReady] = useState(false)
@@ -63,10 +69,7 @@ export default function Layout() {
       .then((s) => {
         setSessionState(s)
         setReady(true)
-        if (s) {
-          registerBackgroundRefresh().catch(() => {})
-          askNotificationPermissionOnce().catch(() => {})
-        }
+        if (s) startSignedIn()
       })
   }, [])
   const fontsSettled = fontsLoaded || fontError !== null
@@ -79,6 +82,9 @@ export default function Layout() {
     // found that 401 still cached, took the new session for dead and threw it away, so sign-in bounced back to Welcome).
     queryClient.clear()
     setSessionState(s)
+    // A sign-in starts the same as a cold start with a saved session (10-09: a fresh install asked for no notification permission
+    // and polled nothing in the background until the next cold start; sign-out unregisters the refresh, so a re-sign-in did too).
+    if (s) startSignedIn()
   }
   if (!ready || !fontsSettled) return null
   // The garden's gestures (drag the can, pinch to zoom) need the gesture handler's root above every screen (the spike, A-DRAG).
