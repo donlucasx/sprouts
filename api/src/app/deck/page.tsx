@@ -72,8 +72,10 @@ const CSS = `
 .deck .phone { position:absolute; left:calc(var(--u)*61); top:calc(var(--u)*6); width:calc(var(--u)*29); height:calc(var(--u)*50.25); overflow:hidden; box-sizing:border-box; border-bottom-left-radius:0; border-bottom-right-radius:0; padding:calc(var(--u)*.9) calc(var(--u)*.9) 0;
   background:#1D2628; border-radius:calc(var(--u)*4.4) calc(var(--u)*4.4) 0 0; box-shadow:0 calc(var(--u)*1.5) calc(var(--u)*5) rgba(43,38,34,.22); }
 .deck .phone img { display:block; width:100%; height:auto; border-radius:calc(var(--u)*3.6); }
-.deck .sprout { position:absolute; right:calc(var(--u)*9); bottom:calc(var(--u)*6); height:calc(var(--u)*19); width:auto; }
-.deck .beat .stage { height:calc(var(--u)*11); width:auto; justify-self:start; margin-bottom:calc(var(--u)*.4); }
+.deck .sprout { position:absolute; right:calc(var(--u)*8); bottom:calc(var(--u)*2.6); height:calc(var(--u)*10); width:auto; }
+.deck .note.left { max-width:calc(var(--u)*62); }
+.deck .beats.center .beat { text-align:center; justify-items:center; }
+.deck .beat .stage { height:calc(var(--u)*12); width:auto; margin-bottom:calc(var(--u)*.4); }
 .deck .narrow { max-width:calc(var(--u)*62); }
 .deck .stack { display:grid; gap:calc(var(--u)*1.8); max-width:calc(var(--u)*44); }
 .deck .stack div { display:grid; gap:calc(var(--u)*.4); }
@@ -89,6 +91,12 @@ const CSS = `
 .deck .in > .grow { position:relative; z-index:1; }
 .deck .tree { position:absolute; right:calc(var(--u)*-11); bottom:calc(var(--u)*-9); width:calc(var(--u)*35); height:auto; pointer-events:none; }
 .deck .flow.short { max-width:calc(var(--u)*68); }
+.deck .who { display:flex; align-items:center; gap:calc(var(--u)*2.4); }
+.deck .pfp { width:calc(var(--u)*9); height:calc(var(--u)*9); border-radius:calc(var(--u)*1.4); image-rendering:pixelated; flex:none; }
+.deck .thanks { position:absolute; right:calc(var(--u)*6.6); bottom:calc(var(--u)*4.4); font-family:var(--font-display), sans-serif; font-weight:700;
+  letter-spacing:-.035em; font-size:calc(var(--u)*5.6); color:var(--leaf); margin:0; }
+.deck .links a { color:inherit; text-decoration:none; }
+.deck .on-art .links { max-width:calc(var(--u)*56); }
 .deck .todo { background:#FFF1B8; color:#5C4A00; border-radius:4px; padding:0 .3em; }
 .deck .bar { position:fixed; right:16px; bottom:16px; display:flex; gap:8px; z-index:2; }
 .deck .bar a, .deck .bar button { font:600 13px var(--font-body), sans-serif; background:var(--ink); color:var(--paper); border:0; border-radius:999px; padding:9px 14px; cursor:pointer; text-decoration:none; }
@@ -106,7 +114,7 @@ const CSS = `
   .deck .stat strong { font-size:34px; }
   .deck .num { right:16px; bottom:20px; font-size:12px; } .deck .note, .deck .addr { font-size:12px; }
   .deck .phone { position:relative; left:auto; top:auto; width:100%; height:70vh; overflow:hidden; }
-  .deck .sprout, .deck .tree { display:none; } .deck .flow.short { max-width:none; } .deck .photo { position:relative; width:100%; height:auto; }
+  .deck .sprout, .deck .tree { display:none; } .deck .thanks { position:static; font-size:36px; } .deck .flow.short { max-width:none; } .deck .photo { position:relative; width:100%; height:auto; }
   .deck .sand { width:100%; } .deck .stack, .deck .narrow, .deck .hero { max-width:none; }
   .deck .brand { font-size:22px; } .deck .brand img { width:30px; } .deck .foot, .deck .links { font-size:15px; }
 }
@@ -157,9 +165,12 @@ export default function Deck() {
       <Slide n={2} chip="The opportunity">
         <div className="grow">
           <h2 style={{ maxWidth: "calc(var(--u)*62)" }}>Traders rarely set money aside. Their swaps can do it for them.</h2>
-          <p className="sub" style={{ maxWidth: "calc(var(--u)*48)" }}>Every swap already moves money. Each one can set a little change aside.</p>
+          <p className="sub">
+            Everything sits in the hot wallet they swap from every day, and nobody stops mid-trade to save. Every swap is already a
+            moment money moves, so each one can set a little change aside.
+          </p>
         </div>
-        <p className="note">Seeker owners who stake SKR swap a median of 23 times a month, mostly under $10 (on-chain sample of 163 recently active stakers, Sept 2026).</p>
+        <p className="note left">Seeker owners who stake SKR swap a median of 23 times a month, mostly under $10 (on-chain sample of 163 recently active stakers, Sept 2026).</p>
         <img className="sprout" src="/deck/sprout.png" alt="A first sprout, from the app's loading screen" />
       </Slide>
 
@@ -167,7 +178,7 @@ export default function Deck() {
       <Slide n={3} chip="How it works">
         <div className="grow">
           <h2 className="h2s">Every swap rounds up. Your Seeker keeps the change.</h2>
-          <div className="beats">
+          <div className="beats center">
             <div className="beat">
               <img className="stage" src="/deck/grow-1.png" alt="" />
               <strong>Any swap, any app</strong>
@@ -176,7 +187,7 @@ export default function Deck() {
             <div className="beat">
               <img className="stage" src="/deck/grow-2.png" alt="" />
               <strong>Planted each morning</strong>
-              <span>Past $2, your change is planted at 7&nbsp;AM. Up to $5 a day, no decisions.</span>
+              <span>Planting is when Sprouts buys your coins with the change: each morning at 7&nbsp;AM, once $2 has saved up. Up to $5 a day.</span>
             </div>
             <div className="beat">
               <img className="stage" src="/deck/grow-3.png" alt="" />
@@ -299,10 +310,13 @@ export default function Deck() {
         </div>
       </Slide>
 
-      {/* 10 Team + links; R-D19 live line */}
-      <Slide n={10} chip="Team">
+      {/* 10 Team + links; R-D19 live line; R-D28 his Validators pfp #14, x.com/donlucas, a Thank you opposite the title */}
+      <Slide n={10} chip="Team" art>
         <div className="grow">
-          <h2>Built by donlucas.</h2>
+          <div className="who">
+            <img className="pfp" src="/deck/pfp.png" alt="donlucas: Validators #14" />
+            <h2>Built by donlucas.</h2>
+          </div>
           <p className="sub">
             On Solana since 2021. Founded Validators on Eclipse and, with his team, built some of the chain&apos;s first NFT
             infrastructure, still live today; their blip won Eclipse&apos;s hackathon infrastructure track. Also ships xscapes, an
@@ -311,11 +325,13 @@ export default function Deck() {
           <p className="sub">Built with Claude Code: the app, the API and the on-chain leash.</p>
           <p className="sub"><b>Live on Solana mainnet. In review on the Solana dApp Store.</b></p>
           <div className="links">
-            <span>sprouts.money</span>
-            <span>@sproutsonseeker</span>
-            <span>github.com/donlucasx/sprouts</span>
+            <a href="https://sprouts.money">sprouts.money</a>
+            <a href="https://x.com/sproutsonseeker">@sproutsonseeker</a>
+            <a href="https://x.com/donlucas">x.com/donlucas</a>
+            <a href="https://github.com/donlucasx/sprouts">github.com/donlucasx/sprouts</a>
           </div>
         </div>
+        <p className="thanks">Thank you.</p>
       </Slide>
 
       <div className="bar">
