@@ -13,7 +13,7 @@ import { buildScene, PLANT_OF } from '@/model/garden'
 import { ASSET_OF_PLANT, revealFrom, stagesFor, type Stages } from '@/model/garden2'
 import { readSeenStages, writeSeenStages } from '@/lib/garden2-seen'
 import { Garden2, garden2Bleeds } from '@/garden2/Garden2'
-import { GARDEN2 } from '@/garden2/flag'
+import { FRUITING, GARDEN2 } from '@/garden2/flag'
 import { withDevBud, type DevBud } from '@/lib/dev-bud'
 import { frameFor, skyAbove, valuePull } from '@/model/layout'
 import { packScene } from '@/model/spread'
@@ -120,7 +120,7 @@ export default function Home() {
   // R535: the basket at the mandarin's foot while withdrawn SKR waits out its 48 h unstake (until it is delivered)
   const extras2 = useMemo(
     () => ({
-      fruit: { mandarin: input?.earned.SKR?.count ?? 0, store: input?.earned.stORE?.count ?? 0 },
+      fruit: FRUITING ? { mandarin: input?.earned.SKR?.count ?? 0, store: input?.earned.stORE?.count ?? 0 } : {}, // R584: none in v1
       basket: !!me?.basket && !me.basket.delivered,
       stakes: true, // R534: each planted plant's stake, its coin name on it (R556: one line; the rest in the tap label)
     }),
