@@ -203,11 +203,19 @@ export function Garden2({
                   />
                 </View>
               ) : l.kind === 'plant' && LoopImage && !reduced && !night && LOOP_SRC[l.key]?.[l.stage] ? (
-                // R581: a stage with an idle loop sways; the still under it shows until the loop's first frame is in
-                <View key={`p-${l.key}`} style={{ position: 'absolute', left: l.x, top: l.y, width: l.w, height: l.h }}>
-                  <Image source={sourceOf(l, night)} fadeDuration={0} style={{ position: 'absolute', width: l.w, height: l.h }} />
-                  <LoopImage source={LOOP_SRC[l.key]![l.stage]!} autoplay contentFit="fill" cachePolicy="memory" style={{ position: 'absolute', width: l.w, height: l.h }} />
-                </View>
+                // R581: a stage with an idle loop sways. R582 (his device note): the still is only the loop's placeholder, gone once the
+                // loop's first frame is in; drawn under it, it showed through the sway as a static double
+                <LoopImage
+                  key={`p-${l.key}`}
+                  source={LOOP_SRC[l.key]![l.stage]!}
+                  placeholder={sourceOf(l, night)}
+                  placeholderContentFit="fill"
+                  transition={0}
+                  autoplay
+                  contentFit="fill"
+                  cachePolicy="memory"
+                  style={{ position: 'absolute', left: l.x, top: l.y, width: l.w, height: l.h }}
+                />
               ) : l.kind === 'fruit' && revealing(l.key) ? (
                 <Animated.Image
                   key={`f-${l.key}-${l.index}`}
