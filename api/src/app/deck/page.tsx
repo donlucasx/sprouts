@@ -4,7 +4,7 @@ import { DeckKeys } from "./keys";
 
 /**
  * The pitch deck: one 16:9 slide per screen, ten slides (R-D2, R-D7): hook, problem, how it works, Seed Vault, garden (demo +
- * why people come back, R-D5), AI Yield Manager, safety + how it's built (R-D6), market, business (Seeker and Solana Mobile only,
+ * why people come back, R-D5), Yield Manager, safety + how it's built (R-D6), market, business (Seeker and Solana Mobile only,
  * R-D4), team. Every size is in container units, so the same page prints to a 1920x1080 PDF (one slide per page).
  * Copy follows the rulings: the problem line (10-04), R300 (the guarantee), R103 (no competitors). Numbers: docs/reports/
  * 2026-10-09-business-model-analysis.md and research/new/14.
@@ -69,10 +69,11 @@ const CSS = `
 .deck .poster { display:none; }
 .deck .links { display:flex; flex-wrap:wrap; gap:calc(var(--u)*1) calc(var(--u)*3); font-size:calc(var(--u)*1.6); font-weight:600; color:var(--leaf); }
 .deck .hero { max-width:calc(var(--u)*50); }
-.deck .phone { position:absolute; left:calc(var(--u)*62); top:calc(var(--u)*-21); width:calc(var(--u)*46); padding:calc(var(--u)*1.1);
-  background:#1D2628; border-radius:calc(var(--u)*6); box-shadow:0 calc(var(--u)*1.5) calc(var(--u)*5) rgba(43,38,34,.22); }
-.deck .phone img { display:block; width:100%; height:auto; border-radius:calc(var(--u)*5); }
-.deck .sprout { position:absolute; right:calc(var(--u)*6); top:calc(var(--u)*6); height:calc(var(--u)*14); width:auto; }
+.deck .phone { position:absolute; left:calc(var(--u)*61); top:calc(var(--u)*6); width:calc(var(--u)*29); height:calc(var(--u)*50.25); overflow:hidden; box-sizing:border-box; border-bottom-left-radius:0; border-bottom-right-radius:0; padding:calc(var(--u)*.9) calc(var(--u)*.9) 0;
+  background:#1D2628; border-radius:calc(var(--u)*4.4) calc(var(--u)*4.4) 0 0; box-shadow:0 calc(var(--u)*1.5) calc(var(--u)*5) rgba(43,38,34,.22); }
+.deck .phone img { display:block; width:100%; height:auto; border-radius:calc(var(--u)*3.6); }
+.deck .sprout { position:absolute; right:calc(var(--u)*9); bottom:calc(var(--u)*6); height:calc(var(--u)*19); width:auto; }
+.deck .beat .stage { height:calc(var(--u)*11); width:auto; justify-self:start; margin-bottom:calc(var(--u)*.4); }
 .deck .narrow { max-width:calc(var(--u)*62); }
 .deck .stack { display:grid; gap:calc(var(--u)*1.8); max-width:calc(var(--u)*44); }
 .deck .stack div { display:grid; gap:calc(var(--u)*.4); }
@@ -81,12 +82,13 @@ const CSS = `
 .deck .photo { position:absolute; top:0; right:0; bottom:0; width:44%; height:100%; object-fit:cover; }
 .deck .on-art .num { display:none; }
 .deck .photo-credit { position:absolute; right:calc(var(--u)*1.2); bottom:calc(var(--u)*1); font-size:calc(var(--u)*.8); color:rgba(255,255,255,.55); }
-.deck .split.wide { grid-template-columns:.75fr 1.25fr; gap:calc(var(--u)*2); }
+.deck .split.wide { grid-template-columns:.62fr 1.38fr; gap:calc(var(--u)*2); }
 .deck .split.wide video, .deck .split.wide .poster { border-radius:0; }
 .deck .sand { position:absolute; right:0; bottom:0; width:72%; height:auto; pointer-events:none;
   -webkit-mask-image:linear-gradient(to right, transparent, #000 35%); mask-image:linear-gradient(to right, transparent, #000 35%); }
 .deck .in > .grow { position:relative; z-index:1; }
-.deck .foliage { position:absolute; right:calc(var(--u)*-7); top:calc(var(--u)*-9); width:calc(var(--u)*30); height:auto; pointer-events:none; }
+.deck .tree { position:absolute; right:calc(var(--u)*-11); bottom:calc(var(--u)*-9); width:calc(var(--u)*35); height:auto; pointer-events:none; }
+.deck .flow.short { max-width:calc(var(--u)*68); }
 .deck .todo { background:#FFF1B8; color:#5C4A00; border-radius:4px; padding:0 .3em; }
 .deck .bar { position:fixed; right:16px; bottom:16px; display:flex; gap:8px; z-index:2; }
 .deck .bar a, .deck .bar button { font:600 13px var(--font-body), sans-serif; background:var(--ink); color:var(--paper); border:0; border-radius:999px; padding:9px 14px; cursor:pointer; text-decoration:none; }
@@ -103,8 +105,8 @@ const CSS = `
   .deck .beat strong { font-size:19px; } .deck .beat span, .deck .stat span { font-size:15px; }
   .deck .stat strong { font-size:34px; }
   .deck .num { right:16px; bottom:20px; font-size:12px; } .deck .note, .deck .addr { font-size:12px; }
-  .deck .phone { position:relative; left:auto; top:auto; width:100%; max-height:70vh; overflow:hidden; }
-  .deck .sprout, .deck .foliage { display:none; } .deck .photo { position:relative; width:100%; height:auto; }
+  .deck .phone { position:relative; left:auto; top:auto; width:100%; height:70vh; overflow:hidden; }
+  .deck .sprout, .deck .tree { display:none; } .deck .flow.short { max-width:none; } .deck .photo { position:relative; width:100%; height:auto; }
   .deck .sand { width:100%; } .deck .stack, .deck .narrow, .deck .hero { max-width:none; }
   .deck .brand { font-size:22px; } .deck .brand img { width:30px; } .deck .foot, .deck .links { font-size:15px; }
 }
@@ -154,35 +156,35 @@ export default function Deck() {
       {/* 02 The opportunity (R-D24): the 10-04 problem line, verbatim, turned toward what the swaps make possible */}
       <Slide n={2} chip="The opportunity">
         <div className="grow">
-          <h2>Traders rarely set money aside. Their swaps can do it for them.</h2>
-          <p className="sub">
-            Everything sits in the hot wallet they swap from every day, and nobody stops mid-trade to save. Every swap is already a
-            moment money moves, so each one can set a little change aside.
-          </p>
+          <h2 style={{ maxWidth: "calc(var(--u)*62)" }}>Traders rarely set money aside. Their swaps can do it for them.</h2>
+          <p className="sub" style={{ maxWidth: "calc(var(--u)*48)" }}>Every swap already moves money. Each one can set a little change aside.</p>
         </div>
-        <p className="note">Seeker owners who stake SKR swap a median of 23 times a month, most of it under $10 (on-chain sample of 163 recently active SKR stakers, Sept 2026).</p>
+        <p className="note">Seeker owners who stake SKR swap a median of 23 times a month, mostly under $10 (on-chain sample of 163 recently active stakers, Sept 2026).</p>
+        <img className="sprout" src="/deck/sprout.png" alt="A first sprout, from the app's loading screen" />
       </Slide>
 
       {/* 03 How it works: any swap, any app (his note 2); the decision removed (the cut table, R-D7) */}
       <Slide n={3} chip="How it works">
         <div className="grow">
-          <h2 className="narrow" style={{ maxWidth: "calc(var(--u)*58)" }}>Every swap rounds up. Your Seeker keeps the change.</h2>
+          <h2 className="h2s">Every swap rounds up. Your Seeker keeps the change.</h2>
           <div className="beats">
             <div className="beat">
+              <img className="stage" src="/deck/grow-1.png" alt="" />
               <strong>Any swap, any app</strong>
-              <span>Link your wallets once. Every swap they sign, in any Solana app, rounds up to the next dollar. Adjust it in the app: add extra on bigger swaps, set your daily limit.</span>
+              <span>Swaps from your linked wallets round up to the next dollar. You set the extras and the daily limit.</span>
             </div>
             <div className="beat">
+              <img className="stage" src="/deck/grow-2.png" alt="" />
               <strong>Planted each morning</strong>
-              <span>Past $2, your change is planted at 7&nbsp;AM, up to $5 a day. No decision to make, nothing left in the hot wallet.</span>
+              <span>Past $2, your change is planted at 7&nbsp;AM. Up to $5 a day, no decisions.</span>
             </div>
             <div className="beat">
+              <img className="stage" src="/deck/grow-3.png" alt="" />
               <strong>Kept on your Seeker</strong>
-              <span>Held by your Seed Vault. To grow: SKR, staked, and stORE, ORE that grows from mining fees. To steady it: USDC and SOL lending. The AI manager balances the two.</span>
+              <span>SKR and stORE to grow, USDC and SOL lending to steady it, all in your Seed Vault.</span>
             </div>
           </div>
         </div>
-        <img className="sprout" src="/deck/sprout.png" alt="A first sprout, from the app's loading screen" />
       </Slide>
 
       {/* 04 The Seed Vault (his note 1). Saga is also accepted (R86), so "built for", never "only works on". */}
@@ -192,11 +194,11 @@ export default function Deck() {
           <div className="stack">
             <div>
               <strong>Not in a hot wallet</strong>
-              <span>Savings belong to the key in your Seeker&apos;s secure hardware. A drained trading wallet never reaches them.</span>
+              <span>Held by your Seeker&apos;s secure hardware, away from your trading wallet.</span>
             </div>
             <div>
               <strong>Only you take it out</strong>
-              <span>Sprouts adds to your savings every morning. Only your fingerprint on the Seed Vault can withdraw.</span>
+              <span>Withdrawals need your fingerprint on the Seed Vault.</span>
             </div>
             <div>
               <strong>One phone, one garden</strong>
@@ -205,7 +207,7 @@ export default function Deck() {
           </div>
         </div>
         <img className="photo" src="/deck/seeker-vault.webp" alt="A Solana Seeker, Seed Vault on the back, Sprouts on the screen" />
-        <span className="photo-credit">Seeker render: Solana Mobile press kit</span>
+        <span className="photo-credit">Seeker render: Solana Mobile press kit. Screen: Sprouts.</span>
       </Slide>
 
       {/* 05 Garden: demo + why people come back (R-D5) */}
@@ -214,32 +216,33 @@ export default function Deck() {
           <div className="grow">
             <h2 className="h2s">A garden that grows every time you swap.</h2>
             <ol className="steps">
-              <li>Each coin is a plant. Every planting grows it.</li>
+              <li>Each coin is a plant that grows with every planting.</li>
               <li>A notification when your change is planted.</li>
-              <li>The garden lives on your home screen as a widget.</li>
+              <li>Your garden on your home screen.</li>
             </ol>
             <p className="note">
-              Simulated two years of a typical saver. <span className="todo">Demo video link goes here.</span>
+              Two simulated years of an active saver: $32 a month, the top quarter of Seeker traders. <span className="todo">Demo video link goes here.</span>
             </p>
           </div>
           <div>
-            <video src="/deck/garden-years.mp4" poster="/deck/garden-years.webp" autoPlay muted loop playsInline preload="metadata" aria-label="A garden growing over two simulated years as round-ups are planted" />
+            <video src="/deck/garden-years.mp4" poster="/deck/garden-years.webp" autoPlay muted loop playsInline preload="metadata" aria-label="A garden growing over two simulated years as an active saver&apos;s round-ups are planted" />
             <img className="poster" src="/deck/garden-years.webp" alt="The garden after two simulated years" />
           </div>
         </div>
       </Slide>
 
-      {/* 06 AI Yield Manager (his note 6): split-run.ts, lending-leash spec 3-4, R347 */}
-      <Slide n={6} chip="AI Yield Manager">
+      {/* 06 Yield Manager (his note 6; R-D27 smart + helpful, chip 'Yield Manager'): split-run.ts, lending-leash spec 3-4, R347 */}
+      <Slide n={6} chip="Yield Manager">
         <div className="grow">
-          <h2 className="h2s">An AI yield manager, inside hard limits.</h2>
-          <ol className="steps">
-            <li>Each morning it reads live rates from Kamino and Jupiter Lend, and sets aside any rate that is mostly temporary rewards or a pool near full.</li>
-            <li>It tilts your new change toward what pays more, at most 10 points per coin a day. SKR always keeps its share.</li>
-            <li>Code, not the model, picks the lender and moves the money. The AI never signs and never sells what you hold.</li>
+          <h2 className="h2s" style={{ maxWidth: "calc(var(--u)*64)" }}>Your round-ups, put to work while you sleep.</h2>
+          <ol className="steps" style={{ maxWidth: "calc(var(--u)*66)" }}>
+            <li>Round-ups go straight into SKR staking, ORE mining and lending. No extra step.</li>
+            <li>Each morning it checks live rates on Kamino and Jupiter Lend and leans your new change toward the best one.</li>
+            <li>It skips rates propped up by short-term rewards, and never sells what you hold.</li>
           </ol>
-          <p className="sub">Optional. Careful, Balanced or Bold. Pro, free during launch.</p>
+          <p className="sub">Careful, Balanced or Bold. Pro, free during launch.</p>
         </div>
+        <p className="note">At most 10 points per coin a day, and SKR keeps its share. Code, not the model, picks the lender and moves the money.</p>
         <img className="sand" src="/deck/sand.webp" alt="" />
       </Slide>
 
@@ -247,42 +250,40 @@ export default function Deck() {
       <Slide n={7} chip="Your money stays yours">
         <div className="grow">
           <h2 className="h2s" style={{ maxWidth: "calc(var(--u)*62)" }}>Your money moves one way: into your savings.</h2>
-          <p className="sub">
-            Every planting passes an on-chain leash: at most $5 a day per linked wallet, and only into savings you hold. Even our own
-            server can&apos;t send it anywhere else.
+          <p className="sub" style={{ maxWidth: "calc(var(--u)*54)" }}>
+            An on-chain leash allows at most $5 a day per linked wallet, only into savings you hold. Not even our server can send it
+            anywhere else.
           </p>
-          <div className="flow">
-            <div><b>You swap</b><small>in any app, from any linked wallet</small></div>
+          <div className="flow short">
+            <div><b>You swap</b><small>in any app</small></div>
             <i>→</i>
-            <div><b>Sprouts notices</b><small>and sets the change aside</small></div>
+            <div><b>Sprouts sets it aside</b><small>the round-up</small></div>
             <i>→</i>
-            <div className="key"><b>The leash checks it</b><small>on chain: $5 a day, only into your savings</small></div>
+            <div className="key"><b>The leash checks it</b><small>$5 a day, only into your savings</small></div>
             <i>→</i>
-            <div><b>Jupiter buys</b><small>SKR, stORE, hSOL, cbBTC</small></div>
-            <i>→</i>
-            <div><b>Your Seed Vault keeps it</b><small>staked, or lent on Kamino and Jupiter Lend</small></div>
+            <div><b>Your Seed Vault keeps it</b><small>bought on Jupiter, staked or lent</small></div>
           </div>
-          <p className="note">
-            Built with Expo, React Native, Mobile Wallet Adapter, Helius, Next.js and Supabase. The leash&apos;s build is verified against
-            its public source (GyBmDLN72kg6xwAnZfj9c7fjeaJ3GvhkHNhFns83f8f7). The admin key lives on the owner&apos;s laptop, not the server.
-            Pause, revoke or withdraw any time from your phone.
+          <p className="note" style={{ maxWidth: "calc(var(--u)*64)" }}>
+            Built with Expo, React Native, Mobile Wallet Adapter, Helius, Next.js and Supabase. Leash build verified against its public
+            source (GyBmDLN72kg6xwAnZfj9c7fjeaJ3GvhkHNhFns83f8f7). Admin key on the owner&apos;s laptop, not the server.
           </p>
         </div>
-        <img className="foliage" src="/deck/foliage.png" alt="" />
+        <img className="tree" src="/deck/tree.png" alt="" />
       </Slide>
 
       {/* 08 Market (R-D3: market data, not our DB) */}
       <Slide n={8} chip="Who it's for">
         <div className="grow">
-          <h2 className="h2s">Seeker owners trade often, in small amounts.</h2>
+          <h2 className="h2s">Every Seeker owner, from their first swap.</h2>
           <div className="stats">
-            <div className="stat"><strong>120k</strong><span>Seekers activated with a Genesis Token (Aug 2026).</span></div>
-            <div className="stat"><strong>91%</strong><span>of SKR stakers swapped in the last 30 days, a median of 23 times.</span></div>
-            <div className="stat"><strong>$200</strong><span>a year rounded up by the median staker who trades.</span></div>
-            <div className="stat"><strong>4.9B</strong><span>SKR staked. Seeker owners already hold.</span></div>
+            <div className="stat"><strong>120k</strong><span>Seekers activated, each with the dApp Store built in (Aug 2026).</span></div>
+            <div className="stat"><strong>23</strong><span>swaps a month by the median active SKR staker.</span></div>
+            <div className="stat"><strong>$200</strong><span>a year rounded up by that staker.</span></div>
+            <div className="stat"><strong>$20</strong><span>a month rounded up by new owners who swap.</span></div>
           </div>
-          <p className="note">Sources: Dune, Genesis activations (Aug 2026); our on-chain sample of 163 recently active SKR stakers, round-up to $1 plus 1% of swaps over $100 (Sept 2026); solanamobile.com/skr (Oct 2026).</p>
+          <p className="sub">For new owners, Sprouts is a first app worth opening every day.</p>
         </div>
+        <p className="note">Sources: Dune, Genesis activations (Aug 2026); our on-chain samples of 163 recently active SKR stakers and 46 recently activated Seekers that swapped, round-up to $1 plus 1% of swaps over $100 (Sept 2026).</p>
       </Slide>
 
       {/* 09 Business: Seeker and Solana Mobile only (R-D4); Pro = manager + auto-lending + tax pack (R446c); docs/reports/2026-10-09-business-model-analysis.md */}
@@ -290,10 +291,10 @@ export default function Deck() {
         <div className="grow">
           <h2 className="h2s">Grows with Solana Mobile.</h2>
           <div className="rows">
-            <div className="row"><strong>About $200 a saver</strong><span>rounded up each year by the median active staker, all of it bought on Solana and held on a Seeker.</span></div>
+            <div className="row"><strong>About $200 a saver</strong><span>a year, rounded up by the median active staker and kept on a Seeker.</span></div>
             <div className="row"><strong>0.5% of each coin planting</strong><span>Paid in USDC, inside the same swap.</span></div>
-            <div className="row"><strong>Pro subscription</strong><span>Your money works by itself: the AI Yield Manager, automatic lending and tax export. Free during launch. Round-ups plus a subscription is the model Acorns proved with millions of paying customers.</span></div>
-            <div className="row"><strong>Good for SKR</strong><span>No new token. Every saver buys SKR with their round-ups, and the garden and widget give them a reason to open their Seeker.</span></div>
+            <div className="row"><strong>Pro subscription</strong><span>Yield Manager, automatic lending, tax export. Free during launch. Round-ups plus a subscription: the model Acorns proved.</span></div>
+            <div className="row"><strong>Good for SKR</strong><span>No new token. Every saver buys SKR.</span></div>
           </div>
         </div>
       </Slide>
