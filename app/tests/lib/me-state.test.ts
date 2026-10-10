@@ -213,6 +213,17 @@ describe('Home as numbers (R150)', () => {
     expect(h).toMatchObject({ earnedUsd: 0.04, putInCents: 203, where: 'In your wallet' })
     expect(coinRows({ pot: { ...pot, skrUsd: null }, holdings: [] })[0]!.earnedUsd).toBeNull()   // no price, no dollars earned
   })
+  it('coinRows (R568): a lending coin at two venues is ONE row with its totals and a part per venue; at one venue, its own row', () => {
+    const pos = (venue: string, raw: string, usd: number, earned: number, put: number) =>
+      ({ asset: 'USDC_LEND', venue, receiptMint: 'm', receiptRaw: '1', underlyingRaw: raw, valueUsd: usd, ratePct: venue === 'kamino_klend' ? 6.2 : 5.1, avg7Pct: null, earnedUsd: earned, putInCents: put, withdrawableUsd: null, poolFull: false }) as never
+    const two = coinRows({ pot: { ...pot, skrStakedRaw: '0' }, holdings: [], positions: [pos('jupiter_lend', '510000', 0.51, 0, 51), pos('kamino_klend', '900000', 0.9, 0.01, 89)] })
+    expect(two).toHaveLength(1)
+    expect(two[0]).toMatchObject({ key: 'USDC_LEND', venue: null, qty: '1.41 USDC', usd: '$1.41', earnedUsd: 0.01, putInCents: 140, where: 'Kamino 6.2% · Jupiter 5.1%' })
+    expect(two[0]!.parts!.map((p) => [p.key, p.qty, p.where])).toEqual([['USDC_LEND:kamino_klend', '0.90 USDC', 'Kamino 6.2%'], ['USDC_LEND:jupiter_lend', '0.51 USDC', 'Jupiter 5.1%']])
+    const one = coinRows({ pot: { ...pot, skrStakedRaw: '0' }, holdings: [], positions: [pos('jupiter_lend', '510000', 0.51, 0, 51)] })
+    expect(one[0]).toMatchObject({ key: 'USDC_LEND:jupiter_lend', where: 'Jupiter 5.1%' })
+    expect(one[0]!.parts).toBeUndefined()
+  })
   it('coinRows: no SKR row while nothing is staked', () => {
     expect(coinRows({ pot: { ...pot, skrStakedRaw: '0' }, holdings: [hsol] }).map((r) => r.asset)).toEqual(['hSOL'])
   })

@@ -87,13 +87,14 @@ export function CoinSheet({ me, row, onClose }: { me: MeResponse; row: CoinRow |
               ))}
             </View>
           ) : null}
-          {sheet.withdrawKey ? (
+          {sheet.withdrawKey !== undefined ? (
             <Button
               title="Withdraw"
               kind="quiet"
               onPress={() => {
                 onClose()
-                router.push({ pathname: '/withdraw', params: { pick: sheet.withdrawKey! } })
+                const pick = sheet.withdrawKey
+                router.push(pick ? { pathname: '/withdraw', params: { pick } } : '/withdraw')
               }}
             />
           ) : (

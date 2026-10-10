@@ -77,7 +77,9 @@ export type CoinRow = { key: string; asset: LiveAsset; venue: AutoVenue | null; 
   earnedUsd: number | null
   /** R564's coin sheet: the dollars put into this row (null for SKR: the sheet sums its plantings), and where it lives in one line. */
   putInCents: number | null
-  where: string | null }
+  where: string | null
+  /** R568: a lending coin held at two or more venues is ONE row (these totals) with a part per venue, each a full row of its own. */
+  parts?: CoinRow[] }
 /** R230 (10-03, his note: "a more familiar portfolio look, like coinmarketcap's"): `amount` split for Home's two-column row, the
  * coin amount under its name on the left and the dollars on the right; `usd` null when no price is known. */
 function split(amount: string): { qty: string; usd: string | null } {
@@ -104,13 +106,29 @@ export function coinRows(me: Pick<MeResponse, 'pot' | 'holdings' | 'positions'>)
     // Spec 11: a lending leg lists each venue position (venue, rate, value, earned) in place of its aggregated holding (Review Focus 4)
     const positions = isLend(asset) ? livePositions(me, asset) : []
     if (positions.length > 0) {
-      for (const p of positions) rows.push({ key: `${asset}:${p.venue}`, asset, venue: p.venue, amount: positionAmount(p), ...split(positionAmount(p)), locked: false, note: positionNote(p), lead: false, earnedUsd: p.earnedUsd, putInCents: p.putInCents, where: positionWhere(p) })
+      const parts: CoinRow[] = positions.map((p) => ({ key: `${asset}:${p.venue}`, asset, venue: p.venue, amount: positionAmount(p), ...split(positionAmount(p)), locked: false, note: positionNote(p), lead: false, earnedUsd: p.earnedUsd, putInCents: p.putInCents, where: positionWhere(p) }))
+      rows.push(parts.length === 1 ? parts[0]! : groupRow(asset as LendAsset, positions, parts))
       continue
     }
     const h = me.holdings.find((x) => x.asset === asset)
     if (h) rows.push({ key: asset, asset, venue: null, amount: holdingAmount(h), ...split(holdingAmount(h)), locked: false, note: asset === 'stORE' ? storeNote(h.growthPct) : null, lead: LEAD_COINS.includes(asset), earnedUsd: h.earnedUsd, putInCents: h.putInCents, where: asset === 'stORE' ? (storeNote(h.growthPct) ?? 'In your wallet') : 'In your wallet' })
   }
   return rows
+}
+
+/** R568: one row for a lending coin at several venues: the summed amount and value (value unknown if any part's is), earned and put
+ * in summed over the parts that know them, the venues in one line; Home draws the parts under it. */
+function groupRow(asset: LendAsset, positions: LendingPosition[], parts: CoinRow[]): CoinRow {
+  const sum = (xs: (number | null)[]) => (xs.some((x) => x !== null) ? xs.reduce<number>((s, x) => s + (x ?? 0), 0) : null)
+  const total: LendingPosition = {
+    ...positions[0]!,
+    underlyingRaw: String(positions.reduce((s, p) => s + BigInt(/^\d+$/.test(p.underlyingRaw) ? p.underlyingRaw : '0'), 0n)),
+    valueUsd: positions.every((p) => p.valueUsd !== null) ? positions.reduce((s, p) => s + p.valueUsd!, 0) : null,
+  }
+  return {
+    key: asset, asset, venue: null, amount: positionAmount(total), ...split(positionAmount(total)), locked: false, note: null, lead: false,
+    earnedUsd: sum(parts.map((p) => p.earnedUsd)), putInCents: sum(parts.map((p) => p.putInCents)), where: parts.map((p) => p.where).join(' · '), parts,
+  }
 }
 
 /** The two stats under the big number (R150): Put in, and Earned when it is known. */

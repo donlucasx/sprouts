@@ -21,6 +21,7 @@ import { plantLayouts } from '@/model/scene-to-layout'
 import { watcherLine } from '@/model/watcher'
 import { Garden } from '@/garden/Garden'
 import { COIN_FULL_NAME, COIN_LOGO } from '@/lib/coin-icons'
+import type { LendingPosition, MeResponse } from '@/lib/api'
 import { earnedLabel } from '@/lib/coin-sheet'
 import { CoinSheet } from '@/components/CoinSheet'
 import { Screen } from '@/components/Screen'
@@ -47,6 +48,21 @@ import { FONT, radius, spacing, TARGET, useTheme } from '@/theme'
  * No slop at its top: that edge meets the garden's row, where the can's touch box ends, and a later sibling's slop would win there. */
 const RECEIPT_SLOP = spacing.sm
 
+/** Dev only (the dev menu's split switch, R568): each lending position shown as two halves, one at each venue, so the grouped row can
+ * be seen on a device with one real position. Nothing is sent anywhere. */
+function devSplitLending(me: MeResponse): MeResponse {
+  const other = { kamino_klend: 'jupiter_lend', jupiter_lend: 'kamino_klend' } as const
+  const half = (p: LendingPosition): LendingPosition[] => {
+    const u = BigInt(p.underlyingRaw), a = u / 2n
+    const v = (x: number | null) => (x === null ? null : x / 2)
+    return [
+      { ...p, underlyingRaw: String(a), valueUsd: v(p.valueUsd), earnedUsd: v(p.earnedUsd), putInCents: Math.round(p.putInCents / 2) },
+      { ...p, venue: other[p.venue], ratePct: p.ratePct === null ? null : p.ratePct + 1.1, underlyingRaw: String(u - a), valueUsd: v(p.valueUsd), earnedUsd: v(p.earnedUsd), putInCents: p.putInCents - Math.round(p.putInCents / 2) },
+    ]
+  }
+  return { ...me, positions: (me.positions ?? []).flatMap(half) }
+}
+
 export default function Home() {
   const { setSession } = useSession()
   const { colors, dark } = useTheme()
@@ -62,6 +78,7 @@ export default function Home() {
   const today = now.toDateString()
   // R351's device check, DEV builds only: the dev menu's "Grow a bud" adds a local SKR bud; the can then waters it locally (nothing is sent)
   const [devBud, setDevBud] = useState<DevBud | null>(null)
+  const [devSplit, setDevSplit] = useState(false) // dev menu: show each lending position split across both venues (R568 check)
   const queryClient = useQueryClient()
   // Perf (10-08): Activity's list is read while Home is up, so the tab opens on data (a failed prefetch is silent; the tab reads again).
   useEffect(() => {
@@ -75,6 +92,7 @@ export default function Home() {
             { name: 'Grow a bud (SKR, local)', callback: () => setDevBud({ budAt: new Date(Date.now() - 1000), wateredAt: null }), shouldCollapse: true },
             { name: 'Clear the dev bud', callback: () => setDevBud(null), shouldCollapse: true },
             { name: 'Garden2 stages', callback: () => router.push('/dev-garden2'), shouldCollapse: true },
+            { name: 'Split lending across 2 venues (local)', callback: () => setDevSplit((v) => !v), shouldCollapse: true },
           ]),
         )
         .catch(() => {})
@@ -339,11 +357,11 @@ export default function Home() {
             the amount under it on the left, the dollars with the coin's status under them on the right; hairlines between rows.
             Replaces R198/R205's one-line rows (the lead rows' larger face goes: every row now has the same two lines). */}
         <View>
-          {coinRows(me).map((r, i) => {
+          {coinRows(devSplit ? devSplitLending(me) : me).map((r, i) => {
             const earned = earnedLabel(r.earnedUsd)
             return (
+            <View key={r.key} style={{ borderTopWidth: i === 0 ? 0 : 1, borderTopColor: colors.hairline }}>
             <Pressable
-              key={r.key}
               onPress={() => setSheetRow(r)}
               accessibilityRole="button"
               accessibilityLabel={`${COIN_FULL_NAME[r.asset]}, ${r.amount}${earned ? `, earned ${earned.text}` : ''}. Opens its details.`}
@@ -353,8 +371,7 @@ export default function Home() {
                 alignItems: 'center',
                 gap: spacing.md,
                 paddingVertical: spacing.md,
-                borderTopWidth: i === 0 ? 0 : 1,
-                borderTopColor: colors.hairline,
+                paddingBottom: r.parts ? spacing.xs : spacing.md,
               })}
             >
               <Image source={COIN_LOGO[r.asset]} style={{ width: 40, height: 40, borderRadius: 20 }} />
@@ -388,6 +405,38 @@ export default function Home() {
                 ) : null}
               </View>
             </Pressable>
+            {r.parts?.map((p) => {
+              // R568: a coin at several venues lists each venue under it, indented to the name: the venue and rate, its share
+              // (and its earned, green above zero); tapping one opens that venue's own sheet and Withdraw
+              const pe = earnedLabel(p.earnedUsd)
+              return (
+                <Pressable
+                  key={p.key}
+                  onPress={() => setSheetRow(p)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${p.where}, ${p.amount}${pe ? `, earned ${pe.text}` : ''}. Opens its details.`}
+                  style={({ pressed }) => ({
+                    opacity: pressed ? 0.7 : 1,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 4,
+                    marginLeft: 40 + spacing.md,
+                    paddingVertical: spacing.xs + 2,
+                  })}
+                >
+                  <MaterialCommunityIcons name="bank-outline" size={12} color={colors.textSecondary} />
+                  <ThemedText variant="caption" tone="secondary" numberOfLines={1} style={{ flex: 1 }}>
+                    {p.where}
+                  </ThemedText>
+                  <ThemedText variant="caption" numeric numberOfLines={1}>
+                    {`${p.qty}  ${p.usd ?? ''}`}
+                    {pe?.positive ? <ThemedText variant="caption" numeric style={{ color: colors.success }}>{`  ${pe.text}`}</ThemedText> : null}
+                  </ThemedText>
+                </Pressable>
+              )
+            })}
+            {r.parts ? <View style={{ height: spacing.sm }} /> : null}
+            </View>
             )
           })}
         </View>

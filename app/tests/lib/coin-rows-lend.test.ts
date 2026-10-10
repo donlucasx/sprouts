@@ -16,11 +16,12 @@ describe('lending positions in the coin list (spec 11, contracts 5.2)', () => {
     expect(positionNote(FIXTURE_POSITIONS[1])).toBe('Jupiter 3.8%')   // earned under half a cent is not shown
     expect(positionNote({ ...FIXTURE_POSITIONS[1], ratePct: null })).toBe('Jupiter')
   })
-  it('Review Focus 4: positions replace the aggregated row; the total counts once', () => {
+  it('Review Focus 4: positions replace the aggregated row; the total counts once (R568: two venues = one row, a part each)', () => {
     const rows = coinRows(me)
-    expect(rows.map((r) => [r.asset, r.venue])).toEqual([['SKR', null], ['USDC_LEND', 'kamino_klend'], ['USDC_LEND', 'jupiter_lend'], ['SOL_LEND', 'jupiter_lend'], ['hSOL', null]])
-    expect(rows.map((r) => r.key)).toEqual(['SKR', 'USDC_LEND:kamino_klend', 'USDC_LEND:jupiter_lend', 'SOL_LEND:jupiter_lend', 'hSOL'])
-    expect(rows[1]).toMatchObject({ qty: '2.00 USDC', usd: '$2.00', note: 'Kamino 4.4%, earned $0.02', locked: false, lead: false })
+    expect(rows.map((r) => [r.asset, r.venue])).toEqual([['SKR', null], ['USDC_LEND', null], ['SOL_LEND', 'jupiter_lend'], ['hSOL', null]])
+    expect(rows.map((r) => r.key)).toEqual(['SKR', 'USDC_LEND', 'SOL_LEND:jupiter_lend', 'hSOL'])
+    expect(rows[1]!.parts!.map((r) => r.key)).toEqual(['USDC_LEND:kamino_klend', 'USDC_LEND:jupiter_lend'])
+    expect(rows[1]!.parts![0]).toMatchObject({ qty: '2.00 USDC', usd: '$2.00', note: 'Kamino 4.4%, earned $0.02', locked: false, lead: false })
     expect(gardenTotals(me).valueUsd).toBeCloseTo(34.9 * 0.0183 + 2.07 + 3.0 + 1.5, 6)   // holdings only; the positions are the same money
   })
   it('a lending holding with no positions (an API before positions) shows its one row; an empty position is skipped', () => {
