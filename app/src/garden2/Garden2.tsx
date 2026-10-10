@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Image, Text, View } from 'react-native'
 import Animated, {
   Easing,
@@ -276,41 +276,50 @@ export function Garden2({
 
 /**
  * R585: one plant's stage-up as its growth clip (the clip that ends on its stage). It shows the old still through the reveal's pause
- * (a jump of several stages fades from the old still to the one the clip starts on), plays the clip once from the frame it loads, then
+ * (a jump of several stages fades from the old still to the one the clip starts on), plays the clip once (it loads paused during the pause), then
  * hands over to the plant as it always draws (its idle loop, else its still). The clip's first and last frames are cut to match those
  * stills (build_timelapse.py --export-growth), so the hand-offs are swaps, not fades.
  */
 function GrowPlant({ l, from, night }: { l: Extract<Layer, { kind: 'plant' }>; from: number; night: boolean }) {
   const clip = GROWTH_SRC[l.key]![l.stage]!
-  const [phase, setPhase] = useState<'wait' | 'grow' | 'done'>('wait')
   const start = l.stage - 1
+  // the clip loads hidden and paused during the pause (a cold decode took a beat on the device: "the reveal button seems a tad buggy"),
+  // and plays once both the pause is over and its frames are in; a clip that never loads gives way to the new still
+  const [waited, setWaited] = useState(false)
+  const [loaded, setLoaded] = useState(false)
+  const [done, setDone] = useState(false)
+  const playing = waited && loaded && !done
   const fadeTo = useSharedValue(from < start ? 0 : 1)
+  const ref = useRef<{ startAnimating: () => Promise<void> } | null>(null)
   useEffect(() => {
     if (from < start) fadeTo.value = withTiming(1, { duration: REVEAL_DELAY_MS, easing: Easing.inOut(Easing.quad) })
-    const id = setTimeout(() => setPhase('grow'), REVEAL_DELAY_MS + (from < start ? REVEAL_DELAY_MS : 0))
-    return () => clearTimeout(id)
+    const id = setTimeout(() => setWaited(true), REVEAL_DELAY_MS + (from < start ? REVEAL_DELAY_MS : 0))
+    const spare = setTimeout(() => setDone(true), REVEAL_DELAY_MS * 2 + GROW_SPARE_MS + clip.ms)
+    return () => (clearTimeout(id), clearTimeout(spare))
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once per mounted reveal (keyed on it)
   }, [])
-  const [loaded, setLoaded] = useState(false)
   useEffect(() => {
-    if (phase !== 'grow') return
-    const id = setTimeout(() => setPhase('done'), clip.ms + (loaded ? 0 : GROW_SPARE_MS))
+    if (!playing) return
+    void ref.current?.startAnimating()
+    const id = setTimeout(() => setDone(true), clip.ms)
     return () => clearTimeout(id)
-  }, [phase, loaded, clip.ms])
+  }, [playing, clip.ms])
   const fading = useAnimatedStyle(() => ({ opacity: fadeTo.value }))
   const box = { position: 'absolute' as const, left: l.x, top: l.y, width: l.w, height: l.h }
+  const fill = { position: 'absolute' as const, width: l.w, height: l.h }
   const still = (stage: number) => sourceOf({ ...l, stage }, night)
-  if (phase === 'wait')
+  if (!done && LoopImage)
     return (
       <View style={box}>
-        <Image source={still(from)} fadeDuration={0} style={{ position: 'absolute', width: l.w, height: l.h }} />
-        {from < start ? <Animated.Image source={still(start)} fadeDuration={0} style={[{ position: 'absolute', width: l.w, height: l.h }, fading]} /> : null}
+        <LoopImage ref={ref} source={clip.src} transition={0} autoplay={false} contentFit="fill" cachePolicy="memory"
+          onLoad={() => setLoaded(true)} style={{ ...fill, opacity: playing ? 1 : 0 }} />
+        {playing ? null : (
+          <>
+            <Image source={still(from)} fadeDuration={0} style={fill} />
+            {from < start ? <Animated.Image source={still(start)} fadeDuration={0} style={[fill, fading]} /> : null}
+          </>
+        )}
       </View>
-    )
-  if (phase === 'grow' && LoopImage)
-    return (
-      <LoopImage source={clip.src} placeholder={still(start)} placeholderContentFit="fill" transition={0} autoplay contentFit="fill" cachePolicy="memory"
-        onLoad={() => setLoaded(true)} style={box} />
     )
   const loop = LoopImage && LOOP_SRC[l.key]?.[l.stage]
   return loop && LoopImage ? (
