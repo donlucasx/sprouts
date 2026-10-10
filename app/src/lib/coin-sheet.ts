@@ -1,6 +1,6 @@
 import type { MeResponse } from './api'
 import { formatUsd, plantedWhat } from './format'
-import type { CoinRow } from './me-state'
+import { skrPutInCents, type CoinRow } from './me-state'
 import { withdrawRows } from './withdraw-list'
 
 /** R563: a row's earned as Home shows it, "+$0.03" (null when unknown); green only above zero (`positive`). */
@@ -22,15 +22,15 @@ export type CoinSheet = {
 }
 
 /**
- * R564: what tapping a coin row on Home shows. Put in = the row's own (a holding or position), or for SKR the dollars of its
- * plantings; Earned = R563's; Where = locked / venue and rate / wallet; the coin's last three plantings (a lending row only its venue's
+ * R564: what tapping a coin row on Home shows. Put in = the row's own (a holding or position), or for SKR its plantings' dollars
+ * still staked (skrPutInCents, as Home's total); Earned = R563's; Where = locked / venue and rate / wallet; the coin's last three plantings (a lending row only its venue's
  * when the planting names one); Withdraw for what Sprouts can withdraw (withdraw-list), else the wallet line.
  */
 export function coinSheet(me: Pick<MeResponse, 'pot' | 'basket' | 'holdings' | 'positions' | 'history'>, row: CoinRow, now: Date = new Date()): CoinSheet {
   const mine = me.history.plantings
     .filter((p) => p.asset === row.asset && (!row.venue || !p.venue || p.venue === row.venue))
     .sort((a, b) => Date.parse(b.ts) - Date.parse(a.ts))
-  const putIn = row.putInCents ?? (row.asset === 'SKR' ? mine.reduce((s, p) => s + Math.max(0, p.usdcInCents), 0) : null)
+  const putIn = row.putInCents ?? (row.asset === 'SKR' ? skrPutInCents(me) : null)
   const earned = earnedLabel(row.earnedUsd)
   const lines: CoinSheet['lines'] = []
   if (putIn !== null) lines.push({ label: 'Put in', value: formatUsd(putIn) })

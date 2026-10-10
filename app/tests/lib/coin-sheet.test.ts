@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import { coinSheet, earnedLabel } from '@/lib/coin-sheet'
-import { coinRows } from '@/lib/me-state'
+import { coinRows, gardenTotals } from '@/lib/me-state'
 import type { MeResponse } from '@/lib/api'
 
-const pot = { skrStakedRaw: '34900000', skrEarnedRaw: '2000000', skrUsd: 0.5 } as MeResponse['pot']
+const pot = { skrStakedRaw: '34900000', skrEarnedRaw: '2000000', skrUsd: 0.5, skrPutInRaw: '32900000', skrPrincipalPickedRaw: '0' } as MeResponse['pot']
 const hsol = { asset: 'hSOL', heldRaw: '12300000', putInCents: 203, valueUsd: 2.07, earnedUsd: 0.04, earnedUnderlyingRaw: '1' } as const
 const planting = (ts: string, asset: string, cents: number) => ({ id: ts, ts, asset, usdcInCents: cents, amountOutRaw: '1000000', feeCents: 0, signature: null }) as never
 const me = {
@@ -28,6 +28,12 @@ describe('earnedLabel (R563)', () => {
 })
 
 describe('coinSheet (R564)', () => {
+  it("SKR's Put in is what is still staked, as Home's total counts it (s6 review C2): half the principal withdrawn halves it", () => {
+    const half = { ...me, pot: { ...pot, skrPutInRaw: '16450000', skrPrincipalPickedRaw: '16450000' } } as MeResponse
+    const [row] = coinRows(half)
+    expect(coinSheet(half, row!).lines[0]).toEqual({ label: 'Put in', value: '$2.50' })
+    expect(gardenTotals(half).putInCents - 203).toBe(250)   // Home's tile, less the hSOL holding's 203
+  })
   const [skr, h] = coinRows(me)
   it('SKR: put in = its plantings, earned at its price, locked, the last three plantings newest first, Withdraw opens on SKR', () => {
     const s = coinSheet(me, skr!)
