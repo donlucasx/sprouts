@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Animated, { runOnJS, useAnimatedStyle, useReducedMotion, useSharedValue, withTiming } from 'react-native-reanimated'
+import { StatusBar } from 'expo-status-bar'
 import { GrowSplash } from './GrowSplash'
 import { SPLASH } from '@/lib/splash'
-import { spacing, useTheme } from '@/theme'
+import { LightOnly, palette, spacing } from '@/theme'
 
 /** R574: once the tree has grown, this long on screen before the fade; and the most it ever stays (a clip that never plays). */
 const GROWN_HOLD_MS = 400,
@@ -14,7 +15,6 @@ const GROWN_HOLD_MS = 400,
  * Reduced motion: the grown tree at once, its usual hold, and the fade becomes a cut.
  */
 export function Splash() {
-  const { colors } = useTheme()
   const reduced = useReducedMotion()
   const [gone, setGone] = useState(false)
   const [fading, setFading] = useState(false)
@@ -40,9 +40,13 @@ export function Splash() {
   return (
     <Animated.View
       pointerEvents={fading ? 'none' : 'auto'}
-      style={[{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, backgroundColor: colors.background, paddingHorizontal: spacing.edge }, fade]}
+      style={[{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, backgroundColor: palette.light.background, paddingHorizontal: spacing.edge }, fade]}
     >
-      <GrowSplash onEnd={onGrown} />
+      {/* R580: always light, in both themes (dark status bar icons over it while it shows) */}
+      <StatusBar style="dark" />
+      <LightOnly.Provider value>
+        <GrowSplash onEnd={onGrown} />
+      </LightOnly.Provider>
     </Animated.View>
   )
 }

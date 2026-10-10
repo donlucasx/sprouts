@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Animated, { Easing, runOnJS, useAnimatedStyle, useReducedMotion, useSharedValue, withTiming, type SharedValue } from 'react-native-reanimated'
 import { ThemedText } from './ThemedText'
 import { HorizontalLockup } from './Lockup'
-import { spacing, useTheme } from '@/theme'
+import { spacing } from '@/theme'
 
 /**
  * R573/R574 (10-09): the re-open loading screen. One plant growing gently, once: the stORE tree filling out (pack stages 8 -> 10, no
@@ -29,20 +29,6 @@ const FRAMES = {
     require('../../assets/splash/tree-light-10.webp'),
     require('../../assets/splash/tree-light-11.webp'),
   ],
-  dark: [
-    require('../../assets/splash/tree-dark-00.webp'),
-    require('../../assets/splash/tree-dark-01.webp'),
-    require('../../assets/splash/tree-dark-02.webp'),
-    require('../../assets/splash/tree-dark-03.webp'),
-    require('../../assets/splash/tree-dark-04.webp'),
-    require('../../assets/splash/tree-dark-05.webp'),
-    require('../../assets/splash/tree-dark-06.webp'),
-    require('../../assets/splash/tree-dark-07.webp'),
-    require('../../assets/splash/tree-dark-08.webp'),
-    require('../../assets/splash/tree-dark-09.webp'),
-    require('../../assets/splash/tree-dark-10.webp'),
-    require('../../assets/splash/tree-dark-11.webp'),
-  ],
 } as const
 const GROW_MS = 3500
 /** R576 (his words): the re-open screen says what it is doing; the slogan stays on Welcome and in the store listing. */
@@ -50,12 +36,11 @@ const LOADING_LINE = 'Loading up your garden...'
 
 /** `onEnd` once the tree has grown (at once under reduced motion, which shows it grown). */
 export function GrowSplash({ onEnd }: { onEnd?: () => void }) {
-  const { dark } = useTheme()
   const still = useReducedMotion()
   const { width } = useWindowDimensions()
   const insets = useSafeAreaInsets()
   const side = Math.min(width - 2 * spacing.edge, 340)
-  const frames = FRAMES[dark ? 'dark' : 'light']
+  const frames = FRAMES.light // R580: the screen is always light
   const p = useSharedValue(still ? 1 : 0)
   const ended = useRef(onEnd)
   useEffect(() => {

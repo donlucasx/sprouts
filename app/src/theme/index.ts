@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from 'react'
+import { createContext, useContext, useSyncExternalStore } from 'react'
 import { useColorScheme } from 'react-native'
 import { palette, type Palette } from './tokens'
 import { isDark } from './appearance'
@@ -11,9 +11,13 @@ export * from './tokens'
  * saved choice itself; only System follows the phone (isDark, 10-06: a scheme Android reported for a moment no longer repaints part
  * of the screen).
  */
+/** R580: a subtree that is always drawn light, whatever the appearance (the loading screen's watercolour is painted for paper). */
+export const LightOnly = createContext(false)
+
 export function useTheme(): { colors: Palette; dark: boolean } {
   const choice = useSyncExternalStore(subscribeAppearance, readAppearance)
-  const dark = isDark(choice, useColorScheme())
+  const scheme = useColorScheme()
+  const dark = !useContext(LightOnly) && isDark(choice, scheme)
   return { colors: dark ? palette.dark : palette.light, dark }
 }
 
