@@ -3,10 +3,11 @@ import { Outfit, Albert_Sans } from "next/font/google";
 import { DeckKeys } from "./keys";
 
 /**
- * The pitch deck: one 16:9 slide per screen, ten slides in the order of "Decks to win any hackathon" (hook, problem, solution,
- * demo, why Seeker, what sets it apart, safety, first users, money, team). Every size is in container units, so the same page
- * prints to a 1920x1080 PDF (one slide per page) and renders each slide as an image for Google Slides.
- * Copy follows the rulings: the problem line (10-04), R271 (why only on Seeker), R300 (the guarantee), R103 (no competitors).
+ * The pitch deck: one 16:9 slide per screen, ten slides (R-D2, R-D7): hook, problem, how it works, Seed Vault, garden (demo +
+ * why people come back, R-D5), AI Yield Manager, safety + how it's built (R-D6), market, business (Seeker and Solana Mobile only,
+ * R-D4), team. Every size is in container units, so the same page prints to a 1920x1080 PDF (one slide per page).
+ * Copy follows the rulings: the problem line (10-04), R300 (the guarantee), R103 (no competitors). Numbers: docs/reports/
+ * 2026-10-09-business-model-analysis.md and research/new/14.
  */
 
 const outfit = Outfit({ subsets: ["latin"], weight: ["500", "600", "700"], variable: "--font-display" });
@@ -46,13 +47,23 @@ const CSS = `
 .deck .beat { background:var(--sheet); border-radius:calc(var(--u)*1); padding:calc(var(--u)*1.8); display:grid; gap:calc(var(--u)*.6); align-content:start; }
 .deck .beat strong { font-family:var(--font-display), sans-serif; font-size:calc(var(--u)*1.9); letter-spacing:-.02em; color:var(--leaf); }
 .deck .beat span { font-size:calc(var(--u)*1.45); line-height:1.4; }
-.deck table { border-collapse:collapse; width:100%; font-size:calc(var(--u)*1.65); }
-.deck th { text-align:left; font-size:calc(var(--u)*1.2); color:var(--muted); font-weight:600; letter-spacing:.06em; text-transform:uppercase; padding:0 0 calc(var(--u)*1); }
-.deck td { padding:calc(var(--u)*1.05) 0; border-top:1px solid var(--rule); width:50%; }
-.deck td + td { color:var(--leaf); font-weight:600; }
-.deck .stats { display:grid; grid-template-columns:repeat(3, 1fr); gap:calc(var(--u)*2.5); }
-.deck .stat strong { display:block; font-family:var(--font-display), sans-serif; font-size:calc(var(--u)*4.2); letter-spacing:-.03em; color:var(--leaf); line-height:1; }
-.deck .stat span { display:block; font-size:calc(var(--u)*1.4); line-height:1.4; margin-top:calc(var(--u)*.8); }
+.deck .h2s { font-size:calc(var(--u)*4.4); }
+.deck .stats { display:grid; grid-template-columns:repeat(4, 1fr); gap:calc(var(--u)*2.5); }
+.deck .stat strong { display:block; font-family:var(--font-display), sans-serif; font-size:calc(var(--u)*4); letter-spacing:-.03em; color:var(--leaf); line-height:1; }
+.deck .stat span { display:block; font-size:calc(var(--u)*1.35); line-height:1.4; margin-top:calc(var(--u)*.8); }
+.deck .steps { display:grid; gap:calc(var(--u)*1.1); margin:0; padding:0; list-style:none; counter-reset:st; }
+.deck .steps li { counter-increment:st; display:grid; grid-template-columns:calc(var(--u)*3.4) 1fr; align-items:baseline; font-size:calc(var(--u)*1.75); line-height:1.4; }
+.deck .steps li::before { content:counter(st); font-family:var(--font-display), sans-serif; font-weight:700; color:var(--leaf); font-size:calc(var(--u)*2.2); }
+.deck .flow { display:flex; align-items:stretch; gap:calc(var(--u)*.8); }
+.deck .flow div { flex:1; background:var(--sheet); border-radius:calc(var(--u)*.8); padding:calc(var(--u)*1.1) calc(var(--u)*1.2); display:grid; gap:calc(var(--u)*.35); align-content:start; }
+.deck .flow div.key { background:var(--leaf); color:var(--paper); }
+.deck .flow b { font-family:var(--font-display), sans-serif; font-size:calc(var(--u)*1.45); letter-spacing:-.01em; }
+.deck .flow small { font-size:calc(var(--u)*1.05); line-height:1.35; opacity:.8; }
+.deck .flow i { align-self:center; font-style:normal; color:var(--muted); font-size:calc(var(--u)*1.6); }
+.deck .rows { display:grid; gap:calc(var(--u)*1.2); }
+.deck .row { display:grid; grid-template-columns:calc(var(--u)*20) 1fr; gap:calc(var(--u)*2); align-items:baseline; border-top:1px solid var(--rule); padding-top:calc(var(--u)*1.2); }
+.deck .row strong { font-family:var(--font-display), sans-serif; font-size:calc(var(--u)*2); letter-spacing:-.02em; color:var(--leaf); }
+.deck .row span { font-size:calc(var(--u)*1.6); line-height:1.4; }
 .deck .addr { font-family:ui-monospace, Menlo, monospace; font-size:calc(var(--u)*1.25); color:var(--muted); }
 .deck video, .deck .poster { width:100%; height:auto; display:block; border-radius:calc(var(--u)*.8); }
 .deck .poster { display:none; }
@@ -66,9 +77,12 @@ const CSS = `
   .deck .in { position:relative; inset:auto; padding:48px 16px 56px; gap:28px; min-height:80vh; }
   .deck h1 { font-size:42px; } .deck h2 { font-size:36px; }
   .deck .sub { font-size:18px; } .deck .chip { font-size:13px; padding:5px 12px; }
-  .deck .split, .deck .beats, .deck .stats { grid-template-columns:1fr; }
+  .deck .split, .deck .beats, .deck .stats, .deck .row { grid-template-columns:1fr; }
+  .deck .flow { flex-direction:column; } .deck .flow i { transform:rotate(90deg); align-self:center; }
+  .deck .h2s { font-size:30px; } .deck .steps li { font-size:16px; grid-template-columns:28px 1fr; } .deck .steps li::before { font-size:20px; }
+  .deck .flow b { font-size:16px; } .deck .flow small { font-size:13px; } .deck .row strong { font-size:20px; } .deck .row span { font-size:15px; }
   .deck .beat strong { font-size:19px; } .deck .beat span, .deck .stat span { font-size:15px; }
-  .deck .stat strong { font-size:34px; } .deck table { font-size:15px; } .deck th { font-size:11px; }
+  .deck .stat strong { font-size:34px; }
   .deck .num { right:16px; bottom:20px; font-size:12px; } .deck .note, .deck .addr { font-size:12px; }
   .deck .brand { font-size:22px; } .deck .brand img { width:30px; } .deck .foot, .deck .links { font-size:15px; }
 }
@@ -110,7 +124,7 @@ export default function Deck() {
               Sprouts
             </div>
             <h1>Your Seeker&apos;s spare change, planted.</h1>
-            <p className="sub">Every swap rounds up into savings that only your Seed Vault can unlock, and an AI yield manager grows them.</p>
+            <p className="sub">Every swap you make, in any app, rounds up. The change is staked to your Seed Vault and grown by an AI yield manager.</p>
           </div>
           <img className="art" src="/deck/garden.webp" alt="A watercolour garden: two bonsai trees, an azalea, a maple, an orchid and a pothos" />
         </div>
@@ -126,119 +140,130 @@ export default function Deck() {
             stops to make in the middle of trading, so it doesn&apos;t happen.
           </p>
         </div>
-        <p className="note">Seeker owners who stake SKR swap a median of 23 times a month (sample of 149 active wallets, Sept 2026).</p>
+        <p className="note">Seeker owners who stake SKR swap a median of 23 times a month, most of it under $10 (sample of 163 stakers, Sept 2026).</p>
       </Slide>
 
-      {/* 03 Solution + why onchain */}
-      <Slide n={3} chip="The fix">
+      {/* 03 How it works: any swap, any app (his note 2); the decision removed (the cut table, R-D7) */}
+      <Slide n={3} chip="How it works">
         <div className="grow">
           <h2>Every swap rounds up. Your Seeker keeps the change.</h2>
           <div className="beats">
             <div className="beat">
-              <strong>Automatic</strong>
-              <span>Any swap, in any app, from any wallet you link, rounds up. No decision to make.</span>
+              <strong>Any swap, any app</strong>
+              <span>Link your wallets to Sprouts once. Every swap they sign, on any platform, rounds up to the next dollar.</span>
             </div>
             <div className="beat">
-              <strong>Somewhere safer</strong>
-              <span>Each morning the change is planted into SKR and stORE staked to your Seed Vault key.</span>
+              <strong>Planted each morning</strong>
+              <span>Past $2, the change is planted at 7 AM into SKR, stORE and lending. Up to $5 a day.</span>
             </div>
             <div className="beat">
-              <strong>It grows</strong>
-              <span>An AI Yield Manager reads live rates and tilts the rest toward the lending that pays more.</span>
+              <strong>Kept on your Seeker</strong>
+              <span>Staked to your Seed Vault, where it earns. No decision to make, nothing left in the hot wallet.</span>
             </div>
           </div>
-          <p className="sub">
-            <b>Why onchain:</b> an on-chain leash lets our server move only your daily round-up, and only into your own savings.
-          </p>
         </div>
       </Slide>
 
-      {/* 04 Demo */}
-      <Slide n={4} chip="Demo">
+      {/* 04 The Seed Vault (his note 1). Saga is also accepted (R86), so "built for", never "only works on". */}
+      <Slide n={4} chip="Built for Seeker">
+        <div className="grow">
+          <h2>Your savings live in the Seed Vault.</h2>
+          <div className="beats">
+            <div className="beat">
+              <strong>Not in a hot wallet</strong>
+              <span>Savings belong to the key in your Seeker&apos;s secure hardware. A drained trading wallet never reaches them.</span>
+            </div>
+            <div className="beat">
+              <strong>Only you take it out</strong>
+              <span>Sprouts adds to your savings every morning. Only your fingerprint on the Seed Vault can withdraw.</span>
+            </div>
+            <div className="beat">
+              <strong>One phone, one garden</strong>
+              <span>Sign in with your Genesis Token. Your garden carries your .skr name.</span>
+            </div>
+          </div>
+        </div>
+      </Slide>
+
+      {/* 05 Garden: demo + why people come back (R-D5) */}
+      <Slide n={5} chip="Why you come back">
         <div className="split">
           <div className="grow">
-            <h2>Watch it grow.</h2>
-            <p className="sub">Each coin is a plant. Every planting grows it. The garden lives in the app and on your home screen.</p>
+            <h2 className="h2s">A garden that grows every time you swap.</h2>
+            <ol className="steps">
+              <li>Each coin is a plant. Every planting grows it.</li>
+              <li>A notification each morning when your change is planted.</li>
+              <li>The garden lives on your home screen as a widget.</li>
+            </ol>
             <p className="note">
               Simulated two years of a typical saver. <span className="todo">Demo video link goes here.</span>
             </p>
           </div>
           <div>
             <video src="/deck/garden-years.mp4" poster="/deck/garden-years.webp" autoPlay muted loop playsInline preload="metadata" aria-label="A garden growing over two simulated years as round-ups are planted" />
-            <img className="poster" src="/deck/garden-years.webp" alt="The garden after two simulated years: $391 saved" />
+            <img className="poster" src="/deck/garden-years.webp" alt="The garden after two simulated years" />
           </div>
         </div>
       </Slide>
 
-      {/* 05 Why only on Seeker (R271) */}
-      <Slide n={5} chip="Built for Seeker">
+      {/* 06 AI Yield Manager (his note 6): split-run.ts, lending-leash spec 3-4, R347 */}
+      <Slide n={6} chip="AI Yield Manager">
         <div className="grow">
-          <h2>It only works on a Seeker.</h2>
-          <div className="beats">
-            <div className="beat">
-              <strong>Seed Vault</strong>
-              <span>Your savings are staked to the key in your phone&apos;s secure hardware. It signs no dApp approvals.</span>
-            </div>
-            <div className="beat">
-              <strong>Genesis Token</strong>
-              <span>Sign in with the token your Seeker came with. One phone, one garden.</span>
-            </div>
-            <div className="beat">
-              <strong>Your .skr name</strong>
-              <span>Your garden carries your name, on a widget on your home screen.</span>
-            </div>
-          </div>
+          <h2 className="h2s">An AI yield manager, inside hard limits.</h2>
+          <ol className="steps">
+            <li>Each morning it reads live lending rates from Kamino, Jupiter Lend, marginfi and Lulo.</li>
+            <li>It tilts your new change toward what pays more, at most 10 points per coin a day. SKR always keeps its share.</li>
+            <li>Code, not the model, picks the lender and moves the money. The AI never signs and never sells what you hold.</li>
+          </ol>
+          <p className="sub">Optional. Careful, Balanced or Bold. Pro, free during launch.</p>
         </div>
       </Slide>
 
-      {/* 06 What sets it apart: next to how people save today (R103: no competitors named) */}
-      <Slide n={6} chip="What sets it apart">
-        <div className="grow">
-          <h2>Saving, without deciding to save.</h2>
-          <table>
-            <thead>
-              <tr><th>Today</th><th>With Sprouts</th></tr>
-            </thead>
-            <tbody>
-              <tr><td>A decision, every time</td><td>Automatic, on every swap</td></tr>
-              <tr><td>Sits in the hot wallet</td><td>Staked to your Seed Vault</td></tr>
-              <tr><td>Idle</td><td>Earns in SKR staking and lending</td></tr>
-              <tr><td>Nothing to look at</td><td>A garden that grows on your home screen</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </Slide>
-
-      {/* 07 Safety (R300) */}
+      {/* 07 Safety + how it's built (R300, R-D6) */}
       <Slide n={7} chip="Your money stays yours">
         <div className="grow">
-          <h2>Even if our server is hacked, it can only move your daily round-up (max $5) into your own savings.</h2>
-          <p className="sub">Never anywhere else. Withdraw any time. The leash program is live on mainnet and its build is verified against the public source.</p>
-          <span className="addr">Leash program GyBmDLN72kg6xwAnZfj9c7fjeaJ3GvhkHNhFns83f8f7</span>
-        </div>
-      </Slide>
-
-      {/* 08 First users */}
-      <Slide n={8} chip="First users">
-        <div className="grow">
-          <h2>Seeker owners who trade.</h2>
-          <div className="stats">
-            <div className="stat"><strong>150,000+</strong><span>Seekers shipped to 50+ countries (Breakpoint 2025).</span></div>
-            <div className="stat"><strong>9,000+</strong><span>daily active Seeker users (Solana Mobile, June 2026).</span></div>
-            <div className="stat"><strong>91%</strong><span>of sampled SKR stakers swapped in the last 30 days.</span></div>
+          <h2 className="h2s">Even if our server is hacked, it can only move your daily round-up (max $5) into your own savings.</h2>
+          <div className="flow">
+            <div><b>Your swap</b><small>any app, any linked wallet</small></div>
+            <i>→</i>
+            <div><b>Sprouts API</b><small>Helius webhooks · Next.js · Supabase</small></div>
+            <i>→</i>
+            <div className="key"><b>Leash program</b><small>on chain: $5 a day, only into your savings</small></div>
+            <i>→</i>
+            <div><b>Jupiter</b><small>buys SKR, stORE</small></div>
+            <i>→</i>
+            <div><b>Your Seed Vault</b><small>staked SKR · Kamino · Jupiter Lend</small></div>
           </div>
-          <p className="sub">We reach them where they already are: the Solana dApp Store and the Seeker community. <span className="todo">Beta / live user count goes here.</span></p>
+          <p className="note">
+            App: Expo, React Native, Mobile Wallet Adapter, Android widget. Leash: build verified against the public source,
+            GyBmDLN72kg6xwAnZfj9c7fjeaJ3GvhkHNhFns83f8f7. Pause, revoke or withdraw from your phone.
+          </p>
         </div>
       </Slide>
 
-      {/* 09 Money (R105, R347) */}
+      {/* 08 Market (R-D3: market data, not our DB) */}
+      <Slide n={8} chip="Who it's for">
+        <div className="grow">
+          <h2 className="h2s">Seeker owners trade often, in small amounts.</h2>
+          <div className="stats">
+            <div className="stat"><strong>120k</strong><span>Seekers activated with a Genesis Token (Aug 2026).</span></div>
+            <div className="stat"><strong>91%</strong><span>of SKR stakers swapped in the last 30 days, a median of 23 times.</span></div>
+            <div className="stat"><strong>$200</strong><span>a year rounded up by the median staker who trades.</span></div>
+            <div className="stat"><strong>86%</strong><span>of circulating SKR is staked. Seeker owners already hold.</span></div>
+          </div>
+          <p className="note">Sources: Dune (Genesis activations); our on-chain sample of 163 recent SKR stakers, Sept 2026; Solana Mobile SKR page.</p>
+        </div>
+      </Slide>
+
+      {/* 09 Business: Seeker and Solana Mobile only (R-D4); docs/reports/2026-10-09-business-model-analysis.md */}
       <Slide n={9} chip="Business model">
         <div className="grow">
-          <h2>0.5% of each planting.</h2>
-          <p className="sub">
-            Paid in USDC, inside the same swap. Later, the AI Yield Manager becomes a Pro subscription; it is free during launch.
-          </p>
-          <p className="sub"><b>Good for SKR:</b> everyday swaps become steady SKR demand, and stORE puts ORE to work.</p>
+          <h2 className="h2s">Grows with Solana Mobile.</h2>
+          <div className="rows">
+            <div className="row"><strong>0.5% of each planting</strong><span>Paid in USDC, inside the same swap. Lending is free.</span></div>
+            <div className="row"><strong>Pro subscription</strong><span>The AI Yield Manager. Round-ups plus a subscription is the model Acorns proved with 6M paying customers.</span></div>
+            <div className="row"><strong>Good for SKR</strong><span>No new token. Every saver buys and stakes SKR every week, and opens their Seeker every day to see it grow.</span></div>
+          </div>
         </div>
       </Slide>
 
@@ -247,7 +272,7 @@ export default function Deck() {
         <div className="grow">
           <h2>Built by Lucas Garzoli.</h2>
           <p className="sub"><span className="todo">One line on Lucas: what he has shipped and why he is the one to build this.</span></p>
-          <p className="sub">Built with Claude Code: the app, the API and the on-chain leash, reviewed by independent AI audits before mainnet.</p>
+          <p className="sub">Built with Claude Code: the app, the API and the on-chain leash.</p>
           <div className="links">
             <span>sprouts.money</span>
             <span>@sproutsonseeker</span>
