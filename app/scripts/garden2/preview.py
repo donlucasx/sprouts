@@ -27,6 +27,7 @@ def src(l):
     if l["kind"] == "overlay": return os.path.join(A, f"{l['key']}.png")
     if l["kind"] == "fruit": return os.path.join(A, f"{l['key']}-fruit.png")
     if l["kind"] == "decor": return os.path.join(A, f"decor-{l['key']}.png")
+    if l["kind"] == "stake": return os.path.join(A, "decor-stake.png")   # (the app letters the name on it; the preview shows the plank)
     return os.path.join(A, l["key"], f"stage{l['stage']:02d}.webp")
 
 def render(scaled):
