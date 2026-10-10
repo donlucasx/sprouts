@@ -272,8 +272,9 @@ export default function Deck() {
         <div className="grow">
           <h2>Built by donlucas.</h2>
           <p className="sub">
-            On Solana since 2021. Founder of Validators, a 3,333-piece NFT community on the SVM since 2024, now on Solana. Built its bridge, holder bot and
-            meme studio himself. 15 years in commercial photo and film.
+            On Solana since 2021. Founded Validators on Eclipse and, with his team, built some of the chain&apos;s first NFT
+            infrastructure, still live today; their blip won Eclipse&apos;s hackathon infrastructure track. Also ships xscapes, an
+            open-source tool for AI agents.
           </p>
           <p className="sub">Built with Claude Code: the app, the API and the on-chain leash.</p>
           <div className="links">
