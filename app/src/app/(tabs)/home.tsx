@@ -252,7 +252,17 @@ export default function Home() {
         />
       }
     >
-      <MarkedTitle size={22}>{name ? `${name}'s garden` : 'Your garden'}</MarkedTitle>
+      <View style={{ gap: 2 }}>
+        <MarkedTitle size={22}>{name ? `${name}'s garden` : 'Your garden'}</MarkedTitle>
+        {/* R589 (his note: "make sure the user understands the garden is in their wallet- the tokens are held in their solana mobile
+            wallet"; ruled: a line under the title): indented to the title's words (MarkedTitle's mark 26 + gap 6 at size 22) */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginLeft: 32 }}>
+          <MaterialCommunityIcons name="wallet-outline" size={13} color={colors.textSecondary} />
+          <ThemedText variant="caption" tone="secondary">
+            Held in your Seed Vault wallet
+          </ThemedText>
+        </View>
+      </View>
       {/* R448: the switch lives at the top of Rules; R459: Home shows a chip that opens it only while Sprouts is paused */}
       {pause.shown && !pause.on ? (
         <Pressable
