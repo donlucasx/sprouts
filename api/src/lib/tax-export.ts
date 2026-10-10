@@ -1,3 +1,4 @@
+import { withNetworkFee } from "./put-in";
 import type { PlantingLegRow, PlantingRow, WithdrawalRow, EventRow } from "@/db/types";
 import { COINS, isLendAsset, type Asset, type LendAsset } from "@/domain/coins";
 import { isAutoVenue, VENUE_SHORT, type AutoVenue } from "@/domain/venues";
@@ -75,18 +76,18 @@ const blank = { sentAmount: "", sentCurrency: "", receivedAmount: "", receivedCu
 
 /**
  * One trade row per leg of a confirmed planting: USDC sent (what went into the swap, the fee excluded), the coin or lending
- * receipt received (what landed), the fee in USDC (the 0.5% Sprouts fee, plus the planting's network fee on its first leg), and
+ * receipt received (what landed), the fee in USDC (the 0.5% Sprouts fee), and
  * the Net Worth as the USDC sent at $1 per USDC. Lending legs carry no tag: Koinly's CSV has no lending-deposit tag, and its
  * "liquidity in" is documented for LP tokens only.
  */
 export function plantingRows(p: PlantingRow, legs: PlantingLegRow[]): TaxRow[] {
   if (p.status !== "confirmed") return [];
-  return legs.map((l, i) => {
-    const feeCents = l.feeCents + (i === 0 ? p.networkFeeCents : 0);
+  // R583 (his ruling 10-10): the legacy 3c "network fee" was planted, so it is cost basis: it joins the USDC sent, never the fee
+  return withNetworkFee(legs, [p]).map((l) => {
+    const feeCents = l.feeCents;
     const sentCents = l.usdcInCents - l.feeCents;
     const fees: string[] = [];
     if (l.feeCents > 0) fees.push(`Sprouts fee ${formatCents(l.feeCents)} USDC`);
-    if (i === 0 && p.networkFeeCents > 0) fees.push(`network fee ${formatCents(p.networkFeeCents)} USDC`);
     const feeNote = fees.length ? ` Fee: ${fees.join(" and ")}.` : "";
     let received: { amount: string; currency: string };
     let what: string;

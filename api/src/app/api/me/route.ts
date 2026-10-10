@@ -1,3 +1,4 @@
+import { withNetworkFee } from "@/lib/put-in";
 import { NextResponse } from "next/server";
 import { address } from "@solana/kit";
 import { getRepo } from "@/db/repo";
@@ -54,7 +55,10 @@ export async function GET(request: Request) {
     repo.openMoveProposal(user.seedVaultPubkey),
   ]);
   const pot = potFromInputs(user, inputs, { position, sharePrice: price });
-  const { plantings, legs, withdrawals } = inputs;
+  const { plantings, withdrawals } = inputs;
+  // R583 / audits/putin-3c: put in = what was pulled (the legacy 3c added back), for every screen this answer feeds; the pot's SKR
+  // amounts above read raw units and are untouched.
+  const legs = withNetworkFee(inputs.legs, plantings);
   const holdings = holdingsFrom({ held, legs, days, facts });
   const lendPositions = lendRead ?? [];
   // T20: a done move carries its basis and earned to the new venue (legs are matched by (asset, venue)); history keeps the real legs.

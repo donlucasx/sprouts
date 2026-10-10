@@ -49,7 +49,7 @@ describe("GET /api/me with the Yield Manager (spec 7.7)", () => {
       history: { plantings: { asset: string; feeCents: number }[] };
       rules: { managed: boolean; pins: Record<string, number>; allocation: Split };
     };
-    expect(b.holdings).toEqual([{ asset: "hSOL", heldRaw: "2000000000", putInCents: 200, valueUsd: 336, earnedUsd: expect.closeTo(2.8, 6), earnedUnderlyingRaw: "20000000", growthPct: null }]);   // growthPct (R194): one day of rows is still collecting
+    expect(b.holdings).toEqual([{ asset: "hSOL", heldRaw: "2000000000", putInCents: 203, valueUsd: 336, earnedUsd: expect.closeTo(2.8, 6), earnedUnderlyingRaw: "20000000", growthPct: null }]);   // growthPct (R194): one day of rows is still collecting
     expect(b.manager.managed).toBe(true);
     expect(b.manager.why).toBe("hSOL grew the most.");
     expect(b.manager.undoAvailable).toBe(true);
