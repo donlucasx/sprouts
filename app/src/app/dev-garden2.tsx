@@ -6,7 +6,7 @@ import { ThemedText } from '@/components/ThemedText'
 import { StepButtons } from '@/components/Stepper'
 import { Garden2, garden2Bleeds } from '@/garden2/Garden2'
 import { DRAW_ORDER, PLANTS } from '@/garden2/layout'
-import { ASSET_OF_PLANT, allStages, clampStage, LADDER, type Plant2, type Stages } from '@/model/garden2'
+import { ASSET_OF_PLANT, allStages, clampStage, LADDER, revealFrom, type Plant2, type Stages } from '@/model/garden2'
 import { radius, spacing, useTheme } from '@/theme'
 
 /**
@@ -19,6 +19,8 @@ export default function DevGarden2() {
   const [stages, setStages] = useState<Stages>(allStages(0))
   const [fruit, setFruit] = useState(0) // R533: forced fruit/flowers on both trees (the app draws the earned count; 12 = the ladder's cap)
   const [basket, setBasket] = useState(false) // R535
+  const [reveal, setReveal] = useState<Partial<Stages>>({}) // R521: replay a one-stage step up on every planted plant
+  const [replays, setReplays] = useState(0) // remounts Garden2 so a repeated Reveal plays again
   if (typeof __DEV__ === 'undefined' || !__DEV__) return <Redirect href="/" />
   const set = (p: Plant2, s: number) => setStages((old) => ({ ...old, [p]: clampStage(p, s) }))
   const all = (s: number) => setStages(Object.fromEntries(DRAW_ORDER.map((p) => [p, clampStage(p, s)])) as Stages)
@@ -40,8 +42,10 @@ export default function DevGarden2() {
     <Screen back title="Garden2 stages">
       <View style={{ marginHorizontal: garden2Bleeds(dark) ? -spacing.edge : 0 }}>
         <Garden2
+          key={replays}
           stages={stages}
           extras={{ fruit: { mandarin: fruit, store: fruit }, basket, stakes: true }}
+          reveal={reveal}
           width={garden2Bleeds(dark) ? width : width - 2 * spacing.edge}
           labelFor={(p) => [`${p} (${ASSET_OF_PLANT[p]})`, `Stage ${stages[p]} of ${PLANTS[p].last}`]}
         />
@@ -53,6 +57,7 @@ export default function DevGarden2() {
         {chip('All 14', () => all(14))}
         {chip(`Fruit ${fruit}`, () => setFruit((f) => (f >= 12 ? 0 : f === 0 ? 3 : 12)))}
         {chip(basket ? 'Basket on' : 'Basket off', () => setBasket((b) => !b))}
+        {chip('Reveal', () => (setReplays((n) => n + 1), setReveal({ ...revealFrom(Object.fromEntries(DRAW_ORDER.map((p) => [p, Math.max(0, stages[p] - 1)])) as Stages, stages) })))}
         {chip('All +1', () =>
           setStages((old) => Object.fromEntries(DRAW_ORDER.map((p) => [p, clampStage(p, old[p] + 1)])) as Stages),
         )}

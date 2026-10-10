@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { CANVAS, DECOR, DRAW_ORDER, OVERLAYS, PLANTS, SPOTS } from "@/garden2/layout";
-import { FRAME_PAD, frameTop, paintedTop, LADDER, allStages, clampStage, composeLayers, onePerPlant, paintsAt, plantAt, plantedDollars, scaleRect, stageForDollars, stagesFor, viewHeight, clampZoom2, fruitOn, FRUIT_FROM, STAKE, STAKE_AT, STAKE_LABEL, type Pick2, type Planting2, type Stages } from "@/model/garden2";
+import { FRAME_PAD, frameTop, paintedTop, LADDER, allStages, clampStage, composeLayers, onePerPlant, paintsAt, plantAt, plantedDollars, scaleRect, stageForDollars, stagesFor, viewHeight, clampZoom2, fruitOn, FRUIT_FROM, revealFrom, STAKE, STAKE_AT, STAKE_LABEL, type Pick2, type Planting2, type Stages } from "@/model/garden2";
 
 const ASSETS = path.resolve(__dirname, "../../assets/garden2");
 const day = (d: number, h = 12) => new Date(2026, 9, d, h);   // local time (vitest pins TZ to Los Angeles)
@@ -286,5 +286,20 @@ describe("the stakes (R534, R556, R557)", () => {
     const ls = composeLayers(allStages(14), { stakes: true }), at = (k: string) => ls.findIndex((l) => (l.kind === "stake" ? `s-${l.key}` : l.key) === k);
     expect(at("s-store")).toBe(at("orchid") - 1);
     for (const p of ["mandarin", "maple", "azalea", "orchid", "pothos"]) expect(at(`s-${p}`)).toBeGreaterThan(at("azalea"));
+  });
+});
+
+describe("the reveal (R521)", () => {
+  const now = { ...allStages(5), mandarin: 8, store: 0 } as Stages;
+  it("nothing on the first open (no record)", () => expect(revealFrom(null, now)).toEqual({}));
+  it("only plants that stepped UP, from the stage last shown", () => {
+    expect(revealFrom({ ...allStages(5), mandarin: 6 }, now)).toEqual({ mandarin: 6 });
+  });
+  it("a shrink (R519) or an unchanged plant reveals nothing; junk in the record is ignored", () => {
+    expect(revealFrom({ ...allStages(5), mandarin: 9, store: 3 }, now)).toEqual({});
+    expect(revealFrom({ mandarin: Number.NaN, maple: "x" as unknown as number }, now)).toEqual({});
+  });
+  it("a plant missing from the record (a coin new to the app) reveals nothing", () => {
+    expect(revealFrom({ maple: 5 }, now)).toEqual({});
   });
 });

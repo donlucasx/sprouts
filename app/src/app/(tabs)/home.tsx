@@ -10,7 +10,8 @@ import { readZeroMarks } from '@/lib/zero-marks'
 import { plantLabel } from '@/lib/plant-label'
 import { api } from '@/lib/api'
 import { buildScene, PLANT_OF } from '@/model/garden'
-import { ASSET_OF_PLANT, stagesFor } from '@/model/garden2'
+import { ASSET_OF_PLANT, revealFrom, stagesFor, type Stages } from '@/model/garden2'
+import { readSeenStages, writeSeenStages } from '@/lib/garden2-seen'
 import { Garden2, garden2Bleeds } from '@/garden2/Garden2'
 import { GARDEN2 } from '@/garden2/flag'
 import { withDevBud, type DevBud } from '@/lib/dev-bud'
@@ -103,6 +104,15 @@ export default function Home() {
   const scene = useMemo(() => (input ? buildScene(input) : null), [input])
   // Garden2 (behind GARDEN2): each coin's stage from its planted dollars (model/garden2.ts stagesFor, the R484G ladder)
   const stages = useMemo(() => (input && GARDEN2 ? stagesFor(input) : null), [input])
+  // R521: plants that grew since this phone last showed the garden reveal the step (Garden2 fades it in); then the new stages are seen
+  const stagesKey = stages ? JSON.stringify(stages) : ''
+  const [shown, setShown] = useState<{ key: string; reveal: Partial<Stages> }>({ key: '', reveal: {} })
+  if (stages && shown.key !== stagesKey) setShown({ key: stagesKey, reveal: revealFrom(readSeenStages(), stages) }) // read before the write below
+  const reveal = shown.reveal
+  useEffect(() => {
+    if (stages) writeSeenStages(stages)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per change of the stages' content
+  }, [stagesKey])
   // R533: earnings shown only on the two trees, the shared ladder's count (garden-input.ts: SKR from the pot, stORE from its holding);
   // R535: the basket at the mandarin's foot while withdrawn SKR waits out its 48 h unstake (until it is delivered)
   const extras2 = useMemo(
@@ -302,6 +312,7 @@ export default function Home() {
             <Garden2
               stages={stages}
               extras={extras2}
+              reveal={reveal}
               width={garden2Bleeds(dark) ? screenW : screenW - 2 * spacing.edge}
               labelFor={(p) => plantLabel(me, PLANT_OF[ASSET_OF_PLANT[p]], false)}
             />

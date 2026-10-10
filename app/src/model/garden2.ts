@@ -94,6 +94,20 @@ export function clampStage(p: Plant2, s: number): number {
   return Math.min(PLANTS[p].last, Math.max(PLANTS[p].first, n))
 }
 
+/**
+ * R521: the plants that stepped UP since this phone last showed the garden, each with the stage it showed then (a shrink after a
+ * withdrawal, R519, shows as is; no record yet = nothing to reveal). Garden2 fades the new painting in over that one.
+ */
+export function revealFrom(seen: Partial<Stages> | null, now: Stages): Partial<Stages> {
+  const out: Partial<Stages> = {}
+  if (!seen) return out
+  for (const p of DRAW_ORDER) {
+    const was = seen[p]
+    if (typeof was === 'number' && Number.isFinite(was) && was < now[p]) out[p] = clampStage(p, was)
+  }
+  return out
+}
+
 export type Layer =
   | { kind: 'plate'; key: 'plate'; x: number; y: number; w: number; h: number }
   | { kind: 'overlay'; key: 'stand' | 'cords'; x: number; y: number; w: number; h: number }
