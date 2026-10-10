@@ -17,7 +17,7 @@ import { FONT, GARDEN_INK, radius, spacing, useTheme } from '@/theme'
 import { pinchOffset } from '@/model/motion'
 import { CANVAS } from './layout'
 import { LoopImage } from './loop-image'
-import { DECOR_SRC, FRUIT_SRC, LOOP_SRC, OVERLAY_SRC, OVERLAY_SRC_DARK, PLATE, PLATE_DARK, STAGE_SRC, STAGE_SRC_DARK } from './sources'
+import { DECOR_SRC, FRUIT_SRC, GROWTH_SRC, LOOP_SRC, OVERLAY_SRC, OVERLAY_SRC_DARK, PLATE, PLATE_DARK, STAGE_SRC, STAGE_SRC_DARK } from './sources'
 import {
   clampZoom2,
   composeLayers,
@@ -39,6 +39,8 @@ const SNAP_MS = 250 // R173: the zoom snaps back on release or a double tap
 /** R521: a plant's step up fades in over its old painting this long, after this pause (Claude's numbers, to tune on the device). */
 const REVEAL_MS = 1200,
   REVEAL_DELAY_MS = 400
+/** R585: a growth clip that never reports loaded still ends this long after its own length (the still takes over). */
+const GROW_SPARE_MS = 1500
 
 /** The garden always draws full bleed: light, and dark (R530, option B: the light plate edge to edge, square, on the dark page). */
 export const garden2Bleeds = (_dark: boolean): boolean => true
@@ -189,6 +191,9 @@ export function Garden2({
                 ) : (
                   <Stake key={`s-${l.key}`} l={l} k={k} />
                 )
+              ) : l.kind === 'plant' && revealing(l.key) && LoopImage && !reduced && !night && reveal![l.key]! > 0 && GROWTH_SRC[l.key]?.[l.stage] ? (
+                // R585 ("we do have animations, dont we?"): a plant that stepped up plays its real growth clip instead of the fade
+                <GrowPlant key={`p-${l.key}-${revealKey}`} l={l} from={reveal![l.key]!} night={night} />
               ) : l.kind === 'plant' && revealing(l.key) ? (
                 <View key={`p-${l.key}`} style={{ position: 'absolute', left: l.x, top: l.y, width: l.w, height: l.h }}>
                   <Image
@@ -266,6 +271,52 @@ export function Garden2({
         </Animated.View>
       ) : null}
     </View>
+  )
+}
+
+/**
+ * R585: one plant's stage-up as its growth clip (the clip that ends on its stage). It shows the old still through the reveal's pause
+ * (a jump of several stages fades from the old still to the one the clip starts on), plays the clip once from the frame it loads, then
+ * hands over to the plant as it always draws (its idle loop, else its still). The clip's first and last frames are cut to match those
+ * stills (build_timelapse.py --export-growth), so the hand-offs are swaps, not fades.
+ */
+function GrowPlant({ l, from, night }: { l: Extract<Layer, { kind: 'plant' }>; from: number; night: boolean }) {
+  const clip = GROWTH_SRC[l.key]![l.stage]!
+  const [phase, setPhase] = useState<'wait' | 'grow' | 'done'>('wait')
+  const start = l.stage - 1
+  const fadeTo = useSharedValue(from < start ? 0 : 1)
+  useEffect(() => {
+    if (from < start) fadeTo.value = withTiming(1, { duration: REVEAL_DELAY_MS, easing: Easing.inOut(Easing.quad) })
+    const id = setTimeout(() => setPhase('grow'), REVEAL_DELAY_MS + (from < start ? REVEAL_DELAY_MS : 0))
+    return () => clearTimeout(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per mounted reveal (keyed on it)
+  }, [])
+  const [loaded, setLoaded] = useState(false)
+  useEffect(() => {
+    if (phase !== 'grow') return
+    const id = setTimeout(() => setPhase('done'), clip.ms + (loaded ? 0 : GROW_SPARE_MS))
+    return () => clearTimeout(id)
+  }, [phase, loaded, clip.ms])
+  const fading = useAnimatedStyle(() => ({ opacity: fadeTo.value }))
+  const box = { position: 'absolute' as const, left: l.x, top: l.y, width: l.w, height: l.h }
+  const still = (stage: number) => sourceOf({ ...l, stage }, night)
+  if (phase === 'wait')
+    return (
+      <View style={box}>
+        <Image source={still(from)} fadeDuration={0} style={{ position: 'absolute', width: l.w, height: l.h }} />
+        {from < start ? <Animated.Image source={still(start)} fadeDuration={0} style={[{ position: 'absolute', width: l.w, height: l.h }, fading]} /> : null}
+      </View>
+    )
+  if (phase === 'grow' && LoopImage)
+    return (
+      <LoopImage source={clip.src} placeholder={still(start)} placeholderContentFit="fill" transition={0} autoplay contentFit="fill" cachePolicy="memory"
+        onLoad={() => setLoaded(true)} style={box} />
+    )
+  const loop = LoopImage && LOOP_SRC[l.key]?.[l.stage]
+  return loop && LoopImage ? (
+    <LoopImage source={loop} placeholder={still(l.stage)} placeholderContentFit="fill" transition={0} autoplay contentFit="fill" cachePolicy="memory" style={box} />
+  ) : (
+    <Image source={still(l.stage)} fadeDuration={0} style={box} />
   )
 }
 
