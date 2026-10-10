@@ -92,6 +92,7 @@ export default function Home() {
             { name: 'Grow a bud (SKR, local)', callback: () => setDevBud({ budAt: new Date(Date.now() - 1000), wateredAt: null }), shouldCollapse: true },
             { name: 'Clear the dev bud', callback: () => setDevBud(null), shouldCollapse: true },
             { name: 'Garden2 stages', callback: () => router.push('/dev-garden2'), shouldCollapse: true },
+            { name: 'Loading screen options', callback: () => router.push('/dev-splash'), shouldCollapse: true },
             { name: 'Split lending across 2 venues (local)', callback: () => setDevSplit((v) => !v), shouldCollapse: true },
           ]),
         )
