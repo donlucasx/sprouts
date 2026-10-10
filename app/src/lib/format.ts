@@ -163,8 +163,11 @@ export function positionAmount(p: LendingPosition): string {
   return `${amount} ${COIN_NAME[p.asset]}${p.valueUsd === null ? "" : ` (${formatUsd(Math.round(p.valueUsd * 100))})`}`;
 }
 /** The row's status under the dollars: the venue and today's rate, then what it earned once that is a cent. */
+export function positionWhere(p: LendingPosition): string {
+  return p.ratePct === null ? VENUE_NAME[p.venue] : `${VENUE_NAME[p.venue]} ${p.ratePct.toFixed(1)}%`;
+}
 export function positionNote(p: LendingPosition): string {
-  const where = p.ratePct === null ? VENUE_NAME[p.venue] : `${VENUE_NAME[p.venue]} ${p.ratePct.toFixed(1)}%`;
+  const where = positionWhere(p);
   return p.earnedUsd !== null && p.earnedUsd >= 0.005 ? `${where}, earned ${formatUsd(Math.round(p.earnedUsd * 100))}` : where;
 }
 

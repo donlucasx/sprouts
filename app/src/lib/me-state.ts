@@ -1,5 +1,5 @@
 import type { MeResponse, LendingPosition } from './api'
-import { DECIMALS, formatUsd, formatSkr, plantedWhat, holdingAmount, positionAmount, positionNote } from './format'
+import { DECIMALS, formatUsd, formatSkr, plantedWhat, holdingAmount, positionAmount, positionNote, positionWhere } from './format'
 import { ASSETS, isRetired, isLend, liveSplit, livePins, type LiveAsset, type AutoVenue, type LendAsset } from './coins'
 
 /** A cached read from before the Yield Manager build has no holdings, manager or rules.allocation and would crash every screen that reads them: it counts as no cache (10-01 whole-branch review, I2). */
@@ -72,7 +72,12 @@ export function pauseState(wallets: { status: string }[]): { shown: boolean; on:
  * caption (R177, R194): where its growth comes from, with the week's measured rate; none while collecting or under 1%.
  * R198 (device check 2, his note): `lead` marks the SKR and stORE rows, which Home sets one step up the type ramp from the other
  * coins (heading against body, the same step as the Put in / Earned tiles above them), so the two Seeker coins lead the list. */
-export type CoinRow = { key: string; asset: LiveAsset; venue: AutoVenue | null; amount: string; qty: string; usd: string | null; locked: boolean; note: string | null; lead: boolean }
+export type CoinRow = { key: string; asset: LiveAsset; venue: AutoVenue | null; amount: string; qty: string; usd: string | null; locked: boolean; note: string | null; lead: boolean
+  /** R563: what this coin earned in dollars (SKR's staking at its price, a holding's growth, a position's interest); null when unknown. */
+  earnedUsd: number | null
+  /** R564's coin sheet: the dollars put into this row (null for SKR: the sheet sums its plantings), and where it lives in one line. */
+  putInCents: number | null
+  where: string | null }
 /** R230 (10-03, his note: "a more familiar portfolio look, like coinmarketcap's"): `amount` split for Home's two-column row, the
  * coin amount under its name on the left and the dollars on the right; `usd` null when no price is known. */
 function split(amount: string): { qty: string; usd: string | null } {
@@ -93,16 +98,17 @@ export function livePositions(me: Pick<MeResponse, 'positions'>, asset: LendAsse
 }
 export function coinRows(me: Pick<MeResponse, 'pot' | 'holdings' | 'positions'>): CoinRow[] {
   const staked = BigInt(me.pot.skrStakedRaw)
-  const rows: CoinRow[] = staked > 0n ? [{ key: 'SKR', asset: 'SKR', venue: null, amount: formatSkr(staked, me.pot.skrUsd), ...split(formatSkr(staked, me.pot.skrUsd)), locked: true, note: null, lead: true }] : []
+  const skrEarned = me.pot.skrUsd === null ? null : (Number(BigInt(me.pot.skrEarnedRaw)) / 10 ** DECIMALS.SKR) * me.pot.skrUsd
+  const rows: CoinRow[] = staked > 0n ? [{ key: 'SKR', asset: 'SKR', venue: null, amount: formatSkr(staked, me.pot.skrUsd), ...split(formatSkr(staked, me.pot.skrUsd)), locked: true, note: null, lead: true, earnedUsd: skrEarned, putInCents: null, where: 'Locked to your Seed Vault' }] : []
   for (const asset of ASSETS) {
     // Spec 11: a lending leg lists each venue position (venue, rate, value, earned) in place of its aggregated holding (Review Focus 4)
     const positions = isLend(asset) ? livePositions(me, asset) : []
     if (positions.length > 0) {
-      for (const p of positions) rows.push({ key: `${asset}:${p.venue}`, asset, venue: p.venue, amount: positionAmount(p), ...split(positionAmount(p)), locked: false, note: positionNote(p), lead: false })
+      for (const p of positions) rows.push({ key: `${asset}:${p.venue}`, asset, venue: p.venue, amount: positionAmount(p), ...split(positionAmount(p)), locked: false, note: positionNote(p), lead: false, earnedUsd: p.earnedUsd, putInCents: p.putInCents, where: positionWhere(p) })
       continue
     }
     const h = me.holdings.find((x) => x.asset === asset)
-    if (h) rows.push({ key: asset, asset, venue: null, amount: holdingAmount(h), ...split(holdingAmount(h)), locked: false, note: asset === 'stORE' ? storeNote(h.growthPct) : null, lead: LEAD_COINS.includes(asset) })
+    if (h) rows.push({ key: asset, asset, venue: null, amount: holdingAmount(h), ...split(holdingAmount(h)), locked: false, note: asset === 'stORE' ? storeNote(h.growthPct) : null, lead: LEAD_COINS.includes(asset), earnedUsd: h.earnedUsd, putInCents: h.putInCents, where: asset === 'stORE' ? (storeNote(h.growthPct) ?? 'In your wallet') : 'In your wallet' })
   }
   return rows
 }

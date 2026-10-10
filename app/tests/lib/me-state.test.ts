@@ -180,7 +180,7 @@ describe('pauseState', () => {
 })
 
 describe('Home as numbers (R150)', () => {
-  const pot = { skrStakedRaw: '34900000', skrUsd: 0.0183 } as MeResponse['pot']
+  const pot = { skrStakedRaw: '34900000', skrEarnedRaw: '2000000', skrUsd: 0.0183 } as MeResponse['pot']
   const hsol = { asset: 'hSOL', heldRaw: '12300000', putInCents: 203, valueUsd: 2.07, earnedUsd: 0.04, earnedUnderlyingRaw: '1' } as const
   it('coinRows: SKR first and locked, then each holding in coin order', () => {
     const rows = coinRows({ pot, holdings: [{ ...hsol, asset: 'cbBTC' }, hsol] })
@@ -206,6 +206,12 @@ describe('Home as numbers (R150)', () => {
     expect(rows.map((r) => [r.asset, r.lead])).toEqual([['SKR', true], ['stORE', true], ['USDC_LEND', false], ['hSOL', false], ['cbBTC', false]])
     // without SKR staked, stORE still leads alone
     expect(coinRows({ pot: { ...pot, skrStakedRaw: '0' }, holdings: [hsol, store] }).map((r) => [r.asset, r.lead])).toEqual([['stORE', true], ['hSOL', false]])
+  })
+  it('coinRows (R563, R564): each row carries what it earned, what was put in and where it lives', () => {
+    const [skr, h] = coinRows({ pot, holdings: [hsol] })
+    expect(skr).toMatchObject({ earnedUsd: 2 * 0.0183, putInCents: null, where: 'Locked to your Seed Vault' })
+    expect(h).toMatchObject({ earnedUsd: 0.04, putInCents: 203, where: 'In your wallet' })
+    expect(coinRows({ pot: { ...pot, skrUsd: null }, holdings: [] })[0]!.earnedUsd).toBeNull()   // no price, no dollars earned
   })
   it('coinRows: no SKR row while nothing is staked', () => {
     expect(coinRows({ pot: { ...pot, skrStakedRaw: '0' }, holdings: [hsol] }).map((r) => r.asset)).toEqual(['hSOL'])
