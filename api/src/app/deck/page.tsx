@@ -67,7 +67,7 @@ const CSS = `
 .deck .addr { font-family:ui-monospace, Menlo, monospace; font-size:calc(var(--u)*1.25); color:var(--muted); }
 .deck video, .deck .poster { width:100%; height:auto; display:block; border-radius:calc(var(--u)*.8); }
 .deck .poster { display:none; }
-.deck .links { display:flex; flex-wrap:wrap; gap:calc(var(--u)*1) calc(var(--u)*3); font-size:calc(var(--u)*1.6); font-weight:600; color:var(--leaf); }
+.deck .links { display:flex; flex-wrap:wrap; gap:calc(var(--u)*1) calc(var(--u)*3); font-size:calc(var(--u)*1.35); font-weight:600; color:var(--leaf); }
 .deck .hero { max-width:calc(var(--u)*50); }
 .deck .phone { position:absolute; left:calc(var(--u)*61); top:calc(var(--u)*6); width:calc(var(--u)*29); height:calc(var(--u)*50.25); overflow:hidden; box-sizing:border-box; border-bottom-left-radius:0; border-bottom-right-radius:0; padding:calc(var(--u)*.9) calc(var(--u)*.9) 0;
   background:#1D2628; border-radius:calc(var(--u)*4.4) calc(var(--u)*4.4) 0 0; box-shadow:0 calc(var(--u)*1.5) calc(var(--u)*5) rgba(43,38,34,.22); }
@@ -91,8 +91,11 @@ const CSS = `
 .deck .in > .grow { position:relative; z-index:1; }
 .deck .tree { position:absolute; right:calc(var(--u)*-11); bottom:calc(var(--u)*-9); width:calc(var(--u)*35); height:auto; pointer-events:none; }
 .deck .flow.short { max-width:calc(var(--u)*68); }
-.deck .who { display:flex; align-items:center; gap:calc(var(--u)*2.4); }
-.deck .pfp { width:calc(var(--u)*9); height:calc(var(--u)*9); border-radius:calc(var(--u)*1.4); image-rendering:pixelated; flex:none; }
+.deck .one { white-space:nowrap; }
+.deck .sub.full { max-width:none; }
+.deck .who { position:absolute; right:calc(var(--u)*6.6); top:calc(var(--u)*6.6); display:grid; justify-items:center; gap:calc(var(--u)*1);
+  font-size:calc(var(--u)*1.6); font-weight:600; color:var(--leaf); text-decoration:none; }
+.deck .pfp { width:calc(var(--u)*14); height:calc(var(--u)*14); border-radius:calc(var(--u)*1.4); image-rendering:pixelated; flex:none; }
 .deck .thanks { position:absolute; right:calc(var(--u)*6.6); bottom:calc(var(--u)*4.4); font-family:var(--font-display), sans-serif; font-weight:700;
   letter-spacing:-.035em; font-size:calc(var(--u)*5.6); color:var(--leaf); margin:0; }
 .deck .links a { color:inherit; text-decoration:none; }
@@ -102,6 +105,7 @@ const CSS = `
 .deck .bar a, .deck .bar button { font:600 13px var(--font-body), sans-serif; background:var(--ink); color:var(--paper); border:0; border-radius:999px; padding:9px 14px; cursor:pointer; text-decoration:none; }
 @media screen and (max-width: 760px) {
   .deck { scroll-snap-type:none; padding:0; gap:0; }
+  .deck .one { white-space:normal; } .deck .who { position:static; justify-items:start; } .deck .pfp { width:96px; height:96px; }
   .deck .slide { --u: 2.1vw; width:100%; aspect-ratio:auto; border-radius:0; box-shadow:none; border-bottom:1px solid var(--rule); }
   .deck .in { position:relative; inset:auto; padding:48px 16px 56px; gap:28px; min-height:80vh; }
   .deck h1 { font-size:42px; } .deck h2 { font-size:36px; }
@@ -164,8 +168,8 @@ export default function Deck() {
       {/* 02 The opportunity (R-D24): the 10-04 problem line, verbatim, turned toward what the swaps make possible */}
       <Slide n={2} chip="The opportunity">
         <div className="grow">
-          <h2 style={{ maxWidth: "calc(var(--u)*62)" }}>Traders rarely set money aside. Their swaps can do it for them.</h2>
-          <p className="sub">
+          <h2 className="one">Traders rarely set money aside.<br />Their swaps can do it for them.</h2>
+          <p className="sub full">
             Everything sits in the hot wallet they swap from every day, and nobody stops mid-trade to save. Every swap is already a
             moment money moves, so each one can set a little change aside.
           </p>
@@ -223,13 +227,13 @@ export default function Deck() {
 
       {/* 05 Garden: demo + why people come back (R-D5) */}
       <Slide n={5} chip="Why you come back">
+        <h2 className="h2s one" style={{ margin: "calc(var(--u)*2.6) 0 calc(var(--u)*1.2)" }}>A garden that grows every time you swap.</h2>
         <div className="split wide">
           <div className="grow">
-            <h2 className="h2s">A garden that grows every time you swap.</h2>
             <ol className="steps">
               <li>Each coin is a plant that grows with every planting.</li>
               <li>A notification when your change is planted.</li>
-              <li>Your garden on your home screen.</li>
+              <li>A home screen widget with your garden.</li>
             </ol>
             <p className="note">
               Two simulated years of an active saver: $32 a month, the top quarter of Seeker traders. <span className="todo">Demo video link goes here.</span>
@@ -313,10 +317,7 @@ export default function Deck() {
       {/* 10 Team + links; R-D19 live line; R-D28 his Validators pfp #14, x.com/donlucas, a Thank you opposite the title */}
       <Slide n={10} chip="Team" art>
         <div className="grow">
-          <div className="who">
-            <img className="pfp" src="/deck/pfp.png" alt="donlucas: Validators #14" />
-            <h2>Built by donlucas.</h2>
-          </div>
+          <h2>Built by donlucas.</h2>
           <p className="sub">
             On Solana since 2021. Founded Validators on Eclipse and, with his team, built some of the chain&apos;s first NFT
             infrastructure, still live today; their blip won Eclipse&apos;s hackathon infrastructure track. Also ships xscapes, an
@@ -327,10 +328,13 @@ export default function Deck() {
           <div className="links">
             <a href="https://sprouts.money">sprouts.money</a>
             <a href="https://x.com/sproutsonseeker">@sproutsonseeker</a>
-            <a href="https://x.com/donlucas">x.com/donlucas</a>
             <a href="https://github.com/donlucasx/sprouts">github.com/donlucasx/sprouts</a>
           </div>
         </div>
+        <a className="who" href="https://x.com/donlucas">
+          <img className="pfp" src="/deck/pfp.png" alt="donlucas: Validators #14" />
+          <span>@donlucas</span>
+        </a>
         <p className="thanks">Thank you.</p>
       </Slide>
 
