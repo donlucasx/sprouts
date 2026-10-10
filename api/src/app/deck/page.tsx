@@ -270,8 +270,11 @@ export default function Deck() {
       {/* 10 Team + links */}
       <Slide n={10} chip="Team">
         <div className="grow">
-          <h2>Built by Lucas Garzoli.</h2>
-          <p className="sub"><span className="todo">One line on Lucas: what he has shipped and why he is the one to build this.</span></p>
+          <h2>Built by donlucas.</h2>
+          <p className="sub">
+            Founder of Validators, a 3,333-piece NFT community on the SVM since 2024, now on Solana. Built its bridge, holder bot and
+            meme studio himself. 15 years in commercial photo and film.
+          </p>
           <p className="sub">Built with Claude Code: the app, the API and the on-chain leash.</p>
           <div className="links">
             <span>sprouts.money</span>
