@@ -15,7 +15,7 @@ const albert = Albert_Sans({ subsets: ["latin"], weight: ["400", "600"], variabl
 
 export const metadata: Metadata = {
   title: "Sprouts deck",
-  description: "Your Seeker's spare change, planted.",
+  description: "Your spare change, planted on your Seeker.",
   robots: { index: false },
 };
 
@@ -29,14 +29,14 @@ const CSS = `
 .deck .chip { align-self:flex-start; background:var(--chip); color:var(--leaf); font-weight:600; font-size:calc(var(--u)*1.35);
   padding:calc(var(--u)*.45) calc(var(--u)*1.2); border-radius:999px; letter-spacing:.01em; }
 .deck h1, .deck h2 { font-family:var(--font-display), "Avenir Next", sans-serif; font-weight:700; letter-spacing:-.035em; line-height:.98; margin:0; color:var(--ink); }
-.deck h1 { font-size:calc(var(--u)*6.6); }
+.deck h1 { font-size:calc(var(--u)*5.8); }
 .deck h2 { font-size:calc(var(--u)*5.6); }
 .deck .grow { flex:1; display:flex; flex-direction:column; justify-content:center; gap:calc(var(--u)*2.4); }
 .deck .sub { font-size:calc(var(--u)*1.9); line-height:1.4; color:var(--muted); max-width:calc(var(--u)*60); margin:0; }
 .deck .sub b { color:var(--ink); font-weight:600; }
 .deck .num { position:absolute; right:calc(var(--u)*6.6); bottom:calc(var(--u)*3.4); font-size:calc(var(--u)*1.1); color:#A8A29A; }
 .deck .note { font-size:calc(var(--u)*1.05); color:#A8A29A; margin:0; }
-.deck .split { display:grid; grid-template-columns:1fr 1fr; align-items:center; gap:calc(var(--u)*3); flex:1; }
+.deck .split { display:grid; grid-template-columns:1.1fr .9fr; align-items:center; gap:calc(var(--u)*3); flex:1; }
 .deck .split .grow { flex:none; }
 .deck .art { width:100%; height:auto; display:block; }
 .deck .brand { display:flex; align-items:center; gap:calc(var(--u)*1); font-family:var(--font-display), sans-serif; font-weight:600;
@@ -123,21 +123,21 @@ export default function Deck() {
               <img src="/deck/mark.svg" alt="" />
               Sprouts
             </div>
-            <h1>Your Seeker&apos;s spare change, planted.</h1>
-            <p className="sub">Every swap your linked wallets make, in any app, rounds up. The change buys SKR for your Seed Vault, and an AI yield manager grows the rest.</p>
+            <h1>Your spare change, planted on your Seeker.</h1>
+            <p className="sub">Sprouts rounds up every swap your linked wallets make, in any app. The change is planted in SKR, kept by your Seed Vault, and grown by an AI&nbsp;Yield&nbsp;Manager.</p>
           </div>
           <img className="art" src="/deck/garden.webp" alt="A watercolour garden: two bonsai trees, an azalea, a maple, an orchid and a pothos" />
         </div>
         <span className="foot">CLOCK IN · Solana Mobile Hackathon 2026</span>
       </Slide>
 
-      {/* 02 Problem: the 10-04 ruling, verbatim */}
-      <Slide n={2} chip="The problem">
+      {/* 02 The opportunity (R-D24): the 10-04 problem line, verbatim, turned toward what the swaps make possible */}
+      <Slide n={2} chip="The opportunity">
         <div className="grow">
-          <h2>Traders rarely set money aside.</h2>
+          <h2>Traders rarely set money aside. Their swaps can do it for them.</h2>
           <p className="sub">
-            Everything sits in the hot wallet they swap from every day. Moving some of it somewhere safer takes a decision nobody
-            stops to make in the middle of trading, so it doesn&apos;t happen.
+            Everything sits in the hot wallet they swap from every day, and nobody stops mid-trade to save. Every swap is already a
+            moment money moves, so each one can set a little change aside.
           </p>
         </div>
         <p className="note">Seeker owners who stake SKR swap a median of 23 times a month, most of it under $10 (on-chain sample of 163 recently active SKR stakers, Sept 2026).</p>
@@ -150,15 +150,15 @@ export default function Deck() {
           <div className="beats">
             <div className="beat">
               <strong>Any swap, any app</strong>
-              <span>Link your wallets to Sprouts once. Every swap they sign, in any Solana app, rounds up to the next dollar, plus 1% of swaps over $100.</span>
+              <span>Link your wallets once. Every swap they sign, in any Solana app, rounds up to the next dollar. Adjust it in the app: add extra on bigger swaps, set your daily limit.</span>
             </div>
             <div className="beat">
               <strong>Planted each morning</strong>
-              <span>Past $2, the change is planted at 7 AM into SKR, stORE (ORE that grows from mining fees) and lending. Up to $5 a day.</span>
+              <span>Past $2, your change is planted at 7&nbsp;AM, up to $5 a day. No decision to make, nothing left in the hot wallet.</span>
             </div>
             <div className="beat">
               <strong>Kept on your Seeker</strong>
-              <span>Held by your Seed Vault: SKR staked, stORE and lending earning. No decision to make, nothing left in the hot wallet.</span>
+              <span>Held by your Seed Vault. To grow: SKR, staked, and stORE, ORE that grows from mining fees. To steady it: USDC and SOL lending. The AI manager balances the two.</span>
             </div>
           </div>
         </div>
