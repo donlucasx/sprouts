@@ -17,7 +17,7 @@ export default function DevGarden2() {
   const { width } = useWindowDimensions()
   const { colors, dark } = useTheme()
   const [stages, setStages] = useState<Stages>(allStages(0))
-  const [fruit, setFruit] = useState(12) // R533: earned fruit/flowers on both trees (12 = the ladder's cap)
+  const [fruit, setFruit] = useState(0) // R533: forced fruit/flowers on both trees (the app draws the earned count; 12 = the ladder's cap)
   const [basket, setBasket] = useState(false) // R535
   if (typeof __DEV__ === 'undefined' || !__DEV__) return <Redirect href="/" />
   const set = (p: Plant2, s: number) => setStages((old) => ({ ...old, [p]: clampStage(p, s) }))
