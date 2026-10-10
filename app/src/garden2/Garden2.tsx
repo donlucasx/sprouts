@@ -15,7 +15,7 @@ import { ThemedText } from '@/components/ThemedText'
 import { radius, spacing, useTheme } from '@/theme'
 import { pinchOffset } from '@/model/motion'
 import { CANVAS } from './layout'
-import { FRUIT_SRC, OVERLAY_SRC, OVERLAY_SRC_DARK, PLATE, PLATE_DARK, STAGE_SRC, STAGE_SRC_DARK } from './sources'
+import { DECOR_SRC, FRUIT_SRC, OVERLAY_SRC, OVERLAY_SRC_DARK, PLATE, PLATE_DARK, STAGE_SRC, STAGE_SRC_DARK } from './sources'
 import {
   clampZoom2,
   composeLayers,
@@ -23,7 +23,7 @@ import {
   plantAt,
   scaleRect,
   viewHeight,
-  type Fruit,
+  type Extras,
   type Layer,
   type Plant2,
   type Stages,
@@ -47,7 +47,9 @@ const sourceOf = (l: Layer, night: boolean) =>
       ? (night && OVERLAY_SRC_DARK[l.key]) || OVERLAY_SRC[l.key]
       : l.kind === 'fruit'
         ? FRUIT_SRC[l.key]
-        : (night && STAGE_SRC_DARK[l.key]?.[l.stage]) || STAGE_SRC[l.key][l.stage]
+        : l.kind === 'decor'
+          ? DECOR_SRC[l.key]
+          : (night && STAGE_SRC_DARK[l.key]?.[l.stage]) || STAGE_SRC[l.key][l.stage]
 
 /**
  * Garden2 (R508G): the painted garden composed from the approved mockup v8 at the canvas aspect (1328 x 896), `width` wide: the
@@ -60,13 +62,13 @@ const sourceOf = (l: Layer, night: boolean) =>
  */
 export function Garden2({
   stages,
-  fruit,
+  extras,
   width,
   labelFor,
 }: {
   stages: Stages
-  /** R533: the trees' earned fruit (mandarin) and flowers (store); none drawn when absent. */
-  fruit?: Fruit
+  /** R533 the trees' earned fruit/flowers, R535 the basket while SKR waits out its unstake; nothing extra when absent. */
+  extras?: Extras
   width: number
   labelFor?: (plant: Plant2) => string[]
 }) {
@@ -79,8 +81,8 @@ export function Garden2({
   const k = width / CANVAS.w
   const h = viewHeight(width) - top * k
   const layers = useMemo(
-    () => composeLayers(stages, fruit).map((l) => ({ ...scaleRect(l, width), y: (l.y - top) * (width / CANVAS.w) })),
-    [stages, fruit, width, top],
+    () => composeLayers(stages, extras).map((l) => ({ ...scaleRect(l, width), y: (l.y - top) * (width / CANVAS.w) })),
+    [stages, extras, width, top],
   )
 
   const ps = useSharedValue(1),

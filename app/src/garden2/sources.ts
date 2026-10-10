@@ -120,6 +120,11 @@ export const FRUIT_SRC = {
   store: require('../../assets/garden2/store-fruit.png'),
 } as const
 
+/** R534/R535: the app-drawn decor sprites. */
+export const DECOR_SRC = {
+  basket: require('../../assets/garden2/decor-basket.png'),
+} as const
+
 /** R529 dark mode: the dark plate (null until one is exported) and any dark variants of overlays and stage layers. */
 export const PLATE_DARK: number | null = null
 export const OVERLAY_SRC_DARK: Partial<Record<'stand' | 'cords', number>> = {

@@ -103,8 +103,15 @@ export default function Home() {
   const scene = useMemo(() => (input ? buildScene(input) : null), [input])
   // Garden2 (behind GARDEN2): each coin's stage from its planted dollars (model/garden2.ts stagesFor, the R484G ladder)
   const stages = useMemo(() => (input && GARDEN2 ? stagesFor(input) : null), [input])
-  // R533: earnings shown only on the two trees, the shared ladder's count (garden-input.ts: SKR from the pot, stORE from its holding)
-  const fruit2 = useMemo(() => ({ mandarin: input?.earned.SKR?.count ?? 0, store: input?.earned.stORE?.count ?? 0 }), [input])
+  // R533: earnings shown only on the two trees, the shared ladder's count (garden-input.ts: SKR from the pot, stORE from its holding);
+  // R535: the basket at the mandarin's foot while withdrawn SKR waits out its 48 h unstake (until it is delivered)
+  const extras2 = useMemo(
+    () => ({
+      fruit: { mandarin: input?.earned.SKR?.count ?? 0, store: input?.earned.stORE?.count ?? 0 },
+      basket: !!me?.basket && !me.basket.delivered,
+    }),
+    [input, me?.basket],
+  )
   // R356, R357 (10-05, the gap above the garden tightened "a bit", then "by another half"): the garden pulled up under the value block
   // into its own empty sky, never closer than SKY_KEEP to its tallest part (layout.ts valuePull); framed as Garden.tsx frames it
   const { width: screenW } = useWindowDimensions()
@@ -293,7 +300,7 @@ export default function Home() {
           <View style={{ marginHorizontal: garden2Bleeds(dark) ? -spacing.edge : 0 }}>
             <Garden2
               stages={stages}
-              fruit={fruit2}
+              extras={extras2}
               width={garden2Bleeds(dark) ? screenW : screenW - 2 * spacing.edge}
               labelFor={(p) => plantLabel(me, PLANT_OF[ASSET_OF_PLANT[p]], false)}
             />

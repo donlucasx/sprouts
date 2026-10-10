@@ -1,5 +1,5 @@
 import type { LiveAsset } from '../lib/coins'
-import { CANVAS, DRAW_ORDER, HIT, HIT_CELL, OVERLAYS, PLANTS, SPOTS, type Plant2 } from '../garden2/layout'
+import { CANVAS, DECOR, DRAW_ORDER, HIT, HIT_CELL, OVERLAYS, PLANTS, SPOTS, type Plant2 } from '../garden2/layout'
 export type { Plant2 } from '../garden2/layout'
 
 /**
@@ -99,6 +99,10 @@ export type Layer =
   | { kind: 'overlay'; key: 'stand' | 'cords'; x: number; y: number; w: number; h: number }
   | { kind: 'plant'; key: Plant2; stage: number; x: number; y: number; w: number; h: number }
   | { kind: 'fruit'; key: Tree; index: number; x: number; y: number; w: number; h: number }
+  | { kind: 'decor'; key: keyof typeof DECOR; x: number; y: number; w: number; h: number }
+
+/** What the garden shows besides the plants: the trees' fruit (R533) and the basket while SKR waits out its unstake (R535). */
+export type Extras = { fruit?: Fruit; basket?: boolean }
 
 /** The two trees that show earnings in the garden (R533): SKR's mandarins and stORE's ORE-gold flowers; the companions show none. */
 export type Tree = 'mandarin' | 'store'
@@ -124,11 +128,11 @@ export function fruitOn(tree: Tree, stage: number, count: number): Extract<Layer
 }
 
 /**
- * The draw list, back to front, in canvas px: the plate, then each plant in DRAW_ORDER at its box (a tree's fruit right after it) (at stage 0 every plant draws its
+ * The draw list, back to front, in canvas px: the plate, then each plant in DRAW_ORDER at its box (a tree's fruit right after it; the basket last, R535) (at stage 0 every plant draws its
  * bare ground: the trees' soil mound since R517), the stand right after `store`, the cords right before `pothos`. Overlays always draw (before a
  * first hSOL planting the pothos hangs its bare pot, stage 0).
  */
-export function composeLayers(stages: Partial<Stages>, fruit: Fruit = {}): Layer[] {
+export function composeLayers(stages: Partial<Stages>, { fruit = {}, basket = false }: Extras = {}): Layer[] {
   const out: Layer[] = [{ kind: 'plate', key: 'plate', x: 0, y: 0, w: CANVAS.w, h: CANVAS.h }]
   const overlay = (key: 'stand' | 'cords'): Layer => {
     const o = OVERLAYS[key]
@@ -141,6 +145,7 @@ export function composeLayers(stages: Partial<Stages>, fruit: Fruit = {}): Layer
     if (p === 'mandarin' || p === 'store') out.push(...fruitOn(p, s, fruit[p] ?? 0))
     if (OVERLAYS.stand.after === p) out.push(overlay('stand'))
   }
+  if (basket) out.push({ kind: 'decor', key: 'basket', ...DECOR.basket }) // R535: front-most, at the mandarin's foot
   return out
 }
 const box = (p: Plant2) => ({ x: PLANTS[p].x, y: PLANTS[p].y, w: PLANTS[p].w, h: PLANTS[p].h })

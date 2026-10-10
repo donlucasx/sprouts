@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { CANVAS, DRAW_ORDER, OVERLAYS, PLANTS, SPOTS } from "@/garden2/layout";
+import { CANVAS, DECOR, DRAW_ORDER, OVERLAYS, PLANTS, SPOTS } from "@/garden2/layout";
 import { FRAME_PAD, frameTop, paintedTop, LADDER, allStages, clampStage, composeLayers, onePerPlant, paintsAt, plantAt, plantedDollars, scaleRect, stageForDollars, stagesFor, viewHeight, clampZoom2, fruitOn, FRUIT_FROM, type Pick2, type Planting2, type Stages } from "@/model/garden2";
 
 const ASSETS = path.resolve(__dirname, "../../assets/garden2");
@@ -245,7 +245,7 @@ describe("the trees' fruit and flowers (R533, R547-R549)", () => {
     expect(f!.y + f!.h / 2).toBeCloseTo(PLANTS.store.y + sp.at[0]![1]);
   });
   it("the fruit draws right after its tree: flowers before the stand (pole in front), mandarins before the pothos", () => {
-    const keys = composeLayers(allStages(14), { mandarin: 2, store: 2 }).map((l) => (l.kind === "fruit" ? `f-${l.key}` : l.key));
+    const keys = composeLayers(allStages(14), { fruit: { mandarin: 2, store: 2 } }).map((l) => (l.kind === "fruit" ? `f-${l.key}` : l.key));
     expect(keys.indexOf("f-store")).toBe(keys.indexOf("store") + 1);
     expect(keys.indexOf("f-store")).toBeLessThan(keys.indexOf("stand"));
     expect(keys.indexOf("f-mandarin")).toBe(keys.indexOf("mandarin") + 1);
@@ -253,5 +253,14 @@ describe("the trees' fruit and flowers (R533, R547-R549)", () => {
   });
   it("bundles one sprite per tree", () => {
     for (const t of ["mandarin", "store"]) expect(fs.existsSync(path.join(ASSETS, `${t}-fruit.png`))).toBe(true);
+  });
+});
+
+describe("the basket (R535)", () => {
+  it("draws only when asked, last (in front of everything), at its exported box", () => {
+    expect(composeLayers(allStages(14)).some((l) => l.kind === "decor")).toBe(false);
+    const ls = composeLayers(allStages(14), { basket: true }), last = ls[ls.length - 1]!;
+    expect(last).toEqual({ kind: "decor", key: "basket", ...DECOR.basket });
+    expect(fs.existsSync(path.join(ASSETS, "decor-basket.png"))).toBe(true);
   });
 });
