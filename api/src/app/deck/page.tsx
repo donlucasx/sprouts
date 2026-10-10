@@ -219,7 +219,7 @@ export default function Deck() {
         </div>
       </Slide>
 
-      {/* 07 Safety + how it's built (R300, R-D6) */}
+      {/* 07 Safety + how it's built (R300, R-D6, R-D18 trust line) */}
       <Slide n={7} chip="Your money stays yours">
         <div className="grow">
           <h2 className="h2s">Even if our server is hacked, it can only move your daily round-up (max $5) into your own savings.</h2>
@@ -236,7 +236,7 @@ export default function Deck() {
           </div>
           <p className="note">
             App: Expo, React Native, Mobile Wallet Adapter, Android widget. Leash: build verified against the public source,
-            GyBmDLN72kg6xwAnZfj9c7fjeaJ3GvhkHNhFns83f8f7. Pause, revoke or withdraw from your phone.
+            GyBmDLN72kg6xwAnZfj9c7fjeaJ3GvhkHNhFns83f8f7. The $5 limit is per linked wallet. The admin key lives on the owner&apos;s laptop, not the server. Pause, revoke or withdraw from your phone.
           </p>
         </div>
       </Slide>
@@ -260,6 +260,7 @@ export default function Deck() {
         <div className="grow">
           <h2 className="h2s">Grows with Solana Mobile.</h2>
           <div className="rows">
+            <div className="row"><strong>About $200 a saver</strong><span>rounded up each year by the median active staker, all of it bought on Solana and held on a Seeker.</span></div>
             <div className="row"><strong>0.5% of each coin planting</strong><span>Paid in USDC, inside the same swap.</span></div>
             <div className="row"><strong>Pro subscription</strong><span>Your money works by itself: the AI Yield Manager, automatic lending and tax export. Free during launch. Round-ups plus a subscription is the model Acorns proved with millions of paying customers.</span></div>
             <div className="row"><strong>Good for SKR</strong><span>No new token. Every saver buys SKR with their round-ups, and the garden and widget give them a reason to open their Seeker.</span></div>
@@ -267,7 +268,7 @@ export default function Deck() {
         </div>
       </Slide>
 
-      {/* 10 Team + links */}
+      {/* 10 Team + links; R-D19 live line */}
       <Slide n={10} chip="Team">
         <div className="grow">
           <h2>Built by donlucas.</h2>
@@ -277,6 +278,7 @@ export default function Deck() {
             open-source tool for AI agents.
           </p>
           <p className="sub">Built with Claude Code: the app, the API and the on-chain leash.</p>
+          <p className="sub"><b>Live on Solana mainnet. In review on the Solana dApp Store.</b></p>
           <div className="links">
             <span>sprouts.money</span>
             <span>@sproutsonseeker</span>
