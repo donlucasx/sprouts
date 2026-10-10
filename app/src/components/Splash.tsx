@@ -40,7 +40,7 @@ export function Splash() {
   return (
     <Animated.View
       pointerEvents={fading ? 'none' : 'auto'}
-      style={[{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, backgroundColor: colors.background, justifyContent: 'center', paddingHorizontal: spacing.edge }, fade]}
+      style={[{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, backgroundColor: colors.background, paddingHorizontal: spacing.edge }, fade]}
     >
       <GrowSplash onEnd={onGrown} />
     </Animated.View>

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { Image, View, useWindowDimensions } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Animated, { Easing, runOnJS, useAnimatedStyle, useReducedMotion, useSharedValue, withTiming, type SharedValue } from 'react-native-reanimated'
 import { ThemedText } from './ThemedText'
 import { HorizontalLockup } from './Lockup'
@@ -52,6 +53,7 @@ export function GrowSplash({ onEnd }: { onEnd?: () => void }) {
   const { dark } = useTheme()
   const still = useReducedMotion()
   const { width } = useWindowDimensions()
+  const insets = useSafeAreaInsets()
   const side = Math.min(width - 2 * spacing.edge, 340)
   const frames = FRAMES[dark ? 'dark' : 'light']
   const p = useSharedValue(still ? 1 : 0)
@@ -72,20 +74,21 @@ export function GrowSplash({ onEnd }: { onEnd?: () => void }) {
     })
   }, [still, p])
   return (
-    <View style={{ alignItems: 'center', gap: spacing.lg }} accessible accessibilityLabel={`Sprouts. ${LOADING_LINE}`}>
+    // R578: one hero (the tree, the lockup tight under it as one unit) just above the optical centre; the status line is a small
+    // grey caption near the bottom edge. Fills its parent.
+    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: '12%' }} accessible accessibilityLabel={`Sprouts. ${LOADING_LINE}`}>
       <View style={{ width: side, height: side }}>
         <Image source={frames[0]} fadeDuration={0} style={{ position: 'absolute', width: side, height: side }} />
         {frames.slice(1).map((f, i) => (
           <Frame key={i} source={f} index={i + 1} count={frames.length} p={p} side={side} />
         ))}
       </View>
-      {/* R577: the tree, the line just under it (they read together), then the lockup set apart below, a signature */}
-      <ThemedText variant="heading" style={{ textAlign: 'center', marginTop: -spacing.xs }}>
-        {LOADING_LINE}
-      </ThemedText>
-      <View style={{ marginTop: spacing.xxl + spacing.lg }}>
+      <View style={{ marginTop: -spacing.lg }}>
         <HorizontalLockup wordSize={42} />
       </View>
+      <ThemedText variant="caption" tone="secondary" style={{ position: 'absolute', bottom: insets.bottom + 48, textAlign: 'center' }}>
+        {LOADING_LINE}
+      </ThemedText>
     </View>
   )
 }
