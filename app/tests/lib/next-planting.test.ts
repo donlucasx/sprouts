@@ -6,10 +6,10 @@ const base = { thresholdCents: 200, hasPlant: true, now: new Date("2026-10-02T12
 
 describe("nextPlantingRow (R164): label by whether a planting exists, value and bar by the amount", () => {
   const cases: Array<[boolean, number, string, string, number, string, string]> = [
-    [true, 0, "Next planting", "$0.00 of $2.00", 0, "empty", "$0.00 saved"],
+    [true, 0, "Next planting", "$0.00 of $2.00", 0, "empty", "Waiting for your next swap"],
     [true, 40, "Next planting", "$0.40 of $2.00", 0.2, "saving", "$0.40 saved"],
     [true, 200, "Next planting", "Today, 2 PM", 1, "reached", "$2.00 saved · planted this afternoon"],
-    [false, 0, "First planting", "$0.00 of $2.00", 0, "empty", "$0.00 saved"],
+    [false, 0, "First planting", "$0.00 of $2.00", 0, "empty", "Waiting for your next swap"],
     [false, 40, "First planting", "$0.40 of $2.00", 0.2, "saving", "$0.40 saved"],
     [false, 200, "First planting", "Today, 2 PM", 1, "reached", "$2.00 saved · planted this afternoon"],
   ];

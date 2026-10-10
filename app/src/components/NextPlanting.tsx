@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Image, View } from 'react-native'
-import { spacing, useTheme } from '@/theme'
+import { FONT, useTheme } from '@/theme'
 import { SPRITES } from '@/garden/sprites'
 import { ThemedText } from './ThemedText'
 import type { NextPlantingRow } from '@/lib/next-planting'
@@ -44,11 +44,14 @@ export function NextPlanting({ row, pendingCents, thresholdCents, can }: { row: 
       accessibilityRole="progressbar"
       accessibilityLabel={row.line}
       accessibilityValue={{ min: 0, max: thresholdCents, now: Math.min(pendingCents, thresholdCents) }}
-      style={{ gap: spacing.xs, paddingRight: can ? canSlot(can.s) : 0 }}
+      style={{ gap: 2, paddingRight: can ? canSlot(can.s) : 0 }}
       onLayout={(e) => setHeight(e.nativeEvent.layout.height)}
     >
       {/* R466: one line, "$1.20 saved · planted tomorrow morning" */}
-      <ThemedText tone="secondary">{row.line}</ThemedText>
+      {/* R590 (his note: "a tad more compact"): the line one size down, closer to its bar */}
+      <ThemedText variant="label" tone="secondary" style={{ fontFamily: FONT.body }}>
+        {row.line}
+      </ThemedText>
       <View
         style={{ height: BAR_H, marginBottom: can ? canRoomBelow(can.s, BAR_H) : 0 }}
         onLayout={(e) => {
