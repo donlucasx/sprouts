@@ -31,6 +31,17 @@ export function Lockup({ wordSize = 40 }: { wordSize?: number }) {
   )
 }
 
+/** The horizontal lockup (manual 3): the mark on the left at 1.18 x the word size, a gap of 0.26 x, the wordmark. R574: under the
+ *  loading screen's tree. */
+export function HorizontalLockup({ wordSize = 32 }: { wordSize?: number }) {
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: Math.round(0.26 * wordSize) }}>
+      <Mark size={Math.round(1.18 * wordSize)} decorative />
+      <Wordmark size={wordSize} />
+    </View>
+  )
+}
+
 /** A screen header with the mark standing on the left of a title (manual 3: the mark on the left, 1.18 x the word size, a gap of 0.26 x). */
 export function MarkedTitle({ children, size = 28 }: { children: string; size?: number }) {
   const { colors } = useTheme()
