@@ -16,7 +16,8 @@ import { ThemedText } from '@/components/ThemedText'
 import { FONT, GARDEN_INK, radius, spacing, useTheme } from '@/theme'
 import { pinchOffset } from '@/model/motion'
 import { CANVAS } from './layout'
-import { DECOR_SRC, FRUIT_SRC, OVERLAY_SRC, OVERLAY_SRC_DARK, PLATE, PLATE_DARK, STAGE_SRC, STAGE_SRC_DARK } from './sources'
+import { LoopImage } from './loop-image'
+import { DECOR_SRC, FRUIT_SRC, LOOP_SRC, OVERLAY_SRC, OVERLAY_SRC_DARK, PLATE, PLATE_DARK, STAGE_SRC, STAGE_SRC_DARK } from './sources'
 import {
   clampZoom2,
   composeLayers,
@@ -200,6 +201,12 @@ export function Garden2({
                     fadeDuration={0}
                     style={[{ position: 'absolute', width: l.w, height: l.h }, fading]}
                   />
+                </View>
+              ) : l.kind === 'plant' && LoopImage && !reduced && !night && LOOP_SRC[l.key]?.[l.stage] ? (
+                // R581: a stage with an idle loop sways; the still under it shows until the loop's first frame is in
+                <View key={`p-${l.key}`} style={{ position: 'absolute', left: l.x, top: l.y, width: l.w, height: l.h }}>
+                  <Image source={sourceOf(l, night)} fadeDuration={0} style={{ position: 'absolute', width: l.w, height: l.h }} />
+                  <LoopImage source={LOOP_SRC[l.key]![l.stage]!} autoplay contentFit="fill" cachePolicy="memory" style={{ position: 'absolute', width: l.w, height: l.h }} />
                 </View>
               ) : l.kind === 'fruit' && revealing(l.key) ? (
                 <Animated.Image
