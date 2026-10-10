@@ -230,7 +230,9 @@ export default function Home() {
               opacity: pressed ? 0.6 : 1,
             })}
           >
-            <ThemedText variant="caption" tone="secondary" style={{ flex: 1 }}>
+            {/* R590 (his question "does the underline break into two lines ever?": it could, at a long amount or venue or large text):
+                one line always, shrinking a little before it would wrap */}
+            <ThemedText variant="caption" tone="secondary" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} style={{ flex: 1 }}>
               {receiptLine}
             </ThemedText>
             <MaterialCommunityIcons name="chevron-right" size={18} color={colors.textSecondary} />
@@ -322,7 +324,8 @@ export default function Home() {
       {GARDEN2 && stages ? (
         <>
           {/* Full bleed in light, and in dark once a dark plate exists (R529); else a paper card inside the gutters (Garden2.tsx) */}
-          <View style={{ marginHorizontal: garden2Bleeds(dark) ? -spacing.edge : 0, zIndex: 2 }}>
+          {/* R590 (his note: "reduce the margin above the garden a tad"): half the screen's gap taken back above it, and FRAME_PAD 48 -> 24 */}
+          <View style={{ marginHorizontal: garden2Bleeds(dark) ? -spacing.edge : 0, marginTop: -spacing.sm, zIndex: 2 }}>
             <Garden2
               stages={stages}
               extras={extras2}

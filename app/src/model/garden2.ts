@@ -300,7 +300,7 @@ export function placeCard(o: { plant: { x0: number; x1: number; y0: number }; st
 }
 
 /** Breathing room above the tallest painted thing, canvas px (R525). */
-export const FRAME_PAD = 48
+export const FRAME_PAD = 24
 /**
  * R525 (his ruling: the frame grows with the garden): the canvas row the view starts at, just above the tallest thing drawn now (each
  * plant at its stage, and the bamboo stand, which always draws), less FRAME_PAD; 0 once a tree reaches the top. A young garden sits

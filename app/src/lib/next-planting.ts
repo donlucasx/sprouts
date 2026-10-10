@@ -56,7 +56,8 @@ export function nextPlantingRow(p: { pendingCents: number; thresholdCents: numbe
   if (p.paused) return { state: "paused", label, value: "Paused", fraction: Math.min(1, Math.max(0, pending) / Math.max(1, threshold)), line: `${saved} · paused` };
   if (pending >= threshold) return { state: "reached", label, value: nextRunLabel(p.now), fraction: 1, line: `${saved} · planted ${nextRunWords(p.now)}` };
   const of = `${formatUsd(Math.max(0, pending))} of ${formatUsd(threshold)}`;
-  if (pending <= 0) return { state: "empty", label, value: of, fraction: 0, line: saved };
+  // R590 (10-10, his note: when it says "0.00 saved" "should it say something like waiting for the next swap"): nothing saved yet
+  if (pending <= 0) return { state: "empty", label, value: of, fraction: 0, line: "Waiting for your next swap" };
   return { state: "saving", label, value: of, fraction: pending / threshold, line: saved };
 }
 
