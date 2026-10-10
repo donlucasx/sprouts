@@ -8,8 +8,9 @@ import { activityQuery } from '@/lib/activity-query'
 import { recordWatering, wateredPlantsFor } from '@/lib/last-watering'
 import { readZeroMarks } from '@/lib/zero-marks'
 import { plantLabel } from '@/lib/plant-label'
+import { plantCard } from '@/lib/plant-card'
 import { api } from '@/lib/api'
-import { buildScene, PLANT_OF } from '@/model/garden'
+import { buildScene } from '@/model/garden'
 import { ASSET_OF_PLANT, revealFrom, stagesFor, type Stages } from '@/model/garden2'
 import { readSeenStages, writeSeenStages } from '@/lib/garden2-seen'
 import { Garden2, garden2Bleeds } from '@/garden2/Garden2'
@@ -311,13 +312,15 @@ export default function Home() {
       {GARDEN2 && stages ? (
         <>
           {/* Full bleed in light, and in dark once a dark plate exists (R529); else a paper card inside the gutters (Garden2.tsx) */}
-          <View style={{ marginHorizontal: garden2Bleeds(dark) ? -spacing.edge : 0 }}>
+          <View style={{ marginHorizontal: garden2Bleeds(dark) ? -spacing.edge : 0, zIndex: 2 }}>
             <Garden2
               stages={stages}
               extras={extras2}
               reveal={reveal}
               width={garden2Bleeds(dark) ? screenW : screenW - 2 * spacing.edge}
-              labelFor={(p) => plantLabel(me, PLANT_OF[ASSET_OF_PLANT[p]], false)}
+              cardFor={(p) => ({ ...plantCard(devSplit ? devSplitLending(me) : me, ASSET_OF_PLANT[p]), icon: COIN_LOGO[ASSET_OF_PLANT[p]] })}
+              onCard={(c) => c.row && setSheetRow(c.row)}
+              cardOverflow={120}
             />
           </View>
           <NextPlanting row={nextRow} pendingCents={me.nextPlanting.pendingCents} thresholdCents={me.nextPlanting.thresholdCents} />

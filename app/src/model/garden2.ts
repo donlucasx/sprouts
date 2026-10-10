@@ -237,6 +237,47 @@ export function paintedTop(p: Plant2, s: number): number {
   return Number.POSITIVE_INFINITY
 }
 
+/** The canvas box plant `p` paints at stage `s` (its hit grid), or null when the layer paints nothing. */
+export function paintedBox(p: Plant2, s: number): { x0: number; x1: number; y0: number; y1: number } | null {
+  const m = HIT[p][s]
+  if (!m) return null
+  const bits = bitsOf(m.bits)
+  let c0 = Infinity, c1 = -1, r0 = Infinity, r1 = -1
+  for (let row = 0; row < m.rows; row++)
+    for (let col = 0; col < m.cols; col++) {
+      const i = row * m.cols + col
+      if (((bits[i >> 3]! >> (7 - (i & 7))) & 1) === 1) (c0 = Math.min(c0, col), c1 = Math.max(c1, col), r0 = Math.min(r0, row), r1 = Math.max(r1, row))
+    }
+  if (c1 < 0) return null
+  const b = PLANTS[p]
+  return { x0: b.x + c0 * HIT_CELL, x1: b.x + (c1 + 1) * HIT_CELL, y0: b.y + r0 * HIT_CELL, y1: b.y + (r1 + 1) * HIT_CELL }
+}
+
+/** The plant card's pointer, view px; the card keeps this far from the view's edges. */
+export const CARD_CARET = 8,
+  CARD_EDGE = 8
+/**
+ * R587 (his note: "cards should be better centered in relation to the plants"): where a tapped plant's card sits, all in view px.
+ * Centred over the plant's paint (held inside the view), the pointer on the plant's middle. Above the plant when it fits, pointing
+ * down at it; else under the plant's stake, pointing up at it (it may hang `below` px past the view's bottom, over what follows the
+ * garden: on the device a tall tree left no room above, and the card at the top hid its crown); else at the top, over the crown.
+ */
+export function placeCard(o: { plant: { x0: number; x1: number; y0: number }; stakeBottom: number; viewW: number; viewH: number; cardW: number; cardH: number; below?: number }): {
+  left: number
+  top: number
+  caretX: number
+  caret: 'down' | 'up'
+} {
+  const cx = (o.plant.x0 + o.plant.x1) / 2
+  const left = Math.min(Math.max(cx - o.cardW / 2, CARD_EDGE), Math.max(CARD_EDGE, o.viewW - o.cardW - CARD_EDGE))
+  const caretX = Math.min(Math.max(cx - left, 2 * CARD_CARET), o.cardW - 2 * CARD_CARET)
+  const above = o.plant.y0 - CARD_CARET - o.cardH
+  if (above >= CARD_EDGE / 2) return { left, top: above, caretX, caret: 'down' }
+  const below = o.stakeBottom + CARD_CARET
+  if (below + o.cardH <= o.viewH + (o.below ?? 0) - CARD_EDGE / 2) return { left, top: below, caretX, caret: 'up' }
+  return { left, top: CARD_EDGE / 2, caretX, caret: 'down' }
+}
+
 /** Breathing room above the tallest painted thing, canvas px (R525). */
 export const FRAME_PAD = 48
 /**

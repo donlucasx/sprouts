@@ -9,12 +9,4 @@ export const COIN_LOGO: Record<LiveAsset, number> = {
   hSOL: require('../../assets/tokens/hsol.png'),
   cbBTC: require('../../assets/tokens/cbbtc.png'),
 }
-/** The names Home's coin list and the coin sheet show. */
-export const COIN_FULL_NAME: Record<LiveAsset, string> = {
-  SKR: 'Seeker',
-  stORE: 'Staked ORE',
-  USDC_LEND: 'USDC lending',
-  SOL_LEND: 'SOL lending',
-  hSOL: 'Helius Staked SOL',
-  cbBTC: 'Coinbase Wrapped BTC',
-}
+export { COIN_FULL_NAME } from './coin-names'

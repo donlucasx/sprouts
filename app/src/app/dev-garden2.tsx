@@ -47,7 +47,7 @@ export default function DevGarden2() {
           extras={{ fruit: { mandarin: fruit, store: fruit }, basket, stakes: true }}
           reveal={reveal}
           width={garden2Bleeds(dark) ? width : width - 2 * spacing.edge}
-          labelFor={(p) => [`${p} (${ASSET_OF_PLANT[p]})`, `Stage ${stages[p]} of ${PLANTS[p].last}`]}
+          cardFor={(p) => ({ title: `${p} (${ASSET_OF_PLANT[p]})`, where: `Stage ${stages[p]} of ${PLANTS[p].last}`, value: null, earned: null, next: null, row: null })}
         />
       </View>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }}>
