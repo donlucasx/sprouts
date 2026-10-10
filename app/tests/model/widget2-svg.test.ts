@@ -28,6 +28,15 @@ describe("10-10: the widget draws Garden2 as stills, cropped to what is planted"
     const g = widgetGarden2(only({ mandarin: 3 }), { stakes: true }, 430, 60), [x, , w] = box(g.svg);
     expect(g.h).toBe(60); expect(x).toBeGreaterThanOrEqual(0); expect(x + w).toBeLessThanOrEqual(CANVAS.w + 0.01);
   });
+  it("his note 10-10: a box taller than the garden fills more of it, zoomed in on the trees and both kept whole", () => {
+    const st = only({ mandarin: 8, store: 6, azalea: 5, pothos: 5 });
+    const g = widgetGarden2(st, { stakes: true }, 160, 200), [x, , w] = box(g.svg), n = widget2Need(st, { stakes: true });
+    // taller than the whole garden at that width; the box itself is reached once the two trees fit across it
+    expect(g.h).toBeGreaterThan(Math.round((160 * (n.y1 - n.y0)) / (n.x1 - n.x0)));
+    expect(widgetGarden2(only({ mandarin: 4, azalea: 3 }), { stakes: true }, 160, 200).h).toBe(200);
+    for (const t of ["mandarin", "store"] as const) { const b = paintedBox(t, st[t])!; expect(b.x0).toBeGreaterThanOrEqual(x - 0.01); expect(b.x1).toBeLessThanOrEqual(x + w + 0.01); }
+    expect(w).toBeLessThan(widget2Need(st, { stakes: true }).x1 - widget2Need(st, { stakes: true }).x0);
+  });
   it("nothing planted: the bed, no stakes", () => {
     const { svg } = widgetGarden2(allStages(0), { stakes: true }, 300, 150);
     expect(svg).toContain('id="w-plate"'); expect(svg).not.toContain("<text");
