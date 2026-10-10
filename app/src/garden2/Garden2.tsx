@@ -189,11 +189,21 @@ export function Garden2({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on which plants can stir, not the array's identity
   }, [stirKey, stir])
   /** A plant as it stands (its still), or playing one cycle of its idle loop while stirred. */
+  /** The loop a plant plays while stirred, or none (not stirred, or no loop at its stage). */
+  const stirLoopOf = (p: Plant2) => (canStir && stirs[p] !== undefined ? LOOP_SRC[p]?.[stages[p] ?? 0] : undefined)
   const plantNode = (l: Extract<Layer, { kind: 'plant' }>): ReactNode => {
-    const loop = canStir && stirs[l.key] !== undefined ? LOOP_SRC[l.key]?.[l.stage] : undefined
+    const loop = stirLoopOf(l.key)
     const box = { position: 'absolute' as const, left: l.x, top: l.y, width: l.w, height: l.h }
+    // R591: a loop with `pad` (the pothos, its cords swaying with it) reaches that far above the box, its first frame the placeholder
+    const pad = (loop?.pad ?? 0) * k
     return loop ? (
-      <StirLoop key={`p-${l.key}-${stirs[l.key]}`} loop={loop} still={sourceOf(l, night)} style={box} onEnd={() => settle(l.key)} />
+      <StirLoop
+        key={`p-${l.key}-${stirs[l.key]}`}
+        loop={loop}
+        still={loop.first ?? sourceOf(l, night)}
+        style={{ ...box, top: l.y - pad, height: l.h + pad }}
+        onEnd={() => settle(l.key)}
+      />
     ) : (
       <Image key={`p-${l.key}`} source={sourceOf(l, night)} fadeDuration={0} style={box} />
     )
@@ -291,7 +301,8 @@ export function Garden2({
         >
           <Animated.View style={[{ width, height: h, transformOrigin: [0, 0, 0] }, zoomed]}>
             {layers.map((l) =>
-              l.kind === 'stake' ? (
+              // R591: while the pothos sways its loop draws its own cords (they swing with the pot): the still ones step aside
+              l.kind === 'overlay' && l.key === 'cords' && stirLoopOf('pothos')?.pad ? null : l.kind === 'stake' ? (
                 reveal?.[l.key] === 0 ? ( // a stake fades in only with its plant's first planting; it already stood otherwise
                   <Animated.View key={`s-${l.key}`} style={[{ position: 'absolute', left: 0, top: 0 }, fading]}>
                     <Stake l={l} k={k} />
@@ -473,7 +484,7 @@ function GrowPlant({ l, from, night, after }: { l: Extract<Layer, { kind: 'plant
 }
 
 /** R588: one cycle of a plant's idle loop, from the frame it loads (the still is its placeholder, so the hand-offs are swaps). */
-function StirLoop({ loop, still, style, onEnd }: { loop: { src: number; ms: number }; still: number; style: object; onEnd: () => void }) {
+function StirLoop({ loop, still, style, onEnd }: { loop: { src: number; ms: number; pad?: number }; still: number; style: object; onEnd: () => void }) {
   const [loaded, setLoaded] = useState(false)
   useEffect(() => {
     const id = setTimeout(onEnd, loop.ms + (loaded ? 0 : STIR_SPARE_MS))
