@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Image, View } from 'react-native'
+import { Image, Text, View } from 'react-native'
 import Animated, {
   Easing,
   FadeIn,
@@ -12,13 +12,14 @@ import Animated, {
 } from 'react-native-reanimated'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import { ThemedText } from '@/components/ThemedText'
-import { radius, spacing, useTheme } from '@/theme'
+import { FONT, GARDEN_INK, radius, spacing, useTheme } from '@/theme'
 import { pinchOffset } from '@/model/motion'
 import { CANVAS } from './layout'
 import { DECOR_SRC, FRUIT_SRC, OVERLAY_SRC, OVERLAY_SRC_DARK, PLATE, PLATE_DARK, STAGE_SRC, STAGE_SRC_DARK } from './sources'
 import {
   clampZoom2,
   composeLayers,
+  STAKE,
   frameTop,
   plantAt,
   scaleRect,
@@ -49,6 +50,8 @@ const sourceOf = (l: Layer, night: boolean) =>
         ? FRUIT_SRC[l.key]
         : l.kind === 'decor'
           ? DECOR_SRC[l.key]
+          : l.kind === 'stake'
+            ? DECOR_SRC.stake
           : (night && STAGE_SRC_DARK[l.key]?.[l.stage]) || STAGE_SRC[l.key][l.stage]
 
 /**
@@ -154,14 +157,18 @@ export function Garden2({
           accessibilityLabel="Your garden"
         >
           <Animated.View style={[{ width, height: h, transformOrigin: [0, 0, 0] }, zoomed]}>
-            {layers.map((l) => (
-              <Image
-                key={l.kind === 'plant' ? `p-${l.key}` : l.kind === 'fruit' ? `f-${l.key}-${l.index}` : l.key}
-                source={sourceOf(l, night)}
-                fadeDuration={0}
-                style={{ position: 'absolute', left: l.x, top: l.y, width: l.w, height: l.h }}
-              />
-            ))}
+            {layers.map((l) =>
+              l.kind === 'stake' ? (
+                <Stake key={`s-${l.key}`} l={l} k={k} />
+              ) : (
+                <Image
+                  key={l.kind === 'plant' ? `p-${l.key}` : l.kind === 'fruit' ? `f-${l.key}-${l.index}` : l.key}
+                  source={sourceOf(l, night)}
+                  fadeDuration={0}
+                  style={{ position: 'absolute', left: l.x, top: l.y, width: l.w, height: l.h }}
+                />
+              ),
+            )}
           </Animated.View>
         </View>
       </GestureDetector>
@@ -195,6 +202,43 @@ export function Garden2({
           ))}
         </Animated.View>
       ) : null}
+    </View>
+  )
+}
+
+/** R534/R557: one stake, its plank lettered with the coin name (one line, a tad below the middle), scaled with the garden (k). */
+function Stake({ l, k }: { l: Extract<Layer, { kind: 'stake' }>; k: number }) {
+  const b = STAKE.board // sprite px; the sprite draws at k view px per sprite px, like every layer
+  return (
+    <View pointerEvents="none" style={{ position: 'absolute', left: l.x, top: l.y, width: l.w, height: l.h }}>
+      <Image source={DECOR_SRC.stake} fadeDuration={0} style={{ width: l.w, height: l.h }} />
+      <View
+        style={{
+          position: 'absolute',
+          left: b.x * k,
+          top: (b.y + b.h * STAKE.drop) * k,
+          width: b.w * k,
+          height: b.h * k,
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <Text
+          numberOfLines={1}
+          allowFontScaling={false}
+          style={{
+            fontFamily: FONT.displayBold,
+            fontSize: STAKE.font * k,
+            lineHeight: STAKE.font * k * 1.05,
+            color: GARDEN_INK.sign,
+            opacity: GARDEN_INK.signOpacity,
+            includeFontPadding: false,
+            textAlignVertical: 'center',
+          }}
+        >
+          {l.label}
+        </Text>
+      </View>
     </View>
   )
 }

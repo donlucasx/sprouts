@@ -31,7 +31,7 @@ const out = {}
 const widths = process.argv.slice(2).map(Number) // view widths to scale the plan to (Garden2.tsx's scaleRect), px
 for (const [name, stages] of Object.entries(sets)) {
   // R533: the trees' earned fruit/flowers at the ladder's cap (12) wherever a stage has spots; none on the bare sets
-  const layers = g.composeLayers(stages, name === 'empty' || name === 'first' ? {} : { fruit: { mandarin: 12, store: 12 }, basket: name === 'mixed' })
+  const layers = g.composeLayers(stages, name === 'empty' || name === 'first' ? {} : { fruit: { mandarin: 12, store: 12 }, basket: name === 'mixed', stakes: true })
   out[name] = {
     stages,
     layers,

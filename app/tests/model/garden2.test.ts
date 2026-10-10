@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { CANVAS, DECOR, DRAW_ORDER, OVERLAYS, PLANTS, SPOTS } from "@/garden2/layout";
-import { FRAME_PAD, frameTop, paintedTop, LADDER, allStages, clampStage, composeLayers, onePerPlant, paintsAt, plantAt, plantedDollars, scaleRect, stageForDollars, stagesFor, viewHeight, clampZoom2, fruitOn, FRUIT_FROM, type Pick2, type Planting2, type Stages } from "@/model/garden2";
+import { FRAME_PAD, frameTop, paintedTop, LADDER, allStages, clampStage, composeLayers, onePerPlant, paintsAt, plantAt, plantedDollars, scaleRect, stageForDollars, stagesFor, viewHeight, clampZoom2, fruitOn, FRUIT_FROM, STAKE, STAKE_AT, STAKE_LABEL, type Pick2, type Planting2, type Stages } from "@/model/garden2";
 
 const ASSETS = path.resolve(__dirname, "../../assets/garden2");
 const day = (d: number, h = 12) => new Date(2026, 9, d, h);   // local time (vitest pins TZ to Los Angeles)
@@ -262,5 +262,29 @@ describe("the basket (R535)", () => {
     const ls = composeLayers(allStages(14), { basket: true }), last = ls[ls.length - 1]!;
     expect(last).toEqual({ kind: "decor", key: "basket", ...DECOR.basket });
     expect(fs.existsSync(path.join(ASSETS, "decor-basket.png"))).toBe(true);
+  });
+});
+
+describe("the stakes (R534, R556, R557)", () => {
+  const stakesOf = (st: Stages) => composeLayers(st, { stakes: true }).filter((l) => l.kind === "stake");
+  it("one per planted plant (stage 1 up), none when off or unplanted", () => {
+    expect(composeLayers(allStages(14)).some((l) => l.kind === "stake")).toBe(false);
+    expect(stakesOf(allStages(0))).toEqual([]);
+    expect(stakesOf({ ...allStages(0), azalea: 1 }).map((l) => l.key)).toEqual(["azalea"]);
+    expect(stakesOf(allStages(14)).length).toBe(6);
+  });
+  it("labels each with its coin, one line", () => {
+    expect(STAKE_LABEL).toEqual({ mandarin: "SKR", store: "stORE", pothos: "hSOL", azalea: "USDC", maple: "SOL", orchid: "cbBTC" });
+  });
+  it("stands its foot on the ruled spot", () => {
+    for (const l of stakesOf(allStages(14))) {
+      expect(l.x + STAKE.foot[0]).toBe(STAKE_AT[l.key].x);
+      expect(l.y + STAKE.foot[1]).toBe(STAKE_AT[l.key].y);
+    }
+  });
+  it("stORE's stands behind the orchid; the rest in front of every plant", () => {
+    const ls = composeLayers(allStages(14), { stakes: true }), at = (k: string) => ls.findIndex((l) => (l.kind === "stake" ? `s-${l.key}` : l.key) === k);
+    expect(at("s-store")).toBe(at("orchid") - 1);
+    for (const p of ["mandarin", "maple", "azalea", "orchid", "pothos"]) expect(at(`s-${p}`)).toBeGreaterThan(at("azalea"));
   });
 });

@@ -1,5 +1,5 @@
 import type { LiveAsset } from '../lib/coins'
-import { CANVAS, DECOR, DRAW_ORDER, HIT, HIT_CELL, OVERLAYS, PLANTS, SPOTS, type Plant2 } from '../garden2/layout'
+import { CANVAS, COIN_PLANTS, DECOR, DRAW_ORDER, HIT, HIT_CELL, OVERLAYS, PLANTS, SPOTS, type Plant2 } from '../garden2/layout'
 export type { Plant2 } from '../garden2/layout'
 
 /**
@@ -100,9 +100,37 @@ export type Layer =
   | { kind: 'plant'; key: Plant2; stage: number; x: number; y: number; w: number; h: number }
   | { kind: 'fruit'; key: Tree; index: number; x: number; y: number; w: number; h: number }
   | { kind: 'decor'; key: keyof typeof DECOR; x: number; y: number; w: number; h: number }
+  | { kind: 'stake'; key: Plant2; label: string; x: number; y: number; w: number; h: number }
 
 /** What the garden shows besides the plants: the trees' fruit (R533) and the basket while SKR waits out its unstake (R535). */
-export type Extras = { fruit?: Fruit; basket?: boolean }
+export type Extras = { fruit?: Fruit; basket?: boolean; stakes?: boolean }
+
+/**
+ * R534/R555-R557: the stake sign (MJ f83a979e #2, decor/sprites/stake.png): its foot (the post's base) and its plank, in sprite px;
+ * the app writes the coin name on the plank in Outfit 700 at `font` canvas px (the plank's height caps it: every name fits the width),
+ * one line, a tad below the plank's middle.
+ */
+export const STAKE = { foot: [71, 80], board: { x: 2, y: 1, w: 136, h: 34 }, font: 27, drop: 0.05 } as const
+/** R557 (his placement on decor-stake-context-v2): each plant's stake foot in canvas px; stORE's stands behind the orchid (drawn before it). */
+export const STAKE_AT: Record<Plant2, { x: number; y: number; before?: Plant2 }> = {
+  mandarin: { x: 560, y: 740 },
+  store: { x: 885, y: 690, before: 'orchid' },
+  maple: { x: 735, y: 640 },
+  azalea: { x: 215, y: 852 },
+  orchid: { x: 1110, y: 800 },
+  pothos: { x: 1345, y: 712 },
+}
+/** The name on each plant's stake: its coin as layout.json names it (USDC and SOL = the lending plants). */
+export const STAKE_LABEL = Object.fromEntries(Object.entries(COIN_PLANTS).map(([coin, plant]) => [plant, coin])) as Record<Plant2, string>
+const stakeOf = (p: Plant2): Extract<Layer, { kind: 'stake' }> => ({
+  kind: 'stake',
+  key: p,
+  label: STAKE_LABEL[p],
+  x: STAKE_AT[p].x - STAKE.foot[0],
+  y: STAKE_AT[p].y - STAKE.foot[1],
+  w: DECOR.stake.w,
+  h: DECOR.stake.h,
+})
 
 /** The two trees that show earnings in the garden (R533): SKR's mandarins and stORE's ORE-gold flowers; the companions show none. */
 export type Tree = 'mandarin' | 'store'
@@ -132,7 +160,7 @@ export function fruitOn(tree: Tree, stage: number, count: number): Extract<Layer
  * bare ground: the trees' soil mound since R517), the stand right after `store`, the cords right before `pothos`. Overlays always draw (before a
  * first hSOL planting the pothos hangs its bare pot, stage 0).
  */
-export function composeLayers(stages: Partial<Stages>, { fruit = {}, basket = false }: Extras = {}): Layer[] {
+export function composeLayers(stages: Partial<Stages>, { fruit = {}, basket = false, stakes = false }: Extras = {}): Layer[] {
   const out: Layer[] = [{ kind: 'plate', key: 'plate', x: 0, y: 0, w: CANVAS.w, h: CANVAS.h }]
   const overlay = (key: 'stand' | 'cords'): Layer => {
     const o = OVERLAYS[key]
@@ -140,11 +168,14 @@ export function composeLayers(stages: Partial<Stages>, { fruit = {}, basket = fa
   }
   for (const p of DRAW_ORDER) {
     if (OVERLAYS.cords.before === p) out.push(overlay('cords'))
+    // R534: a stake per planted plant (stage 1 up); one marked `before` this plant stands behind it (R557: stORE's behind the orchid)
+    if (stakes) for (const q of DRAW_ORDER) if (STAKE_AT[q].before === p && (stages[q] ?? 0) >= 1) out.push(stakeOf(q))
     const s = clampStage(p, stages[p] ?? 0)
     out.push({ kind: 'plant', key: p, stage: s, ...box(p) })
     if (p === 'mandarin' || p === 'store') out.push(...fruitOn(p, s, fruit[p] ?? 0))
     if (OVERLAYS.stand.after === p) out.push(overlay('stand'))
   }
+  if (stakes) for (const q of DRAW_ORDER) if (!STAKE_AT[q].before && (stages[q] ?? 0) >= 1) out.push(stakeOf(q))
   if (basket) out.push({ kind: 'decor', key: 'basket', ...DECOR.basket }) // R535: front-most, at the mandarin's foot
   return out
 }

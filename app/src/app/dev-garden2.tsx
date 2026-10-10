@@ -41,7 +41,7 @@ export default function DevGarden2() {
       <View style={{ marginHorizontal: garden2Bleeds(dark) ? -spacing.edge : 0 }}>
         <Garden2
           stages={stages}
-          extras={{ fruit: { mandarin: fruit, store: fruit }, basket }}
+          extras={{ fruit: { mandarin: fruit, store: fruit }, basket, stakes: true }}
           width={garden2Bleeds(dark) ? width : width - 2 * spacing.edge}
           labelFor={(p) => [`${p} (${ASSET_OF_PLANT[p]})`, `Stage ${stages[p]} of ${PLANTS[p].last}`]}
         />

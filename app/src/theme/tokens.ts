@@ -107,6 +107,9 @@ export const type = {
   caption: { fontFamily: FONT.body, fontSize: 11, lineHeight: 15 },
 } as const
 
+/** Garden2's painted signs (R557): the coin name lettered on a stake's plank. One ink in both themes: the garden is always the light plate (R530). */
+export const GARDEN_INK = { sign: '#3B2A1A', signOpacity: 0.9 } as const
+
 /** The 4-point grid. `edge` is the screen's side padding: the garden draws at the window width minus twice this. */
 export const spacing = { xs: 4, sm: 8, md: 12, lg: 16, edge: 20, xl: 24, xxl: 32 } as const
 

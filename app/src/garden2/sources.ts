@@ -123,6 +123,7 @@ export const FRUIT_SRC = {
 /** R534/R535: the app-drawn decor sprites. */
 export const DECOR_SRC = {
   basket: require('../../assets/garden2/decor-basket.png'),
+  stake: require('../../assets/garden2/decor-stake.png'),
 } as const
 
 /** R529 dark mode: the dark plate (null until one is exported) and any dark variants of overlays and stage layers. */

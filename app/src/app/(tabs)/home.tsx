@@ -109,6 +109,7 @@ export default function Home() {
     () => ({
       fruit: { mandarin: input?.earned.SKR?.count ?? 0, store: input?.earned.stORE?.count ?? 0 },
       basket: !!me?.basket && !me.basket.delivered,
+      stakes: true, // R534: each planted plant's stake, its coin name on it (R556: one line; the rest in the tap label)
     }),
     [input, me?.basket],
   )
