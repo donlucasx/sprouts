@@ -8,6 +8,7 @@ import Animated, {
   useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
+  withDelay,
   withTiming,
 } from 'react-native-reanimated'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
@@ -34,6 +35,9 @@ import {
 const LABEL_MS = 4500,
   LABEL_W = 260
 const SNAP_MS = 250 // R173: the zoom snaps back on release or a double tap
+/** R521: a plant's step up fades in over its old painting this long, after this pause (Claude's numbers, to tune on the device). */
+const REVEAL_MS = 1200,
+  REVEAL_DELAY_MS = 400
 
 /** The garden always draws full bleed: light, and dark (R530, option B: the light plate edge to edge, square, on the dark page). */
 export const garden2Bleeds = (_dark: boolean): boolean => true
@@ -66,12 +70,15 @@ const sourceOf = (l: Layer, night: boolean) =>
 export function Garden2({
   stages,
   extras,
+  reveal,
   width,
   labelFor,
 }: {
   stages: Stages
   /** R533 the trees' earned fruit/flowers, R535 the basket while SKR waits out its unstake; nothing extra when absent. */
   extras?: Extras
+  /** R521: plants that stepped up since last shown, with the stage they showed; each fades from that to now (model revealFrom). */
+  reveal?: Partial<Stages>
   width: number
   labelFor?: (plant: Plant2) => string[]
 }) {
@@ -87,6 +94,21 @@ export function Garden2({
     () => composeLayers(stages, extras).map((l) => ({ ...scaleRect(l, width), y: (l.y - top) * (width / CANVAS.w) })),
     [stages, extras, width, top],
   )
+
+  // R521: one fade for every revealing plant (its fruit too, and its stake when the plant is new); none under reduced motion
+  const revealKey = JSON.stringify(reveal ?? {})
+  const fadeIn = useSharedValue(1)
+  useEffect(() => {
+    if (!reveal || Object.keys(reveal).length === 0 || reduced) {
+      fadeIn.value = 1
+      return
+    }
+    fadeIn.value = 0
+    fadeIn.value = withDelay(REVEAL_DELAY_MS, withTiming(1, { duration: REVEAL_MS, easing: Easing.inOut(Easing.quad) }))
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the reveal's content, not its identity
+  }, [revealKey, reduced])
+  const fading = useAnimatedStyle(() => ({ opacity: fadeIn.value }))
+  const revealing = (key: Plant2) => reveal?.[key] !== undefined
 
   const ps = useSharedValue(1),
     px = useSharedValue(0),
@@ -159,7 +181,33 @@ export function Garden2({
           <Animated.View style={[{ width, height: h, transformOrigin: [0, 0, 0] }, zoomed]}>
             {layers.map((l) =>
               l.kind === 'stake' ? (
-                <Stake key={`s-${l.key}`} l={l} k={k} />
+                reveal?.[l.key] === 0 ? ( // a stake fades in only with its plant's first planting; it already stood otherwise
+                  <Animated.View key={`s-${l.key}`} style={[{ position: 'absolute', left: 0, top: 0 }, fading]}>
+                    <Stake l={l} k={k} />
+                  </Animated.View>
+                ) : (
+                  <Stake key={`s-${l.key}`} l={l} k={k} />
+                )
+              ) : l.kind === 'plant' && revealing(l.key) ? (
+                <View key={`p-${l.key}`} style={{ position: 'absolute', left: l.x, top: l.y, width: l.w, height: l.h }}>
+                  <Image
+                    source={sourceOf({ ...l, stage: reveal![l.key]! }, night)}
+                    fadeDuration={0}
+                    style={{ position: 'absolute', width: l.w, height: l.h }}
+                  />
+                  <Animated.Image
+                    source={sourceOf(l, night)}
+                    fadeDuration={0}
+                    style={[{ position: 'absolute', width: l.w, height: l.h }, fading]}
+                  />
+                </View>
+              ) : l.kind === 'fruit' && revealing(l.key) ? (
+                <Animated.Image
+                  key={`f-${l.key}-${l.index}`}
+                  source={sourceOf(l, night)}
+                  fadeDuration={0}
+                  style={[{ position: 'absolute', left: l.x, top: l.y, width: l.w, height: l.h }, fading]}
+                />
               ) : (
                 <Image
                   key={l.kind === 'plant' ? `p-${l.key}` : l.kind === 'fruit' ? `f-${l.key}-${l.index}` : l.key}
