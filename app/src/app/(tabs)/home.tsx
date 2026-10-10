@@ -365,6 +365,16 @@ export default function Home() {
                 <ThemedText variant="caption" tone="secondary" numeric numberOfLines={1}>
                   {r.qty}
                 </ThemedText>
+                {r.locked || r.venue || r.note ? (
+                  // R567 (his note): where the coin is, back on the row: locked to the Seed Vault, the lending venue and its rate, or
+                  // stORE's mining growth (the earned that positionNote used to append now sits on the right, R563)
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    <MaterialCommunityIcons name={r.locked ? 'lock-outline' : r.venue ? 'bank-outline' : 'pickaxe'} size={12} color={colors.textSecondary} />
+                    <ThemedText variant="caption" tone="secondary" numberOfLines={1} style={{ flexShrink: 1 }}>
+                      {r.where}
+                    </ThemedText>
+                  </View>
+                ) : null}
               </View>
               <View style={{ alignItems: 'flex-end', gap: 2, flexShrink: 0, maxWidth: '50%' }}>
                 <ThemedText variant="body" numeric style={{ fontFamily: FONT.label }}>
