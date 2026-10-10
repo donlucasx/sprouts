@@ -3,7 +3,6 @@ import { Image, View, useWindowDimensions } from 'react-native'
 import Animated, { Easing, runOnJS, useAnimatedStyle, useReducedMotion, useSharedValue, withTiming, type SharedValue } from 'react-native-reanimated'
 import { ThemedText } from './ThemedText'
 import { HorizontalLockup } from './Lockup'
-import { SPLASH } from '@/lib/splash'
 import { spacing, useTheme } from '@/theme'
 
 /**
@@ -45,6 +44,8 @@ const FRAMES = {
   ],
 } as const
 const GROW_MS = 3500
+/** R576 (his words): the re-open screen says what it is doing; the slogan stays on Welcome and in the store listing. */
+const LOADING_LINE = 'Loading up your garden...'
 
 /** `onEnd` once the tree has grown (at once under reduced motion, which shows it grown). */
 export function GrowSplash({ onEnd }: { onEnd?: () => void }) {
@@ -71,7 +72,7 @@ export function GrowSplash({ onEnd }: { onEnd?: () => void }) {
     })
   }, [still, p])
   return (
-    <View style={{ alignItems: 'center', gap: spacing.lg }} accessible accessibilityLabel={`Sprouts. ${SPLASH.line}`}>
+    <View style={{ alignItems: 'center', gap: spacing.lg }} accessible accessibilityLabel={`Sprouts. ${LOADING_LINE}`}>
       <View style={{ width: side, height: side }}>
         <Image source={frames[0]} fadeDuration={0} style={{ position: 'absolute', width: side, height: side }} />
         {frames.slice(1).map((f, i) => (
@@ -81,7 +82,7 @@ export function GrowSplash({ onEnd }: { onEnd?: () => void }) {
       <HorizontalLockup wordSize={42} />
       {/* R575: the lockup bigger (42, was 30) and the slogan lower, set apart from it */}
       <ThemedText variant="heading" style={{ textAlign: 'center', marginTop: spacing.xl }}>
-        {SPLASH.line}
+        {LOADING_LINE}
       </ThemedText>
     </View>
   )
