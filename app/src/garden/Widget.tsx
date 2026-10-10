@@ -3,6 +3,9 @@ import { FlexWidget, TextWidget, SvgWidget } from "react-native-android-widget";
 import type { MeResponse } from "@/lib/api";
 import { buildScene } from "@/model/garden";
 import { widgetGarden } from "@/model/widget-svg";
+import { widgetGarden2, WIDGET2_PAPER } from "@/model/widget2-svg";
+import { stagesFor } from "@/model/garden2";
+import { GARDEN2 } from "@/garden2/flag";
 import { toGardenInput, type ZeroMarks } from "@/lib/garden-input";
 import { gardenTotals, valueBlock } from "@/lib/me-state";
 import { widgetStateLine, type WidgetState } from "@/lib/widget-state";
@@ -10,7 +13,7 @@ import { LABEL_SIZE, lineBox, widgetLayout, type Box } from "./widget-layout";
 import type { PlantId, Scene } from "@/model/garden";
 
 /** Brand colours (manual 4, light: the widget draws on paper whatever the phone's theme). */
-const PAPER = "#F4EEDF", INK = "#2B2B2B", QUIET = "#6B6558", ACCENT = "#145A3C";
+const PAPER = GARDEN2 ? WIDGET2_PAPER : "#F4EEDF", INK = "#2B2B2B", QUIET = "#6B6558", ACCENT = "#145A3C";
 /** R363's tiny label under the total. */
 export const WIDGET_LABEL = "your garden";
 
@@ -29,16 +32,22 @@ export function SproutsWidget({ me, width, height, wateredPlants = null, restart
   if (!me) return notice("Open Sprouts to sign in");
   // R146, R252: the total is Home's own number (valueBlock: the whole garden in dollars, the SKR pot when no SKR price is known).
   // A cached read too old for these fields says "open the app" rather than failing the whole render.
-  let big: string, scene: Scene | null = null, state: WidgetState;
+  let big: string, scene: Scene | null = null, input: ReturnType<typeof toGardenInput> | null = null, state: WidgetState;
   try {
     big = valueBlock(gardenTotals(me), BigInt(me.pot.skrStakedRaw)).big;
     // a garden that cannot be built (a cached read missing a newer field) draws no garden, and so no bud line: Home rebuilds on open
-    try { scene = buildScene(toGardenInput(me, now, wateredPlants, restartMarks)); } catch { scene = null; }
-    state = widgetStateLine(me, scene ?? { parts: [], unrevealed: 0 }, now);
+    try { input = toGardenInput(me, now, wateredPlants, restartMarks); scene = buildScene(input); } catch { scene = null; }
+    // Garden2 has no buds to water (R458), so never the bud line: Home's own rule (home.tsx's watcher)
+    state = widgetStateLine(me, scene && !GARDEN2 ? scene : { parts: scene?.parts ?? [], unrevealed: 0 }, now);
   } catch { return notice("Open Sprouts to see your garden"); }
   const L = widgetLayout(width, height, big, WIDGET_LABEL, state.text);
   let garden: { svg: string; h: number } | null = null;
-  try { garden = scene ? widgetGarden(scene, L.garden.w, L.garden.h) : null; } catch { garden = null; }
+  // 10-10 (his ask: the widget shows the new garden): Garden2's painted layers as stills, Home's stages, stakes and basket
+  try {
+    garden = GARDEN2
+      ? input ? widgetGarden2(stagesFor(input), { basket: !!me.basket && !me.basket.delivered, stakes: true }, L.garden.w, L.garden.h) : null
+      : scene ? widgetGarden(scene, L.garden.w, L.garden.h) : null;
+  } catch { garden = null; }
 
   const header = (
     <FlexWidget style={{ width: L.header.w, height: L.header.h, flexDirection: "column" }}>
