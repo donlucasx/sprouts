@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { CANVAS, DECOR, DRAW_ORDER, OVERLAYS, PLANTS, SPOTS } from "@/garden2/layout";
-import { CARD_CARET, CARD_EDGE, FRAME_PAD, frameTop, paintedBox, paintedTop, placeCard, LADDER, allStages, clampStage, composeLayers, onePerPlant, paintsAt, plantAt, plantedDollars, scaleRect, stageForDollars, stagesFor, viewHeight, clampZoom2, fruitOn, FRUIT_FROM, revealFrom, STAKE, STAKE_AT, STAKE_LABEL, type Pick2, type Planting2, type Stages } from "@/model/garden2";
+import { GUST_STAGGER_MS, nextStir, STIR_WAIT, CARD_CARET, CARD_EDGE, FRAME_PAD, frameTop, paintedBox, paintedTop, placeCard, LADDER, allStages, clampStage, composeLayers, onePerPlant, paintsAt, plantAt, plantedDollars, scaleRect, stageForDollars, stagesFor, viewHeight, clampZoom2, fruitOn, FRUIT_FROM, revealFrom, STAKE, STAKE_AT, STAKE_LABEL, type Pick2, type Planting2, type Stages } from "@/model/garden2";
 
 const ASSETS = path.resolve(__dirname, "../../assets/garden2");
 const day = (d: number, h = 12) => new Date(2026, 9, d, h);   // local time (vitest pins TZ to Los Angeles)
@@ -330,5 +330,28 @@ describe("the tapped plant's card (R587: centred on the plant)", () => {
   })
   it("at the top when neither fits", () => {
     expect(placeCard({ ...base, stakeBottom: 380, plant: { x0: 150, x1: 250, y0: 40 } })).toMatchObject({ top: CARD_EDGE / 2, caret: "down" })
+  })
+})
+
+describe("the plants stir now and then (R588)", () => {
+  const seq = (...xs: number[]) => { let i = 0; return () => xs[i++ % xs.length]! }
+  it("nothing to stir, nothing happens", () => expect(nextStir([], Math.random)).toBeNull())
+  it("a lone plant after a quiet spell inside STIR_WAIT", () => {
+    const s = nextStir(["maple", "azalea", "orchid"], seq(0.5, 0.9, 0.1))!
+    expect(s.waitMs).toBe((STIR_WAIT[0] + STIR_WAIT[1]) / 2)
+    expect(s.plants).toEqual([{ plant: "maple", atMs: 0 }])
+  })
+  it("a gust: 2 or 3 different plants, left to right, staggered", () => {
+    const s = nextStir(["orchid", "azalea", "maple"], seq(0, 0.1, 0.9, 0.0, 0.0, 0.0))!
+    expect(s.plants).toHaveLength(3)
+    expect(new Set(s.plants.map((p) => p.plant)).size).toBe(3)
+    const xs = s.plants.map((p) => PLANTS[p.plant].x)
+    expect([...xs].sort((a, b) => a - b)).toEqual(xs)
+    expect(s.plants.map((p) => p.atMs)).toEqual([0, GUST_STAGGER_MS, 2 * GUST_STAGGER_MS])
+  })
+  it("a single candidate never gusts; over many draws both kinds happen", () => {
+    expect(nextStir(["maple"], seq(0.5, 0))!.plants).toHaveLength(1)
+    const sizes = new Set(Array.from({ length: 200 }, () => nextStir(["maple", "azalea", "orchid", "store"], Math.random)!.plants.length))
+    expect(sizes).toEqual(new Set([1, 2, 3]))
   })
 })

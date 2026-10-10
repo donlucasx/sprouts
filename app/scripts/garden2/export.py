@@ -101,7 +101,9 @@ for p, st in LOOPS.items():
         assert p in plants and plants[p]["first"] <= int(s_) <= plants[p]["last"], (p, s_)
         assert Image.open(os.path.join(SRC, rel)).size == (plants[p]["w"], plants[p]["h"]), (p, s_, "loop size")
         os.makedirs(os.path.join(OUT, "loops", p), exist_ok=True); shutil.copyfile(os.path.join(SRC, rel), os.path.join(OUT, "loops", p, f"stage{int(s_):02d}.webp"))
-        loops.setdefault(p, []).append(int(s_))
+        im_ = Image.open(os.path.join(SRC, rel)); ms_ = 0
+        for i_ in range(im_.n_frames): im_.seek(i_); ms_ += im_.info.get("duration", 83)
+        loops.setdefault(p, []).append((int(s_), ms_))
 
 # R585: the stage-up growth clips, one-shot animated WebP (build_timelapse.py --export-growth): growth.json + growth/<plant>/stageNN.webp,
 # stageNN = the clip that ENDS on stage NN, with its length in ms
@@ -149,9 +151,10 @@ for p in L["draw_order"]:
         lines.append(f"    {s}: require('../../assets/garden2/{p}/stage{s:02d}.webp'),")
     lines.append("  },")
 lines.append("}")
-lines += ["", "/** R581: each plant's idle sway loops (animated WebP with alpha, its stage box), by stage; a stage without one shows its still. */",
-          "export const LOOP_SRC: Partial<Record<Plant2, Record<number, number>>> = {",
-          *[f"  {p}: {{ " + ", ".join(f"{s_}: require('../../assets/garden2/loops/{p}/stage{s_:02d}.webp')" for s_ in sorted(v)) + " }," for p, v in sorted(loops.items())], "}"]
+lines += ["", "/** R581: each plant's idle sway loop (animated WebP with alpha, its stage box) by stage, with one cycle's length; R588 plays a",
+          " *  cycle now and then and on a tap. A stage without one shows its still. */",
+          "export const LOOP_SRC: Partial<Record<Plant2, Record<number, { src: number; ms: number }>>> = {",
+          *[f"  {p}: {{ " + ", ".join(f"{s_}: {{ src: require('../../assets/garden2/loops/{p}/stage{s_:02d}.webp'), ms: {ms} }}" for s_, ms in sorted(v)) + " }," for p, v in sorted(loops.items())], "}"]
 lines += ["", "/** R585: each plant's stage-up growth clip (one-shot animated WebP, its stage box) by the stage it ENDS on, with its length. */",
           "export const GROWTH_SRC: Partial<Record<Plant2, Record<number, { src: number; ms: number }>>> = {",
           *[f"  {p}: {{ " + ", ".join(f"{s_}: {{ src: require('../../assets/garden2/growth/{p}/stage{s_:02d}.webp'), ms: {ms} }}" for s_, ms in sorted(v)) + " }," for p, v in sorted(growth.items())], "}"]

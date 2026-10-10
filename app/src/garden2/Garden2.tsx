@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Image, Pressable, Text, View } from 'react-native'
 import Animated, {
   Easing,
@@ -23,6 +23,7 @@ import {
   CARD_CARET,
   clampZoom2,
   composeLayers,
+  nextStir,
   paintedBox,
   placeCard,
   STAKE,
@@ -43,6 +44,8 @@ const SNAP_MS = 250 // R173: the zoom snaps back on release or a double tap
 /** R521: a plant's step up fades in over its old painting this long, after this pause (Claude's numbers, to tune on the device). */
 const REVEAL_MS = 1200,
   REVEAL_DELAY_MS = 400
+/** R588: a stir whose loop never reports loaded still ends this long after one cycle. */
+const STIR_SPARE_MS = 1500
 /** R585: a growth clip that never reports loaded still ends this long after its own length (the still takes over). */
 const GROW_SPARE_MS = 1500
 
@@ -125,6 +128,61 @@ export function Garden2({
   const fading = useAnimatedStyle(() => ({ opacity: fadeIn.value }))
   const revealing = (key: Plant2) => reveal?.[key] !== undefined
 
+  // R588 (his words: "the plants should animate randomly and sporadically. Sometimes on their own, some times a few together. The
+  // animation should trigger on tap"): a plant with an idle loop at its stage stands still, and plays ONE cycle when stirred: now and
+  // then by nextStir (alone, or a gust crossing left to right), and when tapped. None under reduced motion or the dark plate.
+  const canStir = LoopImage !== null && !reduced && !night
+  const [stirs, setStirs] = useState<Partial<Record<Plant2, number>>>({})
+  const stir = useCallback((p: Plant2) => setStirs((o) => (o[p] !== undefined ? o : { ...o, [p]: Date.now() })), [])
+  const settle = useCallback(
+    (p: Plant2) =>
+      setStirs((o) => {
+        const n = { ...o }
+        delete n[p]
+        return n
+      }),
+    [],
+  )
+  const stirrable = useMemo(
+    () => (canStir ? (Object.keys(stages) as Plant2[]).filter((p) => LOOP_SRC[p]?.[stages[p] ?? 0] !== undefined).sort() : []),
+    [stages, canStir],
+  )
+  const stirKey = stirrable.join(',')
+  useEffect(() => {
+    if (stirrable.length === 0) return
+    let wait: ReturnType<typeof setTimeout> | undefined
+    const gusts: ReturnType<typeof setTimeout>[] = []
+    // the quiet spell counts from the END of the last stir, and a plant that just moved sits the next one out while another can go
+    // (on the device two candidates stirred back to back read as one endless sway)
+    const next = (busyMs: number, last: Plant2[]) => {
+      const rested = stirrable.filter((p) => !last.includes(p))
+      const s = nextStir(rested.length > 0 ? rested : stirrable, Math.random)
+      if (!s) return
+      wait = setTimeout(() => {
+        gusts.length = 0
+        for (const q of s.plants) gusts.push(setTimeout(() => stir(q.plant), q.atMs))
+        const cycle = Math.max(...s.plants.map((q) => q.atMs + (LOOP_SRC[q.plant]?.[stages[q.plant] ?? 0]?.ms ?? 0)))
+        next(cycle, s.plants.map((q) => q.plant))
+      }, busyMs + s.waitMs)
+    }
+    next(0, [])
+    return () => {
+      clearTimeout(wait)
+      gusts.forEach(clearTimeout)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on which plants can stir, not the array's identity
+  }, [stirKey, stir])
+  /** A plant as it stands (its still), or playing one cycle of its idle loop while stirred. */
+  const plantNode = (l: Extract<Layer, { kind: 'plant' }>): ReactNode => {
+    const loop = canStir && stirs[l.key] !== undefined ? LOOP_SRC[l.key]?.[l.stage] : undefined
+    const box = { position: 'absolute' as const, left: l.x, top: l.y, width: l.w, height: l.h }
+    return loop ? (
+      <StirLoop key={`p-${l.key}-${stirs[l.key]}`} loop={loop} still={sourceOf(l, night)} style={box} onEnd={() => settle(l.key)} />
+    ) : (
+      <Image key={`p-${l.key}`} source={sourceOf(l, night)} fadeDuration={0} style={box} />
+    )
+  }
+
   const ps = useSharedValue(1),
     px = useSharedValue(0),
     py = useSharedValue(0)
@@ -164,8 +222,9 @@ export function Garden2({
     return () => clearTimeout(id)
   }, [label])
   const onTapAt = (x: number, y: number) => {
-    const plant = cardFor ? plantAt(stages, x / k, y / k + top) : null
-    if (!plant || label?.plant === plant) return setLabel(null)
+    const plant = plantAt(stages, x / k, y / k + top)
+    if (plant && canStir) stir(plant) // R588: a tap stirs the plant (one cycle of its loop)
+    if (!cardFor || !plant || label?.plant === plant) return setLabel(null)
     setLabel((old) => ({ plant, card: cardFor!(plant), n: (old?.n ?? 0) + 1 }))
   }
   const doubleTap = Gesture.Tap().numberOfTaps(2).onEnd(snap)
@@ -224,7 +283,7 @@ export function Garden2({
                 )
               ) : l.kind === 'plant' && revealing(l.key) && LoopImage && !reduced && !night && reveal![l.key]! > 0 && GROWTH_SRC[l.key]?.[l.stage] ? (
                 // R585 ("we do have animations, dont we?"): a plant that stepped up plays its real growth clip instead of the fade
-                <GrowPlant key={`p-${l.key}-${revealKey}`} l={l} from={reveal![l.key]!} night={night} />
+                <GrowPlant key={`p-${l.key}-${revealKey}`} l={l} from={reveal![l.key]!} night={night} after={plantNode(l)} />
               ) : l.kind === 'plant' && revealing(l.key) ? (
                 <View key={`p-${l.key}`} style={{ position: 'absolute', left: l.x, top: l.y, width: l.w, height: l.h }}>
                   <Image
@@ -238,20 +297,8 @@ export function Garden2({
                     style={[{ position: 'absolute', width: l.w, height: l.h }, fading]}
                   />
                 </View>
-              ) : l.kind === 'plant' && LoopImage && !reduced && !night && LOOP_SRC[l.key]?.[l.stage] ? (
-                // R581: a stage with an idle loop sways. R582 (his device note): the still is only the loop's placeholder, gone once the
-                // loop's first frame is in; drawn under it, it showed through the sway as a static double
-                <LoopImage
-                  key={`p-${l.key}`}
-                  source={LOOP_SRC[l.key]![l.stage]!}
-                  placeholder={sourceOf(l, night)}
-                  placeholderContentFit="fill"
-                  transition={0}
-                  autoplay
-                  contentFit="fill"
-                  cachePolicy="memory"
-                  style={{ position: 'absolute', left: l.x, top: l.y, width: l.w, height: l.h }}
-                />
+              ) : l.kind === 'plant' ? (
+                plantNode(l)
               ) : l.kind === 'fruit' && revealing(l.key) ? (
                 <Animated.Image
                   key={`f-${l.key}-${l.index}`}
@@ -261,7 +308,7 @@ export function Garden2({
                 />
               ) : (
                 <Image
-                  key={l.kind === 'plant' ? `p-${l.key}` : l.kind === 'fruit' ? `f-${l.key}-${l.index}` : l.key}
+                  key={l.kind === 'fruit' ? `f-${l.key}-${l.index}` : l.key}
                   source={sourceOf(l, night)}
                   fadeDuration={0}
                   style={{ position: 'absolute', left: l.x, top: l.y, width: l.w, height: l.h }}
@@ -359,10 +406,10 @@ export function Garden2({
 /**
  * R585: one plant's stage-up as its growth clip (the clip that ends on its stage). It shows the old still through the reveal's pause
  * (a jump of several stages fades from the old still to the one the clip starts on), plays the clip once (it loads paused during the pause), then
- * hands over to the plant as it always draws (its idle loop, else its still). The clip's first and last frames are cut to match those
+ * hands over to the plant as it always draws (`after`: its still, or a stir). The clip's first and last frames are cut to match those
  * stills (build_timelapse.py --export-growth), so the hand-offs are swaps, not fades.
  */
-function GrowPlant({ l, from, night }: { l: Extract<Layer, { kind: 'plant' }>; from: number; night: boolean }) {
+function GrowPlant({ l, from, night, after }: { l: Extract<Layer, { kind: 'plant' }>; from: number; night: boolean; after: ReactNode }) {
   const clip = GROWTH_SRC[l.key]![l.stage]!
   const start = l.stage - 1
   // the clip loads hidden and paused during the pause (a cold decode took a beat on the device: "the reveal button seems a tad buggy"),
@@ -403,11 +450,21 @@ function GrowPlant({ l, from, night }: { l: Extract<Layer, { kind: 'plant' }>; f
         )}
       </View>
     )
-  const loop = LoopImage && LOOP_SRC[l.key]?.[l.stage]
-  return loop && LoopImage ? (
-    <LoopImage source={loop} placeholder={still(l.stage)} placeholderContentFit="fill" transition={0} autoplay contentFit="fill" cachePolicy="memory" style={box} />
-  ) : (
-    <Image source={still(l.stage)} fadeDuration={0} style={box} />
+  return <>{after}</>
+}
+
+/** R588: one cycle of a plant's idle loop, from the frame it loads (the still is its placeholder, so the hand-offs are swaps). */
+function StirLoop({ loop, still, style, onEnd }: { loop: { src: number; ms: number }; still: number; style: object; onEnd: () => void }) {
+  const [loaded, setLoaded] = useState(false)
+  useEffect(() => {
+    const id = setTimeout(onEnd, loop.ms + (loaded ? 0 : STIR_SPARE_MS))
+    return () => clearTimeout(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- restarts once, when the loop's frames are in
+  }, [loaded, loop.ms])
+  if (!LoopImage) return null
+  return (
+    <LoopImage source={loop.src} placeholder={still} placeholderContentFit="fill" transition={0} autoplay contentFit="fill" cachePolicy="memory"
+      onLoad={() => setLoaded(true)} style={style} />
   )
 }
 
