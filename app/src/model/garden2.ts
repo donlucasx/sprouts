@@ -253,6 +253,27 @@ export function paintedBox(p: Plant2, s: number): { x0: number; x1: number; y0: 
   return { x0: b.x + c0 * HIT_CELL, x1: b.x + (c1 + 1) * HIT_CELL, y0: b.y + r0 * HIT_CELL, y1: b.y + (r1 + 1) * HIT_CELL }
 }
 
+/** R588: a quiet spell between stirs is this long (ms, uniform); a gust moves 2 or 3 plants this often; this far apart, left to right. */
+export const STIR_WAIT: readonly [number, number] = [5000, 14000]
+export const GUST_CHANCE = 0.4,
+  GUST_STAGGER_MS = 350
+/**
+ * R588 (10-10, his words: "the plants should animate randomly and sporadically. Sometimes on their own, some times a few together"):
+ * the next stir among the plants that have an idle loop at their stage, from `rand` (Math.random in the app). After `waitMs`, one plant
+ * plays one cycle of its loop, or a gust plays 2 or 3 of them, left to right `GUST_STAGGER_MS` apart, like wind crossing the garden.
+ * Nothing to stir = nothing. Claude's numbers, to tune on the device.
+ */
+export function nextStir(candidates: readonly Plant2[], rand: () => number): { waitMs: number; plants: { plant: Plant2; atMs: number }[] } | null {
+  if (candidates.length === 0) return null
+  const waitMs = Math.round(STIR_WAIT[0] + rand() * (STIR_WAIT[1] - STIR_WAIT[0]))
+  const pool = [...candidates]
+  const n = candidates.length > 1 && rand() < GUST_CHANCE ? Math.min(pool.length, 2 + (rand() < 0.5 ? 0 : 1)) : 1
+  const picked: Plant2[] = []
+  for (let i = 0; i < n; i++) picked.push(pool.splice(Math.floor(rand() * pool.length) % pool.length, 1)[0]!)
+  picked.sort((a, b) => PLANTS[a].x - PLANTS[b].x)
+  return { waitMs, plants: picked.map((plant, i) => ({ plant, atMs: i * GUST_STAGGER_MS })) }
+}
+
 /** The plant card's pointer, view px; the card keeps this far from the view's edges. */
 export const CARD_CARET = 8,
   CARD_EDGE = 8

@@ -114,13 +114,14 @@ export const STAGE_SRC: Record<Plant2, Record<number, number>> = {
   },
 }
 
-/** R581: each plant's idle sway loops (animated WebP with alpha, its stage box), by stage; a stage without one shows its still. */
-export const LOOP_SRC: Partial<Record<Plant2, Record<number, number>>> = {
-  azalea: { 2: require('../../assets/garden2/loops/azalea/stage02.webp'), 3: require('../../assets/garden2/loops/azalea/stage03.webp'), 4: require('../../assets/garden2/loops/azalea/stage04.webp') },
-  mandarin: { 2: require('../../assets/garden2/loops/mandarin/stage02.webp') },
-  maple: { 2: require('../../assets/garden2/loops/maple/stage02.webp'), 3: require('../../assets/garden2/loops/maple/stage03.webp'), 4: require('../../assets/garden2/loops/maple/stage04.webp') },
-  orchid: { 3: require('../../assets/garden2/loops/orchid/stage03.webp'), 4: require('../../assets/garden2/loops/orchid/stage04.webp'), 14: require('../../assets/garden2/loops/orchid/stage14.webp') },
-  store: { 2: require('../../assets/garden2/loops/store/stage02.webp'), 3: require('../../assets/garden2/loops/store/stage03.webp') },
+/** R581: each plant's idle sway loop (animated WebP with alpha, its stage box) by stage, with one cycle's length; R588 plays a
+ *  cycle now and then and on a tap. A stage without one shows its still. */
+export const LOOP_SRC: Partial<Record<Plant2, Record<number, { src: number; ms: number }>>> = {
+  azalea: { 2: { src: require('../../assets/garden2/loops/azalea/stage02.webp'), ms: 5063 }, 3: { src: require('../../assets/garden2/loops/azalea/stage03.webp'), ms: 5063 }, 4: { src: require('../../assets/garden2/loops/azalea/stage04.webp'), ms: 5063 } },
+  mandarin: { 2: { src: require('../../assets/garden2/loops/mandarin/stage02.webp'), ms: 5063 } },
+  maple: { 2: { src: require('../../assets/garden2/loops/maple/stage02.webp'), ms: 4731 }, 3: { src: require('../../assets/garden2/loops/maple/stage03.webp'), ms: 5063 }, 4: { src: require('../../assets/garden2/loops/maple/stage04.webp'), ms: 5063 } },
+  orchid: { 3: { src: require('../../assets/garden2/loops/orchid/stage03.webp'), ms: 5063 }, 4: { src: require('../../assets/garden2/loops/orchid/stage04.webp'), ms: 5063 }, 14: { src: require('../../assets/garden2/loops/orchid/stage14.webp'), ms: 5063 } },
+  store: { 2: { src: require('../../assets/garden2/loops/store/stage02.webp'), ms: 5063 }, 3: { src: require('../../assets/garden2/loops/store/stage03.webp'), ms: 5063 } },
 }
 
 /** R585: each plant's stage-up growth clip (one-shot animated WebP, its stage box) by the stage it ENDS on, with its length. */
