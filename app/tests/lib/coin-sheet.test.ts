@@ -44,7 +44,19 @@ describe('coinSheet (R564)', () => {
     const s = coinSheet(me, h!)
     expect(s.lines[0]).toEqual({ label: 'Put in', value: '$2.03' })
     expect(s.plantings).toHaveLength(1)
-    expect(s.withdrawKey).toBeNull()
+    expect(s.withdrawKey).toBeUndefined()
     expect(s.walletNote).toMatch(/your wallet app/)
+  })
+})
+
+describe('coinSheet for a coin at two venues (R568)', () => {
+  it('lists each venue with its share; Withdraw opens the list', () => {
+    const part = (venue: string, where: string, usd: string) => ({ key: `USDC_LEND:${venue}`, asset: 'USDC_LEND', venue, amount: '', qty: '', usd, locked: false, note: null, lead: false, earnedUsd: 0, putInCents: 50, where }) as never
+    const row = { key: 'USDC_LEND', asset: 'USDC_LEND', venue: null, amount: '', qty: '1.41 USDC', usd: '$1.41', locked: false, note: null, lead: false, earnedUsd: 0.01, putInCents: 140, where: 'x',
+      parts: [part('kamino_klend', 'Kamino 6.2%', '$0.90'), part('jupiter_lend', 'Jupiter 5.1%', '$0.51')] } as never
+    const s = coinSheet(me, row)
+    expect(s.lines).toEqual([{ label: 'Put in', value: '$1.40' }, { label: 'Earned', value: '+$0.01', positive: true }, { label: 'Kamino 6.2%', value: '$0.90' }, { label: 'Jupiter 5.1%', value: '$0.51' }])
+    expect(s.withdrawKey).toBeNull()
+    expect(s.walletNote).toBeNull()
   })
 })

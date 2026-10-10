@@ -15,8 +15,9 @@ export type CoinSheet = {
   lines: { label: string; value: string; positive?: boolean }[]
   /** This coin's last plantings, newest first, at most three ("Oct 7: $1.00 became 0.0085 stORE"). */
   plantings: string[]
-  /** Withdraw opens on this row (its withdraw key), or null when the coin sits in the wallet and the sheet says so instead. */
-  withdrawKey: string | null
+  /** Withdraw opens on this row (its withdraw key), on the list (null: a coin at several venues, R568), or is absent (undefined)
+   * when the coin sits in the wallet and the sheet says so instead. */
+  withdrawKey: string | null | undefined
   walletNote: string | null
 }
 
@@ -34,13 +35,15 @@ export function coinSheet(me: Pick<MeResponse, 'pot' | 'basket' | 'holdings' | '
   const lines: CoinSheet['lines'] = []
   if (putIn !== null) lines.push({ label: 'Put in', value: formatUsd(putIn) })
   if (earned) lines.push({ label: 'Earned', value: earned.text, positive: earned.positive })
-  if (row.where) lines.push({ label: 'Where', value: row.where })
+  if (row.parts) for (const p of row.parts) lines.push({ label: p.where ?? '', value: p.usd ?? p.qty })   // R568: each venue, its share
+  else if (row.where) lines.push({ label: 'Where', value: row.where })
   const plantings = mine.slice(0, 3).map((p) => {
     const day = new Date(p.ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
     return `${day}: ${plantedWhat({ usdcInCents: p.usdcInCents, asset: row.asset, amountOutRaw: p.amountOutRaw, usdPrice: null, venue: p.venue })}`
   })
+  if (row.parts) return { lines, plantings, withdrawKey: null, walletNote: null }   // R568: Withdraw opens the list, one row per venue
   const w = withdrawRows(me, now).find((r) => r.key === row.key)
   return w?.opens
     ? { lines, plantings, withdrawKey: w.key, walletNote: null }
-    : { lines, plantings, withdrawKey: null, walletNote: 'In your wallet. Trade or send it from your wallet app.' }
+    : { lines, plantings, withdrawKey: undefined, walletNote: 'In your wallet. Trade or send it from your wallet app.' }
 }
