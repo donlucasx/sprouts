@@ -1,15 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { SPLASH, splashHoldMs, splashScene } from '@/lib/splash'
+import { fadeAfterGrownMs, GROWN_HOLD_MS, SPLASH, SPLASH_CAP_MS } from '@/lib/splash'
 import { SLOGAN } from '@/lib/slogan'
 
 describe("the splash (R282: one painted picture + one line, about 1.5 s, every launch)", () => {
-  it("a grown garden of all six legs with nothing that asks for a tap: no stakes, seeds, swelling, rings or buds", () => {
-    const s = splashScene()
-    expect(s.parts.flatMap((p) => (p.kind === 'plant' ? [p.species] : [])).sort()).toEqual(['blueberry', 'mandarin', 'snake', 'spruce', 'succulent', 'sunflower'])
-    expect(s.parts.some((p) => p.kind === 'sign' || p.kind === 'seed' || p.kind === 'swelling' || p.kind === 'ring')).toBe(false)
-    expect(s.parts.some((p) => p.kind === 'sprout' && p.bud)).toBe(false)
-    expect([s.unrevealed, s.canReady]).toEqual([0, false])
-  })
   it("one plain line (the slogan, R319), short, no dashes; on screen about a second and a half", () => {
     expect(SPLASH.line).toBe(SLOGAN)
     expect(SPLASH.line.length).toBeLessThanOrEqual(70)
@@ -22,20 +15,13 @@ describe("the splash (R282: one painted picture + one line, about 1.5 s, every l
   })
 })
 
-describe("the hold counts from the picture being in; a picture that never comes is cut at the cap", () => {
-  it("in at once: held 2.5 s from then", () => {
-    expect(splashHoldMs(0, 0)).toBe(SPLASH.ms)
+describe("the re-open loading screen's timing (R574)", () => {
+  it("fades a short hold after the tree has grown; under reduced motion (the grown tree at once) R282's 2.5 s", () => {
+    expect(fadeAfterGrownMs(false)).toBe(GROWN_HOLD_MS)
+    expect(fadeAfterGrownMs(true)).toBe(SPLASH.ms)
   })
-  it("in late (2.2 s): held 2.5 s from then", () => {
-    expect(splashHoldMs(2200, 2200)).toBe(SPLASH.ms)
-    expect(splashHoldMs(2200, 3000)).toBe(SPLASH.ms - 800)
-  })
-  it("never in: fades at the cap, no further hold; one that lands after the cap changes nothing", () => {
-    expect(splashHoldMs(null, 0)).toBe(SPLASH.capMs)
-    expect(splashHoldMs(null, SPLASH.capMs)).toBe(0)
-    expect(splashHoldMs(4200, 4200)).toBe(0)
-  })
-  it("the cap leaves room for the hold and the fade", () => {
-    expect(SPLASH.capMs).toBeGreaterThanOrEqual(SPLASH.ms + SPLASH.fadeMs)
+  it("the cap is a backstop only: later than either fade (s6 review C4: it used to replace the reduced-motion one)", () => {
+    expect(SPLASH_CAP_MS).toBeGreaterThan(fadeAfterGrownMs(true) + SPLASH.fadeMs)
+    expect(SPLASH_CAP_MS).toBeGreaterThan(3500 + GROWN_HOLD_MS)   // GrowSplash GROW_MS + the hold
   })
 })

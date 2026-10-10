@@ -52,6 +52,9 @@ const RECEIPT_SLOP = spacing.sm
 
 /** Dev only (the dev menu's split switch, R568): each lending position shown as two halves, one at each venue, so the grouped row can
  * be seen on a device with one real position. Nothing is sent anywhere. */
+/** R587: how far a plant card may hang below the garden, over the saved line (Garden2 cardOverflow). */
+const CARD_OVERFLOW = 120
+
 function devSplitLending(me: MeResponse): MeResponse {
   const other = { kamino_klend: 'jupiter_lend', jupiter_lend: 'kamino_klend' } as const
   const half = (p: LendingPosition): LendingPosition[] => {
@@ -198,7 +201,8 @@ export default function Home() {
   const skrUsd = me.pot.skrUsd
   const name = me.user.skrName
   const staked = BigInt(me.pot.skrStakedRaw)
-  const value = valueBlock(gardenTotals(me), staked)
+  const totals = gardenTotals(me)
+  const value = valueBlock(totals, staked)
   const pause = pauseState(me.wallets)
   // R96, R184 and R186: the one line and the can decided together, so they always agree; the can is in colour only while a bud waits.
   // R186: the Next planting row draws inside the garden (directly under it, the can at its bar's end). R199: the line rides in that
@@ -311,7 +315,7 @@ export default function Home() {
             {value.side.map((t) => (
               <ThemedText key={t.label} variant="label" tone="secondary" numeric numberOfLines={1}>
                 {`${t.label} `}
-                <ThemedText variant="label" numeric style={t.label === 'Earned' ? { color: colors.success } : undefined /* R563 */}>
+                <ThemedText variant="label" numeric style={t.label === 'Earned' && earnedLabel(totals.earnedUsd)?.positive ? { color: colors.success } : undefined /* R563: green above zero, as the rows (s6 review K5) */}>
                   {t.value}
                 </ThemedText>
               </ThemedText>
@@ -328,7 +332,11 @@ export default function Home() {
         <>
           {/* Full bleed in light, and in dark once a dark plate exists (R529); else a paper card inside the gutters (Garden2.tsx) */}
           {/* R590 (his note: "reduce the margin above the garden a tad"): half the screen's gap taken back above it, and FRAME_PAD 48 -> 24 */}
-          <View style={{ marginHorizontal: garden2Bleeds(dark) ? -spacing.edge : 0, marginTop: -spacing.sm, zIndex: 2 }}>
+          {/* s6 review K1: this wrapper's bounds reach the card's overhang too (Garden2's root gives it back), taps elsewhere pass through */}
+          <View
+            pointerEvents="box-none"
+            style={{ marginHorizontal: garden2Bleeds(dark) ? -spacing.edge : 0, marginTop: -spacing.sm, paddingBottom: CARD_OVERFLOW, marginBottom: -CARD_OVERFLOW, zIndex: 2 }}
+          >
             <Garden2
               stages={stages}
               extras={extras2}
@@ -336,7 +344,7 @@ export default function Home() {
               width={garden2Bleeds(dark) ? screenW : screenW - 2 * spacing.edge}
               cardFor={(p) => ({ ...plantCard(devSplit ? devSplitLending(me) : me, ASSET_OF_PLANT[p]), icon: COIN_LOGO[ASSET_OF_PLANT[p]] })}
               onCard={(c) => c.row && setSheetRow(c.row)}
-              cardOverflow={120}
+              cardOverflow={CARD_OVERFLOW}
             />
           </View>
           <NextPlanting row={nextRow} pendingCents={me.nextPlanting.pendingCents} thresholdCents={me.nextPlanting.thresholdCents} />
@@ -442,6 +450,7 @@ export default function Home() {
                     gap: 4,
                     marginLeft: 40 + spacing.md,
                     paddingVertical: spacing.xs + 2,
+                    minHeight: TARGET, // s6 review C5/K8: each opens a venue's Withdraw; the app's 48 dp touch floor
                   })}
                 >
                   <MaterialCommunityIcons name="bank-outline" size={12} color={colors.textSecondary} />
