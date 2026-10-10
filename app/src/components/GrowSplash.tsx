@@ -79,11 +79,13 @@ export function GrowSplash({ onEnd }: { onEnd?: () => void }) {
           <Frame key={i} source={f} index={i + 1} count={frames.length} p={p} side={side} />
         ))}
       </View>
-      <HorizontalLockup wordSize={42} />
-      {/* R575: the lockup bigger (42, was 30) and the slogan lower, set apart from it */}
-      <ThemedText variant="heading" style={{ textAlign: 'center', marginTop: spacing.xl }}>
+      {/* R577: the tree, the line just under it (they read together), then the lockup set apart below, a signature */}
+      <ThemedText variant="heading" style={{ textAlign: 'center', marginTop: -spacing.xs }}>
         {LOADING_LINE}
       </ThemedText>
+      <View style={{ marginTop: spacing.xxl + spacing.lg }}>
+        <HorizontalLockup wordSize={42} />
+      </View>
     </View>
   )
 }
