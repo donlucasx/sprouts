@@ -39,14 +39,18 @@ export function applyRulesTo(
 
 /** The whole garden in dollars (R146): the SKR pot at its price plus every wallet coin; earned is the staking and pool growth; put in is the dollars planted. Unknown without an SKR price. */
 export type GardenTotals = { valueUsd: number | null; earnedUsd: number | null; putInCents: number }
-export function gardenTotals(me: Pick<MeResponse, 'pot' | 'holdings' | 'history'>): GardenTotals {
-  // R159: put in is what is still held. SKR: the plantings' dollars scaled by the principal still staked (the API subtracts
-  // principal taken out from skrPutInRaw); the wallet coins: the API's pro-rated putInCents.
+/** R159: SKR's put in is what is still held: its plantings' dollars scaled by the principal still staked (the API subtracts principal
+ * taken out from skrPutInRaw). Home's total and the SKR coin sheet both read this one (s6 review C2: the sheet summed every planting). */
+export function skrPutInCents(me: Pick<MeResponse, 'pot' | 'history'>): number {
   const skrPut = BigInt(me.pot.skrPutInRaw)
   const skrTaken = BigInt(me.pot.skrPrincipalPickedRaw)
   const skrKept = skrPut + skrTaken > 0n ? Number(skrPut) / Number(skrPut + skrTaken) : 1
   const skrCents = me.history.plantings.filter((p) => p.asset === 'SKR').reduce((s, p) => s + p.usdcInCents, 0)
-  const putInCents = Math.round(skrCents * skrKept) + me.holdings.reduce((s, h) => s + h.putInCents, 0)
+  return Math.round(skrCents * skrKept)
+}
+export function gardenTotals(me: Pick<MeResponse, 'pot' | 'holdings' | 'history'>): GardenTotals {
+  // R159: put in is what is still held; the wallet coins: the API's pro-rated putInCents
+  const putInCents = skrPutInCents(me) + me.holdings.reduce((s, h) => s + h.putInCents, 0)
   const skrUsd = me.pot.skrUsd
   if (skrUsd === null) return { valueUsd: null, earnedUsd: null, putInCents }
   const skr = (raw: string) => (Number(raw) / 10 ** DECIMALS.SKR) * skrUsd
