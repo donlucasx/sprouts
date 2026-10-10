@@ -29,6 +29,14 @@ describe("GET /api/activity, lending (contracts 5.7)", () => {
       expect.objectContaining({ asset: "JitoSOL", venue: null, receiptOutRaw: null, underlyingOutRaw: null }),
     ]);
   });
+  it("R583 at the route (s6 review C8): a legacy planting's leg reads what was pulled (the 3c fee added back); a new one is untouched", async () => {
+    const leg = { asset: "USDC_LEND" as const, venue: "kamino_klend" as const, amountOutRaw: 1n, staked: false, feeAmountRaw: 0n, feeCents: 0, rateAtPlanting: 1 };
+    await repo.insertPlanting({ userPubkey: U, walletPubkey: "W", usdcPulledCents: 203, networkFeeCents: 3, status: "confirmed", aiLine: null, signature: "legacy", ts: new Date("2026-10-05T00:00:00Z") }, [{ ...leg, usdcInCents: 200 }]);
+    await repo.insertPlanting({ userPubkey: U, walletPubkey: "W", usdcPulledCents: 150, networkFeeCents: 0, status: "confirmed", aiLine: null, signature: "new" }, [{ ...leg, usdcInCents: 150 }]);
+    const body = await get();
+    const bySig = Object.fromEntries(body.plantings.map((p: { signature: string; legs: { usdcInCents: number }[] }) => [p.signature, p.legs[0]!.usdcInCents]));
+    expect(bySig).toEqual({ legacy: 203, new: 150 });
+  });
   it("R359: a lend_withdrawn row carries whole (false for a part) when the event recorded it, and no key when it did not", async () => {
     await repo.addEvent({ userPubkey: U, walletPubkey: null, kind: "lend_withdrawn", detail: { asset: "USDC_LEND", venue: "jupiter_lend", receiptRaw: "5", underlyingRaw: "6", signature: "p1", whole: false } });
     await repo.addEvent({ userPubkey: U, walletPubkey: null, kind: "lend_withdrawn", detail: { asset: "USDC_LEND", venue: "jupiter_lend", receiptRaw: "5", underlyingRaw: "6", signature: "p0" } });

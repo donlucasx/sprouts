@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useIsFocused } from 'expo-router'
 import { Image, Pressable, Text, View } from 'react-native'
 import Animated, {
   Easing,
@@ -115,25 +116,35 @@ export function Garden2({
 
   // R521: one fade for every revealing plant (its fruit too, and its stake when the plant is new); none under reduced motion
   const revealKey = JSON.stringify(reveal ?? {})
-  const fadeIn = useSharedValue(1)
-  useEffect(() => {
-    if (!reveal || Object.keys(reveal).length === 0 || reduced) {
+  const pending = !!reveal && Object.keys(reveal).length > 0 && !reduced
+  const fadeIn = useSharedValue(pending ? 0 : 1)
+  // s6 review K2/C3: once the fade is over, a faded plant draws as every plant does (plantNode: its still, stirs on tap and by the
+  // scheduler); before, it kept both stills stacked and could never stir again
+  const [fadedKey, setFadedKey] = useState('')
+  const fadeDone = !pending || fadedKey === revealKey
+  // s6 review K3: set before paint (a layout effect), so the new stage never shows for a frame before the fade starts from the old
+  useLayoutEffect(() => {
+    if (!pending) {
       fadeIn.value = 1
       return
     }
     fadeIn.value = 0
     fadeIn.value = withDelay(REVEAL_DELAY_MS, withTiming(1, { duration: REVEAL_MS, easing: Easing.inOut(Easing.quad) }))
+    const id = setTimeout(() => setFadedKey(revealKey), REVEAL_DELAY_MS + REVEAL_MS)
+    return () => clearTimeout(id)
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the reveal's content, not its identity
-  }, [revealKey, reduced])
+  }, [revealKey, pending])
   const fading = useAnimatedStyle(() => ({ opacity: fadeIn.value }))
   const revealing = (key: Plant2) => reveal?.[key] !== undefined
 
   // R588 (his words: "the plants should animate randomly and sporadically. Sometimes on their own, some times a few together. The
   // animation should trigger on tap"): a plant with an idle loop at its stage stands still, and plays ONE cycle when stirred: now and
   // then by nextStir (alone, or a gust crossing left to right), and when tapped. None under reduced motion or the dark plate.
-  const canStir = LoopImage !== null && !reduced && !night
+  // s6 review C7: only while this screen is in front (no stirs on other tabs or under a pushed screen)
+  const focused = useIsFocused()
+  const canStir = LoopImage !== null && !reduced && !night && focused
   const [stirs, setStirs] = useState<Partial<Record<Plant2, number>>>({})
-  const stir = useCallback((p: Plant2) => setStirs((o) => (o[p] !== undefined ? o : { ...o, [p]: Date.now() })), [])
+  const stirRaw = useCallback((p: Plant2) => setStirs((o) => (o[p] !== undefined ? o : { ...o, [p]: Date.now() })), [])
   const settle = useCallback(
     (p: Plant2) =>
       setStirs((o) => {
@@ -148,6 +159,11 @@ export function Garden2({
     [stages, canStir],
   )
   const stirKey = stirrable.join(',')
+  // s6 review K2: only a plant that can play a loop now is stirred (else its entry never settled and swallowed later taps)
+  const stir = useCallback((p: Plant2) => {
+    if (stirrable.includes(p)) stirRaw(p)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on which plants can stir
+  }, [stirKey, stirRaw])
   useEffect(() => {
     if (stirrable.length === 0) return
     let wait: ReturnType<typeof setTimeout> | undefined
@@ -258,7 +274,9 @@ export function Garden2({
   })()
 
   return (
-    <View style={{ width, height: h }}>
+    // s6 review K1: Android sends a touch only to views whose bounds hold it, so the root reaches `cardOverflow` past the garden (a
+    // card hung below it keeps its Details tappable) and gives that room back below; box-none lets taps there reach what is under it
+    <View pointerEvents="box-none" style={{ width, height: h + cardOverflow, marginBottom: -cardOverflow }}>
       <GestureDetector gesture={gesture}>
         <View
           style={{
@@ -284,7 +302,7 @@ export function Garden2({
               ) : l.kind === 'plant' && revealing(l.key) && LoopImage && !reduced && !night && reveal![l.key]! > 0 && GROWTH_SRC[l.key]?.[l.stage] ? (
                 // R585 ("we do have animations, dont we?"): a plant that stepped up plays its real growth clip instead of the fade
                 <GrowPlant key={`p-${l.key}-${revealKey}`} l={l} from={reveal![l.key]!} night={night} after={plantNode(l)} />
-              ) : l.kind === 'plant' && revealing(l.key) ? (
+              ) : l.kind === 'plant' && revealing(l.key) && !fadeDone ? (
                 <View key={`p-${l.key}`} style={{ position: 'absolute', left: l.x, top: l.y, width: l.w, height: l.h }}>
                   <Image
                     source={sourceOf({ ...l, stage: reveal![l.key]! }, night)}
@@ -440,7 +458,8 @@ function GrowPlant({ l, from, night, after }: { l: Extract<Layer, { kind: 'plant
   if (!done && LoopImage)
     return (
       <View style={box}>
-        <LoopImage ref={ref} source={clip.src} transition={0} autoplay={false} contentFit="fill" cachePolicy="memory"
+        {/* s6 review K7: a one-shot clip is never replayed from cache; kept out of the shared memory cache */}
+        <LoopImage ref={ref} source={clip.src} transition={0} autoplay={false} contentFit="fill" cachePolicy="none"
           onLoad={() => setLoaded(true)} style={{ ...fill, opacity: playing ? 1 : 0 }} />
         {playing ? null : (
           <>

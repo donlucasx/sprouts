@@ -2,17 +2,13 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import Animated, { runOnJS, useAnimatedStyle, useReducedMotion, useSharedValue, withTiming } from 'react-native-reanimated'
 import { StatusBar } from 'expo-status-bar'
 import { GrowSplash } from './GrowSplash'
-import { SPLASH } from '@/lib/splash'
+import { fadeAfterGrownMs, SPLASH, SPLASH_CAP_MS } from '@/lib/splash'
 import { markSplashLifted } from '@/lib/splash-state'
 import { LightOnly, palette, spacing } from '@/theme'
 
-/** R574: once the tree has grown, this long on screen before the fade; and the most it ever stays (a clip that never plays). */
-const GROWN_HOLD_MS = 400,
-  CAP_MS = 7000
-
 /**
  * The re-open loading screen (R282: over the app on every launch; R573/R574: one tree growing gently on the raked sand, the horizontal
- * lockup and the slogan under it). It fades GROWN_HOLD_MS after the tree has grown, or at CAP_MS whatever happens, then unmounts.
+ * lockup and the slogan under it). It fades GROWN_HOLD_MS after the tree has grown, or at SPLASH_CAP_MS whatever happens (lib/splash.ts), then unmounts.
  * Reduced motion: the grown tree at once, its usual hold, and the fade becomes a cut.
  */
 export function Splash() {
@@ -38,13 +34,13 @@ export function Splash() {
   // the cap has its own timer: the grown tree's sooner fade (set first under reduced motion, the child's effect running before this
   // one) must not be replaced by it (s6 review C4: reduced motion held the screen 7 s)
   useEffect(() => {
-    cap.current = setTimeout(fadeOut, CAP_MS)
+    cap.current = setTimeout(fadeOut, SPLASH_CAP_MS)
     return () => {
       if (cap.current) clearTimeout(cap.current)
       if (timer.current) clearTimeout(timer.current)
     }
   }, [fadeOut])
-  const onGrown = useCallback(() => fadeIn(reduced ? SPLASH.ms : GROWN_HOLD_MS), [fadeIn, reduced])
+  const onGrown = useCallback(() => fadeIn(fadeAfterGrownMs(reduced)), [fadeIn, reduced])
   const fade = useAnimatedStyle(() => ({ opacity: opacity.value }))
   if (gone) return null
   return (
