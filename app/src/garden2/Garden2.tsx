@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Image, Text, View } from 'react-native'
+import { Image, Pressable, Text, View } from 'react-native'
 import Animated, {
   Easing,
   FadeIn,
@@ -15,12 +15,16 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import { ThemedText } from '@/components/ThemedText'
 import { FONT, GARDEN_INK, radius, spacing, useTheme } from '@/theme'
 import { pinchOffset } from '@/model/motion'
+import type { PlantCard } from '@/lib/plant-card'
 import { CANVAS } from './layout'
 import { LoopImage } from './loop-image'
 import { DECOR_SRC, FRUIT_SRC, GROWTH_SRC, LOOP_SRC, OVERLAY_SRC, OVERLAY_SRC_DARK, PLATE, PLATE_DARK, STAGE_SRC, STAGE_SRC_DARK } from './sources'
 import {
+  CARD_CARET,
   clampZoom2,
   composeLayers,
+  paintedBox,
+  placeCard,
   STAKE,
   frameTop,
   plantAt,
@@ -32,9 +36,9 @@ import {
   type Stages,
 } from '@/model/garden2'
 
-/** R250's label timing, kept: a tapped plant's label shows this long, this wide. */
-const LABEL_MS = 4500,
-  LABEL_W = 260
+/** R250's label timing: a tapped plant's card shows this long (R587: longer, it now has numbers to read and a Details to tap). */
+const LABEL_MS = 6000,
+  CARD_MAX_W = 270
 const SNAP_MS = 250 // R173: the zoom snaps back on release or a double tap
 /** R521: a plant's step up fades in over its old painting this long, after this pause (Claude's numbers, to tune on the device). */
 const REVEAL_MS = 1200,
@@ -75,7 +79,9 @@ export function Garden2({
   extras,
   reveal,
   width,
-  labelFor,
+  cardFor,
+  onCard,
+  cardOverflow = 0,
 }: {
   stages: Stages
   /** R533 the trees' earned fruit/flowers, R535 the basket while SKR waits out its unstake; nothing extra when absent. */
@@ -83,7 +89,13 @@ export function Garden2({
   /** R521: plants that stepped up since last shown, with the stage they showed; each fades from that to now (model revealFrom). */
   reveal?: Partial<Stages>
   width: number
-  labelFor?: (plant: Plant2) => string[]
+  /** R587: what a tapped plant's card says (its coin's numbers, plantCard) and the coin's logo; none = taps do nothing. */
+  cardFor?: (plant: Plant2) => PlantCard & { icon?: number }
+  /** R587: the card's Details (Home opens the coin's sheet); absent, or the card has no row, = no Details. */
+  onCard?: (card: PlantCard) => void
+  /** R587: how far a card may hang past the garden's bottom, over what follows it (Home: the saved line); the parent keeps the garden
+   *  above its later siblings (zIndex) so the card draws on top. */
+  cardOverflow?: number
 }) {
   const { colors, dark } = useTheme()
   // R530 (option B): dark draws the light plate full bleed and square; a dark plate, if one is ever exported, replaces it (R529 plumbing).
@@ -144,17 +156,17 @@ export function Garden2({
     })
     .onEnd(snap)
 
-  const [label, setLabel] = useState<{ plant: Plant2; lines: string[]; n: number; x: number } | null>(null)
+  const [label, setLabel] = useState<{ plant: Plant2; card: PlantCard & { icon?: number }; n: number } | null>(null)
+  const [cardH, setCardH] = useState(84) // measured on layout; a first guess for the first frame
   useEffect(() => {
     if (!label) return
     const id = setTimeout(() => setLabel(null), LABEL_MS)
     return () => clearTimeout(id)
   }, [label])
   const onTapAt = (x: number, y: number) => {
-    const plant = labelFor ? plantAt(stages, x / k, y / k + top) : null
+    const plant = cardFor ? plantAt(stages, x / k, y / k + top) : null
     if (!plant || label?.plant === plant) return setLabel(null)
-    const l = layers.find((q) => q.kind === 'plant' && q.key === plant)
-    setLabel((old) => ({ plant, lines: labelFor!(plant), n: (old?.n ?? 0) + 1, x: l ? l.x + l.w / 2 : x }))
+    setLabel((old) => ({ plant, card: cardFor!(plant), n: (old?.n ?? 0) + 1 }))
   }
   const doubleTap = Gesture.Tap().numberOfTaps(2).onEnd(snap)
   const singleTap = Gesture.Tap()
@@ -166,6 +178,25 @@ export function Garden2({
   const zoomed = useAnimatedStyle(() => ({
     transform: [{ translateX: px.value }, { translateY: py.value }, { scale: ps.value }],
   }))
+
+  // R587: the card centred over the tapped plant's paint, pointing at it (model placeCard)
+  const cardW = Math.min(CARD_MAX_W, width - 16)
+  const place = (() => {
+    if (!label) return null
+    const box = paintedBox(label.plant, stages[label.plant] ?? 0)
+    const stake = layers.find((q) => q.kind === 'stake' && q.key === label.plant)
+    if (!box) return null
+    const y1 = (box.y1 - top) * k
+    return placeCard({
+      plant: { x0: box.x0 * k, x1: box.x1 * k, y0: (box.y0 - top) * k },
+      stakeBottom: stake ? stake.y + stake.h : y1,
+      viewW: width,
+      viewH: h,
+      cardW,
+      cardH,
+      below: cardOverflow,
+    })
+  })()
 
   return (
     <View style={{ width, height: h }}>
@@ -240,34 +271,85 @@ export function Garden2({
           </Animated.View>
         </View>
       </GestureDetector>
-      {label ? (
+      {label && place ? (
         <Animated.View
           key={label.n}
           entering={reduced ? undefined : FadeIn.duration(160)}
           exiting={reduced ? undefined : FadeOut.duration(160)}
-          pointerEvents="none"
-          style={{
-            position: 'absolute',
-            top: spacing.sm,
-            left: Math.min(Math.max(label.x - LABEL_W / 2, 0), Math.max(0, width - LABEL_W)),
-            width: LABEL_W,
-            backgroundColor: colors.surface,
-            borderRadius: radius.md,
-            paddingVertical: spacing.sm,
-            paddingHorizontal: spacing.md,
-            gap: 2,
-            elevation: 3,
-            shadowColor: '#000',
-            shadowOpacity: 0.12,
-            shadowRadius: 6,
-            shadowOffset: { width: 0, height: 2 },
-          }}
+          onLayout={(e) => setCardH(Math.round(e.nativeEvent.layout.height))}
+          style={{ position: 'absolute', top: place.top, left: place.left, width: cardW }}
         >
-          {label.lines.map((t, i) => (
-            <ThemedText key={i} variant={i === 0 ? 'label' : 'caption'} tone={i === 0 ? undefined : 'secondary'}>
-              {t}
-            </ThemedText>
-          ))}
+          <View
+            pointerEvents="none"
+            style={{
+              position: 'absolute',
+              left: place.caretX - CARD_CARET,
+              ...(place.caret === 'down' ? { bottom: -CARD_CARET + 1 } : { top: -CARD_CARET + 1 }),
+              width: 0,
+              height: 0,
+              borderLeftWidth: CARD_CARET,
+              borderRightWidth: CARD_CARET,
+              borderLeftColor: 'transparent',
+              borderRightColor: 'transparent',
+              ...(place.caret === 'down'
+                ? { borderTopWidth: CARD_CARET, borderTopColor: colors.surface }
+                : { borderBottomWidth: CARD_CARET, borderBottomColor: colors.surface }),
+            }}
+          />
+          <Pressable
+            disabled={!label.card.row || !onCard}
+            onPress={() => (onCard?.(label.card), setLabel(null))}
+            accessibilityRole={label.card.row && onCard ? 'button' : undefined}
+            style={({ pressed }) => ({
+              opacity: pressed ? 0.8 : 1,
+              backgroundColor: colors.surface,
+              borderRadius: radius.md,
+              paddingVertical: spacing.sm,
+              paddingHorizontal: spacing.md,
+              gap: spacing.xs,
+              elevation: 3,
+              shadowColor: '#000',
+              shadowOpacity: 0.12,
+              shadowRadius: 6,
+              shadowOffset: { width: 0, height: 2 },
+            })}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+              {label.card.icon !== undefined ? <Image source={label.card.icon} style={{ width: 28, height: 28, borderRadius: 14 }} /> : null}
+              <View style={{ flex: 1, gap: 1 }}>
+                <ThemedText variant="label" numberOfLines={1}>
+                  {label.card.title}
+                </ThemedText>
+                {label.card.where ? (
+                  <ThemedText variant="caption" tone="secondary" numberOfLines={2}>
+                    {label.card.where}
+                  </ThemedText>
+                ) : null}
+              </View>
+              {label.card.value ? (
+                <View style={{ alignItems: 'flex-end', gap: 1, flexShrink: 0 }}>
+                  <ThemedText variant="label" numeric>
+                    {label.card.value}
+                  </ThemedText>
+                  {label.card.earned ? (
+                    <ThemedText variant="caption" numeric style={{ color: label.card.earned.positive ? colors.success : colors.textSecondary }}>
+                      {`${label.card.earned.text} earned`}
+                    </ThemedText>
+                  ) : null}
+                </View>
+              ) : null}
+            </View>
+            {label.card.next ? (
+              <ThemedText variant="caption" tone="secondary">
+                {label.card.next}
+              </ThemedText>
+            ) : null}
+            {label.card.row && onCard ? (
+              <ThemedText variant="caption" style={{ color: colors.accentText, fontFamily: FONT.label }}>
+                {'Details \u203A'}
+              </ThemedText>
+            ) : null}
+          </Pressable>
         </Animated.View>
       ) : null}
     </View>

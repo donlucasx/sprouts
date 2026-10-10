@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { CANVAS, DECOR, DRAW_ORDER, OVERLAYS, PLANTS, SPOTS } from "@/garden2/layout";
-import { FRAME_PAD, frameTop, paintedTop, LADDER, allStages, clampStage, composeLayers, onePerPlant, paintsAt, plantAt, plantedDollars, scaleRect, stageForDollars, stagesFor, viewHeight, clampZoom2, fruitOn, FRUIT_FROM, revealFrom, STAKE, STAKE_AT, STAKE_LABEL, type Pick2, type Planting2, type Stages } from "@/model/garden2";
+import { CARD_CARET, CARD_EDGE, FRAME_PAD, frameTop, paintedBox, paintedTop, placeCard, LADDER, allStages, clampStage, composeLayers, onePerPlant, paintsAt, plantAt, plantedDollars, scaleRect, stageForDollars, stagesFor, viewHeight, clampZoom2, fruitOn, FRUIT_FROM, revealFrom, STAKE, STAKE_AT, STAKE_LABEL, type Pick2, type Planting2, type Stages } from "@/model/garden2";
 
 const ASSETS = path.resolve(__dirname, "../../assets/garden2");
 const day = (d: number, h = 12) => new Date(2026, 9, d, h);   // local time (vitest pins TZ to Los Angeles)
@@ -303,3 +303,32 @@ describe("the reveal (R521)", () => {
     expect(revealFrom({ maple: 5 }, now)).toEqual({});
   });
 });
+
+describe("the tapped plant's card (R587: centred on the plant)", () => {
+  it("paintedBox is the paint's own box: its top is paintedTop, inside the layer box", () => {
+    const b = paintedBox("orchid", 7)!
+    expect(b.y0).toBe(paintedTop("orchid", 7))
+    expect(b.x0).toBeGreaterThanOrEqual(PLANTS.orchid.x)
+    expect(b.x1).toBeLessThanOrEqual(PLANTS.orchid.x + PLANTS.orchid.w + 16)
+    expect(b.x1).toBeGreaterThan(b.x0)
+  })
+  const base = { stakeBottom: 300, viewW: 400, viewH: 400, cardW: 200, cardH: 80 }
+  it("sits above the plant, centred on it, pointing down, when it fits", () => {
+    const c = placeCard({ ...base, plant: { x0: 150, x1: 250, y0: 200 } })
+    expect(c).toEqual({ left: 100, top: 200 - CARD_CARET - 80, caretX: 100, caret: "down" })
+  })
+  it("held inside the view at the edges, the pointer still on the plant", () => {
+    const c = placeCard({ ...base, plant: { x0: 330, x1: 390, y0: 200 } })
+    expect(c.left).toBe(400 - 200 - CARD_EDGE)
+    expect(c.left + c.caretX).toBe(360)
+  })
+  it("under the stake, pointing up, when there is no room above", () => {
+    expect(placeCard({ ...base, plant: { x0: 150, x1: 250, y0: 40 } })).toMatchObject({ top: 300 + CARD_CARET, caret: "up" })
+  })
+  it("under the stake may hang past the view's bottom by `below`", () => {
+    expect(placeCard({ ...base, stakeBottom: 380, below: 100, plant: { x0: 150, x1: 250, y0: 40 } })).toMatchObject({ top: 380 + CARD_CARET, caret: "up" })
+  })
+  it("at the top when neither fits", () => {
+    expect(placeCard({ ...base, stakeBottom: 380, plant: { x0: 150, x1: 250, y0: 40 } })).toMatchObject({ top: CARD_EDGE / 2, caret: "down" })
+  })
+})
