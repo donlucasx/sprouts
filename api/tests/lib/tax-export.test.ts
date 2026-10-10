@@ -62,10 +62,15 @@ describe("plantingRows: one trade per leg", () => {
     const [r] = plantingRows(planting(), [leg({ asset: "USDC_LEND", venue: null, feeCents: 0 })]);
     expect(r).toMatchObject({ receivedAmount: "", receivedCurrency: "", sentAmount: "10.00" });
   });
-  it("a legacy network fee rides the first leg only; unconfirmed plantings give no rows", () => {
-    const rows = plantingRows(planting({ networkFeeCents: 3 }), [leg(), leg({ asset: "stORE", amountOutRaw: 100_000_000_000n })]);
-    expect(rows.map((r) => r.feeAmount)).toEqual(["0.08", "0.05"]);
+  it("R583: a legacy network fee is cost basis (it was planted): it joins the USDC sent, never the fee; rows still sum to the pull", () => {
+    const rows = plantingRows(planting({ usdcPulledCents: 2003, networkFeeCents: 3 }), [leg(), leg({ asset: "stORE", amountOutRaw: 100_000_000_000n })]);
+    expect(rows.map((r) => r.feeAmount)).toEqual(["0.05", "0.05"]);
+    expect(rows.map((r) => r.sentAmount)).toEqual(["9.97", "9.96"]);   // legs 1000c + 1000c, the 3c split 2 + 1, minus each 5c fee
+    expect(rows.every((r) => !/network fee/.test(r.description ?? ""))).toBe(true);
+    expect(rows.reduce((s, r) => s + Math.round(Number(r.sentAmount) * 100) + Math.round(Number(r.feeAmount) * 100), 0)).toBe(2003);
     expect(rows[1].receivedAmount).toBe("1.00");
+  });
+  it("unconfirmed plantings give no rows", () => {
     expect(plantingRows(planting({ status: "sent" }), [leg()])).toEqual([]);
     expect(plantingRows(planting({ status: "failed" }), [leg()])).toEqual([]);
   });

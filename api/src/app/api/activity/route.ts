@@ -1,3 +1,4 @@
+import { withNetworkFee } from "@/lib/put-in";
 import { NextResponse } from "next/server";
 import { getRepo } from "@/db/repo";
 import type { Asset, LiveAsset, Split } from "@/domain/coins";
@@ -32,7 +33,9 @@ export async function GET(request: Request) {
   ]);
   // Every leg of the listed plantings in one read (was one read per planting), grouped back per planting in list order.
   const legRows = plantings.length ? await repo.plantingLegsFor(plantings.map((p) => p.id)) : [];
-  const legs = plantings.map((p) => legRows.filter((l) => l.plantingId === p.id));
+  // R583 / audits/putin-3c: each planting's amount is what was pulled (the legacy 3c added back onto its legs)
+  const fixed = withNetworkFee(legRows, plantings);
+  const legs = plantings.map((p) => fixed.filter((l) => l.plantingId === p.id));
   // R140: the dollar beside every planting row, the four new coins included. SKR at the live SKR price, as Home shows it; the
   // other coins at that day's snapshot price, read once per day and coin, all at once. A planting from before its coin's first
   // snapshot takes the week's latest row, then the live stORE price, as /api/me prices the receipt; null when nothing is known.
