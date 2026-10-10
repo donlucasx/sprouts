@@ -255,13 +255,13 @@ export default function Deck() {
         </div>
       </Slide>
 
-      {/* 09 Business: Seeker and Solana Mobile only (R-D4); docs/reports/2026-10-09-business-model-analysis.md */}
+      {/* 09 Business: Seeker and Solana Mobile only (R-D4); Pro = manager + auto-lending + tax pack (R446c); docs/reports/2026-10-09-business-model-analysis.md */}
       <Slide n={9} chip="Business model">
         <div className="grow">
           <h2 className="h2s">Grows with Solana Mobile.</h2>
           <div className="rows">
-            <div className="row"><strong>0.5% of each planting</strong><span>Paid in USDC, inside the same swap. Lending is free.</span></div>
-            <div className="row"><strong>Pro subscription</strong><span>The AI Yield Manager. Round-ups plus a subscription is the model Acorns proved with 6M paying customers.</span></div>
+            <div className="row"><strong>0.5% of each coin planting</strong><span>Paid in USDC, inside the same swap.</span></div>
+            <div className="row"><strong>Pro subscription</strong><span>Your money works by itself: the AI Yield Manager, automatic lending and tax export. Free during launch. Round-ups plus a subscription is the model Acorns proved with 6M paying customers.</span></div>
             <div className="row"><strong>Good for SKR</strong><span>No new token. Every saver buys and stakes SKR every week, and opens their Seeker every day to see it grow.</span></div>
           </div>
         </div>
