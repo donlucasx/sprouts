@@ -114,6 +114,15 @@ export const STAGE_SRC: Record<Plant2, Record<number, number>> = {
   },
 }
 
+/** R581: each plant's idle sway loops (animated WebP with alpha, its stage box), by stage; a stage without one shows its still. */
+export const LOOP_SRC: Partial<Record<Plant2, Record<number, number>>> = {
+  azalea: { 2: require('../../assets/garden2/loops/azalea/stage02.webp'), 3: require('../../assets/garden2/loops/azalea/stage03.webp'), 4: require('../../assets/garden2/loops/azalea/stage04.webp') },
+  mandarin: { 2: require('../../assets/garden2/loops/mandarin/stage02.webp') },
+  maple: { 2: require('../../assets/garden2/loops/maple/stage02.webp'), 3: require('../../assets/garden2/loops/maple/stage03.webp'), 4: require('../../assets/garden2/loops/maple/stage04.webp') },
+  orchid: { 3: require('../../assets/garden2/loops/orchid/stage03.webp'), 4: require('../../assets/garden2/loops/orchid/stage04.webp'), 14: require('../../assets/garden2/loops/orchid/stage14.webp') },
+  store: { 2: require('../../assets/garden2/loops/store/stage02.webp'), 3: require('../../assets/garden2/loops/store/stage03.webp') },
+}
+
 /** R533: the trees' earnings sprites, one per tree (the ripe mandarin, the open ORE-gold flower). */
 export const FRUIT_SRC = {
   mandarin: require('../../assets/garden2/mandarin-fruit.png'),
