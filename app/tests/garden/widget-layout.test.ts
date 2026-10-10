@@ -9,6 +9,7 @@ const { nextPlantingFor, nextPlantingText } = await import("@/lib/next-planting"
 const { buildScene } = await import("@/model/garden");
 const { toGardenInput } = await import("@/lib/garden-input");
 const { SPRITE_META, GROUND_OUTLINE } = await import("@/garden/sprite-meta");
+const { CANVAS } = await import("@/garden2/layout");
 
 type El = ReactElement<{ style?: Record<string, unknown>; children?: unknown; text?: string }>;
 const kids = (e: El) => ([] as unknown[]).concat(e.props.children ?? []).flat().filter(Boolean) as El[];
@@ -52,17 +53,6 @@ const grown = { ...me, holdings: ["stORE", "USDC_LEND"].map(hold), history: { pl
 const svgBox = (svg: string) => svg.match(/viewBox="([-\d.]+) ([-\d.]+) ([-\d.]+) ([-\d.]+)"/)!.slice(1).map(Number);
 /** The highest painted y in the SVG: sprite boxes through their transforms, stem paths, and the ground's painted soil (its box top plus
  * the outline's highest point, GROUND_OUTLINE, not the sprite's transparent strip). */
-function paintedTop(svg: string): number {
-  let top = Infinity;
-  for (const m of svg.matchAll(/<use xlink:href="#s-([a-z0-9-]+)" transform="translate\(([-\d.]+) ([-\d.]+)\) rotate\(([-\d.]+)\) scale\(([-\d.]+) ([-\d.]+)\) translate\(([-\d.]+) ([-\d.]+)\)"/g)) {
-    const [, name, , ty, r, sx, sy, ax, ay] = m;
-    if (name === "ground") { top = Math.min(top, Number(ty) + Number(ay) * Number(sy) + Math.min(...GROUND_OUTLINE.map((q) => q[1])) * Number(sy)); continue; }
-    const box = SPRITE_META[name], a = (Number(r) * Math.PI) / 180;
-    for (const [cx, cy] of [[0, 0], [box.w, 0], [0, box.h], [box.w, box.h]]) top = Math.min(top, Number(ty) + (cx + Number(ax)) * Number(sx) * Math.sin(a) + (cy + Number(ay)) * Number(sy) * Math.cos(a));
-  }
-  for (const m of svg.matchAll(/<path d="([^"]+)"/g)) for (const n of m[1].matchAll(/[-\d.]+ ([-\d.]+)/g)) top = Math.min(top, Number(n[1]));
-  return top;
-}
 
 // R363 + R364 (10-05): the square widget: the total big and alone, "your garden" under it, the garden, ONE state line at the bottom.
 const { widgetLayout, textWidth, BIG_SIZE, LABEL_SIZE, STATE_SIZE, STATE_MIN } = await import("@/garden/widget-layout");
@@ -155,8 +145,11 @@ describe("R363 + R364: every size lays out the total, the garden and one state l
       const st = svg.props.style;
       expect(st.width).toBeLessThanOrEqual(L.garden.w); expect(st.height).toBeLessThanOrEqual(L.garden.h);
       expect(st.width === L.garden.w || st.height === L.garden.h).toBe(true);
-      const [, y, vw, vh] = svgBox(svg.props.svg), px = Math.min(st.width / vw, st.height / vh);
-      expect((paintedTop(svg.props.svg) - y) * px).toBeLessThanOrEqual(14);
+      // 10-10 Garden2: the view is a box of the plate, its sky cropped to VIEW_PAD above what is planted; every image drawn is declared
+      const [, y, , vh] = svgBox(svg.props.svg);
+      expect(y).toBeGreaterThanOrEqual(0); expect(y + vh).toBeLessThanOrEqual(CANVAS.h + 0.01);
+      const declared = new Set([...svg.props.svg.matchAll(/<image id="([^"]+)"/g)].map((q) => q[1]));
+      for (const u of svg.props.svg.matchAll(/<use xlink:href="#([^"]+)"/g)) expect(declared.has(u[1]), u[1]).toBe(true);
     }
   });
   it("the square and the tall sizes stack (total, garden, line); 4x2 puts the total at the left of the garden", () => {
@@ -193,18 +186,16 @@ describe("R363 + R364: every size lays out the total, the garden and one state l
 describe("R363: the state line is Home's state (watcherLine's can, nextPlantingFor's row), one rule", () => {
   const homeOf = (m: MeResponse) => {
     const scene = buildScene(toGardenInput(m, NOW_W, null));
-    return { can: watcherLine({ unrevealed: scene.unrevealed, failed: false, nudged: false }).can, row: nextPlantingFor(m, scene, NOW_W) };
+    // Home's rule (home.tsx's watcher): Garden2 has no buds to water (R458), so the can is never in colour
+    return { can: watcherLine({ unrevealed: 0, failed: false, nudged: false }).can, row: nextPlantingFor(m, scene, NOW_W) };
   };
   const lineOf = (m: MeResponse) => texts(SproutsWidget({ me: m, width: 206, height: 205, now: NOW_W }) as El)[2];
   const NOW_W = new Date("2026-10-05T12:00:00Z");   // 5 AM in Los Angeles: the run (14:00 UTC) is "Today, 7 AM"
-  it("a bud waiting (Home's can in colour): the call to water, in the accent green", () => {
-    expect(homeOf(STATES.bud).can).toBe("ready");
-    expect(lineOf(STATES.bud).props.text).toBe(BUD_LINE); expect(BUD_LINE).toBe("A bud is ready. Water it.");
-    expect(lineOf(STATES.bud).props.style.color).toBe("#145A3C");
-  });
-  it("a bud wins over paused and over the run time (the can is in colour on Home whatever the row says)", () => {
+  it("Garden2 (R458): a read the old garden showed as a bud never asks to water; it shows Home's row, as Home does", () => {
+    expect(homeOf(STATES.bud).can).not.toBe("ready");
+    expect(lineOf(STATES.bud).props.text).not.toBe(BUD_LINE); expect(lineOf(STATES.bud).props.text).toBe("+$0.50 waiting");
     const m = { ...STATES.bud, wallets: [{ pubkey: "W", status: "paused" }] } as unknown as MeResponse;
-    expect(homeOf(m).can).toBe("ready"); expect(lineOf(m).props.text).toBe(BUD_LINE);
+    expect(lineOf(m).props.text).toBe("Paused");
   });
   it("saving (Home's row: $1.35 of $2.00): \"+$1.35 waiting\"", () => {
     const h = homeOf(STATES.saving); expect(h.can).toBe("grey"); expect(h.row.state).toBe("saving"); expect(h.row.value).toBe("$1.35 of $2.00");
@@ -225,6 +216,6 @@ describe("R363: the state line is Home's state (watcherLine's can, nextPlantingF
     expect(lineOf(STATES.empty).props.text).toBe("No change waiting yet");
   });
   it("widgetStateLine is the line drawn, for every state", () => {
-    for (const m of Object.values(STATES)) expect(lineOf(m).props.text).toBe(widgetStateLine(m, buildScene(toGardenInput(m, NOW_W, null)), NOW_W).text);
+    for (const m of Object.values(STATES)) expect(lineOf(m).props.text).toBe(widgetStateLine(m, { ...buildScene(toGardenInput(m, NOW_W, null)), unrevealed: 0 }, NOW_W).text);
   });
 });
