@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { BackHandler, Pressable, TextInput, View } from 'react-native'
-import { router } from 'expo-router'
+import { router, useLocalSearchParams } from 'expo-router'
 import { MaterialCommunityIcons } from '@expo/vector-icons'
 import { useMobileWallet } from '@wallet-ui/react-native-kit'
 import { TwoWay } from '@/components/TwoWay'
@@ -40,7 +40,9 @@ export default function Withdraw() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   // 'SKR' or a lending position's row key ("USDC_LEND:jupiter_lend"): every withdrawal opens its own screen (R359).
-  const [picked, setPicked] = useState<string | null>(null)
+  // R564: Home's coin sheet opens this screen on its coin (?pick=<row key>); a key that is not a withdraw row lands on the list.
+  const { pick } = useLocalSearchParams<{ pick?: string }>()
+  const [picked, setPicked] = useState<string | null>(typeof pick === 'string' && pick.length > 0 ? pick : null)
   const [lendDone, setLendDone] = useState<string | null>(null)
   // One wallet action at a time across the screen (SKR withdraw, Put it back, each lending row), checked before any await.
   const [gate] = useState(oneAtATime)

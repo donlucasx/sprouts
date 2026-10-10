@@ -20,7 +20,9 @@ import { packScene } from '@/model/spread'
 import { plantLayouts } from '@/model/scene-to-layout'
 import { watcherLine } from '@/model/watcher'
 import { Garden } from '@/garden/Garden'
-import { SPRITES } from '@/garden/sprites'
+import { COIN_FULL_NAME, COIN_LOGO } from '@/lib/coin-icons'
+import { earnedLabel } from '@/lib/coin-sheet'
+import { CoinSheet } from '@/components/CoinSheet'
 import { Screen } from '@/components/Screen'
 import { Card } from '@/components/Card'
 import { Button } from '@/components/Button'
@@ -35,29 +37,10 @@ import { MoveCard } from '@/components/MoveCard'
 import { termsNeeded, termsSummary } from '@/lib/terms'
 import { arrivalLine, formatSkr, formatAsOf } from '@/lib/format'
 import { useSession } from '@/lib/session'
-import { gardenTotals, pauseState, coinRows, valueBlock, walletsLine, lastPlantingLine } from '@/lib/me-state'
+import { gardenTotals, pauseState, coinRows, valueBlock, walletsLine, lastPlantingLine, type CoinRow } from '@/lib/me-state'
 import { FONT, radius, spacing, TARGET, useTheme } from '@/theme'
-import type { LiveAsset } from '@/lib/coins'
 
-/** R230: each row of Home's coin list leads with the coin's painted token (the garden's fruit) and its full name, portfolio style. */
-const COIN_ICON: Record<LiveAsset, number> = {
-  SKR: SPRITES['token-skr'].src,
-  stORE: SPRITES['token-ore'].src,
-  USDC_LEND: SPRITES['token-jitosol'].src,
-  SOL_LEND: SPRITES['token-jitosol'].src,
-  hSOL: SPRITES['token-hsol'].src,
-  cbBTC: SPRITES['token-cbbtc'].src,
-}
-const COIN_FULL_NAME: Record<LiveAsset, string> = {
-  SKR: 'Seeker',
-  stORE: 'Staked ORE',
-  USDC_LEND: 'USDC lending',
-  SOL_LEND: 'SOL lending',
-  hSOL: 'Helius Staked SOL',
-  cbBTC: 'Coinbase Wrapped BTC',
-}
-/** USDC has no painted token yet (contracts 10.6): a plain dollar glyph in USDC's blue. SOL lending shows the Solana-glyph token. */
-const USDC_BLUE = '#2775CA'
+/** R562: each row of Home's coin list leads with the coin's official round logo (lib/coin-icons), Phantom style. */
 
 
 /** R199: the Last planting row's hit slop at its bottom and sides; the row is TARGET minus this tall, so its touch target is 48 dp.
@@ -73,6 +56,7 @@ export default function Home() {
   const [nudged, setNudged] = useState(false)
   // R457: "Add money" is a Pro feature still to come; the greyed button explains itself on a tap instead of doing nothing
   const [addMoneyNote, setAddMoneyNote] = useState(false)
+  const [sheetRow, setSheetRow] = useState<CoinRow | null>(null) // R564: the coin whose sheet is open
   const [landed, setLanded] = useState(0) // R195: every landing here and every pull-to-refresh replays the can's wobble
   const now = new Date()
   const today = now.toDateString()
@@ -292,7 +276,7 @@ export default function Home() {
             {value.side.map((t) => (
               <ThemedText key={t.label} variant="label" tone="secondary" numeric numberOfLines={1}>
                 {`${t.label} `}
-                <ThemedText variant="label" numeric>
+                <ThemedText variant="label" numeric style={t.label === 'Earned' ? { color: colors.success } : undefined /* R563 */}>
                   {t.value}
                 </ThemedText>
               </ThemedText>
@@ -355,27 +339,25 @@ export default function Home() {
             the amount under it on the left, the dollars with the coin's status under them on the right; hairlines between rows.
             Replaces R198/R205's one-line rows (the lead rows' larger face goes: every row now has the same two lines). */}
         <View>
-          {coinRows(me).map((r, i) => (
-            <View
+          {coinRows(me).map((r, i) => {
+            const earned = earnedLabel(r.earnedUsd)
+            return (
+            <Pressable
               key={r.key}
-              accessible
-              accessibilityLabel={`${COIN_FULL_NAME[r.asset]}, ${r.amount}${r.locked ? ', locked to your Seed Vault' : r.note ? `, ${r.note}` : ''}`}
-              style={{
+              onPress={() => setSheetRow(r)}
+              accessibilityRole="button"
+              accessibilityLabel={`${COIN_FULL_NAME[r.asset]}, ${r.amount}${earned ? `, earned ${earned.text}` : ''}. Opens its details.`}
+              style={({ pressed }) => ({
+                opacity: pressed ? 0.7 : 1,
                 flexDirection: 'row',
                 alignItems: 'center',
                 gap: spacing.md,
                 paddingVertical: spacing.md,
                 borderTopWidth: i === 0 ? 0 : 1,
                 borderTopColor: colors.hairline,
-              }}
+              })}
             >
-              <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: colors.iconGround, alignItems: 'center', justifyContent: 'center' }}>
-                {r.asset === 'USDC_LEND' ? (
-                  <MaterialCommunityIcons name="currency-usd" size={26} color={USDC_BLUE} />
-                ) : (
-                  <Image source={COIN_ICON[r.asset]} style={{ width: 30, height: 30 }} resizeMode="contain" />
-                )}
-              </View>
+              <Image source={COIN_LOGO[r.asset]} style={{ width: 40, height: 40, borderRadius: 20 }} />
               <View style={{ flex: 1, gap: 2 }}>
                 <ThemedText variant="body" style={{ fontFamily: FONT.label }} numberOfLines={1}>
                   {COIN_FULL_NAME[r.asset]}
@@ -388,17 +370,16 @@ export default function Home() {
                 <ThemedText variant="body" numeric style={{ fontFamily: FONT.label }}>
                   {r.usd ?? '–'}
                 </ThemedText>
-                {r.locked || r.note ? (
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                    <MaterialCommunityIcons name={r.locked ? 'lock-outline' : r.venue ? 'bank-outline' : 'pickaxe'} size={12} color={colors.textSecondary} />
-                    <ThemedText variant="caption" tone="secondary" numberOfLines={1}>
-                      {r.locked ? 'Locked to your Seed Vault' : r.note}
-                    </ThemedText>
-                  </View>
+                {earned ? (
+                  // R563: what this coin earned, green above zero; where it lives moved into the sheet (R564)
+                  <ThemedText variant="caption" numeric numberOfLines={1} style={{ color: earned.positive ? colors.success : colors.textSecondary }}>
+                    {`${earned.text} earned`}
+                  </ThemedText>
                 ) : null}
               </View>
-            </View>
-          ))}
+            </Pressable>
+            )
+          })}
         </View>
         <View style={{ flexDirection: 'row', gap: spacing.sm }}>
           <Link href="/withdraw" asChild>
@@ -457,6 +438,7 @@ export default function Home() {
           </ThemedText>
         </Card>
       ) : null}
+      <CoinSheet me={me} row={sheetRow} onClose={() => setSheetRow(null)} />
     </Screen>
   )
 }
