@@ -124,7 +124,7 @@ export default function Deck() {
               Sprouts
             </div>
             <h1>Your Seeker&apos;s spare change, planted.</h1>
-            <p className="sub">Every swap you make, in any app, rounds up. The change is staked to your Seed Vault and grown by an AI yield manager.</p>
+            <p className="sub">Every swap your linked wallets make, in any app, rounds up. The change buys SKR for your Seed Vault, and an AI yield manager grows the rest.</p>
           </div>
           <img className="art" src="/deck/garden.webp" alt="A watercolour garden: two bonsai trees, an azalea, a maple, an orchid and a pothos" />
         </div>
@@ -140,7 +140,7 @@ export default function Deck() {
             stops to make in the middle of trading, so it doesn&apos;t happen.
           </p>
         </div>
-        <p className="note">Seeker owners who stake SKR swap a median of 23 times a month, most of it under $10 (sample of 163 stakers, Sept 2026).</p>
+        <p className="note">Seeker owners who stake SKR swap a median of 23 times a month, most of it under $10 (on-chain sample of 163 recently active SKR stakers, Sept 2026).</p>
       </Slide>
 
       {/* 03 How it works: any swap, any app (his note 2); the decision removed (the cut table, R-D7) */}
@@ -150,15 +150,15 @@ export default function Deck() {
           <div className="beats">
             <div className="beat">
               <strong>Any swap, any app</strong>
-              <span>Link your wallets to Sprouts once. Every swap they sign, on any platform, rounds up to the next dollar.</span>
+              <span>Link your wallets to Sprouts once. Every swap they sign, in any Solana app, rounds up to the next dollar, plus 1% of swaps over $100.</span>
             </div>
             <div className="beat">
               <strong>Planted each morning</strong>
-              <span>Past $2, the change is planted at 7 AM into SKR, stORE and lending. Up to $5 a day.</span>
+              <span>Past $2, the change is planted at 7 AM into SKR, stORE (ORE that grows from mining fees) and lending. Up to $5 a day.</span>
             </div>
             <div className="beat">
               <strong>Kept on your Seeker</strong>
-              <span>Staked to your Seed Vault, where it earns. No decision to make, nothing left in the hot wallet.</span>
+              <span>Held by your Seed Vault: SKR staked, stORE and lending earning. No decision to make, nothing left in the hot wallet.</span>
             </div>
           </div>
         </div>
@@ -192,7 +192,7 @@ export default function Deck() {
             <h2 className="h2s">A garden that grows every time you swap.</h2>
             <ol className="steps">
               <li>Each coin is a plant. Every planting grows it.</li>
-              <li>A notification each morning when your change is planted.</li>
+              <li>A notification when your change is planted.</li>
               <li>The garden lives on your home screen as a widget.</li>
             </ol>
             <p className="note">
@@ -211,7 +211,7 @@ export default function Deck() {
         <div className="grow">
           <h2 className="h2s">An AI yield manager, inside hard limits.</h2>
           <ol className="steps">
-            <li>Each morning it reads live lending rates from Kamino, Jupiter Lend, marginfi and Lulo.</li>
+            <li>Each morning it reads live rates from Kamino and Jupiter Lend, and sets aside any rate that is mostly temporary rewards or a pool near full.</li>
             <li>It tilts your new change toward what pays more, at most 10 points per coin a day. SKR always keeps its share.</li>
             <li>Code, not the model, picks the lender and moves the money. The AI never signs and never sells what you hold.</li>
           </ol>
@@ -230,7 +230,7 @@ export default function Deck() {
             <i>→</i>
             <div className="key"><b>Leash program</b><small>on chain: $5 a day, only into your savings</small></div>
             <i>→</i>
-            <div><b>Jupiter</b><small>buys SKR, stORE</small></div>
+            <div><b>Jupiter</b><small>buys SKR, stORE, hSOL, cbBTC</small></div>
             <i>→</i>
             <div><b>Your Seed Vault</b><small>staked SKR · Kamino · Jupiter Lend</small></div>
           </div>
@@ -249,9 +249,9 @@ export default function Deck() {
             <div className="stat"><strong>120k</strong><span>Seekers activated with a Genesis Token (Aug 2026).</span></div>
             <div className="stat"><strong>91%</strong><span>of SKR stakers swapped in the last 30 days, a median of 23 times.</span></div>
             <div className="stat"><strong>$200</strong><span>a year rounded up by the median staker who trades.</span></div>
-            <div className="stat"><strong>86%</strong><span>of circulating SKR is staked. Seeker owners already hold.</span></div>
+            <div className="stat"><strong>4.9B</strong><span>SKR staked. Seeker owners already hold.</span></div>
           </div>
-          <p className="note">Sources: Dune (Genesis activations); our on-chain sample of 163 recent SKR stakers, Sept 2026; Solana Mobile SKR page.</p>
+          <p className="note">Sources: Dune, Genesis activations (Aug 2026); our on-chain sample of 163 recently active SKR stakers, round-up to $1 plus 1% of swaps over $100 (Sept 2026); solanamobile.com/skr (Oct 2026).</p>
         </div>
       </Slide>
 
@@ -261,8 +261,8 @@ export default function Deck() {
           <h2 className="h2s">Grows with Solana Mobile.</h2>
           <div className="rows">
             <div className="row"><strong>0.5% of each coin planting</strong><span>Paid in USDC, inside the same swap.</span></div>
-            <div className="row"><strong>Pro subscription</strong><span>Your money works by itself: the AI Yield Manager, automatic lending and tax export. Free during launch. Round-ups plus a subscription is the model Acorns proved with 6M paying customers.</span></div>
-            <div className="row"><strong>Good for SKR</strong><span>No new token. Every saver buys and stakes SKR every week, and opens their Seeker every day to see it grow.</span></div>
+            <div className="row"><strong>Pro subscription</strong><span>Your money works by itself: the AI Yield Manager, automatic lending and tax export. Free during launch. Round-ups plus a subscription is the model Acorns proved with millions of paying customers.</span></div>
+            <div className="row"><strong>Good for SKR</strong><span>No new token. Every saver buys SKR with their round-ups, and the garden and widget give them a reason to open their Seeker.</span></div>
           </div>
         </div>
       </Slide>
