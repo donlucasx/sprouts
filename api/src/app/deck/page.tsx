@@ -68,6 +68,25 @@ const CSS = `
 .deck video, .deck .poster { width:100%; height:auto; display:block; border-radius:calc(var(--u)*.8); }
 .deck .poster { display:none; }
 .deck .links { display:flex; flex-wrap:wrap; gap:calc(var(--u)*1) calc(var(--u)*3); font-size:calc(var(--u)*1.6); font-weight:600; color:var(--leaf); }
+.deck .hero { max-width:calc(var(--u)*50); }
+.deck .phone { position:absolute; left:calc(var(--u)*62); top:calc(var(--u)*-21); width:calc(var(--u)*46); padding:calc(var(--u)*1.1);
+  background:#1D2628; border-radius:calc(var(--u)*6); box-shadow:0 calc(var(--u)*1.5) calc(var(--u)*5) rgba(43,38,34,.22); }
+.deck .phone img { display:block; width:100%; height:auto; border-radius:calc(var(--u)*5); }
+.deck .sprout { position:absolute; right:calc(var(--u)*6); top:calc(var(--u)*6); height:calc(var(--u)*14); width:auto; }
+.deck .narrow { max-width:calc(var(--u)*62); }
+.deck .stack { display:grid; gap:calc(var(--u)*1.8); max-width:calc(var(--u)*44); }
+.deck .stack div { display:grid; gap:calc(var(--u)*.4); }
+.deck .stack strong { font-family:var(--font-display), sans-serif; font-size:calc(var(--u)*1.9); letter-spacing:-.02em; color:var(--leaf); }
+.deck .stack span { font-size:calc(var(--u)*1.5); line-height:1.4; }
+.deck .photo { position:absolute; top:0; right:0; bottom:0; width:44%; height:100%; object-fit:cover; }
+.deck .on-art .num { display:none; }
+.deck .photo-credit { position:absolute; right:calc(var(--u)*1.2); bottom:calc(var(--u)*1); font-size:calc(var(--u)*.8); color:rgba(255,255,255,.55); }
+.deck .split.wide { grid-template-columns:.75fr 1.25fr; gap:calc(var(--u)*2); }
+.deck .split.wide video, .deck .split.wide .poster { border-radius:0; }
+.deck .sand { position:absolute; right:0; bottom:0; width:72%; height:auto; pointer-events:none;
+  -webkit-mask-image:linear-gradient(to right, transparent, #000 35%); mask-image:linear-gradient(to right, transparent, #000 35%); }
+.deck .in > .grow { position:relative; z-index:1; }
+.deck .foliage { position:absolute; right:calc(var(--u)*-7); top:calc(var(--u)*-9); width:calc(var(--u)*30); height:auto; pointer-events:none; }
 .deck .todo { background:#FFF1B8; color:#5C4A00; border-radius:4px; padding:0 .3em; }
 .deck .bar { position:fixed; right:16px; bottom:16px; display:flex; gap:8px; z-index:2; }
 .deck .bar a, .deck .bar button { font:600 13px var(--font-body), sans-serif; background:var(--ink); color:var(--paper); border:0; border-radius:999px; padding:9px 14px; cursor:pointer; text-decoration:none; }
@@ -84,6 +103,9 @@ const CSS = `
   .deck .beat strong { font-size:19px; } .deck .beat span, .deck .stat span { font-size:15px; }
   .deck .stat strong { font-size:34px; }
   .deck .num { right:16px; bottom:20px; font-size:12px; } .deck .note, .deck .addr { font-size:12px; }
+  .deck .phone { position:relative; left:auto; top:auto; width:100%; max-height:70vh; overflow:hidden; }
+  .deck .sprout, .deck .foliage { display:none; } .deck .photo { position:relative; width:100%; height:auto; }
+  .deck .sand { width:100%; } .deck .stack, .deck .narrow, .deck .hero { max-width:none; }
   .deck .brand { font-size:22px; } .deck .brand img { width:30px; } .deck .foot, .deck .links { font-size:15px; }
 }
 @page { size:1920px 1080px; margin:0; }
@@ -97,9 +119,9 @@ const CSS = `
 }
 `;
 
-function Slide({ n, chip, children }: { n: number; chip?: string; children: React.ReactNode }) {
+function Slide({ n, chip, art, children }: { n: number; chip?: string; art?: boolean; children: React.ReactNode }) {
   return (
-    <section className="slide" id={`s${n}`} aria-label={`Slide ${n}`}>
+    <section className={art ? "slide on-art" : "slide"} id={`s${n}`} aria-label={`Slide ${n}`}>
       <div className="in">
         {chip ? <span className="chip">{chip}</span> : null}
         {children}
@@ -116,18 +138,16 @@ export default function Deck() {
       <DeckKeys />
 
       {/* 01 Hook */}
-      <Slide n={1}>
-        <div className="split">
-          <div className="grow">
+      <Slide n={1} art>
+        <div className="grow hero">
             <div className="brand">
               <img src="/deck/mark.svg" alt="" />
               Sprouts
             </div>
             <h1>Your spare change, planted on your Seeker.</h1>
             <p className="sub">Sprouts rounds up every swap your linked wallets make, in any app. The change is planted in SKR, kept by your Seed Vault, and grown by an AI&nbsp;Yield&nbsp;Manager.</p>
-          </div>
-          <img className="art" src="/deck/garden.webp" alt="A watercolour garden: two bonsai trees, an azalea, a maple, an orchid and a pothos" />
         </div>
+        <div className="phone"><img src="/deck/home.webp" alt="Sprouts on a phone: the garden, and under it the coins it holds" /></div>
         <span className="foot">CLOCK IN · Solana Mobile Hackathon 2026</span>
       </Slide>
 
@@ -146,7 +166,7 @@ export default function Deck() {
       {/* 03 How it works: any swap, any app (his note 2); the decision removed (the cut table, R-D7) */}
       <Slide n={3} chip="How it works">
         <div className="grow">
-          <h2>Every swap rounds up. Your Seeker keeps the change.</h2>
+          <h2 className="narrow" style={{ maxWidth: "calc(var(--u)*58)" }}>Every swap rounds up. Your Seeker keeps the change.</h2>
           <div className="beats">
             <div className="beat">
               <strong>Any swap, any app</strong>
@@ -162,32 +182,35 @@ export default function Deck() {
             </div>
           </div>
         </div>
+        <img className="sprout" src="/deck/sprout.png" alt="A first sprout, from the app's loading screen" />
       </Slide>
 
       {/* 04 The Seed Vault (his note 1). Saga is also accepted (R86), so "built for", never "only works on". */}
-      <Slide n={4} chip="Built for Seeker">
+      <Slide n={4} chip="Built for Seeker" art>
         <div className="grow">
-          <h2>Your savings live in the Seed Vault.</h2>
-          <div className="beats">
-            <div className="beat">
+          <h2 className="h2s narrow" style={{ maxWidth: "calc(var(--u)*46)" }}>Your savings live in the Seed Vault.</h2>
+          <div className="stack">
+            <div>
               <strong>Not in a hot wallet</strong>
               <span>Savings belong to the key in your Seeker&apos;s secure hardware. A drained trading wallet never reaches them.</span>
             </div>
-            <div className="beat">
+            <div>
               <strong>Only you take it out</strong>
               <span>Sprouts adds to your savings every morning. Only your fingerprint on the Seed Vault can withdraw.</span>
             </div>
-            <div className="beat">
+            <div>
               <strong>One phone, one garden</strong>
               <span>Sign in with your Genesis Token. Your garden carries your .skr name.</span>
             </div>
           </div>
         </div>
+        <img className="photo" src="/deck/seeker-vault.webp" alt="A Solana Seeker, Seed Vault on the back, Sprouts on the screen" />
+        <span className="photo-credit">Seeker render: Solana Mobile press kit</span>
       </Slide>
 
       {/* 05 Garden: demo + why people come back (R-D5) */}
       <Slide n={5} chip="Why you come back">
-        <div className="split">
+        <div className="split wide">
           <div className="grow">
             <h2 className="h2s">A garden that grows every time you swap.</h2>
             <ol className="steps">
@@ -217,28 +240,35 @@ export default function Deck() {
           </ol>
           <p className="sub">Optional. Careful, Balanced or Bold. Pro, free during launch.</p>
         </div>
+        <img className="sand" src="/deck/sand.webp" alt="" />
       </Slide>
 
-      {/* 07 Safety + how it's built (R300, R-D6, R-D18 trust line) */}
+      {/* 07 Safety + how it's built (R300 as the sub, R-D6, R-D18 trust line); R-D26: inviting, not defensive */}
       <Slide n={7} chip="Your money stays yours">
         <div className="grow">
-          <h2 className="h2s">Even if our server is hacked, it can only move your daily round-up (max $5) into your own savings.</h2>
+          <h2 className="h2s" style={{ maxWidth: "calc(var(--u)*62)" }}>Your money moves one way: into your savings.</h2>
+          <p className="sub">
+            Every planting passes an on-chain leash: at most $5 a day per linked wallet, and only into savings you hold. Even our own
+            server can&apos;t send it anywhere else.
+          </p>
           <div className="flow">
-            <div><b>Your swap</b><small>any app, any linked wallet</small></div>
+            <div><b>You swap</b><small>in any app, from any linked wallet</small></div>
             <i>→</i>
-            <div><b>Sprouts API</b><small>Helius webhooks · Next.js · Supabase</small></div>
+            <div><b>Sprouts notices</b><small>and sets the change aside</small></div>
             <i>→</i>
-            <div className="key"><b>Leash program</b><small>on chain: $5 a day, only into your savings</small></div>
+            <div className="key"><b>The leash checks it</b><small>on chain: $5 a day, only into your savings</small></div>
             <i>→</i>
-            <div><b>Jupiter</b><small>buys SKR, stORE, hSOL, cbBTC</small></div>
+            <div><b>Jupiter buys</b><small>SKR, stORE, hSOL, cbBTC</small></div>
             <i>→</i>
-            <div><b>Your Seed Vault</b><small>staked SKR · Kamino · Jupiter Lend</small></div>
+            <div><b>Your Seed Vault keeps it</b><small>staked, or lent on Kamino and Jupiter Lend</small></div>
           </div>
           <p className="note">
-            App: Expo, React Native, Mobile Wallet Adapter, Android widget. Leash: build verified against the public source,
-            GyBmDLN72kg6xwAnZfj9c7fjeaJ3GvhkHNhFns83f8f7. The $5 limit is per linked wallet. The admin key lives on the owner&apos;s laptop, not the server. Pause, revoke or withdraw from your phone.
+            Built with Expo, React Native, Mobile Wallet Adapter, Helius, Next.js and Supabase. The leash&apos;s build is verified against
+            its public source (GyBmDLN72kg6xwAnZfj9c7fjeaJ3GvhkHNhFns83f8f7). The admin key lives on the owner&apos;s laptop, not the server.
+            Pause, revoke or withdraw any time from your phone.
           </p>
         </div>
+        <img className="foliage" src="/deck/foliage.png" alt="" />
       </Slide>
 
       {/* 08 Market (R-D3: market data, not our DB) */}
