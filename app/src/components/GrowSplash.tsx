@@ -78,8 +78,9 @@ export function GrowSplash({ onEnd }: { onEnd?: () => void }) {
           <Frame key={i} source={f} index={i + 1} count={frames.length} p={p} side={side} />
         ))}
       </View>
-      <HorizontalLockup wordSize={30} />
-      <ThemedText variant="heading" style={{ textAlign: 'center' }}>
+      <HorizontalLockup wordSize={42} />
+      {/* R575: the lockup bigger (42, was 30) and the slogan lower, set apart from it */}
+      <ThemedText variant="heading" style={{ textAlign: 'center', marginTop: spacing.xl }}>
         {SPLASH.line}
       </ThemedText>
     </View>
