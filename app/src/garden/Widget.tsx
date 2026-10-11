@@ -1,9 +1,9 @@
 "use no memo";
-import { FlexWidget, TextWidget, SvgWidget } from "react-native-android-widget";
+import { FlexWidget, OverlapWidget, TextWidget, SvgWidget } from "react-native-android-widget";
 import type { MeResponse } from "@/lib/api";
 import { buildScene } from "@/model/garden";
 import { widgetGarden } from "@/model/widget-svg";
-import { widgetGarden2, WIDGET2_PAPER } from "@/model/widget2-svg";
+import { widgetCard, widgetGarden2, WIDGET2_PAPER } from "@/model/widget2-svg";
 import { stagesFor } from "@/model/garden2";
 import { GARDEN2 } from "@/garden2/flag";
 import { toGardenInput, type ZeroMarks } from "@/lib/garden-input";
@@ -24,11 +24,18 @@ export const WIDGET_LABEL = "your garden";
  * garden; tall ones centre the garden in its box. The boxes come from widgetLayout; the whole widget opens the app.
  */
 export function SproutsWidget({ me, width, height, wateredPlants = null, restartMarks = {}, now = new Date() }: { me: MeResponse | null; width: number; height: number; wateredPlants?: PlantId[] | null; restartMarks?: ZeroMarks; now?: Date }) {
-  const notice = (text: string) => (
-    <FlexWidget clickAction="OPEN_APP" style={{ height: "match_parent", width: "match_parent", backgroundColor: PAPER, borderRadius: 16, padding: 12, justifyContent: "center" }}>
-      <TextWidget text={text} style={{ fontSize: 14, color: INK }} />
-    </FlexWidget>
-  );
+  // Garden2 (10-10, his note: "make the edges transparent a bit"): the paper is a card whose rim fades to transparent (widgetCard),
+  // behind the content, over the padding band, so the text stays on full paper; the old garden keeps its flat rounded card
+  const card = (pad: number, style: Record<string, unknown>, children: unknown) =>
+    GARDEN2 ? (
+      <OverlapWidget clickAction="OPEN_APP" style={{ height: "match_parent", width: "match_parent" }}>
+        <SvgWidget svg={widgetCard(width, height, pad)} style={{ width, height }} />
+        <FlexWidget style={{ height: "match_parent", width: "match_parent", padding: pad, ...style }}>{children}</FlexWidget>
+      </OverlapWidget>
+    ) : (
+      <FlexWidget clickAction="OPEN_APP" style={{ height: "match_parent", width: "match_parent", backgroundColor: PAPER, borderRadius: 16, padding: pad, ...style }}>{children}</FlexWidget>
+    );
+  const notice = (text: string) => card(12, { justifyContent: "center" }, <TextWidget text={text} style={{ fontSize: 14, color: INK }} />);
   if (!me) return notice("Open Sprouts to sign in");
   // R146, R252: the total is Home's own number (valueBlock: the whole garden in dollars, the SKR pot when no SKR price is known).
   // A cached read too old for these fields says "open the app" rather than failing the whole render.
@@ -80,10 +87,5 @@ export function SproutsWidget({ me, width, height, wateredPlants = null, restart
         {gardenBox(L.garden)}
       </FlexWidget>
     );
-  return (
-    <FlexWidget clickAction="OPEN_APP" style={{ height: "match_parent", width: "match_parent", backgroundColor: PAPER, borderRadius: 16, padding: L.pad, flexDirection: "column", justifyContent: "space-between" }}>
-      {top}
-      {line}
-    </FlexWidget>
-  );
+  return card(L.pad, { flexDirection: "column", justifyContent: "space-between" }, [top, line]);
 }

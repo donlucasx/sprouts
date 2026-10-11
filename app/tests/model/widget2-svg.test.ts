@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { allStages, paintedBox, type Stages } from "@/model/garden2";
 import { CANVAS } from "@/garden2/layout";
-import { MIN_VIEW_W, VIEW_PAD, widget2Need, widgetGarden2 } from "@/model/widget2-svg";
+import { MIN_VIEW_W, VIEW_PAD, widget2Need, widgetCard, widgetGarden2 } from "@/model/widget2-svg";
 
 const only = (s: Partial<Stages>): Stages => ({ ...allStages(0), ...s });
 const box = (svg: string) => svg.match(/viewBox="([-\d.]+) ([-\d.]+) ([-\d.]+) ([-\d.]+)"/)!.slice(1).map(Number);
@@ -40,5 +40,24 @@ describe("10-10: the widget draws Garden2 as stills, cropped to what is planted"
   it("nothing planted: the bed, no stakes", () => {
     const { svg } = widgetGarden2(allStages(0), { stakes: true }, 300, 150);
     expect(svg).toContain('id="w-plate"'); expect(svg).not.toContain("<text");
+  });
+});
+
+describe("10-10 (his note: \"make the edges transparent a bit\"): the card's rim and the garden's edges fade out", () => {
+  const stops = (svg: string, id: string) => svg.match(new RegExp(`id="${id}"[^>]*>(.*?)</linearGradient>`))![1].match(/offset="([\d.]+)"[^>]*?(stop-opacity="0")?\/>/g)!;
+  it("the card: transparent at every edge, full paper from `feather` in, both axes masked over the whole widget", () => {
+    const svg = widgetCard(200, 100, 12);
+    expect(svg).toContain('width="200" height="100"'); expect(svg).toContain('fill="#FFFCF6"');
+    const h = stops(svg, "card-gh"), v = stops(svg, "card-gv");
+    expect(h[0]).toContain('offset="0"'); expect(h[0]).toContain('stop-opacity="0"'); expect(h[1]).toContain('offset="0.06"'); expect(h[1]).not.toContain("stop-opacity");
+    expect(h[3]).toContain('offset="1"'); expect(h[3]).toContain('stop-opacity="0"');
+    expect(v[1]).toContain('offset="0.12"');
+    expect(svg).toMatch(/<g mask="url\(#card-mv\)"><g mask="url\(#card-mh\)"><rect/);
+  });
+  it("the garden: every layer drawn inside its own two masks, so the crop's hard edge never shows", () => {
+    const { svg } = widgetGarden2(only({ mandarin: 6, store: 5 }), { stakes: true }, 206, 140);
+    const inner = svg.split('<g mask="url(#g-mv)"><g mask="url(#g-mh)">')[1];
+    expect(inner).toBeDefined();
+    expect(svg.split("<use").length - 1).toBe(inner.split("<use").length - 1);
   });
 });

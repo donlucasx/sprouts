@@ -73,6 +73,33 @@ export function widget2View(stages: Stages, extras: Extras, width: number, maxH:
 /** The garden's height on a widget `width` wide with at most `maxH`. */
 export const widget2Height = (stages: Stages, extras: Extras, width: number, maxH: number): number => widget2View(stages, extras, width, maxH).h;
 
+/** Widget px over which the garden's own edges fade into the card's paper (at most GARDEN_FEATHER_MAX of its smaller side). */
+export const GARDEN_FEATHER = 10;
+const GARDEN_FEATHER_MAX = 0.15;
+const fadeStops = (edge: number) =>
+  `<stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset="${f(edge)}" stop-color="#fff"/><stop offset="${f(1 - edge)}" stop-color="#fff"/><stop offset="1" stop-color="#fff" stop-opacity="0"/>`;
+/**
+ * `inner` (drawn in the box x,y,w,h) faded to transparent over fx at its left and right and fy at its top and bottom: two masks, one per
+ * axis, so the edges and corners fall off smoothly with no seams (each mask a single gradient-filled rect).
+ */
+function feathered(id: string, x: number, y: number, w: number, h: number, fx: number, fy: number, inner: string): string {
+  const box = `x="${f(x)}" y="${f(y)}" width="${f(w)}" height="${f(h)}"`;
+  const defs = `<linearGradient id="${id}-gh" gradientUnits="userSpaceOnUse" x1="${f(x)}" y1="0" x2="${f(x + w)}" y2="0">${fadeStops(fx / w)}</linearGradient>`
+    + `<linearGradient id="${id}-gv" gradientUnits="userSpaceOnUse" x1="0" y1="${f(y)}" x2="0" y2="${f(y + h)}">${fadeStops(fy / h)}</linearGradient>`
+    + `<mask id="${id}-mh" maskUnits="userSpaceOnUse" ${box}><rect ${box} fill="url(#${id}-gh)"/></mask>`
+    + `<mask id="${id}-mv" maskUnits="userSpaceOnUse" ${box}><rect ${box} fill="url(#${id}-gv)"/></mask>`;
+  return `<defs>${defs}</defs><g mask="url(#${id}-mv)"><g mask="url(#${id}-mh)">${inner}</g></g>`;
+}
+
+/**
+ * The widget's card (his note 10-10: "make the edges transparent a bit so it feels sleeker instead of filling the entire area"): the
+ * paper, `width` by `height`, fading to transparent over `feather` px at every edge, so the home screen shows through at the rim. The
+ * widget's text sits inside its padding (feather = padding), on full paper.
+ */
+export function widgetCard(width: number, height: number, feather: number): string {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${feathered("card", 0, 0, width, height, feather, feather, `<rect x="0" y="0" width="${width}" height="${height}" fill="${WIDGET2_PAPER}"/>`)}</svg>`;
+}
+
 /**
  * The widget's painted garden (R591+, his ask 10-10: "update the widget to show the new garden"): one SVG string, `width` wide and as
  * tall as it draws (at most `maxH`), of the app's layers as stills (the widget cannot play the sway loops), each image the app's own
@@ -94,6 +121,9 @@ export function widgetGarden2(stages: Stages, extras: Extras, width: number, max
     }
   }
   const defs = [...used].map(([k, l]) => `<image id="w-${k}" width="${l.w}" height="${l.h}" preserveAspectRatio="none" xlink:href="data:image/webp;base64,${WIDGET2_B64[k]}"/>`).join("");
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${width}" height="${h}" viewBox="${f(vx)} ${f(v.y)} ${f(vw)} ${f(vh)}" preserveAspectRatio="xMidYMax meet"><defs>${defs}</defs>${body.join("")}</svg>`;
+  // the crop's hard edge (the plate cut mid-sand) fades into the card's paper (10-10, with widgetCard)
+  const fe = Math.min(GARDEN_FEATHER, GARDEN_FEATHER_MAX * Math.min(width, h)) / v.px;
+  const garden = feathered("g", vx, v.y, vw, vh, fe, fe, body.join(""));
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${width}" height="${h}" viewBox="${f(vx)} ${f(v.y)} ${f(vw)} ${f(vh)}" preserveAspectRatio="xMidYMax meet"><defs>${defs}</defs>${garden}</svg>`;
   return { svg, h };
 }

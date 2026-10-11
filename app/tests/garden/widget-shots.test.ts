@@ -8,7 +8,7 @@ import type { MeResponse } from "@/lib/api";
  * Not a test: with WIDGET_SHOTS=1 it writes each widget size and state as an HTML page (the widget tree mapped to flex divs, Roboto or
  * Helvetica) into build/sprouts-widget2/.shots/widget2/, for headless Chrome to screenshot. Skipped in the suite.
  */
-vi.mock("react-native-android-widget", () => ({ FlexWidget: "FlexWidget", TextWidget: "TextWidget", SvgWidget: "SvgWidget" }));
+vi.mock("react-native-android-widget", () => ({ FlexWidget: "FlexWidget", OverlapWidget: "OverlapWidget", TextWidget: "TextWidget", SvgWidget: "SvgWidget" }));
 const { SproutsWidget } = await import("@/garden/Widget");
 
 type El = ReactElement<{ style?: Record<string, unknown>; children?: unknown; text?: string; svg?: string }>;
@@ -23,6 +23,7 @@ function html(e: El): string {
     return `<div style="${box}font-family:Roboto,Helvetica,Arial,sans-serif;font-size:${s.fontSize}px;line-height:${Math.ceil(Number(s.fontSize) * 1.17)}px;color:${s.color};font-weight:${weight};white-space:${(e.props as { maxLines?: number }).maxLines === 1 ? "nowrap" : "normal"};text-overflow:ellipsis">${escHtml(e.props.text ?? "")}</div>`;
   }
   if (e.type === "SvgWidget") return `<div style="${box}">${e.props.svg}</div>`;
+  if (e.type === "OverlapWidget") return `<div style="${box}position:relative">${kids(e).map((k) => `<div style="position:absolute;inset:0">${html(k)}</div>`).join("")}</div>`;
   const flex = `display:flex;flex-direction:${s.flexDirection ?? "column"};justify-content:${s.justifyContent ?? "flex-start"};align-items:${s.alignItems ?? "flex-start"};`;
   const deco = `${s.padding ? `padding:${s.padding}px;` : ""}${s.backgroundColor ? `background:${s.backgroundColor};` : ""}${s.borderRadius ? `border-radius:${s.borderRadius}px;` : ""}`;
   return `<div style="${box}${flex}${deco}">${kids(e).map(html).join("")}</div>`;
@@ -53,7 +54,7 @@ describe.skipIf(!process.env.WIDGET_SHOTS)("widget shots", () => {
     mkdirSync(out, { recursive: true });
     for (const [state, me] of Object.entries(STATES)) for (const [size, [w, h]] of Object.entries(SIZES)) {
       const root = SproutsWidget({ me, width: w, height: h, now: NOW }) as El;
-      const page = `<!doctype html><meta charset="utf-8"><body style="margin:0;background:#1d3b45;padding:12px"><div style="width:${w}px;height:${h}px">${html(root)}</div></body>`;
+      const page = `<!doctype html><meta charset="utf-8"><body style="margin:0;background:linear-gradient(135deg,#1d3b45,#6a8f6b);padding:12px"><div style="width:${w}px;height:${h}px">${html(root)}</div></body>`;
       writeFileSync(path.join(out, `${state}-${size}.html`), page);
     }
   });
