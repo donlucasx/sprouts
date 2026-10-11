@@ -1,110 +1,37 @@
 import { CANVAS } from "@/garden2/layout";
-import { WIDGET2_B64, WIDGET2_FRAME } from "@/garden2/widget-b64";
+import { WIDGET2_B64, WIDGET2_FRAME, WIDGET2_SAND } from "@/garden2/widget-b64";
 import { GARDEN_INK } from "@/theme/tokens";
-import { composeLayers, paintedBox, STAKE, type Extras, type Layer, type Stages } from "./garden2";
+import { composeLayers, frameTop, STAKE, type Extras, type Layer, type Stages } from "./garden2";
 
-/** Canvas px of plate kept around the plants and stakes the widget shows. */
-export const VIEW_PAD = 40;
-/** The view is never narrower than this many canvas px (a lone seedling stays a seedling in its bed, not a close-up). */
-export const MIN_VIEW_W = 560;
 /** Stakes draw only where their name comes out at least this many widget px tall (a 2x2's six boards would be specks). */
 export const STAKE_MIN_FONT = 6;
 
-/** The paper inside the bamboo frame (the plate's own paper, #FFFCF6). */
-export const WIDGET2_PAPER = "#FFFCF6";
 const f = (n: number) => Number(n.toFixed(2));
 const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-type Rect = { x0: number; x1: number; y0: number; y1: number };
 const keyOf = (l: Layer): string | null =>
   l.kind === "plant" ? `${l.key}-${l.stage}` : l.kind === "plate" ? "plate" : l.kind === "overlay" ? l.key : l.kind === "stake" ? "stake" : l.kind === "decor" ? l.key : null;
 
 /**
- * The canvas box the widget shows: Garden2's own composition (model/garden2.ts composeLayers, the app's layers in the app's order),
- * cropped to what is planted (each plant's painted box, its stake and the basket) with VIEW_PAD of plate around it, at least
- * MIN_VIEW_W wide. Nothing planted: the whole plate's bed, as Home's frame shows it.
+ * The canvas box the widget shows: Home's own view (Garden2.tsx), the plate's full width (the lantern, the stand, the basin and the rake
+ * all in) from just above the tallest thing drawn (frameTop) to the plate's foot. His note 10-11: "Match the garden art and all the
+ * decor so it looks the same on the widget and the app" (it replaced 10-10's zoom on the trees).
  */
-export function widget2Need(stages: Stages, extras: Extras): Rect {
-  const layers = composeLayers(stages, extras);
-  let r: Rect | null = null;
-  const add = (b: Rect) => (r = r ? { x0: Math.min(r.x0, b.x0), x1: Math.max(r.x1, b.x1), y0: Math.min(r.y0, b.y0), y1: Math.max(r.y1, b.y1) } : b);
-  for (const l of layers) {
-    if (l.kind === "plant" && l.stage >= 1) { const b = paintedBox(l.key, l.stage); if (b) add(b); }
-    else if (l.kind === "stake" || l.kind === "decor") add({ x0: l.x, x1: l.x + l.w, y0: l.y, y1: l.y + l.h });
-  }
-  if (!r) return { x0: 0, x1: CANVAS.w, y0: CANVAS.h * 0.45, y1: CANVAS.h };
-  const p: Rect = r;
-  const out = { x0: Math.max(0, p.x0 - VIEW_PAD), x1: Math.min(CANVAS.w, p.x1 + VIEW_PAD), y0: Math.max(0, p.y0 - VIEW_PAD), y1: Math.min(CANVAS.h, p.y1 + VIEW_PAD) };
-  const short = MIN_VIEW_W - (out.x1 - out.x0);
-  if (short > 0) {
-    const x0 = Math.max(0, Math.min(CANVAS.w - MIN_VIEW_W, out.x0 - short / 2));
-    out.x0 = x0; out.x1 = x0 + MIN_VIEW_W;
-  }
-  return out;
-}
-
-/** A tall box zooms in, never narrower than the two trees with VIEW_PAD either side (they stay whole), nor this many canvas px. */
-export const MIN_FILL_W = 320;
-/** What the zoom centres on and keeps whole: the two trees (the garden's centre) where planted, else everything planted. */
-function focus(stages: Stages, n: Rect): { cx: number; w: number } {
-  const trees = (["mandarin", "store"] as const).map((t) => (stages[t] >= 1 ? paintedBox(t, stages[t]) : null)).filter((b): b is Rect => b !== null);
-  if (!trees.length) return { cx: (n.x0 + n.x1) / 2, w: MIN_FILL_W };
-  const x0 = Math.min(...trees.map((b) => b.x0)), x1 = Math.max(...trees.map((b) => b.x1));
-  return { cx: (x0 + x1) / 2, w: Math.max(MIN_FILL_W, x1 - x0 + 2 * VIEW_PAD) };
-}
-type View = { x: number; y: number; w: number; h: number; px: number };
-/**
- * The view and the garden's height (widget px) for a box `width` by `maxH`. His note 10-10 (both phones' widgets stand taller than
- * square: "the garden centered vertically leaves too much negative space above and underneath... zoom in and center on the trees"):
- * a box taller than the garden zooms in to fill its height, the view narrowed about the trees (kept whole); a box wider
- * than the garden widens the view across the plate. Either way the garden fills the box where the plate allows.
- */
-export function widget2View(stages: Stages, extras: Extras, width: number, maxH: number): View {
-  const n = widget2Need(stages, extras), vh = n.y1 - n.y0;
-  let vw = n.x1 - n.x0, vx = n.x0;
-  const fit = (vh * width) / Math.max(1, maxH);   // the view width at which the garden exactly fills the box
-  const centre = (cx: number) => { vx = Math.max(0, Math.min(CANVAS.w - vw, cx - vw / 2)); };
-  if (fit < vw) { const fo = focus(stages, n); vw = Math.min(vw, Math.max(fo.w, fit)); centre(fo.cx); }
-  else if (fit > vw) { vw = Math.min(CANVAS.w, fit); centre((n.x0 + n.x1) / 2); }
-  // still short of the box (the trees kept whole, or a young garden's low bed): more of the plate above, up to its top
-  const tall = Math.min(n.y1, (vw * maxH) / width), y = Math.min(n.y0, n.y1 - tall);
-  const h = Math.max(1, Math.min(maxH, Math.round((width * (n.y1 - y)) / vw)));
-  return { x: vx, y, w: vw, h, px: width / vw };
-}
-/** The garden's height on a widget `width` wide with at most `maxH`. */
-export const widget2Height = (stages: Stages, extras: Extras, width: number, maxH: number): number => widget2View(stages, extras, width, maxH).h;
-
-/** Widget px over which the garden's own edges fade out onto the wallpaper (at most GARDEN_FEATHER_MAX of its smaller side). */
-export const GARDEN_FEATHER = 30;
-const GARDEN_FEATHER_MAX = 0.22;
-/** Stops per faded edge: the opacity eases in (smoothstep), so the rim dissolves rather than ending in a grey band (a linear ramp did, on device). */
-const FADE_STEPS = 6;
-const fadeStops = (edge: number) => {
-  const ease = (t: number) => t * t * (3 - 2 * t);
-  const stop = (o: number, a: number) => `<stop offset="${f(o)}" stop-color="#fff"${a < 1 ? ` stop-opacity="${f(a)}"` : ""}/>`;
-  const ramp = Array.from({ length: FADE_STEPS + 1 }, (_, i) => i / FADE_STEPS);
-  return ramp.map((t) => stop(t * edge, ease(t))).join("") + ramp.reverse().map((t) => stop(1 - t * edge, ease(t))).join("");
-};
-/**
- * `inner` (drawn in the box x,y,w,h) faded to transparent over fx at its left and right and fy at its top and bottom: two masks, one per
- * axis, so the edges and corners fall off smoothly with no seams (each mask a single gradient-filled rect).
- */
-function feathered(id: string, x: number, y: number, w: number, h: number, fx: number, fy: number, inner: string): string {
-  const box = `x="${f(x)}" y="${f(y)}" width="${f(w)}" height="${f(h)}"`;
-  const defs = `<linearGradient id="${id}-gh" gradientUnits="userSpaceOnUse" x1="${f(x)}" y1="0" x2="${f(x + w)}" y2="0">${fadeStops(fx / w)}</linearGradient>`
-    + `<linearGradient id="${id}-gv" gradientUnits="userSpaceOnUse" x1="0" y1="${f(y)}" x2="0" y2="${f(y + h)}">${fadeStops(fy / h)}</linearGradient>`
-    + `<mask id="${id}-mh" maskUnits="userSpaceOnUse" ${box}><rect ${box} fill="url(#${id}-gh)"/></mask>`
-    + `<mask id="${id}-mv" maskUnits="userSpaceOnUse" ${box}><rect ${box} fill="url(#${id}-gv)"/></mask>`;
-  return `<defs>${defs}</defs><g mask="url(#${id}-mv)"><g mask="url(#${id}-mh)">${inner}</g></g>`;
+export function widget2Box(stages: Stages): { x: number; y: number; w: number; h: number } {
+  const y = frameTop(stages);
+  return { x: 0, y, w: CANVAS.w, h: CANVAS.h - y };
 }
 
 /**
- * The widget's painted garden (R591+, his ask 10-10: "update the widget to show the new garden"): one SVG string, `width` wide and as
- * tall as it draws (at most `maxH`), of the app's layers as stills (the widget cannot play the sway loops), each image the app's own
- * art shrunk by WIDGET2_SCALE (widget-b64.ts) and declared once. A height-bound view widens across the plate to the widget's shape.
+ * The widget's painted garden (R591+, his ask 10-10: "update the widget to show the new garden"): one SVG string of the app's layers as
+ * stills (the widget cannot play the sway loops), each image the app's own art shrunk by WIDGET2_SCALE (widget-b64.ts) and declared once,
+ * Home's view (widget2Box) fitted inside `width` by `maxH`. The plate's paper is cleared (widget.py), so its sky and foot show the frame's
+ * raked sand (widgetFrame) behind: the garden sits in sand, edge to edge, with no fade on anything drawn (10-11: the fades read
+ * "airbrushed").
  */
-export function widgetGarden2(stages: Stages, extras: Extras, width: number, maxH: number): { svg: string; h: number } {
-  const v = widget2View(stages, extras, width, maxH), h = v.h, vx = v.x, vw = v.w, vh = (h * vw) / width;
-  const signs = STAKE.font * (width / vw) >= STAKE_MIN_FONT;
+export function widgetGarden2(stages: Stages, extras: Extras, width: number, maxH: number): { svg: string; w: number; h: number } {
+  const v = widget2Box(stages), s = Math.min(width / v.w, maxH / v.h);
+  const w = Math.max(1, Math.round(v.w * s)), h = Math.max(1, Math.round(v.h * s));
+  const signs = STAKE.font * s >= STAKE_MIN_FONT;
   const layers = composeLayers(stages, extras).filter((l) => signs || l.kind !== "stake");
   const used = new Map<string, Layer>(), body: string[] = [];
   for (const l of layers) {
@@ -118,11 +45,8 @@ export function widgetGarden2(stages: Stages, extras: Extras, width: number, max
     }
   }
   const defs = [...used].map(([k, l]) => `<image id="w-${k}" width="${l.w}" height="${l.h}" preserveAspectRatio="none" xlink:href="data:image/webp;base64,${WIDGET2_B64[k]}"/>`).join("");
-  // the crop's hard edge (the plate cut mid-sand) fades out onto the wallpaper (10-10, the floating garden)
-  const fe = Math.min(GARDEN_FEATHER, GARDEN_FEATHER_MAX * Math.min(width, h)) / v.px;
-  const garden = feathered("g", vx, v.y, vw, vh, fe, fe, body.join(""));
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${width}" height="${h}" viewBox="${f(vx)} ${f(v.y)} ${f(vw)} ${f(vh)}" preserveAspectRatio="xMidYMax meet"><defs>${defs}</defs>${garden}</svg>`;
-  return { svg, h };
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${w}" height="${h}" viewBox="${v.x} ${f(v.y)} ${v.w} ${f(v.h)}" preserveAspectRatio="xMidYMax meet"><defs>${defs}</defs>${body.join("")}</svg>`;
+  return { svg, w, h };
 }
 
 /** The bamboo frame's size: widget dp per px of the painting (its poles about 40 px thick, so about 5 dp), thinner on a small widget so
@@ -143,8 +67,8 @@ export function frameInner(width: number, height: number): FrameInner {
 /**
  * The widget's bamboo frame (his ask 10-10: "the widget itself has transparent edges, its a bit smaller than the widget area, and its
  * contained by a bamboo frame in the same style of the artwork"): the painting cut in nine (scripts/garden2/widget.py), its corners (the
- * knots and the crossed ends) at FRAME_K and its four runs stretched between them, over paper that fills the frame to its poles' centre
- * lines. Outside the poles the widget is clear: the crossed ends overhang onto the wallpaper.
+ * knots and the crossed ends) at FRAME_K and its four runs stretched between them, over raked sand that fills the frame to its poles'
+ * centre lines. Outside the poles the widget is clear: the crossed ends overhang onto the wallpaper.
  */
 export function widgetFrame(width: number, height: number): string {
   const F = WIDGET2_FRAME, k = frameK(width, height);
@@ -156,7 +80,13 @@ export function widgetFrame(width: number, height: number): string {
     if (!WIDGET2_B64[key]) continue;
     parts.push(`<image x="${f(x0)}" y="${f(y0)}" width="${f(x1 - x0)}" height="${f(y1 - y0)}" preserveAspectRatio="none" xlink:href="data:image/webp;base64,${WIDGET2_B64[key]}"/>`);
   }
-  const m = F.mid, px = m.l * k, py = m.t * k;
-  const paper = `<rect x="${f(px)}" y="${f(py)}" width="${f(width - px - m.r * k)}" height="${f(height - py - m.b * k)}" fill="${WIDGET2_PAPER}"/>`;
-  return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${paper}${parts.join("")}</svg>`;
+  // 10-11 (his note: "lets fill the area with raked zen sand"): the frame holds raked sand to its poles' centre lines, the plate's own
+  // straight raking (WIDGET2_SAND, a band mirror-stacked so rows run on), as wide as the opening and at the garden's scale, row on row
+  const m = F.mid, x0 = m.l * k, y0 = m.t * k, sw = width - x0 - m.r * k, sh = height - y0 - m.b * k;
+  const th = (WIDGET2_SAND.h * sw) / CANVAS.w, rows: string[] = [];
+  for (let y = y0; y < y0 + sh; y += th) rows.push(`<use xlink:href="#sand" x="${f(x0)}" y="${f(y)}"/>`);
+  const sand = `<defs><clipPath id="in"><rect x="${f(x0)}" y="${f(y0)}" width="${f(sw)}" height="${f(sh)}"/></clipPath>`
+    + `<image id="sand" width="${f(sw)}" height="${f(th)}" preserveAspectRatio="none" xlink:href="data:image/webp;base64,${WIDGET2_B64.sand}"/></defs>`
+    + `<g clip-path="url(#in)">${rows.join("")}</g>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${sand}${parts.join("")}</svg>`;
 }
