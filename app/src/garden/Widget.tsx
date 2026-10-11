@@ -9,7 +9,7 @@ import { GARDEN2 } from "@/garden2/flag";
 import { toGardenInput, type ZeroMarks } from "@/lib/garden-input";
 import { gardenTotals, valueBlock } from "@/lib/me-state";
 import { widgetHeadline, widgetStateLine, widgetTotalLine, type WidgetState } from "@/lib/widget-state";
-import { BAR_GAP, BAR_H, LABEL_SIZE, lineBox, padFor, STATE_MIN, textWidth, widgetLayout, type Box } from "./widget-layout";
+import { BAR_GAP, BAR_H, BIG_MIN, LABEL_SIZE, lineBox, padFor, STATE_MIN, textWidth, widgetLayout, type Box } from "./widget-layout";
 import type { PlantId, Scene } from "@/model/garden";
 
 /** Brand colours (manual 4, light: the widget draws on paper whatever the phone's theme; Garden2's paper sits inside its bamboo frame). */
@@ -66,7 +66,7 @@ export function SproutsWidget({ me, width, height, wateredPlants = null, restart
     // Garden2 (his note 10-11): the next planting leads, with its bar; the garden's total moves to the bottom line
     if (GARDEN2) {
       const room = inner!.w - 2 * frameGap(width);
-      const head = widgetHeadline(me, { parts: scene?.parts ?? [] }, now, (t) => textWidth(t, LABEL_SIZE, true) <= room);
+      const head = widgetHeadline(me, { parts: scene?.parts ?? [] }, now, (t) => textWidth(t, LABEL_SIZE, true) <= room, (t) => textWidth(t, BIG_MIN, true) <= room);
       state = { text: widgetTotalLine(big, (t) => textWidth(t, STATE_MIN, true) <= room), action: false };
       big = head.big; label = head.label; fraction = head.fraction;
       labelAction = head.action;

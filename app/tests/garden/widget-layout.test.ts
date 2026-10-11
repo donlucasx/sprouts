@@ -58,7 +58,7 @@ const svgBox = (svg: string) => svg.match(/viewBox="([-\d.]+) ([-\d.]+) ([-\d.]+
  * the outline's highest point, GROUND_OUTLINE, not the sprite's transparent strip). */
 
 // R363 + R364 (10-05): the square widget: the total big and alone, "your garden" under it, the garden, ONE state line at the bottom.
-const { widgetLayout, textWidth, BIG_SIZE, BAR_H, LABEL_SIZE, STATE_SIZE, STATE_MIN } = await import("@/garden/widget-layout");
+const { widgetLayout, textWidth, BIG_SIZE, BIG_MIN, BAR_H, LABEL_SIZE, STATE_SIZE, STATE_MIN } = await import("@/garden/widget-layout");
 const { widgetStateLine, widgetHeadline, BUD_LINE } = await import("@/lib/widget-state");
 const { watcherLine } = await import("@/model/watcher");
 
@@ -123,7 +123,7 @@ describe("R363 + R364: every size lays out the total, the garden and one state l
       for (const b of [L.header, L.garden, L.state]) expect(inside(b, inner.w, inner.h), `${state}: ${JSON.stringify(b)}`).toBe(true);
       expect(overlap(L.header, L.garden) || overlap(L.garden, L.state) || overlap(L.header, L.state)).toBe(false);
       // fonts per R363 and one line each, measured at Roboto's widths
-      expect(big.props.style.fontSize).toBe(L.bigSize); expect(L.bigSize).toBeGreaterThanOrEqual(18); expect(L.bigSize).toBeLessThanOrEqual(BIG_SIZE);
+      expect(big.props.style.fontSize).toBe(L.bigSize); expect(L.bigSize).toBeGreaterThanOrEqual(big.props.text.startsWith("$") ? 18 : BIG_MIN);   // an amount never under 18; the empty call ("Swap to save") down to BIG_MIN expect(L.bigSize).toBeLessThanOrEqual(BIG_SIZE);
       expect(label.props.style.fontSize).toBe(LABEL_SIZE); expect(line.props.style.fontSize).toBe(L.stateSize);
       expect(L.stateSize).toBeGreaterThanOrEqual(STATE_MIN); if (width >= 200) expect(L.stateSize).toBe(STATE_SIZE);
       for (const t of [big, label]) expect(t.props.maxLines).toBe(1);
@@ -223,9 +223,11 @@ describe("Garden2 (10-11): the headline is Home's Next planting row (nextPlantin
   it("paused: says so", () => {
     expect(rowOf(STATES.paused).state).toBe("paused"); expect(headOf(STATES.paused).label.props.text).toBe("saved · paused");
   });
-  it("nothing saved: the call to swap, in the accent green (his note: \"drive the user to perform a swap/round up\")", () => {
+  it("nothing saved: the call to swap leads, the amount that plants under it in the accent green (his note: \"drive the user to perform a swap/round up\")", () => {
     expect(rowOf(STATES.empty).state).toBe("empty");
-    const h = headOf(STATES.empty); expect(h.big.props.text).toBe("$0.00"); expect(h.label.props.text).toBe("Swap to round up your change");
+    // 10-11: "seeing $0.00 alone up there is not very inviting": the call to act leads, never a zero
+    const h = headOf(STATES.empty); expect(h.big.props.text).toBe("Swap to save"); expect(h.big.props.text).not.toContain("$0.00");
+    expect(h.label.props.text).toBe("round-ups plant at $2.00");
     expect(h.label.props.style.color).toBe("#145A3C");
   });
   it("widgetHeadline is the headline drawn, for every state", () => {

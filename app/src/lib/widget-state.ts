@@ -26,16 +26,19 @@ export function widgetStateLine(me: Pick<MeResponse, "nextPlanting" | "wallets">
   }
 }
 
+/** Garden2's headline with nothing saved (10-11): the call to act in place of "$0.00". */
+export const EMPTY_BIG = "Swap to save";
 /** Garden2's headline: the change saved for the next planting (big), what it means or the call to act (label), and the bar's fill. */
 export type WidgetHeadline = { big: string; label: string; fraction: number; action: boolean };
 
 /**
  * Garden2 (his note 10-11: "showing 'next swap' data is more relevant than the total of the portfolio held. widget should act as a window
  * to the garden and also provide useful information that perhaps could drive the user to perform a swap/round up"): the widget leads with
- * Home's Next planting row (nextPlantingFor, so the two never disagree): the change saved, big; under it how far it is toward the next
- * planting, or, with nothing saved, the call to swap (drawn in the accent green); the bar is Home's fraction. Paused says so.
+ * Home's Next planting row (nextPlantingFor, so the two never disagree): the change saved, big, and under it how far it is toward the
+ * next planting; with nothing saved, the call to swap, big, and the amount that plants (in the accent green). The bar is Home's fraction.
+ * Paused says so.
  */
-export function widgetHeadline(me: Pick<MeResponse, "nextPlanting" | "wallets">, scene: Pick<Scene, "parts">, now: Date, fits: (label: string) => boolean = () => true): WidgetHeadline {
+export function widgetHeadline(me: Pick<MeResponse, "nextPlanting" | "wallets">, scene: Pick<Scene, "parts">, now: Date, fits: (label: string) => boolean = () => true, bigFits: (big: string) => boolean = () => true): WidgetHeadline {
   const row = nextPlantingFor(me, scene, now), pending = Math.max(0, me.nextPlanting.pendingCents);
   const big = formatUsd(pending), goal = formatUsd(me.nextPlanting.thresholdCents);
   // each label longest first; a narrow widget takes the first that fits, else the last
@@ -44,7 +47,8 @@ export function widgetHeadline(me: Pick<MeResponse, "nextPlanting" | "wallets">,
     case "paused": return { big, label: pick(["saved · paused", "paused"]), fraction: row.fraction, action: false };
     case "reached": return { big, label: pick([`saved · plants ${nextRunWords(now)}`, `plants ${nextRunClock(now)}`]), fraction: 1, action: false };
     case "saving": return { big, label: pick([`of ${goal} · swap to add more`, `of ${goal}`]), fraction: row.fraction, action: false };
-    case "empty": return { big, label: pick(["Swap to round up your change", "Swap to round up", "Swap to save"]), fraction: 0, action: true };
+    // his note 10-11: "seeing $0.00 alone up there is not very inviting": nothing saved leads with the thing to do, not a zero
+    case "empty": return { big: bigFits(EMPTY_BIG) ? EMPTY_BIG : "Swap", label: pick([`round-ups plant at ${goal}`, `plants at ${goal}`]), fraction: 0, action: true };
   }
 }
 /** Garden2's bottom line (10-11): the whole garden's value, Home's number, under the painting; shorter where `fits` says the long one
