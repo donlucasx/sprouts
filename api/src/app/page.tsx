@@ -1,42 +1,43 @@
-import { pullerSigner } from "@/lib/puller";
-import { SKR_STAKING_PROGRAM, SUBSCRIPTIONS_PROGRAM } from "@/lib/constants";
+import { Outfit } from "next/font/google";
 
-/** The front door: what Sprouts is, exactly which programs it touches, the limits, and where the code is. The app lives on the phone. */
-export default async function Home() {
-  // The puller's public address, read from the key the server holds; omitted where no key is configured (a local build).
-  let puller: string | null = null;
-  try {
-    puller = (await pullerSigner()).address;
-  } catch {
-    puller = null;
-  }
-  const mono = { fontFamily: "ui-monospace, monospace", fontSize: 13, wordBreak: "break-all" as const };
+const outfit = Outfit({ subsets: ["latin"], weight: ["600"] });
+
+/**
+ * The front door (his note 10-11: "a fun minimal splash page ... the simple loading screen from the phone (with the tree growing), and
+ * instead of loading could say something about Sprouts is coming"). GrowSplash on the web: the stORE tree grows once (the deck's
+ * tree-grow.webp, cut from the app's 12 splash frames), the lockup under it, and a small caption where the app says "Loading up your
+ * garden...". The old text page described the pre-leash Subscriptions approval; /link, /revoke, /terms and the deck stay as links.
+ */
+export default function Home() {
+  const paper = "#FFFBF5", ink = "#2B2622", muted = "#8A847B";
+  const link = { color: muted, textDecoration: "none" };
   return (
-    <main style={{ fontFamily: "system-ui, sans-serif", maxWidth: 640, margin: "8vh auto", padding: "0 24px", lineHeight: 1.55 }}>
-      <h1 style={{ fontSize: 28, marginBottom: 8 }}>Sprouts</h1>
-      <p>Round-ups into SKR that your Seeker keeps and a yield manager grows.</p>
-      <p>
-        An Android app for the Solana Seeker, built for the CLOCK IN hackathon. You approve once per trading wallet; after that a daily
-        job pulls at most your daily limit in USDC, swaps it to SKR through Jupiter and stakes it to your Seed Vault key, in one
-        transaction. Only your Seed Vault key can unstake. Nothing here holds user funds.
-      </p>
-      <h2 style={{ fontSize: 18, marginTop: 28 }}>What the approval does</h2>
-      <p>
-        It uses the Solana Foundation&apos;s Subscriptions program (audited by Cantina). The program becomes the delegate on your USDC
-        account; each pull must also fit a recurring delegation capped at your daily limit, $5 by default, which the program enforces
-        on chain. Revoke it at any time from the app or from this site with the wallet that approved.
-      </p>
-      <ul style={{ paddingLeft: 20 }}>
-        <li>Subscriptions program: <span style={mono}>{SUBSCRIPTIONS_PROGRAM}</span></li>
-        <li>SKR staking program (Solana Mobile): <span style={mono}>{SKR_STAKING_PROGRAM}</span></li>
-        {puller ? <li>The puller, the only key that can pull within the limit: <span style={mono}>{puller}</span></li> : null}
-      </ul>
-      <p>
-        <a href="/link">Link a wallet</a> with a code from the app. <a href="/revoke">Revoke</a> with the wallet that approved.
-      </p>
-      <p>
-        To report a problem: <a href="mailto:hello@sprouts.money">hello@sprouts.money</a>. The source code is shared privately with the hackathon judges.
-      </p>
+    <main style={{ minHeight: "100svh", background: paper, color: ink, display: "grid", gridTemplateRows: "1fr auto", fontFamily: "system-ui, sans-serif" }}>
+      <style>{`
+        @keyframes sp-dots { 0%, 20% { content: "" } 40% { content: "." } 60% { content: ".." } 80%, 100% { content: "..." } }
+        .sp-dots::after { content: "..."; display: inline-block; width: 1.2em; text-align: left; animation: sp-dots 2.4s steps(1) infinite; }
+        .sp-foot a:hover { color: ${ink} !important; }
+        @media (prefers-reduced-motion: reduce) { .sp-dots::after { animation: none; } }
+      `}</style>
+      <div style={{ display: "grid", placeItems: "center", alignContent: "center", padding: "6vh 24px 0" }}>
+        <picture>
+          <source srcSet="/deck/tree-grown.webp" media="(prefers-reduced-motion: reduce)" />
+          <img src="/deck/tree-grow.webp" alt="A tree growing on raked sand" style={{ width: "min(72vw, 340px)", height: "auto", display: "block" }} />
+        </picture>
+        <h1 className={outfit.className} style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 42, fontWeight: 600, letterSpacing: "-0.03em", margin: "4px 0 0" }}>
+          <img src="/deck/mark.svg" alt="" style={{ height: 40, width: "auto" }} />
+          Sprouts
+        </h1>
+        <p style={{ color: muted, fontSize: 16, margin: "28px 0 0", textAlign: "center" }}>
+          Coming soon to the Solana dApp Store<span className="sp-dots" />
+        </p>
+      </div>
+      <nav className="sp-foot" style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: "8px 20px", padding: "24px 24px 32px", fontSize: 13 }}>
+        <a href="/deck" style={link}>Deck</a>
+        <a href="/terms" style={link}>Terms</a>
+        <a href="/revoke" style={link}>Revoke a wallet</a>
+        <a href="mailto:hello@sprouts.money" style={link}>hello@sprouts.money</a>
+      </nav>
     </main>
   );
 }
