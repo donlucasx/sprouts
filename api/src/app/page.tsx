@@ -1,6 +1,8 @@
 import { Outfit } from "next/font/google";
 
 const outfit = Outfit({ subsets: ["latin"], weight: ["600"] });
+/** R-S3 (his note "a sleeker font for the 'coming soon...' and buttons underneath"): Outfit light, a little tracking. */
+const outfitLight = Outfit({ subsets: ["latin"], weight: ["300", "400"] });
 
 /**
  * The front door (his note 10-11: "a fun minimal splash page ... the simple loading screen from the phone (with the tree growing), and
@@ -11,14 +13,15 @@ const outfit = Outfit({ subsets: ["latin"], weight: ["600"] });
  * /terms and the deck stay as links.
  */
 export const dynamic = "force-dynamic";
-const PLANTS = ["store", "maple", "azalea", "mandarin", "orchid"] as const;
+// R-S3: the orchid is out (its sand and flower clip); each clip is cropped to its grown plant (width / height), so no empty sky above
+const PLANTS = [["store", 1], ["maple", 720 / 428], ["azalea", 720 / 566], ["mandarin", 1]] as const;
 
 export default function Home() {
-  const plant = PLANTS[Math.floor(Math.random() * PLANTS.length)];
+  const [plant, aspect] = PLANTS[Math.floor(Math.random() * PLANTS.length)];
   const paper = "#FFFBF5", ink = "#2B2622", muted = "#8A847B";
   const link = { color: muted, textDecoration: "none" };
   return (
-    <main style={{ minHeight: "100svh", background: paper, color: ink, display: "grid", gridTemplateRows: "1fr auto", fontFamily: "system-ui, sans-serif" }}>
+    <main className={outfitLight.className} style={{ minHeight: "100svh", background: paper, color: ink, display: "grid", gridTemplateRows: "1fr auto" }}>
       <style>{`
         @keyframes sp-dots { 0%, 20% { content: "" } 40% { content: "." } 60% { content: ".." } 80%, 100% { content: "..." } }
         .sp-dots::after { content: "..."; display: inline-block; width: 1.2em; text-align: left; animation: sp-dots 2.4s steps(1) infinite; }
@@ -27,8 +30,8 @@ export default function Home() {
         .sp-grown { display: none; }
         @media (prefers-reduced-motion: reduce) { .sp-dots::after { animation: none; } .sp-grow { display: none; } .sp-grown { display: block; } }
       `}</style>
-      <div style={{ display: "grid", placeItems: "center", alignContent: "center", padding: "6vh 24px 0" }}>
-        <div style={{ width: "min(72vw, 360px)", aspectRatio: "1" }}>
+      <div style={{ display: "grid", placeItems: "center", alignContent: "center", padding: "0 24px 7vh" }}>
+        <div style={{ width: "min(72vw, 360px)", aspectRatio: aspect }}>
           <video className="sp-grow" src={`/site/grow-${plant}.mp4`} autoPlay muted playsInline preload="auto" aria-label="A plant growing from seed" />
           <img className="sp-grown" src={`/site/grown-${plant}.webp`} alt="A grown plant" />
         </div>
@@ -36,11 +39,11 @@ export default function Home() {
           <img src="/deck/mark.svg" alt="" style={{ height: 40, width: "auto" }} />
           Sprouts
         </h1>
-        <p style={{ color: muted, fontSize: 16, margin: "28px 0 0", textAlign: "center" }}>
+        <p style={{ color: muted, fontSize: 17, fontWeight: 300, letterSpacing: "0.01em", margin: "22px 0 0", textAlign: "center" }}>
           Coming soon to the Solana dApp Store<span className="sp-dots" />
         </p>
       </div>
-      <nav className="sp-foot" style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: "8px 20px", padding: "24px 24px 32px", fontSize: 13 }}>
+      <nav className="sp-foot" style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: "8px 20px", padding: "24px 24px 32px", fontSize: 13, fontWeight: 400, letterSpacing: "0.04em" }}>
         <a href="/deck" style={link}>Deck</a>
         <a href="/terms" style={link}>Terms</a>
         <a href="/revoke" style={link}>Revoke a wallet</a>
