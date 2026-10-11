@@ -26,32 +26,45 @@ export function widgetStateLine(me: Pick<MeResponse, "nextPlanting" | "wallets">
   }
 }
 
-/** Garden2's headline with nothing saved (10-11): the call to act in place of "$0.00". */
-export const EMPTY_BIG = "Swap to save";
-/** Garden2's headline: the change saved for the next planting (big), what it means or the call to act (label), and the bar's fill. */
-export type WidgetHeadline = { big: string; label: string; fraction: number; action: boolean };
+/** A planting this recent leads the widget ("Planted $0.82"): the widget keeps no memory of what it drew, so a clock decides. */
+export const PLANTED_RECENT_MS = 24 * 60 * 60 * 1000;
+/** Garden2's three lines (10-11, after Kimi's analysis): the headline (one small bold line), the line under it and its accent, the bottom
+ *  line, and the bar's fill (null: no bar). */
+export type WidgetHeadline = { big: string; label: string; line: string; fraction: number | null; action: boolean };
+type Fit = (text: string) => boolean;
 
 /**
- * Garden2 (his note 10-11: "showing 'next swap' data is more relevant than the total of the portfolio held. widget should act as a window
- * to the garden and also provide useful information that perhaps could drive the user to perform a swap/round up"): the widget leads with
- * Home's Next planting row (nextPlantingFor, so the two never disagree): the change saved, big, and under it how far it is toward the
- * next planting; with nothing saved, the call to swap, big, and the amount that plants (in the accent green). The bar is Home's fraction.
- * Paused says so.
+ * Garden2 (his notes 10-11: "seeing $0.00 alone up there is not very inviting"; "too big 'swap to save', plus not the right kind of cta";
+ * Kimi's widget analysis, ~/Documents/kimi/sprouts-widget-2026-10-11/WIDGET-ANALYSIS.md): the widget reports, it never asks for a swap (it
+ * cannot do one, and neither can Sprouts). One small headline about the user's money, never "$0.00"; the bottom line is the fact the
+ * headline leaves out. From Home's Next planting row (nextPlantingFor), so the two never disagree:
+ * paused -> "Round-ups paused" / open to turn on (accent) / the total; reached -> "$2.15 saved" / when it plants / the total, bar full;
+ * saving -> "$1.35 of $2.00" / "rounds up from every swap" / the total, bar; nothing pending after a planting in the last day ->
+ * "Planted $0.82" / the total / "Waiting for your next swap"; nothing pending, money in the garden -> the total / "Waiting for your next
+ * swap" / what plants; nothing yet -> "Your garden" / "Waiting for your first swap" / what plants.
+ * Each text lists its forms longest first; a narrow widget takes the first that fits, else the last.
  */
-export function widgetHeadline(me: Pick<MeResponse, "nextPlanting" | "wallets">, scene: Pick<Scene, "parts">, now: Date, fits: (label: string) => boolean = () => true, bigFits: (big: string) => boolean = () => true): WidgetHeadline {
+export function widgetHeadline(
+  me: Pick<MeResponse, "nextPlanting" | "wallets"> & { history?: Pick<MeResponse["history"], "plantings"> },
+  scene: Pick<Scene, "parts">, now: Date, total: string, hasMoney: boolean,
+  fits: { big?: Fit; label?: Fit; line?: Fit } = {},
+): WidgetHeadline {
   const row = nextPlantingFor(me, scene, now), pending = Math.max(0, me.nextPlanting.pendingCents);
-  const big = formatUsd(pending), goal = formatUsd(me.nextPlanting.thresholdCents);
-  // each label longest first; a narrow widget takes the first that fits, else the last
-  const pick = (labels: string[]) => labels.find(fits) ?? labels[labels.length - 1];
+  const goal = formatUsd(me.nextPlanting.thresholdCents);
+  const pick = (f: Fit | undefined, texts: string[]) => texts.find((t) => (f ?? (() => true))(t)) ?? texts[texts.length - 1];
+  const big = (...t: string[]) => pick(fits.big, t), label = (...t: string[]) => pick(fits.label, t), line = (...t: string[]) => pick(fits.line, t);
+  const inGarden = line(`${total} in your garden`, `${total} in garden`);
+  const plantsAt = line(`Round-ups plant at ${goal}`, `Plants at ${goal}`);
   switch (row.state) {
-    case "paused": return { big, label: pick(["saved · paused", "paused"]), fraction: row.fraction, action: false };
-    case "reached": return { big, label: pick([`saved · plants ${nextRunWords(now)}`, `plants ${nextRunClock(now)}`]), fraction: 1, action: false };
-    case "saving": return { big, label: pick([`of ${goal} · swap to add more`, `of ${goal}`]), fraction: row.fraction, action: false };
-    // his note 10-11: "seeing $0.00 alone up there is not very inviting": nothing saved leads with the thing to do, not a zero
-    case "empty": return { big: bigFits(EMPTY_BIG) ? EMPTY_BIG : "Swap", label: pick([`round-ups plant at ${goal}`, `plants at ${goal}`]), fraction: 0, action: true };
+    case "paused": return { big: big("Round-ups paused", "Paused"), label: label("Open Sprouts to turn them on", "Open to turn on"), line: inGarden, fraction: null, action: true };
+    case "reached": return { big: big(`${formatUsd(pending)} saved`, formatUsd(pending)), label: label(`plants ${nextRunWords(now)}`, `plants ${nextRunClock(now)}`), line: inGarden, fraction: 1, action: false };
+    case "saving": return { big: big(`${formatUsd(pending)} of ${goal}`, formatUsd(pending)), label: label("rounds up from every swap", "from your swaps", "from swaps"), line: inGarden, fraction: row.fraction, action: false };
+    case "empty": {
+      const recent = (me.history?.plantings ?? []).filter((p) => { const t = Date.parse(p.ts); return t <= now.getTime() && now.getTime() - t < PLANTED_RECENT_MS; });
+      const planted = recent.reduce((c, p) => c + p.usdcInCents, 0);
+      if (planted > 0) return { big: big(`Planted ${formatUsd(planted)}`, formatUsd(planted)), label: label(`${total} in your garden`, `${total} in garden`), line: line("Waiting for your next swap", "No change waiting yet", "No change yet"), fraction: null, action: false };
+      if (hasMoney) return { big: big(`${total} in your garden`, total), label: label("Waiting for your next swap", "No change waiting yet", "No change yet"), line: plantsAt, fraction: null, action: false };
+      return { big: "Your garden", label: label("Waiting for your first swap", "No change yet"), line: plantsAt, fraction: null, action: false };
+    }
   }
 }
-/** Garden2's bottom line (10-11): the whole garden's value, Home's number, under the painting; shorter where `fits` says the long one
- *  would wrap (a dense 2x2). */
-export const widgetTotalLine = (total: string, fits: (text: string) => boolean = () => true): string =>
-  fits(`${total} in your garden`) ? `${total} in your garden` : `${total} in garden`;

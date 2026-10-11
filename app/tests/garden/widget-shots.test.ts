@@ -47,7 +47,11 @@ const bud = { ...grown, user: { ...grown.user, wateredAt: new Date(NOW.getTime()
 const reached = { ...base, nextPlanting: { ...base.nextPlanting, thresholdCents: 10, capLeftCents: 0 } } as MeResponse;
 
 const SIZES = { "2x2": [206, 205], "2x2-dense": [150, 150], "4x2": [430, 205], "4x2-dense": [320, 150], "2x3": [206, 307], "2x3-dense": [150, 230], "3x2": [310, 205], "3x2-dense": [230, 150], "min": [110, 110], "tall-a": [180, 230], "tall-b": [170, 260] } as const;
-const STATES = { young: base, grown, bud, reached } as const;
+const empty = { ...grown, nextPlanting: { ...grown.nextPlanting, pendingCents: 0 }, history: { ...grown.history, plantings: grown.history.plantings.map((p) => ({ ...p, ts: new Date(NOW.getTime() - 3 * DAY).toISOString() })) } } as MeResponse;
+const planted = { ...empty, history: { ...empty.history, plantings: [{ id: "new", ts: new Date(NOW.getTime() - 3_600_000).toISOString(), asset: "SKR", amountOutRaw: "12480000", usdcInCents: 82 }, ...empty.history.plantings] } } as unknown as MeResponse;
+const first = { ...base, holdings: [], nextPlanting: { ...base.nextPlanting, pendingCents: 0 }, history: { plantings: [], picks: [] }, pot: { ...base.pot, skrStakedRaw: "0" } } as unknown as MeResponse;
+const paused = { ...grown, wallets: [{ pubkey: "W", status: "paused", dailyCapCents: 500 }] } as unknown as MeResponse;
+const STATES = { young: base, grown, reached, empty, planted, first, paused } as const;
 
 describe.skipIf(!process.env.WIDGET_SHOTS)("widget shots", () => {
   it("writes the pages", () => {

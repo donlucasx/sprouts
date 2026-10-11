@@ -8,8 +8,9 @@ import { stagesFor } from "@/model/garden2";
 import { GARDEN2 } from "@/garden2/flag";
 import { toGardenInput, type ZeroMarks } from "@/lib/garden-input";
 import { gardenTotals, valueBlock } from "@/lib/me-state";
-import { widgetHeadline, widgetStateLine, widgetTotalLine, type WidgetState } from "@/lib/widget-state";
-import { BAR_GAP, BAR_H, BIG_MIN, LABEL_SIZE, lineBox, padFor, STATE_MIN, textWidth, widgetLayout, type Box } from "./widget-layout";
+import { formatUsd } from "@/lib/format";
+import { widgetHeadline, widgetStateLine, type WidgetState } from "@/lib/widget-state";
+import { BAR_GAP, BAR_H, G2_BIG, G2_BIG_MIN, LABEL_SIZE, lineBox, padFor, STATE_MIN, textWidth, widgetLayout, type Box } from "./widget-layout";
 import type { PlantId, Scene } from "@/model/garden";
 
 /** Brand colours (manual 4, light: the widget draws on paper whatever the phone's theme; Garden2's paper sits inside its bamboo frame). */
@@ -29,8 +30,8 @@ export const WIDGET_LABEL = "your garden";
  * square (the default 2x2): the whole garden's value big and alone at the top with "your garden" under it, the garden in the middle,
  * ONE state line at the bottom that invites a tap (widgetStateLine: Home's own state). Wide sizes keep the total at the left of the
  * garden; tall ones centre the garden in its box. The boxes come from widgetLayout; the whole widget opens the app.
- * Garden2 (10-10, 10-11): a painted bamboo frame; the painting fills its opening (widgetGarden2); the next planting leads (the change
- * saved, how far toward the planting or the call to swap, Home's bar), the garden's total is the bottom line.
+ * Garden2 (10-10, 10-11): a painted bamboo frame; the painting fills its opening (widgetGarden2); one small headline reports the next
+ * planting or the garden (widgetHeadline: never a call to swap, never "$0.00"), Home's bar while saving, the other fact at the bottom.
  */
 export function SproutsWidget({ me, width, height, wateredPlants = null, restartMarks = {}, now = new Date() }: { me: MeResponse | null; width: number; height: number; wateredPlants?: PlantId[] | null; restartMarks?: ZeroMarks; now?: Date }) {
   const H = GARDEN2 ? Math.max(1, height - BOTTOM_SAFE) : height;
@@ -66,15 +67,18 @@ export function SproutsWidget({ me, width, height, wateredPlants = null, restart
     // Garden2 (his note 10-11): the next planting leads, with its bar; the garden's total moves to the bottom line
     if (GARDEN2) {
       const room = inner!.w - 2 * frameGap(width);
-      const head = widgetHeadline(me, { parts: scene?.parts ?? [] }, now, (t) => textWidth(t, LABEL_SIZE, true) <= room, (t) => textWidth(t, BIG_MIN, true) <= room);
-      state = { text: widgetTotalLine(big, (t) => textWidth(t, STATE_MIN, true) <= room), action: false };
+      const total = big, hasMoney = total !== formatUsd(0);
+      const head = widgetHeadline(me, { parts: scene?.parts ?? [] }, now, total, hasMoney, {
+        big: (t) => textWidth(t, G2_BIG_MIN, true) <= room, label: (t) => textWidth(t, LABEL_SIZE, true) <= room, line: (t) => textWidth(t, STATE_MIN, true) <= room,
+      });
+      state = { text: head.line, action: false };
       big = head.big; label = head.label; fraction = head.fraction;
       labelAction = head.action;
     }
   } catch { return notice("Open Sprouts to see your garden"); }
-  let L = inner ? widgetLayout(inner.w, inner.h, big, label, state.text, frameGap(width), fraction !== null) : widgetLayout(width, height, big, label, state.text);
+  let L = inner ? widgetLayout(inner.w, inner.h, big, label, state.text, frameGap(width), fraction !== null, G2_BIG, G2_BIG_MIN) : widgetLayout(width, height, big, label, state.text);
   // a widget too short for the bar and a garden (110 dp tall) keeps the garden and drops the bar
-  if (inner && fraction !== null && L.garden.h < MIN_GARDEN_H) { fraction = null; L = widgetLayout(inner.w, inner.h, big, label, state.text, frameGap(width)); }
+  if (inner && fraction !== null && L.garden.h < MIN_GARDEN_H) { fraction = null; L = widgetLayout(inner.w, inner.h, big, label, state.text, frameGap(width), false, G2_BIG, G2_BIG_MIN); }
   let garden: { svg: string; w?: number; h: number } | null = null, painting: string | null = null;
   // 10-10 (his ask: the widget shows the new garden): Garden2's painted layers as stills, Home's stages, stakes and basket, filling the
   // frame's opening behind the text (10-11); the old garden draws in its box
