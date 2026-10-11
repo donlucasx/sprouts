@@ -32,7 +32,7 @@ def b64(path):
 # the app's own art as it is (10-11, his note: the widget's sand should be as dense as the app's; a cleared plate on a sand tile was not)
 entries = {"plate": b64(os.path.join(G2, "plate.png"))}
 for key, name in (("stand", "stand.png"), ("cords", "cords.png"), ("stake", "decor-stake.png"), ("basket", "decor-basket.png")):
-    entries[key] = b64(os.path.join(G2, name))
+    if os.path.exists(os.path.join(G2, name)): entries[key] = b64(os.path.join(G2, name))   # R-D40: the stand and cords may be gone
 for path in sorted(glob.glob(os.path.join(G2, "*", "stage[0-9][0-9].webp"))):
     plant = os.path.basename(os.path.dirname(path))
     if plant in ("loops", "growth"): continue

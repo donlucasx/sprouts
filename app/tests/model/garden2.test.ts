@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { CANVAS, DECOR, DRAW_ORDER, OVERLAYS, PLANTS, SPOTS } from "@/garden2/layout";
-import { GUST_STAGGER_MS, nextStir, STIR_WAIT, CARD_CARET, CARD_EDGE, FRAME_PAD, frameTop, paintedBox, paintedTop, placeCard, LADDER, allStages, clampStage, composeLayers, onePerPlant, paintsAt, plantAt, plantedDollars, scaleRect, stageForDollars, stagesFor, viewHeight, clampZoom2, fruitOn, FRUIT_FROM, revealFrom, STAKE, STAKE_AT, STAKE_LABEL, type Pick2, type Planting2, type Stages } from "@/model/garden2";
+import { GUST_STAGGER_MS, nextStir, STIR_WAIT, CARD_CARET, CARD_EDGE, FRAME_PAD, LANTERN_TOP, frameTop, paintedBox, paintedTop, placeCard, LADDER, allStages, clampStage, composeLayers, onePerPlant, paintsAt, plantAt, plantedDollars, scaleRect, stageForDollars, stagesFor, viewHeight, clampZoom2, fruitOn, FRUIT_FROM, revealFrom, STAKE, STAKE_AT, STAKE_LABEL, type Pick2, type Planting2, type Stages } from "@/model/garden2";
 
 const ASSETS = path.resolve(__dirname, "../../assets/garden2");
 const day = (d: number, h = 12) => new Date(2026, 9, d, h);   // local time (vitest pins TZ to Los Angeles)
@@ -37,19 +37,20 @@ describe("stages from plantings (dollars put in, R518; right away, R521; withdra
   });
   it("maps each coin to its plant (layout.json's coins) and sums its dollars", () => {
     const plantings = [at(5, "SKR", 30), at(6, "SKR", 30), at(5, "stORE", 100), at(5, "hSOL", 175), at(5, "USDC_LEND", 250), at(5, "SOL_LEND", 500), at(5, "cbBTC", 3000)];
-    expect(stagesFor(g(plantings))).toEqual({ mandarin: 2, store: 3, pothos: 4, azalea: 5, maple: 7, orchid: 14 });
+    // R-D40 (10-11): stORE the geode, hSOL the azalea, USDC lending the stORE tree
+    expect(stagesFor(g(plantings))).toEqual({ mandarin: 2, geode: 3, azalea: 4, store: 5, maple: 7, orchid: 14 });
   });
   it("a planting grows the plant as soon as it is confirmed, with no end-of-day wait (R521)", () => {
     expect(stagesFor(g([at(10, "SKR", 100, 8)])).mandarin).toBe(3);
   });
   it("a planted coin shows at least stage 1 (a legacy row with no dollar leg), never above 14", () => {
-    expect(stagesFor(g([at(5, "stORE", 0)])).store).toBe(1);
+    expect(stagesFor(g([at(5, "stORE", 0)])).geode).toBe(1);
     expect(stagesFor(g([at(5, "cbBTC", 99_999)])).orchid).toBe(14);
   });
   it("counts dollars put in only (no price input exists), never a negative leg", () => {
     const { dollars, planted } = plantedDollars(g([at(5, "hSOL", 120), at(6, "hSOL", -50)]));
-    expect(dollars.pothos).toBeCloseTo(1.2, 9);
-    expect([...planted]).toEqual(["pothos"]);
+    expect(dollars.azalea).toBeCloseTo(1.2, 9);
+    expect([...planted]).toEqual(["azalea"]);
   });
   it("uses the pacing it is given", () => {
     const skrLeads = (p: string, d: number) => (p === "mandarin" ? 14 : stageForDollars(d));
@@ -58,12 +59,12 @@ describe("stages from plantings (dollars put in, R518; right away, R521; withdra
   it("a withdrawal shrinks the plant by the share of its planted tokens taken out (R519)", () => {
     // $10 of hSOL (10,000,000 raw) is stage 9 ($10.70 is the 10th step); half withdrawn leaves $5, stage 7; all of it leaves the minimum 1 while planted.
     const p = [at(5, "hSOL", 1000)];
-    expect(stagesFor(g(p)).pothos).toBe(9);
-    expect(stagesFor(g(p, [{ asset: "hSOL", amountRaw: 500_000n }])).pothos).toBe(7);
-    expect(plantedDollars(g(p, [{ asset: "hSOL", amountRaw: 500_000n }])).dollars.pothos).toBeCloseTo(5, 9);
-    expect(plantedDollars(g(p, [{ asset: "hSOL", amountRaw: 2_000_000n }])).dollars.pothos).toBe(0);
+    expect(stagesFor(g(p)).azalea).toBe(9);
+    expect(stagesFor(g(p, [{ asset: "hSOL", amountRaw: 500_000n }])).azalea).toBe(7);
+    expect(plantedDollars(g(p, [{ asset: "hSOL", amountRaw: 500_000n }])).dollars.azalea).toBeCloseTo(5, 9);
+    expect(plantedDollars(g(p, [{ asset: "hSOL", amountRaw: 2_000_000n }])).dollars.azalea).toBe(0);
     // a withdrawal of another coin leaves this one alone
-    expect(stagesFor(g(p, [{ asset: "cbBTC", amountRaw: 500_000n }])).pothos).toBe(9);
+    expect(stagesFor(g(p, [{ asset: "cbBTC", amountRaw: 500_000n }])).azalea).toBe(9);
   });
   it("SKR shrinks by principal withdrawn only: picking the fruit never prunes [A13]", () => {
     const p = [at(5, "SKR", 1000)];
@@ -79,19 +80,20 @@ describe("clampStage", () => {
     expect(clampStage("maple", -3)).toBe(0);
     expect(clampStage("orchid", 22)).toBe(14);
     expect(clampStage("azalea", 6.6)).toBe(7);
-    expect(clampStage("pothos", Number.NaN)).toBe(0);
+    expect(clampStage("geode", Number.NaN)).toBe(0);
     for (const p of DRAW_ORDER) expect(PLANTS[p].first, p).toBe(0);
   });
 });
 
 describe("the layer plan (draw order and positions from the approved export)", () => {
   const keys = (s: Partial<Stages>) => composeLayers(s).map((l) => (l.kind === "plant" ? `${l.key}${l.stage}` : l.key));
-  it("draws plate, then the plants back to front, the stand right after stORE and the cords right before the pothos", () => {
-    expect(DRAW_ORDER).toEqual(["maple", "store", "mandarin", "pothos", "orchid", "azalea"]);
-    expect(keys(allStages(14))).toEqual(["plate", "maple14", "store14", "stand", "mandarin14", "cords", "pothos14", "orchid14", "azalea14"]);
+  it("draws plate, then the plants back to front; the pothos, its cords and its stand are gone (R-D40)", () => {
+    expect([...DRAW_ORDER].sort()).toEqual(["azalea", "geode", "mandarin", "maple", "orchid", "store"]);
+    expect(OVERLAYS).toEqual({});
+    expect(keys(allStages(14))).toEqual(["plate", ...DRAW_ORDER.map((p) => `${p}14`)]);
   });
-  it("before any planting: every plant's bare ground (the trees' soil mound, R517), the stand and cords still drawn", () => {
-    expect(keys(allStages(0))).toEqual(["plate", "maple0", "store0", "stand", "mandarin0", "cords", "pothos0", "orchid0", "azalea0"]);
+  it("before any planting: every plant's bare ground (the trees' soil mound, R517)", () => {
+    expect(keys(allStages(0))).toEqual(["plate", ...DRAW_ORDER.map((p) => `${p}0`)]);
     expect(keys({})).toEqual(keys(allStages(0)));
   });
   it("places every plant at its export box, the plate over the whole 1518 x 896 canvas (190 px of sand right of the original pole, R522b/R545)", () => {
@@ -101,10 +103,9 @@ describe("the layer plan (draw order and positions from the approved export)", (
     expect(L.find((l) => l.key === "maple")).toMatchObject({ x: 597, y: 446, w: 276, h: 263 });
     expect(L.find((l) => l.key === "store")).toMatchObject({ x: 618, y: 5, w: 639, h: 708 });
     expect(L.find((l) => l.key === "mandarin")).toMatchObject({ x: 143, y: 35, w: 637, h: 705 });
-    expect(L.find((l) => l.key === "pothos")).toMatchObject({ x: 1251, y: 381, w: 204, h: 260 });   // R545: moved 125 px right with the pole
+    expect(L.find((l) => l.key === "geode")).toMatchObject({ x: PLANTS.geode.x, y: PLANTS.geode.y, w: PLANTS.geode.w, h: PLANTS.geode.h });   // R-D40: where the pothos hung
     expect(L.find((l) => l.key === "orchid")).toMatchObject({ x: 928, y: 478, w: 265, h: 384 });
     expect(L.find((l) => l.key === "azalea")).toMatchObject({ x: 71, y: 532, w: 319, h: 287 });
-    expect(L.find((l) => l.key === "stand")).toMatchObject({ x: OVERLAYS.stand.x, y: OVERLAYS.stand.y });
   });
   it("scales every rect by one factor, the view keeping the canvas aspect", () => {
     expect(viewHeight(1518)).toBe(896);
@@ -134,7 +135,7 @@ describe("the bundled layers", () => {
   });
   it("has the plate at canvas size and each overlay at its box", () => {
     expect(pngSize(path.join(ASSETS, "plate.png"))).toEqual({ w: 1518, h: 896 });
-    for (const k of ["stand", "cords"] as const) expect(pngSize(path.join(ASSETS, OVERLAYS[k].file))).toEqual({ w: OVERLAYS[k].w, h: OVERLAYS[k].h });
+    for (const o of Object.values(OVERLAYS)) expect(pngSize(path.join(ASSETS, o!.file))).toEqual({ w: o!.w, h: o!.h });
   });
   it("requires every layer in sources.ts", () => {
     const src = fs.readFileSync(path.resolve(__dirname, "../../src/garden2/sources.ts"), "utf8");
@@ -174,7 +175,7 @@ describe("the hit grid follows the layer's own paint", () => {
   // opaque (alpha >= 128) bounding boxes measured on the export's webps, canvas px (brand/garden2/app-export, 10-09)
   const painted: [Parameters<typeof paintsAt>[0], number, [number, number, number, number]][] = [
     ["mandarin", 1, [262, 555, 692, 709]], ["store", 1, [830, 540, 1096, 661]], ["maple", 1, [634, 538, 833, 632]],
-    ["orchid", 0, [944, 685, 1176, 845]], ["pothos", 14, [1267, 405, 1421, 624]],
+    ["orchid", 0, [944, 685, 1176, 845]],
   ];
   it.each(painted)("%s stage %i hits only inside its painted bounds (one cell of slack) and fills them", (p, s, [x0, y0, x1, y1]) => {
     const b = PLANTS[p];
@@ -198,9 +199,9 @@ describe("pinch zoom (R487G)", () => {
 });
 
 describe("the frame grows with the garden (R525)", () => {
-  it("an empty garden starts just above the bamboo stand, the tallest thing drawn", () => {
-    expect(frameTop(allStages(0))).toBe(OVERLAYS.stand.y - FRAME_PAD);
-    expect(frameTop({})).toBe(OVERLAYS.stand.y - FRAME_PAD);
+  it("an empty garden starts just above the stone lantern (no stand since R-D40), the horizon in view", () => {
+    expect(frameTop(allStages(0))).toBe(Math.min(LANTERN_TOP, ...DRAW_ORDER.map((p) => paintedTop(p, 0))) - FRAME_PAD);
+    expect(frameTop({})).toBe(frameTop(allStages(0)));
   });
   it("a mature garden opens the frame to just above the tallest crown (stORE's)", () => {
     expect(frameTop(allStages(14))).toBe(Math.floor(paintedTop("store", 14) - FRAME_PAD));
@@ -216,8 +217,8 @@ describe("the frame grows with the garden (R525)", () => {
       }
     }
   });
-  it("follows the painted top of a plant that grows above the stand", () => {
-    const tall = DRAW_ORDER.flatMap((p) => Array.from({ length: 15 }, (_, st) => [p, st] as const)).find(([p, st]) => paintedTop(p, st) < OVERLAYS.stand.y);
+  it("follows the painted top of a plant that grows above the lantern", () => {
+    const tall = DRAW_ORDER.flatMap((p) => Array.from({ length: 15 }, (_, st) => [p, st] as const)).find(([p, st]) => paintedTop(p, st) < LANTERN_TOP);
     expect(tall).toBeDefined();
     const [p, st] = tall!;
     expect(frameTop({ ...allStages(0), [p]: st })).toBe(Math.max(0, Math.floor(paintedTop(p, st) - FRAME_PAD)));
@@ -244,10 +245,9 @@ describe("the trees' fruit and flowers (R533, R547-R549)", () => {
     expect(f!.x + f!.w / 2).toBeCloseTo(PLANTS.store.x + sp.at[0]![0]);
     expect(f!.y + f!.h / 2).toBeCloseTo(PLANTS.store.y + sp.at[0]![1]);
   });
-  it("the fruit draws right after its tree: flowers before the stand (pole in front), mandarins before the pothos", () => {
+  it("the fruit draws right after its tree", () => {
     const keys = composeLayers(allStages(14), { fruit: { mandarin: 2, store: 2 } }).map((l) => (l.kind === "fruit" ? `f-${l.key}` : l.key));
     expect(keys.indexOf("f-store")).toBe(keys.indexOf("store") + 1);
-    expect(keys.indexOf("f-store")).toBeLessThan(keys.indexOf("stand"));
     expect(keys.indexOf("f-mandarin")).toBe(keys.indexOf("mandarin") + 1);
     expect(composeLayers(allStages(14)).some((l) => l.kind === "fruit")).toBe(false);
   });
@@ -274,7 +274,7 @@ describe("the stakes (R534, R556, R557)", () => {
     expect(stakesOf(allStages(14)).length).toBe(6);
   });
   it("labels each with its coin, one line", () => {
-    expect(STAKE_LABEL).toEqual({ mandarin: "SKR", store: "stORE", pothos: "hSOL", azalea: "USDC", maple: "SOL", orchid: "cbBTC" });
+    expect(STAKE_LABEL).toEqual({ mandarin: "SKR", geode: "stORE", azalea: "hSOL", store: "USDC", maple: "SOL", orchid: "cbBTC" });
   });
   it("stands its foot on the ruled spot", () => {
     for (const l of stakesOf(allStages(14))) {
@@ -282,10 +282,10 @@ describe("the stakes (R534, R556, R557)", () => {
       expect(l.y + STAKE.foot[1]).toBe(STAKE_AT[l.key].y);
     }
   });
-  it("stORE's stands behind the orchid; the rest in front of every plant", () => {
+  it("the stORE tree's stake (now USDC) stands behind the orchid; the rest in front of every plant", () => {
     const ls = composeLayers(allStages(14), { stakes: true }), at = (k: string) => ls.findIndex((l) => (l.kind === "stake" ? `s-${l.key}` : l.key) === k);
     expect(at("s-store")).toBe(at("orchid") - 1);
-    for (const p of ["mandarin", "maple", "azalea", "orchid", "pothos"]) expect(at(`s-${p}`)).toBeGreaterThan(at("azalea"));
+    for (const p of ["mandarin", "maple", "azalea", "orchid", "geode"]) expect(at(`s-${p}`)).toBeGreaterThan(at(DRAW_ORDER[DRAW_ORDER.length - 1]!));
   });
 });
 

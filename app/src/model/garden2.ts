@@ -8,20 +8,21 @@ export type { Plant2 } from '../garden2/layout'
  * preview.ts composites the same plan offline. No React, no requires, so vitest and Node read it as is.
  */
 
-/** Each live coin's plant (layout.json's coins: SKR mandarin, stORE store, hSOL pothos, USDC lending azalea, SOL lending maple, cbBTC orchid). */
+/** Each live coin's plant (layout.json's coins). R-D40 (10-11): stORE is the geode (uncovered and cracked open as it grows), USDC lending
+ *  the stORE tree, hSOL the azalea; SKR mandarin, SOL lending maple, cbBTC orchid unchanged; the pothos is gone. */
 export const PLANT_OF_ASSET: Record<LiveAsset, Plant2> = {
   SKR: 'mandarin',
-  stORE: 'store',
-  hSOL: 'pothos',
-  USDC_LEND: 'azalea',
+  stORE: 'geode',
+  hSOL: 'azalea',
+  USDC_LEND: 'store',
   SOL_LEND: 'maple',
   cbBTC: 'orchid',
 }
 export const ASSET_OF_PLANT: Record<Plant2, LiveAsset> = {
   mandarin: 'SKR',
-  store: 'stORE',
-  pothos: 'hSOL',
-  azalea: 'USDC_LEND',
+  store: 'USDC_LEND',
+  geode: 'stORE',
+  azalea: 'hSOL',
   maple: 'SOL_LEND',
   orchid: 'cbBTC',
 }
@@ -126,13 +127,15 @@ export type Extras = { fruit?: Fruit; basket?: boolean; stakes?: boolean }
  */
 export const STAKE = { foot: [71, 80], board: { x: 2, y: 1, w: 136, h: 34 }, font: 27, drop: 0.05 } as const
 /** R557 (his placement on decor-stake-context-v2): each plant's stake foot in canvas px; stORE's stands behind the orchid (drawn before it). */
+/** The geode's stake foot (R-D40): at its box's front left until its placement is final. */
+const GEODE_STAKE = { x: PLANTS.geode.x + 24, y: Math.min(CANVAS.h - 30, PLANTS.geode.y + PLANTS.geode.h + 4) }
 export const STAKE_AT: Record<Plant2, { x: number; y: number; before?: Plant2 }> = {
   mandarin: { x: 560, y: 740 },
   store: { x: 885, y: 690, before: 'orchid' },
   maple: { x: 735, y: 640 },
   azalea: { x: 215, y: 852 },
   orchid: { x: 1110, y: 800 },
-  pothos: { x: 1345, y: 712 },
+  geode: { x: GEODE_STAKE.x, y: GEODE_STAKE.y },
 }
 /** The name on each plant's stake: its coin as layout.json names it (USDC and SOL = the lending plants). */
 export const STAKE_LABEL = Object.fromEntries(Object.entries(COIN_PLANTS).map(([coin, plant]) => [plant, coin])) as Record<Plant2, string>
@@ -171,23 +174,22 @@ export function fruitOn(tree: Tree, stage: number, count: number): Extract<Layer
 
 /**
  * The draw list, back to front, in canvas px: the plate, then each plant in DRAW_ORDER at its box (a tree's fruit right after it; the basket last, R535) (at stage 0 every plant draws its
- * bare ground: the trees' soil mound since R517), the stand right after `store`, the cords right before `pothos`. Overlays always draw (before a
- * first hSOL planting the pothos hangs its bare pot, stage 0).
+ * bare ground: the trees' soil mound since R517), and any overlay right after or before its plant (none since R-D40).
  */
 export function composeLayers(stages: Partial<Stages>, { fruit = {}, basket = false, stakes = false }: Extras = {}): Layer[] {
   const out: Layer[] = [{ kind: 'plate', key: 'plate', x: 0, y: 0, w: CANVAS.w, h: CANVAS.h }]
   const overlay = (key: 'stand' | 'cords'): Layer => {
-    const o = OVERLAYS[key]
+    const o = OVERLAYS[key]!
     return { kind: 'overlay', key, x: o.x, y: o.y, w: o.w, h: o.h }
   }
   for (const p of DRAW_ORDER) {
-    if (OVERLAYS.cords.before === p) out.push(overlay('cords'))
+    if (OVERLAYS.cords?.before === p) out.push(overlay('cords'))
     // R534: a stake per planted plant (stage 1 up); one marked `before` this plant stands behind it (R557: stORE's behind the orchid)
     if (stakes) for (const q of DRAW_ORDER) if (STAKE_AT[q].before === p && (stages[q] ?? 0) >= 1) out.push(stakeOf(q))
     const s = clampStage(p, stages[p] ?? 0)
     out.push({ kind: 'plant', key: p, stage: s, ...box(p) })
     if (p === 'mandarin' || p === 'store') out.push(...fruitOn(p, s, fruit[p] ?? 0))
-    if (OVERLAYS.stand.after === p) out.push(overlay('stand'))
+    if (OVERLAYS.stand?.after === p) out.push(overlay('stand'))
   }
   if (stakes) for (const q of DRAW_ORDER) if (!STAKE_AT[q].before && (stages[q] ?? 0) >= 1) out.push(stakeOf(q))
   if (basket) out.push({ kind: 'decor', key: 'basket', ...DECOR.basket }) // R535: front-most, at the mandarin's foot
@@ -299,6 +301,8 @@ export function placeCard(o: { plant: { x0: number; x1: number; y0: number }; st
   return { left, top: CARD_EDGE / 2, caretX, caret: 'down' }
 }
 
+/** The stone lantern's top on the plate (canvas y): with no stand to frame it (R-D40), a young garden's view still starts above it. */
+export const LANTERN_TOP = 345
 /** Breathing room above the tallest painted thing, canvas px (R525). */
 export const FRAME_PAD = 24
 /**
@@ -307,8 +311,9 @@ export const FRAME_PAD = 24
  * tight under its stand; the frame opens as the trees grow.
  */
 export function frameTop(stages: Partial<Stages>): number {
-  let top: number = OVERLAYS.stand.y
-  for (const l of composeLayers(stages)) if (l.kind === 'plant') top = Math.min(top, paintedTop(l.key, l.stage))
+  let top: number = OVERLAYS.stand?.y ?? LANTERN_TOP
+  // each plant's highest paint at ANY stage up to its own (a few young stills sit lower than the one before: the frame only rises)
+  for (const l of composeLayers(stages)) if (l.kind === 'plant') for (let s = PLANTS[l.key].first; s <= l.stage; s++) top = Math.min(top, paintedTop(l.key, s))
   return Math.max(0, Math.floor(top - FRAME_PAD))
 }
 

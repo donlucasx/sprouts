@@ -3,10 +3,8 @@
 import type { Plant2 } from './layout'
 
 export const PLATE = require('../../assets/garden2/plate.png')
-export const OVERLAY_SRC = {
-  stand: require('../../assets/garden2/stand.png'),
-  cords: require('../../assets/garden2/cords.png'),
-} as const
+export const OVERLAY_SRC: Partial<Record<'stand' | 'cords', number>> = {
+}
 
 /** Every stage layer, indexed by plant then stage. */
 export const STAGE_SRC: Record<Plant2, Record<number, number>> = {
@@ -61,22 +59,22 @@ export const STAGE_SRC: Record<Plant2, Record<number, number>> = {
     13: require('../../assets/garden2/mandarin/stage13.webp'),
     14: require('../../assets/garden2/mandarin/stage14.webp'),
   },
-  pothos: {
-    0: require('../../assets/garden2/pothos/stage00.webp'),
-    1: require('../../assets/garden2/pothos/stage01.webp'),
-    2: require('../../assets/garden2/pothos/stage02.webp'),
-    3: require('../../assets/garden2/pothos/stage03.webp'),
-    4: require('../../assets/garden2/pothos/stage04.webp'),
-    5: require('../../assets/garden2/pothos/stage05.webp'),
-    6: require('../../assets/garden2/pothos/stage06.webp'),
-    7: require('../../assets/garden2/pothos/stage07.webp'),
-    8: require('../../assets/garden2/pothos/stage08.webp'),
-    9: require('../../assets/garden2/pothos/stage09.webp'),
-    10: require('../../assets/garden2/pothos/stage10.webp'),
-    11: require('../../assets/garden2/pothos/stage11.webp'),
-    12: require('../../assets/garden2/pothos/stage12.webp'),
-    13: require('../../assets/garden2/pothos/stage13.webp'),
-    14: require('../../assets/garden2/pothos/stage14.webp'),
+  geode: {
+    0: require('../../assets/garden2/geode/stage00.webp'),
+    1: require('../../assets/garden2/geode/stage01.webp'),
+    2: require('../../assets/garden2/geode/stage02.webp'),
+    3: require('../../assets/garden2/geode/stage03.webp'),
+    4: require('../../assets/garden2/geode/stage04.webp'),
+    5: require('../../assets/garden2/geode/stage05.webp'),
+    6: require('../../assets/garden2/geode/stage06.webp'),
+    7: require('../../assets/garden2/geode/stage07.webp'),
+    8: require('../../assets/garden2/geode/stage08.webp'),
+    9: require('../../assets/garden2/geode/stage09.webp'),
+    10: require('../../assets/garden2/geode/stage10.webp'),
+    11: require('../../assets/garden2/geode/stage11.webp'),
+    12: require('../../assets/garden2/geode/stage12.webp'),
+    13: require('../../assets/garden2/geode/stage13.webp'),
+    14: require('../../assets/garden2/geode/stage14.webp'),
   },
   orchid: {
     0: require('../../assets/garden2/orchid/stage00.webp'),
@@ -122,7 +120,6 @@ export const LOOP_SRC: Partial<Record<Plant2, Record<number, { src: number; ms: 
   mandarin: { 2: { src: require('../../assets/garden2/loops/mandarin/stage02.webp'), ms: 5063 }, 3: { src: require('../../assets/garden2/loops/mandarin/stage03.webp'), ms: 5063 }, 4: { src: require('../../assets/garden2/loops/mandarin/stage04.webp'), ms: 5063 }, 5: { src: require('../../assets/garden2/loops/mandarin/stage05.webp'), ms: 5063 }, 6: { src: require('../../assets/garden2/loops/mandarin/stage06.webp'), ms: 5063 }, 7: { src: require('../../assets/garden2/loops/mandarin/stage07.webp'), ms: 5063 }, 8: { src: require('../../assets/garden2/loops/mandarin/stage08.webp'), ms: 5063 }, 9: { src: require('../../assets/garden2/loops/mandarin/stage09.webp'), ms: 5063 }, 10: { src: require('../../assets/garden2/loops/mandarin/stage10.webp'), ms: 5063 }, 11: { src: require('../../assets/garden2/loops/mandarin/stage11.webp'), ms: 5063 }, 12: { src: require('../../assets/garden2/loops/mandarin/stage12.webp'), ms: 5063 }, 13: { src: require('../../assets/garden2/loops/mandarin/stage13.webp'), ms: 5063 }, 14: { src: require('../../assets/garden2/loops/mandarin/stage14.webp'), ms: 5063 } },
   maple: { 2: { src: require('../../assets/garden2/loops/maple/stage02.webp'), ms: 4731 }, 3: { src: require('../../assets/garden2/loops/maple/stage03.webp'), ms: 5063 }, 4: { src: require('../../assets/garden2/loops/maple/stage04.webp'), ms: 5063 }, 5: { src: require('../../assets/garden2/loops/maple/stage05.webp'), ms: 5063 }, 6: { src: require('../../assets/garden2/loops/maple/stage06.webp'), ms: 5063 }, 7: { src: require('../../assets/garden2/loops/maple/stage07.webp'), ms: 5063 }, 8: { src: require('../../assets/garden2/loops/maple/stage08.webp'), ms: 5063 }, 9: { src: require('../../assets/garden2/loops/maple/stage09.webp'), ms: 5063 }, 11: { src: require('../../assets/garden2/loops/maple/stage11.webp'), ms: 5063 }, 13: { src: require('../../assets/garden2/loops/maple/stage13.webp'), ms: 5063 }, 14: { src: require('../../assets/garden2/loops/maple/stage14.webp'), ms: 5063 } },
   orchid: { 3: { src: require('../../assets/garden2/loops/orchid/stage03.webp'), ms: 5063 }, 4: { src: require('../../assets/garden2/loops/orchid/stage04.webp'), ms: 5063 }, 5: { src: require('../../assets/garden2/loops/orchid/stage05.webp'), ms: 5063 }, 6: { src: require('../../assets/garden2/loops/orchid/stage06.webp'), ms: 5063 }, 7: { src: require('../../assets/garden2/loops/orchid/stage07.webp'), ms: 5063 }, 8: { src: require('../../assets/garden2/loops/orchid/stage08.webp'), ms: 5063 }, 9: { src: require('../../assets/garden2/loops/orchid/stage09.webp'), ms: 5063 }, 10: { src: require('../../assets/garden2/loops/orchid/stage10.webp'), ms: 5063 }, 11: { src: require('../../assets/garden2/loops/orchid/stage11.webp'), ms: 5063 }, 12: { src: require('../../assets/garden2/loops/orchid/stage12.webp'), ms: 5063 }, 13: { src: require('../../assets/garden2/loops/orchid/stage13.webp'), ms: 5063 }, 14: { src: require('../../assets/garden2/loops/orchid/stage14.webp'), ms: 5063 } },
-  pothos: { 3: { src: require('../../assets/garden2/loops/pothos/stage03.webp'), ms: 5063, pad: 145, first: require('../../assets/garden2/loops/pothos/stage03-first.webp') }, 4: { src: require('../../assets/garden2/loops/pothos/stage04.webp'), ms: 5063, pad: 145, first: require('../../assets/garden2/loops/pothos/stage04-first.webp') } },
   store: { 2: { src: require('../../assets/garden2/loops/store/stage02.webp'), ms: 5063 }, 3: { src: require('../../assets/garden2/loops/store/stage03.webp'), ms: 5063 }, 4: { src: require('../../assets/garden2/loops/store/stage04.webp'), ms: 5063 }, 6: { src: require('../../assets/garden2/loops/store/stage06.webp'), ms: 5063 }, 7: { src: require('../../assets/garden2/loops/store/stage07.webp'), ms: 5063 }, 10: { src: require('../../assets/garden2/loops/store/stage10.webp'), ms: 5063 }, 11: { src: require('../../assets/garden2/loops/store/stage11.webp'), ms: 5063 }, 12: { src: require('../../assets/garden2/loops/store/stage12.webp'), ms: 5063 }, 14: { src: require('../../assets/garden2/loops/store/stage14.webp'), ms: 5063 } },
 }
 
@@ -132,7 +129,6 @@ export const GROWTH_SRC: Partial<Record<Plant2, Record<number, { src: number; ms
   mandarin: { 2: { src: require('../../assets/garden2/growth/mandarin/stage02.webp'), ms: 3583 }, 3: { src: require('../../assets/garden2/growth/mandarin/stage03.webp'), ms: 1792 }, 4: { src: require('../../assets/garden2/growth/mandarin/stage04.webp'), ms: 1500 }, 5: { src: require('../../assets/garden2/growth/mandarin/stage05.webp'), ms: 1500 }, 6: { src: require('../../assets/garden2/growth/mandarin/stage06.webp'), ms: 1500 }, 7: { src: require('../../assets/garden2/growth/mandarin/stage07.webp'), ms: 1500 }, 8: { src: require('../../assets/garden2/growth/mandarin/stage08.webp'), ms: 1500 }, 9: { src: require('../../assets/garden2/growth/mandarin/stage09.webp'), ms: 1500 }, 10: { src: require('../../assets/garden2/growth/mandarin/stage10.webp'), ms: 1458 }, 11: { src: require('../../assets/garden2/growth/mandarin/stage11.webp'), ms: 1250 }, 12: { src: require('../../assets/garden2/growth/mandarin/stage12.webp'), ms: 1500 }, 13: { src: require('../../assets/garden2/growth/mandarin/stage13.webp'), ms: 1500 }, 14: { src: require('../../assets/garden2/growth/mandarin/stage14.webp'), ms: 1500 } },
   maple: { 2: { src: require('../../assets/garden2/growth/maple/stage02.webp'), ms: 3000 }, 3: { src: require('../../assets/garden2/growth/maple/stage03.webp'), ms: 3917 }, 4: { src: require('../../assets/garden2/growth/maple/stage04.webp'), ms: 1500 }, 5: { src: require('../../assets/garden2/growth/maple/stage05.webp'), ms: 1500 }, 6: { src: require('../../assets/garden2/growth/maple/stage06.webp'), ms: 1542 }, 7: { src: require('../../assets/garden2/growth/maple/stage07.webp'), ms: 2042 }, 8: { src: require('../../assets/garden2/growth/maple/stage08.webp'), ms: 1500 }, 9: { src: require('../../assets/garden2/growth/maple/stage09.webp'), ms: 1500 }, 10: { src: require('../../assets/garden2/growth/maple/stage10.webp'), ms: 1500 }, 11: { src: require('../../assets/garden2/growth/maple/stage11.webp'), ms: 1500 }, 12: { src: require('../../assets/garden2/growth/maple/stage12.webp'), ms: 1500 }, 13: { src: require('../../assets/garden2/growth/maple/stage13.webp'), ms: 1625 }, 14: { src: require('../../assets/garden2/growth/maple/stage14.webp'), ms: 1500 } },
   orchid: { 2: { src: require('../../assets/garden2/growth/orchid/stage02.webp'), ms: 3042 }, 3: { src: require('../../assets/garden2/growth/orchid/stage03.webp'), ms: 3042 }, 4: { src: require('../../assets/garden2/growth/orchid/stage04.webp'), ms: 3958 }, 5: { src: require('../../assets/garden2/growth/orchid/stage05.webp'), ms: 1500 }, 6: { src: require('../../assets/garden2/growth/orchid/stage06.webp'), ms: 2417 }, 7: { src: require('../../assets/garden2/growth/orchid/stage07.webp'), ms: 1958 }, 8: { src: require('../../assets/garden2/growth/orchid/stage08.webp'), ms: 1500 }, 9: { src: require('../../assets/garden2/growth/orchid/stage09.webp'), ms: 1500 }, 10: { src: require('../../assets/garden2/growth/orchid/stage10.webp'), ms: 2083 }, 11: { src: require('../../assets/garden2/growth/orchid/stage11.webp'), ms: 1833 }, 12: { src: require('../../assets/garden2/growth/orchid/stage12.webp'), ms: 2208 }, 13: { src: require('../../assets/garden2/growth/orchid/stage13.webp'), ms: 1500 }, 14: { src: require('../../assets/garden2/growth/orchid/stage14.webp'), ms: 2167 } },
-  pothos: { 2: { src: require('../../assets/garden2/growth/pothos/stage02.webp'), ms: 3000 }, 3: { src: require('../../assets/garden2/growth/pothos/stage03.webp'), ms: 3000 }, 4: { src: require('../../assets/garden2/growth/pothos/stage04.webp'), ms: 4000 }, 5: { src: require('../../assets/garden2/growth/pothos/stage05.webp'), ms: 2917 }, 6: { src: require('../../assets/garden2/growth/pothos/stage06.webp'), ms: 1542 }, 7: { src: require('../../assets/garden2/growth/pothos/stage07.webp'), ms: 1625 }, 8: { src: require('../../assets/garden2/growth/pothos/stage08.webp'), ms: 1500 }, 9: { src: require('../../assets/garden2/growth/pothos/stage09.webp'), ms: 1667 }, 10: { src: require('../../assets/garden2/growth/pothos/stage10.webp'), ms: 1500 }, 11: { src: require('../../assets/garden2/growth/pothos/stage11.webp'), ms: 1500 }, 12: { src: require('../../assets/garden2/growth/pothos/stage12.webp'), ms: 1542 }, 13: { src: require('../../assets/garden2/growth/pothos/stage13.webp'), ms: 1500 }, 14: { src: require('../../assets/garden2/growth/pothos/stage14.webp'), ms: 1500 } },
   store: { 2: { src: require('../../assets/garden2/growth/store/stage02.webp'), ms: 1500 }, 3: { src: require('../../assets/garden2/growth/store/stage03.webp'), ms: 1500 }, 4: { src: require('../../assets/garden2/growth/store/stage04.webp'), ms: 1500 }, 5: { src: require('../../assets/garden2/growth/store/stage05.webp'), ms: 1500 }, 6: { src: require('../../assets/garden2/growth/store/stage06.webp'), ms: 1500 }, 7: { src: require('../../assets/garden2/growth/store/stage07.webp'), ms: 1500 }, 8: { src: require('../../assets/garden2/growth/store/stage08.webp'), ms: 1500 }, 9: { src: require('../../assets/garden2/growth/store/stage09.webp'), ms: 1500 }, 10: { src: require('../../assets/garden2/growth/store/stage10.webp'), ms: 1500 }, 11: { src: require('../../assets/garden2/growth/store/stage11.webp'), ms: 1500 }, 12: { src: require('../../assets/garden2/growth/store/stage12.webp'), ms: 1792 }, 13: { src: require('../../assets/garden2/growth/store/stage13.webp'), ms: 1500 }, 14: { src: require('../../assets/garden2/growth/store/stage14.webp'), ms: 2208 } },
 }
 
