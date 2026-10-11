@@ -22,6 +22,10 @@ const TRACK = "#E4DCC8";
 /** dp Garden2 keeps clear at the bottom: in portrait the library sizes the widget to its MAX height, a few dp taller than the cell on
  *  the Seeker, and the launcher draws it unscaled from the top (scaleType matrix), so the bottom line would be cut (seen 10-10). */
 export const BOTTOM_SAFE = 10;
+/** dp of clear wallpaper kept around the bamboo frame on every side (his note 10-11: "a tad slimmer within it so theres more transparency
+ *  around"); half on a widget under 140 dp. */
+export const FRAME_INSET = 8;
+export const frameInset = (width: number) => (width < 140 ? FRAME_INSET / 2 : FRAME_INSET);
 /** R363's tiny label under the total. */
 export const WIDGET_LABEL = "your garden";
 
@@ -36,19 +40,23 @@ export const WIDGET_LABEL = "your garden";
 export function SproutsWidget({ me, width, height, wateredPlants = null, restartMarks = {}, now = new Date() }: { me: MeResponse | null; width: number; height: number; wateredPlants?: PlantId[] | null; restartMarks?: ZeroMarks; now?: Date }) {
   const H = GARDEN2 ? Math.max(1, height - BOTTOM_SAFE) : height;
   // Garden2 (his ask 10-10): a bamboo frame (widgetFrame) holds the paper, the content laid out in the frame's opening (frameInner)
-  const inner = GARDEN2 ? frameInner(width, H) : null;
+  // the frame itself, FRAME_INSET in from the widget's edges, the wallpaper showing around it
+  const inset = frameInset(width), FW = Math.max(1, width - 2 * inset), FH = Math.max(1, H - 2 * inset);
+  const inner = GARDEN2 ? frameInner(FW, FH) : null;
   // 10-11: the painting (`bg`, widgetGarden2) fills the frame's whole opening behind the text
   const card = (pad: number, style: Record<string, unknown>, children: unknown, bg: string | null = null) =>
     inner ? (
-      <OverlapWidget clickAction="OPEN_APP" style={{ height: "match_parent", width: "match_parent" }}>
-        <SvgWidget svg={widgetFrame(width, H)} style={{ width, height: H }} />
-        <FlexWidget style={{ width, height: H, paddingLeft: inner.l, paddingTop: inner.t, paddingRight: inner.r, paddingBottom: inner.b }}>
-          <OverlapWidget style={{ width: inner.w, height: inner.h }}>
-            {bg !== null ? <SvgWidget svg={bg} style={{ width: inner.w, height: inner.h }} /> : null}
-            <FlexWidget style={{ width: inner.w, height: inner.h, padding: pad, ...style }}>{children}</FlexWidget>
-          </OverlapWidget>
-        </FlexWidget>
-      </OverlapWidget>
+      <FlexWidget clickAction="OPEN_APP" style={{ height: "match_parent", width: "match_parent", padding: inset }}>
+        <OverlapWidget style={{ width: FW, height: FH }}>
+          <SvgWidget svg={widgetFrame(FW, FH)} style={{ width: FW, height: FH }} />
+          <FlexWidget style={{ width: FW, height: FH, paddingLeft: inner.l, paddingTop: inner.t, paddingRight: inner.r, paddingBottom: inner.b }}>
+            <OverlapWidget style={{ width: inner.w, height: inner.h }}>
+              {bg !== null ? <SvgWidget svg={bg} style={{ width: inner.w, height: inner.h }} /> : null}
+              <FlexWidget style={{ width: inner.w, height: inner.h, padding: pad, ...style }}>{children}</FlexWidget>
+            </OverlapWidget>
+          </FlexWidget>
+        </OverlapWidget>
+      </FlexWidget>
     ) : (
       <FlexWidget clickAction="OPEN_APP" style={{ height: "match_parent", width: "match_parent", backgroundColor: PAPER, borderRadius: 16, padding: pad, ...style }}>{children}</FlexWidget>
     );
