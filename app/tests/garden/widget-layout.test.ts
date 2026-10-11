@@ -3,7 +3,7 @@ import type { ReactElement } from "react";
 import type { MeResponse } from "@/lib/api";
 
 // The widget library renders on Android only; here its three tags are plain names, so the tree SproutsWidget returns can be read.
-vi.mock("react-native-android-widget", () => ({ FlexWidget: "FlexWidget", TextWidget: "TextWidget", SvgWidget: "SvgWidget" }));
+vi.mock("react-native-android-widget", () => ({ FlexWidget: "FlexWidget", OverlapWidget: "OverlapWidget", TextWidget: "TextWidget", SvgWidget: "SvgWidget" }));
 const { SproutsWidget } = await import("@/garden/Widget");
 const { nextPlantingFor, nextPlantingText } = await import("@/lib/next-planting");
 const { buildScene } = await import("@/model/garden");
@@ -15,6 +15,8 @@ type El = ReactElement<{ style?: Record<string, unknown>; children?: unknown; te
 const kids = (e: El) => ([] as unknown[]).concat(e.props.children ?? []).flat().filter(Boolean) as El[];
 /** Every element under `e`, depth first, `e` included. */
 const all = (e: El): El[] => [e, ...kids(e).flatMap(all)];
+// the garden's SVG, not the card behind everything (widgetCard: the paper, no images)
+const isGardenSvg = (e: El) => e.type === "SvgWidget" && String((e.props as { svg?: string }).svg).includes("<image");
 const me = {
   user: { pubkey: "U", skrName: null, joinedAt: "2026-09-25T00:00:00.000Z", wateredAt: null },
   pot: { skrStakedRaw: "12480000", skrPutInRaw: "0", skrEarnedRaw: "0", skrPickedRaw: "0", skrPrincipalPickedRaw: "0", joinedValueRaw: "0", fruit: 0, nextFruitProgress: 0, skrUnstakingRaw: "0", skrUnstakeReadyAt: null, storeRaw: "0", storePutInRaw: "0", storeEarnedRaw: "0", storeRedeemRate: null, skrUsd: null, storeUsd: null, asOf: "2026-10-01T00:00:00.000Z" },
@@ -28,7 +30,7 @@ const me = {
 describe("R360 in the widget: it draws only what is held now, and a restarted coin from its new planting", () => {
   const svgOf = (m: MeResponse, restartMarks = {}) => {
     const root = SproutsWidget({ me: m, width: 320, height: 200, restartMarks }) as El;
-    const svg = all(root).find((k) => k.type === "SvgWidget") as ReactElement<{ svg: string }> | undefined;
+    const svg = all(root).find(isGardenSvg) as ReactElement<{ svg: string }> | undefined;
     return svg?.props.svg ?? null;
   };
   const usdc = (id: string, ts: string) => ({ id, ts, asset: "USDC_LEND", amountOutRaw: "610000", usdcInCents: 65 });
@@ -75,7 +77,7 @@ const STATES = {
 const R364_SIZES = { "2x2": [[206, 205], [150, 150]], "4x2": [[430, 205], [320, 150]], "2x3": [[206, 307], [150, 230]], "3x2": [[310, 205], [230, 150]] } as const;
 const CASES = [...Object.entries({ ...R364_SIZES, min: [[110, 110], [200, 110]] })].flatMap(([cells, sizes]) => sizes.map(([w, h]) => [cells, w, h] as const));
 const texts = (root: El) => all(root).filter((e) => e.type === "TextWidget") as ReactElement<{ text: string; maxLines?: number; style: { fontSize: number; fontWeight?: string; color: string } }>[];
-const svgOfRoot = (root: El) => all(root).find((e) => e.type === "SvgWidget") as ReactElement<{ svg: string; style: { width: number; height: number } }> | undefined;
+const svgOfRoot = (root: El) => all(root).find(isGardenSvg) as ReactElement<{ svg: string; style: { width: number; height: number } }> | undefined;
 const inside = (b: { x: number; y: number; w: number; h: number }, w: number, h: number) => b.x >= 0 && b.y >= 0 && b.x + b.w <= w && b.y + b.h <= h;
 const overlap = (a: { x: number; y: number; w: number; h: number }, b: typeof a) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 
@@ -127,8 +129,12 @@ describe("R363 + R364: every size lays out the total, the garden and one state l
       expect(textWidth(line.props.text, L.stateSize, true), `"${line.props.text}" at ${width}`).toBeLessThanOrEqual(L.state.w * L.stateLines);
       // the rendered tree adds up: the root's padding is the layout's, the top block's children fill its box, the top block and the
       // line fit the inner height, and in the wide row the header, the spacer and the garden fill the inner width
-      expect(root.props.style).toMatchObject({ padding: L.pad });
-      const [topBlock, lineEl] = kids(root);
+      // 10-10: the root stacks the card (the whole widget's paper, its rim faded) under the content
+      expect(root.type).toBe("OverlapWidget");
+      const [cardEl, content] = kids(root);
+      expect(cardEl.type).toBe("SvgWidget"); expect(cardEl.props.style).toEqual({ width, height });
+      expect(content.props.style).toMatchObject({ padding: L.pad });
+      const [topBlock, lineEl] = kids(content);
       const ts = topBlock.props.style as { height: number; flexDirection: string };
       const sizes = kids(topBlock).map((k) => k.props.style as { width: number | string; height: number });
       expect(ts.height + (lineEl.props.style as { height: number }).height).toBeLessThanOrEqual(height - 2 * L.pad);
@@ -175,7 +181,7 @@ describe("R363 + R364: every size lays out the total, the garden and one state l
   });
   it("tall: the garden is centred in its box (no paper only under it)", () => {
     const root = SproutsWidget({ me: priced(STATES.saving), width: 206, height: 307}) as El;
-    const box = all(root).find((e) => kids(e).some((k) => k.type === "SvgWidget"))!;
+    const box = all(root).find((e) => kids(e).some(isGardenSvg))!;
     expect(box.props.style).toMatchObject({ justifyContent: "center", alignItems: "center" });
   });
   it("the whole widget opens the app", () => {
