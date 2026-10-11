@@ -2,15 +2,26 @@
 
 Round-ups into SKR that your Seeker keeps and a yield manager grows.
 
-Acorns for the Solana Seeker. You approve once, on each trading wallet, and never sign again until you withdraw. The savings position is owned by your Seeker's Seed Vault key; a Genesis Token gates registration; the app is one screen plus a home-screen widget. Built for CLOCK IN, the Solana Mobile hackathon (Sept 8 to Oct 8, 2026).
+Acorns for the Solana Seeker. Link your self-custody wallets once; every swap they sign, in any Solana app, rounds up. Each morning the change is planted into SKR, stORE and lending, held by your Seeker's Seed Vault key. A Genesis Token gates sign-in, an optional AI Yield Manager tilts the split toward what pays more, and the garden lives in the app and on a home-screen widget. Built for CLOCK IN, the Solana Mobile hackathon.
 
 ## The safety story, stated plainly
 
-The puller key is hot. Its authority is at most the daily limit, revocable on chain in one tap, and custody lasts one transaction. The recurring track of the Subscriptions program has no destination binding, so the limit and the revoke are the safety, plus the key in a Vercel secret and this open-source repo. A wallet holds one delegation to the puller: re-approving revokes the previous one in the same transaction, so the limit is per wallet, not per approval. Every Jupiter response is checked before the puller signs it (the aggregator program, an allowlist for helper programs, no signer but the puller, the fee and destination accounts present).
+Public line: even if our server is hacked, it can only move your daily round-up (max $5) into your own savings. Never anywhere else.
+
+How that holds, on chain:
+
+- **The leash program** `GyBmDLN72kg6xwAnZfj9c7fjeaJ3GvhkHNhFns83f8f7` (pinocchio, in `leash/`). A linked wallet's delegation (Solana Foundation's Subscriptions program) is held by the leash's PDA, so the server cannot pull directly. `pull` must be followed in the same transaction by `settle`, which reverts unless the user's own savings receipt (SKR stake, a lending position or the coin account) grew by at least the leg's floor: 98.5% of the value at a live Pyth price, 99.9% for USDC lending.
+- **The limit:** $5 a day per linked wallet, enforced on chain. The user can set it lower in the app.
+- **What the server still chooses:** when to plant, which enabled coin, and how much up to the limit.
+- **The admin key** lives on the owner's laptop, not the server. Only it can change the leash's config or replace the program; it cannot raise anyone's limit. A multisig is planned after the hackathon.
+- **Verified build:** the deployed program matches this repo (solana-verify; OtterSec job VERIFIED, https://verify.osec.io/status/GyBmDLN72kg6xwAnZfj9c7fjeaJ3GvhkHNhFns83f8f7). Gates and deploy evidence: `leash/GATES.md`.
+- **Withdrawals** are signed by the user's Seed Vault. The app holds no key and no secret.
+- Every Jupiter response is checked before the puller signs it (the aggregator program, an allowlist for helper programs, no signer but the puller, the fee and destination accounts present).
 
 ## What is here
 
-- `api/`: the backend. Next.js 15 on Vercel: sign-in with your Seeker and the Genesis Token check, the trading-wallet delegation, the Helius swap webhook that books round-ups, and the daily cron that plants them (pull, swap, stake in one transaction). Supabase Postgres holds the tables.
+- `api/`: the backend. Next.js 15 on Vercel: sign-in with your Seeker and the Genesis Token check, the trading-wallet link, the Helius webhook that books round-ups, the AI Yield Manager's daily run (Claude Haiku, numbers in, a split out, code picks the lender), and the daily cron that plants through the leash (pull, swap or deposit, settle in one transaction). Supabase Postgres holds the tables.
+- `leash/`: the on-chain leash program, its tests, gates and deploy runbook.
 - `api/spikes/`: throwaway scripts that proved the mechanism on mainnet with dust. Results in `api/spikes/RESULTS.md`.
 - `app/`: the Seeker app. Expo SDK 57 from the `expo-kit-wallet` template: signs in with the Seed Vault through Mobile Wallet Adapter, reads everything from `api/`, holds no key and no secret. Builds are EAS cloud builds (`app/BUILDS.md`); Mobile Wallet Adapter needs a development build, never Expo Go.
 
@@ -19,7 +30,7 @@ The puller key is hot. Its authority is at most the daily limit, revocable on ch
 ```bash
 cd api
 pnpm install
-cp .env.example .env.local   # then fill it in an editor
+# create .env.local with the variables the code reads (grep -r process.env src)
 pnpm test
 pnpm dev
 ```
