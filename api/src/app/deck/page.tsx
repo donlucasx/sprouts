@@ -110,16 +110,18 @@ const CSS = `
   .deck .in { position:relative; inset:auto; padding:48px 16px 56px; gap:28px; min-height:80vh; }
   .deck h1 { font-size:42px; } .deck h2 { font-size:36px; }
   .deck .sub { font-size:18px; } .deck .chip { font-size:13px; padding:5px 12px; }
-  .deck .split, .deck .beats, .deck .stats, .deck .row { grid-template-columns:1fr; }
+  .deck .split, .deck .split.wide, .deck .beats, .deck .stats, .deck .row { grid-template-columns:1fr; }
+  .deck .bar { display:none; }
   .deck .flow { flex-direction:column; } .deck .flow i { transform:rotate(90deg); align-self:center; }
   .deck .h2s { font-size:30px; } .deck .steps li { font-size:16px; grid-template-columns:28px 1fr; } .deck .steps li::before { font-size:20px; }
   .deck .flow b { font-size:16px; } .deck .flow small { font-size:13px; } .deck .row strong { font-size:20px; } .deck .row span { font-size:15px; }
   .deck .beat strong { font-size:19px; } .deck .beat span, .deck .stat span { font-size:15px; }
   .deck .stat strong { font-size:34px; }
   .deck .num { right:16px; bottom:20px; font-size:12px; } .deck .note, .deck .addr { font-size:12px; }
-  .deck .phone { position:relative; left:auto; top:auto; width:100%; height:70vh; overflow:hidden; }
+  .deck .phone { position:relative; left:auto; top:auto; width:100%; height:auto; overflow:hidden; border-radius:36px; padding:8px; }
+  .deck .phone img { border-radius:30px; }
   .deck .sprout, .deck .tree { display:none; } .deck .thanks { position:static; font-size:36px; } .deck .flow.short { max-width:none; } .deck .photo { position:relative; width:100%; height:auto; }
-  .deck .sand { width:100%; } .deck .stack, .deck .narrow, .deck .hero { max-width:none; }
+  .deck .sand { position:static; width:100%; margin-top:-24px; } .deck .stack, .deck .narrow, .deck .hero { max-width:none; }
   .deck .brand { font-size:22px; } .deck .brand img { width:30px; } .deck .foot, .deck .links { font-size:15px; }
 }
 @page { size:1920px 1080px; margin:0; }
