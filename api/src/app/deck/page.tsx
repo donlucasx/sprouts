@@ -337,7 +337,7 @@ export default function Deck() {
           <div className="links">
             <a href="https://sprouts.money">sprouts.money</a>
             <a href="https://x.com/sproutsonseeker">@sproutsonseeker</a>
-            <a href="https://github.com/donlucasx/sprouts">github.com/donlucasx/sprouts</a>
+            <a href="mailto:hello@sprouts.money">hello@sprouts.money</a>
           </div>
         </div>
         <a className="who" href="https://x.com/donlucas">
