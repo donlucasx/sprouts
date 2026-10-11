@@ -76,8 +76,14 @@ export const widget2Height = (stages: Stages, extras: Extras, width: number, max
 /** Widget px over which the garden's own edges fade into the card's paper (at most GARDEN_FEATHER_MAX of its smaller side). */
 export const GARDEN_FEATHER = 10;
 const GARDEN_FEATHER_MAX = 0.15;
-const fadeStops = (edge: number) =>
-  `<stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset="${f(edge)}" stop-color="#fff"/><stop offset="${f(1 - edge)}" stop-color="#fff"/><stop offset="1" stop-color="#fff" stop-opacity="0"/>`;
+/** Stops per faded edge: the opacity eases in (smoothstep), so the rim dissolves rather than ending in a grey band (a linear ramp did, on device). */
+const FADE_STEPS = 6;
+const fadeStops = (edge: number) => {
+  const ease = (t: number) => t * t * (3 - 2 * t);
+  const stop = (o: number, a: number) => `<stop offset="${f(o)}" stop-color="#fff"${a < 1 ? ` stop-opacity="${f(a)}"` : ""}/>`;
+  const ramp = Array.from({ length: FADE_STEPS + 1 }, (_, i) => i / FADE_STEPS);
+  return ramp.map((t) => stop(t * edge, ease(t))).join("") + ramp.reverse().map((t) => stop(1 - t * edge, ease(t))).join("");
+};
 /**
  * `inner` (drawn in the box x,y,w,h) faded to transparent over fx at its left and right and fy at its top and bottom: two masks, one per
  * axis, so the edges and corners fall off smoothly with no seams (each mask a single gradient-filled rect).

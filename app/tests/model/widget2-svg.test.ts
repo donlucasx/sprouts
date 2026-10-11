@@ -45,13 +45,17 @@ describe("10-10: the widget draws Garden2 as stills, cropped to what is planted"
 
 describe("10-10 (his note: \"make the edges transparent a bit\"): the card's rim and the garden's edges fade out", () => {
   const stops = (svg: string, id: string) => svg.match(new RegExp(`id="${id}"[^>]*>(.*?)</linearGradient>`))![1].match(/offset="([\d.]+)"[^>]*?(stop-opacity="0")?\/>/g)!;
-  it("the card: transparent at every edge, full paper from `feather` in, both axes masked over the whole widget", () => {
+  it("the card: transparent at every edge, easing to full paper at `feather` in, both axes masked over the whole widget", () => {
     const svg = widgetCard(200, 100, 12);
     expect(svg).toContain('width="200" height="100"'); expect(svg).toContain('fill="#FFFCF6"');
-    const h = stops(svg, "card-gh"), v = stops(svg, "card-gv");
-    expect(h[0]).toContain('offset="0"'); expect(h[0]).toContain('stop-opacity="0"'); expect(h[1]).toContain('offset="0.06"'); expect(h[1]).not.toContain("stop-opacity");
-    expect(h[3]).toContain('offset="1"'); expect(h[3]).toContain('stop-opacity="0"');
-    expect(v[1]).toContain('offset="0.12"');
+    const at = (id: string) => [...svg.match(new RegExp(`id="${id}"[^>]*>(.*?)</linearGradient>`))![1].matchAll(/offset="([\d.]+)"(?: stop-color="#fff")?(?: stop-opacity="([\d.]+)")?/g)]
+      .map((m) => [Number(m[1]), m[2] === undefined ? 1 : Number(m[2])]);
+    const h = at("card-gh"), v = at("card-gv");
+    expect(h[0]).toEqual([0, 0]); expect(h[h.length - 1]).toEqual([1, 0]);
+    expect(h.find(([, a]) => a === 1)![0]).toBeCloseTo(0.06); expect(v.find(([, a]) => a === 1)![0]).toBeCloseTo(0.12);
+    // eased, not linear: a third of the way in it is well under a third opaque, and the opacity only rises to the middle
+    const third = h.find(([o]) => Math.abs(o - 0.02) < 0.001)!; expect(third[1]).toBeLessThan(0.3);
+    const left = h.filter(([o]) => o <= 0.5).map(([, a]) => a); expect(left).toEqual([...left].sort((x, y) => x - y));
     expect(svg).toMatch(/<g mask="url\(#card-mv\)"><g mask="url\(#card-mh\)"><rect/);
   });
   it("the garden: every layer drawn inside its own two masks, so the crop's hard edge never shows", () => {

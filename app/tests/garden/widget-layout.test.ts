@@ -4,7 +4,7 @@ import type { MeResponse } from "@/lib/api";
 
 // The widget library renders on Android only; here its three tags are plain names, so the tree SproutsWidget returns can be read.
 vi.mock("react-native-android-widget", () => ({ FlexWidget: "FlexWidget", OverlapWidget: "OverlapWidget", TextWidget: "TextWidget", SvgWidget: "SvgWidget" }));
-const { SproutsWidget } = await import("@/garden/Widget");
+const { SproutsWidget, BOTTOM_SAFE } = await import("@/garden/Widget");
 const { nextPlantingFor, nextPlantingText } = await import("@/lib/next-planting");
 const { buildScene } = await import("@/model/garden");
 const { toGardenInput } = await import("@/lib/garden-input");
@@ -113,9 +113,11 @@ describe("R363 + R364: every size lays out the total, the garden and one state l
     for (const [state, m0] of Object.entries(STATES)) for (const m of [m0, priced(m0), priced({ ...m0, history: grown.history } as MeResponse)]) {
       const root = SproutsWidget({ me: m, width, height}) as El;
       const [big, label, line] = texts(root);
-      const L = widgetLayout(width, height, big.props.text, label.props.text, line.props.text);
+      // Garden2: the card (and so the layout) stops BOTTOM_SAFE short of the reported height, which can exceed the cell
+      const H = height - BOTTOM_SAFE;
+      const L = widgetLayout(width, H, big.props.text, label.props.text, line.props.text);
       // the three boxes: inside the widget, apart
-      for (const b of [L.header, L.garden, L.state]) expect(inside(b, width, height), `${state}: ${JSON.stringify(b)}`).toBe(true);
+      for (const b of [L.header, L.garden, L.state]) expect(inside(b, width, H), `${state}: ${JSON.stringify(b)}`).toBe(true);
       expect(overlap(L.header, L.garden) || overlap(L.garden, L.state) || overlap(L.header, L.state)).toBe(false);
       // fonts per R363 and one line each, measured at Roboto's widths
       expect(big.props.style.fontSize).toBe(L.bigSize); expect(L.bigSize).toBeGreaterThanOrEqual(18); expect(L.bigSize).toBeLessThanOrEqual(BIG_SIZE);
@@ -132,12 +134,12 @@ describe("R363 + R364: every size lays out the total, the garden and one state l
       // 10-10: the root stacks the card (the whole widget's paper, its rim faded) under the content
       expect(root.type).toBe("OverlapWidget");
       const [cardEl, content] = kids(root);
-      expect(cardEl.type).toBe("SvgWidget"); expect(cardEl.props.style).toEqual({ width, height });
+      expect(cardEl.type).toBe("SvgWidget"); expect(cardEl.props.style).toEqual({ width, height: H });
       expect(content.props.style).toMatchObject({ padding: L.pad });
       const [topBlock, lineEl] = kids(content);
       const ts = topBlock.props.style as { height: number; flexDirection: string };
       const sizes = kids(topBlock).map((k) => k.props.style as { width: number | string; height: number });
-      expect(ts.height + (lineEl.props.style as { height: number }).height).toBeLessThanOrEqual(height - 2 * L.pad);
+      expect(ts.height + (lineEl.props.style as { height: number }).height).toBeLessThanOrEqual(H - 2 * L.pad);
       expect((lineEl.props.style as { height: number }).height).toBe(L.state.h);
       if (ts.flexDirection === "column") {
         expect(sizes.reduce((t, z) => t + z.height, 0)).toBe(ts.height);
