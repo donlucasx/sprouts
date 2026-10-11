@@ -58,8 +58,8 @@ const svgBox = (svg: string) => svg.match(/viewBox="([-\d.]+) ([-\d.]+) ([-\d.]+
  * the outline's highest point, GROUND_OUTLINE, not the sprite's transparent strip). */
 
 // R363 + R364 (10-05): the square widget: the total big and alone, "your garden" under it, the garden, ONE state line at the bottom.
-const { widgetLayout, textWidth, BIG_SIZE, BIG_MIN, BAR_H, LABEL_SIZE, STATE_SIZE, STATE_MIN } = await import("@/garden/widget-layout");
-const { widgetStateLine, widgetHeadline, BUD_LINE } = await import("@/lib/widget-state");
+const { widgetLayout, textWidth, BIG_SIZE, BAR_H, LABEL_SIZE, STATE_SIZE, STATE_MIN, G2_BIG, G2_BIG_MIN } = await import("@/garden/widget-layout");
+const { widgetStateLine, widgetHeadline, BUD_LINE, PLANTED_RECENT_MS } = await import("@/lib/widget-state");
 const { watcherLine } = await import("@/model/watcher");
 
 /** A read with no bud waiting: watered after every planting. */
@@ -116,14 +116,15 @@ describe("R363 + R364: every size lays out the total, the garden and one state l
       const [big, label, line] = texts(root);
       // Garden2: the card (and so the layout) stops BOTTOM_SAFE short of the reported height, which can exceed the cell
       const H = height - BOTTOM_SAFE, inner = frameInner(width, H);
-      const barred = widgetLayout(inner.w, inner.h, big.props.text, label.props.text, line.props.text, frameGap(width), true);
+      const barred = widgetLayout(inner.w, inner.h, big.props.text, label.props.text, line.props.text, frameGap(width), true, G2_BIG, G2_BIG_MIN);
       // the bar drops out where it would leave the garden under 16 dp (a 110 dp tall widget)
-      const L = barred.garden.h >= 16 ? barred : widgetLayout(inner.w, inner.h, big.props.text, label.props.text, line.props.text, frameGap(width));
+      const hasBar = all(root).some((e) => (e.props.style as { height?: number })?.height === BAR_H && kids(e).length >= 0 && (e.props.style as { borderRadius?: number })?.borderRadius === BAR_H / 2);
+      const L = hasBar ? barred : widgetLayout(inner.w, inner.h, big.props.text, label.props.text, line.props.text, frameGap(width), false, G2_BIG, G2_BIG_MIN);
       // the three boxes: inside the widget, apart
       for (const b of [L.header, L.garden, L.state]) expect(inside(b, inner.w, inner.h), `${state}: ${JSON.stringify(b)}`).toBe(true);
       expect(overlap(L.header, L.garden) || overlap(L.garden, L.state) || overlap(L.header, L.state)).toBe(false);
       // fonts per R363 and one line each, measured at Roboto's widths
-      expect(big.props.style.fontSize).toBe(L.bigSize); expect(L.bigSize).toBeGreaterThanOrEqual(big.props.text.startsWith("$") ? 18 : BIG_MIN);   // an amount never under 18; the empty call ("Swap to save") down to BIG_MIN expect(L.bigSize).toBeLessThanOrEqual(BIG_SIZE);
+      expect(big.props.style.fontSize).toBe(L.bigSize); expect(L.bigSize).toBeGreaterThanOrEqual(G2_BIG_MIN); expect(L.bigSize).toBeLessThanOrEqual(G2_BIG);   // 10-11 his "too big": the garden is the hero   // an amount never under 18; the empty call ("Swap to save") down to BIG_MIN expect(L.bigSize).toBeLessThanOrEqual(BIG_SIZE);
       expect(label.props.style.fontSize).toBe(LABEL_SIZE); expect(line.props.style.fontSize).toBe(L.stateSize);
       expect(L.stateSize).toBeGreaterThanOrEqual(STATE_MIN); if (width >= 200) expect(L.stateSize).toBe(STATE_SIZE);
       for (const t of [big, label]) expect(t.props.maxLines).toBe(1);
@@ -178,11 +179,11 @@ describe("R363 + R364: every size lays out the total, the garden and one state l
     const wide = widgetLayout(430, 205, "$14.99", "your garden");
     expect(wide.header.x + wide.header.w).toBeLessThanOrEqual(wide.garden.x);
   });
-  it("Garden2 (his note 10-11: \"showing 'next swap' data is more relevant than the total\"): the next planting leads, the total is the bottom line", () => {
+  it("Garden2 (his note 10-11: \"showing 'next swap' data is more relevant than the total\"): the next planting leads, small; the total is the bottom line", () => {
     const root = SproutsWidget({ me: priced(STATES.saving), width: 206, height: 205}) as El;
     const [big, label, line] = texts(root);
-    expect(big.props.text).toBe("$1.35"); expect(big.props.style.fontSize).toBe(BIG_SIZE); expect(big.props.style.fontWeight).toBe("700");
-    expect(label.props.text).toBe("of $2.00 · swap to add more");
+    expect(big.props.text).toBe("$1.35 of $2.00"); expect(big.props.style.fontSize).toBe(G2_BIG); expect(big.props.style.fontWeight).toBe("700");
+    expect(label.props.text).toBe("rounds up from every swap");
     expect(line.props.text).toBe("$14.98 in your garden");
   });
   it("a six-figure total shrinks to fit the dense 2x2, never under 18", () => {
@@ -204,36 +205,58 @@ describe("R363 + R364: every size lays out the total, the garden and one state l
   });
 });
 
-describe("Garden2 (10-11): the headline is Home's Next planting row (nextPlantingFor), one rule", () => {
-  const NOW_W = new Date("2026-10-05T12:00:00Z");   // 5 AM in Los Angeles: the run (14:00 UTC) is "Today, 7 AM"
+describe("Garden2 (10-11, his notes \"$0.00 alone... not very inviting\", \"too big 'swap to save'... not the right kind of cta\"; Kimi's analysis): the widget reports, never asks", () => {
+  const NOW_W = new Date("2026-10-05T12:00:00Z");   // 5 AM in Los Angeles: the run (14:00 UTC) is "this morning"
   const rowOf = (m: MeResponse) => nextPlantingFor(m, buildScene(toGardenInput(m, NOW_W, null)), NOW_W);
-  const headOf = (m: MeResponse) => { const [big, label] = texts(SproutsWidget({ me: m, width: 206, height: 205, now: NOW_W }) as El); return { big, label }; };
-  it("a read the old garden showed as a bud never asks to water (R458): it shows the change saved", () => {
-    expect(headOf(STATES.bud).label.props.text).not.toBe(BUD_LINE); expect(headOf(STATES.bud).big.props.text).toBe("$0.50");
+  const headOf = (m: MeResponse) => { const [big, label, line] = texts(SproutsWidget({ me: m, width: 206, height: 205, now: NOW_W }) as El); return { big, label, line }; };
+  const barOf = (m: MeResponse) => all(SproutsWidget({ me: m, width: 206, height: 205, now: NOW_W }) as El).some((e) => (e.props.style as { height?: number; borderRadius?: number })?.height === BAR_H && (e.props.style as { borderRadius?: number }).borderRadius === BAR_H / 2);
+  /** No planting in the last day (the fixture's plantings are days old at NOW_W, or none). */
+  const old = (m: MeResponse) => ({ ...m, history: { ...m.history, plantings: m.history.plantings.map((p) => ({ ...p, ts: "2026-09-01T00:00:00.000Z" })) } }) as MeResponse;
+  const ALL = { ...STATES, empty: old(STATES.empty), bud: old(STATES.bud) };
+  it("never a call to swap, never \"$0.00\", in any state", () => {
+    for (const m of Object.values(ALL)) for (const t of Object.values(headOf(priced(m)))) {
+      expect(t.props.text).not.toMatch(/^Swap|swap to|\$0\.00/);
+    }
   });
-  it("saving (Home's row: $1.35 of $2.00): \"$1.35\", \"of $2.00 · swap to add more\"", () => {
+  it("saving: \"$1.35 of $2.00\", \"rounds up from every swap\", the bar", () => {
     expect(rowOf(STATES.saving).value).toBe("$1.35 of $2.00");
-    const h = headOf(STATES.saving); expect(h.big.props.text).toBe("$1.35"); expect(h.label.props.text).toBe("of $2.00 · swap to add more");
-    expect(h.label.props.style.color).not.toBe("#145A3C");
+    const h = headOf(priced(STATES.saving)); expect(h.big.props.text).toBe("$1.35 of $2.00"); expect(h.label.props.text).toBe("rounds up from every swap");
+    expect(h.label.props.style.color).not.toBe("#145A3C"); expect(barOf(priced(STATES.saving))).toBe(true);
   });
-  it("threshold reached: when it plants, in Home's words", () => {
+  it("threshold reached: the change saved, when it plants in Home's words, the bar full", () => {
     expect(rowOf(STATES.reached).state).toBe("reached");
-    expect(headOf(STATES.reached).label.props.text).toBe(`saved · plants ${nextRunWords(NOW_W)}`);
+    const h = headOf(priced(STATES.reached)); expect(h.big.props.text).toBe("$1.35 saved"); expect(h.label.props.text).toBe(`plants ${nextRunWords(NOW_W)}`);
   });
-  it("paused: says so", () => {
-    expect(rowOf(STATES.paused).state).toBe("paused"); expect(headOf(STATES.paused).label.props.text).toBe("saved · paused");
+  it("paused: says so, and that opening Sprouts turns it on (the accent: the one state a glance should act on)", () => {
+    expect(rowOf(STATES.paused).state).toBe("paused");
+    const h = headOf(priced(STATES.paused)); expect(h.big.props.text).toBe("Round-ups paused"); expect(h.label.props.style.color).toBe("#145A3C");
+    expect(barOf(priced(STATES.paused))).toBe(false);
   });
-  it("nothing saved: the call to swap leads, the amount that plants under it in the accent green (his note: \"drive the user to perform a swap/round up\")", () => {
-    expect(rowOf(STATES.empty).state).toBe("empty");
-    // 10-11: "seeing $0.00 alone up there is not very inviting": the call to act leads, never a zero
-    const h = headOf(STATES.empty); expect(h.big.props.text).toBe("Swap to save"); expect(h.big.props.text).not.toContain("$0.00");
-    expect(h.label.props.text).toBe("round-ups plant at $2.00");
-    expect(h.label.props.style.color).toBe("#145A3C");
+  it("nothing pending, money in the garden: the garden leads, no bar, what plants at the bottom", () => {
+    const m = priced(ALL.empty); expect(rowOf(m).state).toBe("empty");
+    const h = headOf(m); expect(h.big.props.text).toMatch(/^\$[\d.,]+ in your garden$/); expect(h.label.props.text).toBe("Waiting for your next swap");
+    expect(h.line.props.text).toBe("Round-ups plant at $2.00"); expect(barOf(m)).toBe(false);
   });
-  it("widgetHeadline is the headline drawn, for every state", () => {
-    for (const m of Object.values(STATES)) {
-      const want = widgetHeadline(m, buildScene(toGardenInput(m, NOW_W, null)), NOW_W), h = headOf(m);
-      expect([h.big.props.text, h.label.props.text]).toEqual([want.big, want.label]);
+  it("a planting in the last day leads with what was planted (the day's plantings summed); a day later the garden leads again", () => {
+    const at = (ms: number) => new Date(NOW_W.getTime() - ms).toISOString();
+    const m = priced({ ...ALL.empty, history: { ...ALL.empty.history, plantings: [...ALL.empty.history.plantings, { id: "n1", ts: at(3_600_000), asset: "SKR", amountOutRaw: "1", usdcInCents: 50 }, { id: "n2", ts: at(7_200_000), asset: "stORE", amountOutRaw: "1", usdcInCents: 32 }] } } as MeResponse);
+    expect(headOf(m).big.props.text).toBe("Planted $0.82"); expect(headOf(m).line.props.text).toBe("Waiting for your next swap");
+    const stale = priced({ ...ALL.empty, history: { ...ALL.empty.history, plantings: [{ id: "n1", ts: at(PLANTED_RECENT_MS + 1000), asset: "SKR", amountOutRaw: "1", usdcInCents: 50 }] } } as MeResponse);
+    expect(headOf(stale).big.props.text).not.toMatch(/^Planted/);
+  });
+  it("nothing ever: waiting for the first swap, what plants at the bottom", () => {
+    const h = widgetHeadline({ nextPlanting: { pendingCents: 0, thresholdCents: 200, capLeftCents: 500, asset: "SKR" }, wallets: [], history: { plantings: [] } } as unknown as MeResponse, { parts: [] }, NOW_W, "$0.00", false);
+    expect([h.big, h.label, h.line, h.fraction]).toEqual(["Your garden", "Waiting for your first swap", "Round-ups plant at $2.00", null]);
+  });
+  it("a narrow widget takes each text's shorter form", () => {
+    const h = widgetHeadline(priced(STATES.saving), { parts: [] }, NOW_W, "$14.98", true, { big: (t) => t.length <= 6, label: (t) => t.length <= 16, line: (t) => t.length <= 16 });
+    expect([h.big, h.label, h.line]).toEqual(["$1.35", "from your swaps", "$14.98 in garden"]);   // each text's first form that fits
+  });
+  it("widgetHeadline is what is drawn, for every state", () => {
+    for (const m0 of Object.values(ALL)) {
+      const m = priced(m0), [big, label, line] = texts(SproutsWidget({ me: m, width: 206, height: 205, now: NOW_W }) as El);
+      const total = big.props.text, want = widgetHeadline(m, buildScene(toGardenInput(m, NOW_W, null)), NOW_W, line.props.text.replace(/ in your garden$/, "") || total, true);
+      if (rowOf(m).state !== "empty") expect([big.props.text, label.props.text, line.props.text]).toEqual([want.big, want.label, want.line]);
     }
   });
 });

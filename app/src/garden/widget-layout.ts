@@ -11,6 +11,8 @@ export const padFor = (width: number) => (width < NARROW_W ? NARROW_PAD : W_PAD)
 export const BIG_SIZE = 24;
 /** The total shrinks to fit a narrow widget (a five-figure garden on a 2x2 dense grid), never under this. */
 export const BIG_MIN = 16;
+/** Garden2's headline (10-11, his note "too big"; Kimi's analysis): one small bold line, the garden the hero; down to G2_BIG_MIN on a narrow widget. */
+export const G2_BIG = 16, G2_BIG_MIN = 13;
 export const LABEL_SIZE = 11;
 export const STATE_SIZE = 12;
 /** The state line shrinks to fit the dense 2x2 ("A bud is ready. Water it." at 150 dp), never under this. */
@@ -47,14 +49,14 @@ export type WidgetLayout = { mode: "stacked" | "wide"; pad: number; bigSize: num
 /** The widget's three boxes for a `width` by `height` widget showing `big` (the total), its `label` and the state `line`, `pad` in from its edges. */
 /** Garden2's progress bar under the headline (10-11): its height and the gap above it, in dp. */
 export const BAR_H = 4, BAR_GAP = 5;
-export function widgetLayout(width: number, height: number, big: string, label: string, line = "", pad = padFor(width), bar = false): WidgetLayout {
+export function widgetLayout(width: number, height: number, big: string, label: string, line = "", pad = padFor(width), bar = false, bigMax = BIG_SIZE, bigMin = BIG_MIN): WidgetLayout {
   const barH = bar ? BAR_GAP + BAR_H : 0;
   const P = pad, innerW = width - 2 * P, innerH = height - 2 * P;
   // wide only when the total's column (at its smallest size) leaves the garden most of the width
-  const wide = width / Math.max(1, height) >= WIDE_RATIO && textWidth(big, BIG_MIN, true) <= innerW * 0.4;
+  const wide = width / Math.max(1, height) >= WIDE_RATIO && textWidth(big, bigMin, true) <= innerW * 0.4;
   const fitSize = (room: number) => {
-    let s = BIG_SIZE;
-    while (s > BIG_MIN && textWidth(big, s, true) > room) s--;
+    let s = bigMax;
+    while (s > bigMin && textWidth(big, s, true) > room) s--;
     return s;
   };
   let stateSize = STATE_SIZE;
