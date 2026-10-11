@@ -39,7 +39,7 @@ describe("10-11 (his notes: \"a lot of sand under and above... we should have a 
   });
   it("the view starts at the tallest planted plant, not the bamboo stand (a young garden is not a band of sky)", () => {
     const young = only({ mandarin: 3 });
-    expect(plantedTop(young)).toBeGreaterThan(frameTop(young)); expect(plantedTop(allStages(0))).toBe(frameTop(allStages(0)));
+    expect(plantedTop(young)).toBeGreaterThanOrEqual(frameTop(young)); expect(plantedTop(allStages(0))).toBe(frameTop(allStages(0)));
     expect(plantedTop(young)).toBeLessThanOrEqual(HORIZON_TOP - 24);   // the horizon and the lantern stay in view
 
   });
@@ -50,7 +50,7 @@ describe("10-11 (his notes: \"a lot of sand under and above... we should have a 
     expect(svg).not.toContain("mask"); expect(svg).not.toContain("Gradient");
   });
   it("stakes and their names where the name comes out readable; none where it would be a speck", () => {
-    const all6 = only({ mandarin: 6, store: 6, maple: 6, azalea: 6, orchid: 6, pothos: 6 });
+    const all6 = only({ mandarin: 6, store: 6, maple: 6, azalea: 6, orchid: 6, geode: 6 });
     expect(widgetGarden2(all6, ex, 900, 500, { x: 0, y: 40, w: 900, h: 420 }).svg).toContain(">SKR</text>");
     expect(widgetGarden2(all6, ex, 90, 60, { x: 0, y: 10, w: 90, h: 40 }).svg).not.toContain("<text");
   });

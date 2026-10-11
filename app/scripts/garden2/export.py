@@ -134,8 +134,9 @@ export type Plant2 = (typeof DRAW_ORDER)[number]
 export const COIN_PLANTS = {json.dumps(coins)} as const
 /** Each plant's box on the canvas (its layers are cut to this size) and its stage range: companions 0..14 (0 = bare ground), trees 1..14. */
 export const PLANTS: Record<Plant2, {{ x: number; y: number; w: number; h: number; first: number; last: number }}> = {json.dumps(plants)}
-/** The bamboo stand drawn right after `store` (R497G: its pole in front of the stORE crown); the pothos cords right before `pothos`. */
-export const OVERLAYS = {json.dumps(overlays)} as const
+/** Full-canvas overlays cut to their box, each drawn right after or before a plant (R-D40 10-11: none once the pothos and its stand go). */
+export type Overlay = {{ file: string; x: number; y: number; w: number; h: number; after?: Plant2; before?: Plant2 }}
+export const OVERLAYS: Partial<Record<'stand' | 'cords', Overlay>> = {json.dumps(overlays)}
 /** The hit grid: CELL canvas px per cell; per plant per stage, row-major bits (MSB first) over its box, set where the layer is opaque. */
 export const HIT_CELL = {CELL}
 /** R533: fruit (mandarin) and flower (store) spots per stage, in the tree's box px; r = the sprite's radius (drawn 2r square). */
@@ -148,8 +149,8 @@ open(os.path.join(APP, "src", "garden2", "layout.ts"), "w").write(lay)
 
 lines = [head, "import type { Plant2 } from './layout'", "",
          "export const PLATE = require('../../assets/garden2/plate.png')",
-         "export const OVERLAY_SRC = {",
-         *[f"  {k}: require('../../assets/garden2/{v['file']}')," for k, v in overlays.items()], "} as const", "",
+         "export const OVERLAY_SRC: Partial<Record<'stand' | 'cords', number>> = {",
+         *[f"  {k}: require('../../assets/garden2/{v['file']}')," for k, v in overlays.items()], "}", "",
          "/** Every stage layer, indexed by plant then stage. */",
          "export const STAGE_SRC: Record<Plant2, Record<number, number>> = {"]
 for p in L["draw_order"]:

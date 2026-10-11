@@ -60,7 +60,7 @@ const sourceOf = (l: Layer, night: boolean) =>
       ? PLATE_DARK
       : PLATE
     : l.kind === 'overlay'
-      ? (night && OVERLAY_SRC_DARK[l.key]) || OVERLAY_SRC[l.key]
+      ? (night && OVERLAY_SRC_DARK[l.key]) || OVERLAY_SRC[l.key]!
       : l.kind === 'fruit'
         ? FRUIT_SRC[l.key]
         : l.kind === 'decor'
@@ -301,8 +301,7 @@ export function Garden2({
         >
           <Animated.View style={[{ width, height: h, transformOrigin: [0, 0, 0] }, zoomed]}>
             {layers.map((l) =>
-              // R591: while the pothos sways its loop draws its own cords (they swing with the pot): the still ones step aside
-              l.kind === 'overlay' && l.key === 'cords' && stirLoopOf('pothos')?.pad ? null : l.kind === 'stake' ? (
+              l.kind === 'stake' ? (
                 reveal?.[l.key] === 0 ? ( // a stake fades in only with its plant's first planting; it already stood otherwise
                   <Animated.View key={`s-${l.key}`} style={[{ position: 'absolute', left: 0, top: 0 }, fading]}>
                     <Stake l={l} k={k} />
