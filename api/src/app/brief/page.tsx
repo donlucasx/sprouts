@@ -92,7 +92,7 @@ export default function Brief() {
               <li>Real round-ups plant every morning on Solana mainnet, from our own phones.</li>
               <li>The leash program is deployed and its build verified: <a href="https://solscan.io/account/GyBmDLN72kg6xwAnZfj9c7fjeaJ3GvhkHNhFns83f8f7">GyBm...f8f7</a>.</li>
               <li>dApp Store publisher set up and App NFT minted.</li>
-              <li>Open source: <a href="https://github.com/donlucasx/sprouts">github.com/donlucasx/sprouts</a>.</li>
+              <li>Source code shared privately with the hackathon judges.</li>
             </ul>
           </section>
           <section>

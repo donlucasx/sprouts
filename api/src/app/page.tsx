@@ -35,7 +35,7 @@ export default async function Home() {
         <a href="/link">Link a wallet</a> with a code from the app. <a href="/revoke">Revoke</a> with the wallet that approved.
       </p>
       <p>
-        Source code, the safety story and how to report a problem: <a href="https://github.com/donlucasx/sprouts">github.com/donlucasx/sprouts</a>
+        To report a problem: <a href="mailto:hello@sprouts.money">hello@sprouts.money</a>. The source code is shared privately with the hackathon judges.
       </p>
     </main>
   );
