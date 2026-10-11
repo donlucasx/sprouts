@@ -96,6 +96,26 @@ const CSS = `
 .deck .in > .grow, .deck .in > .note { position:relative; z-index:1; }
 .deck .tree { position:absolute; right:calc(var(--u)*-11); bottom:calc(var(--u)*-9); width:calc(var(--u)*35); height:auto; pointer-events:none; }
 .deck .flow.short { max-width:calc(var(--u)*68); }
+/* R-D34 slide 6 as a graph: change -> Yield Manager -> SKR / stORE / lending, and the dial's SKR floors as bars (manager.ts STOP_FLOOR) */
+.deck .ym { display:grid; grid-template-columns:1fr calc(var(--u)*27); gap:calc(var(--u)*3); align-items:center; margin-top:calc(var(--u)*3.2); }
+.deck .ym-flow { display:grid; grid-template-columns:calc(var(--u)*11.5) auto calc(var(--u)*18) auto 1fr; align-items:center; gap:calc(var(--u)*1); }
+.deck .ym-flow > i { font-style:normal; color:var(--muted); font-size:calc(var(--u)*2.2); }
+.deck .ym-box { position:relative; background:var(--sheet); border-radius:calc(var(--u)*.8); padding:calc(var(--u)*1.1) calc(var(--u)*1.3); display:grid; gap:calc(var(--u)*.35); }
+.deck .ym-box b { font-family:var(--font-display), sans-serif; font-size:calc(var(--u)*1.6); letter-spacing:-.01em; }
+.deck .ym-box small { font-size:calc(var(--u)*1.15); line-height:1.35; color:var(--muted); }
+.deck .ym-box.key { background:var(--leaf); color:var(--paper); padding:calc(var(--u)*1.6) calc(var(--u)*1.5); }
+.deck .ym-box.key b { font-size:calc(var(--u)*2.1); }
+.deck .ym-box.key small { color:var(--paper); opacity:.85; }
+.deck .ym-out { display:grid; gap:calc(var(--u)*1.3); }
+.deck .ym-box.lend { border:2px solid var(--leaf); background:var(--paper); }
+.deck .ym-box em { position:absolute; top:calc(var(--u)*-.9); right:calc(var(--u)*1); font-style:normal; font-weight:700; font-size:calc(var(--u)*1); background:var(--leaf); color:var(--paper); border-radius:999px; padding:calc(var(--u)*.25) calc(var(--u)*.8); }
+.deck .ym-dial { display:grid; gap:calc(var(--u)*1); background:var(--paper); border:1px solid var(--rule); border-radius:calc(var(--u)*.8); padding:calc(var(--u)*1.8) calc(var(--u)*2); }
+.deck .ym-dial > b { font-family:var(--font-display), sans-serif; font-size:calc(var(--u)*2); letter-spacing:-.02em; }
+.deck .ym-dial > small { font-size:calc(var(--u)*1.3); color:var(--muted); margin-top:calc(var(--u)*-.8); }
+.deck .ym-row { display:grid; grid-template-columns:calc(var(--u)*7.6) 1fr calc(var(--u)*4.2); align-items:center; gap:calc(var(--u)*1); font-size:calc(var(--u)*1.45); }
+.deck .ym-row strong { font-family:var(--font-display), sans-serif; color:var(--leaf); font-size:calc(var(--u)*1.8); text-align:right; }
+.deck .ym-track { height:calc(var(--u)*1.6); background:var(--rule); border-radius:999px; overflow:hidden; }
+.deck .ym-track div { height:100%; background:var(--leaf); border-radius:999px; }
 .deck .one { white-space:nowrap; }
 .deck .sub.full { max-width:none; }
 .deck .sub.dial { max-width:calc(var(--u)*66); }
@@ -128,7 +148,7 @@ const CSS = `
   .deck .phone img { border-radius:30px; }
   .deck .split.home video, .deck .split.home .poster { width:100%; height:auto; }
   .deck .sprout { position:static; height:220px; align-self:center; } .deck .tree { display:none; } .deck .thanks { position:static; font-size:36px; } .deck .flow.short { max-width:none; } .deck .photo { position:relative; width:100%; height:auto; }
-  .deck .sand { position:static; width:100%; margin-top:-24px; } .deck .stack, .deck .narrow, .deck .hero { max-width:none; }
+  .deck .sand { position:static; width:100%; margin-top:-24px; } .deck .ym, .deck .ym-flow { grid-template-columns:1fr; } .deck .ym-flow > i { transform:rotate(90deg); justify-self:center; } .deck .ym-box b { font-size:17px; } .deck .ym-box.key b { font-size:20px; } .deck .ym-box small, .deck .ym-dial > small { font-size:13px; } .deck .ym-dial > b { font-size:20px; } .deck .ym-row { font-size:15px; grid-template-columns:80px 1fr 44px; } .deck .ym-row strong { font-size:17px; } .deck .ym-track { height:12px; } .deck .ym-box em { font-size:11px; top:-9px; } .deck .stack, .deck .narrow, .deck .hero { max-width:none; }
   .deck .brand { font-size:22px; } .deck .brand img { width:30px; } .deck .foot, .deck .links { font-size:15px; }
 }
 @page { size:1920px 1080px; margin:0; }
@@ -260,12 +280,26 @@ export default function Deck() {
       <Slide n={6} chip="Yield Manager">
         <div className="grow">
           <h2 className="h2s" style={{ maxWidth: "calc(var(--u)*64)" }}>Your round-ups, put to work while you sleep.</h2>
-          <ol className="steps" style={{ maxWidth: "calc(var(--u)*66)" }}>
-            <li>Your change is staked in SKR and mining ORE from day one. The Yield Manager adds lending.</li>
-            <li>Each morning it reads live rates on Kamino and Jupiter Lend and sends new change where it pays best.</li>
-            <li>It skips rates propped up by short-term rewards and never sells what you hold.</li>
-          </ol>
-          <p className="sub dial"><b>A risk dial you set.</b> Careful, Balanced or Bold decides how far it can lean away from SKR: Careful keeps at least half in SKR, Bold a quarter.</p>
+          <div className="ym">
+            <div className="ym-flow">
+              <div className="ym-box"><b>Your change</b><small>from every swap</small></div>
+              <i>&rarr;</i>
+              <div className="ym-box key"><b>Yield Manager</b><small>Each morning it reads live rates and sends new change where it pays best. It skips rates propped up by short-term rewards and never sells what you hold.</small></div>
+              <i>&rarr;</i>
+              <div className="ym-out">
+                <div className="ym-box"><b>SKR</b><small>staked</small></div>
+                <div className="ym-box"><b>stORE</b><small>mining ORE</small></div>
+                <div className="ym-box lend"><b>USDC and SOL</b><small>lent on Kamino or Jupiter Lend</small><em>Pro</em></div>
+              </div>
+            </div>
+            <div className="ym-dial">
+              <b>The risk dial you set</b>
+              <small>the least it keeps in SKR</small>
+              {([["Careful", 50], ["Balanced", 35], ["Bold", 25]] as const).map(([k, v]) => (
+                <div className="ym-row" key={k}><span>{k}</span><div className="ym-track"><div style={{ width: `${v}%` }} /></div><strong>{v}%</strong></div>
+              ))}
+            </div>
+          </div>
         </div>
         <p className="note">Part of Pro, free during launch. The AI model never picks the lender or moves money. Code does both.</p>
         <img className="sand" src="/deck/sand.webp" alt="" />
