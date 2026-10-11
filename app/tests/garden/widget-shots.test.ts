@@ -25,7 +25,8 @@ function html(e: El): string {
   if (e.type === "SvgWidget") return `<div style="${box}">${e.props.svg}</div>`;
   if (e.type === "OverlapWidget") return `<div style="${box}position:relative">${kids(e).map((k) => `<div style="position:absolute;inset:0">${html(k)}</div>`).join("")}</div>`;
   const flex = `display:flex;flex-direction:${s.flexDirection ?? "column"};justify-content:${s.justifyContent ?? "flex-start"};align-items:${s.alignItems ?? "flex-start"};`;
-  const deco = `${s.padding ? `padding:${s.padding}px;` : ""}${s.backgroundColor ? `background:${s.backgroundColor};` : ""}${s.borderRadius ? `border-radius:${s.borderRadius}px;` : ""}`;
+  const side = (k: string, css: string) => (typeof s[k] === "number" ? `${css}:${s[k]}px;` : "");
+  const deco = `${s.padding ? `padding:${s.padding}px;` : ""}${side("paddingLeft", "padding-left")}${side("paddingTop", "padding-top")}${side("paddingRight", "padding-right")}${side("paddingBottom", "padding-bottom")}${s.backgroundColor ? `background:${s.backgroundColor};` : ""}${s.borderRadius ? `border-radius:${s.borderRadius}px;` : ""}`;
   return `<div style="${box}${flex}${deco}">${kids(e).map(html).join("")}</div>`;
 }
 

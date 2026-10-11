@@ -45,7 +45,10 @@ export type Box = { x: number; y: number; w: number; h: number };
 export type WidgetLayout = { mode: "stacked" | "wide"; pad: number; bigSize: number; stateSize: number; stateLines: 1 | 2; header: Box; garden: Box; state: Box };
 
 /** The widget's three boxes for a `width` by `height` widget showing `big` (the total), its `label` and the state `line`, `pad` in from its edges. */
-export function widgetLayout(width: number, height: number, big: string, label: string, line = "", pad = padFor(width)): WidgetLayout {
+/** Garden2's progress bar under the headline (10-11): its height and the gap above it, in dp. */
+export const BAR_H = 4, BAR_GAP = 5;
+export function widgetLayout(width: number, height: number, big: string, label: string, line = "", pad = padFor(width), bar = false): WidgetLayout {
+  const barH = bar ? BAR_GAP + BAR_H : 0;
   const P = pad, innerW = width - 2 * P, innerH = height - 2 * P;
   // wide only when the total's column (at its smallest size) leaves the garden most of the width
   const wide = width / Math.max(1, height) >= WIDE_RATIO && textWidth(big, BIG_MIN, true) <= innerW * 0.4;
@@ -64,12 +67,12 @@ export function widgetLayout(width: number, height: number, big: string, label: 
     // the total's column as wide as its own text (the larger of the two lines), at most 40 percent of the widget
     const bigSize = fitSize(innerW * 0.4);
     const colW = Math.ceil(Math.max(textWidth(big, bigSize, true), textWidth(label, LABEL_SIZE)) + 2);
-    const header: Box = { x: P, y: P, w: colW, h: lineBox(bigSize) + lineBox(LABEL_SIZE) };
+    const header: Box = { x: P, y: P, w: colW, h: lineBox(bigSize) + lineBox(LABEL_SIZE) + barH };
     const garden: Box = { x: P + colW + COL_GAP, y: P, w: innerW - colW - COL_GAP, h: Math.max(1, innerH - stateH - GAP) };
     return { mode: "wide", pad: P, bigSize, stateSize, stateLines, header, garden, state };
   }
   const bigSize = fitSize(innerW);
-  const header: Box = { x: P, y: P, w: innerW, h: lineBox(bigSize) + lineBox(LABEL_SIZE) };
+  const header: Box = { x: P, y: P, w: innerW, h: lineBox(bigSize) + lineBox(LABEL_SIZE) + barH };
   const gy = header.y + header.h + GAP;
   const garden: Box = { x: P, y: gy, w: innerW, h: Math.max(1, state.y - GAP - gy) };
   return { mode: "stacked", pad: P, bigSize, stateSize, stateLines, header, garden, state };
