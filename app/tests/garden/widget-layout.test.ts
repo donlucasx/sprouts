@@ -136,7 +136,7 @@ describe("R363 + R364: every size lays out the total, the garden and one state l
       expect(root.type).toBe("OverlapWidget");
       const [frameEl, wrap] = kids(root);
       expect(frameEl.type).toBe("SvgWidget"); expect(frameEl.props.style).toEqual({ width, height: H });
-      expect(String((frameEl.props as { svg: string }).svg).match(/<image /g)).toHaveLength(8);   // the nine-slice less its empty centre
+      expect(String((frameEl.props as { svg: string }).svg).match(/<image x=/g)).toHaveLength(8);   // the nine-slice less its empty centre (the sand tile is declared once, by id)
       expect(wrap.props.style).toMatchObject({ width, height: H, paddingLeft: inner.l, paddingTop: inner.t, paddingRight: inner.r, paddingBottom: inner.b });
       const content = kids(wrap)[0];
       expect(content.props.style).toMatchObject({ width: inner.w, height: inner.h, padding: L.pad });
@@ -157,9 +157,9 @@ describe("R363 + R364: every size lays out the total, the garden and one state l
       const st = svg.props.style;
       expect(st.width).toBeLessThanOrEqual(L.garden.w); expect(st.height).toBeLessThanOrEqual(L.garden.h);
       expect(st.width === L.garden.w || st.height === L.garden.h).toBe(true);
-      // 10-10 Garden2: the view is a box of the plate, its sky cropped to VIEW_PAD above what is planted; every image drawn is declared
-      const [, y, , vh] = svgBox(svg.props.svg);
-      expect(y).toBeGreaterThanOrEqual(0); expect(y + vh).toBeLessThanOrEqual(CANVAS.h + 0.01);
+      // 10-11 Garden2: Home's view (the plate's full width, frameTop to its foot); every image drawn is declared
+      const [x, y, vw, vh] = svgBox(svg.props.svg);
+      expect([x, vw]).toEqual([0, CANVAS.w]); expect(y).toBeGreaterThanOrEqual(0); expect(y + vh).toBeCloseTo(CANVAS.h, 1);
       const declared = new Set([...svg.props.svg.matchAll(/<image id="([^"]+)"/g)].map((q) => q[1]));
       for (const u of svg.props.svg.matchAll(/<use xlink:href="#([^"]+)"/g)) expect(declared.has(u[1]), u[1]).toBe(true);
     }

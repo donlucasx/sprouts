@@ -54,7 +54,7 @@ export function SproutsWidget({ me, width, height, wateredPlants = null, restart
     state = widgetStateLine(me, scene && !GARDEN2 ? scene : { parts: scene?.parts ?? [], unrevealed: 0 }, now);
   } catch { return notice("Open Sprouts to see your garden"); }
   const L = inner ? widgetLayout(inner.w, inner.h, big, WIDGET_LABEL, state.text, frameGap(width)) : widgetLayout(width, height, big, WIDGET_LABEL, state.text);
-  let garden: { svg: string; h: number } | null = null;
+  let garden: { svg: string; w?: number; h: number } | null = null;
   // 10-10 (his ask: the widget shows the new garden): Garden2's painted layers as stills, Home's stages, stakes and basket
   try {
     garden = GARDEN2
@@ -72,7 +72,7 @@ export function SproutsWidget({ me, width, height, wateredPlants = null, restart
   // above and below it, never one big blank band
   const gardenBox = (b: Box) => (
     <FlexWidget style={{ width: b.w, height: b.h, justifyContent: "center", alignItems: "center" }}>
-      {garden !== null ? <SvgWidget svg={garden.svg} style={{ width: b.w, height: garden.h }} /> : null}
+      {garden !== null ? <SvgWidget svg={garden.svg} style={{ width: garden.w ?? b.w, height: garden.h }} /> : null}
     </FlexWidget>
   );
   const line = (
