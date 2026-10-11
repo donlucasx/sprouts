@@ -88,7 +88,7 @@ const CSS = `
 .deck .split.wide video, .deck .split.wide .poster { border-radius:0; }
 .deck .sand { position:absolute; right:0; bottom:0; width:72%; height:auto; pointer-events:none;
   -webkit-mask-image:linear-gradient(to right, transparent, #000 35%); mask-image:linear-gradient(to right, transparent, #000 35%); }
-.deck .in > .grow { position:relative; z-index:1; }
+.deck .in > .grow, .deck .in > .note { position:relative; z-index:1; }
 .deck .tree { position:absolute; right:calc(var(--u)*-11); bottom:calc(var(--u)*-9); width:calc(var(--u)*35); height:auto; pointer-events:none; }
 .deck .flow.short { max-width:calc(var(--u)*68); }
 .deck .one { white-space:nowrap; }
