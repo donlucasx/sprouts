@@ -4,7 +4,7 @@ import type { MeResponse } from "@/lib/api";
 
 // The widget library renders on Android only; here its three tags are plain names, so the tree SproutsWidget returns can be read.
 vi.mock("react-native-android-widget", () => ({ FlexWidget: "FlexWidget", OverlapWidget: "OverlapWidget", TextWidget: "TextWidget", SvgWidget: "SvgWidget" }));
-const { SproutsWidget, BOTTOM_SAFE } = await import("@/garden/Widget");
+const { SproutsWidget, BOTTOM_SAFE, frameInset } = await import("@/garden/Widget");
 const { nextPlantingFor, nextPlantingText, nextRunWords } = await import("@/lib/next-planting");
 const { buildScene } = await import("@/model/garden");
 const { toGardenInput } = await import("@/lib/garden-input");
@@ -115,7 +115,7 @@ describe("R363 + R364: every size lays out the total, the garden and one state l
       const root = SproutsWidget({ me: m, width, height}) as El;
       const [big, label, line] = texts(root);
       // Garden2: the card (and so the layout) stops BOTTOM_SAFE short of the reported height, which can exceed the cell
-      const H = height - BOTTOM_SAFE, inner = frameInner(width, H);
+      const H = height - BOTTOM_SAFE, inset = frameInset(width), FW = width - 2 * inset, FH = H - 2 * inset, inner = frameInner(FW, FH);
       const barred = widgetLayout(inner.w, inner.h, big.props.text, label.props.text, line.props.text, frameGap(width), true, G2_BIG, G2_BIG_MIN);
       // the bar drops out where it would leave the garden under 16 dp (a 110 dp tall widget)
       const hasBar = all(root).some((e) => (e.props.style as { height?: number })?.height === BAR_H && kids(e).length >= 0 && (e.props.style as { borderRadius?: number })?.borderRadius === BAR_H / 2);
@@ -136,11 +136,13 @@ describe("R363 + R364: every size lays out the total, the garden and one state l
       // the rendered tree adds up: the root's padding is the layout's, the top block's children fill its box, the top block and the
       // line fit the inner height, and in the wide row the header, the spacer and the garden fill the inner width
       // 10-10 Garden2: the bamboo frame (the whole widget less BOTTOM_SAFE) under the content, laid out in the frame's opening
-      expect(root.type).toBe("OverlapWidget");
-      const [frameEl, wrap] = kids(root);
-      expect(frameEl.type).toBe("SvgWidget"); expect(frameEl.props.style).toEqual({ width, height: H });
+      // 10-11 (his note "a tad slimmer within it so theres more transparency around"): the frame FRAME_INSET in from every edge
+      expect(root.type).toBe("FlexWidget"); expect(root.props.style).toMatchObject({ padding: inset }); expect(inset).toBeGreaterThan(0);
+      const framed = kids(root)[0]; expect(framed.type).toBe("OverlapWidget"); expect(framed.props.style).toEqual({ width: FW, height: FH });
+      const [frameEl, wrap] = kids(framed);
+      expect(frameEl.type).toBe("SvgWidget"); expect(frameEl.props.style).toEqual({ width: FW, height: FH });
       expect(String((frameEl.props as { svg: string }).svg).match(/<image x=/g)).toHaveLength(8);   // the nine-slice less its empty centre (the sand tile is declared once, by id)
-      expect(wrap.props.style).toMatchObject({ width, height: H, paddingLeft: inner.l, paddingTop: inner.t, paddingRight: inner.r, paddingBottom: inner.b });
+      expect(wrap.props.style).toMatchObject({ width: FW, height: FH, paddingLeft: inner.l, paddingTop: inner.t, paddingRight: inner.r, paddingBottom: inner.b });
       // 10-11: the opening stacks the painting (widgetGarden2, the whole opening) under the text
       const opening = kids(wrap)[0];
       expect(opening.type).toBe("OverlapWidget"); expect(opening.props.style).toEqual({ width: inner.w, height: inner.h });
@@ -255,7 +257,10 @@ describe("Garden2 (10-11, his notes \"$0.00 alone... not very inviting\", \"too 
   it("widgetHeadline is what is drawn, for every state", () => {
     for (const m0 of Object.values(ALL)) {
       const m = priced(m0), [big, label, line] = texts(SproutsWidget({ me: m, width: 206, height: 205, now: NOW_W }) as El);
-      const total = big.props.text, want = widgetHeadline(m, buildScene(toGardenInput(m, NOW_W, null)), NOW_W, line.props.text.replace(/ in your garden$/, "") || total, true);
+      // the same room the widget measures: the frame's opening (inset, less BOTTOM_SAFE) less its gaps
+      const inset = frameInset(206), room = frameInner(206 - 2 * inset, 205 - BOTTOM_SAFE - 2 * inset).w - 2 * frameGap(206);
+      const fits = { big: (t: string) => textWidth(t, G2_BIG_MIN, true) <= room, label: (t: string) => textWidth(t, LABEL_SIZE, true) <= room, line: (t: string) => textWidth(t, STATE_MIN, true) <= room };
+      const total = big.props.text, want = widgetHeadline(m, buildScene(toGardenInput(m, NOW_W, null)), NOW_W, line.props.text.replace(/ in your garden$/, "") || total, true, fits);
       if (rowOf(m).state !== "empty") expect([big.props.text, label.props.text, line.props.text]).toEqual([want.big, want.label, want.line]);
     }
   });
