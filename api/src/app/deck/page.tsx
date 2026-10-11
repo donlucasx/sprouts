@@ -72,10 +72,13 @@ const CSS = `
 .deck .phone { position:absolute; left:calc(var(--u)*61); top:calc(var(--u)*6); width:calc(var(--u)*29); height:calc(var(--u)*50.25); overflow:hidden; box-sizing:border-box; border-bottom-left-radius:0; border-bottom-right-radius:0; padding:calc(var(--u)*.9) calc(var(--u)*.9) 0;
   background:#1D2628; border-radius:calc(var(--u)*4.4) calc(var(--u)*4.4) 0 0; box-shadow:0 calc(var(--u)*1.5) calc(var(--u)*5) rgba(43,38,34,.22); }
 .deck .phone img { display:block; width:100%; height:auto; border-radius:calc(var(--u)*3.6); }
-.deck .sprout { position:absolute; right:calc(var(--u)*8); bottom:calc(var(--u)*2.6); height:calc(var(--u)*10); width:auto; }
+.deck .sprout { position:absolute; right:calc(var(--u)*8); bottom:calc(var(--u)*2.4); height:calc(var(--u)*15); width:auto; }
+.deck .print-only { display:none; }
 .deck .note.left { max-width:calc(var(--u)*62); }
 .deck .beats.center .beat { text-align:center; justify-items:center; }
 .deck .beat .stage { height:calc(var(--u)*12); width:auto; margin-bottom:calc(var(--u)*.4); }
+.deck .beats.big .beat { background:none; padding:0 calc(var(--u)*1); }
+.deck .beats.big .stage { height:calc(var(--u)*20); margin-bottom:0; }
 .deck .narrow { max-width:calc(var(--u)*62); }
 .deck .stack { display:grid; gap:calc(var(--u)*1.8); max-width:calc(var(--u)*44); }
 .deck .stack div { display:grid; gap:calc(var(--u)*.4); }
@@ -85,6 +88,8 @@ const CSS = `
 .deck .on-art .num { display:none; }
 .deck .photo-credit { position:absolute; right:calc(var(--u)*1.2); bottom:calc(var(--u)*1); font-size:calc(var(--u)*.8); color:rgba(255,255,255,.55); }
 .deck .split.wide { grid-template-columns:.62fr 1.38fr; gap:calc(var(--u)*2); }
+.deck .split.home { grid-template-columns:1fr auto; gap:calc(var(--u)*5); }
+.deck .split.home video, .deck .split.home .poster { width:auto; height:calc(var(--u)*33); border-radius:calc(var(--u)*2); }
 .deck .split.wide video, .deck .split.wide .poster { border-radius:0; }
 .deck .sand { position:absolute; right:0; bottom:0; width:72%; height:auto; pointer-events:none;
   -webkit-mask-image:linear-gradient(to right, transparent, #000 35%); mask-image:linear-gradient(to right, transparent, #000 35%); }
@@ -111,7 +116,7 @@ const CSS = `
   .deck .in { position:relative; inset:auto; padding:48px 16px 56px; gap:28px; min-height:80vh; }
   .deck h1 { font-size:42px; } .deck h2 { font-size:36px; }
   .deck .sub { font-size:18px; } .deck .chip { font-size:13px; padding:5px 12px; }
-  .deck .split, .deck .split.wide, .deck .beats, .deck .stats, .deck .row { grid-template-columns:1fr; }
+  .deck .split, .deck .split.wide, .deck .split.home, .deck .beats, .deck .stats, .deck .row { grid-template-columns:1fr; }
   .deck .bar { display:none; }
   .deck .flow { flex-direction:column; } .deck .flow i { transform:rotate(90deg); align-self:center; }
   .deck .h2s { font-size:30px; } .deck .steps li { font-size:16px; grid-template-columns:28px 1fr; } .deck .steps li::before { font-size:20px; }
@@ -121,7 +126,8 @@ const CSS = `
   .deck .num { right:16px; bottom:20px; font-size:12px; } .deck .note, .deck .addr { font-size:12px; }
   .deck .phone { position:relative; left:auto; top:auto; width:100%; height:auto; overflow:hidden; border-radius:36px; padding:8px; }
   .deck .phone img { border-radius:30px; }
-  .deck .sprout, .deck .tree { display:none; } .deck .thanks { position:static; font-size:36px; } .deck .flow.short { max-width:none; } .deck .photo { position:relative; width:100%; height:auto; }
+  .deck .split.home video, .deck .split.home .poster { width:100%; height:auto; }
+  .deck .sprout { position:static; height:220px; align-self:center; } .deck .tree { display:none; } .deck .thanks { position:static; font-size:36px; } .deck .flow.short { max-width:none; } .deck .photo { position:relative; width:100%; height:auto; }
   .deck .sand { position:static; width:100%; margin-top:-24px; } .deck .stack, .deck .narrow, .deck .hero { max-width:none; }
   .deck .brand { font-size:22px; } .deck .brand img { width:30px; } .deck .foot, .deck .links { font-size:15px; }
 }
@@ -132,6 +138,7 @@ const CSS = `
   .deck .slide { width:1920px; height:1080px; aspect-ratio:auto; border-radius:0; box-shadow:none; break-after:page; --u: 19.2px; }
   .deck .bar { display:none; }
   .deck video { display:none; } .deck .poster { display:block; }
+  .deck .screen-only { display:none !important; } .deck .print-only { display:block; }
   .deck * { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
 }
 `;
@@ -176,15 +183,16 @@ export default function Deck() {
             Their money sits in the hot wallet they trade from, and nobody stops mid-trade to save. Every swap can set a little change aside.
           </p>
         </div>
-        <p className="note left">Seeker owners who stake SKR swap a median of 23 times a month, mostly under $10 (on-chain sample of 163 recently active stakers, Sept 2026).</p>
-        <img className="sprout" src="/deck/sprout.png" alt="A first sprout, from the app's loading screen" />
+        <p className="note left" style={{ maxWidth: "calc(var(--u)*56)" }}>Seeker owners who stake SKR swap a median of 23 times a month, mostly under $10 (on-chain sample of 163 recently active stakers, Sept 2026).</p>
+        <img className="sprout replay screen-only" src="/deck/tree-grow.webp" alt="A tree growing, from the app's loading screen" />
+        <img className="sprout print-only" src="/deck/tree-grown.webp" alt="" />
       </Slide>
 
       {/* 03 How it works: any swap, any app (his note 2); the decision removed (the cut table, R-D7) */}
       <Slide n={3} chip="How it works">
         <div className="grow">
           <h2 className="h2s">Every swap rounds up. Your Seeker keeps the change.</h2>
-          <div className="beats center">
+          <div className="beats center big">
             <div className="beat">
               <img className="stage" src="/deck/grow-1.png" alt="" />
               <strong>Any swap, any app</strong>
@@ -230,7 +238,7 @@ export default function Deck() {
       {/* 05 Garden: demo + why people come back (R-D5) */}
       <Slide n={5} chip="Why you come back">
         <h2 className="h2s one" style={{ margin: "calc(var(--u)*2.6) 0 calc(var(--u)*1.2)" }}>A garden that grows every time you swap.</h2>
-        <div className="split wide">
+        <div className="split home">
           <div className="grow">
             <ol className="steps">
               <li>Each coin is a plant that grows with every planting.</li>
@@ -242,8 +250,8 @@ export default function Deck() {
             </p>
           </div>
           <div>
-            <video src="/deck/garden-years.mp4" poster="/deck/garden-years.webp" autoPlay muted loop playsInline preload="metadata" aria-label="A garden growing over two simulated years as an active saver&apos;s round-ups are planted" />
-            <img className="poster" src="/deck/garden-years.webp" alt="The garden after two simulated years" />
+            <video src="/deck/widget-years.mp4" poster="/deck/widget-years.webp" autoPlay muted loop playsInline preload="metadata" aria-label="The Sprouts widget on a Seeker home screen, its garden growing over two simulated years" />
+            <img className="poster" src="/deck/widget-years.webp" alt="The Sprouts widget on a Seeker home screen after two simulated years" />
           </div>
         </div>
       </Slide>
