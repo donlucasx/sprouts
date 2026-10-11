@@ -19,8 +19,12 @@ HIT_SHARE = 0.2   # a cell is plant when this share of its pixels are
 
 L = json.load(open(os.path.join(SRC, "layout.json")))
 W, H = L["canvas"]["w"], L["canvas"]["h"]
-if os.path.isdir(OUT): shutil.rmtree(OUT)
-os.makedirs(OUT)
+# keep widget/ (the bamboo frame's source art, read by widget.py); everything else is rebuilt from the export
+KEEP = {"widget"}
+os.makedirs(OUT, exist_ok=True)
+for f_ in os.listdir(OUT):
+    if f_ in KEEP: continue
+    pth = os.path.join(OUT, f_); shutil.rmtree(pth) if os.path.isdir(pth) else os.remove(pth)
 shutil.copyfile(os.path.join(SRC, "plate.png"), os.path.join(OUT, "plate.png"))
 # R529: dark-mode variants, all optional: plate-dark.png, an overlay's "<stem>-dark<ext>", a stage layer's "<stem>-dark.webp".
 HAS_DARK_PLATE = os.path.exists(os.path.join(SRC, "plate-dark.png"))
@@ -71,7 +75,7 @@ for p in L["draw_order"]:
 
 # R533/R547-R549: the two trees' fruit (SKR mandarins) and flowers (stORE ORE-gold), measured on these same stage layers by
 # brand/garden2/spots14/place_spots.py: per stage, the spots (box px, sprite centres) and the radius (the sprite is drawn 2r square).
-GARDEN2 = os.path.dirname(os.path.abspath(SRC))
+GARDEN2 = os.environ.get("GARDEN2_DIR", os.path.dirname(os.path.abspath(SRC)))   # a scratch export elsewhere names the brand folder
 TREE_SPOTS = json.load(open(os.path.join(GARDEN2, "spots14", "tree_spots.json")))
 SPRITES = {"mandarin": "mandarin/fruit/mandarin-ripe.png", "store": "store/flower/store-flower-open.png"}
 spots = {}
