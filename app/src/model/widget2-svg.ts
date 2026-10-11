@@ -72,8 +72,8 @@ export function widget2View(stages: Stages, extras: Extras, width: number, maxH:
 export const widget2Height = (stages: Stages, extras: Extras, width: number, maxH: number): number => widget2View(stages, extras, width, maxH).h;
 
 /** Widget px over which the garden's own edges fade out onto the wallpaper (at most GARDEN_FEATHER_MAX of its smaller side). */
-export const GARDEN_FEATHER = 18;
-const GARDEN_FEATHER_MAX = 0.2;
+export const GARDEN_FEATHER = 30;
+const GARDEN_FEATHER_MAX = 0.22;
 /** Stops per faded edge: the opacity eases in (smoothstep), so the rim dissolves rather than ending in a grey band (a linear ramp did, on device). */
 const FADE_STEPS = 6;
 const fadeStops = (edge: number) => {
