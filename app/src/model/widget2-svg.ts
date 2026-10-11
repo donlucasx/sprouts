@@ -1,5 +1,5 @@
 import { CANVAS } from "@/garden2/layout";
-import { WIDGET2_B64 } from "@/garden2/widget-b64";
+import { WIDGET2_B64, WIDGET2_FRAME } from "@/garden2/widget-b64";
 import { GARDEN_INK } from "@/theme/tokens";
 import { composeLayers, paintedBox, STAKE, type Extras, type Layer, type Stages } from "./garden2";
 
@@ -10,6 +10,8 @@ export const MIN_VIEW_W = 560;
 /** Stakes draw only where their name comes out at least this many widget px tall (a 2x2's six boards would be specks). */
 export const STAKE_MIN_FONT = 6;
 
+/** The paper inside the bamboo frame (the plate's own paper, #FFFCF6). */
+export const WIDGET2_PAPER = "#FFFCF6";
 const f = (n: number) => Number(n.toFixed(2));
 const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 type Rect = { x0: number; x1: number; y0: number; y1: number };
@@ -121,4 +123,40 @@ export function widgetGarden2(stages: Stages, extras: Extras, width: number, max
   const garden = feathered("g", vx, v.y, vw, vh, fe, fe, body.join(""));
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${width}" height="${h}" viewBox="${f(vx)} ${f(v.y)} ${f(vw)} ${f(vh)}" preserveAspectRatio="xMidYMax meet"><defs>${defs}</defs>${garden}</svg>`;
   return { svg, h };
+}
+
+/** The bamboo frame's size: widget dp per px of the painting (its poles about 40 px thick, so about 5 dp), thinner on a small widget so
+ *  a 110 dp one keeps room for its garden: min side / FRAME_DIV, between FRAME_K_MIN and FRAME_K. */
+export const FRAME_K = 0.125;
+const FRAME_K_MIN = 0.05, FRAME_DIV = 1800;
+export const frameK = (width: number, height: number) => Math.max(FRAME_K_MIN, Math.min(FRAME_K, Math.min(width, height) / FRAME_DIV));
+/** dp between the poles and the widget's text and garden (half on a widget under 140 dp, as widget-layout's padFor). */
+export const FRAME_GAP = 4;
+export const frameGap = (width: number) => (width < 140 ? FRAME_GAP / 2 : FRAME_GAP);
+export type FrameInner = { l: number; t: number; r: number; b: number; w: number; h: number };
+/** The frame's opening on a `width` by `height` widget: each pole's inner edge in from the widget's edge, and the box between them. */
+export function frameInner(width: number, height: number): FrameInner {
+  const i = WIDGET2_FRAME.inner, k = frameK(width, height);
+  const l = Math.round(i.l * k), t = Math.round(i.t * k), r = Math.round(i.r * k), b = Math.round(i.b * k);
+  return { l, t, r, b, w: Math.max(1, width - l - r), h: Math.max(1, height - t - b) };
+}
+/**
+ * The widget's bamboo frame (his ask 10-10: "the widget itself has transparent edges, its a bit smaller than the widget area, and its
+ * contained by a bamboo frame in the same style of the artwork"): the painting cut in nine (scripts/garden2/widget.py), its corners (the
+ * knots and the crossed ends) at FRAME_K and its four runs stretched between them, over paper that fills the frame to its poles' centre
+ * lines. Outside the poles the widget is clear: the crossed ends overhang onto the wallpaper.
+ */
+export function widgetFrame(width: number, height: number): string {
+  const F = WIDGET2_FRAME, k = frameK(width, height);
+  const xs = { l: [0, F.cut.l * k], c: [F.cut.l * k, width - F.cut.r * k], r: [width - F.cut.r * k, width] } as const;
+  const ys = { t: [0, F.cut.t * k], c: [F.cut.t * k, height - F.cut.b * k], b: [height - F.cut.b * k, height] } as const;
+  const parts: string[] = [];
+  for (const [yk, [y0, y1]] of Object.entries(ys)) for (const [xk, [x0, x1]] of Object.entries(xs)) {
+    const key = `frame-${yk}${xk}`;
+    if (!WIDGET2_B64[key]) continue;
+    parts.push(`<image x="${f(x0)}" y="${f(y0)}" width="${f(x1 - x0)}" height="${f(y1 - y0)}" preserveAspectRatio="none" xlink:href="data:image/webp;base64,${WIDGET2_B64[key]}"/>`);
+  }
+  const m = F.mid, px = m.l * k, py = m.t * k;
+  const paper = `<rect x="${f(px)}" y="${f(py)}" width="${f(width - px - m.r * k)}" height="${f(height - py - m.b * k)}" fill="${WIDGET2_PAPER}"/>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${paper}${parts.join("")}</svg>`;
 }

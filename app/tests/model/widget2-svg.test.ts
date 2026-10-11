@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { allStages, paintedBox, type Stages } from "@/model/garden2";
 import { CANVAS } from "@/garden2/layout";
-import { MIN_VIEW_W, VIEW_PAD, widget2Need, widgetGarden2 } from "@/model/widget2-svg";
+import { FRAME_K, frameInner, frameK, MIN_VIEW_W, VIEW_PAD, widget2Need, widgetFrame, widgetGarden2 } from "@/model/widget2-svg";
+import { WIDGET2_FRAME } from "@/garden2/widget-b64";
 
 const only = (s: Partial<Stages>): Stages => ({ ...allStages(0), ...s });
 const box = (svg: string) => svg.match(/viewBox="([-\d.]+) ([-\d.]+) ([-\d.]+) ([-\d.]+)"/)!.slice(1).map(Number);
@@ -54,5 +55,27 @@ describe("10-10 (his pick: \"Floating garden\"): the garden floats on the wallpa
     const inner = svg.split('<g mask="url(#g-mv)"><g mask="url(#g-mh)">')[1];
     expect(inner).toBeDefined();
     expect(svg.split("<use").length - 1).toBe(inner.split("<use").length - 1);
+  });
+});
+
+describe("10-10 (his ask: \"contained by a bamboo frame in the same style of the artwork\"): the nine-slice frame", () => {
+  const imgs = (svg: string) => [...svg.matchAll(/<image x="([\d.]+)" y="([\d.]+)" width="([\d.]+)" height="([\d.]+)"/g)].map((m) => m.slice(1).map(Number));
+  it("eight pieces tile the widget edge to edge; the corners keep the painting's shape, the runs stretch", () => {
+    const W = 300, H = 260, k = frameK(W, H), parts = imgs(widgetFrame(W, H));
+    expect(k).toBe(FRAME_K); expect(parts).toHaveLength(8);
+    const [tl, t, tr] = parts;
+    expect(tl).toEqual([0, 0, WIDGET2_FRAME.cut.l * k, WIDGET2_FRAME.cut.t * k].map((n) => Number(n.toFixed(2))));
+    expect(t[0]).toBeCloseTo(tl[2]); expect(t[0] + t[2]).toBeCloseTo(tr[0]); expect(tr[0] + tr[2]).toBeCloseTo(W);
+    const br = parts[7]; expect(br[1] + br[3]).toBeCloseTo(H);
+  });
+  it("paper fills the frame to its poles' centre lines, and the opening sits inside the poles", () => {
+    const W = 260, H = 200, k = frameK(W, H), svg = widgetFrame(W, H), m = WIDGET2_FRAME.mid;
+    const r = svg.match(/<rect x="([\d.]+)" y="([\d.]+)" width="([\d.]+)" height="([\d.]+)" fill="#FFFCF6"/)!.slice(1).map(Number);
+    expect(r[0]).toBeCloseTo(m.l * k, 1); expect(r[0] + r[2]).toBeCloseTo(W - m.r * k, 1);
+    const o = frameInner(W, H);
+    expect(o.l).toBeGreaterThan(m.l * k); expect(o.l + o.w + o.r).toBe(W); expect(o.t + o.h + o.b).toBe(H);
+  });
+  it("a small widget gets a thinner frame (never under its floor)", () => {
+    expect(frameK(110, 100)).toBeLessThan(FRAME_K); expect(frameK(110, 100)).toBeGreaterThanOrEqual(0.05);
   });
 });
