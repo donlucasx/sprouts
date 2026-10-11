@@ -127,8 +127,9 @@ export type Extras = { fruit?: Fruit; basket?: boolean; stakes?: boolean }
  */
 export const STAKE = { foot: [71, 80], board: { x: 2, y: 1, w: 136, h: 34 }, font: 27, drop: 0.05 } as const
 /** R557 (his placement on decor-stake-context-v2): each plant's stake foot in canvas px; stORE's stands behind the orchid (drawn before it). */
-/** The geode's stake foot (R-D40): at its box's front left until its placement is final. */
-const GEODE_STAKE = { x: PLANTS.geode.x + 24, y: Math.min(CANVAS.h - 30, PLANTS.geode.y + PLANTS.geode.h + 4) }
+/** The geode's stake foot (R-D42 placement r5; Claude's spot, his to move): on the sand in front of the stone's mound (painted x 1038-1495,
+ *  foot y 696), clear of the orchid's pot. */
+const GEODE_STAKE = { x: 1330, y: 735 }
 export const STAKE_AT: Record<Plant2, { x: number; y: number; before?: Plant2 }> = {
   mandarin: { x: 560, y: 740 },
   store: { x: 885, y: 690, before: 'orchid' },
