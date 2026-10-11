@@ -97,7 +97,7 @@ const CSS = `
 .deck .tree { position:absolute; right:calc(var(--u)*-11); bottom:calc(var(--u)*-9); width:calc(var(--u)*35); height:auto; pointer-events:none; }
 .deck .flow.short { max-width:calc(var(--u)*68); }
 /* R-D34 slide 6 as a graph: change -> Yield Manager -> SKR / stORE / lending, and the dial's SKR floors as bars (manager.ts STOP_FLOOR) */
-.deck .ym { display:grid; grid-template-columns:1fr calc(var(--u)*27); gap:calc(var(--u)*3); align-items:center; margin-top:calc(var(--u)*3.2); }
+.deck .ym { display:grid; grid-template-columns:1fr calc(var(--u)*27); gap:calc(var(--u)*3); align-items:center; margin-top:calc(var(--u)*2.6); }
 .deck .ym-flow { display:grid; grid-template-columns:calc(var(--u)*11.5) auto calc(var(--u)*18) auto 1fr; align-items:center; gap:calc(var(--u)*1); }
 .deck .ym-flow > i { font-style:normal; color:var(--muted); font-size:calc(var(--u)*2.2); }
 .deck .ym-box { position:relative; background:var(--sheet); border-radius:calc(var(--u)*.8); padding:calc(var(--u)*1.1) calc(var(--u)*1.3); display:grid; gap:calc(var(--u)*.35); }
@@ -108,6 +108,12 @@ const CSS = `
 .deck .ym-box.key small { color:var(--paper); opacity:.85; }
 .deck .ym-out { display:grid; gap:calc(var(--u)*1.3); }
 .deck .ym-box.lend { border:2px solid var(--leaf); background:var(--paper); }
+/* R-D36 (kemosabe via his note: brand stORE; his pick Option 2 = a band on this slide): ORE gold on the stORE box and a band under the graph */
+.deck .ym-box.ore { background:#F3E6BE; box-shadow:inset 0 0 0 2px #C9A23A; }
+.deck .ore-band { position:relative; z-index:1; display:flex; align-items:center; gap:calc(var(--u)*2.2); margin:calc(var(--u)*2.2) 0 calc(var(--u)*1.4); max-width:calc(var(--u)*86);
+  background:linear-gradient(90deg, #2B2622, #3A3127); color:#F6EFD9; border-radius:calc(var(--u)*.9); padding:calc(var(--u)*1.3) calc(var(--u)*2); }
+.deck .ore-band strong { font-family:var(--font-display), sans-serif; font-size:calc(var(--u)*2.6); letter-spacing:-.03em; color:#E2B84A; }
+.deck .ore-band p { margin:0; font-size:calc(var(--u)*1.45); line-height:1.4; }
 .deck .ym-box em { position:absolute; top:calc(var(--u)*-.9); right:calc(var(--u)*1); font-style:normal; font-weight:700; font-size:calc(var(--u)*1); background:var(--leaf); color:var(--paper); border-radius:999px; padding:calc(var(--u)*.25) calc(var(--u)*.8); }
 .deck .ym-dial { display:grid; gap:calc(var(--u)*1); background:var(--paper); border:1px solid var(--rule); border-radius:calc(var(--u)*.8); padding:calc(var(--u)*1.8) calc(var(--u)*2); }
 .deck .ym-dial > b { font-family:var(--font-display), sans-serif; font-size:calc(var(--u)*2); letter-spacing:-.02em; }
@@ -148,7 +154,7 @@ const CSS = `
   .deck .phone img { border-radius:30px; }
   .deck .split.home video, .deck .split.home .poster { width:100%; height:auto; }
   .deck .sprout { position:static; height:220px; align-self:center; } .deck .tree { display:none; } .deck .thanks { position:static; font-size:36px; } .deck .flow.short { max-width:none; } .deck .photo { position:relative; width:100%; height:auto; }
-  .deck .sand { position:static; width:100%; margin-top:-24px; } .deck .ym, .deck .ym-flow { grid-template-columns:1fr; } .deck .ym-flow > i { transform:rotate(90deg); justify-self:center; } .deck .ym-box b { font-size:17px; } .deck .ym-box.key b { font-size:20px; } .deck .ym-box small, .deck .ym-dial > small { font-size:13px; } .deck .ym-dial > b { font-size:20px; } .deck .ym-row { font-size:15px; grid-template-columns:80px 1fr 44px; } .deck .ym-row strong { font-size:17px; } .deck .ym-track { height:12px; } .deck .ym-box em { font-size:11px; top:-9px; } .deck .stack, .deck .narrow, .deck .hero { max-width:none; }
+  .deck .sand { position:static; width:100%; margin-top:-24px; } .deck .ym, .deck .ym-flow { grid-template-columns:1fr; } .deck .ym-flow > i { transform:rotate(90deg); justify-self:center; } .deck .ym-box b { font-size:17px; } .deck .ym-box.key b { font-size:20px; } .deck .ym-box small, .deck .ym-dial > small { font-size:13px; } .deck .ym-dial > b { font-size:20px; } .deck .ym-row { font-size:15px; grid-template-columns:80px 1fr 44px; } .deck .ym-row strong { font-size:17px; } .deck .ym-track { height:12px; } .deck .ym-box em { font-size:11px; top:-9px; } .deck .ore-band { flex-direction:column; align-items:flex-start; gap:6px; padding:14px 16px; } .deck .ore-band strong { font-size:24px; } .deck .ore-band p { font-size:14px; } .deck .stack, .deck .narrow, .deck .hero { max-width:none; }
   .deck .brand { font-size:22px; } .deck .brand img { width:30px; } .deck .foot, .deck .links { font-size:15px; }
 }
 @page { size:1920px 1080px; margin:0; }
@@ -189,7 +195,7 @@ export default function Deck() {
               Sprouts
             </div>
             <h1>Your spare change, planted on your Seeker.</h1>
-            <p className="sub">Sprouts rounds up every swap your linked wallets make and plants the change in SKR, kept in your Seed Vault and grown by an AI&nbsp;Yield&nbsp;Manager.</p>
+            <p className="sub">Sprouts rounds up every swap your linked wallets make and plants the change in store of value tokens like SKR and stORE, kept in your Seed Vault and grown by an AI&nbsp;Yield&nbsp;Manager.</p>
         </div>
         <div className="phone"><img src="/deck/home.webp" alt="Sprouts on a phone: the garden, and under it the coins it holds" /></div>
         <span className="foot">CLOCK IN · Solana Mobile Hackathon 2026</span>
@@ -279,7 +285,7 @@ export default function Deck() {
       {/* 06 Yield Manager (his note 6; R-D27 smart + helpful, chip 'Yield Manager'): split-run.ts, lending-leash spec 3-4, R347 */}
       <Slide n={6} chip="Yield Manager">
         <div className="grow">
-          <h2 className="h2s" style={{ maxWidth: "calc(var(--u)*64)" }}>Your round-ups, put to work while you sleep.</h2>
+          <h2 className="h2s one">Your round-ups, put to work while you sleep.</h2>
           <div className="ym">
             <div className="ym-flow">
               <div className="ym-box"><b>Your change</b><small>from every swap</small></div>
@@ -288,7 +294,7 @@ export default function Deck() {
               <i>&rarr;</i>
               <div className="ym-out">
                 <div className="ym-box"><b>SKR</b><small>staked</small></div>
-                <div className="ym-box"><b>stORE</b><small>mining ORE</small></div>
+                <div className="ym-box ore"><b>stORE</b><small>mining ORE</small></div>
                 <div className="ym-box lend"><b>USDC and SOL</b><small>lent on Kamino or Jupiter Lend</small><em>Pro</em></div>
               </div>
             </div>
@@ -300,6 +306,10 @@ export default function Deck() {
               ))}
             </div>
           </div>
+        </div>
+        <div className="ore-band">
+          <strong>stORE</strong>
+          <p>Staked ORE, a store of value token that keeps mining. Your change mines ORE from the first planting, free on every plan.</p>
         </div>
         <p className="note">Part of Pro, free during launch. The AI model never picks the lender or moves money. Code does both.</p>
         <img className="sand" src="/deck/sand.webp" alt="" />
