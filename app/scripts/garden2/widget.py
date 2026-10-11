@@ -15,6 +15,7 @@ QUALITY = 78
 # the sand fades into) turns transparent, the sand stays. Alpha eases in with each pixel's distance from paper (summed over R, G, B).
 PAPER = (255, 252, 246)
 CLEAR_BELOW, SOLID_FROM = 6, 34
+HORIZON_FADE = 70
 
 def unpaper(im):
     im = im.convert("RGBA")
@@ -24,6 +25,14 @@ def unpaper(im):
             r, g, b, a = px[x, y]
             d = abs(r - PAPER[0]) + abs(g - PAPER[1]) + abs(b - PAPER[2])
             t = min(1, max(0, (d - CLEAR_BELOW) / (SOLID_FROM - CLEAR_BELOW)))
+            px[x, y] = (r, g, b, round(a * t * t * (3 - 2 * t)))
+    # the sand's top edge (the horizon, a hard line on the wallpaper) eases in over HORIZON_FADE px, so the bed rises out of it
+    for x in range(im.width):
+        top = next((y for y in range(im.height) if px[x, y][3] > 128), None)
+        if top is None: continue
+        for y in range(max(0, top - 4), min(im.height, top + HORIZON_FADE)):
+            t = max(0, y - top + 4) / (HORIZON_FADE + 4)
+            r, g, b, a = px[x, y]
             px[x, y] = (r, g, b, round(a * t * t * (3 - 2 * t)))
     return im
 
