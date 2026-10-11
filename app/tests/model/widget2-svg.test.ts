@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { allStages, paintedBox, type Stages } from "@/model/garden2";
 import { CANVAS } from "@/garden2/layout";
-import { MIN_VIEW_W, VIEW_PAD, widget2Need, widgetCard, widgetGarden2 } from "@/model/widget2-svg";
+import { MIN_VIEW_W, VIEW_PAD, widget2Need, widgetGarden2 } from "@/model/widget2-svg";
 
 const only = (s: Partial<Stages>): Stages => ({ ...allStages(0), ...s });
 const box = (svg: string) => svg.match(/viewBox="([-\d.]+) ([-\d.]+) ([-\d.]+) ([-\d.]+)"/)!.slice(1).map(Number);
@@ -43,20 +43,11 @@ describe("10-10: the widget draws Garden2 as stills, cropped to what is planted"
   });
 });
 
-describe("10-10 (his note: \"make the edges transparent a bit\"): the card's rim and the garden's edges fade out", () => {
-  const stops = (svg: string, id: string) => svg.match(new RegExp(`id="${id}"[^>]*>(.*?)</linearGradient>`))![1].match(/offset="([\d.]+)"[^>]*?(stop-opacity="0")?\/>/g)!;
-  it("the card: transparent at every edge, easing to full paper at `feather` in, both axes masked over the whole widget", () => {
-    const svg = widgetCard(200, 100, 12);
-    expect(svg).toContain('width="200" height="100"'); expect(svg).toContain('fill="#FFFCF6"');
-    const at = (id: string) => [...svg.match(new RegExp(`id="${id}"[^>]*>(.*?)</linearGradient>`))![1].matchAll(/offset="([\d.]+)"(?: stop-color="#fff")?(?: stop-opacity="([\d.]+)")?/g)]
-      .map((m) => [Number(m[1]), m[2] === undefined ? 1 : Number(m[2])]);
-    const h = at("card-gh"), v = at("card-gv");
-    expect(h[0]).toEqual([0, 0]); expect(h[h.length - 1]).toEqual([1, 0]);
-    expect(h.find(([, a]) => a === 1)![0]).toBeCloseTo(0.06); expect(v.find(([, a]) => a === 1)![0]).toBeCloseTo(0.12);
-    // eased, not linear: a third of the way in it is well under a third opaque, and the opacity only rises to the middle
-    const third = h.find(([o]) => Math.abs(o - 0.02) < 0.001)!; expect(third[1]).toBeLessThan(0.3);
-    const left = h.filter(([o]) => o <= 0.5).map(([, a]) => a); expect(left).toEqual([...left].sort((x, y) => x - y));
-    expect(svg).toMatch(/<g mask="url\(#card-mv\)"><g mask="url\(#card-mh\)"><rect/);
+describe("10-10 (his pick: \"Floating garden\"): the garden floats on the wallpaper", () => {
+  it("its edges ease out to transparent on both axes", () => {
+    const { svg } = widgetGarden2(only({ mandarin: 6, store: 5 }), { stakes: true }, 206, 140);
+    const ops = [...svg.match(/id="g-gh"[^>]*>(.*?)<\/linearGradient>/)![1].matchAll(/stop-opacity="([\d.]+)"/g)].map((m) => Number(m[1]));
+    expect(ops[0]).toBe(0); expect(ops[1]).toBeLessThan(0.1);   // eased, not a linear ramp
   });
   it("the garden: every layer drawn inside its own two masks, so the crop's hard edge never shows", () => {
     const { svg } = widgetGarden2(only({ mandarin: 6, store: 5 }), { stakes: true }, 206, 140);

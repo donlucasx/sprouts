@@ -1,14 +1,12 @@
-import { GARDEN2 } from "@/garden2/flag";
 /**
  * R363 + R364 (10-05): the widget's layout, as numbers, so it can be tested without Android. Laid out for the SQUARE first (R364's
  * default, 2x2): the total big and alone at the top with a tiny "your garden" under it, the garden in the middle, ONE state line at the
  * bottom. A wide widget (4x2) keeps the total at the left and the garden at its right, the state line along the bottom. Every box is in
  * widget dp from the widget's top-left corner.
  */
-/** Garden2 (10-10): the margin is also the card's faded rim (widgetCard), so the text sits on full paper inside it. */
-export const W_PAD = GARDEN2 ? 18 : 12;
+export const W_PAD = 12;
 /** A widget narrower than this (the 110 dp minimum, a 2x2 on a dense 5-column grid) keeps a thinner margin. */
-const NARROW_W = 140, NARROW_PAD = GARDEN2 ? 10 : 8;
+const NARROW_W = 140, NARROW_PAD = 8;
 export const padFor = (width: number) => (width < NARROW_W ? NARROW_PAD : W_PAD);
 export const BIG_SIZE = 24;
 /** The total shrinks to fit a narrow widget (a five-figure garden on a 2x2 dense grid), never under this. */

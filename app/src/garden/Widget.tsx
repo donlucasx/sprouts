@@ -1,9 +1,9 @@
 "use no memo";
-import { FlexWidget, OverlapWidget, TextWidget, SvgWidget } from "react-native-android-widget";
+import { FlexWidget, TextWidget, SvgWidget } from "react-native-android-widget";
 import type { MeResponse } from "@/lib/api";
 import { buildScene } from "@/model/garden";
 import { widgetGarden } from "@/model/widget-svg";
-import { widgetCard, widgetGarden2, WIDGET2_PAPER } from "@/model/widget2-svg";
+import { widgetGarden2 } from "@/model/widget2-svg";
 import { stagesFor } from "@/model/garden2";
 import { GARDEN2 } from "@/garden2/flag";
 import { toGardenInput, type ZeroMarks } from "@/lib/garden-input";
@@ -12,9 +12,15 @@ import { widgetStateLine, type WidgetState } from "@/lib/widget-state";
 import { LABEL_SIZE, lineBox, padFor, widgetLayout, type Box } from "./widget-layout";
 import type { PlantId, Scene } from "@/model/garden";
 
-/** Brand colours (manual 4, light: the widget draws on paper whatever the phone's theme). */
-const PAPER = GARDEN2 ? WIDGET2_PAPER : "#F4EEDF", INK = "#2B2B2B", QUIET = "#6B6558", ACCENT = "#145A3C";
-/** dp the Garden2 card stops short of the reported height (the cell is shorter than it on the Seeker; see `H` below). */
+/**
+ * Brand colours. The old garden draws on a paper card (manual 4, light whatever the phone's theme). Garden2 floats on the wallpaper
+ * (his pick 10-10, "Floating garden": no card, the garden's paper cleared, white text with a soft shadow so it reads on any wallpaper).
+ */
+const PAPER = "#F4EEDF";
+const INK = GARDEN2 ? "#FFFFFF" : "#2B2B2B", QUIET = GARDEN2 ? "#ECE8DE" : "#6B6558", ACCENT = GARDEN2 ? "#BFE8CF" : "#145A3C";
+const SHADOW = GARDEN2 ? { textShadowColor: "rgba(0, 0, 0, 0.6)" as const, textShadowRadius: 4, textShadowOffset: { width: 0, height: 1 } } : {};
+/** dp Garden2 keeps clear at the bottom: in portrait the library sizes the widget to its MAX height, a few dp taller than the cell on
+ *  the Seeker, and the launcher draws it unscaled from the top (scaleType matrix), so the bottom line would be cut (seen 10-10). */
 export const BOTTOM_SAFE = 10;
 /** R363's tiny label under the total. */
 export const WIDGET_LABEL = "your garden";
@@ -26,22 +32,11 @@ export const WIDGET_LABEL = "your garden";
  * garden; tall ones centre the garden in its box. The boxes come from widgetLayout; the whole widget opens the app.
  */
 export function SproutsWidget({ me, width, height, wateredPlants = null, restartMarks = {}, now = new Date() }: { me: MeResponse | null; width: number; height: number; wateredPlants?: PlantId[] | null; restartMarks?: ZeroMarks; now?: Date }) {
-  // Garden2 (10-10, his note: "make the edges transparent a bit"): the paper is a card whose rim fades to transparent (widgetCard),
-  // behind the content, over the padding band, so the text stays on full paper; the old garden keeps its flat rounded card
-  // The launcher draws the widget's image unscaled from its top-left (scaleType matrix) and, in portrait, the library sizes it to the
-  // widget's MAX height, a few dp taller than the cell on the Seeker (the fade's bottom was cut into a hard line, 10-10): Garden2 keeps
-  // the card BOTTOM_SAFE dp short, so its whole rim always shows.
   const H = GARDEN2 ? Math.max(1, height - BOTTOM_SAFE) : height;
-  const card = (pad: number, style: Record<string, unknown>, children: unknown) =>
-    GARDEN2 ? (
-      <OverlapWidget clickAction="OPEN_APP" style={{ height: "match_parent", width: "match_parent" }}>
-        <SvgWidget svg={widgetCard(width, H, pad)} style={{ width, height: H }} />
-        <FlexWidget style={{ height: H, width: "match_parent", padding: pad, ...style }}>{children}</FlexWidget>
-      </OverlapWidget>
-    ) : (
-      <FlexWidget clickAction="OPEN_APP" style={{ height: "match_parent", width: "match_parent", backgroundColor: PAPER, borderRadius: 16, padding: pad, ...style }}>{children}</FlexWidget>
-    );
-  const notice = (text: string) => card(padFor(width), { justifyContent: "center" }, <TextWidget text={text} style={{ fontSize: 14, color: INK }} />);
+  const card = (pad: number, style: Record<string, unknown>, children: unknown) => (
+    <FlexWidget clickAction="OPEN_APP" style={{ height: GARDEN2 ? H : "match_parent", width: "match_parent", ...(GARDEN2 ? {} : { backgroundColor: PAPER, borderRadius: 16 }), padding: pad, ...style }}>{children}</FlexWidget>
+  );
+  const notice = (text: string) => card(padFor(width), { justifyContent: "center" }, <TextWidget text={text} style={{ fontSize: 14, color: INK, ...SHADOW }} />);
   if (!me) return notice("Open Sprouts to sign in");
   // R146, R252: the total is Home's own number (valueBlock: the whole garden in dollars, the SKR pot when no SKR price is known).
   // A cached read too old for these fields says "open the app" rather than failing the whole render.
@@ -64,8 +59,8 @@ export function SproutsWidget({ me, width, height, wateredPlants = null, restart
 
   const header = (
     <FlexWidget style={{ width: L.header.w, height: L.header.h, flexDirection: "column" }}>
-      <TextWidget text={big} maxLines={1} truncate="END" style={{ fontSize: L.bigSize, color: INK, fontWeight: "700", height: lineBox(L.bigSize) }} />
-      <TextWidget text={WIDGET_LABEL} maxLines={1} truncate="END" style={{ fontSize: LABEL_SIZE, color: QUIET, height: lineBox(LABEL_SIZE) }} />
+      <TextWidget text={big} maxLines={1} truncate="END" style={{ fontSize: L.bigSize, color: INK, fontWeight: "700", height: lineBox(L.bigSize), ...SHADOW }} />
+      <TextWidget text={WIDGET_LABEL} maxLines={1} truncate="END" style={{ fontSize: LABEL_SIZE, color: QUIET, height: lineBox(LABEL_SIZE), ...SHADOW }} />
     </FlexWidget>
   );
   // R253 / fix/widget-fit: the garden cropped to its plants (widgetGarden); centred in its box, so a tall widget's spare room is shared
@@ -76,7 +71,7 @@ export function SproutsWidget({ me, width, height, wateredPlants = null, restart
     </FlexWidget>
   );
   const line = (
-    <TextWidget text={state.text} maxLines={L.stateLines} truncate="END" style={{ fontSize: L.stateSize, color: state.action ? ACCENT : QUIET, fontWeight: state.action ? "600" : "normal", height: L.state.h }} />
+    <TextWidget text={state.text} maxLines={L.stateLines} truncate="END" style={{ fontSize: L.stateSize, color: state.action ? ACCENT : QUIET, fontWeight: state.action ? "600" : "normal", height: L.state.h, ...SHADOW }} />
   );
   const top = L.mode === "wide"
     ? (

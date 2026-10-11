@@ -3,8 +3,6 @@ import { WIDGET2_B64 } from "@/garden2/widget-b64";
 import { GARDEN_INK } from "@/theme/tokens";
 import { composeLayers, paintedBox, STAKE, type Extras, type Layer, type Stages } from "./garden2";
 
-/** The plate's paper (its corners, #FFFCF6): the widget draws on it, so the plate's edge never shows. */
-export const WIDGET2_PAPER = "#FFFCF6";
 /** Canvas px of plate kept around the plants and stakes the widget shows. */
 export const VIEW_PAD = 40;
 /** The view is never narrower than this many canvas px (a lone seedling stays a seedling in its bed, not a close-up). */
@@ -73,9 +71,9 @@ export function widget2View(stages: Stages, extras: Extras, width: number, maxH:
 /** The garden's height on a widget `width` wide with at most `maxH`. */
 export const widget2Height = (stages: Stages, extras: Extras, width: number, maxH: number): number => widget2View(stages, extras, width, maxH).h;
 
-/** Widget px over which the garden's own edges fade into the card's paper (at most GARDEN_FEATHER_MAX of its smaller side). */
-export const GARDEN_FEATHER = 10;
-const GARDEN_FEATHER_MAX = 0.15;
+/** Widget px over which the garden's own edges fade out onto the wallpaper (at most GARDEN_FEATHER_MAX of its smaller side). */
+export const GARDEN_FEATHER = 18;
+const GARDEN_FEATHER_MAX = 0.2;
 /** Stops per faded edge: the opacity eases in (smoothstep), so the rim dissolves rather than ending in a grey band (a linear ramp did, on device). */
 const FADE_STEPS = 6;
 const fadeStops = (edge: number) => {
@@ -95,15 +93,6 @@ function feathered(id: string, x: number, y: number, w: number, h: number, fx: n
     + `<mask id="${id}-mh" maskUnits="userSpaceOnUse" ${box}><rect ${box} fill="url(#${id}-gh)"/></mask>`
     + `<mask id="${id}-mv" maskUnits="userSpaceOnUse" ${box}><rect ${box} fill="url(#${id}-gv)"/></mask>`;
   return `<defs>${defs}</defs><g mask="url(#${id}-mv)"><g mask="url(#${id}-mh)">${inner}</g></g>`;
-}
-
-/**
- * The widget's card (his note 10-10: "make the edges transparent a bit so it feels sleeker instead of filling the entire area"): the
- * paper, `width` by `height`, fading to transparent over `feather` px at every edge, so the home screen shows through at the rim. The
- * widget's text sits inside its padding (feather = padding), on full paper.
- */
-export function widgetCard(width: number, height: number, feather: number): string {
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${feathered("card", 0, 0, width, height, feather, feather, `<rect x="0" y="0" width="${width}" height="${height}" fill="${WIDGET2_PAPER}"/>`)}</svg>`;
 }
 
 /**
@@ -127,7 +116,7 @@ export function widgetGarden2(stages: Stages, extras: Extras, width: number, max
     }
   }
   const defs = [...used].map(([k, l]) => `<image id="w-${k}" width="${l.w}" height="${l.h}" preserveAspectRatio="none" xlink:href="data:image/webp;base64,${WIDGET2_B64[k]}"/>`).join("");
-  // the crop's hard edge (the plate cut mid-sand) fades into the card's paper (10-10, with widgetCard)
+  // the crop's hard edge (the plate cut mid-sand) fades out onto the wallpaper (10-10, the floating garden)
   const fe = Math.min(GARDEN_FEATHER, GARDEN_FEATHER_MAX * Math.min(width, h)) / v.px;
   const garden = feathered("g", vx, v.y, vw, vh, fe, fe, body.join(""));
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${width}" height="${h}" viewBox="${f(vx)} ${f(v.y)} ${f(vw)} ${f(vh)}" preserveAspectRatio="xMidYMax meet"><defs>${defs}</defs>${garden}</svg>`;
