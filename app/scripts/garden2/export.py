@@ -77,13 +77,15 @@ for p in L["draw_order"]:
 # brand/garden2/spots14/place_spots.py: per stage, the spots (box px, sprite centres) and the radius (the sprite is drawn 2r square).
 GARDEN2 = os.environ.get("GARDEN2_DIR", os.path.dirname(os.path.abspath(SRC)))   # a scratch export elsewhere names the brand folder
 TREE_SPOTS = json.load(open(os.path.join(GARDEN2, "spots14", "tree_spots.json")))
+SPOTS_BOX = {"mandarin": (637, 705), "store": (639, 708)}   # the boxes tree_spots.json was measured on (mockup v8)
 SPRITES = {"mandarin": "mandarin/fruit/mandarin-ripe.png", "store": "store/flower/store-flower-open.png"}
 spots = {}
 for tree, rel in SPRITES.items():
     shutil.copyfile(os.path.join(GARDEN2, "assets", rel), os.path.join(OUT, f"{tree}-fruit.png"))
-    spots[tree] = {int(s): {"r": v["radius"], "at": v["spots"]} for s, v in TREE_SPOTS[tree].items()}
+    # place_spots.py measured on the boxes below; a tree drawn at another size (R-D42: the stORE tree, now USDC, 7% smaller) scales them
+    b = plants[tree]; k = b["w"] / SPOTS_BOX[tree][0]
+    spots[tree] = {int(s): {"r": round(v["radius"] * k, 2), "at": [[round(x * k, 1), round(y * k, 1)] for x, y in v["spots"]]} for s, v in TREE_SPOTS[tree].items()}
     for s, v in spots[tree].items():
-        b = plants[tree]
         assert all(0 <= x < b["w"] and 0 <= y < b["h"] for x, y in v["at"]), (tree, s)
 
 # R534/R535: decor the app draws on its own, only at times (the basket while SKR waits out its unstake): brand/garden2/decor/sprites/

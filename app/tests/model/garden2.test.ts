@@ -101,10 +101,10 @@ describe("the layer plan (draw order and positions from the approved export)", (
     const L = composeLayers(allStages(14));
     expect(L[0]).toMatchObject({ kind: "plate", x: 0, y: 0, w: 1518, h: 896 });
     expect(L.find((l) => l.key === "maple")).toMatchObject({ x: 597, y: 446, w: 276, h: 263 });
-    expect(L.find((l) => l.key === "store")).toMatchObject({ x: 618, y: 5, w: 639, h: 708 });
+    expect(L.find((l) => l.key === "store")).toMatchObject({ x: 641, y: 21, w: 595, h: 658 });   // R-D42 (now USDC): up and 7% smaller
     expect(L.find((l) => l.key === "mandarin")).toMatchObject({ x: 143, y: 35, w: 637, h: 705 });
     expect(L.find((l) => l.key === "geode")).toMatchObject({ x: PLANTS.geode.x, y: PLANTS.geode.y, w: PLANTS.geode.w, h: PLANTS.geode.h });   // R-D40: where the pothos hung
-    expect(L.find((l) => l.key === "orchid")).toMatchObject({ x: 928, y: 478, w: 265, h: 384 });
+    expect(L.find((l) => l.key === "orchid")).toMatchObject({ x: 928, y: 486, w: 265, h: 384 });   // R-D42d: a hair down
     expect(L.find((l) => l.key === "azalea")).toMatchObject({ x: 71, y: 532, w: 319, h: 287 });
   });
   it("scales every rect by one factor, the view keeping the canvas aspect", () => {
@@ -174,7 +174,7 @@ describe("tap a plant (R483G): the front-most painted plant", () => {
 describe("the hit grid follows the layer's own paint", () => {
   // opaque (alpha >= 128) bounding boxes measured on the export's webps, canvas px (brand/garden2/app-export, 10-09)
   const painted: [Parameters<typeof paintsAt>[0], number, [number, number, number, number]][] = [
-    ["mandarin", 1, [262, 555, 692, 709]], ["store", 1, [830, 540, 1096, 661]], ["maple", 1, [634, 538, 833, 632]],
+    ["mandarin", 1, [262, 555, 692, 709]], ["store", 1, [838, 518, 1087, 632]], ["maple", 1, [634, 538, 833, 632]],
     ["orchid", 0, [944, 685, 1176, 845]],
   ];
   it.each(painted)("%s stage %i hits only inside its painted bounds (one cell of slack) and fills them", (p, s, [x0, y0, x1, y1]) => {
@@ -203,9 +203,9 @@ describe("the frame grows with the garden (R525)", () => {
     expect(frameTop(allStages(0))).toBe(Math.min(LANTERN_TOP, ...DRAW_ORDER.map((p) => paintedTop(p, 0))) - FRAME_PAD);
     expect(frameTop({})).toBe(frameTop(allStages(0)));
   });
-  it("a mature garden opens the frame to just above the tallest crown (stORE's)", () => {
-    expect(frameTop(allStages(14))).toBe(Math.floor(paintedTop("store", 14) - FRAME_PAD));
-    expect(frameTop(allStages(14))).toBeLessThan(48);   // the canvas top, near enough (stORE 14 reaches canvas y ~69)
+  it("a mature garden opens the frame to just above the tallest crown", () => {
+    expect(frameTop(allStages(14))).toBe(Math.floor(Math.min(...DRAW_ORDER.map((p) => paintedTop(p, 14))) - FRAME_PAD));   // the tallest crown (the mandarin since R-D42 shrank the tree)
+    expect(frameTop(allStages(14))).toBeLessThan(64);   // the canvas top, near enough (the stORE tree, now USDC, reaches canvas y ~82 since R-D42)
   });
   it("only rises: a taller stage never starts the frame lower", () => {
     for (const p of DRAW_ORDER) {
