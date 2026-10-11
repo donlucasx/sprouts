@@ -10,13 +10,14 @@ const { buildScene } = await import("@/model/garden");
 const { toGardenInput } = await import("@/lib/garden-input");
 const { SPRITE_META, GROUND_OUTLINE } = await import("@/garden/sprite-meta");
 const { CANVAS } = await import("@/garden2/layout");
+const { frameInner, frameGap } = await import("@/model/widget2-svg");
 
 type El = ReactElement<{ style?: Record<string, unknown>; children?: unknown; text?: string }>;
 const kids = (e: El) => ([] as unknown[]).concat(e.props.children ?? []).flat().filter(Boolean) as El[];
 /** Every element under `e`, depth first, `e` included. */
 const all = (e: El): El[] => [e, ...kids(e).flatMap(all)];
-// the garden's SVG (the one drawing images)
-const isGardenSvg = (e: El) => e.type === "SvgWidget" && String((e.props as { svg?: string }).svg).includes("<image");
+// the garden's SVG (its images declared as w-<key>), not the bamboo frame's
+const isGardenSvg = (e: El) => e.type === "SvgWidget" && String((e.props as { svg?: string }).svg).includes('id="w-');
 const me = {
   user: { pubkey: "U", skrName: null, joinedAt: "2026-09-25T00:00:00.000Z", wateredAt: null },
   pot: { skrStakedRaw: "12480000", skrPutInRaw: "0", skrEarnedRaw: "0", skrPickedRaw: "0", skrPrincipalPickedRaw: "0", joinedValueRaw: "0", fruit: 0, nextFruitProgress: 0, skrUnstakingRaw: "0", skrUnstakeReadyAt: null, storeRaw: "0", storePutInRaw: "0", storeEarnedRaw: "0", storeRedeemRate: null, skrUsd: null, storeUsd: null, asOf: "2026-10-01T00:00:00.000Z" },
@@ -114,10 +115,10 @@ describe("R363 + R364: every size lays out the total, the garden and one state l
       const root = SproutsWidget({ me: m, width, height}) as El;
       const [big, label, line] = texts(root);
       // Garden2: the card (and so the layout) stops BOTTOM_SAFE short of the reported height, which can exceed the cell
-      const H = height - BOTTOM_SAFE;
-      const L = widgetLayout(width, H, big.props.text, label.props.text, line.props.text);
+      const H = height - BOTTOM_SAFE, inner = frameInner(width, H);
+      const L = widgetLayout(inner.w, inner.h, big.props.text, label.props.text, line.props.text, frameGap(width));
       // the three boxes: inside the widget, apart
-      for (const b of [L.header, L.garden, L.state]) expect(inside(b, width, H), `${state}: ${JSON.stringify(b)}`).toBe(true);
+      for (const b of [L.header, L.garden, L.state]) expect(inside(b, inner.w, inner.h), `${state}: ${JSON.stringify(b)}`).toBe(true);
       expect(overlap(L.header, L.garden) || overlap(L.garden, L.state) || overlap(L.header, L.state)).toBe(false);
       // fonts per R363 and one line each, measured at Roboto's widths
       expect(big.props.style.fontSize).toBe(L.bigSize); expect(L.bigSize).toBeGreaterThanOrEqual(18); expect(L.bigSize).toBeLessThanOrEqual(BIG_SIZE);
@@ -131,19 +132,24 @@ describe("R363 + R364: every size lays out the total, the garden and one state l
       expect(textWidth(line.props.text, L.stateSize, true), `"${line.props.text}" at ${width}`).toBeLessThanOrEqual(L.state.w * L.stateLines);
       // the rendered tree adds up: the root's padding is the layout's, the top block's children fill its box, the top block and the
       // line fit the inner height, and in the wide row the header, the spacer and the garden fill the inner width
-      // 10-10 Garden2 floats on the wallpaper: no card, the content BOTTOM_SAFE short of the reported height
-      expect(root.props.style).toMatchObject({ padding: L.pad, height: H }); expect(root.props.style).not.toHaveProperty("backgroundColor");
-      const content = root;
+      // 10-10 Garden2: the bamboo frame (the whole widget less BOTTOM_SAFE) under the content, laid out in the frame's opening
+      expect(root.type).toBe("OverlapWidget");
+      const [frameEl, wrap] = kids(root);
+      expect(frameEl.type).toBe("SvgWidget"); expect(frameEl.props.style).toEqual({ width, height: H });
+      expect(String((frameEl.props as { svg: string }).svg).match(/<image /g)).toHaveLength(8);   // the nine-slice less its empty centre
+      expect(wrap.props.style).toMatchObject({ width, height: H, paddingLeft: inner.l, paddingTop: inner.t, paddingRight: inner.r, paddingBottom: inner.b });
+      const content = kids(wrap)[0];
+      expect(content.props.style).toMatchObject({ width: inner.w, height: inner.h, padding: L.pad });
       const [topBlock, lineEl] = kids(content);
       const ts = topBlock.props.style as { height: number; flexDirection: string };
       const sizes = kids(topBlock).map((k) => k.props.style as { width: number | string; height: number });
-      expect(ts.height + (lineEl.props.style as { height: number }).height).toBeLessThanOrEqual(H - 2 * L.pad);
+      expect(ts.height + (lineEl.props.style as { height: number }).height).toBeLessThanOrEqual(inner.h - 2 * L.pad);
       expect((lineEl.props.style as { height: number }).height).toBe(L.state.h);
       if (ts.flexDirection === "column") {
         expect(sizes.reduce((t, z) => t + z.height, 0)).toBe(ts.height);
         expect(L.garden.y + L.garden.h).toBeLessThanOrEqual(L.state.y);
       } else {
-        expect(sizes.reduce((t, z) => t + (z.width as number), 0)).toBe(width - 2 * L.pad);
+        expect(sizes.reduce((t, z) => t + (z.width as number), 0)).toBe(inner.w - 2 * L.pad);
         expect(sizes.every((z) => z.height <= ts.height)).toBe(true);
       }
       // the garden: inside its box, as wide as it or as tall as it (no small garden in a big box), its sky cropped

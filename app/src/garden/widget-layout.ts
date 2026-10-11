@@ -44,9 +44,9 @@ export function textWidth(text: string, size: number, bold = false): number {
 export type Box = { x: number; y: number; w: number; h: number };
 export type WidgetLayout = { mode: "stacked" | "wide"; pad: number; bigSize: number; stateSize: number; stateLines: 1 | 2; header: Box; garden: Box; state: Box };
 
-/** The widget's three boxes for a `width` by `height` widget showing `big` (the total), its `label` and the state `line`. */
-export function widgetLayout(width: number, height: number, big: string, label: string, line = ""): WidgetLayout {
-  const P = padFor(width), innerW = width - 2 * P, innerH = height - 2 * P;
+/** The widget's three boxes for a `width` by `height` widget showing `big` (the total), its `label` and the state `line`, `pad` in from its edges. */
+export function widgetLayout(width: number, height: number, big: string, label: string, line = "", pad = padFor(width)): WidgetLayout {
+  const P = pad, innerW = width - 2 * P, innerH = height - 2 * P;
   // wide only when the total's column (at its smallest size) leaves the garden most of the width
   const wide = width / Math.max(1, height) >= WIDE_RATIO && textWidth(big, BIG_MIN, true) <= innerW * 0.4;
   const fitSize = (room: number) => {
