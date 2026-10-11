@@ -15,7 +15,7 @@ type El = ReactElement<{ style?: Record<string, unknown>; children?: unknown; te
 const kids = (e: El) => ([] as unknown[]).concat(e.props.children ?? []).flat().filter(Boolean) as El[];
 /** Every element under `e`, depth first, `e` included. */
 const all = (e: El): El[] => [e, ...kids(e).flatMap(all)];
-// the garden's SVG, not the card behind everything (widgetCard: the paper, no images)
+// the garden's SVG (the one drawing images)
 const isGardenSvg = (e: El) => e.type === "SvgWidget" && String((e.props as { svg?: string }).svg).includes("<image");
 const me = {
   user: { pubkey: "U", skrName: null, joinedAt: "2026-09-25T00:00:00.000Z", wateredAt: null },
@@ -131,11 +131,9 @@ describe("R363 + R364: every size lays out the total, the garden and one state l
       expect(textWidth(line.props.text, L.stateSize, true), `"${line.props.text}" at ${width}`).toBeLessThanOrEqual(L.state.w * L.stateLines);
       // the rendered tree adds up: the root's padding is the layout's, the top block's children fill its box, the top block and the
       // line fit the inner height, and in the wide row the header, the spacer and the garden fill the inner width
-      // 10-10: the root stacks the card (the whole widget's paper, its rim faded) under the content
-      expect(root.type).toBe("OverlapWidget");
-      const [cardEl, content] = kids(root);
-      expect(cardEl.type).toBe("SvgWidget"); expect(cardEl.props.style).toEqual({ width, height: H });
-      expect(content.props.style).toMatchObject({ padding: L.pad });
+      // 10-10 Garden2 floats on the wallpaper: no card, the content BOTTOM_SAFE short of the reported height
+      expect(root.props.style).toMatchObject({ padding: L.pad, height: H }); expect(root.props.style).not.toHaveProperty("backgroundColor");
+      const content = root;
       const [topBlock, lineEl] = kids(content);
       const ts = topBlock.props.style as { height: number; flexDirection: string };
       const sizes = kids(topBlock).map((k) => k.props.style as { width: number | string; height: number });

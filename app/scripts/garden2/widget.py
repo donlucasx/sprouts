@@ -11,15 +11,31 @@ OUT = os.path.join(APP, "src", "garden2", "widget-b64.ts")
 SCALE = 0.4   # a 4x2 widget's garden is ~900 device px across the plants' ~1000 canvas px; 0.4 keeps the module near 900 KB
 QUALITY = 78
 
-def b64(path):
+# The widget floats the garden on the wallpaper (his pick 10-10, "Floating garden"): the plate's paper (#FFFCF6, its sky and the margin
+# the sand fades into) turns transparent, the sand stays. Alpha eases in with each pixel's distance from paper (summed over R, G, B).
+PAPER = (255, 252, 246)
+CLEAR_BELOW, SOLID_FROM = 6, 34
+
+def unpaper(im):
+    im = im.convert("RGBA")
+    px = im.load()
+    for y in range(im.height):
+        for x in range(im.width):
+            r, g, b, a = px[x, y]
+            d = abs(r - PAPER[0]) + abs(g - PAPER[1]) + abs(b - PAPER[2])
+            t = min(1, max(0, (d - CLEAR_BELOW) / (SOLID_FROM - CLEAR_BELOW)))
+            px[x, y] = (r, g, b, round(a * t * t * (3 - 2 * t)))
+    return im
+
+def b64(path, clear_paper=False):
     im = Image.open(path)
-    im = im.convert("RGBA" if im.mode in ("RGBA", "LA", "P") or "A" in im.getbands() else "RGB")
+    im = unpaper(im) if clear_paper else im.convert("RGBA" if im.mode in ("RGBA", "LA", "P") or "A" in im.getbands() else "RGB")
     im = im.resize((max(1, round(im.width * SCALE)), max(1, round(im.height * SCALE))), Image.LANCZOS)
     buf = io.BytesIO()
     im.save(buf, "WEBP", quality=QUALITY, method=6)
     return base64.b64encode(buf.getvalue()).decode()
 
-entries = {"plate": b64(os.path.join(G2, "plate.png"))}
+entries = {"plate": b64(os.path.join(G2, "plate.png"), clear_paper=True)}
 for key, name in (("stand", "stand.png"), ("cords", "cords.png"), ("stake", "decor-stake.png"), ("basket", "decor-basket.png")):
     entries[key] = b64(os.path.join(G2, name))
 for path in sorted(glob.glob(os.path.join(G2, "*", "stage[0-9][0-9].webp"))):
