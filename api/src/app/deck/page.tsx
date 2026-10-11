@@ -201,12 +201,12 @@ export default function Deck() {
             <div className="beat">
               <img className="stage" src="/deck/grow-2.png" alt="" />
               <strong>Planted each morning</strong>
-              <span>At 7&nbsp;AM, Sprouts buys your coins with the change you saved. Up to $5 a day.</span>
+              <span>At 7&nbsp;AM, Sprouts buys your coins with the change you saved, up to $5 a day.</span>
             </div>
             <div className="beat">
               <img className="stage" src="/deck/grow-3.png" alt="" />
               <strong>Kept on your Seeker</strong>
-              <span>SKR staked, stORE mining, USDC and SOL lent out. All in your Seed Vault.</span>
+              <span>Sprouts stakes SKR, mines stORE and lends USDC and SOL, all from your Seed Vault.</span>
             </div>
           </div>
         </div>
@@ -267,14 +267,14 @@ export default function Deck() {
           </ol>
           <p className="sub dial"><b>A risk dial you set.</b> Careful, Balanced or Bold decides how far it can lean away from SKR: Careful keeps at least half in SKR, Bold a quarter.</p>
         </div>
-        <p className="note">Part of Pro, free during launch. Code, not the model, picks the lender and moves the money.</p>
+        <p className="note">Part of Pro, free during launch. The AI model never picks the lender or moves money. Code does both.</p>
         <img className="sand" src="/deck/sand.webp" alt="" />
       </Slide>
 
       {/* 07 Safety + how it's built (R300 as the sub, R-D6, R-D18 trust line); R-D26: inviting, not defensive */}
       <Slide n={7} chip="Your money stays yours">
         <div className="grow">
-          <h2 className="h2s" style={{ maxWidth: "calc(var(--u)*62)" }}>Your money moves one way: into your savings.</h2>
+          <h2 className="h2s" style={{ maxWidth: "calc(var(--u)*62)" }}>Your money only moves into your savings.</h2>
           <p className="sub" style={{ maxWidth: "calc(var(--u)*54)" }}>
             An on-chain leash lets Sprouts move at most $5 a day per wallet, and only into savings you hold. Not even our server can send it anywhere else.
           </p>
@@ -317,8 +317,8 @@ export default function Deck() {
           <div className="rows">
             <div className="row"><strong>$200 to $380 a year</strong><span>saved by an active trader, from the median to the top quarter. It stays theirs.</span></div>
             <div className="row"><strong>0.5% planting fee</strong><span>We keep half a cent of every dollar planted in coins, paid in USDC.</span></div>
-            <div className="row"><strong>Pro subscription</strong><span>Yield Manager, automatic lending and tax export. Free during launch. The model Acorns proved.</span></div>
-            <div className="row"><strong>Good for SKR</strong><span>No new token. Every saver buys SKR.</span></div>
+            <div className="row"><strong>Pro subscription</strong><span>Yield Manager, automatic lending and tax export. Free during launch. Acorns proved this model.</span></div>
+            <div className="row"><strong>Good for SKR</strong><span>Sprouts has no token of its own, and every saver buys SKR.</span></div>
           </div>
         </div>
       </Slide>
@@ -329,11 +329,11 @@ export default function Deck() {
           <h2>Built by donlucas.</h2>
           <p className="sub">
             On Solana since 2021. Founded Validators on Eclipse and, with his team, built some of the chain&apos;s first NFT
-            infrastructure, still live today; their blip won Eclipse&apos;s hackathon infrastructure track. Also ships xscapes, an
+            infrastructure, which is still live. Their blip won Eclipse&apos;s hackathon infrastructure track. Also ships xscapes, an
             open-source tool for AI agents.
           </p>
           <p className="sub">Built with Claude Code: the app, the API and the on-chain leash.</p>
-          <p className="sub"><b>Live on Solana mainnet. In review on the Solana dApp Store.</b></p>
+          <p className="sub"><b>Live on Solana mainnet and in review on the Solana dApp Store.</b></p>
           <div className="links">
             <a href="https://sprouts.money">sprouts.money</a>
             <a href="https://x.com/sproutsonseeker">@sproutsonseeker</a>
