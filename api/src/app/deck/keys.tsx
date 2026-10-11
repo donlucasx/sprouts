@@ -17,7 +17,19 @@ export function DeckKeys({ printButton = false }: { printButton?: boolean }) {
       next?.scrollIntoView({ behavior: "smooth", block: "center" });
     };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    // R-D31: a one-shot animation (slide 2's growing tree) restarts each time its slide comes into view
+    const io = new IntersectionObserver((entries) => {
+      for (const e of entries) {
+        if (!e.isIntersecting) continue;
+        const img = e.target as HTMLImageElement;
+        img.src = img.src.split("#")[0] + "#" + Date.now();
+      }
+    }, { threshold: 0.5 });
+    document.querySelectorAll<HTMLImageElement>(".deck img.replay").forEach((el) => io.observe(el));
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      io.disconnect();
+    };
   }, [printButton]);
   if (!printButton) return null;
   return (
