@@ -14,6 +14,8 @@ const outfitLight = Outfit({ subsets: ["latin"], weight: ["300", "400"] });
  */
 export const dynamic = "force-dynamic";
 // R-S3: the orchid is out (its sand and flower clip); each clip is cropped to its grown plant (width / height), so no empty sky above
+/** Bumped whenever the clips change: the URL changes too, so no browser replays a cached old cut (seen 10-11, R-S4). */
+const CLIPS_V = "4";
 const PLANTS = [["store", 1], ["maple", 720 / 428], ["azalea", 720 / 566], ["mandarin", 1]] as const;
 
 export default function Home() {
@@ -32,8 +34,8 @@ export default function Home() {
       `}</style>
       <div style={{ display: "grid", placeItems: "center", alignContent: "center", padding: "0 24px 7vh" }}>
         <div style={{ width: "min(72vw, 360px)", aspectRatio: aspect }}>
-          <video className="sp-grow" src={`/site/grow-${plant}.mp4`} autoPlay muted playsInline preload="auto" aria-label="A plant growing from seed" />
-          <img className="sp-grown" src={`/site/grown-${plant}.webp`} alt="A grown plant" />
+          <video className="sp-grow" src={`/site/grow-${plant}.mp4?v=${CLIPS_V}`} autoPlay muted playsInline preload="auto" aria-label="A plant growing from seed" />
+          <img className="sp-grown" src={`/site/grown-${plant}.webp?v=${CLIPS_V}`} alt="A grown plant" />
         </div>
         <h1 className={outfit.className} style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 42, fontWeight: 600, letterSpacing: "-0.03em", margin: "4px 0 0" }}>
           <img src="/deck/mark.svg" alt="" style={{ height: 40, width: "auto" }} />
