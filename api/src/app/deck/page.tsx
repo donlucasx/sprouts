@@ -267,7 +267,7 @@ export default function Deck() {
         <div className="split home">
           <div className="grow">
             <ol className="steps">
-              <li>Each coin is a plant that grows with every planting.</li>
+              <li>Each coin grows with every planting. stORE is a geode you dig up.</li>
               <li>A notification when your change is planted.</li>
               <li>A home screen widget with your garden.</li>
             </ol>
