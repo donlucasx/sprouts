@@ -125,15 +125,21 @@ const CSS = `
 .deck .ym-track { height:calc(var(--u)*1.6); background:var(--rule); border-radius:999px; overflow:hidden; }
 .deck .ym-track div { height:100%; background:var(--leaf); border-radius:999px; }
 .deck .one { white-space:nowrap; }
-/* R-D49/R-D64 slide 6: a row of plants along the bottom: azalea (hSOL) + maple (SOL), then four future-coin concepts, each named */
-.deck .split.home.above-plants { margin-bottom:calc(var(--u)*14); }
-.deck .plants { position:absolute; left:calc(var(--u)*6.6); right:calc(var(--u)*6.6); bottom:calc(var(--u)*2.4);
-  display:grid; grid-template-columns:repeat(6, 1fr); grid-template-rows:auto auto; column-gap:calc(var(--u)*2); row-gap:calc(var(--u)*.5); align-items:end; pointer-events:none; }
-.deck .plants .pnote { grid-column:3 / 7; grid-row:1; justify-self:center; margin:0; font-size:calc(var(--u)*1.05); color:#A8A29A; }
-.deck .plants figure { grid-row:2; margin:0; display:grid; justify-items:center; gap:calc(var(--u)*.5); }
-.deck .plants img { height:calc(var(--u)*8.2); width:auto; max-width:100%; object-fit:contain; }
-.deck .plants figure:nth-child(n+4) img { height:calc(var(--u)*9.4); }   /* the four concepts are tall and narrow: a bit taller to match the wide azalea + maple */
-.deck .plants figcaption { font-size:calc(var(--u)*1.05); font-weight:600; letter-spacing:.03em; color:var(--muted); }
+/* R-D65 slide 6: three lines; the four concept plants, a stake beside each (the garden's own sprite + lettering, STAKE in
+   model/garden2.ts); the hand + Seeker bottom right, at most a third of the width */
+.deck .steps.g6 { max-width:calc(var(--u)*64); position:relative; z-index:1; }
+.deck .plants { position:absolute; left:calc(var(--u)*6.6); width:calc(var(--u)*54); bottom:calc(var(--u)*3);
+  display:grid; grid-template-columns:repeat(4, 1fr); grid-template-rows:auto auto; column-gap:calc(var(--u)*2.4); row-gap:calc(var(--u)*1); align-items:end; }
+.deck .plants .pnote { grid-column:1 / -1; grid-row:1; margin:0; font-family:var(--font-display), sans-serif; font-weight:600;
+  font-size:calc(var(--u)*1.5); letter-spacing:-.01em; color:var(--ink); }
+.deck .plants figure { grid-row:2; margin:0; position:relative; display:flex; justify-content:center; align-items:flex-end; }
+.deck .plants figure > img { height:calc(var(--u)*10.5); width:auto; max-width:100%; object-fit:contain; }
+.deck .plants .stake { position:absolute; right:calc(var(--u)*-1.2); bottom:calc(var(--u)*-.6); width:calc(var(--u)*5.6); height:calc(var(--u)*3.2); }
+.deck .plants .stake img { width:100%; height:100%; display:block; }
+.deck .plants .stake b { position:absolute; left:calc(2 / 140 * 100%); top:calc((1 + 34 * .05) / 80 * 100%); width:calc(136 / 140 * 100%); height:calc(34 / 80 * 100%);
+  display:flex; align-items:center; justify-content:center; font-family:var(--font-display), sans-serif; font-weight:700;
+  font-size:calc(var(--u)*5.6 * 27 / 140); line-height:1; color:#3B2A1A; opacity:.9; }
+.deck .hand { position:absolute; right:calc(var(--u)*2.4); bottom:0; width:calc(var(--u)*32); height:auto; }
 /* R-D47 cover (slide 0): the mature SKR mandarin centred, the ink lockup small at the bottom */
 .deck .cover-tree { position:absolute; left:50%; top:calc(var(--u)*8.5); height:calc(var(--u)*36); width:auto; transform:translateX(-50%); }
 .deck .end-tree { position:absolute; left:50%; top:calc(var(--u)*4.4); height:calc(var(--u)*30); width:auto; transform:translateX(-50%); }
@@ -177,7 +183,7 @@ const CSS = `
   .deck .phone { position:relative; left:auto; top:auto; width:100%; height:auto; overflow:hidden; border-radius:36px; padding:8px; }
   .deck .phone img { border-radius:30px; }
   .deck .split.home video, .deck .split.home .poster { width:100%; height:auto; }
-  .deck .plants { position:static; height:auto; grid-template-columns:repeat(2, 1fr); } .deck .plants .pnote { grid-column:1 / -1; } .deck .plants figure { grid-row:auto; } .deck .split.home.above-plants { margin-bottom:0; }
+  .deck .plants { position:static; width:auto; grid-template-columns:repeat(2, 1fr); } .deck .plants figure { grid-row:auto; } .deck .hand { position:static; width:100%; max-width:360px; align-self:center; } .deck .split.home.above-plants { margin-bottom:0; }
   .deck .sprout, .deck video.sprout { position:static; height:220px; width:auto; align-self:center; } .deck .cover-sprout, .deck video.cover-sprout, .deck .cover-tree, .deck .cover-lockup, .deck .end-tree, .deck .end-thanks { position:static; transform:none; align-self:center; } .deck .cover-tree { height:300px; } .deck .cover-lockup { width:160px; } .deck .tree { display:none; } .deck .thanks { position:static; font-size:36px; } .deck .flow.short { max-width:none; } .deck .photo { position:relative; width:100%; height:auto; }
   .deck .sand { position:static; width:100%; margin-top:-24px; } .deck .ym, .deck .ym-flow { grid-template-columns:1fr; } .deck .ym-flow > i { transform:rotate(90deg); justify-self:center; } .deck .ym-box b { font-size:17px; } .deck .ym-box.key b { font-size:20px; } .deck .ym-box small, .deck .ym-dial > small { font-size:13px; } .deck .ym-dial > b { font-size:20px; } .deck .ym-row { font-size:15px; grid-template-columns:80px 1fr 44px; } .deck .ym-row strong { font-size:17px; } .deck .ym-track { height:12px; } .deck .ym-box em { font-size:11px; top:-9px; } .deck .ore-band { flex-direction:column; align-items:flex-start; gap:6px; padding:14px 16px; } .deck .ore-band strong { font-size:24px; } .deck .ore-band p { font-size:14px; } .deck .stack, .deck .narrow, .deck .hero { max-width:none; }
   .deck .brand { font-size:22px; } .deck .brand img { width:30px; } .deck .foot, .deck .links { font-size:15px; }
@@ -295,34 +301,25 @@ export default function Deck() {
         <span className="photo-credit">Seeker render: Solana Mobile press kit. Screen: Sprouts.</span>
       </Slide>
 
-      {/* 06 Garden: demo + why people come back (R-D5) */}
-      <Slide n={6} chip="Why you come back">
-        <h2 className="h2s one" style={{ margin: "calc(var(--u)*2.6) 0 calc(var(--u)*1.2)" }}>A garden that grows every time you swap.</h2>
-        <div className="split home above-plants">
-          <div className="grow">
-            <ol className="steps">
-              <li>Each coin grows with every planting. stORE is a geode you dig up.</li>
-              <li>A notification when your change is planted.</li>
-              <li>A home screen widget with your garden.</li>
-            </ol>
-            <p className="note">
-              Two simulated years at $32 a month, the top quarter of Seeker traders. <span className="todo">Demo video link goes here.</span>
-            </p>
-          </div>
-          <div>
-            <video src="/deck/widget-years.mp4" poster="/deck/widget-years.webp" autoPlay muted loop playsInline preload="metadata" aria-label="The Sprouts widget on a Seeker home screen, its garden growing over two simulated years" />
-            <img className="poster" src="/deck/widget-years.webp" alt="The Sprouts widget on a Seeker home screen after two simulated years" />
-          </div>
-        </div>
+      {/* 06 Garden (R-D5; R-D65 10-12): three lines, the four concept plants with their stakes, a hand holding a Seeker with our
+          home screen + widget (his photo, mirrored and cut out, brand/deck-art/build_hand_phone.py), at most a third of the width */}
+      <Slide n={6} chip="Why you come back" art>
+        <h2 className="h2s one" style={{ margin: "calc(var(--u)*2.6) 0 calc(var(--u)*1.6)" }}>A garden that grows every time you swap.</h2>
+        <ol className="steps g6">
+          <li>Each plant or mineral is unique to each token.</li>
+          <li>Each coin grows with every planting. stORE is a geode you dig up.</li>
+          <li>A home screen widget with your garden.</li>
+        </ol>
         <div className="plants">
-          <p className="pnote">Next: a plant for every coin (concept art)</p>
-          <figure><img src="/deck/plant-azalea.webp" alt="Azalea" /><figcaption>hSOL</figcaption></figure>
-          <figure><img src="/deck/plant-maple.webp" alt="Maple" /><figcaption>SOL</figcaption></figure>
-          <figure><img src="/deck/concept-pyth.webp" alt="Concept: amethyst in stone" /><figcaption>PYTH</figcaption></figure>
-          <figure><img src="/deck/concept-jup.webp" alt="Concept: gourd vine on a bamboo hoop" /><figcaption>JUP</figcaption></figure>
-          <figure><img src="/deck/concept-bonk.webp" alt="Concept: shiba topiary" /><figcaption>BONK</figcaption></figure>
-          <figure><img src="/deck/concept-jto.webp" alt="Concept: lotus in a stone basin" /><figcaption>JTO</figcaption></figure>
+          <p className="pnote">Concept art: future coins</p>
+          {([["pyth", "PYTH", "amethyst in stone"], ["jup", "JUP", "gourd vine on a bamboo hoop"], ["bonk", "BONK", "shiba topiary"], ["jto", "JTO", "lotus in a stone basin"]] as const).map(([f, coin, what]) => (
+            <figure key={f}>
+              <img src={`/deck/concept-${f}.webp`} alt={`Concept for ${coin}: ${what}`} />
+              <span className="stake"><img src="/deck/stake.png" alt="" /><b>{coin}</b></span>
+            </figure>
+          ))}
         </div>
+        <img className="hand" src="/deck/hand-seeker.webp" alt="A hand holding a Seeker: the home screen with the Sprouts garden widget" />
       </Slide>
 
       {/* 07 Yield Manager (his note 6; R-D27 smart + helpful, chip 'Yield Manager'): split-run.ts, lending-leash spec 3-4, R347 */}
