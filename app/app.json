@@ -83,7 +83,7 @@
       "favicon": "./assets/images/favicon.png",
       "output": "static"
     },
-    "version": "0.1.0",
+    "version": "0.1.1",
     "extra": {
       "router": {},
       "eas": {
