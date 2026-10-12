@@ -31,10 +31,12 @@ export default function Home() {
         .sp-stage { width: min(72vw, 360px); aspect-ratio: 6 / 5; }
         .sp-grow, .sp-grown { width: 100%; height: 100%; display: block; mix-blend-mode: multiply; object-fit: contain; object-position: center bottom; }
         .sp-grown { display: none; }
-        .sp-lockup { font-size: clamp(30px, 8.4vw, 40px); margin-top: clamp(20px, 3.4vh, 32px); }   /* R-D96: even rhythm art / lockup / line */
+        .sp-lockup { font-size: clamp(27px, 7.4vw, 36px); margin-top: clamp(20px, 3.4vh, 32px); }   /* R-D96 rhythm; R-D100 a tad smaller (was 30-40px) */
+        .sp-main { padding: 0 24px 7vh; }
+        @media (max-width: 600px) { .sp-main { padding-bottom: 13vh; } }   /* R-D100: on phones the group sits a little above centre (optical centre) */
         @media (prefers-reduced-motion: reduce) { .sp-dots::after { animation: none; } .sp-grow { display: none; } .sp-grown { display: block; } }
       `}</style>
-      <div style={{ display: "grid", placeItems: "center", alignContent: "center", padding: "0 24px 7vh" }}>
+      <div className="sp-main" style={{ display: "grid", placeItems: "center", alignContent: "center" }}>
         {/* R-D82: one stage for every plant, each sitting on the same ground line, so the lockup and text never move between refreshes */}
         <div className="sp-stage" data-aspect={aspect}>
           <video className="sp-grow" src={`/site/grow-${plant}.mp4?v=${CLIPS_V}`} autoPlay muted playsInline preload="auto" aria-label="A plant growing from seed" />
