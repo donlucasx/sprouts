@@ -135,6 +135,7 @@ const CSS = `
 .deck .end-tree { position:absolute; left:50%; top:calc(var(--u)*4.4); height:calc(var(--u)*30); width:auto; transform:translateX(-50%); }
 .deck .end-thanks { position:absolute; left:0; right:0; top:calc(var(--u)*36.5); margin:0; text-align:center; font-family:var(--font-display), sans-serif; font-weight:700;
   letter-spacing:-.035em; font-size:calc(var(--u)*5.6); color:var(--leaf); }
+.deck .cover-sprout, .deck video.cover-sprout { position:absolute; left:50%; top:calc(var(--u)*13.5); height:calc(var(--u)*30); width:auto; transform:translateX(-50%); border-radius:0; }
 .deck .cover-lockup { position:absolute; left:50%; bottom:calc(var(--u)*6.4); width:calc(var(--u)*12); height:auto; transform:translateX(-50%); }
 /* R-D47 slide 6: the geode (stORE) and the mandarin's crown (SKR) oversized, poking in from each box's bottom right */
 .deck .ym-box.pic { overflow:hidden; min-height:calc(var(--u)*5.6); }
@@ -173,7 +174,7 @@ const CSS = `
   .deck .phone img { border-radius:30px; }
   .deck .split.home video, .deck .split.home .poster { width:100%; height:auto; }
   .deck .plants { position:static; height:auto; grid-template-columns:repeat(2, 1fr); } .deck .split.home.above-plants { margin-bottom:0; }
-  .deck .sprout, .deck video.sprout { position:static; height:220px; width:auto; align-self:center; } .deck .cover-tree, .deck .cover-lockup, .deck .end-tree, .deck .end-thanks { position:static; transform:none; align-self:center; } .deck .cover-tree { height:300px; } .deck .cover-lockup { width:160px; } .deck .tree { display:none; } .deck .thanks { position:static; font-size:36px; } .deck .flow.short { max-width:none; } .deck .photo { position:relative; width:100%; height:auto; }
+  .deck .sprout, .deck video.sprout { position:static; height:220px; width:auto; align-self:center; } .deck .cover-sprout, .deck video.cover-sprout, .deck .cover-tree, .deck .cover-lockup, .deck .end-tree, .deck .end-thanks { position:static; transform:none; align-self:center; } .deck .cover-tree { height:300px; } .deck .cover-lockup { width:160px; } .deck .tree { display:none; } .deck .thanks { position:static; font-size:36px; } .deck .flow.short { max-width:none; } .deck .photo { position:relative; width:100%; height:auto; }
   .deck .sand { position:static; width:100%; margin-top:-24px; } .deck .ym, .deck .ym-flow { grid-template-columns:1fr; } .deck .ym-flow > i { transform:rotate(90deg); justify-self:center; } .deck .ym-box b { font-size:17px; } .deck .ym-box.key b { font-size:20px; } .deck .ym-box small, .deck .ym-dial > small { font-size:13px; } .deck .ym-dial > b { font-size:20px; } .deck .ym-row { font-size:15px; grid-template-columns:80px 1fr 44px; } .deck .ym-row strong { font-size:17px; } .deck .ym-track { height:12px; } .deck .ym-box em { font-size:11px; top:-9px; } .deck .ore-band { flex-direction:column; align-items:flex-start; gap:6px; padding:14px 16px; } .deck .ore-band strong { font-size:24px; } .deck .ore-band p { font-size:14px; } .deck .stack, .deck .narrow, .deck .hero { max-width:none; }
   .deck .brand { font-size:22px; } .deck .brand img { width:30px; } .deck .foot, .deck .links { font-size:15px; }
 }
@@ -208,10 +209,10 @@ export default function Deck() {
       <style>{CSS}</style>
       <DeckKeys />
 
-      {/* 01 Cover (R-D47, R-D52): the app's loading-screen tree growing (GrowSplash), the ink lockup small at the bottom */}
+      {/* 01 Cover (R-D47, R-D53): the app's first-screen sprout swaying (SigninSprout), the ink lockup small at the bottom */}
       <Slide n={1} art>
-        <img className="cover-tree replay screen-only" src="/deck/tree-grow.webp" alt="A tree growing, from the app's loading screen" />
-        <img className="cover-tree print-only" src="/deck/splash-tree.webp" alt="" />
+        <video className="cover-sprout" src="/deck/sprout.mp4" poster="/deck/sprout.webp" autoPlay muted loop playsInline preload="metadata" aria-label="A sprout swaying, from the app's first screen" />
+        <img className="cover-sprout poster" src="/deck/sprout.webp" alt="" />
         <img className="cover-lockup" src="/deck/lockup-ink.png" alt="Sprouts" />
       </Slide>
 
