@@ -3,11 +3,11 @@ import type { Metadata } from "next";
 /** What a wallet shows when this site asks to connect, and what a browser tab or a link preview shows. */
 export const siteMetadata: Metadata = {
   title: "Sprouts",
-  description: "Round-ups into SKR that your Seeker keeps and a yield manager grows.",
+  description: "Your spare change, planted on your Seeker.",
   applicationName: "Sprouts",
   openGraph: {
     title: "Sprouts",
-    description: "Round-ups into SKR that your Seeker keeps and a yield manager grows.",
+    description: "Your spare change, planted on your Seeker.",
     url: "https://sprouts.money",
     siteName: "Sprouts",
     type: "website",
@@ -17,7 +17,7 @@ export const siteMetadata: Metadata = {
   twitter: {
     card: "summary_large_image",
     title: "Sprouts",
-    description: "Round-ups into SKR that your Seeker keeps and a yield manager grows.",
-    images: ["https://sprouts.money/og-preview.png"],
+    description: "Your spare change, planted on your Seeker.",
+    images: ["https://sprouts.money/og-card-x.png"],   // his pick 10-12: X crops summary_large_image to ~2:1; a landscape card keeps the phone whole
   },
 };
