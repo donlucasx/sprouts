@@ -198,6 +198,7 @@ const CSS = `
   letter-spacing:-.035em; font-size:calc(var(--u)*5.6); color:var(--leaf); margin:0; }
 .deck .links a { color:inherit; text-decoration:none; }
 .deck .on-art .links { max-width:calc(var(--u)*56); }
+.deck #s11 .links { position:absolute; left:0; right:0; bottom:calc(var(--u)*3.4); max-width:none; justify-content:center; }   /* his note 10-12: the three links centred at the foot of the page */
 .deck .todo { background:#FFF1B8; color:#5C4A00; border-radius:4px; padding:0 .3em; }
 .deck .bar { position:fixed; right:16px; bottom:16px; display:flex; gap:8px; z-index:2; }
 .deck .bar a, .deck .bar button { font:600 13px var(--font-body), sans-serif; background:var(--ink); color:var(--paper); border:0; border-radius:999px; padding:9px 14px; cursor:pointer; text-decoration:none; }
@@ -240,7 +241,7 @@ const CSS = `
   .deck #s10 .rows { max-width:none; } .deck #s10 .row { grid-template-columns:1fr; gap:6px; } .deck #s10 .plants { grid-template-columns:repeat(4, 1fr); grid-template-rows:auto auto; width:70%; right:auto; } .deck #s10 .plants .pnote { grid-column:1 / -1; grid-row:1; margin-right:0; } .deck #s10 .plants .pnote br { display:none; } .deck #s10 .plants figure { grid-row:2; } .deck #s10 .plants figure > img { height:64px; }
   .deck #s3 .grow { order:0; } .deck #s3 .sprout { order:1; height:140px; margin-top:72px; } .deck #s3 .note { order:2; margin-top:-12px; }   /* R-D76: room to grow */
   .deck .stagew .stake b { font-size:11px; }
-  .deck #s11 .chip { order:0; } .deck #s11 .who { order:1; } .deck #s11 .grow { order:2; } .deck #s11 .in { gap:18px; }
+  .deck #s11 .links { position:static; justify-content:center; order:3; } .deck #s11 .chip { order:0; } .deck #s11 .who { order:1; } .deck #s11 .grow { order:2; } .deck #s11 .in { gap:18px; }
 }
 @page { size:1920px 1080px; margin:0; }
 @media print {
@@ -433,13 +434,13 @@ export default function Deck() {
           <div className="stats">
             <div className="stat"><strong>120k</strong><span>Seekers activated, each with the dApp Store built in.</span></div>
             <div className="stat"><strong>$380</strong><span>a year saved by the top quarter of active traders.</span></div>
-            <div className="stat"><strong>25%+</strong><span>of every round-up staked in SKR, on every plan.</span></div>
+            <div className="stat"><strong>42M SKR</strong><span>bought a year if 1 in 10 owners joins.</span></div>
             <div className="stat"><strong>$2.9M</strong><span>a year saved on Seeker if 1 in 10 owners joins.</span></div>
           </div>
           <p className="sub">For new owners, Sprouts is a first app worth opening every day.</p>
         </div>
         <img className="sand-lines" src="/deck/sand-lines.webp" alt="" />
-        <p className="note">Sources: Dune, Genesis activations (Aug 2026); our on-chain samples of 163 recently active SKR stakers (75th percentile $32 a month) and 46 recently activated Seekers that swapped (median $20 a month), round-up to $1 plus 1% of swaps over $100 (Sept 2026). $2.9M = 12,000 owners at $20 a month.</p>
+        <p className="note">Sources: Dune, Genesis activations (Aug 2026); our on-chain samples of 163 recently active SKR stakers (75th percentile $32 a month) and 46 recently activated Seekers that swapped (median $20 a month), round-up to $1 plus 1% of swaps over $100 (Sept 2026). $2.9M = 12,000 owners at $20 a month; 42M SKR = $720k a year at $0.017 (Jupiter, Oct 12), the 25% of every round-up always staked in SKR, a floor.</p>
       </Slide>
 
       {/* 10 Business: Seeker and Solana Mobile only (R-D4); Pro = manager + auto-lending + tax pack (R446c); docs/reports/2026-10-09-business-model-analysis.md */}
@@ -479,11 +480,11 @@ export default function Deck() {
           </p>
           <p className="sub">Built with Claude Code (the app, the API and the on-chain leash), Midjourney for the garden, and the occasional second opinion from Kimi.</p>
           <p className="sub"><b>Live on Solana mainnet.</b></p>
-          <div className="links">
-            <a href="https://sprouts.money">sprouts.money</a>
-            <a href="https://x.com/sproutsonseeker">@sproutsonseeker</a>
-            <a href="mailto:hello@sprouts.money">hello@sprouts.money</a>
-          </div>
+        </div>
+        <div className="links">
+          <a href="https://sprouts.money">sprouts.money</a>
+          <a href="https://x.com/sproutsonseeker">@sproutsonseeker</a>
+          <a href="mailto:hello@sprouts.money">hello@sprouts.money</a>
         </div>
         <a className="who" href="https://x.com/donlucas">
           <img className="pfp" src="/deck/pfp.png" alt="donlucas: Validators #14" />
