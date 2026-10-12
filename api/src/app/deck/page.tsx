@@ -193,6 +193,12 @@ const CSS = `
   .deck .sprout, .deck video.sprout { position:static; height:220px; width:auto; align-self:center; } .deck .cover-sprout, .deck video.cover-sprout, .deck .cover-tree, .deck .cover-lockup, .deck .end-tree, .deck .end-thanks, .deck .end-garden, .deck .end-lockup { position:static; transform:none; align-self:center; } .deck .cover-tree { height:300px; } .deck .cover-lockup { width:160px; } .deck .tree { display:none; } .deck .thanks { position:static; font-size:36px; } .deck .flow.short { max-width:none; } .deck .photo { position:relative; width:100%; height:auto; }
   .deck .sand { position:static; width:100%; margin-top:-24px; } .deck .ym, .deck .ym-flow { grid-template-columns:1fr; } .deck .ym-flow > i { transform:rotate(90deg); justify-self:center; } .deck .ym-box b { font-size:17px; } .deck .ym-box.key b { font-size:20px; } .deck .ym-box small, .deck .ym-dial > small { font-size:13px; } .deck .ym-dial > b { font-size:20px; } .deck .ym-row { font-size:15px; grid-template-columns:80px 1fr 44px; } .deck .ym-row strong { font-size:17px; } .deck .ym-track { height:12px; } .deck .ym-box em { font-size:11px; top:-9px; } .deck .ore-band { flex-direction:column; align-items:flex-start; gap:6px; padding:14px 16px; } .deck .ore-band strong { font-size:24px; } .deck .ore-band p { font-size:14px; } .deck .stack, .deck .narrow, .deck .hero { max-width:none; }
   .deck .brand { font-size:22px; } .deck .brand img { width:30px; } .deck .foot, .deck .links { font-size:15px; }
+  /* R-D68 phone pass: no sand blocks under the text; stakes inside their cell and readable; the credit readable; the end stack centred */
+  .deck .sand, .deck .sand-lines { display:none; }
+  .deck .plants .stake { right:0; bottom:-4px; width:64px; height:37px; } .deck .plants .stake b { font-size:12px; } .deck .plants figure > img { height:120px; }
+  .deck .photo-credit { position:static; font-size:11px; }
+  .deck .end-thanks { text-align:center; font-size:40px; } .deck .end-garden { width:100%; height:auto; transform:none; } .deck .end-lockup { width:120px; transform:none; align-self:center; }
+  .deck .slide:last-of-type .in { justify-content:center; gap:20px; }
 }
 @page { size:1920px 1080px; margin:0; }
 @media print {
@@ -444,9 +450,9 @@ export default function Deck() {
       {/* 12 Thank you (R-D66): a landscape, the whole garden grown (every plant at stage 14, the approved geode, no stakes:
           build_timelapse_deck.py --still NOSTAKES=1) across the page; the line and the lockup in its sky */}
       <Slide n={12} art>
+        <p className="end-thanks">Thank you.</p>
         <img className="end-garden" src="/deck/garden-end.webp" alt="The whole Sprouts garden, fully grown" />
         <img className="end-lockup" src="/deck/lockup-ink.png" alt="Sprouts" />
-        <p className="end-thanks">Thank you.</p>
       </Slide>
 
       <div className="bar">
