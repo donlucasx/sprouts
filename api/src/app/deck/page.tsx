@@ -232,7 +232,7 @@ const CSS = `
   .deck p.ebt { text-align:center; font-size:48px; } .deck img.eb { width:100%; height:auto; } .deck .ebl { width:110px; align-self:center; }
   .deck img.eb { display:none; } .deck .eb-m { display:block; width:100%; height:auto; }
   /* R-D74 phone pass 2 */
-  .deck #s1 .in { align-items:center; justify-content:center; gap:20px; } .deck #s1 .cover-sprout { height:auto; width:78vw; } .deck #s1 .cover-lockup { font-size:30px; }
+  .deck #s1 .in { align-items:center; justify-content:center; gap:20px; } .deck #s1 .cover-sprout { height:auto; width:78vw; } .deck #s1 .cover-lockup { font-size:24px; transform:none; left:auto; align-self:center; }   /* phone: the horizontal lockup centred in the column, fits 320 px */
   .deck .stack { justify-items:center; text-align:center; gap:24px; } .deck .stack strong { font-size:21px; } .deck .stack span { font-size:16px; }
   .deck .plants { grid-template-columns:repeat(4, 1fr); width:70%; margin-left:auto; column-gap:8px; } .deck .plants .pnote { justify-self:end; font-size:13px; }
   .deck .plants figure > img { height:64px; } .deck .plants .stake { right:-6px; bottom:-4px; width:40px; height:23px; } .deck .plants .stake b { font-size:8px; }
@@ -279,7 +279,7 @@ export default function Deck() {
       <Slide n={1} art>
         <video className="cover-sprout" src="/deck/sprout.mp4" poster="/deck/sprout.webp" autoPlay muted loop playsInline preload="metadata" aria-label="A sprout swaying, from the app's first screen" />
         <img className="cover-sprout poster" src="/deck/sprout.webp" alt="" />
-        <ClockInLockup className="cover-lockup" />
+        <ClockInLockup className="cover-lockup" horizontal />
       </Slide>
 
       {/* 02 Hook */}
