@@ -21,7 +21,7 @@ export const MANUAL_FLOOR = 25;
 export const PIN_MAX: Record<LiveAsset, number> = { SKR: 100, stORE: 50, USDC_LEND: 75, SOL_LEND: 75, hSOL: 75, cbBTC: 75 };
 export const PIN_STEP = 5;
 
-export const SWITCH_LABEL = "Yield Manager";
+export const SWITCH_LABEL = "AI Yield Manager";
 /** R348: the one line under the Yield Manager switch on Rules (replaces R178's). */
 export const MANAGER_LINE = "Each morning, AI splits your new change toward the coins paying more. It never sells what you hold.";
 /** R347: the manager is branded Pro and included for everyone during launch. */
