@@ -132,24 +132,25 @@ const CSS = `
 .deck #s9 .note { color:#8A847B; max-width:calc(var(--u)*44); }
 /* R-D73 slide 12 (12b2): the garden placed by where its crowns start (43% down the sky-extended image); the line in the sky */
 .deck .eb { position:absolute; height:auto; }
-.deck .eb.eb2, .deck img.eb { left:calc(var(--u)*-15.0); top:calc(var(--u)*-31.8); width:calc(var(--u)*130); }
+.deck .eb-m { display:none; }   /* R-D74: the phone shows a portrait crop instead */
+.deck img.eb { left:0; top:calc(var(--u)*-20.6); width:calc(var(--u)*100); }   /* R-D74: his pick is 12b1 (the whole middle garden), not 12b2 */
 .deck .ebt { position:absolute; margin:0; font-family:var(--font-display), sans-serif; font-weight:700; letter-spacing:-.045em; line-height:1; color:var(--ink); z-index:1; }
-.deck p.ebt { left:0; right:0; top:calc(var(--u)*5); text-align:center; font-size:calc(var(--u)*12.5); }
+.deck p.ebt { left:0; right:0; top:calc(var(--u)*5.5); text-align:center; font-size:calc(var(--u)*11); }
 .deck .ebl { position:absolute; left:calc(var(--u)*4); top:calc(var(--u)*4); width:calc(var(--u)*9); height:auto; z-index:1; }
 /* R-D65 slide 6: three lines; the four concept plants, a stake beside each (the garden's own sprite + lettering, STAKE in
    model/garden2.ts); the hand + Seeker bottom right, at most a third of the width */
 .deck .steps.g6 { max-width:calc(var(--u)*64); margin-top:calc(var(--u)*1.4); position:relative; z-index:1; }
-.deck .plants { position:absolute; left:calc(var(--u)*6.6); width:calc(var(--u)*54); bottom:calc(var(--u)*3);
-  display:grid; grid-template-columns:repeat(4, 1fr); grid-template-rows:auto auto; column-gap:calc(var(--u)*2.4); row-gap:calc(var(--u)*2.2); align-items:end; }
-.deck .plants .pnote { grid-column:1 / -1; grid-row:1; margin:0; font-family:var(--font-display), sans-serif; font-weight:600;
-  font-size:calc(var(--u)*1.5); letter-spacing:-.01em; color:var(--ink); }
+.deck .plants { position:absolute; left:calc(var(--u)*6.6); width:calc(var(--u)*40); bottom:calc(var(--u)*3);
+  display:grid; grid-template-columns:repeat(4, 1fr); grid-template-rows:auto auto; column-gap:calc(var(--u)*1.6); row-gap:calc(var(--u)*1.2); align-items:end; }
+.deck .plants .pnote { grid-column:1 / -1; grid-row:1; margin:0; justify-self:end; font-family:var(--font-display), sans-serif; font-weight:600;
+  font-size:calc(var(--u)*1.2); letter-spacing:-.01em; color:var(--ink); }
 .deck .plants figure { grid-row:2; margin:0; position:relative; display:flex; justify-content:center; align-items:flex-end; }
-.deck .plants figure > img { height:calc(var(--u)*10.5); width:auto; max-width:100%; object-fit:contain; }
-.deck .plants .stake { position:absolute; right:calc(var(--u)*-1.2); bottom:calc(var(--u)*-.6); width:calc(var(--u)*5.6); height:calc(var(--u)*3.2); }
+.deck .plants figure > img { height:calc(var(--u)*7.4); width:auto; max-width:100%; object-fit:contain; }
+.deck .plants .stake { position:absolute; right:calc(var(--u)*-.9); bottom:calc(var(--u)*-.5); width:calc(var(--u)*4.2); height:calc(var(--u)*2.4); }
 .deck .plants .stake img { width:100%; height:100%; display:block; }
 .deck .plants .stake b { position:absolute; left:calc(2 / 140 * 100%); top:calc((1 + 34 * .05) / 80 * 100%); width:calc(136 / 140 * 100%); height:calc(34 / 80 * 100%);
   display:flex; align-items:center; justify-content:center; font-family:var(--font-display), sans-serif; font-weight:700;
-  font-size:calc(var(--u)*5.6 * 27 / 140); line-height:1; color:#3B2A1A; opacity:.9; }
+  font-size:calc(var(--u)*4.2 * 27 / 140); line-height:1; color:#3B2A1A; opacity:.9; }
 .deck .hand { position:absolute; right:calc(var(--u)*2.4); bottom:0; width:calc(var(--u)*32); height:auto; }
 /* R-D47 cover (slide 0): the mature SKR mandarin centred, the ink lockup small at the bottom */
 .deck .cover-tree { position:absolute; left:50%; top:calc(var(--u)*8.5); height:calc(var(--u)*36); width:auto; transform:translateX(-50%); }
@@ -204,6 +205,16 @@ const CSS = `
   .deck .plants .stake { right:0; bottom:-4px; width:64px; height:37px; } .deck .plants .stake b { font-size:12px; } .deck .plants figure > img { height:120px; }
   .deck .photo-credit { position:static; font-size:11px; }
   .deck p.ebt { text-align:center; font-size:48px; } .deck img.eb { width:100%; height:auto; } .deck .ebl { width:110px; align-self:center; }
+  .deck img.eb { display:none; } .deck .eb-m { display:block; width:100%; height:auto; }
+  /* R-D74 phone pass 2 */
+  .deck #s1 .in { align-items:center; justify-content:center; gap:20px; } .deck #s1 .cover-sprout { height:auto; width:78vw; } .deck #s1 .cover-lockup { width:40vw; }
+  .deck .stack { justify-items:center; text-align:center; gap:24px; } .deck .stack strong { font-size:21px; } .deck .stack span { font-size:16px; }
+  .deck .plants { grid-template-columns:repeat(4, 1fr); width:70%; margin-left:auto; column-gap:8px; } .deck .plants .pnote { justify-self:end; font-size:13px; }
+  .deck .plants figure > img { height:64px; } .deck .plants .stake { right:-6px; bottom:-4px; width:40px; height:23px; } .deck .plants .stake b { font-size:8px; }
+  .deck .ym-flow { justify-items:center; } .deck .ym-flow > .ym-box:first-child { width:62%; } .deck .ym-box.key { width:88%; }
+  .deck .ym-out { grid-template-columns:repeat(3, 1fr); width:100%; gap:8px; } .deck .ym-out .ym-box { min-height:150px; align-content:start; padding:12px 10px; }
+  .deck .ym-out .ym-box b { font-size:15px; } .deck .ym-out .ym-box small { font-size:12px; } .deck .ym-box.pic img { height:96px; right:-14px; bottom:-10px; }
+  .deck #s11 .chip { order:0; } .deck #s11 .who { order:1; } .deck #s11 .grow { order:2; } .deck #s11 .in { gap:18px; }
 }
 @page { size:1920px 1080px; margin:0; }
 @media print {
@@ -288,6 +299,31 @@ export default function Deck() {
             </div>
             <div className="beat">
               <img className="stage" src="/deck/grow-3-fade.webp" alt="" />
+              <strong>Kept on your Seeker</strong>
+              <span>Sprouts stakes SKR, mines stORE and lends USDC and SOL, all from your Seed Vault.</span>
+            </div>
+          </div>
+        </div>
+      </Slide>
+
+      {/* 04b MOCKUP (R-D74): the mandarin (SKR) growing instead of the orchid; delete one of 04 / 04b after his pick. */}
+      {/* 04 How it works: any swap, any app (his note 2); the decision removed (the cut table, R-D7) */}
+      <Slide n={4} label="04b" chip="How it works">
+        <div className="grow">
+          <h2 className="h2s">Every swap rounds up. Your Seeker <span className="mk">keeps the change.</span></h2>
+          <div className="beats center big">
+            <div className="beat">
+              <img className="stage" src="/deck/grow-m1.webp" alt="" />
+              <strong>Any swap, any app</strong>
+              <span>Each swap rounds up to the next dollar. You choose the extras and a daily limit.</span>
+            </div>
+            <div className="beat">
+              <img className="stage" src="/deck/grow-m2.webp" alt="" />
+              <strong>Planted each morning</strong>
+              <span>At 7&nbsp;AM, Sprouts buys your coins with the change you saved, up to $5 a day, split by the AI Yield Manager.</span>
+            </div>
+            <div className="beat">
+              <img className="stage" src="/deck/grow-m3.webp" alt="" />
               <strong>Kept on your Seeker</strong>
               <span>Sprouts stakes SKR, mines stORE and lends USDC and SOL, all from your Seed Vault.</span>
             </div>
@@ -452,11 +488,12 @@ export default function Deck() {
         </a>
       </Slide>
 
-      {/* 12 Thank you (R-D71/R-D73, his pick 12b2): the whole garden grown, on extended paper sky, 130% wide and placed by its crown
+      {/* 12 Thank you (R-D71/R-D74, his pick 12b1): the whole garden grown, on extended paper sky, full width and placed by its crown
           line so the trees rise toward the line without touching it; the line oversized with the painted marker; the lockup in the sky */}
       <Slide n={12} art>
         <p className="ebt"><span className="mk">Thank you.</span></p>
         <img className="eb" src="/deck/garden-end-sky.webp" alt="The whole Sprouts garden, fully grown" />
+        <img className="eb-m" src="/deck/garden-end-mobile.webp" alt="" />
         <img className="ebl" src="/deck/lockup-ink.png" alt="Sprouts" />
       </Slide>
 
