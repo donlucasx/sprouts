@@ -14,7 +14,7 @@ const pct = (n: number) => `${n.toFixed(2)}%`
 const venueName = (r: VenueRow) => (VENUE_NAME as Record<string, string>)[r.venue] ?? r.name
 
 /**
- * One line per venue (contracts 5.1): today's rate, with the rewards beside it when there are any (so the card agrees with the why
+ * One line per venue (contracts 5.1): this morning's rate (the daily run's, so it can differ from Home's live rate), with the rewards beside it when there are any (so the card agrees with the why
  * line's totals, fix round 1 I2), the 7-day average once two days are measured (spec 4 bootstrap), the state.
  */
 export function venueLines(v: VenuesResponse): { key: string; title: string; detail: string }[] {
@@ -26,7 +26,7 @@ export function venueLines(v: VenuesResponse): { key: string; title: string; det
           ? ', measured 1 day'
           : ''
     const rewards = r.rewardsPct !== null && r.rewardsPct > 0 ? ` + ${pct(r.rewardsPct)} rewards` : ''
-    const rate = r.supplyPct === null ? cap(r.note ?? 'rate unavailable') : `${pct(r.supplyPct)}${rewards}${avg}`
+    const rate = r.supplyPct === null ? cap(r.note ?? 'rate unavailable') : `This morning ${pct(r.supplyPct)}${rewards}${avg}`
     const state = !r.auto
       ? 'Compared only'
       : r.verdict === 'avoid'
