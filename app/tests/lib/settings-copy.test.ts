@@ -56,7 +56,7 @@ describe('Settings > About Sprouts (spec 6.2, 11; R452: six questions)', () => {
   })
   it("R300's public promise is one constant, shared with the re-link card", () => {
     expect(PUBLIC_GUARANTEE).toBe(
-      'Even if our server is hacked, it can only move your daily round-up (max $5) into your own savings. Never anywhere else.',
+      'Even if our server is hacked, neither it nor the AI can move more than your daily round-up (max $5), and only into your own savings.',
     )
     expect(RELINK.body).toBe(PUBLIC_GUARANTEE)
   })

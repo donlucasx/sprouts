@@ -21,7 +21,7 @@ describe("the tables", () => {
     expect(PRO_LINE).toBe("Included free during launch.");  // R347
     expect(ROWS_LINE).toEqual({ on: "Switch a coin off and the manager won't buy it.", off: "Set your own split." });  // R348; 10-12 names the model, as the deck does
     expect(STOP_LINE).toBe("Careful keeps at least 50% in SKR, Balanced 35%, Bold 25%.");
-    expect(UNDONE_TEXT).toBe("Yesterday's split is back. The Yield Manager is off until you turn it on.");
+    expect(UNDONE_TEXT).toBe("Yesterday's split is back. The AI Yield Manager is off until you turn it on.");
   });
 });
 
@@ -151,7 +151,7 @@ describe("the sentence, the undo line, Activity's rows", () => {
     expect(splitRowLine({ ts, by: "you", from, to, stop: "balanced", why: null, fallback: null, managed: true, turnedOn: true })).toBe("Oct 3, you: Balanced, on.");
     expect(splitRowLine({ ts, by: "you", from, to, stop: "balanced", why: null, fallback: null, managed: true, turnedOn: false })).toBe("Oct 3, you: hSOL 15 to 20, cbBTC 10 to 5.");
     // Review Focus 3.
-    expect(splitRowLine({ ts, by: "undo", from: to, to: from, stop: null, why: null, fallback: null })).toBe("Oct 3, undone. Yesterday's split is back; the Yield Manager is off.");
+    expect(splitRowLine({ ts, by: "undo", from: to, to: from, stop: null, why: null, fallback: null })).toBe("Oct 3, undone. Yesterday's split is back; the AI Yield Manager is off.");
     // Audit fix F6: the API's UTC day, so 19:00 PDT on Oct 2 reads Oct 3, as the Rules card's "Changed Oct 3." does.
     expect(splitRowLine({ ts: "2026-10-03T02:00:00.000Z", by: "you", from, to, stop: "balanced", why: null, fallback: null })).toBe("Oct 3, you: hSOL 15 to 20, cbBTC 10 to 5.");
   });

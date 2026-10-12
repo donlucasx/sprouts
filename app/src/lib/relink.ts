@@ -11,7 +11,7 @@ export const WEB_LINK_TRUST = "Web-linked wallets trust the link page at link ti
 
 /** R300's public promise verbatim (the controller's one sentence plus its three-word close): the re-link card and Settings (Task 13). */
 export const PUBLIC_GUARANTEE =
-  'Even if our server is hacked, it can only move your daily round-up (max $5) into your own savings. Never anywhere else.'
+  'Even if our server is hacked, neither it nor the AI can move more than your daily round-up (max $5), and only into your own savings.'
 
 /**
  * R287 (in-app card, one Seed Vault signature), R300 (the public promise, verbatim), spec 6.5 (the old approval stays exposed until
