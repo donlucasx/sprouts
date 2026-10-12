@@ -178,6 +178,7 @@ const CSS = `
   .deck { background:none; padding:0; gap:0; display:block; }
   .deck .slide { width:1920px; height:1080px; aspect-ratio:auto; border-radius:0; box-shadow:none; break-after:page; --u: 19.2px; }
   .deck .bar { display:none; }
+  .deck .phone { box-shadow:none; }   /* R-D47: Chrome prints the blurred shadow as a raster tile that Preview draws as a grey box */
   .deck video { display:none; } .deck .poster { display:block; }
   .deck .screen-only { display:none !important; } .deck .print-only { display:block; }
   .deck * { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
