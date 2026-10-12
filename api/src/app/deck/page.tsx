@@ -427,8 +427,8 @@ export default function Deck() {
             He also built xscapes, a thinking screen for terminal agents, and has a groundbreaking video game in development (or so
             he thinks).
           </p>
-          <p className="sub">Built with Claude Code: the app, the API and the on-chain leash.</p>
-          <p className="sub"><b>Live on Solana mainnet and in review on the Solana dApp Store.</b></p>
+          <p className="sub">Built with Claude Code (the app, the API and the on-chain leash), Midjourney for the garden, and the occasional second opinion from Kimi.</p>
+          <p className="sub"><b>Live on Solana mainnet.</b></p>
           <div className="links">
             <a href="https://sprouts.money">sprouts.money</a>
             <a href="https://x.com/sproutsonseeker">@sproutsonseeker</a>
