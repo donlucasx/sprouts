@@ -16,10 +16,10 @@ describe("the tables", () => {
     expect(STOP_MAX.bold.cbBTC).toBe(20);
     expect(PIN_MAX).toEqual({ SKR: 100, stORE: 50, hSOL: 75, USDC_LEND: 75, SOL_LEND: 75, cbBTC: 75 });
     expect(PIN_STEP).toBe(5);
-    expect(MANAGER_LINE).toBe("Each morning, AI splits your new change toward the coins paying more. It never sells what you hold.");  // R348
+    expect(MANAGER_LINE).toBe("Each morning, Claude Haiku 4.5 reads live rates and sends your new change where it pays best. It never sells what you hold.");  // R348; 10-12 names the model, as the deck does
     expect(PRO_BADGE).toBe("Pro");
     expect(PRO_LINE).toBe("Included free during launch.");  // R347
-    expect(ROWS_LINE).toEqual({ on: "Switch a coin off and the manager won't buy it.", off: "Set your own split." });  // R348
+    expect(ROWS_LINE).toEqual({ on: "Switch a coin off and the manager won't buy it.", off: "Set your own split." });  // R348; 10-12 names the model, as the deck does
     expect(STOP_LINE).toBe("Careful keeps at least 50% in SKR, Balanced 35%, Bold 25%.");
     expect(UNDONE_TEXT).toBe("Yesterday's split is back. The Yield Manager is off until you turn it on.");
   });
