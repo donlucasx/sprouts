@@ -30,7 +30,7 @@ export const PRO_LINE = "Included free during launch.";
 /** R348: the one line above the split rows, so each control says what it does. */
 export const ROWS_LINE = { on: "Switch a coin off and the manager won't buy it.", off: "Set your own split." } as const;
 export const STOP_LINE = "Careful keeps at least 50% in SKR, Balanced 35%, Bold 25%.";
-export const UNDONE_TEXT = "Yesterday's split is back. The Yield Manager is off until you turn it on.";
+export const UNDONE_TEXT = "Yesterday's split is back. The AI Yield Manager is off until you turn it on.";
 export const STORE_ROW_NOTE = "ORE staked in ORE's program";
 
 export type Row = { asset: LiveAsset; pct: number; mode: "auto" | "off" | "pinned" | "the rest"; bound: string | null };
@@ -147,7 +147,7 @@ export function changeSummary(from: Partial<Record<string, number>>, to: Partial
 export function splitRowLine(s: SplitRow): string {
   const day = dayLabel(s.ts.slice(0, 10));
   const summary = changeSummary(s.from, s.to);
-  if (s.by === "undo") return `${day}, undone. Yesterday's split is back; the Yield Manager is off.`;
+  if (s.by === "undo") return `${day}, undone. Yesterday's split is back; the AI Yield Manager is off.`;
   if (s.by === "you" && s.turnedOn) return `${day}, you: ${s.stop ? `${STOP_LABEL[s.stop as Stop] ?? s.stop}, ` : ""}on.`;
   if (s.by === "you") return summary ? `${day}, you: ${summary}.` : `${day}, you: ${s.stop ? STOP_LABEL[s.stop as Stop] ?? s.stop : "saved"}.`;
   if (s.fallback) return `${day}, chosen by rule today: ${summary}.`;

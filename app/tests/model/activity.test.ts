@@ -56,7 +56,7 @@ describe('R362: the split, one short line, chevron only (no amount)', () => {
     expect(splitRow(row({ from: { SKR: 40, JitoSOL: 10 }, to: { SKR: 50, JitoSOL: 0 }, why: null }), 1).details).toEqual(['SKR 40 to 50'])
   })
   it('an undo, the AI turned on, a change by rule, your own change', () => {
-    expect(keep(splitRow(row({ by: 'undo' }), 0))).toMatchObject({ label: 'Undone', details: ["Yesterday's split is back.", 'The Yield Manager is off.'] })
+    expect(keep(splitRow(row({ by: 'undo' }), 0))).toMatchObject({ label: 'Undone', details: ["Yesterday's split is back.", 'The AI Yield Manager is off.'] })
     expect(keep(splitRow(row({ by: 'you', turnedOn: true, to: { SKR: 45, USDC_LEND: 10, hSOL: 20, JitoSOL: 5 } }), 0))).toMatchObject({ label: 'You turned on the AI', details: ['Balanced.'] })
     expect(keep(splitRow(row({ fallback: 'model' }), 0))).toMatchObject({ label: 'Split moved by rule', details: ['USDC lending 10 to 15, hSOL 20 to 15', 'Chosen by rule today.'] })
     expect(keep(splitRow(row({ by: 'you' }), 0))).toMatchObject({ label: 'You changed your split', amount: null, details: ['USDC lending 10 to 15, hSOL 20 to 15'] })

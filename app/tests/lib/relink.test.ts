@@ -32,7 +32,7 @@ describe('relinkView (R287; invariant 3: only when the API asks)', () => {
   })
   it("the copy: the ruled title, the public promise verbatim, the old approval's exposure said, no dashes", () => {
     expect(RELINK.title).toBe('Re-link to keep planting')
-    expect(RELINK.body).toContain('Even if our server is hacked, it can only move your daily round-up (max $5) into your own savings. Never anywhere else.')
+    expect(RELINK.body).toContain('Even if our server is hacked, neither it nor the AI can move more than your daily round-up (max $5), and only into your own savings.')
     expect(RELINK.exposed).toBe('Until you re-link, your old approval stays on chain under the old rules. Re-link or revoke it to end it.')
     for (const t of Object.values(RELINK)) expect(typeof t === 'string' ? t : t('AbCd...WxYz')).not.toMatch(/[\u2013\u2014]/)
   })
@@ -41,7 +41,7 @@ describe('relinkView (R287; invariant 3: only when the API asks)', () => {
 describe('C6 (contracts 5.5, Kimi #4): the web-linked wallet shows its leash address; the guarantee names what the link page is trusted for', () => {
   it('the guarantee sentence verbatim, one shared constant; the closed card carries only the promise (fix round 1 ruling), C6 opens in the disclosure', () => {
     expect(WEB_LINK_TRUST).toBe("Web-linked wallets trust the link page at link time; your Seeker's own wallet does not.")
-    expect(RELINK.body).toBe('Even if our server is hacked, it can only move your daily round-up (max $5) into your own savings. Never anywhere else.')
+    expect(RELINK.body).toBe('Even if our server is hacked, neither it nor the AI can move more than your daily round-up (max $5), and only into your own savings.')
     expect(RELINK.disclosure).toBe('Linked a wallet on a computer?')
   })
   it('the disclosure: each wallet line, its address with the program-address sentence right under it, the C6 sentence after the addresses, the exposure note last', () => {

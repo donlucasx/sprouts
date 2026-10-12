@@ -35,7 +35,7 @@ export function splitRow(s: SplitRow, i: number): ActivityRow {
   const summary = changeSummary(s.from, s.to)
   const stop = s.stop ? `${STOP_LABEL[s.stop as Stop] ?? s.stop}.` : ''
   const base = { key: `${s.ts}-${i}`, ts: s.ts, amount: null, signature: null }
-  if (s.by === 'undo') return { ...base, label: 'Undone', details: ["Yesterday's split is back.", 'The Yield Manager is off.'] }
+  if (s.by === 'undo') return { ...base, label: 'Undone', details: ["Yesterday's split is back.", 'The AI Yield Manager is off.'] }
   if (s.by === 'you' && s.turnedOn) return { ...base, label: 'You turned on the AI', details: [stop, summary].filter(Boolean) }
   if (s.by === 'you') return { ...base, label: 'You changed your split', details: summary ? [summary] : stop ? [stop] : [] }
   if (s.fallback) return { ...base, label: 'Split moved by rule', details: [summary, 'Chosen by rule today.'].filter(Boolean) }
