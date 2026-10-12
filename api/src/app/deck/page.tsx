@@ -139,11 +139,11 @@ const CSS = `
 .deck .ebl { position:absolute; left:calc(var(--u)*4); top:calc(var(--u)*4); width:calc(var(--u)*9); height:auto; z-index:1; }
 /* R-D65 slide 6: three lines; the four concept plants, a stake beside each (the garden's own sprite + lettering, STAKE in
    model/garden2.ts); the hand + Seeker bottom right, at most a third of the width */
-.deck .geode-scene { position:absolute; left:calc(var(--u)*13); bottom:calc(var(--u)*1.4); width:calc(var(--u)*32); height:auto; }   /* R-D77: the geode, raked sand + rake, feathered into the paper */
+.deck .geode-scene { position:absolute; left:calc(var(--u)*12); bottom:calc(var(--u)*2.6); width:calc(var(--u)*38); height:auto; }   /* R-D77: the geode, raked sand + rake, feathered into the paper */
 .deck #s6 .steps.g6 { max-width:calc(var(--u)*72); } .deck #s6 .steps.g6 li { font-size:calc(var(--u)*2.1); }
-.deck #s10 .rows { max-width:calc(var(--u)*60); }
+.deck #s10 .rows { max-width:none; }
 .deck #s10 .row { grid-template-columns:calc(var(--u)*20) 1fr; }
-.deck #s10 .plants { left:auto; right:calc(var(--u)*6.6); width:calc(var(--u)*27); bottom:calc(var(--u)*3.6); top:auto;
+.deck #s10 .plants { left:auto; right:calc(var(--u)*6.6); width:calc(var(--u)*27); bottom:calc(var(--u)*2.2); top:auto;
   grid-template-columns:repeat(4, 1fr); column-gap:calc(var(--u)*1); row-gap:calc(var(--u)*.8); }
 .deck #s10 .plants .pnote { justify-self:end; font-size:calc(var(--u)*1.05); color:var(--muted); }
 .deck #s10 .plants figure { grid-row:2; }
