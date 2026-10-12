@@ -223,6 +223,7 @@ const CSS = `
   .deck .ym-out { grid-template-columns:repeat(3, 1fr); width:100%; gap:8px; } .deck .ym-out .ym-box { min-height:150px; align-content:start; padding:12px 10px; }
   .deck .ym-out .ym-box b { font-size:15px; } .deck .ym-out .ym-box small { font-size:12px; } .deck .ym-box.pic img { height:96px; right:-14px; bottom:-10px; }
   .deck #s10 .rows { max-width:none; } .deck #s10 .plants { grid-template-columns:repeat(4, 1fr); width:70%; } .deck #s10 .plants figure > img { height:64px; }
+  .deck #s3 .grow { order:0; } .deck #s3 .sprout { order:1; height:140px; margin-top:72px; } .deck #s3 .note { order:2; margin-top:-12px; }   /* R-D76: room to grow */
   .deck #s11 .chip { order:0; } .deck #s11 .who { order:1; } .deck #s11 .grow { order:2; } .deck #s11 .in { gap:18px; }
 }
 @page { size:1920px 1080px; margin:0; }
