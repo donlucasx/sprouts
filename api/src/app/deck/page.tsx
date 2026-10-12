@@ -139,7 +139,7 @@ const CSS = `
 .deck .ebl { position:absolute; left:calc(var(--u)*4); top:calc(var(--u)*4); width:calc(var(--u)*9); height:auto; z-index:1; }
 /* R-D65 slide 6: three lines; the four concept plants, a stake beside each (the garden's own sprite + lettering, STAKE in
    model/garden2.ts); the hand + Seeker bottom right, at most a third of the width */
-.deck .geode-scene { position:absolute; left:calc(var(--u)*22); bottom:calc(var(--u)*1.2); width:calc(var(--u)*21); height:auto; }   /* R-D77: the geode, raked sand + rake, feathered into the paper */
+.deck .geode-scene { position:absolute; left:calc(var(--u)*13); bottom:calc(var(--u)*1.4); width:calc(var(--u)*32); height:auto; }   /* R-D77: the geode, raked sand + rake, feathered into the paper */
 .deck #s6 .steps.g6 { max-width:calc(var(--u)*72); } .deck #s6 .steps.g6 li { font-size:calc(var(--u)*2.1); }
 .deck #s10 .rows { max-width:calc(var(--u)*60); }
 .deck #s10 .row { grid-template-columns:calc(var(--u)*20) 1fr; }
@@ -191,7 +191,7 @@ const CSS = `
 .deck .bar a, .deck .bar button { font:600 13px var(--font-body), sans-serif; background:var(--ink); color:var(--paper); border:0; border-radius:999px; padding:9px 14px; cursor:pointer; text-decoration:none; }
 @media screen and (max-width: 760px) {
   .deck { scroll-snap-type:none; padding:0; gap:0; }
-  .deck .one { white-space:normal; } .deck .who { position:static; justify-items:start; } .deck .pfp { width:120px; height:120px; } .deck .geode-scene { position:static; width:60%; align-self:center; }
+  .deck .one { white-space:normal; } .deck .who { position:static; justify-items:start; } .deck .pfp { width:120px; height:120px; } .deck .geode-scene { position:static; width:85%; align-self:center; }
   .deck .slide { --u: 2.1vw; width:100%; aspect-ratio:auto; border-radius:0; box-shadow:none; border-bottom:1px solid var(--rule); }
   .deck .in { position:relative; inset:auto; padding:48px 16px 56px; gap:28px; min-height:80vh; }
   .deck h1 { font-size:42px; } .deck h2 { font-size:36px; }
