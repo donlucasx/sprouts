@@ -28,12 +28,14 @@ export default function Home() {
         @keyframes sp-dots { 0%, 20% { content: "" } 40% { content: "." } 60% { content: ".." } 80%, 100% { content: "..." } }
         .sp-dots::after { content: "..."; display: inline-block; width: 1.2em; text-align: left; animation: sp-dots 2.4s steps(1) infinite; }
         .sp-foot a:hover { color: ${ink} !important; }
-        .sp-grow, .sp-grown { width: 100%; height: 100%; display: block; mix-blend-mode: multiply; }
+        .sp-stage { width: min(72vw, 360px); aspect-ratio: 6 / 5; }
+        .sp-grow, .sp-grown { width: 100%; height: 100%; display: block; mix-blend-mode: multiply; object-fit: contain; object-position: center bottom; }
         .sp-grown { display: none; }
         @media (prefers-reduced-motion: reduce) { .sp-dots::after { animation: none; } .sp-grow { display: none; } .sp-grown { display: block; } }
       `}</style>
       <div style={{ display: "grid", placeItems: "center", alignContent: "center", padding: "0 24px 7vh" }}>
-        <div style={{ width: "min(72vw, 360px)", aspectRatio: aspect }}>
+        {/* R-D82: one stage for every plant, each sitting on the same ground line, so the lockup and text never move between refreshes */}
+        <div className="sp-stage" data-aspect={aspect}>
           <video className="sp-grow" src={`/site/grow-${plant}.mp4?v=${CLIPS_V}`} autoPlay muted playsInline preload="auto" aria-label="A plant growing from seed" />
           <img className="sp-grown" src={`/site/grown-${plant}.webp?v=${CLIPS_V}`} alt="A grown plant" />
         </div>
@@ -41,7 +43,10 @@ export default function Home() {
           <img src="/deck/mark.svg" alt="" style={{ height: 40, width: "auto" }} />
           Sprouts
         </h1>
-        <p style={{ color: muted, fontSize: 17, fontWeight: 300, letterSpacing: "0.01em", margin: "22px 0 0", textAlign: "center" }}>
+        <p style={{ color: ink, fontSize: 16, fontWeight: 400, letterSpacing: "0.01em", margin: "22px 0 0", textAlign: "center", maxWidth: 340, lineHeight: 1.45 }}>
+          Built for the CLOCK IN Solana Mobile Hackathon, hosted by Radiants
+        </p>
+        <p style={{ color: muted, fontSize: 15, fontWeight: 300, letterSpacing: "0.01em", margin: "8px 0 0", textAlign: "center" }}>
           Coming soon to the Solana dApp Store<span className="sp-dots" />
         </p>
       </div>
