@@ -379,7 +379,7 @@ export default function Deck() {
             <div className="ym-flow">
               <div className="ym-box"><b>Your change</b><small>from every swap</small></div>
               <i>&rarr;</i>
-              <div className="ym-box key"><b>AI Yield Manager</b><small>Each morning, Claude Haiku 4.5 reads live rates and sends new change where it pays best. It skips rates propped up by short-term rewards and never sells what you hold.</small></div>
+              <div className="ym-box key"><b>AI Yield Manager</b><small>Each morning, Claude Haiku 4.5 reads the day&apos;s rates and sends new change where it pays best. It skips rates propped up by short-term rewards and never sells what you hold.</small></div>
               <i>&rarr;</i>
               <div className="ym-out">
                 <div className="ym-box pic skr"><b>SKR</b><small>always on, staked</small><img src="/deck/box-skr-fade.webp" alt="" /></div>
@@ -450,7 +450,7 @@ export default function Deck() {
           <h2 className="h2s">Sprouts grows with <span className="mk">Solana Mobile.</span></h2>
           <div className="rows">
             <div className="row"><strong>SKR accumulation engine</strong><span>Every round-up buys SKR: at least a quarter, staked and held in the owner&apos;s Seed Vault. stORE puts ORE to work the same way.</span></div>
-            <div className="row"><strong>$200 to $380 a year</strong><span>saved by an active trader, from the median to the top quarter. It stays theirs.</span></div>
+            <div className="row"><strong>$240 to $380 a year</strong><span>saved by an active trader, from the median to the top quarter. It stays theirs.</span></div>
             <div className="row"><strong>0.5% planting fee</strong><span>We keep half a cent of every dollar planted in coins, paid in USDC.</span></div>
             <div className="row"><strong>Pro subscription</strong><span>AI Yield Manager, automatic lending and tax export. Free during launch. Acorns proved this model.</span></div>
           </div>
