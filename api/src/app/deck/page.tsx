@@ -143,11 +143,13 @@ const CSS = `
 .deck #s6 .steps.g6 { max-width:calc(var(--u)*72); } .deck #s6 .steps.g6 li { font-size:calc(var(--u)*2.1); }
 .deck #s10 .rows { max-width:calc(var(--u)*60); }
 .deck #s10 .row { grid-template-columns:calc(var(--u)*20) 1fr; }
-.deck #s10 .plants { left:auto; right:calc(var(--u)*5.6); width:calc(var(--u)*24); bottom:auto; top:calc(var(--u)*21);
-  grid-template-columns:repeat(2, 1fr); column-gap:calc(var(--u)*1.4); row-gap:calc(var(--u)*2.6); }
-.deck #s10 .plants .pnote { justify-self:start; }
-.deck #s10 .plants figure { grid-row:auto; }
-.deck #s10 .plants figure > img { height:calc(var(--u)*8.6); }
+.deck #s10 .plants { left:auto; right:calc(var(--u)*6.6); width:calc(var(--u)*27); bottom:calc(var(--u)*3.6); top:auto;
+  grid-template-columns:repeat(4, 1fr); column-gap:calc(var(--u)*1); row-gap:calc(var(--u)*.8); }
+.deck #s10 .plants .pnote { justify-self:end; font-size:calc(var(--u)*1.05); color:var(--muted); }
+.deck #s10 .plants figure { grid-row:2; }
+.deck #s10 .plants figure > img { height:calc(var(--u)*5.2); }
+.deck #s10 .plants .stake { right:calc(var(--u)*-.6); bottom:calc(var(--u)*-.4); width:calc(var(--u)*3); height:calc(var(--u)*1.7); }
+.deck #s10 .plants .stake b { font-size:calc(var(--u)*3 * 27 / 140); }
 .deck .steps.g6 { max-width:calc(var(--u)*64); margin-top:calc(var(--u)*1.4);  position:relative; z-index:1; }
 .deck .plants { position:absolute; left:calc(var(--u)*6.6); width:calc(var(--u)*40); bottom:calc(var(--u)*3);
   display:grid; grid-template-columns:repeat(4, 1fr); grid-template-rows:auto auto; column-gap:calc(var(--u)*1.6); row-gap:calc(var(--u)*1.2); align-items:end; }
