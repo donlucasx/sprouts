@@ -81,8 +81,7 @@ const CSS = `
 .deck .beats.center .beat { text-align:center; justify-items:center; }
 .deck .beat .stage { height:calc(var(--u)*12); width:auto; margin-bottom:calc(var(--u)*.4); }
 .deck .beats.big .beat { background:none; padding:0 calc(var(--u)*1); }
-.deck .beats.big .stage { height:calc(var(--u)*20); margin-bottom:0; mix-blend-mode:multiply;
-  -webkit-mask-image:linear-gradient(to right, transparent, #000 6%, #000 70%, transparent); mask-image:linear-gradient(to right, transparent, #000 6%, #000 70%, transparent); }
+.deck .beats.big .stage { height:calc(var(--u)*20); margin-bottom:0; mix-blend-mode:multiply; }
 .deck .narrow { max-width:calc(var(--u)*62); }
 .deck .stack { display:grid; gap:calc(var(--u)*1.8); max-width:calc(var(--u)*44); }
 .deck .stack div { display:grid; gap:calc(var(--u)*.4); }
@@ -95,9 +94,7 @@ const CSS = `
 .deck .split.home { grid-template-columns:1fr auto; gap:calc(var(--u)*5); }
 .deck .split.home video, .deck .split.home .poster { width:auto; height:calc(var(--u)*22); border-radius:calc(var(--u)*2); }
 .deck .split.wide video, .deck .split.wide .poster { border-radius:0; }
-.deck .sand { position:absolute; right:0; bottom:0; width:72%; height:auto; pointer-events:none;
-  -webkit-mask-image:linear-gradient(to right, transparent, #000 35%), linear-gradient(to bottom, transparent, #000 40%); -webkit-mask-composite:source-in;
-  mask-image:linear-gradient(to right, transparent, #000 35%), linear-gradient(to bottom, transparent, #000 40%); mask-composite:intersect; }
+.deck .sand { position:absolute; right:0; bottom:0; width:72%; height:auto; pointer-events:none; }   /* fades baked in (R-D50: Preview blocks CSS masks) */
 .deck .in > .grow, .deck .in > .note { position:relative; z-index:1; }
 .deck .tree { position:absolute; right:calc(var(--u)*-11); bottom:calc(var(--u)*-9); width:calc(var(--u)*35); height:auto; pointer-events:none; }
 .deck .flow.short { max-width:calc(var(--u)*68); }
@@ -132,15 +129,14 @@ const CSS = `
 .deck .split.home.above-plants { margin-bottom:calc(var(--u)*13); }
 .deck .plants { position:absolute; left:calc(var(--u)*6.6); right:calc(var(--u)*6.6); bottom:calc(var(--u)*3); height:calc(var(--u)*11);
   display:grid; grid-template-columns:repeat(5, 1fr); gap:calc(var(--u)*2); align-items:end; justify-items:center; pointer-events:none; }
-.deck .plants img { max-height:100%; max-width:100%; width:auto; height:calc(var(--u)*10); object-fit:contain; }
+.deck .plants img { max-height:100%; max-width:100%; width:auto; height:calc(var(--u)*8.2); object-fit:contain; }
 /* R-D47 cover (slide 0): the mature SKR mandarin centred, the ink lockup small at the bottom */
 .deck .cover-tree { position:absolute; left:50%; top:calc(var(--u)*6); height:calc(var(--u)*36); width:auto; transform:translateX(-50%); }
 .deck .cover-lockup { position:absolute; left:50%; bottom:calc(var(--u)*4.2); width:calc(var(--u)*12); height:auto; transform:translateX(-50%); }
 /* R-D47 slide 6: the geode (stORE) and the mandarin's crown (SKR) oversized, poking in from each box's bottom right */
 .deck .ym-box.pic { overflow:hidden; min-height:calc(var(--u)*5.6); }
 .deck .ym-box.pic > b, .deck .ym-box.pic > small { position:relative; z-index:1; }
-.deck .ym-box.pic img { position:absolute; right:calc(var(--u)*-3.2); bottom:calc(var(--u)*-1.5); height:calc(var(--u)*7.6); width:auto; pointer-events:none;
-  -webkit-mask-image:linear-gradient(to right, transparent, #000 30%); mask-image:linear-gradient(to right, transparent, #000 30%); }
+.deck .ym-box.pic img { position:absolute; right:calc(var(--u)*-3.2); bottom:calc(var(--u)*-1.5); height:calc(var(--u)*7.6); width:auto; pointer-events:none; }
 .deck .ym-box.skr { background:#FBE9D4; box-shadow:inset 0 0 0 2px #E39A4C; }
 .deck .ym-box.skr img { right:calc(var(--u)*-2.6); bottom:calc(var(--u)*-2.4); height:calc(var(--u)*8.4); }
 .deck .sub.full { max-width:none; }
@@ -249,17 +245,17 @@ export default function Deck() {
           <h2 className="h2s">Every swap rounds up. Your Seeker keeps the change.</h2>
           <div className="beats center big">
             <div className="beat">
-              <img className="stage" src="/deck/grow-1.png" alt="" />
+              <img className="stage" src="/deck/grow-1-fade.webp" alt="" />
               <strong>Any swap, any app</strong>
               <span>Each swap rounds up to the next dollar. You choose the extras and a daily limit.</span>
             </div>
             <div className="beat">
-              <img className="stage" src="/deck/grow-2.png" alt="" />
+              <img className="stage" src="/deck/grow-2-fade.webp" alt="" />
               <strong>Planted each morning</strong>
               <span>At 7&nbsp;AM, Sprouts buys your coins with the change you saved, up to $5 a day.</span>
             </div>
             <div className="beat">
-              <img className="stage" src="/deck/grow-3.png" alt="" />
+              <img className="stage" src="/deck/grow-3-fade.webp" alt="" />
               <strong>Kept on your Seeker</strong>
               <span>Sprouts stakes SKR, mines stORE and lends USDC and SOL, all from your Seed Vault.</span>
             </div>
@@ -326,8 +322,8 @@ export default function Deck() {
               <div className="ym-box key"><b>Yield Manager</b><small>Each morning it reads live rates and sends new change where it pays best. It skips rates propped up by short-term rewards and never sells what you hold.</small></div>
               <i>&rarr;</i>
               <div className="ym-out">
-                <div className="ym-box pic skr"><b>SKR</b><small>staked</small><img src="/deck/box-skr.webp" alt="" /></div>
-                <div className="ym-box pic ore"><b>stORE</b><small>mining ORE</small><img src="/deck/box-geode.webp" alt="" /></div>
+                <div className="ym-box pic skr"><b>SKR</b><small>staked</small><img src="/deck/box-skr-fade.webp" alt="" /></div>
+                <div className="ym-box pic ore"><b>stORE</b><small>mining ORE</small><img src="/deck/box-geode-fade.webp" alt="" /></div>
                 <div className="ym-box lend"><b>USDC and SOL</b><small>lent on Kamino or Jupiter Lend</small><em>Pro</em></div>
               </div>
             </div>
@@ -345,7 +341,7 @@ export default function Deck() {
           <p>Staked ORE, a store of value token that keeps mining. Your change mines ORE from the first planting, free on every plan.</p>
         </div>
         <p className="note">Part of Pro, free during launch. The AI model never picks the lender or moves money. Code does both.</p>
-        <img className="sand" src="/deck/sand.webp" alt="" />
+        <img className="sand" src="/deck/sand-fade.webp" alt="" />
       </Slide>
 
       {/* 07 Safety + how it's built (R300 as the sub, R-D6, R-D18 trust line); R-D26: inviting, not defensive */}
