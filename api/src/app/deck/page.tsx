@@ -127,9 +127,9 @@ const CSS = `
 .deck .one { white-space:nowrap; }
 /* R-D65 slide 6: three lines; the four concept plants, a stake beside each (the garden's own sprite + lettering, STAKE in
    model/garden2.ts); the hand + Seeker bottom right, at most a third of the width */
-.deck .steps.g6 { max-width:calc(var(--u)*64); position:relative; z-index:1; }
+.deck .steps.g6 { max-width:calc(var(--u)*64); margin-top:calc(var(--u)*1.4); position:relative; z-index:1; }
 .deck .plants { position:absolute; left:calc(var(--u)*6.6); width:calc(var(--u)*54); bottom:calc(var(--u)*3);
-  display:grid; grid-template-columns:repeat(4, 1fr); grid-template-rows:auto auto; column-gap:calc(var(--u)*2.4); row-gap:calc(var(--u)*1); align-items:end; }
+  display:grid; grid-template-columns:repeat(4, 1fr); grid-template-rows:auto auto; column-gap:calc(var(--u)*2.4); row-gap:calc(var(--u)*2.2); align-items:end; }
 .deck .plants .pnote { grid-column:1 / -1; grid-row:1; margin:0; font-family:var(--font-display), sans-serif; font-weight:600;
   font-size:calc(var(--u)*1.5); letter-spacing:-.01em; color:var(--ink); }
 .deck .plants figure { grid-row:2; margin:0; position:relative; display:flex; justify-content:center; align-items:flex-end; }
@@ -143,7 +143,11 @@ const CSS = `
 /* R-D47 cover (slide 0): the mature SKR mandarin centred, the ink lockup small at the bottom */
 .deck .cover-tree { position:absolute; left:50%; top:calc(var(--u)*8.5); height:calc(var(--u)*36); width:auto; transform:translateX(-50%); }
 .deck .end-tree { position:absolute; left:50%; top:calc(var(--u)*4.4); height:calc(var(--u)*30); width:auto; transform:translateX(-50%); }
-.deck .end-thanks { position:absolute; left:0; right:0; top:calc(var(--u)*36.5); margin:0; text-align:center; font-family:var(--font-display), sans-serif; font-weight:700;
+.deck .sand-lines { position:absolute; right:0; bottom:0; width:78%; height:auto; pointer-events:none; }   /* R-D66 slide 9: the plate's raked lines + upper rings, fades baked */
+.deck .in > .note { position:relative; z-index:1; }
+.deck .end-garden { position:absolute; left:50%; bottom:calc(var(--u)*5); width:74%; height:auto; transform:translateX(-50%); }
+.deck .end-lockup { position:absolute; left:50%; transform:translateX(-50%); bottom:calc(var(--u)*2.2); z-index:1; width:calc(var(--u)*12); height:auto; }
+.deck .end-thanks { position:absolute; left:0; right:0; top:calc(var(--u)*3.6); margin:0; text-align:center; font-family:var(--font-display), sans-serif; font-weight:700;
   letter-spacing:-.035em; font-size:calc(var(--u)*5.6); color:var(--leaf); }
 .deck .cover-sprout, .deck video.cover-sprout { position:absolute; left:50%; top:calc(var(--u)*13.5); height:calc(var(--u)*30); width:auto; transform:translateX(-50%); border-radius:0; }
 .deck .cover-lockup { position:absolute; left:50%; bottom:calc(var(--u)*6.4); width:calc(var(--u)*12); height:auto; transform:translateX(-50%); }
@@ -155,7 +159,9 @@ const CSS = `
 .deck .ym-box.skr img { right:calc(var(--u)*-2.6); bottom:calc(var(--u)*-2.4); height:calc(var(--u)*8.4); }
 .deck .sub.full { max-width:none; }
 .deck .sub.dial { max-width:calc(var(--u)*66); }
-.deck .who { position:absolute; right:calc(var(--u)*6.6); top:calc(var(--u)*6.6); display:grid; justify-items:center; gap:calc(var(--u)*1);
+.deck .grow.founder { justify-content:flex-start; margin-top:calc(var(--u)*2); gap:calc(var(--u)*1.6); max-width:calc(var(--u)*64); }
+.deck .grow.founder .sub { font-size:calc(var(--u)*1.7); }
+.deck .who { position:absolute; right:calc(var(--u)*6.6); top:calc(var(--u)*10.4); display:grid; justify-items:center; gap:calc(var(--u)*1);
   font-size:calc(var(--u)*1.6); font-weight:600; color:var(--leaf); text-decoration:none; }
 .deck .pfp { width:calc(var(--u)*14); height:calc(var(--u)*14); border-radius:calc(var(--u)*1.4); image-rendering:pixelated; flex:none; }
 .deck .thanks { position:absolute; right:calc(var(--u)*6.6); bottom:calc(var(--u)*4.4); font-family:var(--font-display), sans-serif; font-weight:700;
@@ -184,7 +190,7 @@ const CSS = `
   .deck .phone img { border-radius:30px; }
   .deck .split.home video, .deck .split.home .poster { width:100%; height:auto; }
   .deck .plants { position:static; width:auto; grid-template-columns:repeat(2, 1fr); } .deck .plants figure { grid-row:auto; } .deck .hand { position:static; width:100%; max-width:360px; align-self:center; } .deck .split.home.above-plants { margin-bottom:0; }
-  .deck .sprout, .deck video.sprout { position:static; height:220px; width:auto; align-self:center; } .deck .cover-sprout, .deck video.cover-sprout, .deck .cover-tree, .deck .cover-lockup, .deck .end-tree, .deck .end-thanks { position:static; transform:none; align-self:center; } .deck .cover-tree { height:300px; } .deck .cover-lockup { width:160px; } .deck .tree { display:none; } .deck .thanks { position:static; font-size:36px; } .deck .flow.short { max-width:none; } .deck .photo { position:relative; width:100%; height:auto; }
+  .deck .sprout, .deck video.sprout { position:static; height:220px; width:auto; align-self:center; } .deck .cover-sprout, .deck video.cover-sprout, .deck .cover-tree, .deck .cover-lockup, .deck .end-tree, .deck .end-thanks, .deck .end-garden, .deck .end-lockup { position:static; transform:none; align-self:center; } .deck .cover-tree { height:300px; } .deck .cover-lockup { width:160px; } .deck .tree { display:none; } .deck .thanks { position:static; font-size:36px; } .deck .flow.short { max-width:none; } .deck .photo { position:relative; width:100%; height:auto; }
   .deck .sand { position:static; width:100%; margin-top:-24px; } .deck .ym, .deck .ym-flow { grid-template-columns:1fr; } .deck .ym-flow > i { transform:rotate(90deg); justify-self:center; } .deck .ym-box b { font-size:17px; } .deck .ym-box.key b { font-size:20px; } .deck .ym-box small, .deck .ym-dial > small { font-size:13px; } .deck .ym-dial > b { font-size:20px; } .deck .ym-row { font-size:15px; grid-template-columns:80px 1fr 44px; } .deck .ym-row strong { font-size:17px; } .deck .ym-track { height:12px; } .deck .ym-box em { font-size:11px; top:-9px; } .deck .ore-band { flex-direction:column; align-items:flex-start; gap:6px; padding:14px 16px; } .deck .ore-band strong { font-size:24px; } .deck .ore-band p { font-size:14px; } .deck .stack, .deck .narrow, .deck .hero { max-width:none; }
   .deck .brand { font-size:22px; } .deck .brand img { width:30px; } .deck .foot, .deck .links { font-size:15px; }
 }
@@ -391,6 +397,7 @@ export default function Deck() {
           </div>
           <p className="sub">For new owners, Sprouts is a first app worth opening every day.</p>
         </div>
+        <img className="sand-lines" src="/deck/sand-lines.webp" alt="" />
         <p className="note">Sources: Dune, Genesis activations (Aug 2026); our on-chain samples of 163 recently active SKR stakers (75th percentile $32 a month) and 46 recently activated Seekers that swapped (median $20 a month), round-up to $1 plus 1% of swaps over $100 (Sept 2026). $2.9M = 12,000 owners at $20 a month.</p>
       </Slide>
 
@@ -407,14 +414,18 @@ export default function Deck() {
         </div>
       </Slide>
 
-      {/* 11 Team + links; R-D19 live line; R-D28 his Validators pfp #14, x.com/donlucas, a Thank you opposite the title */}
-      <Slide n={11} chip="Team" art>
-        <div className="grow">
+      {/* 11 Founder + links (R-D66: renamed from Team, his bio lightly edited); R-D19 live line; R-D28 his Validators pfp #14 */}
+      <Slide n={11} chip="Founder" art>
+        <div className="grow founder">
           <h2>Built by donlucas.</h2>
           <p className="sub">
-            On Solana since 2021. Founded Validators on Eclipse and, with his team, built some of the chain&apos;s first NFT
-            infrastructure, which is still live. Their blip won Eclipse&apos;s hackathon infrastructure track. Also ships xscapes, an
-            open-source tool for AI agents.
+            On Solana since 2021. A working cinematographer and photographer, donlucas founded Validators on the Eclipse SVM and,
+            with his team, built some of the chain&apos;s first NFT infrastructure, still live today. Their blip NFT messaging protocol
+            won Eclipse&apos;s hackathon infrastructure track and grew through partnerships across the ecosystem.
+          </p>
+          <p className="sub">
+            He also built xscapes, a thinking screen for terminal agents, and has a groundbreaking video game in development (or so
+            he thinks).
           </p>
           <p className="sub">Built with Claude Code: the app, the API and the on-chain leash.</p>
           <p className="sub"><b>Live on Solana mainnet and in review on the Solana dApp Store.</b></p>
@@ -430,11 +441,12 @@ export default function Deck() {
         </a>
       </Slide>
 
-      {/* 12 Thank you (R-D52): the grown SKR mandarin, the line, the small ink lockup as on the cover */}
+      {/* 12 Thank you (R-D66): a landscape, the whole garden grown (every plant at stage 14, the approved geode, no stakes:
+          build_timelapse_deck.py --still NOSTAKES=1) across the page; the line and the lockup in its sky */}
       <Slide n={12} art>
-        <img className="end-tree" src="/deck/cover-tree.webp" alt="A grown mandarin tree, painted" />
+        <img className="end-garden" src="/deck/garden-end.webp" alt="The whole Sprouts garden, fully grown" />
+        <img className="end-lockup" src="/deck/lockup-ink.png" alt="Sprouts" />
         <p className="end-thanks">Thank you.</p>
-        <img className="cover-lockup" src="/deck/lockup-ink.png" alt="Sprouts" />
       </Slide>
 
       <div className="bar">
