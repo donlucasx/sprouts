@@ -97,7 +97,7 @@ const CSS = `
 .deck .sand { position:absolute; right:0; bottom:0; width:72%; height:auto; pointer-events:none; }   /* fades baked in (R-D50: Preview blocks CSS masks) */
 .deck .in > .grow, .deck .in > .note { position:relative; z-index:1; }
 .deck .tree { position:absolute; right:calc(var(--u)*-11); bottom:calc(var(--u)*-9); width:calc(var(--u)*35); height:auto; pointer-events:none; }
-.deck .flow.short { max-width:calc(var(--u)*68); }
+.deck .flow.short { max-width:calc(var(--u)*71); } .deck .flow.short b { white-space:nowrap; font-size:calc(var(--u)*1.35); }
 /* R-D34 slide 6 as a graph: change -> Yield Manager -> SKR / stORE / lending, and the dial's SKR floors as bars (manager.ts STOP_FLOOR) */
 .deck .ym { display:grid; grid-template-columns:1fr calc(var(--u)*27); gap:calc(var(--u)*3); align-items:center; margin-top:calc(var(--u)*2.6); }
 .deck .ym-flow { display:grid; grid-template-columns:calc(var(--u)*11.5) auto calc(var(--u)*21) auto 1fr; align-items:center; gap:calc(var(--u)*1); }
@@ -139,6 +139,7 @@ const CSS = `
 .deck .ebl { position:absolute; left:calc(var(--u)*4); top:calc(var(--u)*4); width:calc(var(--u)*9); height:auto; z-index:1; }
 /* R-D65 slide 6: three lines; the four concept plants, a stake beside each (the garden's own sprite + lettering, STAKE in
    model/garden2.ts); the hand + Seeker bottom right, at most a third of the width */
+.deck .geode-scene { position:absolute; left:calc(var(--u)*22); bottom:calc(var(--u)*1.2); width:calc(var(--u)*21); height:auto; }   /* R-D77: the geode, raked sand + rake, feathered into the paper */
 .deck #s6 .steps.g6 { max-width:calc(var(--u)*72); } .deck #s6 .steps.g6 li { font-size:calc(var(--u)*2.1); }
 .deck #s10 .rows { max-width:calc(var(--u)*60); }
 .deck #s10 .row { grid-template-columns:calc(var(--u)*20) 1fr; }
@@ -174,11 +175,11 @@ const CSS = `
 .deck .ym-box.skr img { right:calc(var(--u)*-2.6); bottom:calc(var(--u)*-2.4); height:calc(var(--u)*8.4); }
 .deck .sub.full { max-width:none; }
 .deck .sub.dial { max-width:calc(var(--u)*66); }
-.deck .grow.founder { justify-content:flex-start; margin-top:calc(var(--u)*2); gap:calc(var(--u)*1.6); max-width:calc(var(--u)*64); }
-.deck .grow.founder .sub { font-size:calc(var(--u)*1.7); }
+.deck .grow.founder { justify-content:flex-start; margin-top:calc(var(--u)*1.2); gap:calc(var(--u)*1.1); max-width:calc(var(--u)*64); }
+.deck .grow.founder .sub { font-size:calc(var(--u)*1.8); line-height:1.45; color:#4A4540; }
 .deck .who { position:absolute; right:calc(var(--u)*6.6); top:calc(var(--u)*10.4); display:grid; justify-items:center; gap:calc(var(--u)*1);
   font-size:calc(var(--u)*1.6); font-weight:600; color:var(--leaf); text-decoration:none; }
-.deck .pfp { width:calc(var(--u)*14); height:calc(var(--u)*14); border-radius:calc(var(--u)*1.4); image-rendering:pixelated; flex:none; }
+.deck .pfp { width:calc(var(--u)*18); height:calc(var(--u)*18); border-radius:calc(var(--u)*1.4); image-rendering:pixelated; flex:none; }
 .deck .thanks { position:absolute; right:calc(var(--u)*6.6); bottom:calc(var(--u)*4.4); font-family:var(--font-display), sans-serif; font-weight:700;
   letter-spacing:-.035em; font-size:calc(var(--u)*5.6); color:var(--leaf); margin:0; }
 .deck .links a { color:inherit; text-decoration:none; }
@@ -188,7 +189,7 @@ const CSS = `
 .deck .bar a, .deck .bar button { font:600 13px var(--font-body), sans-serif; background:var(--ink); color:var(--paper); border:0; border-radius:999px; padding:9px 14px; cursor:pointer; text-decoration:none; }
 @media screen and (max-width: 760px) {
   .deck { scroll-snap-type:none; padding:0; gap:0; }
-  .deck .one { white-space:normal; } .deck .who { position:static; justify-items:start; } .deck .pfp { width:96px; height:96px; }
+  .deck .one { white-space:normal; } .deck .who { position:static; justify-items:start; } .deck .pfp { width:120px; height:120px; } .deck .geode-scene { position:static; width:60%; align-self:center; }
   .deck .slide { --u: 2.1vw; width:100%; aspect-ratio:auto; border-radius:0; box-shadow:none; border-bottom:1px solid var(--rule); }
   .deck .in { position:relative; inset:auto; padding:48px 16px 56px; gap:28px; min-height:80vh; }
   .deck h1 { font-size:42px; } .deck h2 { font-size:36px; }
@@ -272,7 +273,7 @@ export default function Deck() {
               Sprouts
             </div>
             <h1>Your spare change, planted <span className="mk">on your Seeker.</span></h1>
-            <p className="sub">Sprouts rounds up every swap your linked wallets make and plants the change in store of value tokens like SKR and stORE, kept in your Seed Vault and grown by an AI&nbsp;Yield&nbsp;Manager.</p>
+            <p className="sub">Sprouts rounds up every swap your linked wallets make and plants the change in store of value tokens like SKR and stORE, self-custodied in your Seed Vault and grown by an AI&nbsp;Yield&nbsp;Manager.</p>
         </div>
         <div className="phone"><img src="/deck/home.webp" alt="Sprouts on a phone: the garden, and under it the coins it holds" /></div>
         <span className="foot">CLOCK IN · Solana Mobile Hackathon 2026 · Radiants</span>
@@ -323,8 +324,8 @@ export default function Deck() {
           <h2 className="h2s narrow" style={{ maxWidth: "calc(var(--u)*46)" }}>Your savings live in <span className="mk">the Seed Vault.</span></h2>
           <div className="stack">
             <div>
-              <strong>Not in a hot wallet</strong>
-              <span>Held by your Seeker&apos;s secure hardware, away from your trading wallet.</span>
+              <strong>Self-custody, in hardware</strong>
+              <span>Your coins sit in your Seeker&apos;s Seed Vault. Not with Sprouts, and not in your trading wallet.</span>
             </div>
             <div>
               <strong>Only you take it out</strong>
@@ -349,6 +350,7 @@ export default function Deck() {
           <li>Each coin grows with every planting. stORE is a geode you dig up.</li>
           <li>A home screen widget with your garden.</li>
         </ol>
+        <img className="geode-scene" src="/deck/geode-scene.webp" alt="The stORE geode, cracked open on raked sand, a rake beside it" />
         <img className="hand" src="/deck/hand-seeker.webp" alt="A hand holding a Seeker: the home screen with the Sprouts garden widget" />
       </Slide>
 
@@ -395,7 +397,7 @@ export default function Deck() {
           <div className="flow short">
             <div><b>You swap</b><small>in any app</small></div>
             <i>→</i>
-            <div><b>Sprouts sets it aside</b><small>the round-up</small></div>
+            <div><b>Sprouts rounds it up</b><small>Sprouts never holds your money</small></div>
             <i>→</i>
             <div className="key"><b>The leash checks it</b><small>$5 a day, only into your savings</small></div>
             <i>→</i>
