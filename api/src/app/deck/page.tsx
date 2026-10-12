@@ -144,14 +144,20 @@ const CSS = `
 .deck .stagew .stake img { width:100%; height:100%; display:block; }
 .deck .stagew .stake b { position:absolute; left:calc(2 / 140 * 100%); top:calc((1 + 34 * .05) / 80 * 100%); width:calc(136 / 140 * 100%); height:calc(34 / 80 * 100%);
   display:flex; align-items:center; justify-content:center; font-family:var(--font-display), sans-serif; font-weight:700; font-size:calc(var(--u)*1.12); line-height:1; color:#3B2A1A; opacity:.9; }
-.deck .geode-scene { position:absolute; left:calc(var(--u)*12); bottom:calc(var(--u)*2.6); width:calc(var(--u)*38); height:auto; }   /* R-D77: the geode, raked sand + rake, feathered into the paper */
+.deck .geode-scene { position:absolute; left:calc(var(--u)*12); bottom:calc(var(--u)*2.6); width:calc(var(--u)*38); height:auto; line-height:0; }
+.deck .geode-scene > img { width:100%; height:auto; display:block; }
+.deck .geode-scene .stake { position:absolute; width:calc(var(--u)*4.2); height:auto; aspect-ratio:140 / 80; line-height:normal;
+  left:70%; top:60%; transform:translate(calc(-71 / 140 * 100%), -100%); }   /* stORE stake: its post's foot (71,80 in the sprite) on the sand right of the geode */
+.deck .geode-scene .stake img { width:100%; height:100%; display:block; }
+.deck .geode-scene .stake b { position:absolute; left:calc(2 / 140 * 100%); top:calc((1 + 34 * .05) / 80 * 100%); width:calc(136 / 140 * 100%); height:calc(34 / 80 * 100%);
+  display:flex; align-items:center; justify-content:center; font-family:var(--font-display), sans-serif; font-weight:700; font-size:calc(var(--u)*4.2 * 27 / 140); line-height:1; color:#3B2A1A; opacity:.9; }   /* R-D77: the geode, raked sand + rake, feathered into the paper */
 .deck #s6 .steps.g6 { max-width:calc(var(--u)*72); } .deck #s6 .steps.g6 li { font-size:calc(var(--u)*2.1); }
 .deck #s10 .rows { max-width:none; }
-.deck #s10 .row { grid-template-columns:calc(var(--u)*20) 1fr; }
-.deck #s10 .plants { left:auto; right:calc(var(--u)*6.6); width:calc(var(--u)*27); bottom:calc(var(--u)*2.2); top:auto;
-  grid-template-columns:repeat(4, 1fr); column-gap:calc(var(--u)*1); row-gap:calc(var(--u)*.8); }
-.deck #s10 .plants .pnote { justify-self:end; font-size:calc(var(--u)*1.05); color:var(--muted); }
-.deck #s10 .plants figure { grid-row:2; }
+.deck #s10 .row { grid-template-columns:calc(var(--u)*26) 1fr; }
+.deck #s10 .plants { left:auto; right:calc(var(--u)*11); width:auto; bottom:calc(var(--u)*2.2); top:auto;
+  grid-template-columns:auto repeat(4, calc(var(--u)*6.5)); grid-template-rows:auto; column-gap:calc(var(--u)*1); }
+.deck #s10 .plants .pnote { grid-column:1; grid-row:1; align-self:center; justify-self:end; margin-right:calc(var(--u)*1); font-size:calc(var(--u)*1.05); color:var(--muted); text-align:right; line-height:1.3; }
+.deck #s10 .plants figure { grid-row:1; }
 .deck #s10 .plants figure > img { height:calc(var(--u)*5.2); }
 .deck #s10 .plants .stake { right:calc(var(--u)*-.6); bottom:calc(var(--u)*-.4); width:calc(var(--u)*3); height:calc(var(--u)*1.7); }
 .deck #s10 .plants .stake b { font-size:calc(var(--u)*3 * 27 / 140); }
@@ -197,7 +203,7 @@ const CSS = `
 .deck .bar a, .deck .bar button { font:600 13px var(--font-body), sans-serif; background:var(--ink); color:var(--paper); border:0; border-radius:999px; padding:9px 14px; cursor:pointer; text-decoration:none; }
 @media screen and (max-width: 760px) {
   .deck { scroll-snap-type:none; padding:0; gap:0; }
-  .deck .one { white-space:normal; } .deck .who { position:static; justify-items:start; } .deck .pfp { width:120px; height:120px; } .deck .geode-scene { position:static; width:85%; align-self:center; }
+  .deck .one { white-space:normal; } .deck .who { position:static; justify-items:start; } .deck .pfp { width:120px; height:120px; } .deck .geode-scene { position:relative; left:auto; bottom:auto; display:block; width:85%; align-self:center; } .deck .geode-scene .stake { width:44px; } .deck .geode-scene .stake b { font-size:8.5px; }
   .deck .slide { --u: 2.1vw; width:100%; aspect-ratio:auto; border-radius:0; box-shadow:none; border-bottom:1px solid var(--rule); }
   .deck .in { position:relative; inset:auto; padding:48px 16px 56px; gap:28px; min-height:80vh; }
   .deck h1 { font-size:42px; } .deck h2 { font-size:36px; }
@@ -231,7 +237,7 @@ const CSS = `
   .deck .ym-flow { justify-items:center; } .deck .ym-flow > .ym-box:first-child { width:62%; } .deck .ym-box.key { width:88%; }
   .deck .ym-out { grid-template-columns:repeat(3, 1fr); width:100%; gap:8px; } .deck .ym-out .ym-box { min-height:150px; align-content:start; padding:12px 10px; }
   .deck .ym-out .ym-box b { font-size:15px; } .deck .ym-out .ym-box small { font-size:12px; } .deck .ym-box.pic img { height:96px; right:-14px; bottom:-10px; }
-  .deck #s10 .rows { max-width:none; } .deck #s10 .row { grid-template-columns:1fr; gap:6px; } .deck #s10 .plants { grid-template-columns:repeat(4, 1fr); width:70%; } .deck #s10 .plants figure > img { height:64px; }
+  .deck #s10 .rows { max-width:none; } .deck #s10 .row { grid-template-columns:1fr; gap:6px; } .deck #s10 .plants { grid-template-columns:repeat(4, 1fr); grid-template-rows:auto auto; width:70%; right:auto; } .deck #s10 .plants .pnote { grid-column:1 / -1; grid-row:1; margin-right:0; } .deck #s10 .plants .pnote br { display:none; } .deck #s10 .plants figure { grid-row:2; } .deck #s10 .plants figure > img { height:64px; }
   .deck #s3 .grow { order:0; } .deck #s3 .sprout { order:1; height:140px; margin-top:72px; } .deck #s3 .note { order:2; margin-top:-12px; }   /* R-D76: room to grow */
   .deck .stagew .stake b { font-size:11px; }
   .deck #s11 .chip { order:0; } .deck #s11 .who { order:1; } .deck #s11 .grow { order:2; } .deck #s11 .in { gap:18px; }
@@ -359,7 +365,7 @@ export default function Deck() {
           <li>Each coin grows with every planting. stORE is a geode you dig up.</li>
           <li>A home screen widget with your garden.</li>
         </ol>
-        <img className="geode-scene" src="/deck/geode-scene.webp" alt="The stORE geode, cracked open on raked sand, a rake beside it" />
+        <span className="geode-scene"><img src="/deck/geode-scene.webp" alt="The stORE geode, cracked open on raked sand, a rake beside it" /><span className="stake"><img src="/deck/stake.png" alt="" /><b>stORE</b></span></span>
         <img className="hand" src="/deck/hand-seeker.webp" alt="A hand holding a Seeker: the home screen with the Sprouts garden widget" />
       </Slide>
 
@@ -441,14 +447,14 @@ export default function Deck() {
         <div className="grow">
           <h2 className="h2s">Sprouts grows with <span className="mk">Solana Mobile.</span></h2>
           <div className="rows">
+            <div className="row"><strong>SKR accumulation engine</strong><span>Every swap on a Seeker buys SKR: at least a quarter of each round-up, staked and held in the owner&apos;s Seed Vault. stORE does the same for ORE.</span></div>
             <div className="row"><strong>$200 to $380 a year</strong><span>saved by an active trader, from the median to the top quarter. It stays theirs.</span></div>
             <div className="row"><strong>0.5% planting fee</strong><span>We keep half a cent of every dollar planted in coins, paid in USDC.</span></div>
             <div className="row"><strong>Pro subscription</strong><span>AI Yield Manager, automatic lending and tax export. Free during launch. Acorns proved this model.</span></div>
-            <div className="row"><strong>Built to hold</strong><span>At least a quarter of every round-up is staked in SKR, the Seeker&apos;s own token, and stORE puts ORE to work as it sits. Every round-up buys into the ecosystem the Seeker runs on.</span></div>
           </div>
         </div>
         <div className="plants">
-          <p className="pnote">Concept art: future coins</p>
+          <p className="pnote">Concept art:{" "}<br />future coins</p>
           {([["pyth", "PYTH", "amethyst in stone"], ["jup", "JUP", "gourd vine on a bamboo hoop"], ["bonk", "BONK", "shiba topiary"], ["jto", "JTO", "lotus in a stone basin"]] as const).map(([f, coin, what]) => (
             <figure key={f}>
               <img src={`/deck/concept-${f}.webp`} alt={`Concept for ${coin}: ${what}`} />
