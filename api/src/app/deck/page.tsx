@@ -115,6 +115,15 @@ const CSS = `
 .deck .ore-band { position:relative; z-index:1; display:flex; align-items:center; gap:calc(var(--u)*2.2); margin:calc(var(--u)*2.2) 0 calc(var(--u)*1.4); max-width:calc(var(--u)*86);
   background:linear-gradient(90deg, #2B2622, #3A3127); color:#F6EFD9; border-radius:calc(var(--u)*.9); padding:calc(var(--u)*1.3) calc(var(--u)*2); }
 .deck .ore-band strong { font-family:var(--font-display), sans-serif; font-size:calc(var(--u)*2.6); letter-spacing:-.03em; color:#E2B84A; }
+/* R-D51 MOCKUP 06b: the band as "Built to hold", SKR and stORE side by side (the script's line) */
+.deck .hold-band { position:relative; z-index:1; display:grid; grid-template-columns:auto auto 1fr; align-items:center; gap:calc(var(--u)*2);
+  margin:calc(var(--u)*1.6) 0 calc(var(--u)*1.2); max-width:calc(var(--u)*86); background:linear-gradient(90deg, #2B2622, #3A3127); color:#F6EFD9;
+  border-radius:calc(var(--u)*.9); padding:calc(var(--u)*1.1) calc(var(--u)*2.2); }
+.deck .hold-band > b { font-family:var(--font-display), sans-serif; font-size:calc(var(--u)*2.3); letter-spacing:-.03em; line-height:1; }
+.deck .hold-band div { display:grid; gap:calc(var(--u)*.3); border-left:1px solid rgba(246,239,217,.18); padding-left:calc(var(--u)*2.2); }
+.deck .hold-band strong { font-family:var(--font-display), sans-serif; font-size:calc(var(--u)*2); letter-spacing:-.03em; }
+.deck .hold-band .skr strong { color:#F0A562; } .deck .hold-band .ore strong { color:#E2B84A; }
+.deck .hold-band span { font-size:calc(var(--u)*1.3); line-height:1.35; }
 .deck .ore-band p { margin:0; font-size:calc(var(--u)*1.45); line-height:1.4; }
 .deck .ym-box em { position:absolute; top:calc(var(--u)*-.9); right:calc(var(--u)*1); font-style:normal; font-weight:700; font-size:calc(var(--u)*1); background:var(--leaf); color:var(--paper); border-radius:999px; padding:calc(var(--u)*.25) calc(var(--u)*.8); }
 .deck .ym-dial { display:grid; gap:calc(var(--u)*1); background:var(--paper); border:1px solid var(--rule); border-radius:calc(var(--u)*.8); padding:calc(var(--u)*1.8) calc(var(--u)*2); }
@@ -169,6 +178,7 @@ const CSS = `
   .deck .phone { position:relative; left:auto; top:auto; width:100%; height:auto; overflow:hidden; border-radius:36px; padding:8px; }
   .deck .phone img { border-radius:30px; }
   .deck .split.home video, .deck .split.home .poster { width:100%; height:auto; }
+  .deck .hold-band { grid-template-columns:1fr; gap:12px; padding:16px; } .deck .hold-band div { border-left:0; padding-left:0; } .deck .hold-band > b { font-size:22px; } .deck .hold-band strong { font-size:20px; } .deck .hold-band span { font-size:14px; }
   .deck .plants { position:static; height:auto; grid-template-columns:repeat(2, 1fr); } .deck .split.home.above-plants { margin-bottom:0; }
   .deck .sprout, .deck video.sprout { position:static; height:220px; width:auto; align-self:center; } .deck .cover-tree, .deck .cover-lockup { position:static; transform:none; align-self:center; } .deck .cover-tree { height:300px; } .deck .cover-lockup { width:160px; } .deck .tree { display:none; } .deck .thanks { position:static; font-size:36px; } .deck .flow.short { max-width:none; } .deck .photo { position:relative; width:100%; height:auto; }
   .deck .sand { position:static; width:100%; margin-top:-24px; } .deck .ym, .deck .ym-flow { grid-template-columns:1fr; } .deck .ym-flow > i { transform:rotate(90deg); justify-self:center; } .deck .ym-box b { font-size:17px; } .deck .ym-box.key b { font-size:20px; } .deck .ym-box small, .deck .ym-dial > small { font-size:13px; } .deck .ym-dial > b { font-size:20px; } .deck .ym-row { font-size:15px; grid-template-columns:80px 1fr 44px; } .deck .ym-row strong { font-size:17px; } .deck .ym-track { height:12px; } .deck .ym-box em { font-size:11px; top:-9px; } .deck .ore-band { flex-direction:column; align-items:flex-start; gap:6px; padding:14px 16px; } .deck .ore-band strong { font-size:24px; } .deck .ore-band p { font-size:14px; } .deck .stack, .deck .narrow, .deck .hero { max-width:none; }
@@ -187,14 +197,14 @@ const CSS = `
 }
 `;
 
-function Slide({ n, chip, art, children }: { n: number; chip?: string; art?: boolean; children: React.ReactNode }) {
+function Slide({ n, label, chip, art, children }: { n: number; label?: string; chip?: string; art?: boolean; children: React.ReactNode }) {
   return (
-    <section className={art ? "slide on-art" : "slide"} id={`s${n}`} aria-label={`Slide ${n}`}>
+    <section className={art ? "slide on-art" : "slide"} id={`s${label ?? n}`} aria-label={`Slide ${label ?? n}`}>
       <div className="in">
         {chip ? <span className="chip">{chip}</span> : null}
         {children}
       </div>
-      <span className="num">{String(n).padStart(2, "0")}</span>
+      <span className="num">{label ?? String(n).padStart(2, "0")}</span>
     </section>
   );
 }
@@ -339,6 +349,41 @@ export default function Deck() {
         <div className="ore-band">
           <strong>stORE</strong>
           <p>Staked ORE, a store of value token that keeps mining. Your change mines ORE from the first planting, free on every plan.</p>
+        </div>
+        <p className="note">Part of Pro, free during launch. The AI model never picks the lender or moves money. Code does both.</p>
+        <img className="sand" src="/deck/sand-fade.webp" alt="" />
+      </Slide>
+
+      {/* 06b MOCKUP (R-D51, his Option 1): slide 6 with the band as 'Built to hold', SKR + stORE. Delete one of 06 / 06b after his pick. */}
+      {/* 06 Yield Manager (his note 6; R-D27 smart + helpful, chip 'Yield Manager'): split-run.ts, lending-leash spec 3-4, R347 */}
+      <Slide n={6} label="06b" chip="Yield Manager">
+        <div className="grow">
+          <h2 className="h2s one">Your round-ups, put to work while you sleep.</h2>
+          <div className="ym">
+            <div className="ym-flow">
+              <div className="ym-box"><b>Your change</b><small>from every swap</small></div>
+              <i>&rarr;</i>
+              <div className="ym-box key"><b>Yield Manager</b><small>Each morning it reads live rates and sends new change where it pays best. It skips rates propped up by short-term rewards and never sells what you hold.</small></div>
+              <i>&rarr;</i>
+              <div className="ym-out">
+                <div className="ym-box pic skr"><b>SKR</b><small>staked</small><img src="/deck/box-skr-fade.webp" alt="" /></div>
+                <div className="ym-box pic ore"><b>stORE</b><small>mining ORE</small><img src="/deck/box-geode-fade.webp" alt="" /></div>
+                <div className="ym-box lend"><b>USDC and SOL</b><small>lent on Kamino or Jupiter Lend</small><em>Pro</em></div>
+              </div>
+            </div>
+            <div className="ym-dial">
+              <b>The risk dial you set</b>
+              <small>the least it keeps in SKR</small>
+              {([["Careful", 50], ["Balanced", 35], ["Bold", 25]] as const).map(([k, v]) => (
+                <div className="ym-row" key={k}><span>{k}</span><div className="ym-track"><div style={{ width: `${v}%` }} /></div><strong>{v}%</strong></div>
+              ))}
+            </div>
+          </div>
+        </div>
+        <div className="hold-band">
+          <b>Built to hold.</b>
+          <div className="skr"><strong>SKR</strong><span>The Seeker&apos;s own token, staked right on your phone.</span></div>
+          <div className="ore"><strong>stORE</strong><span>Puts ORE to work as it sits. Free on every plan.</span></div>
         </div>
         <p className="note">Part of Pro, free during launch. The AI model never picks the lender or moves money. Code does both.</p>
         <img className="sand" src="/deck/sand-fade.webp" alt="" />
