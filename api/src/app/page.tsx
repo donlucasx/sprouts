@@ -15,7 +15,7 @@ const outfitLight = Outfit({ subsets: ["latin"], weight: ["300", "400"] });
 export const dynamic = "force-dynamic";
 // R-S3: the orchid is out (its sand and flower clip); each clip is cropped to its grown plant (width / height), so no empty sky above
 /** Bumped whenever the clips change: the URL changes too, so no browser replays a cached old cut (seen 10-11, R-S4). */
-const CLIPS_V = "6";
+const CLIPS_V = "7";
 const PLANTS = [["store", 1], ["maple", 720 / 428], ["azalea", 720 / 566], ["mandarin", 1], ["geode", 720 / 410]] as const;   // R-D40: stORE's geode (crossfaded stills until its clips land)
 
 export default function Home() {
