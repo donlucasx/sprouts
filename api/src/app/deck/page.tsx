@@ -29,6 +29,8 @@ const CSS = `
 .deck .chip { align-self:flex-start; background:var(--chip); color:var(--leaf); font-weight:600; font-size:calc(var(--u)*1.35);
   padding:calc(var(--u)*.45) calc(var(--u)*1.2); border-radius:999px; letter-spacing:.01em; }
 .deck h1, .deck h2 { font-family:var(--font-display), "Avenir Next", sans-serif; font-weight:700; letter-spacing:-.035em; line-height:.98; margin:0; color:var(--ink); }
+.deck h1, .deck h2 { text-wrap:balance; }
+.deck .steps li, .deck .sub { text-wrap:pretty; }
 .deck h1 { font-size:calc(var(--u)*5.8); }
 .deck h2 { font-size:calc(var(--u)*5.6); }
 .deck .grow { flex:1; display:flex; flex-direction:column; justify-content:center; gap:calc(var(--u)*2.4); }
@@ -79,7 +81,8 @@ const CSS = `
 .deck .beats.center .beat { text-align:center; justify-items:center; }
 .deck .beat .stage { height:calc(var(--u)*12); width:auto; margin-bottom:calc(var(--u)*.4); }
 .deck .beats.big .beat { background:none; padding:0 calc(var(--u)*1); }
-.deck .beats.big .stage { height:calc(var(--u)*20); margin-bottom:0; }
+.deck .beats.big .stage { height:calc(var(--u)*20); margin-bottom:0; mix-blend-mode:multiply;
+  -webkit-mask-image:linear-gradient(to right, transparent, #000 6%, #000 70%, transparent); mask-image:linear-gradient(to right, transparent, #000 6%, #000 70%, transparent); }
 .deck .narrow { max-width:calc(var(--u)*62); }
 .deck .stack { display:grid; gap:calc(var(--u)*1.8); max-width:calc(var(--u)*44); }
 .deck .stack div { display:grid; gap:calc(var(--u)*.4); }
@@ -87,13 +90,14 @@ const CSS = `
 .deck .stack span { font-size:calc(var(--u)*1.5); line-height:1.4; }
 .deck .photo { position:absolute; top:0; right:0; bottom:0; width:44%; height:100%; object-fit:cover; }
 .deck .on-art .num { display:none; }
-.deck .photo-credit { position:absolute; right:calc(var(--u)*1.2); bottom:calc(var(--u)*1); font-size:calc(var(--u)*.8); color:rgba(255,255,255,.55); }
+.deck .photo-credit { position:absolute; left:calc(var(--u)*6.6); bottom:calc(var(--u)*3.4); font-size:calc(var(--u)*.9); color:#A8A29A; }
 .deck .split.wide { grid-template-columns:.62fr 1.38fr; gap:calc(var(--u)*2); }
 .deck .split.home { grid-template-columns:1fr auto; gap:calc(var(--u)*5); }
 .deck .split.home video, .deck .split.home .poster { width:auto; height:calc(var(--u)*29.5); border-radius:calc(var(--u)*2); }
 .deck .split.wide video, .deck .split.wide .poster { border-radius:0; }
 .deck .sand { position:absolute; right:0; bottom:0; width:72%; height:auto; pointer-events:none;
-  -webkit-mask-image:linear-gradient(to right, transparent, #000 35%); mask-image:linear-gradient(to right, transparent, #000 35%); }
+  -webkit-mask-image:linear-gradient(to right, transparent, #000 35%), linear-gradient(to bottom, transparent, #000 40%); -webkit-mask-composite:source-in;
+  mask-image:linear-gradient(to right, transparent, #000 35%), linear-gradient(to bottom, transparent, #000 40%); mask-composite:intersect; }
 .deck .in > .grow, .deck .in > .note { position:relative; z-index:1; }
 .deck .tree { position:absolute; right:calc(var(--u)*-11); bottom:calc(var(--u)*-9); width:calc(var(--u)*35); height:auto; pointer-events:none; }
 .deck .flow.short { max-width:calc(var(--u)*68); }
@@ -130,7 +134,8 @@ const CSS = `
 /* R-D47 slide 6: the geode (stORE) and the mandarin's crown (SKR) oversized, poking in from each box's bottom right */
 .deck .ym-box.pic { overflow:hidden; min-height:calc(var(--u)*5.6); }
 .deck .ym-box.pic > b, .deck .ym-box.pic > small { position:relative; z-index:1; }
-.deck .ym-box.pic img { position:absolute; right:calc(var(--u)*-3.2); bottom:calc(var(--u)*-1.5); height:calc(var(--u)*7.6); width:auto; pointer-events:none; }
+.deck .ym-box.pic img { position:absolute; right:calc(var(--u)*-3.2); bottom:calc(var(--u)*-1.5); height:calc(var(--u)*7.6); width:auto; pointer-events:none;
+  -webkit-mask-image:linear-gradient(to right, transparent, #000 30%); mask-image:linear-gradient(to right, transparent, #000 30%); }
 .deck .ym-box.skr { background:#FBE9D4; box-shadow:inset 0 0 0 2px #E39A4C; }
 .deck .ym-box.skr img { right:calc(var(--u)*-2.6); bottom:calc(var(--u)*-2.4); height:calc(var(--u)*8.4); }
 .deck .sub.full { max-width:none; }
