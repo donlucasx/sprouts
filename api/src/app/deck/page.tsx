@@ -139,7 +139,15 @@ const CSS = `
 .deck .ebl { position:absolute; left:calc(var(--u)*4); top:calc(var(--u)*4); width:calc(var(--u)*9); height:auto; z-index:1; }
 /* R-D65 slide 6: three lines; the four concept plants, a stake beside each (the garden's own sprite + lettering, STAKE in
    model/garden2.ts); the hand + Seeker bottom right, at most a third of the width */
-.deck .steps.g6 { max-width:calc(var(--u)*64); margin-top:calc(var(--u)*1.4); position:relative; z-index:1; }
+.deck #s6 .steps.g6 { max-width:calc(var(--u)*72); } .deck #s6 .steps.g6 li { font-size:calc(var(--u)*2.1); }
+.deck #s10 .rows { max-width:calc(var(--u)*60); }
+.deck #s10 .row { grid-template-columns:calc(var(--u)*20) 1fr; }
+.deck #s10 .plants { left:auto; right:calc(var(--u)*5.6); width:calc(var(--u)*24); bottom:auto; top:calc(var(--u)*21);
+  grid-template-columns:repeat(2, 1fr); column-gap:calc(var(--u)*1.4); row-gap:calc(var(--u)*2.6); }
+.deck #s10 .plants .pnote { justify-self:start; }
+.deck #s10 .plants figure { grid-row:auto; }
+.deck #s10 .plants figure > img { height:calc(var(--u)*8.6); }
+.deck .steps.g6 { max-width:calc(var(--u)*64); margin-top:calc(var(--u)*1.4);  position:relative; z-index:1; }
 .deck .plants { position:absolute; left:calc(var(--u)*6.6); width:calc(var(--u)*40); bottom:calc(var(--u)*3);
   display:grid; grid-template-columns:repeat(4, 1fr); grid-template-rows:auto auto; column-gap:calc(var(--u)*1.6); row-gap:calc(var(--u)*1.2); align-items:end; }
 .deck .plants .pnote { grid-column:1 / -1; grid-row:1; margin:0; justify-self:end; font-family:var(--font-display), sans-serif; font-weight:600;
@@ -214,6 +222,7 @@ const CSS = `
   .deck .ym-flow { justify-items:center; } .deck .ym-flow > .ym-box:first-child { width:62%; } .deck .ym-box.key { width:88%; }
   .deck .ym-out { grid-template-columns:repeat(3, 1fr); width:100%; gap:8px; } .deck .ym-out .ym-box { min-height:150px; align-content:start; padding:12px 10px; }
   .deck .ym-out .ym-box b { font-size:15px; } .deck .ym-out .ym-box small { font-size:12px; } .deck .ym-box.pic img { height:96px; right:-14px; bottom:-10px; }
+  .deck #s10 .rows { max-width:none; } .deck #s10 .plants { grid-template-columns:repeat(4, 1fr); width:70%; } .deck #s10 .plants figure > img { height:64px; }
   .deck #s11 .chip { order:0; } .deck #s11 .who { order:1; } .deck #s11 .grow { order:2; } .deck #s11 .in { gap:18px; }
 }
 @page { size:1920px 1080px; margin:0; }
@@ -282,33 +291,9 @@ export default function Deck() {
         <img className="sprout poster" src="/deck/sprout.webp" alt="" />
       </Slide>
 
+      {/* 04 = the mandarin (SKR) growing, his pick R-D75 (was the orchid) */}
       {/* 04 How it works: any swap, any app (his note 2); the decision removed (the cut table, R-D7) */}
       <Slide n={4} chip="How it works">
-        <div className="grow">
-          <h2 className="h2s">Every swap rounds up. Your Seeker <span className="mk">keeps the change.</span></h2>
-          <div className="beats center big">
-            <div className="beat">
-              <img className="stage" src="/deck/grow-1-fade.webp" alt="" />
-              <strong>Any swap, any app</strong>
-              <span>Each swap rounds up to the next dollar. You choose the extras and a daily limit.</span>
-            </div>
-            <div className="beat">
-              <img className="stage" src="/deck/grow-2-fade.webp" alt="" />
-              <strong>Planted each morning</strong>
-              <span>At 7&nbsp;AM, Sprouts buys your coins with the change you saved, up to $5 a day, split by the AI Yield Manager.</span>
-            </div>
-            <div className="beat">
-              <img className="stage" src="/deck/grow-3-fade.webp" alt="" />
-              <strong>Kept on your Seeker</strong>
-              <span>Sprouts stakes SKR, mines stORE and lends USDC and SOL, all from your Seed Vault.</span>
-            </div>
-          </div>
-        </div>
-      </Slide>
-
-      {/* 04b MOCKUP (R-D74): the mandarin (SKR) growing instead of the orchid; delete one of 04 / 04b after his pick. */}
-      {/* 04 How it works: any swap, any app (his note 2); the decision removed (the cut table, R-D7) */}
-      <Slide n={4} label="04b" chip="How it works">
         <div className="grow">
           <h2 className="h2s">Every swap rounds up. Your Seeker <span className="mk">keeps the change.</span></h2>
           <div className="beats center big">
@@ -363,15 +348,6 @@ export default function Deck() {
           <li>Each coin grows with every planting. stORE is a geode you dig up.</li>
           <li>A home screen widget with your garden.</li>
         </ol>
-        <div className="plants">
-          <p className="pnote">Concept art: future coins</p>
-          {([["pyth", "PYTH", "amethyst in stone"], ["jup", "JUP", "gourd vine on a bamboo hoop"], ["bonk", "BONK", "shiba topiary"], ["jto", "JTO", "lotus in a stone basin"]] as const).map(([f, coin, what]) => (
-            <figure key={f}>
-              <img src={`/deck/concept-${f}.webp`} alt={`Concept for ${coin}: ${what}`} />
-              <span className="stake"><img src="/deck/stake.png" alt="" /><b>{coin}</b></span>
-            </figure>
-          ))}
-        </div>
         <img className="hand" src="/deck/hand-seeker.webp" alt="A hand holding a Seeker: the home screen with the Sprouts garden widget" />
       </Slide>
 
@@ -458,6 +434,15 @@ export default function Deck() {
             <div className="row"><strong>Pro subscription</strong><span>AI Yield Manager, automatic lending and tax export. Free during launch. Acorns proved this model.</span></div>
             <div className="row"><strong>Built to hold</strong><span>SKR is the Seeker&apos;s own token, staked right on your phone, and stORE puts ORE to work as it sits. Sprouts has no token of its own. Every round-up buys into the ecosystem the Seeker runs on.</span></div>
           </div>
+        </div>
+        <div className="plants">
+          <p className="pnote">Concept art: future coins</p>
+          {([["pyth", "PYTH", "amethyst in stone"], ["jup", "JUP", "gourd vine on a bamboo hoop"], ["bonk", "BONK", "shiba topiary"], ["jto", "JTO", "lotus in a stone basin"]] as const).map(([f, coin, what]) => (
+            <figure key={f}>
+              <img src={`/deck/concept-${f}.webp`} alt={`Concept for ${coin}: ${what}`} />
+              <span className="stake"><img src="/deck/stake.png" alt="" /><b>{coin}</b></span>
+            </figure>
+          ))}
         </div>
       </Slide>
 
