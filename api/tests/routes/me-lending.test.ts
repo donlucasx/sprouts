@@ -55,7 +55,7 @@ describe("GET /api/me, lending (contracts 5.2)", () => {
     vi.mocked(readLendingPositions).mockResolvedValueOnce([{ asset: "USDC_LEND", venue: "kamino_klend", receiptRaw: 99_585_062n }]);
     const body = await get();
     expect(body.manager.picks).toEqual({ USDC_LEND: "jupiter_lend", SOL_LEND: null });
-    expect(body.manager.why).toBe("Your USDC goes to Jupiter at 4.2%: Kamino already holds 60% of your lending. No lending venue passed today's checks; your SOL share goes to the next leg.");
+    expect(body.manager.why).toBe("Your USDC goes to Jupiter, 4.2% over 7 days: Kamino already holds 60% of your lending. No lending venue passed today's checks; your SOL share goes to the next leg.");
     expect(body.lendSigns.USDC_LEND).toMatchObject({ venue: "jupiter_lend", line2: "Jupiter 4.2%" });
     // Under the cap ($2 at Kamino): the stop's pick and its stored sentence stand.
     const small = await get();
@@ -118,7 +118,7 @@ describe("GET /api/me, lending (contracts 5.2)", () => {
     const body = await get();
     expect(body.manager.picks).toEqual({ USDC_LEND: "jupiter_lend", SOL_LEND: null });
     // R344: the leash adds no sentence of its own; the plain one an unleashed wallet gets when its pick is simply the venue it plants to.
-    expect(body.manager.why).toBe("Your USDC goes to Jupiter at 4.2%. No lending venue passed today's checks; your SOL share goes to the next leg.");
+    expect(body.manager.why).toBe("Your USDC goes to Jupiter, 4.2% over 7 days. No lending venue passed today's checks; your SOL share goes to the next leg.");
     expect(body.manager.why).not.toMatch(/leash/i);
     expect(body.lendSigns.USDC_LEND).toMatchObject({ venue: "jupiter_lend" });
     // Kamino's leash leg enabled: the stop's pick and its stored sentence stand.
@@ -144,7 +144,7 @@ describe("GET /api/me, lending (contracts 5.2)", () => {
     const legs = LEG_BYTES.map((b) => ({ enabled: b === 0 || b === 3 || b === 5, reader: 0, feeBps: 0, tolBps: 0 })) as unknown as LeashConfig["legs"];
     vi.mocked(readLeashConfig).mockResolvedValueOnce({ legs } as LeashConfig);
     const why = (await get()).manager.why as string;
-    expect(why).toBe("Your USDC goes to Jupiter at 4.2%. Your SOL goes to Jupiter at 5.0%.");
+    expect(why).toBe("Your USDC goes to Jupiter, 4.2% over 7 days. Your SOL goes to Jupiter, 5.0% over 7 days.");
     expect(why).not.toMatch(/Kamino|vs/);
   });
   it("legsEnabled: the leash config's enabled legs once a wallet is leashed; [] when the config cannot be read", async () => {

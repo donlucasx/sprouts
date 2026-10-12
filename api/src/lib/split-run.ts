@@ -125,6 +125,7 @@ const REASON_WORDS: Record<VetoReason, string> = {
  * Code's routing sentence for one lending leg (spec 4): where the money goes, against the other eligible auto venue; when a venue
  * with a higher 7-day average was avoided today, it says so and why (controller ruling, fix round 1). Always under 140 characters.
  */
+/** His ask 10-12: the rates here are 7-day averages (what the manager decides on); Home shows this morning's, so the sentence says so. */
 export function routingWhy(asset: LendAsset, pick: AutoVenue | null, rows: VenueDayRow[], cappedFrom: AutoVenue | null = null): string {
   const coin = asset === "USDC_LEND" ? "USDC" : "SOL";
   // K-I5: this user's 60% venue cap moved the money off the day's pick: the sentence names where it really goes, and why.
@@ -133,16 +134,16 @@ export function routingWhy(asset: LendAsset, pick: AutoVenue | null, rows: Venue
     const full = `${VENUE_NAME[cappedFrom]} already holds 60% of your lending`;
     if (!pick) return `${full} and no other venue passed today's checks; your ${coin} share goes to the next leg.`;
     const at = rows.find((r) => r.venue === pick && r.asset === asset)?.avg7Pct ?? null;
-    return `Your ${coin} goes to ${VENUE_NAME[pick]}${at !== null ? ` at ${r1s(at)}%` : ""}: ${full}.`;
+    return `Your ${coin} goes to ${VENUE_NAME[pick]}${at !== null ? `, ${r1s(at)}% over 7 days` : ""}: ${full}.`;
   }
   if (!pick) return `No lending venue passed today's checks; your ${coin} share goes to the next leg.`;
   const mine = rows.find((r) => r.venue === pick && r.asset === asset);
   const pct = mine?.avg7Pct ?? null;
   if (pct === null) return `Your ${coin} goes to ${VENUE_NAME[pick]}.`;
   const avoided = rows.find((r) => r.venue !== pick && isAutoVenue(r.venue) && r.asset === asset && r.verdict === "avoid" && r.reason !== null && r.avg7Pct !== null && r.avg7Pct > pct);
-  if (avoided) return `Your ${coin} goes to ${VENUE_NAME[pick]} at ${r1s(pct)}%; ${VENUE_NAME[avoided.venue]}'s ${r1s(avoided.avg7Pct as number)}% was set aside today: ${REASON_WORDS[avoided.reason as VetoReason]}.`;
+  if (avoided) return `Your ${coin} goes to ${VENUE_NAME[pick]}, ${r1s(pct)}% over 7 days; ${VENUE_NAME[avoided.venue]}'s ${r1s(avoided.avg7Pct as number)}% was set aside today: ${REASON_WORDS[avoided.reason as VetoReason]}.`;
   const other = rows.find((r) => r.venue !== pick && isAutoVenue(r.venue) && r.asset === asset && r.eligible && r.avg7Pct !== null);
-  return other ? `Your ${coin} goes to ${VENUE_NAME[pick]}, ${r1s(pct)}% vs ${VENUE_NAME[other.venue]} ${r1s(other.avg7Pct as number)}%.` : `Your ${coin} goes to ${VENUE_NAME[pick]} at ${r1s(pct)}%.`;
+  return other ? `Your ${coin} goes to ${VENUE_NAME[pick]}, ${r1s(pct)}% over 7 days vs ${VENUE_NAME[other.venue]} ${r1s(other.avg7Pct as number)}%.` : `Your ${coin} goes to ${VENUE_NAME[pick]}, ${r1s(pct)}% over 7 days.`;
 }
 
 /** Review I3: what may be stored for display: plain letters, digits and basic punctuation, no domain-shaped word. */

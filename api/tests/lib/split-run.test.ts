@@ -251,7 +251,7 @@ describe("the AI's tools, verdicts and found venues (spec 4, R275-R278)", () => 
   const POOL: FoundPool = { poolId: "m1", project: "marginfi-lending", symbol: "SOL", asset: "SOL", apyBasePct: 7.1418, tvlUsd: 45_210_000 };
   const finalWith = (over: Record<string, unknown> = {}) => ({ ...good, SKR: 40, stORE: 5, USDC_LEND: 15, SOL_LEND: 10, hSOL: 25, cbBTC: 5,
     verdicts: [{ venue: "jupiter_lend", asset: "USDC_LEND", verdict: "avoid", reason: "incentive_spike" }], found: [{ poolId: POOL.poolId, note: "Marginfi SOL pool at 7.1% a year." }],
-    why: "Your USDC goes to Kamino, 4.4% vs Jupiter 4.2%.", ...over });
+    why: "Your USDC goes to Kamino, 4.4% over 7 days vs Jupiter 4.2%.", ...over });
   /** Three turns per stop: read Kamino; read Jupiter and scout together; answer. Decided by the conversation's length. */
   const scripted = (final: Record<string, unknown>): ConversationCall => async (req) => {
     const u = (id: string, name: string, input: unknown): ToolUse => ({ id, name, input });
@@ -261,8 +261,8 @@ describe("the AI's tools, verdicts and found venues (spec 4, R275-R278)", () => 
     return { toolUses: [u("d", "set_split", final)], usage };
   };
   // Controller ruling (fix round 1): code owns the routing sentence for every lending leg with a share.
-  const USDC_ROUTE = "Your USDC goes to Kamino, 4.4% vs Jupiter 4.2%.";
-  const SOL_ROUTE = "Your SOL goes to Kamino, 5.6% vs Jupiter 3.9%.";
+  const USDC_ROUTE = "Your USDC goes to Kamino, 4.4% over 7 days vs Jupiter 4.2%.";
+  const SOL_ROUTE = "Your SOL goes to Kamino, 5.6% over 7 days vs Jupiter 3.9%.";
   async function venueRepo() {
     const repo = await seededRepo();
     await snapshotVenues({ repo, now: NOW, reads });
@@ -297,7 +297,7 @@ describe("the AI's tools, verdicts and found venues (spec 4, R275-R278)", () => 
 
   it("a why quoting a number nobody served is replaced by the routing line (Review Focus 5)", async () => {
     const repo = await venueRepo();
-    const rows = await decideSplits({ repo, now: NOW, model: scripted(finalWith({ why: "Your USDC goes to Kamino at 9.9%." })), scout: async () => [POOL] });
+    const rows = await decideSplits({ repo, now: NOW, model: scripted(finalWith({ why: "Your USDC goes to Kamino, 9.9% over 7 days." })), scout: async () => [POOL] });
     expect(rows[1].why).toBe(`${USDC_ROUTE} ${SOL_ROUTE}`);
   });
 
@@ -306,16 +306,16 @@ describe("the AI's tools, verdicts and found venues (spec 4, R275-R278)", () => 
     const rows = await decideSplits({ repo, now: NOW, model: scripted(finalWith({ why: "Your split leans to hSOL this week." })), scout: async () => [POOL] });
     expect(rows[1].why).toBe(`${USDC_ROUTE} ${SOL_ROUTE} Your split leans to hSOL this week.`);
     const repo2 = await venueRepo();
-    const rows2 = await decideSplits({ repo: repo2, now: NOW, model: scripted(finalWith({ why: "Your USDC skips Kamino and goes to Jupiter at 4.2%." })), scout: async () => [POOL] });
+    const rows2 = await decideSplits({ repo: repo2, now: NOW, model: scripted(finalWith({ why: "Your USDC skips Kamino and goes to Jupiter, 4.2% over 7 days." })), scout: async () => [POOL] });
     expect(rows2[1].why).toBe(`${USDC_ROUTE} ${SOL_ROUTE}`);
   });
 
   it("the model READ both venues and named the avoided venue as the destination: code's line replaces it and says why the lower rate won", async () => {
     const repo = await venueRepo();
-    const why = "Your USDC goes to Kamino, 4.4% vs Jupiter 4.2%.";   // every number was served: only code's routing ownership catches it
+    const why = "Your USDC goes to Kamino, 4.4% over 7 days vs Jupiter 4.2%.";   // every number was served: only code's routing ownership catches it
     const rows = await decideSplits({ repo, now: NOW, model: scripted(finalWith({ verdicts: [{ venue: "kamino_klend", asset: "USDC_LEND", verdict: "avoid", reason: "near_full" }], why })), scout: async () => [POOL] });
     expect(rows[1].venuePick).toEqual({ USDC_LEND: "jupiter_lend", SOL_LEND: "kamino_klend" });
-    expect(rows[1].why).toBe(`Your USDC goes to Jupiter at 4.2%; Kamino's 4.4% was set aside today: it is nearly full. ${SOL_ROUTE}`);
+    expect(rows[1].why).toBe(`Your USDC goes to Jupiter, 4.2% over 7 days; Kamino's 4.4% was set aside today: it is nearly full. ${SOL_ROUTE}`);
     expect(rows[1].why!.split(". ")[0].length).toBeLessThanOrEqual(140);
   });
 
@@ -390,6 +390,6 @@ describe("the AI's tools, verdicts and found venues (spec 4, R275-R278)", () => 
     const rows = await decideSplits({ repo, now: NOW, model });
     expect((await repo.listVenueDays(DAY)).find((r) => r.venue === "kamino_klend" && r.asset === "USDC_LEND")).toMatchObject({ verdict: "avoid", reason: "near_full" });
     expect(rows[1].venuePick).toEqual({ USDC_LEND: "jupiter_lend", SOL_LEND: "kamino_klend" });
-    expect(rows[1].why).toBe(`Your USDC goes to Jupiter at 4.2%; Kamino's 4.4% was set aside today: it is nearly full. ${SOL_ROUTE}`);   // controller ruling: say why the lower rate won
+    expect(rows[1].why).toBe(`Your USDC goes to Jupiter, 4.2% over 7 days; Kamino's 4.4% was set aside today: it is nearly full. ${SOL_ROUTE}`);   // controller ruling: say why the lower rate won
   });
 });
