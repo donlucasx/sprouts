@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useIsFocused } from 'expo-router'
 import { Image, Pressable, Text, View } from 'react-native'
 import Animated, {
@@ -144,6 +144,10 @@ export function Garden2({
   const focused = useIsFocused()
   const canStir = LoopImage !== null && !reduced && !night && focused
   const [stirs, setStirs] = useState<Partial<Record<Plant2, number>>>({})
+  // 10-11 tap blink (the video session saw the SKR mandarin vanish for a frame, twice, as a tap's sway began): the still used to be
+  // unmounted the moment a stir began, before the loop had drawn. Now the still stays mounted under the loop and hides only once the
+  // loop's first frame is on screen (expo-image onDisplay); when the stir ends it is already decoded there, so that hand-off is clean too.
+  const [shown, setShown] = useState<Partial<Record<Plant2, number>>>({})
   const stirRaw = useCallback((p: Plant2) => setStirs((o) => (o[p] !== undefined ? o : { ...o, [p]: Date.now() })), [])
   const settle = useCallback(
     (p: Plant2) =>
@@ -196,16 +200,22 @@ export function Garden2({
     const box = { position: 'absolute' as const, left: l.x, top: l.y, width: l.w, height: l.h }
     // R591: a loop with `pad` (the pothos, its cords swaying with it) reaches that far above the box, its first frame the placeholder
     const pad = (loop?.pad ?? 0) * k
-    return loop ? (
-      <StirLoop
-        key={`p-${l.key}-${stirs[l.key]}`}
-        loop={loop}
-        still={loop.first ?? sourceOf(l, night)}
-        style={{ ...box, top: l.y - pad, height: l.h + pad }}
-        onEnd={() => settle(l.key)}
-      />
-    ) : (
-      <Image key={`p-${l.key}`} source={sourceOf(l, night)} fadeDuration={0} style={box} />
+    const stir = stirs[l.key]
+    const covered = loop !== undefined && stir !== undefined && shown[l.key] === stir
+    return (
+      <Fragment key={`p-${l.key}`}>
+        <Image source={sourceOf(l, night)} fadeDuration={0} style={[box, covered ? { opacity: 0 } : null]} />
+        {loop ? (
+          <StirLoop
+            key={`stir-${stir}`}
+            loop={loop}
+            still={loop.first ?? sourceOf(l, night)}
+            style={{ ...box, top: l.y - pad, height: l.h + pad }}
+            onShown={() => setShown((o) => ({ ...o, [l.key]: stir }))}
+            onEnd={() => settle(l.key)}
+          />
+        ) : null}
+      </Fragment>
     )
   }
 
@@ -483,7 +493,7 @@ function GrowPlant({ l, from, night, after }: { l: Extract<Layer, { kind: 'plant
 }
 
 /** R588: one cycle of a plant's idle loop, from the frame it loads (the still is its placeholder, so the hand-offs are swaps). */
-function StirLoop({ loop, still, style, onEnd }: { loop: { src: number; ms: number; pad?: number }; still: number; style: object; onEnd: () => void }) {
+function StirLoop({ loop, still, style, onShown, onEnd }: { loop: { src: number; ms: number; pad?: number }; still: number; style: object; onShown: () => void; onEnd: () => void }) {
   const [loaded, setLoaded] = useState(false)
   useEffect(() => {
     const id = setTimeout(onEnd, loop.ms + (loaded ? 0 : STIR_SPARE_MS))
@@ -493,7 +503,7 @@ function StirLoop({ loop, still, style, onEnd }: { loop: { src: number; ms: numb
   if (!LoopImage) return null
   return (
     <LoopImage source={loop.src} placeholder={still} placeholderContentFit="fill" transition={0} autoplay contentFit="fill" cachePolicy="memory"
-      onLoad={() => setLoaded(true)} style={style} />
+      onLoad={() => setLoaded(true)} onDisplay={onShown} style={style} />
   )
 }
 
