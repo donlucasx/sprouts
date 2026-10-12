@@ -249,7 +249,7 @@ export default function Deck() {
             <p className="sub">Sprouts rounds up every swap your linked wallets make and plants the change in store of value tokens like SKR and stORE, kept in your Seed Vault and grown by an AI&nbsp;Yield&nbsp;Manager.</p>
         </div>
         <div className="phone"><img src="/deck/home.webp" alt="Sprouts on a phone: the garden, and under it the coins it holds" /></div>
-        <span className="foot">CLOCK IN · Solana Mobile Hackathon 2026</span>
+        <span className="foot">CLOCK IN · Solana Mobile Hackathon 2026 · Radiants</span>
       </Slide>
 
       {/* 03 The opportunity (R-D24): the 10-04 problem line, verbatim, turned toward what the swaps make possible */}
@@ -342,7 +342,7 @@ export default function Deck() {
             <div className="ym-flow">
               <div className="ym-box"><b>Your change</b><small>from every swap</small></div>
               <i>&rarr;</i>
-              <div className="ym-box key"><b>Yield Manager</b><small>Each morning it reads live rates and sends new change where it pays best. It skips rates propped up by short-term rewards and never sells what you hold.</small></div>
+              <div className="ym-box key"><b>Yield Manager</b><small>Each morning, Claude Haiku 4.5 reads live rates and sends new change where it pays best. It skips rates propped up by short-term rewards and never sells what you hold.</small></div>
               <i>&rarr;</i>
               <div className="ym-out">
                 <div className="ym-box pic skr"><b>SKR</b><small>staked</small><img src="/deck/box-skr-fade.webp" alt="" /></div>
