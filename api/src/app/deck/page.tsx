@@ -100,7 +100,7 @@ const CSS = `
 .deck .flow.short { max-width:calc(var(--u)*68); }
 /* R-D34 slide 6 as a graph: change -> Yield Manager -> SKR / stORE / lending, and the dial's SKR floors as bars (manager.ts STOP_FLOOR) */
 .deck .ym { display:grid; grid-template-columns:1fr calc(var(--u)*27); gap:calc(var(--u)*3); align-items:center; margin-top:calc(var(--u)*2.6); }
-.deck .ym-flow { display:grid; grid-template-columns:calc(var(--u)*11.5) auto calc(var(--u)*18) auto 1fr; align-items:center; gap:calc(var(--u)*1); }
+.deck .ym-flow { display:grid; grid-template-columns:calc(var(--u)*11.5) auto calc(var(--u)*21) auto 1fr; align-items:center; gap:calc(var(--u)*1); }
 .deck .ym-flow > i { font-style:normal; color:var(--muted); font-size:calc(var(--u)*2.2); }
 .deck .ym-box { position:relative; background:var(--sheet); border-radius:calc(var(--u)*.8); padding:calc(var(--u)*1.1) calc(var(--u)*1.3); display:grid; gap:calc(var(--u)*.35); }
 .deck .ym-box b { font-family:var(--font-display), sans-serif; font-size:calc(var(--u)*1.6); letter-spacing:-.01em; }
@@ -125,6 +125,17 @@ const CSS = `
 .deck .ym-track { height:calc(var(--u)*1.6); background:var(--rule); border-radius:999px; overflow:hidden; }
 .deck .ym-track div { height:100%; background:var(--leaf); border-radius:999px; }
 .deck .one { white-space:nowrap; }
+/* R-D70 (his yes R-D73): the video's painted green marker behind the end of each headline (a stretched brush strip, lower half of the line) */
+.deck .mk { background:url(/deck/marker.png) no-repeat; background-size:calc(100% + .3em) 52%; background-position:-.12em 92%;
+  -webkit-box-decoration-break:clone; box-decoration-break:clone; padding:0 .06em; }
+/* R-D70  slide 9: the sources line on clean paper (kept left, where the sand has faded out), a touch darker. No text-shadow: Chrome prints it as boxes */
+.deck #s9 .note { color:#8A847B; max-width:calc(var(--u)*44); }
+/* R-D73 slide 12 (12b2): the garden placed by where its crowns start (43% down the sky-extended image); the line in the sky */
+.deck .eb { position:absolute; height:auto; }
+.deck .eb.eb2, .deck img.eb { left:calc(var(--u)*-15.0); top:calc(var(--u)*-31.8); width:calc(var(--u)*130); }
+.deck .ebt { position:absolute; margin:0; font-family:var(--font-display), sans-serif; font-weight:700; letter-spacing:-.045em; line-height:1; color:var(--ink); z-index:1; }
+.deck p.ebt { left:0; right:0; top:calc(var(--u)*5); text-align:center; font-size:calc(var(--u)*12.5); }
+.deck .ebl { position:absolute; left:calc(var(--u)*4); top:calc(var(--u)*4); width:calc(var(--u)*9); height:auto; z-index:1; }
 /* R-D65 slide 6: three lines; the four concept plants, a stake beside each (the garden's own sprite + lettering, STAKE in
    model/garden2.ts); the hand + Seeker bottom right, at most a third of the width */
 .deck .steps.g6 { max-width:calc(var(--u)*64); margin-top:calc(var(--u)*1.4); position:relative; z-index:1; }
@@ -142,13 +153,8 @@ const CSS = `
 .deck .hand { position:absolute; right:calc(var(--u)*2.4); bottom:0; width:calc(var(--u)*32); height:auto; }
 /* R-D47 cover (slide 0): the mature SKR mandarin centred, the ink lockup small at the bottom */
 .deck .cover-tree { position:absolute; left:50%; top:calc(var(--u)*8.5); height:calc(var(--u)*36); width:auto; transform:translateX(-50%); }
-.deck .end-tree { position:absolute; left:50%; top:calc(var(--u)*4.4); height:calc(var(--u)*30); width:auto; transform:translateX(-50%); }
 .deck .sand-lines { position:absolute; right:0; bottom:0; width:78%; height:auto; pointer-events:none; }   /* R-D66 slide 9: the plate's raked lines + upper rings, fades baked */
 .deck .in > .note { position:relative; z-index:1; }
-.deck .end-garden { position:absolute; left:50%; bottom:calc(var(--u)*5); width:74%; height:auto; transform:translateX(-50%); }
-.deck .end-lockup { position:absolute; left:50%; transform:translateX(-50%); bottom:calc(var(--u)*2.2); z-index:1; width:calc(var(--u)*12); height:auto; }
-.deck .end-thanks { position:absolute; left:0; right:0; top:calc(var(--u)*3.6); margin:0; text-align:center; font-family:var(--font-display), sans-serif; font-weight:700;
-  letter-spacing:-.035em; font-size:calc(var(--u)*5.6); color:var(--leaf); }
 .deck .cover-sprout, .deck video.cover-sprout { position:absolute; left:50%; top:calc(var(--u)*13.5); height:calc(var(--u)*30); width:auto; transform:translateX(-50%); border-radius:0; }
 .deck .cover-lockup { position:absolute; left:50%; bottom:calc(var(--u)*6.4); width:calc(var(--u)*12); height:auto; transform:translateX(-50%); }
 /* R-D47 slide 6: the geode (stORE) and the mandarin's crown (SKR) oversized, poking in from each box's bottom right */
@@ -190,15 +196,14 @@ const CSS = `
   .deck .phone img { border-radius:30px; }
   .deck .split.home video, .deck .split.home .poster { width:100%; height:auto; }
   .deck .plants { position:static; width:auto; grid-template-columns:repeat(2, 1fr); } .deck .plants figure { grid-row:auto; } .deck .hand { position:static; width:100%; max-width:360px; align-self:center; } .deck .split.home.above-plants { margin-bottom:0; }
-  .deck .sprout, .deck video.sprout { position:static; height:220px; width:auto; align-self:center; } .deck .cover-sprout, .deck video.cover-sprout, .deck .cover-tree, .deck .cover-lockup, .deck .end-tree, .deck .end-thanks, .deck .end-garden, .deck .end-lockup { position:static; transform:none; align-self:center; } .deck .cover-tree { height:300px; } .deck .cover-lockup { width:160px; } .deck .tree { display:none; } .deck .thanks { position:static; font-size:36px; } .deck .flow.short { max-width:none; } .deck .photo { position:relative; width:100%; height:auto; }
+  .deck .sprout, .deck video.sprout { position:static; height:220px; width:auto; align-self:center; } .deck .cover-sprout, .deck video.cover-sprout, .deck .cover-tree, .deck .cover-lockup, .deck .eb, .deck .ebt, .deck .ebl { position:static; transform:none; align-self:center; } .deck .cover-tree { height:300px; } .deck .cover-lockup { width:160px; } .deck .tree { display:none; } .deck .thanks { position:static; font-size:36px; } .deck .flow.short { max-width:none; } .deck .photo { position:relative; width:100%; height:auto; }
   .deck .sand { position:static; width:100%; margin-top:-24px; } .deck .ym, .deck .ym-flow { grid-template-columns:1fr; } .deck .ym-flow > i { transform:rotate(90deg); justify-self:center; } .deck .ym-box b { font-size:17px; } .deck .ym-box.key b { font-size:20px; } .deck .ym-box small, .deck .ym-dial > small { font-size:13px; } .deck .ym-dial > b { font-size:20px; } .deck .ym-row { font-size:15px; grid-template-columns:80px 1fr 44px; } .deck .ym-row strong { font-size:17px; } .deck .ym-track { height:12px; } .deck .ym-box em { font-size:11px; top:-9px; } .deck .ore-band { flex-direction:column; align-items:flex-start; gap:6px; padding:14px 16px; } .deck .ore-band strong { font-size:24px; } .deck .ore-band p { font-size:14px; } .deck .stack, .deck .narrow, .deck .hero { max-width:none; }
   .deck .brand { font-size:22px; } .deck .brand img { width:30px; } .deck .foot, .deck .links { font-size:15px; }
   /* R-D68 phone pass: no sand blocks under the text; stakes inside their cell and readable; the credit readable; the end stack centred */
   .deck .sand, .deck .sand-lines { display:none; }
   .deck .plants .stake { right:0; bottom:-4px; width:64px; height:37px; } .deck .plants .stake b { font-size:12px; } .deck .plants figure > img { height:120px; }
   .deck .photo-credit { position:static; font-size:11px; }
-  .deck .end-thanks { text-align:center; font-size:40px; } .deck .end-garden { width:100%; height:auto; transform:none; } .deck .end-lockup { width:120px; transform:none; align-self:center; }
-  .deck .slide:last-of-type .in { justify-content:center; gap:20px; }
+  .deck p.ebt { text-align:center; font-size:48px; } .deck img.eb { width:100%; height:auto; } .deck .ebl { width:110px; align-self:center; }
 }
 @page { size:1920px 1080px; margin:0; }
 @media print {
@@ -245,7 +250,7 @@ export default function Deck() {
               <img src="/deck/mark.svg" alt="" />
               Sprouts
             </div>
-            <h1>Your spare change, planted on your Seeker.</h1>
+            <h1>Your spare change, planted <span className="mk">on your Seeker.</span></h1>
             <p className="sub">Sprouts rounds up every swap your linked wallets make and plants the change in store of value tokens like SKR and stORE, kept in your Seed Vault and grown by an AI&nbsp;Yield&nbsp;Manager.</p>
         </div>
         <div className="phone"><img src="/deck/home.webp" alt="Sprouts on a phone: the garden, and under it the coins it holds" /></div>
@@ -255,7 +260,7 @@ export default function Deck() {
       {/* 03 The opportunity (R-D24): the 10-04 problem line, verbatim, turned toward what the swaps make possible */}
       <Slide n={3} chip="The opportunity">
         <div className="grow">
-          <h2 className="one">Traders rarely set money aside.<br />Their swaps can do it for them.</h2>
+          <h2 className="one">Traders rarely set money aside.<br />Their swaps can <span className="mk">do it for them.</span></h2>
           <p className="sub full">
             Their money sits in the hot wallet they trade from, and nobody stops mid-trade to save. Every swap can set a little change aside.
           </p>
@@ -269,7 +274,7 @@ export default function Deck() {
       {/* 04 How it works: any swap, any app (his note 2); the decision removed (the cut table, R-D7) */}
       <Slide n={4} chip="How it works">
         <div className="grow">
-          <h2 className="h2s">Every swap rounds up. Your Seeker keeps the change.</h2>
+          <h2 className="h2s">Every swap rounds up. Your Seeker <span className="mk">keeps the change.</span></h2>
           <div className="beats center big">
             <div className="beat">
               <img className="stage" src="/deck/grow-1-fade.webp" alt="" />
@@ -279,7 +284,7 @@ export default function Deck() {
             <div className="beat">
               <img className="stage" src="/deck/grow-2-fade.webp" alt="" />
               <strong>Planted each morning</strong>
-              <span>At 7&nbsp;AM, Sprouts buys your coins with the change you saved, up to $5 a day.</span>
+              <span>At 7&nbsp;AM, Sprouts buys your coins with the change you saved, up to $5 a day, split by the AI Yield Manager.</span>
             </div>
             <div className="beat">
               <img className="stage" src="/deck/grow-3-fade.webp" alt="" />
@@ -293,7 +298,7 @@ export default function Deck() {
       {/* 05 The Seed Vault (his note 1). Saga is also accepted (R86), so "built for", never "only works on". */}
       <Slide n={5} chip="Built for Seeker" art>
         <div className="grow">
-          <h2 className="h2s narrow" style={{ maxWidth: "calc(var(--u)*46)" }}>Your savings live in the Seed Vault.</h2>
+          <h2 className="h2s narrow" style={{ maxWidth: "calc(var(--u)*46)" }}>Your savings live in <span className="mk">the Seed Vault.</span></h2>
           <div className="stack">
             <div>
               <strong>Not in a hot wallet</strong>
@@ -316,7 +321,7 @@ export default function Deck() {
       {/* 06 Garden (R-D5; R-D65 10-12): three lines, the four concept plants with their stakes, a hand holding a Seeker with our
           home screen + widget (his photo, mirrored and cut out, brand/deck-art/build_hand_phone.py), at most a third of the width */}
       <Slide n={6} chip="Why you come back" art>
-        <h2 className="h2s one" style={{ margin: "calc(var(--u)*2.6) 0 calc(var(--u)*1.6)" }}>A garden that grows every time you swap.</h2>
+        <h2 className="h2s one" style={{ margin: "calc(var(--u)*2.6) 0 calc(var(--u)*1.6)" }}>A garden that grows <span className="mk">every time you swap.</span></h2>
         <ol className="steps g6">
           <li>Each plant or mineral is unique to each token.</li>
           <li>Each coin grows with every planting. stORE is a geode you dig up.</li>
@@ -335,14 +340,14 @@ export default function Deck() {
       </Slide>
 
       {/* 07 Yield Manager (his note 6; R-D27 smart + helpful, chip 'Yield Manager'): split-run.ts, lending-leash spec 3-4, R347 */}
-      <Slide n={7} chip="Yield Manager">
+      <Slide n={7} chip="AI Yield Manager">
         <div className="grow">
-          <h2 className="h2s one" style={{ marginTop: "calc(var(--u)*1.6)" }}>Your round-ups, put to work while you sleep.</h2>
+          <h2 className="h2s one" style={{ marginTop: "calc(var(--u)*1.6)" }}>Your round-ups, put to work <span className="mk">while you sleep.</span></h2>
           <div className="ym">
             <div className="ym-flow">
               <div className="ym-box"><b>Your change</b><small>from every swap</small></div>
               <i>&rarr;</i>
-              <div className="ym-box key"><b>Yield Manager</b><small>Each morning, Claude Haiku 4.5 reads live rates and sends new change where it pays best. It skips rates propped up by short-term rewards and never sells what you hold.</small></div>
+              <div className="ym-box key"><b>AI Yield Manager</b><small>Each morning, Claude Haiku 4.5 reads live rates and sends new change where it pays best. It skips rates propped up by short-term rewards and never sells what you hold.</small></div>
               <i>&rarr;</i>
               <div className="ym-out">
                 <div className="ym-box pic skr"><b>SKR</b><small>staked</small><img src="/deck/box-skr-fade.webp" alt="" /></div>
@@ -363,16 +368,16 @@ export default function Deck() {
           <strong>stORE</strong>
           <p>Staked ORE, a store of value token that keeps mining. Your change mines ORE from the first planting, free on every plan.</p>
         </div>
-        <p className="note">Part of Pro, free during launch. The AI model never picks the lender or moves money. Code does both.</p>
+        <p className="note">Part of Pro, free during launch. The AI sets the split and skips risky lenders. Code moves the money.</p>
         <img className="sand" src="/deck/sand-fade.webp" alt="" />
       </Slide>
 
       {/* 08 Safety + how it's built (R300 as the sub, R-D6, R-D18 trust line); R-D26: inviting, not defensive */}
       <Slide n={8} chip="Your money stays yours">
         <div className="grow">
-          <h2 className="h2s" style={{ maxWidth: "calc(var(--u)*62)" }}>Your money only moves into your savings.</h2>
+          <h2 className="h2s" style={{ maxWidth: "calc(var(--u)*62)" }}>Your money only moves <span className="mk">into your savings.</span></h2>
           <p className="sub" style={{ maxWidth: "calc(var(--u)*54)" }}>
-            An on-chain leash lets Sprouts move at most $5 a day per wallet, and only into savings you hold. Not even our server can send it anywhere else.
+            An on-chain leash lets Sprouts move at most $5 a day per wallet, and only into savings you hold. Not even our server or its AI can send it anywhere else.
           </p>
           <div className="flow short">
             <div><b>You swap</b><small>in any app</small></div>
@@ -394,7 +399,7 @@ export default function Deck() {
       {/* 09 Market (R-D3: market data, not our DB) */}
       <Slide n={9} chip="Who it's for">
         <div className="grow">
-          <h2 className="h2s">Every Seeker owner, from their first swap.</h2>
+          <h2 className="h2s">Every Seeker owner, from <span className="mk">their first swap.</span></h2>
           <div className="stats">
             <div className="stat"><strong>120k</strong><span>Seekers activated, each with the dApp Store built in.</span></div>
             <div className="stat"><strong>$380</strong><span>a year saved by the top quarter of active traders.</span></div>
@@ -410,11 +415,11 @@ export default function Deck() {
       {/* 10 Business: Seeker and Solana Mobile only (R-D4); Pro = manager + auto-lending + tax pack (R446c); docs/reports/2026-10-09-business-model-analysis.md */}
       <Slide n={10} chip="Business model">
         <div className="grow">
-          <h2 className="h2s">Sprouts grows with Solana Mobile.</h2>
+          <h2 className="h2s">Sprouts grows with <span className="mk">Solana Mobile.</span></h2>
           <div className="rows">
             <div className="row"><strong>$200 to $380 a year</strong><span>saved by an active trader, from the median to the top quarter. It stays theirs.</span></div>
             <div className="row"><strong>0.5% planting fee</strong><span>We keep half a cent of every dollar planted in coins, paid in USDC.</span></div>
-            <div className="row"><strong>Pro subscription</strong><span>Yield Manager, automatic lending and tax export. Free during launch. Acorns proved this model.</span></div>
+            <div className="row"><strong>Pro subscription</strong><span>AI Yield Manager, automatic lending and tax export. Free during launch. Acorns proved this model.</span></div>
             <div className="row"><strong>Built to hold</strong><span>SKR is the Seeker&apos;s own token, staked right on your phone, and stORE puts ORE to work as it sits. Sprouts has no token of its own. Every round-up buys into the ecosystem the Seeker runs on.</span></div>
           </div>
         </div>
@@ -423,7 +428,7 @@ export default function Deck() {
       {/* 11 Founder + links (R-D66: renamed from Team, his bio lightly edited); R-D19 live line; R-D28 his Validators pfp #14 */}
       <Slide n={11} chip="Founder" art>
         <div className="grow founder">
-          <h2>Built by donlucas.</h2>
+          <h2>Built by <span className="mk">donlucas.</span></h2>
           <p className="sub">
             On Solana since 2021. A working cinematographer and photographer, donlucas founded Validators on the Eclipse SVM and,
             with his team, built some of the chain&apos;s first NFT infrastructure, still live today. Their blip NFT messaging protocol
@@ -447,12 +452,12 @@ export default function Deck() {
         </a>
       </Slide>
 
-      {/* 12 Thank you (R-D66): a landscape, the whole garden grown (every plant at stage 14, the approved geode, no stakes:
-          build_timelapse_deck.py --still NOSTAKES=1) across the page; the line and the lockup in its sky */}
+      {/* 12 Thank you (R-D71/R-D73, his pick 12b2): the whole garden grown, on extended paper sky, 130% wide and placed by its crown
+          line so the trees rise toward the line without touching it; the line oversized with the painted marker; the lockup in the sky */}
       <Slide n={12} art>
-        <p className="end-thanks">Thank you.</p>
-        <img className="end-garden" src="/deck/garden-end.webp" alt="The whole Sprouts garden, fully grown" />
-        <img className="end-lockup" src="/deck/lockup-ink.png" alt="Sprouts" />
+        <p className="ebt"><span className="mk">Thank you.</span></p>
+        <img className="eb" src="/deck/garden-end-sky.webp" alt="The whole Sprouts garden, fully grown" />
+        <img className="ebl" src="/deck/lockup-ink.png" alt="Sprouts" />
       </Slide>
 
       <div className="bar">
