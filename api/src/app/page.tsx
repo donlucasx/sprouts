@@ -1,8 +1,11 @@
-import { Outfit } from "next/font/google";
+import { JetBrains_Mono, Outfit } from "next/font/google";
 
 const outfit = Outfit({ subsets: ["latin"], weight: ["600"] });
 /** R-S3 (his note "a sleeker font for the 'coming soon...' and buttons underneath"): Outfit light, a little tracking. */
 const outfitLight = Outfit({ subsets: ["latin"], weight: ["300", "400"] });
+/** His note 10-12 (monochrome lockup 'Sprouts' 'Clock in' under the art): the hackathon's CRT wordmark is heavy system monospace
+ *  (weight 900, tracking .06em; sub-lines ~.21em size, tracking .32em); JetBrains Mono 800 so it reads the same on every device. */
+const mono = JetBrains_Mono({ subsets: ["latin"], weight: ["400", "800"] });
 
 /**
  * The front door (his note 10-11: "a fun minimal splash page ... the simple loading screen from the phone (with the tree growing), and
@@ -31,6 +34,13 @@ export default function Home() {
         .sp-stage { width: min(72vw, 360px); aspect-ratio: 6 / 5; }
         .sp-grow, .sp-grown { width: 100%; height: 100%; display: block; mix-blend-mode: multiply; object-fit: contain; object-position: center bottom; }
         .sp-grown { display: none; }
+        .sp-lock { display: flex; align-items: center; gap: clamp(14px, 4vw, 22px); margin: 4px 0 0; color: ${ink}; }
+        .sp-lock h1 { display: flex; align-items: center; gap: 10px; font-size: clamp(32px, 9vw, 42px); font-weight: 600; letter-spacing: -0.03em; margin: 0; }
+        .sp-lock h1 img { height: 0.95em; width: auto; filter: brightness(0); opacity: .86; }   /* monochrome: the mark in ink */
+        .sp-rule { width: 1px; align-self: stretch; margin: 6px 0; background: ${ink}; opacity: .35; }
+        .sp-ci { display: grid; justify-items: start; line-height: 1; font-size: clamp(24px, 6.6vw, 31px); }
+        .sp-ci b { font-size: 1em; font-weight: 800; letter-spacing: 0.06em; }
+        .sp-ci small { font-size: 0.226em; font-weight: 400; letter-spacing: 0.32em; margin-top: 0.22em; white-space: nowrap; }   /* spans CLOCK IN's width: 5.16em vs 22.7 x .226 */
         @media (prefers-reduced-motion: reduce) { .sp-dots::after { animation: none; } .sp-grow { display: none; } .sp-grown { display: block; } }
       `}</style>
       <div style={{ display: "grid", placeItems: "center", alignContent: "center", padding: "0 24px 7vh" }}>
@@ -39,10 +49,14 @@ export default function Home() {
           <video className="sp-grow" src={`/site/grow-${plant}.mp4?v=${CLIPS_V}`} autoPlay muted playsInline preload="auto" aria-label="A plant growing from seed" />
           <img className="sp-grown" src={`/site/grown-${plant}.webp?v=${CLIPS_V}`} alt="A grown plant" />
         </div>
-        <h1 className={outfit.className} style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 42, fontWeight: 600, letterSpacing: "-0.03em", margin: "4px 0 0" }}>
-          <img src="/deck/mark.svg" alt="" style={{ height: 40, width: "auto" }} />
-          Sprouts
-        </h1>
+        <div className="sp-lock">
+          <h1 className={outfit.className}><img src="/deck/mark.svg" alt="" />Sprouts</h1>
+          <span className="sp-rule" aria-hidden="true" />
+          <div className={`sp-ci ${mono.className}`} aria-label="CLOCK IN, a Solana Mobile hackathon">
+            <b>CLOCK IN</b>
+            <small>A SOLANA MOBILE HACKATHON</small>
+          </div>
+        </div>
         <p style={{ color: ink, fontSize: 16, fontWeight: 400, letterSpacing: "0.01em", margin: "22px 0 0", textAlign: "center", maxWidth: 340, lineHeight: 1.45 }}>
           Built for the CLOCK IN Solana Mobile Hackathon, hosted by Radiants
         </p>
