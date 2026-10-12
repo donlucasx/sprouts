@@ -93,7 +93,7 @@ const CSS = `
 .deck .photo-credit { position:absolute; left:calc(var(--u)*6.6); bottom:calc(var(--u)*3.4); font-size:calc(var(--u)*.9); color:#A8A29A; }
 .deck .split.wide { grid-template-columns:.62fr 1.38fr; gap:calc(var(--u)*2); }
 .deck .split.home { grid-template-columns:1fr auto; gap:calc(var(--u)*5); }
-.deck .split.home video, .deck .split.home .poster { width:auto; height:calc(var(--u)*29.5); border-radius:calc(var(--u)*2); }
+.deck .split.home video, .deck .split.home .poster { width:auto; height:calc(var(--u)*22); border-radius:calc(var(--u)*2); }
 .deck .split.wide video, .deck .split.wide .poster { border-radius:0; }
 .deck .sand { position:absolute; right:0; bottom:0; width:72%; height:auto; pointer-events:none;
   -webkit-mask-image:linear-gradient(to right, transparent, #000 35%), linear-gradient(to bottom, transparent, #000 40%); -webkit-mask-composite:source-in;
@@ -128,6 +128,11 @@ const CSS = `
 .deck .ym-track { height:calc(var(--u)*1.6); background:var(--rule); border-radius:999px; overflow:hidden; }
 .deck .ym-track div { height:100%; background:var(--leaf); border-radius:999px; }
 .deck .one { white-space:nowrap; }
+/* R-D49 slide 5: a row of plants along the bottom, five equal slots (azalea + maple now, future-coin concepts in the rest) */
+.deck .split.home.above-plants { margin-bottom:calc(var(--u)*13); }
+.deck .plants { position:absolute; left:calc(var(--u)*6.6); right:calc(var(--u)*6.6); bottom:calc(var(--u)*3); height:calc(var(--u)*11);
+  display:grid; grid-template-columns:repeat(5, 1fr); gap:calc(var(--u)*2); align-items:end; justify-items:center; pointer-events:none; }
+.deck .plants img { max-height:100%; max-width:100%; width:auto; height:calc(var(--u)*10); object-fit:contain; }
 /* R-D47 cover (slide 0): the mature SKR mandarin centred, the ink lockup small at the bottom */
 .deck .cover-tree { position:absolute; left:50%; top:calc(var(--u)*6); height:calc(var(--u)*36); width:auto; transform:translateX(-50%); }
 .deck .cover-lockup { position:absolute; left:50%; bottom:calc(var(--u)*4.2); width:calc(var(--u)*12); height:auto; transform:translateX(-50%); }
@@ -168,6 +173,7 @@ const CSS = `
   .deck .phone { position:relative; left:auto; top:auto; width:100%; height:auto; overflow:hidden; border-radius:36px; padding:8px; }
   .deck .phone img { border-radius:30px; }
   .deck .split.home video, .deck .split.home .poster { width:100%; height:auto; }
+  .deck .plants { position:static; height:auto; grid-template-columns:repeat(2, 1fr); } .deck .split.home.above-plants { margin-bottom:0; }
   .deck .sprout, .deck video.sprout { position:static; height:220px; width:auto; align-self:center; } .deck .cover-tree, .deck .cover-lockup { position:static; transform:none; align-self:center; } .deck .cover-tree { height:300px; } .deck .cover-lockup { width:160px; } .deck .tree { display:none; } .deck .thanks { position:static; font-size:36px; } .deck .flow.short { max-width:none; } .deck .photo { position:relative; width:100%; height:auto; }
   .deck .sand { position:static; width:100%; margin-top:-24px; } .deck .ym, .deck .ym-flow { grid-template-columns:1fr; } .deck .ym-flow > i { transform:rotate(90deg); justify-self:center; } .deck .ym-box b { font-size:17px; } .deck .ym-box.key b { font-size:20px; } .deck .ym-box small, .deck .ym-dial > small { font-size:13px; } .deck .ym-dial > b { font-size:20px; } .deck .ym-row { font-size:15px; grid-template-columns:80px 1fr 44px; } .deck .ym-row strong { font-size:17px; } .deck .ym-track { height:12px; } .deck .ym-box em { font-size:11px; top:-9px; } .deck .ore-band { flex-direction:column; align-items:flex-start; gap:6px; padding:14px 16px; } .deck .ore-band strong { font-size:24px; } .deck .ore-band p { font-size:14px; } .deck .stack, .deck .narrow, .deck .hero { max-width:none; }
   .deck .brand { font-size:22px; } .deck .brand img { width:30px; } .deck .foot, .deck .links { font-size:15px; }
@@ -287,7 +293,7 @@ export default function Deck() {
       {/* 05 Garden: demo + why people come back (R-D5) */}
       <Slide n={5} chip="Why you come back">
         <h2 className="h2s one" style={{ margin: "calc(var(--u)*2.6) 0 calc(var(--u)*1.2)" }}>A garden that grows every time you swap.</h2>
-        <div className="split home">
+        <div className="split home above-plants">
           <div className="grow">
             <ol className="steps">
               <li>Each coin grows with every planting. stORE is a geode you dig up.</li>
@@ -302,6 +308,10 @@ export default function Deck() {
             <video src="/deck/widget-years.mp4" poster="/deck/widget-years.webp" autoPlay muted loop playsInline preload="metadata" aria-label="The Sprouts widget on a Seeker home screen, its garden growing over two simulated years" />
             <img className="poster" src="/deck/widget-years.webp" alt="The Sprouts widget on a Seeker home screen after two simulated years" />
           </div>
+        </div>
+        <div className="plants" aria-hidden="true">
+          <img src="/deck/plant-azalea.webp" alt="" />
+          <img src="/deck/plant-maple.webp" alt="" />
         </div>
       </Slide>
 
