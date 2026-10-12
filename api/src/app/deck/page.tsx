@@ -139,6 +139,11 @@ const CSS = `
 .deck .ebl { position:absolute; left:calc(var(--u)*4); top:calc(var(--u)*4); width:calc(var(--u)*9); height:auto; z-index:1; }
 /* R-D65 slide 6: three lines; the four concept plants, a stake beside each (the garden's own sprite + lettering, STAKE in
    model/garden2.ts); the hand + Seeker bottom right, at most a third of the width */
+.deck .stagew { position:relative; display:inline-block; line-height:0; }
+.deck .stagew .stake { position:absolute; left:59.5%; top:79.3%; width:32%; height:auto; aspect-ratio:140 / 80; line-height:normal; }   /* R-D81: the SKR stake, same spot by each tree's foot (x .597, y .941) */
+.deck .stagew .stake img { width:100%; height:100%; display:block; }
+.deck .stagew .stake b { position:absolute; left:calc(2 / 140 * 100%); top:calc((1 + 34 * .05) / 80 * 100%); width:calc(136 / 140 * 100%); height:calc(34 / 80 * 100%);
+  display:flex; align-items:center; justify-content:center; font-family:var(--font-display), sans-serif; font-weight:700; font-size:calc(var(--u)*1.12); line-height:1; color:#3B2A1A; opacity:.9; }
 .deck .geode-scene { position:absolute; left:calc(var(--u)*12); bottom:calc(var(--u)*2.6); width:calc(var(--u)*38); height:auto; }   /* R-D77: the geode, raked sand + rake, feathered into the paper */
 .deck #s6 .steps.g6 { max-width:calc(var(--u)*72); } .deck #s6 .steps.g6 li { font-size:calc(var(--u)*2.1); }
 .deck #s10 .rows { max-width:none; }
@@ -172,6 +177,7 @@ const CSS = `
 /* R-D47 slide 6: the geode (stORE) and the mandarin's crown (SKR) oversized, poking in from each box's bottom right */
 .deck .ym-box.pic { overflow:hidden; min-height:calc(var(--u)*5.6); }
 .deck .ym-box.pic > b, .deck .ym-box.pic > small { position:relative; z-index:1; }
+.deck .ym-box.skr > small { max-width:55%; }
 .deck .ym-box.pic img { position:absolute; right:calc(var(--u)*-3.2); bottom:calc(var(--u)*-1.5); height:calc(var(--u)*7.6); width:auto; pointer-events:none; }
 .deck .ym-box.skr { background:#FBE9D4; box-shadow:inset 0 0 0 2px #E39A4C; }
 .deck .ym-box.skr img { right:calc(var(--u)*-2.6); bottom:calc(var(--u)*-2.4); height:calc(var(--u)*8.4); }
@@ -227,6 +233,7 @@ const CSS = `
   .deck .ym-out .ym-box b { font-size:15px; } .deck .ym-out .ym-box small { font-size:12px; } .deck .ym-box.pic img { height:96px; right:-14px; bottom:-10px; }
   .deck #s10 .rows { max-width:none; } .deck #s10 .plants { grid-template-columns:repeat(4, 1fr); width:70%; } .deck #s10 .plants figure > img { height:64px; }
   .deck #s3 .grow { order:0; } .deck #s3 .sprout { order:1; height:140px; margin-top:72px; } .deck #s3 .note { order:2; margin-top:-12px; }   /* R-D76: room to grow */
+  .deck .stagew .stake b { font-size:11px; }
   .deck #s11 .chip { order:0; } .deck #s11 .who { order:1; } .deck #s11 .grow { order:2; } .deck #s11 .in { gap:18px; }
 }
 @page { size:1920px 1080px; margin:0; }
@@ -275,7 +282,7 @@ export default function Deck() {
               Sprouts
             </div>
             <h1>Your spare change, planted <span className="mk">on your Seeker.</span></h1>
-            <p className="sub">Sprouts rounds up every swap your linked wallets make and plants the change in store of value tokens like SKR and stORE, self-custodied in your Seed Vault and grown by an AI&nbsp;Yield&nbsp;Manager.</p>
+            <p className="sub">Sprouts rounds up every swap your linked wallets make and plants the change in SKR, the Seeker&apos;s own token, and store of value tokens like stORE, self-custodied in your Seed Vault and grown by an AI&nbsp;Yield&nbsp;Manager.</p>
         </div>
         <div className="phone"><img src="/deck/home.webp" alt="Sprouts on a phone: the garden, and under it the coins it holds" /></div>
         <span className="foot">CLOCK IN · Solana Mobile Hackathon 2026 · Radiants</span>
@@ -302,17 +309,17 @@ export default function Deck() {
           <h2 className="h2s">Every swap rounds up. Your Seeker <span className="mk">keeps the change.</span></h2>
           <div className="beats center big">
             <div className="beat">
-              <img className="stage" src="/deck/grow-m1.webp" alt="" />
+              <span className="stagew"><img className="stage" src="/deck/grow-m1.webp" alt="" /><span className="stake skr-stake"><img src="/deck/stake.png" alt="" /><b>SKR</b></span></span>
               <strong>Any swap, any app</strong>
               <span>Each swap rounds up to the next dollar. You choose the extras and a daily limit.</span>
             </div>
             <div className="beat">
-              <img className="stage" src="/deck/grow-m2.webp" alt="" />
+              <span className="stagew"><img className="stage" src="/deck/grow-m2.webp" alt="" /><span className="stake skr-stake"><img src="/deck/stake.png" alt="" /><b>SKR</b></span></span>
               <strong>Planted each morning</strong>
               <span>At 7&nbsp;AM, Sprouts buys your coins with the change you saved, up to $5 a day, split by the AI Yield Manager.</span>
             </div>
             <div className="beat">
-              <img className="stage" src="/deck/grow-m3.webp" alt="" />
+              <span className="stagew"><img className="stage" src="/deck/grow-m3.webp" alt="" /><span className="stake skr-stake"><img src="/deck/stake.png" alt="" /><b>SKR</b></span></span>
               <strong>Kept on your Seeker</strong>
               <span>Sprouts stakes SKR, mines stORE and lends USDC and SOL, all from your Seed Vault.</span>
             </div>
@@ -367,14 +374,14 @@ export default function Deck() {
               <div className="ym-box key"><b>AI Yield Manager</b><small>Each morning, Claude Haiku 4.5 reads live rates and sends new change where it pays best. It skips rates propped up by short-term rewards and never sells what you hold.</small></div>
               <i>&rarr;</i>
               <div className="ym-out">
-                <div className="ym-box pic skr"><b>SKR</b><small>staked</small><img src="/deck/box-skr-fade.webp" alt="" /></div>
+                <div className="ym-box pic skr"><b>SKR</b><small>always on, staked</small><img src="/deck/box-skr-fade.webp" alt="" /></div>
                 <div className="ym-box pic ore"><b>stORE</b><small>mining ORE</small><img src="/deck/box-geode-fade.webp" alt="" /></div>
                 <div className="ym-box lend"><b>USDC and SOL</b><small>lent on Kamino or Jupiter Lend</small><em>Pro</em></div>
               </div>
             </div>
             <div className="ym-dial">
               <b>The risk dial you set</b>
-              <small>the least it keeps in SKR</small>
+              <small>SKR is always in, at least:</small>
               {([["Careful", 50], ["Balanced", 35], ["Bold", 25]] as const).map(([k, v]) => (
                 <div className="ym-row" key={k}><span>{k}</span><div className="ym-track"><div style={{ width: `${v}%` }} /></div><strong>{v}%</strong></div>
               ))}
@@ -420,7 +427,7 @@ export default function Deck() {
           <div className="stats">
             <div className="stat"><strong>120k</strong><span>Seekers activated, each with the dApp Store built in.</span></div>
             <div className="stat"><strong>$380</strong><span>a year saved by the top quarter of active traders.</span></div>
-            <div className="stat"><strong>$240</strong><span>a year saved by a new owner who swaps.</span></div>
+            <div className="stat"><strong>25%+</strong><span>of every round-up staked in SKR, on every plan.</span></div>
             <div className="stat"><strong>$2.9M</strong><span>a year saved on Seeker if 1 in 10 owners joins.</span></div>
           </div>
           <p className="sub">For new owners, Sprouts is a first app worth opening every day.</p>
@@ -437,7 +444,7 @@ export default function Deck() {
             <div className="row"><strong>$200 to $380 a year</strong><span>saved by an active trader, from the median to the top quarter. It stays theirs.</span></div>
             <div className="row"><strong>0.5% planting fee</strong><span>We keep half a cent of every dollar planted in coins, paid in USDC.</span></div>
             <div className="row"><strong>Pro subscription</strong><span>AI Yield Manager, automatic lending and tax export. Free during launch. Acorns proved this model.</span></div>
-            <div className="row"><strong>Built to hold</strong><span>SKR is the Seeker&apos;s own token, staked right on your phone, and stORE puts ORE to work as it sits. Sprouts has no token of its own. Every round-up buys into the ecosystem the Seeker runs on.</span></div>
+            <div className="row"><strong>Built to hold</strong><span>At least a quarter of every round-up is staked in SKR, the Seeker&apos;s own token, and stORE puts ORE to work as it sits. Every round-up buys into the ecosystem the Seeker runs on.</span></div>
           </div>
         </div>
         <div className="plants">
