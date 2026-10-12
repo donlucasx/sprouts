@@ -125,11 +125,15 @@ const CSS = `
 .deck .ym-track { height:calc(var(--u)*1.6); background:var(--rule); border-radius:999px; overflow:hidden; }
 .deck .ym-track div { height:100%; background:var(--leaf); border-radius:999px; }
 .deck .one { white-space:nowrap; }
-/* R-D49 slide 5: a row of plants along the bottom, five equal slots (azalea + maple now, future-coin concepts in the rest) */
-.deck .split.home.above-plants { margin-bottom:calc(var(--u)*13); }
-.deck .plants { position:absolute; left:calc(var(--u)*6.6); right:calc(var(--u)*6.6); bottom:calc(var(--u)*3); height:calc(var(--u)*11);
-  display:grid; grid-template-columns:repeat(5, 1fr); gap:calc(var(--u)*2); align-items:end; justify-items:center; pointer-events:none; }
-.deck .plants img { max-height:100%; max-width:100%; width:auto; height:calc(var(--u)*8.2); object-fit:contain; }
+/* R-D49/R-D64 slide 6: a row of plants along the bottom: azalea (hSOL) + maple (SOL), then four future-coin concepts, each named */
+.deck .split.home.above-plants { margin-bottom:calc(var(--u)*14); }
+.deck .plants { position:absolute; left:calc(var(--u)*6.6); right:calc(var(--u)*6.6); bottom:calc(var(--u)*2.4);
+  display:grid; grid-template-columns:repeat(6, 1fr); grid-template-rows:auto auto; column-gap:calc(var(--u)*2); row-gap:calc(var(--u)*.5); align-items:end; pointer-events:none; }
+.deck .plants .pnote { grid-column:3 / 7; grid-row:1; justify-self:center; margin:0; font-size:calc(var(--u)*1.05); color:#A8A29A; }
+.deck .plants figure { grid-row:2; margin:0; display:grid; justify-items:center; gap:calc(var(--u)*.5); }
+.deck .plants img { height:calc(var(--u)*8.2); width:auto; max-width:100%; object-fit:contain; }
+.deck .plants figure:nth-child(n+4) img { height:calc(var(--u)*9.4); }   /* the four concepts are tall and narrow: a bit taller to match the wide azalea + maple */
+.deck .plants figcaption { font-size:calc(var(--u)*1.05); font-weight:600; letter-spacing:.03em; color:var(--muted); }
 /* R-D47 cover (slide 0): the mature SKR mandarin centred, the ink lockup small at the bottom */
 .deck .cover-tree { position:absolute; left:50%; top:calc(var(--u)*8.5); height:calc(var(--u)*36); width:auto; transform:translateX(-50%); }
 .deck .end-tree { position:absolute; left:50%; top:calc(var(--u)*4.4); height:calc(var(--u)*30); width:auto; transform:translateX(-50%); }
@@ -173,7 +177,7 @@ const CSS = `
   .deck .phone { position:relative; left:auto; top:auto; width:100%; height:auto; overflow:hidden; border-radius:36px; padding:8px; }
   .deck .phone img { border-radius:30px; }
   .deck .split.home video, .deck .split.home .poster { width:100%; height:auto; }
-  .deck .plants { position:static; height:auto; grid-template-columns:repeat(2, 1fr); } .deck .split.home.above-plants { margin-bottom:0; }
+  .deck .plants { position:static; height:auto; grid-template-columns:repeat(2, 1fr); } .deck .plants .pnote { grid-column:1 / -1; } .deck .plants figure { grid-row:auto; } .deck .split.home.above-plants { margin-bottom:0; }
   .deck .sprout, .deck video.sprout { position:static; height:220px; width:auto; align-self:center; } .deck .cover-sprout, .deck video.cover-sprout, .deck .cover-tree, .deck .cover-lockup, .deck .end-tree, .deck .end-thanks { position:static; transform:none; align-self:center; } .deck .cover-tree { height:300px; } .deck .cover-lockup { width:160px; } .deck .tree { display:none; } .deck .thanks { position:static; font-size:36px; } .deck .flow.short { max-width:none; } .deck .photo { position:relative; width:100%; height:auto; }
   .deck .sand { position:static; width:100%; margin-top:-24px; } .deck .ym, .deck .ym-flow { grid-template-columns:1fr; } .deck .ym-flow > i { transform:rotate(90deg); justify-self:center; } .deck .ym-box b { font-size:17px; } .deck .ym-box.key b { font-size:20px; } .deck .ym-box small, .deck .ym-dial > small { font-size:13px; } .deck .ym-dial > b { font-size:20px; } .deck .ym-row { font-size:15px; grid-template-columns:80px 1fr 44px; } .deck .ym-row strong { font-size:17px; } .deck .ym-track { height:12px; } .deck .ym-box em { font-size:11px; top:-9px; } .deck .ore-band { flex-direction:column; align-items:flex-start; gap:6px; padding:14px 16px; } .deck .ore-band strong { font-size:24px; } .deck .ore-band p { font-size:14px; } .deck .stack, .deck .narrow, .deck .hero { max-width:none; }
   .deck .brand { font-size:22px; } .deck .brand img { width:30px; } .deck .foot, .deck .links { font-size:15px; }
@@ -310,9 +314,14 @@ export default function Deck() {
             <img className="poster" src="/deck/widget-years.webp" alt="The Sprouts widget on a Seeker home screen after two simulated years" />
           </div>
         </div>
-        <div className="plants" aria-hidden="true">
-          <img src="/deck/plant-azalea.webp" alt="" />
-          <img src="/deck/plant-maple.webp" alt="" />
+        <div className="plants">
+          <p className="pnote">Next: a plant for every coin (concept art)</p>
+          <figure><img src="/deck/plant-azalea.webp" alt="Azalea" /><figcaption>hSOL</figcaption></figure>
+          <figure><img src="/deck/plant-maple.webp" alt="Maple" /><figcaption>SOL</figcaption></figure>
+          <figure><img src="/deck/concept-pyth.webp" alt="Concept: amethyst in stone" /><figcaption>PYTH</figcaption></figure>
+          <figure><img src="/deck/concept-jup.webp" alt="Concept: gourd vine on a bamboo hoop" /><figcaption>JUP</figcaption></figure>
+          <figure><img src="/deck/concept-bonk.webp" alt="Concept: shiba topiary" /><figcaption>BONK</figcaption></figure>
+          <figure><img src="/deck/concept-jto.webp" alt="Concept: lotus in a stone basin" /><figcaption>JTO</figcaption></figure>
         </div>
       </Slide>
 
