@@ -11,7 +11,7 @@ describe("the splash (R282: one painted picture + one line, about 1.5 s, every l
     expect(SPLASH.fadeMs).toBeLessThanOrEqual(300)
   })
   it("the R319 slogan, pinned once (the one literal copy outside slogan.ts)", () => {
-    expect(SLOGAN).toBe("Round-ups into SKR that your Seeker keeps and a yield manager grows.")
+    expect(SLOGAN).toBe("Your spare change, planted on your Seeker.")
   })
 })
 
