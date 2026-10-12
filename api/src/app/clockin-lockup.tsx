@@ -17,8 +17,8 @@ export function ClockInLockup({ className = "" }: { className?: string }) {
         .ci-lock { display: grid; justify-items: center; color: #2B2622; line-height: 1; }
         .ci-lock .ci-sp { display: flex; align-items: center; gap: .24em; font-size: 1em; font-weight: 600; letter-spacing: -0.03em; margin: 0; }
         .ci-lock .ci-sp img { height: .95em; width: auto; filter: brightness(0); opacity: .86; }
-        .ci-lock .ci-rule { width: 1.1em; height: 1px; background: currentColor; opacity: .35; margin: .42em 0 .4em; }
-        .ci-lock .ci-ci { display: grid; justify-items: center; font-size: .5em; }
+        .ci-lock .ci-rule { width: 3.4em; height: 1px; background: currentColor; opacity: .3; margin: .5em 0 .48em; }   /* R-D96: wider, spans most of the wordmark */
+        .ci-lock .ci-ci { display: grid; justify-items: center; font-size: .68em; }   /* R-D96: CLOCK IN bigger (was .5em) */
         .ci-lock .ci-ci b { font-weight: 800; letter-spacing: .06em; margin-right: -.06em; }
         .ci-lock .ci-ci small { font-size: .226em; font-weight: 400; letter-spacing: .32em; margin: .3em -.32em 0 0; white-space: nowrap; }
       `}</style>

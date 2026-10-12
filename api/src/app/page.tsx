@@ -31,7 +31,7 @@ export default function Home() {
         .sp-stage { width: min(72vw, 360px); aspect-ratio: 6 / 5; }
         .sp-grow, .sp-grown { width: 100%; height: 100%; display: block; mix-blend-mode: multiply; object-fit: contain; object-position: center bottom; }
         .sp-grown { display: none; }
-        .sp-lockup { font-size: clamp(32px, 9vw, 42px); margin-top: 4px; }
+        .sp-lockup { font-size: clamp(30px, 8.4vw, 40px); margin-top: clamp(20px, 3.4vh, 32px); }   /* R-D96: even rhythm art / lockup / line */
         @media (prefers-reduced-motion: reduce) { .sp-dots::after { animation: none; } .sp-grow { display: none; } .sp-grown { display: block; } }
       `}</style>
       <div style={{ display: "grid", placeItems: "center", alignContent: "center", padding: "0 24px 7vh" }}>
@@ -42,7 +42,7 @@ export default function Home() {
         </div>
         {/* R-D93: the stacked co-brand lockup (shared with the deck cover) */}
         <ClockInLockup className="sp-lockup" />
-        <p style={{ color: muted, fontSize: 15, fontWeight: 300, letterSpacing: "0.01em", margin: "26px 0 0", textAlign: "center" }}>
+        <p style={{ color: muted, fontSize: 15, fontWeight: 300, letterSpacing: "0.01em", margin: "clamp(20px, 3.4vh, 32px) 0 0", textAlign: "center" }}>
           Coming soon to the Solana dApp Store<span className="sp-dots" />
         </p>
       </div>
