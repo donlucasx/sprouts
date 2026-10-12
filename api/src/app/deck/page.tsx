@@ -73,6 +73,7 @@ const CSS = `
   background:#1D2628; border-radius:calc(var(--u)*4.4) calc(var(--u)*4.4) 0 0; box-shadow:0 calc(var(--u)*1.5) calc(var(--u)*5) rgba(43,38,34,.22); }
 .deck .phone img { display:block; width:100%; height:auto; border-radius:calc(var(--u)*3.6); }
 .deck .sprout { position:absolute; right:calc(var(--u)*8); bottom:calc(var(--u)*2.4); height:calc(var(--u)*15); width:auto; }
+.deck video.sprout { border-radius:0; }
 .deck .print-only { display:none; }
 .deck .note.left { max-width:calc(var(--u)*62); }
 .deck .beats.center .beat { text-align:center; justify-items:center; }
@@ -89,7 +90,7 @@ const CSS = `
 .deck .photo-credit { position:absolute; right:calc(var(--u)*1.2); bottom:calc(var(--u)*1); font-size:calc(var(--u)*.8); color:rgba(255,255,255,.55); }
 .deck .split.wide { grid-template-columns:.62fr 1.38fr; gap:calc(var(--u)*2); }
 .deck .split.home { grid-template-columns:1fr auto; gap:calc(var(--u)*5); }
-.deck .split.home video, .deck .split.home .poster { width:auto; height:calc(var(--u)*33); border-radius:calc(var(--u)*2); }
+.deck .split.home video, .deck .split.home .poster { width:auto; height:calc(var(--u)*29.5); border-radius:calc(var(--u)*2); }
 .deck .split.wide video, .deck .split.wide .poster { border-radius:0; }
 .deck .sand { position:absolute; right:0; bottom:0; width:72%; height:auto; pointer-events:none;
   -webkit-mask-image:linear-gradient(to right, transparent, #000 35%); mask-image:linear-gradient(to right, transparent, #000 35%); }
@@ -123,6 +124,15 @@ const CSS = `
 .deck .ym-track { height:calc(var(--u)*1.6); background:var(--rule); border-radius:999px; overflow:hidden; }
 .deck .ym-track div { height:100%; background:var(--leaf); border-radius:999px; }
 .deck .one { white-space:nowrap; }
+/* R-D47 cover (slide 0): the mature SKR mandarin centred, the ink lockup small at the bottom */
+.deck .cover-tree { position:absolute; left:50%; top:calc(var(--u)*6); height:calc(var(--u)*36); width:auto; transform:translateX(-50%); }
+.deck .cover-lockup { position:absolute; left:50%; bottom:calc(var(--u)*4.2); width:calc(var(--u)*12); height:auto; transform:translateX(-50%); }
+/* R-D47 slide 6: the geode (stORE) and the mandarin's crown (SKR) oversized, poking in from each box's bottom right */
+.deck .ym-box.pic { overflow:hidden; min-height:calc(var(--u)*5.6); }
+.deck .ym-box.pic > b, .deck .ym-box.pic > small { position:relative; z-index:1; }
+.deck .ym-box.pic img { position:absolute; right:calc(var(--u)*-3.2); bottom:calc(var(--u)*-1.5); height:calc(var(--u)*7.6); width:auto; pointer-events:none; }
+.deck .ym-box.skr { background:#FBE9D4; box-shadow:inset 0 0 0 2px #E39A4C; }
+.deck .ym-box.skr img { right:calc(var(--u)*-2.6); bottom:calc(var(--u)*-2.4); height:calc(var(--u)*8.4); }
 .deck .sub.full { max-width:none; }
 .deck .sub.dial { max-width:calc(var(--u)*66); }
 .deck .who { position:absolute; right:calc(var(--u)*6.6); top:calc(var(--u)*6.6); display:grid; justify-items:center; gap:calc(var(--u)*1);
@@ -153,7 +163,7 @@ const CSS = `
   .deck .phone { position:relative; left:auto; top:auto; width:100%; height:auto; overflow:hidden; border-radius:36px; padding:8px; }
   .deck .phone img { border-radius:30px; }
   .deck .split.home video, .deck .split.home .poster { width:100%; height:auto; }
-  .deck .sprout { position:static; height:220px; align-self:center; } .deck .tree { display:none; } .deck .thanks { position:static; font-size:36px; } .deck .flow.short { max-width:none; } .deck .photo { position:relative; width:100%; height:auto; }
+  .deck .sprout, .deck video.sprout { position:static; height:220px; width:auto; align-self:center; } .deck .cover-tree, .deck .cover-lockup { position:static; transform:none; align-self:center; } .deck .cover-tree { height:300px; } .deck .cover-lockup { width:160px; } .deck .tree { display:none; } .deck .thanks { position:static; font-size:36px; } .deck .flow.short { max-width:none; } .deck .photo { position:relative; width:100%; height:auto; }
   .deck .sand { position:static; width:100%; margin-top:-24px; } .deck .ym, .deck .ym-flow { grid-template-columns:1fr; } .deck .ym-flow > i { transform:rotate(90deg); justify-self:center; } .deck .ym-box b { font-size:17px; } .deck .ym-box.key b { font-size:20px; } .deck .ym-box small, .deck .ym-dial > small { font-size:13px; } .deck .ym-dial > b { font-size:20px; } .deck .ym-row { font-size:15px; grid-template-columns:80px 1fr 44px; } .deck .ym-row strong { font-size:17px; } .deck .ym-track { height:12px; } .deck .ym-box em { font-size:11px; top:-9px; } .deck .ore-band { flex-direction:column; align-items:flex-start; gap:6px; padding:14px 16px; } .deck .ore-band strong { font-size:24px; } .deck .ore-band p { font-size:14px; } .deck .stack, .deck .narrow, .deck .hero { max-width:none; }
   .deck .brand { font-size:22px; } .deck .brand img { width:30px; } .deck .foot, .deck .links { font-size:15px; }
 }
@@ -187,6 +197,12 @@ export default function Deck() {
       <style>{CSS}</style>
       <DeckKeys />
 
+      {/* 00 Cover (R-D47): the mature SKR mandarin, the ink lockup small under it */}
+      <Slide n={0} art>
+        <img className="cover-tree" src="/deck/cover-tree.webp" alt="A grown mandarin tree, painted" />
+        <img className="cover-lockup" src="/deck/lockup-ink.png" alt="Sprouts" />
+      </Slide>
+
       {/* 01 Hook */}
       <Slide n={1} art>
         <div className="grow hero">
@@ -210,8 +226,9 @@ export default function Deck() {
           </p>
         </div>
         <p className="note left" style={{ maxWidth: "calc(var(--u)*56)" }}>Seeker owners who stake SKR swap a median of 23 times a month, mostly under $10 (on-chain sample of 163 recently active stakers, Sept 2026).</p>
-        <img className="sprout replay screen-only" src="/deck/tree-grow.webp" alt="A tree growing, from the app's loading screen" />
-        <img className="sprout print-only" src="/deck/tree-grown.webp" alt="" />
+        {/* R-D47 (R-D31 as he meant it): the sprout swaying on the app's first screen (app/assets/signin, R445 B2), not the splash tree */}
+        <video className="sprout" src="/deck/sprout.mp4" poster="/deck/sprout.webp" autoPlay muted loop playsInline preload="metadata" aria-label="A sprout swaying, from the app's first screen" />
+        <img className="sprout poster" src="/deck/sprout.webp" alt="" />
       </Slide>
 
       {/* 03 How it works: any swap, any app (his note 2); the decision removed (the cut table, R-D7) */}
@@ -293,8 +310,8 @@ export default function Deck() {
               <div className="ym-box key"><b>Yield Manager</b><small>Each morning it reads live rates and sends new change where it pays best. It skips rates propped up by short-term rewards and never sells what you hold.</small></div>
               <i>&rarr;</i>
               <div className="ym-out">
-                <div className="ym-box"><b>SKR</b><small>staked</small></div>
-                <div className="ym-box ore"><b>stORE</b><small>mining ORE</small></div>
+                <div className="ym-box pic skr"><b>SKR</b><small>staked</small><img src="/deck/box-skr.webp" alt="" /></div>
+                <div className="ym-box pic ore"><b>stORE</b><small>mining ORE</small><img src="/deck/box-geode.webp" alt="" /></div>
                 <div className="ym-box lend"><b>USDC and SOL</b><small>lent on Kamino or Jupiter Lend</small><em>Pro</em></div>
               </div>
             </div>
