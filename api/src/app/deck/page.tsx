@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { ClockInLockup } from "../clockin-lockup";
 import { Outfit, Albert_Sans } from "next/font/google";
 import { DeckKeys } from "./keys";
 
@@ -179,7 +180,7 @@ const CSS = `
 .deck .sand-lines { position:absolute; right:0; bottom:0; width:78%; height:auto; pointer-events:none; }   /* R-D66 slide 9: the plate's raked lines + upper rings, fades baked */
 .deck .in > .note { position:relative; z-index:1; }
 .deck .cover-sprout, .deck video.cover-sprout { position:absolute; left:50%; top:calc(var(--u)*13.5); height:calc(var(--u)*30); width:auto; transform:translateX(-50%); border-radius:0; }
-.deck .cover-lockup { position:absolute; left:50%; bottom:calc(var(--u)*6.4); width:calc(var(--u)*12); height:auto; transform:translateX(-50%); }
+.deck .cover-lockup { position:absolute; left:50%; bottom:calc(var(--u)*5.2); font-size:calc(var(--u)*2.6); transform:translateX(-50%); }   /* R-D93: the stacked Sprouts / CLOCK IN lockup, small */
 /* R-D47 slide 6: the geode (stORE) and the mandarin's crown (SKR) oversized, poking in from each box's bottom right */
 .deck .ym-box.pic { overflow:hidden; min-height:calc(var(--u)*5.6); }
 .deck .ym-box.pic > b, .deck .ym-box.pic > small { position:relative; z-index:1; }
@@ -231,7 +232,7 @@ const CSS = `
   .deck p.ebt { text-align:center; font-size:48px; } .deck img.eb { width:100%; height:auto; } .deck .ebl { width:110px; align-self:center; }
   .deck img.eb { display:none; } .deck .eb-m { display:block; width:100%; height:auto; }
   /* R-D74 phone pass 2 */
-  .deck #s1 .in { align-items:center; justify-content:center; gap:20px; } .deck #s1 .cover-sprout { height:auto; width:78vw; } .deck #s1 .cover-lockup { width:40vw; }
+  .deck #s1 .in { align-items:center; justify-content:center; gap:20px; } .deck #s1 .cover-sprout { height:auto; width:78vw; } .deck #s1 .cover-lockup { font-size:30px; }
   .deck .stack { justify-items:center; text-align:center; gap:24px; } .deck .stack strong { font-size:21px; } .deck .stack span { font-size:16px; }
   .deck .plants { grid-template-columns:repeat(4, 1fr); width:70%; margin-left:auto; column-gap:8px; } .deck .plants .pnote { justify-self:end; font-size:13px; }
   .deck .plants figure > img { height:64px; } .deck .plants .stake { right:-6px; bottom:-4px; width:40px; height:23px; } .deck .plants .stake b { font-size:8px; }
@@ -278,7 +279,7 @@ export default function Deck() {
       <Slide n={1} art>
         <video className="cover-sprout" src="/deck/sprout.mp4" poster="/deck/sprout.webp" autoPlay muted loop playsInline preload="metadata" aria-label="A sprout swaying, from the app's first screen" />
         <img className="cover-sprout poster" src="/deck/sprout.webp" alt="" />
-        <img className="cover-lockup" src="/deck/lockup-ink.png" alt="Sprouts" />
+        <ClockInLockup className="cover-lockup" />
       </Slide>
 
       {/* 02 Hook */}
