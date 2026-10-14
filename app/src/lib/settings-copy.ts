@@ -47,4 +47,4 @@ export const DISCLOSURES: [string, string][] = [
 /** The line under the questions (R452: "Not advice" became the footer). */
 export const NOT_ADVICE = 'Sprouts is not tax or investment advice. Tax reports are a record for your tax tool, not a filing.'
 
-export const VENUES_EMPTY = 'The venues show here once Claude Haiku 4.5 has read their rates.'
+export const VENUES_EMPTY = 'The venues show here once Claude Haiku 5.5 has read their rates.'

@@ -6,7 +6,7 @@ import { siteMetadata } from "@/app/metadata";
 describe("site metadata", () => {
   it("names Sprouts, not the template", () => {
     expect(siteMetadata.title).toBe("Sprouts");
-    expect(String(siteMetadata.description)).toBe("Round-ups into SKR that your Seeker keeps and a yield manager grows."); // the slogan (RB21, spec 11)
+    expect(String(siteMetadata.description)).toBe("Your spare change, planted on your Seeker."); // the slogan (R-D92, was RB21)
     expect(JSON.stringify(siteMetadata)).not.toMatch(/Create Next App|create next app/);
   });
 });

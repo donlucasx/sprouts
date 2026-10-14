@@ -72,11 +72,11 @@ describe("compileRule", () => {
   });
 });
 
-describe("costMicrocents (Haiku 4.5: $1 per million tokens in, $5 per million out)", () => {
+describe("costMicrocents (Haiku 5.5: $0.10 per million tokens in, $0.50 per million out)", () => {
   it("prices a call in microcents", () => {
-    expect(costMicrocents({ inputTokens: 1_000_000, outputTokens: 0 })).toBe(100_000_000);   // $1 = 100 cents = 1e8 microcents
-    expect(costMicrocents({ inputTokens: 0, outputTokens: 1_000_000 })).toBe(500_000_000);
-    expect(costMicrocents({ inputTokens: 400, outputTokens: 60 })).toBe(40_000 + 30_000);
+    expect(costMicrocents({ inputTokens: 1_000_000, outputTokens: 0 })).toBe(10_000_000);   // $0.10 = 10 cents = 1e7 microcents
+    expect(costMicrocents({ inputTokens: 0, outputTokens: 1_000_000 })).toBe(50_000_000);
+    expect(costMicrocents({ inputTokens: 400, outputTokens: 60 })).toBe(4_000 + 3_000);
   });
 });
 
