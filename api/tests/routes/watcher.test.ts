@@ -49,7 +49,7 @@ describe("POST /api/watcher/compile", () => {
     expect(await res.json()).toEqual({ patch: { dailyCapCents: 300 }, understood: "Your daily limit is $3.00.", notes: [] });
     const calls = await repo.listWatcherCalls();
     expect(calls.length).toBe(1);
-    expect(calls[0]).toMatchObject({ userPubkey: U, kind: "compile", inputTokens: 300, outputTokens: 40, costMicrocents: 30_000 + 20_000 });
+    expect(calls[0]).toMatchObject({ userPubkey: U, kind: "compile", inputTokens: 300, outputTokens: 40, costMicrocents: 3_000 + 2_000 });   // Haiku 5.5 prices (10-14)
   });
 
   it("rests for the month at $10 and says so, without calling the model", async () => {
@@ -83,7 +83,7 @@ describe("POST /api/watcher/compile", () => {
     expect(res.status).toBe(502);
     const calls = await repo.listWatcherCalls();
     expect(calls.length).toBe(1);
-    expect(calls[0]).toMatchObject({ inputTokens: 100, outputTokens: 10, costMicrocents: 10_000 + 5_000 });
+    expect(calls[0]).toMatchObject({ inputTokens: 100, outputTokens: 10, costMicrocents: 1_000 + 500 });
   });
 
   it("a model failure is a plain sentence, and nothing is recorded as spent", async () => {

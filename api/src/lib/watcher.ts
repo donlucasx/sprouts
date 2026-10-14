@@ -19,9 +19,9 @@ export class WatcherError extends Error {
   }
 }
 
-// Haiku 4.5: $1 per million tokens in, $5 per million out. In microcents (a millionth of a cent), so a call is an integer.
-const IN_MICROCENTS_PER_TOKEN = 100;
-const OUT_MICROCENTS_PER_TOKEN = 500;
+// Haiku 5.5: $0.10 per million tokens in, $0.50 per million out (prompts under 100K tokens; ours are a few thousand). In microcents (a millionth of a cent), so a call is an integer.
+const IN_MICROCENTS_PER_TOKEN = 10;
+const OUT_MICROCENTS_PER_TOKEN = 50;
 export const costMicrocents = (u: Usage) => u.inputTokens * IN_MICROCENTS_PER_TOKEN + u.outputTokens * OUT_MICROCENTS_PER_TOKEN;
 
 /** The budget (design notes 5): $10 a month in total, and 30 calls per user per day. Every surface has a template behind it. */

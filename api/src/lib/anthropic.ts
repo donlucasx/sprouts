@@ -1,8 +1,9 @@
 import { config } from "./config";
 
-// The one model client (design notes section 5): Claude Haiku 4.5 from the server only, keys and prompts server-side, every call
+// The one model client (design notes section 5): Claude Haiku 5.5 from the server only (10-14: moved from Haiku 4.5, whose
+// retirement could begin 2026-10-15; 5.5 takes the same forced tool calls, and nothing here sets temperature, thinking or prefill), keys and prompts server-side, every call
 // a forced tool call so the answer is JSON the caller validates. No SDK: one fetch, nothing else to install.
-export const MODEL = "claude-haiku-4-5-20251001";
+export const MODEL = "claude-haiku-5-5";
 
 export type ToolSpec = { name: string; description: string; input_schema: Record<string, unknown> };
 export type ModelRequest = { system: string; user: string; tool: ToolSpec; maxTokens: number };

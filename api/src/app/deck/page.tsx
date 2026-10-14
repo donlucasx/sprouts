@@ -379,7 +379,7 @@ export default function Deck() {
             <div className="ym-flow">
               <div className="ym-box"><b>Your change</b><small>from every swap</small></div>
               <i>&rarr;</i>
-              <div className="ym-box key"><b>AI Yield Manager</b><small>Each morning, Claude Haiku 4.5 reads the day&apos;s rates and sends new change where it pays best. It skips rates propped up by short-term rewards and never sells what you hold.</small></div>
+              <div className="ym-box key"><b>AI Yield Manager</b><small>Each morning, Claude Haiku 5.5 reads the day&apos;s rates and sends new change where it pays best. It skips rates propped up by short-term rewards and never sells what you hold.</small></div>
               <i>&rarr;</i>
               <div className="ym-out">
                 <div className="ym-box pic skr"><b>SKR</b><small>always on, staked</small><img src="/deck/box-skr-fade.webp" alt="" /></div>
