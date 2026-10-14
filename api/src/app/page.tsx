@@ -16,8 +16,6 @@ export const dynamic = "force-dynamic";
 // R-S3: the orchid is out (its sand and flower clip); each clip is cropped to its grown plant (width / height), so no empty sky above
 /** Bumped whenever the clips change: the URL changes too, so no browser replays a cached old cut (seen 10-11, R-S4). */
 const CLIPS_V = "7";
-/** The Sprouts listing. The store has no web page, only this app deep link (from the dApp Store manifest; opens the listing on a Seeker, does nothing on desktop). */
-const STORE_URL = "solanadappstore://details?id=money.sprouts.app";
 const PLANTS = [["store", 1], ["maple", 720 / 428], ["azalea", 720 / 566], ["mandarin", 1], ["geode", 720 / 410]] as const;   // R-D40: stORE's geode (crossfaded stills until its clips land)
 
 export default function Home() {
@@ -46,10 +44,6 @@ export default function Home() {
         </div>
         {/* R-D93: the stacked co-brand lockup (shared with the deck cover) */}
         <ClockInLockup className="sp-lockup" />
-        {/* 10-13: live on the store; the official "Get it on" badge (Solana Mobile's asset for listed apps) replaces "Coming soon" */}
-        <a href={STORE_URL} aria-label="Get Sprouts on the Solana dApp Store" style={{ display: "block", margin: "clamp(20px, 3.4vh, 32px) 0 0" }}>
-          <img src="/site/dapp-store-badge.svg" alt="Get it on Solana dApp Store" style={{ height: 52, width: "auto", display: "block" }} />
-        </a>
       </div>
       <nav className="sp-foot" style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: "8px 20px", padding: "24px 24px 32px", fontSize: 13, fontWeight: 400, letterSpacing: "0.04em" }}>
         <a href="/deck" style={link}>Deck</a>
