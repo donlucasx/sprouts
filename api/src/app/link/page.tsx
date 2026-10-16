@@ -1,10 +1,14 @@
 "use client";
 import { useState } from "react";
+import { Albert_Sans, Outfit } from "next/font/google";
 import { call } from "../call";
 import { useWallets, WalletButtons } from "../wallet-picker";
 import { connectWith, signWith, type StdWallet } from "@/lib/wallet-choice";
 
-const box = { fontFamily: "system-ui, sans-serif", maxWidth: 520, margin: "10vh auto", padding: "0 24px", lineHeight: 1.5, color: "#2B2B2B" } as const;
+/** 10-16 (his note "too much text, simplify, and brand the page"): the splash's paper, ink and Outfit, the deck's leaf green and Albert Sans. */
+const outfit = Outfit({ subsets: ["latin"], weight: ["300", "600"] });
+const albert = Albert_Sans({ subsets: ["latin"], weight: ["400", "600"] });
+const paper = "#FFFBF5", ink = "#2B2622", muted = "#7A746B", leaf = "#1E6B44", rule = "#E6DFD2";
 
 /**
  * The laptop side of "another wallet": the code from the app, one approval with the wallet the user picks, the API sends it.
@@ -65,47 +69,85 @@ export default function LinkPage() {
   }
 
   return (
-    <main style={box}>
-      <h1 style={{ fontSize: 28, marginBottom: 8 }}>Link a wallet to Sprouts</h1>
-      <p>
-        Link the wallet you already trade from: Phantom, Solflare, Backpack or any Solana wallet, on a computer or another phone. Its swaps round up into the garden on your Seeker.
-      </p>
-      <p>
-        Get a code in the Sprouts app (Link a wallet, then Another wallet), enter it below and approve once. On a phone, open sprouts.money/link in your wallet app&apos;s browser.
-      </p>
-      <p style={{ fontSize: 14, color: "#555" }}>
-        Sprouts can pull at most $5 of USDC a day, only what your swaps rounded up, and our smart contract enforces that limit on chain. Revoke any time. Under a dollar of rent, refunded when you revoke. The token approval itself is unlimited; the contract is what holds it to your limit.
-      </p>
-      <input value={code} onChange={(e) => edit(e.target.value)} disabled={state !== "idle"} placeholder="CODE" maxLength={6} autoCapitalize="characters" style={{ fontSize: 28, letterSpacing: 6, padding: 12, width: 220, textTransform: "uppercase" }} />
-      <div style={{ marginTop: 16 }}>
-        {state === "done" ? null : state === "busy" ? <p>{owner ? "Waiting for your wallet." : "Checking the code."}</p> : !owner ? (
-          <button disabled={c.length !== 6} onClick={check} style={{ fontSize: 18, padding: "10px 16px" }}>Check the code</button>
+    <main className={`lk ${albert.className}`}>
+      <style>{`
+        .lk { min-height: 100svh; background: ${paper}; color: ${ink}; display: grid; grid-template-rows: 1fr auto; line-height: 1.5; }
+        .lk-col { width: 100%; max-width: 440px; margin: 0 auto; padding: 6vh 24px 24px; display: grid; justify-items: center; text-align: center; gap: 14px; align-content: center; }
+        .lk-art { width: min(52vw, 200px); aspect-ratio: 1; object-fit: contain; object-position: center bottom; mix-blend-mode: multiply; }
+        .lk-mark { display: flex; align-items: center; gap: .3em; font-size: 22px; font-weight: 600; letter-spacing: -0.03em; }
+        .lk-mark img { height: .95em; filter: brightness(0); opacity: .86; }
+        .lk h1 { font-size: clamp(28px, 7vw, 36px); font-weight: 600; letter-spacing: -0.02em; line-height: 1.15; margin-top: 6px; }
+        .lk-sub { color: ${muted}; font-size: 16px; }
+        .lk-code { font-size: 30px; letter-spacing: .3em; text-align: center; text-transform: uppercase; width: 100%; max-width: 280px; padding: 14px 12px 14px calc(12px + .3em);
+          border: 1.5px solid ${rule}; border-radius: 16px; background: #fff; color: ${ink}; outline: none; margin-top: 10px; }
+        .lk-code:focus { border-color: ${leaf}; }
+        .lk button { font: inherit !important; font-size: 16px !important; font-weight: 600 !important; padding: 13px 22px !important; border-radius: 999px; border: 1.5px solid ${leaf};
+          background: ${leaf}; color: #fff; cursor: pointer; min-width: 220px; justify-content: center; }
+        .lk button:disabled { opacity: .35; cursor: default; }
+        .lk button.lk-quiet { background: transparent; color: ${leaf}; }
+        .lk-row { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+        .lk-row > div { align-items: center !important; }
+        .lk-note { color: ${muted}; font-size: 14px; }
+        .lk details { color: ${muted}; font-size: 14px; max-width: 360px; }
+        .lk summary { cursor: pointer; color: ${leaf}; font-weight: 600; list-style: none; }
+        .lk summary::-webkit-details-marker { display: none; }
+        .lk details p { margin-top: 8px; text-align: left; }
+        .lk-done { color: ${leaf}; font-weight: 600; }
+        .lk-foot { text-align: center; padding: 24px 24px 32px; font-size: 13px; letter-spacing: .04em; }
+        .lk-foot a { color: ${muted}; }
+        .lk-foot a:hover { color: ${ink}; }
+      `}</style>
+      <div className="lk-col">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img className="lk-art" src="/site/grown-mandarin.webp?v=14" alt="" />
+        <div className={`lk-mark ${outfit.className}`}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/deck/mark.svg" alt="" />Sprouts
+        </div>
+        <h1 className={outfit.className}>Link your trading wallet</h1>
+        <p className="lk-sub">Phantom, Solflare, Backpack or any Solana wallet. Its swaps round up into your Seeker garden.</p>
+
+        <input className={`lk-code ${outfit.className}`} value={code} onChange={(e) => edit(e.target.value)} disabled={state !== "idle"} placeholder="CODE"
+          maxLength={6} autoCapitalize="characters" aria-label="Code from the Sprouts app" />
+
+        {state === "done" ? null : state === "busy" ? <p className="lk-note">{owner ? "Waiting for your wallet." : "Checking the code."}</p> : !owner ? (
+          <>
+            <button disabled={c.length !== 6} onClick={check}>Continue</button>
+            <p className="lk-note">Get the code in the app: Link a wallet, then Another wallet.</p>
+          </>
         ) : !confirmed ? (
-          <div>
-            <p style={{ fontWeight: 600 }}>This links your wallet to {owner}&apos;s garden. Only continue if {owner} is you.</p>
-            <p>If someone sent you this code, stop here. Their garden would get this wallet&apos;s round-ups.</p>
-            <div style={{ display: "flex", gap: 8 }}>
-              <button onClick={() => setConfirmed(true)} style={{ fontSize: 18, padding: "10px 16px" }}>{owner} is me</button>
-              <button onClick={() => edit("")} style={{ fontSize: 18, padding: "10px 16px" }}>Cancel</button>
+          <>
+            <p style={{ fontWeight: 600 }}>This links your wallet to {owner}&apos;s garden. Only continue if that&apos;s you.</p>
+            <p className="lk-note">If someone sent you this code, stop here.</p>
+            <div className="lk-row">
+              <button onClick={() => setConfirmed(true)}>{owner} is me</button>
+              <button className="lk-quiet" onClick={() => edit("")}>Cancel</button>
             </div>
-          </div>
+          </>
         ) : (
-          <div>
-            <p>Linking to {owner}&apos;s garden.</p>
-            <WalletButtons wallets={wallets} verb="Approve with" onPick={approve} />
-          </div>
+          <>
+            <p className="lk-note">Linking to {owner}&apos;s garden.</p>
+            <div className="lk-row"><WalletButtons wallets={wallets} verb="Approve with" onPick={approve} /></div>
+          </>
         )}
+
+        {leash ? (
+          <p className="lk-note">
+            Your approval names this Sprouts program, not a server key:<br />
+            <code style={{ wordBreak: "break-all" }}>{leash}</code>
+          </p>
+        ) : null}
+        {message ? <p className={state === "done" ? "lk-done" : "lk-note"}>{message}</p> : null}
+
+        <details>
+          <summary>At most $5 a day</summary>
+          <p>Sprouts only pulls what your swaps rounded up, up to $5 of USDC a day, and our smart contract enforces that limit on chain. The token approval itself is unlimited; the contract holds it to your limit. Under $1 of rent, refunded when you revoke.</p>
+        </details>
+        <p className="lk-note">On a phone? Open this page in your wallet app&apos;s browser.</p>
       </div>
-      {leash ? (
-        <p style={{ marginTop: 16, fontSize: 14 }}>
-          Your delegation names this Sprouts program address, not a Sprouts server key.<br />
-          <code style={{ wordBreak: "break-all" }}>{leash}</code>
-        </p>
-      ) : null}
-      {message ? <p style={{ marginTop: 16, fontWeight: state === "done" ? 600 : 400, color: state === "done" ? "#2F5D3A" : undefined }}>{message}</p> : null}
-      <p style={{ marginTop: 32, fontSize: 14, color: "#555" }}>
-        To revoke later: <a href="/revoke">the revoke page</a> on this site, with the wallet that approved.
-      </p>
+      <nav className="lk-foot">
+        <a href="/">sprouts.money</a> &nbsp;·&nbsp; <a href="/revoke">Revoke a wallet</a>
+      </nav>
     </main>
   );
 }
