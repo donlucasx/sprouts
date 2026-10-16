@@ -140,8 +140,9 @@ export default function LinkPage() {
         {message ? <p className={state === "done" ? "lk-done" : "lk-note"}>{message}</p> : null}
 
         <details>
-          <summary>At most $5 a day</summary>
-          <p>Sprouts only pulls what your swaps rounded up, up to $5 of USDC a day, and our smart contract enforces that limit on chain. The token approval itself is unlimited; the contract holds it to your limit. Under $1 of rent, refunded when you revoke.</p>
+          <summary>What Sprouts can and can&apos;t do</summary>
+          <p>Sprouts can only take the change your swaps rounded up, within your daily limit, and only plant it into accounts you own. Our smart contract enforces this on chain, and you can revoke any time.</p>
+          <p>The token approval itself is unlimited; the contract is what holds it to those rules. Under $1 of rent, refunded when you revoke.</p>
         </details>
         <p className="lk-note">On a phone? Open this page in your wallet app&apos;s browser.</p>
       </div>
