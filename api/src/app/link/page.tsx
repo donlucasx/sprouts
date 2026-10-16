@@ -68,7 +68,13 @@ export default function LinkPage() {
     <main style={box}>
       <h1 style={{ fontSize: 28, marginBottom: 8 }}>Link a wallet to Sprouts</h1>
       <p>
-        Enter the code from your Sprouts app, check whose garden it links to, then approve once with your wallet. Sprouts may pull up to $5 of USDC a day from this wallet, only what your swaps rounded up. You can revoke at any time. Under a dollar of rent, refunded when you revoke. The underlying approval is unlimited; the program enforces the limit.
+        Link the wallet you already trade from: Phantom, Solflare, Backpack or any Solana wallet, on a computer or another phone. Its swaps round up into the garden on your Seeker.
+      </p>
+      <p>
+        Get a code in the Sprouts app (Link a wallet, then Another wallet), enter it below and approve once. On a phone, open sprouts.money/link in your wallet app&apos;s browser.
+      </p>
+      <p style={{ fontSize: 14, color: "#555" }}>
+        Sprouts can pull at most $5 of USDC a day, only what your swaps rounded up, and our smart contract enforces that limit on chain. Revoke any time. Under a dollar of rent, refunded when you revoke. The token approval itself is unlimited; the contract is what holds it to your limit.
       </p>
       <input value={code} onChange={(e) => edit(e.target.value)} disabled={state !== "idle"} placeholder="CODE" maxLength={6} autoCapitalize="characters" style={{ fontSize: 28, letterSpacing: 6, padding: 12, width: 220, textTransform: "uppercase" }} />
       <div style={{ marginTop: 16 }}>
