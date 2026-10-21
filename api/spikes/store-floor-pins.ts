@@ -16,7 +16,7 @@ for (const stop of ["careful", "balanced", "bold"] as const) {
   const r = await db.from("split_days").select("split").eq("stop", stop).order("day", { ascending: false }).limit(1).maybeSingle();
   latest[stop] = r.data?.split ?? null;
 }
-const n = { rules: rows.length, managed: 0, manual: 0, anyPins: 0, storePinBelowFloor: 0, storePinZeroOn: 0, problemStoreFloor: 0, problemSum: 0, problemOther: 0, allocStoreBelowFloor: 0, allocStoreBelowFloorManual: 0, allocStoreBelowFloorManaged: 0, splitWouldChangeManual: 0, splitWouldChangeManaged: 0, trimsAnotherPin: 0 };
+const n = { rules: rows.length, managed: 0, manual: 0, anyPins: 0, storePinBelowFloor: 0, storePinZeroOn: 0, problemSum: 0, problemOther: 0, allocStoreBelowFloor: 0, allocStoreBelowFloorManual: 0, allocStoreBelowFloorManaged: 0, splitWouldChangeManual: 0, splitWouldChangeManaged: 0, trimsAnotherPin: 0 };
 for (const r of rows) {
   r.managed ? n.managed++ : n.manual++;
   // What the route would validate today: off, SKR pins and 0 pins are dropped (spec 4.2, R346); on, a 0 SKR pin is dropped.
@@ -27,8 +27,7 @@ for (const r of rows) {
   if (pins.stORE !== undefined && pins.stORE > 0 && pins.stORE < STORE_FLOOR) n.storePinBelowFloor++;
   if (r.managed && pins.stORE === 0) n.storePinZeroOn++;
   const p = validatePins(pins, floorFor(r.managed, r.stop));
-  if (p === "store_floor") n.problemStoreFloor++;
-  else if (p === "sum") n.problemSum++;
+  if (p === "sum") n.problemSum++;
   else if (p) n.problemOther++;
   if (r.allocation.stORE < STORE_FLOOR) {
     n.allocStoreBelowFloor++;
