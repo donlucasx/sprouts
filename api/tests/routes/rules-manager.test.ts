@@ -31,7 +31,8 @@ describe("PUT /api/rules with the Yield Manager", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { managed: boolean; stop: string; allocation: Split };
     expect(body.managed).toBe(true);
-    expect(body.allocation).toEqual(split({ SKR: 40, stORE: 5, hSOL: 25, USDC_LEND: 15, SOL_LEND: 10, cbBTC: 5 }));
+    // R-O1 (10-21): the row's stORE 5 is raised to the floor of 10 from the largest free coin (hSOL 25 -> 20).
+    expect(body.allocation).toEqual(split({ SKR: 40, stORE: 10, hSOL: 20, USDC_LEND: 15, SOL_LEND: 10, cbBTC: 5 }));
     const ev = repo.events.find((e) => e.kind === "split_changed")!;
     expect((ev.detail as { by: string }).by).toBe("you");
     expect((ev.detail as { managed: boolean; managedWas: boolean }).managedWas).toBe(false); // the switch moved off to on by this save
@@ -47,7 +48,12 @@ describe("PUT /api/rules with the Yield Manager", () => {
     await put({ managed: true, stop: "balanced" });
     const over = await put({ pins: { cbBTC: 40, hSOL: 30 } });
     expect(over.status).toBe(400);
-    expect(((await over.json()) as { error: string }).error).toBe("Pins add up to more than the split allows. SKR keeps at least 35%.");
+    expect(((await over.json()) as { error: string }).error).toBe("Pins add up to more than the split allows. SKR keeps at least 35% and stORE 10%.");
+    const overOff = await put({ pins: { cbBTC: 40, hSOL: 30, stORE: 0 } });   // stORE switched off: only SKR's floor needs room
+    expect(((await overOff.json()) as { error: string }).error).toBe("Pins add up to more than the split allows. SKR keeps at least 35%.");
+    const storeLow = await put({ pins: { stORE: 5 } });
+    expect(storeLow.status).toBe(400);
+    expect(((await storeLow.json()) as { error: string }).error).toBe("stORE keeps at least 10%.");
     const low = await put({ pins: { SKR: 30 } });
     expect(((await low.json()) as { error: string }).error).toBe("SKR keeps at least 35% on Balanced.");
     const range = await put({ pins: { stORE: 55 } });
@@ -67,7 +73,7 @@ describe("PUT /api/rules with the Yield Manager", () => {
     const skrOff = await put({ managed: false, pins: { SKR: 50 } });
     expect(skrOff.status).toBe(200);
     const b = (await skrOff.json()) as { pins: Record<string, number>; allocation: Split };
-    expect(b.allocation).toEqual(SKR_ONLY);
+    expect(b.allocation).toEqual(split({ SKR: 90, stORE: 10 }));   // R-O1: SKR_ONLY before
     expect("SKR" in b.pins).toBe(false);
     expect("SKR" in (await repo.getRules(U)).pins).toBe(false);
   });
@@ -80,7 +86,7 @@ describe("PUT /api/rules with the Yield Manager", () => {
     const b = (await res.json()) as { managed: boolean; pins: Record<string, number>; allocation: Split };
     expect(b.managed).toBe(false);
     expect(b.pins).toEqual({ cbBTC: 20 });
-    expect(b.allocation).toEqual(split({ SKR: 80, cbBTC: 20 }));
+    expect(b.allocation).toEqual(split({ SKR: 70, stORE: 10, cbBTC: 20 }));   // R-O1: stORE's 10 from SKR's rest
   });
 
   it("allocation can no longer be set directly; the daily limit stops at the on-chain $5", async () => {
@@ -129,6 +135,19 @@ describe("PUT /api/rules with the Yield Manager", () => {
     expect(res.allocation.cbBTC).toBe(0);
     expect(Object.values(res.allocation).reduce((a, b) => a + b, 0)).toBe(100);
     expect((await repo.getRules(U)).pins).toEqual({ hSOL: 0, cbBTC: 0 });
+  });
+
+  it("R-O1: on, stORE pinned at 0 is switched off and gets no floor; a stORE pin of 10 is saved and kept", async () => {
+    await put({ managed: true, stop: "balanced" });
+    const off = (await (await put({ pins: { stORE: 0 } })).json()) as { pins: Record<string, number>; allocation: Split };
+    expect(off.pins).toEqual({ stORE: 0 });
+    expect(off.allocation.stORE).toBe(0);
+    const ten = (await (await put({ pins: { stORE: 10 } })).json()) as { pins: Record<string, number>; allocation: Split };
+    expect(ten.allocation.stORE).toBe(10);
+    // Off, a 0 stORE pin is no pin, so the floor applies.
+    const manual = (await (await put({ managed: false, pins: { stORE: 0 } })).json()) as { pins: Record<string, number>; allocation: Split };
+    expect(manual.pins).toEqual({});
+    expect(manual.allocation).toEqual(split({ SKR: 90, stORE: 10 }));
   });
 
   it("R346: SKR cannot be switched off; off, a 0 pin is no pin (the manual split's 0 means nothing)", async () => {

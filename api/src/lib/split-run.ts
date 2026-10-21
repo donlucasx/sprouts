@@ -3,7 +3,7 @@ import type { Repo } from "@/db/repo";
 import type { FoundVenueRow, SplitDayRow, VenueDayRow } from "@/db/types";
 import { ASSETS, LEND_ASSETS, STOP_ORDER, isLendAsset, sameSplit, zeroSplit, type LendAsset, type LiveAsset, type Split, type Stop } from "@/domain/coins";
 import { VENUES, VENUE_NAME, isAutoVenue, pickVenue, venueCandidates, type AutoVenue, type Venue, type VetoReason } from "@/domain/venues";
-import { STOPS, STOP_DEFAULTS, STOP_LABEL, stopMax, clampSplit, fallbackSplit, checkWhy, templateWhy, effectiveSplit } from "@/domain/split";
+import { STOPS, STOP_DEFAULTS, STOP_LABEL, STORE_FLOOR, stopMax, clampSplit, fallbackSplit, checkWhy, templateWhy, effectiveSplit } from "@/domain/split";
 import { dayOf, addDays } from "@/domain/day";
 import { growth, priceChange } from "./coin-data";
 import { costMicrocents, MONTH_CAP_MICROCENTS } from "./watcher";
@@ -50,6 +50,8 @@ const system = (stop: Stop) => [
   "Pick whole percents that sum to 100, inside each coin's max and at or above SKR's floor. Prefer measured growth; weigh short spans lightly; a coin marked no data or not tradeable keeps yesterday's share (the code holds it there); move gently from yesterday.",
   "Then write one line, under 25 words, second person, plain words, no advice, no exclamation marks, quoting only numbers from the table, that says why today's split leans where it does.",
   'Say "your coins", "your split": the line speaks to the person whose round-ups these are.',
+  // R-O1 (10-21): stORE has a floor like SKR's; the clamp raises it anyway, so the model is told and proposes a split the clamp keeps.
+  `stORE always gets at least ${STORE_FLOOR}, whatever its numbers say (the code holds it there).`,
   // R177: stORE's growth has a source the other coins lack; the line names it when the split leans to stORE.
   'stORE grows from ORE mining fees. When today\'s split leans to stORE, say where its growth comes from, as in "stORE pays the most this week, from ORE mining fees".',
   "Two legs lend: USDC lending and SOL lending. Before you answer, call get_venue_rates for kamino_klend and jupiter_lend (the table-only venues kamino_sm_vault, marginfi and lulo_protected are optional), and scout_yields once if it is offered.",
@@ -82,7 +84,7 @@ export async function readFacts(repo: Repo, day: string): Promise<CoinFacts[]> {
 
 /** The user message: plain rows, coin names from the registry, no mint, no URL, nothing from a user. */
 export function factsTable(facts: CoinFacts[], stop: Stop, yesterday: Split | null): string {
-  const lines = [`Setting: ${STOP_LABEL[stop]}. SKR floor ${STOPS[stop].floor}.`, "coin | growth % a year | days measured | price change % | price days | tradeable | max"];
+  const lines = [`Setting: ${STOP_LABEL[stop]}. SKR floor ${STOPS[stop].floor}. stORE floor ${STORE_FLOOR}.`, "coin | growth % a year | days measured | price change % | price days | tradeable | max"];
   for (const f of facts) {
     const g = f.noData ? "no data" : f.growthPct === null ? "collecting" : r1(f.growthPct).toFixed(1);
     const p = f.pricePct === null ? "collecting" : r1(f.pricePct).toFixed(1);
@@ -94,7 +96,7 @@ export function factsTable(facts: CoinFacts[], stop: Stop, yesterday: Split | nu
 
 /** Every number the why line may quote (spec 6.4). */
 export function factsNumbers(facts: CoinFacts[], stop: Stop, yesterday: Split | null, split: Split): number[] {
-  const n: number[] = [STOPS[stop].floor, ...ASSETS.map((a) => stopMax(stop, a)), ...ASSETS.map((a) => split[a])];
+  const n: number[] = [STOPS[stop].floor, STORE_FLOOR, ...ASSETS.map((a) => stopMax(stop, a)), ...ASSETS.map((a) => split[a])];
   for (const f of facts) {
     if (f.growthPct !== null) n.push(r1(f.growthPct));
     if (f.pricePct !== null) n.push(r1(f.pricePct));

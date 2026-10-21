@@ -7,7 +7,7 @@ import { badRequest } from "@/lib/bad-request";
 import { ReauthSchema, verifyReauth } from "@/lib/reauth";
 import { isLiveAsset, sameSplit, type LiveAsset } from "@/domain/coins";
 import type { Pins } from "@/domain/roundup";
-import { validatePins, floorFor, effectiveSplit, STOP_DEFAULTS, STOP_LABEL, PIN_MAX } from "@/domain/split";
+import { validatePins, floorFor, effectiveSplit, STOP_DEFAULTS, STOP_LABEL, PIN_MAX, STORE_FLOOR } from "@/domain/split";
 import { dayOf } from "@/domain/day";
 
 export const runtime = "nodejs";
@@ -29,9 +29,11 @@ const Body = z.object({
   reauth: ReauthSchema.optional(),
 }).strict();
 
-const PIN_COPY = (floor: number, stop: string) => ({
-  sum: `Pins add up to more than the split allows. SKR keeps at least ${floor}%.`,
+// R-O1 (10-21): an unpinned stORE keeps STORE_FLOOR, so the sum copy names it too; a stORE pin of 0 is its off switch (R346).
+const PIN_COPY = (floor: number, stop: string, storeRoom: boolean) => ({
+  sum: `Pins add up to more than the split allows. SKR keeps at least ${floor}%${storeRoom ? ` and stORE ${STORE_FLOOR}%` : ""}.`,
   skr_floor: `SKR keeps at least ${floor}% on ${stop}.`,
+  store_floor: `stORE keeps at least ${STORE_FLOOR}%.`,
   range: `Pins go up to ${PIN_MAX.stORE} for stORE and ${PIN_MAX.hSOL} for the other coins.`,
 });
 
@@ -75,7 +77,7 @@ export async function PUT(request: Request) {
     for (const k of Object.keys(pins) as LiveAsset[]) if (pins[k] === 0 && (!nextManaged || k === "SKR")) delete pins[k];
     const floor = floorFor(nextManaged, nextStop);
     const problem = validatePins(pins, floor);
-    if (problem) return NextResponse.json({ error: PIN_COPY(floor, STOP_LABEL[nextStop])[problem] }, { status: 400 });
+    if (problem) return NextResponse.json({ error: PIN_COPY(floor, STOP_LABEL[nextStop], pins.stORE === undefined)[problem] }, { status: 400 });
     const stopSplit = nextManaged ? ((await repo.latestSplitDay(nextStop))?.split ?? STOP_DEFAULTS[nextStop]) : STOP_DEFAULTS[nextStop];
     const allocation = effectiveSplit({ managed: nextManaged, stop: nextStop, pins, stopSplit });
     Object.assign(patch, { managed: nextManaged, stop: nextStop, pins, pinsByUndo, allocation });

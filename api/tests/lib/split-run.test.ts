@@ -37,6 +37,7 @@ describe("readFacts and factsTable", () => {
     expect(table).toMatch(/hSOL/);
     expect(table).not.toMatch(/he1ius|http/);
     expect(table).toMatch(/floor 35/);
+    expect(table).toMatch(/stORE floor 10\./);   // R-O1 (10-21)
   });
 });
 
@@ -138,6 +139,8 @@ describe("decideSplits (spec 6.2 to 6.5)", () => {
     expect(table).toMatch(/SOL_LEND.*no data/);
     expect(system).toMatch(/no data or not tradeable keeps yesterday's share/); // R132: the model is told what the clamp enforces
     expect(system).toMatch(/"your coins"/);                                     // R133: the second-person nudge
+    expect(system).toMatch(/stORE always gets at least 10/);                    // R-O1 (10-21): the model proposes splits the clamp keeps
+    expect(system).toMatch(/ORE mining fees/);                                  // R177 still there
     expect(rows.every((r) => r.split.SOL_LEND === 0)).toBe(true);
   });
 
