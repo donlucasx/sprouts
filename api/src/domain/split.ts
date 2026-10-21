@@ -69,12 +69,13 @@ export function redistributeDisabled(split: Split, disabled: readonly LiveAsset[
   return out;
 }
 
-export type PinProblem = "sum" | "skr_floor" | "store_floor" | "range";
+export type PinProblem = "sum" | "skr_floor" | "range";
 
 /**
- * Save-time rule (spec 4.2), the only place pin conflicts are resolved; the cron never resolves one. R-O1 (10-21): a stORE pin is 0
- * (switched off, R346; the route keeps a 0 pin only with the manager on) or at least STORE_FLOOR, and an unpinned stORE needs room
- * for its floor beside SKR's.
+ * Save-time rule (spec 4.2), the only place pin conflicts are resolved; the cron never resolves one. R-O1 (10-21) is deliberately
+ * NOT checked here, so the app builds already shipped (which step stORE by 5 and leave room for SKR's floor only) never hit a new
+ * 400: a stORE pin under STORE_FLOOR is accepted and read as the floor, and pins that leave stORE no room are trimmed by
+ * effectiveSplit (coordinator ruling, 10-21).
  */
 export function validatePins(pins: Pins, floor: number): PinProblem | null {
   for (const a of ASSETS) {
@@ -82,12 +83,10 @@ export function validatePins(pins: Pins, floor: number): PinProblem | null {
     if (v === undefined) continue;
     if (!Number.isInteger(v) || v < 0 || v > PIN_MAX[a]) return "range";
   }
-  if (pins.stORE !== undefined && pins.stORE > 0 && pins.stORE < STORE_FLOOR) return "store_floor";
   const total = ASSETS.reduce((s, a) => s + (pins[a] ?? 0), 0);
-  const storeRoom = pins.stORE === undefined ? STORE_FLOOR : 0;
   if (total > 100) return "sum";
-  if (pins.SKR !== undefined) return pins.SKR < floor ? "skr_floor" : total > 100 - storeRoom ? "sum" : null;
-  return total > 100 - floor - storeRoom ? "sum" : null;
+  if (pins.SKR !== undefined) return pins.SKR < floor ? "skr_floor" : null;
+  return total > 100 - floor ? "sum" : null;
 }
 
 /** Largest-remainder rounding to whole percents that still sum to 100. */
@@ -150,6 +149,18 @@ function raiseStore(out: Split, tiers: LiveAsset[][], skrMin: number): boolean {
     out.stORE += takeFrom(out, tier, need, (c) => (c === "SKR" ? skrMin : 0));
   }
   return out.stORE >= STORE_FLOOR;
+}
+
+/**
+ * R-O1 (10-21), the planting run's net under every saved split (manager on or off, the SKR_ONLY default too): stORE raised to
+ * STORE_FLOOR from SKR above `skrFloor` first, then the largest other coin. `off` (stORE disabled for the user, or switched off with
+ * a 0 pin) leaves the split as it is.
+ */
+export function withStoreFloor(split: Split, a: { skrFloor: number; off: boolean }): Split {
+  if (a.off || split.stORE >= STORE_FLOOR) return split;
+  const out = { ...split };
+  raiseStore(out, [["SKR"], NON_SKR.filter((c) => c !== "stORE")], a.skrFloor);
+  return out;
 }
 
 /**

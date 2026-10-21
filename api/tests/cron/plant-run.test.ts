@@ -64,6 +64,67 @@ async function seeded(roundups: number[], opts: { cap?: number; ago?: number } =
   return repo;
 }
 
+/** R-O1 (10-21): stORE switched off (manager on, a 0 pin, R346), for tests of other legs' mechanics: the stORE floor would otherwise send
+ * every other planting to stORE. The floor itself is tested in "the stORE floor in the planting run". */
+const storeOff = (repo: MemoryRepo) => repo.saveRules("U", { managed: true, pins: { stORE: 0 } });
+
+describe("the stORE floor in the planting run (R-O1, 10-21)", () => {
+  type BuildArgs = Parameters<Chain["buildPlantingTx"]>[0];
+  const recording = (builds: BuildArgs[], over: Partial<Chain> = {}) => { const base = fakeChain(over); return { ...base, buildPlantingTx: async (a: BuildArgs) => { builds.push(a); return base.buildPlantingTx(a); } } as Chain; };
+
+  it("a manager-off user with the saved SKR 100 default gets a stORE leg: the run plants toward SKR 90 / stORE 10", async () => {
+    const repo = await seeded([83, 62, 70]);
+    expect((await repo.getRules("U")).allocation).toEqual(SKR_ONLY);   // the saved split is the default, never recomputed
+    expect((await repo.getRules("U")).managed).toBe(false);
+    await repo.bumpLedger("W", "SKR", 1_000);                          // SKR already holds everything delivered: stORE sits 10 points under
+    const builds: BuildArgs[] = [];
+    const r = await runPlanting({ repo, now: NOW, chain: recording(builds) });
+    expect(builds.map((b) => b.asset)).toEqual(["stORE"]);
+    expect(r.planted[0]).toMatchObject({ asset: "stORE", pullCents: 215 });
+    expect(repo.legs[0]).toMatchObject({ asset: "stORE" });
+    expect((await repo.getRules("U")).allocation).toEqual(SKR_ONLY);   // nothing written back: the floor is applied at planting time only
+  });
+
+  it("over the plantings the floor is honoured: about one in ten goes to stORE, the rest to SKR", async () => {
+    const repo = await seeded([215]);
+    const assets: string[] = [];
+    for (let d = 0; d < 10; d++) {
+      if (d > 0) await repo.insertSwap({ signature: `d${d}`, walletPubkey: "W", ts: new Date(NOW.getTime() + d * 86_400_000 - 3_600_000), inMint: "a", inAmount: 1, outMint: "b", outAmount: 1, usdSizeCents: 100, class: "major", roundupCents: 215 });
+      const r = await runPlanting({ repo, now: new Date(NOW.getTime() + d * 86_400_000), chain: fakeChain() });
+      assets.push(r.planted[0].asset);
+    }
+    expect(assets.filter((a) => a === "stORE").length).toBe(1);
+    expect(assets.filter((a) => a === "SKR").length).toBe(9);
+  });
+
+  it("stORE switched off by the user (manager on, a 0 pin): no stORE leg", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await storeOff(repo);
+    await repo.bumpLedger("W", "SKR", 1_000);
+    const builds: BuildArgs[] = [];
+    await runPlanting({ repo, now: NOW, chain: recording(builds) });
+    expect(builds.map((b) => b.asset)).toEqual(["SKR"]);
+  });
+
+  it("stORE's leash leg disabled for a leashed user: no stORE leg, the floor gives way", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await repo.setWalletLink("W", { delegationPda: "D", linkModel: "leash" });
+    await repo.bumpLedger("W", "SKR", 1_000);
+    const builds: BuildArgs[] = [];
+    await runPlanting({ repo, now: NOW, chain: recording(builds, { readLeashConfig: async () => leashCfg([0]) }) });   // only SKR (leg 0) on
+    expect(builds.map((b) => b.asset)).toEqual(["SKR"]);
+  });
+
+  it("positive control: the same leashed user with stORE's leg on gets the stORE leg", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await repo.setWalletLink("W", { delegationPda: "D", linkModel: "leash" });
+    await repo.bumpLedger("W", "SKR", 1_000);
+    const builds: BuildArgs[] = [];
+    await runPlanting({ repo, now: NOW, chain: recording(builds, { readLeashConfig: async () => leashCfg([0, 1]) }) });
+    expect(builds[0]?.asset).toBe("stORE");
+  });
+});
+
 describe("runPlanting", () => {
   it("plants when pending reaches the threshold: 83 + 62 + 70 = 215 cents", async () => {
     const repo = await seeded([83, 62, 70]);
@@ -129,6 +190,7 @@ describe("runPlanting", () => {
 
   it("the old loop ($5.00 waiting, $3.00 in the wallet): plants what is covered, then after a top-up the rest, each round-up once", async () => {
     const repo = await seeded(many(10, 50));
+    await storeOff(repo);
     const r1 = await runPlanting({ repo, now: NOW, chain: fakeChain({ usdcBalanceRaw: async () => 3_000_000n }) });
     expect(r1.planted[0].pullCents).toBe(300);   // 6 round-ups (300) fit under 300
     expect((await repo.getWallet("W"))!.status).toBe("active");
@@ -172,6 +234,7 @@ describe("runPlanting", () => {
     expect((await runPlanting({ repo: four, now: NOW, chain: fakeChain({ usdcBalanceRaw: async () => 40_000n }) })).skipped[0].reason).toBe("no usdc");
     expect((await four.unplantedSwaps("W")).length).toBe(2);
     const part = await seeded([83, 62], old);
+    await storeOff(part);
     expect((await runPlanting({ repo: part, now: NOW, chain: fakeChain({ usdcBalanceRaw: async () => 1_000_000n }) })).planted[0].pullCents).toBe(83);
     expect((await part.unplantedSwaps("W")).map((s) => s.roundupCents)).toEqual([62]);
     // Topped up the next day: the waiting 62 (still past 7 days) plants on its own.
@@ -638,6 +701,7 @@ describe("runPlanting", () => {
 
   it("a leg records the USDC fee in cents and the coin's rate from today's snapshot, null before the first snapshot", async () => {
     const repo = await seeded([215]);
+    await storeOff(repo);
     await repo.saveRules("U", { allocation: { ...SKR_ONLY, SKR: 0, hSOL: 100 } });
     const a = await runPlanting({ repo, now: NOW, chain: fakeChain() });
     expect(a.planted[0].asset).toBe("hSOL");
@@ -669,6 +733,7 @@ describe("the SKR slippage remainder (R207 #2)", () => {
 
   it("records the surplus after confirmation and stakes it with the same user's next SKR planting, once", async () => {
     const repo = await seeded([83, 62, 70]);
+    await storeOff(repo);
     const builds: BuildArgs[] = [];
     await runPlanting({ repo, now: NOW, chain: recording(builds, { pullerSkrChangeRaw: async () => 500n }) });
     expect(builds[0].carryIn.SKR).toBeUndefined();
@@ -712,6 +777,7 @@ describe("the SKR slippage remainder (R207 #2)", () => {
 
   it("a planting that failed on chain gives its carry back; a stORE leg carries nothing", async () => {
     const repo = await seeded([83, 62, 70]);
+    await storeOff(repo);
     await runPlanting({ repo, now: NOW, chain: fakeChain({ pullerSkrChangeRaw: async () => 500n }) });
     await addSwaps(repo, "W", "d2-");
     const later = new Date(NOW.getTime() + 86_400_000);
@@ -727,6 +793,7 @@ describe("the SKR slippage remainder (R207 #2)", () => {
 
   it("stands down before claiming or sending when another run spent the same remainder meanwhile", async () => {
     const repo = await seeded([83, 62, 70]);
+    await storeOff(repo);
     await runPlanting({ repo, now: NOW, chain: fakeChain({ pullerSkrChangeRaw: async () => 500n }) });
     await addSwaps(repo, "W", "d2-");
     const spy = vi.spyOn(repo, "skrCreditRaw").mockResolvedValueOnce(500n).mockResolvedValueOnce(-500n);
@@ -1057,6 +1124,7 @@ describe("venues, the leash and the carry in the run (contracts 3.2-3.4)", () =>
 
   it("N1 (residual): a 0% lending leg that has a venue may take the fill's points, and plants on that venue", async () => {
     const repo = await seeded([83, 62, 70]);
+    await storeOff(repo);
     await seedVenues(repo);
     for (const venue of ["kamino_klend", "jupiter_lend"] as const) {
       await repo.putVenueDay({ day: "2026-09-29", venue, asset: "SOL_LEND", supplyPct: 4, rewardsPct: 0, utilizationPct: 90, withdrawableUsd: 1e7, tvlUsd: 1.2e8, exchangeRate: 1, avg7Pct: 4, daysMeasured: 3, eligible: false, verdict: null, reason: null, served: null, ok: true });
@@ -1105,6 +1173,7 @@ describe("venues, the leash and the carry in the run (contracts 3.2-3.4)", () =>
 
   it("records the WSOL surplus after confirmation and passes it into the same user's next SOL planting (R295)", async () => {
     const repo = await seeded([83, 62, 70]);
+    await storeOff(repo);
     await seedVenues(repo);
     await repo.saveRules("U", { allocation: { ...lendOnly, USDC_LEND: 0, SOL_LEND: 100 } });
     const builds: BuildArgs[] = [];
@@ -1158,6 +1227,7 @@ describe("Task 11 carry-ins (T7/T8/T9 reviews)", () => {
 
   it("carry: a Jupiter Lend rebuild reuses the same carry, the planting reserves it once, and confirmation settles it once", async () => {
     const repo = await seeded([83, 62, 70]);
+    await storeOff(repo);
     await seedVenues(repo, { kamino_klend: { eligible: false } });
     await repo.saveRules("U", { allocation: lendOnly });
     await runPlanting({ repo, now: NOW, chain: fakeChain({ pullerCarryChangeRaw: async () => 500n }) });

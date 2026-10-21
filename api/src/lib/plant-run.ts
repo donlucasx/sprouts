@@ -6,7 +6,7 @@ import { pickAsset, type Asset } from "@/domain/allocation";
 import { ASSETS, COINS, LEND_ASSETS, isLendAsset, type LendAsset, type LiveAsset } from "@/domain/coins";
 import { addDays, dayOf } from "@/domain/day";
 import { capLeftCents, plantAmountCents } from "@/domain/cap";
-import { redistributeDisabled } from "@/domain/split";
+import { floorFor, redistributeDisabled, withStoreFloor } from "@/domain/split";
 import { lendingUsdByProtocol } from "./user-routing";
 import { errorText } from "./redact";
 export { lendingUsdByProtocol } from "./user-routing";
@@ -570,7 +570,10 @@ async function plantOneOrThrow(a: { repo: Repo; now: Date; chain: Chain }, w: Wa
   // Residual N1 (10-05): the water-fill gives points to the leg with the most headroom, and a 0% lending leg has full headroom, so
   // once any leg is disabled every lending leg needs its venue. A lending leg with no venue is itself disabled and gets no points.
   if (disabled.length > 0) for (const leg of LEND_ASSETS) if (!(leg in venues)) await checkLend(leg);
-  const target = redistributeDisabled(rules.allocation, disabled, rules.stop);
+  // R-O1 (10-21): every planting's split keeps stORE at its floor, whatever split was saved (a manager-off user's split is only
+  // recomputed when they save), unless stORE is disabled here (its leash leg) or switched off (a 0 pin with the manager on, R346).
+  const floored = withStoreFloor(rules.allocation, { skrFloor: floorFor(rules.managed, rules.stop), off: disabled.includes("stORE") || (rules.managed && rules.pins.stORE === 0) });
+  const target = redistributeDisabled(floored, disabled, rules.stop);
   if (!target) return { wallet: w.pubkey, reason: "no leg enabled" };
   // R336 follow-up: with USDC lending disabled and every enabled leg at its stop max, the rest of the split is left unpulled. One leg
   // takes each planting, so "unpulled" is the pull itself: only the target's share of the change is pulled (the USDC stays in the

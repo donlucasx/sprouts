@@ -28,13 +28,12 @@ describe("validatePins (spec 4.2)", () => {
   it("accepts pins within the room, rejects a sum over it", () => {
     expect(validatePins({ cbBTC: 10, hSOL: 20 }, 35)).toBeNull();
     expect(validatePins({ cbBTC: 40, hSOL: 30 }, 35)).toBe("sum");      // 70 > 65
-    expect(validatePins({ cbBTC: 30, hSOL: 25 }, 35)).toBeNull();        // exactly 55: R-O1 keeps 10 for an unpinned stORE
-    expect(validatePins({ cbBTC: 35, hSOL: 30 }, 35)).toBe("sum");       // 65 was the room before R-O1
+    expect(validatePins({ cbBTC: 35, hSOL: 30 }, 35)).toBeNull();        // exactly 65 (R-O1 leaves the save rule alone; the split trims)
   });
   it("SKR pinned under the floor is refused; at or above it is fine", () => {
     expect(validatePins({ SKR: 30 }, 35)).toBe("skr_floor");
-    expect(validatePins({ SKR: 35, hSOL: 55 }, 35)).toBeNull();
-    expect(validatePins({ SKR: 35, hSOL: 65 }, 35)).toBe("sum");         // R-O1: no room left for stORE's 10
+    expect(validatePins({ SKR: 35, hSOL: 65 }, 35)).toBeNull();
+    expect(validatePins({ SKR: 35, hSOL: 70 }, 35)).toBe("sum");
   });
   it("the pin maxes: stORE 50, others 75; whole percents only", () => {
     expect(validatePins({ stORE: 55 }, 25)).toBe("range");
@@ -280,7 +279,7 @@ describe("redistributeDisabled (R336 + Claude follow-up: water-fill to the stop 
   });
 });
 
-import { STORE_FLOOR, MANUAL_FLOOR, PIN_MAX } from "@/domain/split";
+import { STORE_FLOOR, MANUAL_FLOOR, withStoreFloor } from "@/domain/split";
 
 // R-O1 (10-21): every planting includes stORE at a guaranteed 10%, beside SKR's floor, unless stORE is switched off or disabled.
 describe("the stORE floor (R-O1, 10-21)", () => {
@@ -309,20 +308,39 @@ describe("the stORE floor (R-O1, 10-21)", () => {
     expect(STOP_DEFAULTS.bold).toEqual({ SKR: 25, stORE: 10, USDC_LEND: 20, SOL_LEND: 15, hSOL: 20, cbBTC: 10 });
   });
 
-  describe("validatePins", () => {
-    it("a stORE pin under 10 is refused as store_floor; 10 and up is fine; 0 (switched off, R346) is allowed", () => {
-      expect(validatePins({ stORE: 5 }, 35)).toBe("store_floor");
-      expect(validatePins({ stORE: 9 }, 25)).toBe("store_floor");
-      expect(validatePins({ stORE: 10 }, 35)).toBeNull();
-      expect(validatePins({ stORE: 0 }, 35)).toBeNull();
+  describe("validatePins (lenient for the shipped app builds, coordinator 10-21)", () => {
+    it("a stORE pin under 10 is accepted (the split reads it as 10); the sum keeps room for SKR's floor only", () => {
+      expect(validatePins({ stORE: 5 }, 35)).toBeNull();
+      expect(validatePins({ stORE: 5 }, 25)).toBeNull();
+      expect(validatePins({ cbBTC: 35, hSOL: 30 }, 35)).toBeNull();         // 65: no room kept for stORE, the split trims
+      expect(validatePins({ cbBTC: 35, hSOL: 31 }, 35)).toBe("sum");        // the old rule still holds
+      expect(validatePins({ hSOL: 75 }, 25)).toBeNull();
     });
-    it("non-SKR pins must leave room for both floors when stORE is unpinned", () => {
-      expect(validatePins({ cbBTC: 30, hSOL: 25 }, 35)).toBeNull();        // 55 = 100 - 35 - 10
-      expect(validatePins({ cbBTC: 30, hSOL: 26 }, 35)).toBe("sum");       // 56 leaves no room for stORE's 10
-      expect(validatePins({ cbBTC: 35, hSOL: 30, stORE: 0 }, 35)).toBeNull(); // stORE off: only SKR's floor needs room
-      expect(validatePins({ stORE: 10, hSOL: 55 }, 35)).toBeNull();         // stORE pinned: its pin is its room
-      expect(validatePins({ SKR: 35, hSOL: 55 }, 35)).toBeNull();           // SKR pinned, 10 left for stORE
-      expect(validatePins({ SKR: 35, hSOL: 60 }, 35)).toBe("sum");
+    it("every pin set the lenient rule accepts still yields stORE 10 and SKR at its floor, in both modes", () => {
+      for (const managed of [true, false]) for (const stop of STOPS3) for (const c of [0, 20, 40]) for (const h of [0, 25, 35]) for (const st of [undefined, 5, 15]) {
+        const pins = { ...(c ? { cbBTC: c } : {}), ...(h ? { hSOL: h } : {}), ...(st === undefined ? {} : { stORE: st }) };
+        const floor = managed ? STOPS[stop].floor : MANUAL_FLOOR;
+        if (validatePins(pins, floor)) continue;
+        const s = effectiveSplit({ managed, stop, pins, stopSplit: STOP_DEFAULTS[stop] });
+        expect(sum(s)).toBe(100);
+        expect(s.stORE).toBeGreaterThanOrEqual(STORE_FLOOR);
+        expect(s.SKR).toBeGreaterThanOrEqual(floor);
+      }
+    });
+  });
+
+  describe("withStoreFloor (the planting run's net)", () => {
+    it("SKR_ONLY becomes SKR 90, stORE 10", () => {
+      expect(withStoreFloor(SKR_ONLY, { skrFloor: MANUAL_FLOOR, off: false })).toEqual(split({ SKR: 90, stORE: 10 }));
+    });
+    it("SKR above its floor first, then the largest other coin", () => {
+      expect(withStoreFloor(split({ SKR: 30, cbBTC: 70 }), { skrFloor: 25, off: false })).toEqual(split({ SKR: 25, stORE: 10, cbBTC: 65 }));
+      expect(withStoreFloor(split({ SKR: 25, stORE: 5, hSOL: 30, cbBTC: 40 }), { skrFloor: 25, off: false })).toEqual(split({ SKR: 25, stORE: 10, hSOL: 30, cbBTC: 35 }));
+    });
+    it("off, or already at the floor: untouched", () => {
+      expect(withStoreFloor(SKR_ONLY, { skrFloor: 25, off: true })).toEqual(SKR_ONLY);
+      const s = split({ SKR: 60, stORE: 20, hSOL: 20 });
+      expect(withStoreFloor(s, { skrFloor: 25, off: false })).toEqual(s);
     });
   });
 
@@ -368,7 +386,8 @@ describe("the stORE floor (R-O1, 10-21)", () => {
     it("a sweep of valid pins over every stop: stORE at least 10, SKR at least its floor, pins kept", () => {
       for (const stop of STOPS3) for (const c of [0, 5, 10, 20]) for (const h of [0, 15, 25]) for (const st of [undefined, 10, 15]) {
         const pins = { cbBTC: c, hSOL: h, ...(st === undefined ? {} : { stORE: st }) };
-        if (validatePins(pins, STOPS[stop].floor)) continue;
+        // Pins that leave room for both floors are kept exactly (the lenient save rule allows more; the sweep below covers those).
+        if (validatePins(pins, STOPS[stop].floor) || c + h + (st ?? STORE_FLOOR) > 100 - STOPS[stop].floor) continue;
         const s = effectiveSplit({ managed: true, stop, pins, stopSplit: STOP_DEFAULTS[stop] });
         expect(sum(s)).toBe(100);
         expect(s.stORE).toBeGreaterThanOrEqual(STORE_FLOOR);

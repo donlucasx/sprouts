@@ -48,12 +48,12 @@ describe("PUT /api/rules with the Yield Manager", () => {
     await put({ managed: true, stop: "balanced" });
     const over = await put({ pins: { cbBTC: 40, hSOL: 30 } });
     expect(over.status).toBe(400);
-    expect(((await over.json()) as { error: string }).error).toBe("Pins add up to more than the split allows. SKR keeps at least 35% and stORE 10%.");
-    const overOff = await put({ pins: { cbBTC: 40, hSOL: 30, stORE: 0 } });   // stORE switched off: only SKR's floor needs room
-    expect(((await overOff.json()) as { error: string }).error).toBe("Pins add up to more than the split allows. SKR keeps at least 35%.");
-    const storeLow = await put({ pins: { stORE: 5 } });
-    expect(storeLow.status).toBe(400);
-    expect(((await storeLow.json()) as { error: string }).error).toBe("stORE keeps at least 10%.");
+    expect(((await over.json()) as { error: string }).error).toBe("Pins add up to more than the split allows. SKR keeps at least 35%.");
+    // R-O1 with the shipped app (coordinator 10-21): a stORE pin of 5 (one "+" tap) is saved, and the split reads it as 10.
+    const storeLow = await put({ managed: false, pins: { stORE: 5 } });
+    expect(storeLow.status).toBe(200);
+    expect(((await storeLow.json()) as { allocation: Split }).allocation).toEqual(split({ SKR: 90, stORE: 10 }));
+    await put({ managed: true, stop: "balanced" });
     const low = await put({ pins: { SKR: 30 } });
     expect(((await low.json()) as { error: string }).error).toBe("SKR keeps at least 35% on Balanced.");
     const range = await put({ pins: { stORE: 55 } });
