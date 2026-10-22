@@ -1,0 +1,34 @@
+# First planting (owner 10-22): plant a new user's first planting within the hour, not at the next daily run.
+# Vercel Hobby crons run once a day (api/vercel.json, 14:00 UTC); this free scheduler calls the first-only route every hour.
+# The route plants only users with no planting yet; overlapping runs are safe (the conditional swap claim, plant-run.ts).
+# Needs the repo secret CRON_SECRET (the same value as the Vercel env var). The repo is public, so this log prints counts only.
+name: first-planting
+
+on:
+  schedule:
+    - cron: "30 * * * *"   # :30, clear of the daily 14:00 run and of GitHub's top-of-hour queue
+  workflow_dispatch: {}
+
+concurrency:
+  group: first-planting
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  plant:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Run first plantings
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -eu
+          if [ -z "${CRON_SECRET}" ]; then echo "The CRON_SECRET repository secret is not set."; exit 1; fi
+          code=$(curl -sS -o body.json -w '%{http_code}' --max-time 330 \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            https://sprouts.money/api/cron/first-planting) || { echo "request failed (curl)"; exit 1; }
+          echo "HTTP ${code}"
+          if [ "${code}" != "200" ]; then exit 1; fi
+          jq -c '{planted, skipped, reasons}' body.json
