@@ -188,31 +188,58 @@ export function parseSwapInstructions(r: SwapInstructionsResponse) {
   };
 }
 
+/**
+ * An ExactOut quote's maximum against the slippage asked for (the SOL top-up): `otherAmountThreshold` is then the most input the route
+ * may spend, so it must sit between inAmount and ceil(inAmount * (10_000 + slippageBps) / 10_000) + 1 (one raw unit for rounding).
+ */
+export function checkQuoteSlippageExactOut(q: Quote, slippageBps: number): void {
+  let inn: bigint, max: bigint;
+  try {
+    inn = BigInt(q.inAmount);
+    max = BigInt(q.otherAmountThreshold);
+  } catch {
+    return refuse(`quote amounts ${q.inAmount} / ${q.otherAmountThreshold} are not integers`);
+  }
+  const ceil = (inn * BigInt(10_000 + slippageBps) + 9_999n) / 10_000n + 1n;
+  if (inn <= 0n || max < inn || max > ceil) throw new Error(`Jupiter quote refused: maximum ${max} is outside ${inn}..${ceil} for ${slippageBps} bps`);
+}
+
 export async function getQuote(a: {
   inputMint: Address; outputMint: Address; amountRaw: bigint; slippageBps?: number; maxAccounts?: number; onlyDirectRoutes?: boolean; platformFeeBps?: number;
+  /** ExactOut: `amountRaw` is the output wanted (the SOL top-up); every planting leaves it unset (ExactIn). */
+  swapMode?: "ExactIn" | "ExactOut";
 }): Promise<Quote> {
   const slippageBps = a.slippageBps ?? 100;
   const q = new URLSearchParams({
     inputMint: a.inputMint, outputMint: a.outputMint, amount: a.amountRaw.toString(), slippageBps: String(slippageBps),
     maxAccounts: String(a.maxAccounts ?? 24), onlyDirectRoutes: String(a.onlyDirectRoutes ?? false), restrictIntermediateTokens: "true",
     ...(a.platformFeeBps ? { platformFeeBps: String(a.platformFeeBps) } : {}),
+    ...(a.swapMode === "ExactOut" ? { swapMode: "ExactOut" } : {}),
   });
   const res = await fetch(`${BASE}/swap/v1/quote?${q}`, { headers: headers(), signal: timeout() });
   if (!res.ok) throw new Error(`Jupiter quote failed: ${res.status} ${(await res.text()).slice(0, 200)}`);
   const quote = (await res.json()) as Quote;
   // Every caller gets a quote whose minimum matches the slippage it asked for (R207 #4).
-  checkQuoteSlippage(quote, slippageBps);
+  if (a.swapMode === "ExactOut") checkQuoteSlippageExactOut(quote, slippageBps);
+  else checkQuoteSlippage(quote, slippageBps);
   return quote;
 }
 
 /** The swap as separate instructions, so the pull and the stake can sit beside it in one transaction. */
-export async function getSwapInstructions(a: { quote: Quote; userPublicKey: Address; destinationTokenAccount?: Address; feeAccount?: Address }) {
+export async function getSwapInstructions(a: {
+  quote: Quote; userPublicKey: Address; destinationTokenAccount?: Address; feeAccount?: Address;
+  /** The SOL top-up only: the user's own SOL is wrapped for the swap and the rest unwrapped after. Plantings keep it off. */
+  wrapAndUnwrapSol?: boolean;
+  /** The SOL top-up only: the priority fee's ceiling in lamports (Jupiter's "medium" level, capped). Plantings set their own. */
+  maxPriorityLamports?: number;
+}) {
   const res = await fetch(`${BASE}/swap/v1/swap-instructions`, {
     method: "POST",
     headers: headers(),
     signal: timeout(),
     body: JSON.stringify({
-      quoteResponse: a.quote, userPublicKey: a.userPublicKey, wrapAndUnwrapSol: false, dynamicComputeUnitLimit: true,
+      quoteResponse: a.quote, userPublicKey: a.userPublicKey, wrapAndUnwrapSol: a.wrapAndUnwrapSol ?? false, dynamicComputeUnitLimit: true,
+      ...(a.maxPriorityLamports ? { prioritizationFeeLamports: { priorityLevelWithMaxLamports: { maxLamports: a.maxPriorityLamports, priorityLevel: "medium" } } } : {}),
       ...(a.destinationTokenAccount ? { destinationTokenAccount: a.destinationTokenAccount } : {}),
       ...(a.feeAccount ? { feeAccount: a.feeAccount } : {}),
     }),

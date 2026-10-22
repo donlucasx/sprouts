@@ -10,6 +10,7 @@ const NOTIFY_KEY: Record<NoticeKind, string> = {
   withdrawals: 'prefs.notifyWithdrawals',
   manager: 'prefs.notifyManager',
   limit: 'prefs.notifyLimit',
+  paused: 'prefs.notifyPaused',
 }
 
 export function readAppearance(): Appearance {

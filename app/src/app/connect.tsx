@@ -16,6 +16,8 @@ import { confirmWithRetries, LINK_NOT_ON_CHAIN_YET } from '@/lib/confirm-retry'
 import { formatWallet } from '@/lib/format'
 import { useSession } from '@/lib/session'
 import { BEFORE_YOU_LINK, CAN, CANT, OTHER_WALLET_LINES, phoneUsdcNote } from '@/lib/safety-copy'
+import { TopUpButton } from '@/components/TopUp'
+import { TOPUP, TOPUP_DEFAULT_CENTS } from '@/lib/topup'
 import { FONT, spacing } from '@/theme'
 
 /**
@@ -57,6 +59,7 @@ export default function Connect() {
   const [approving, setApproving] = useState(false)
   const [coding, setCoding] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [toppedUp, setToppedUp] = useState(false)
   const { data: me, refetch } = useMe()
   const [before, setBefore] = useState<string[]>([])
   // Derived, not stored: the wallet that appeared since this code was made.
@@ -129,6 +132,10 @@ export default function Connect() {
           <ThemedText tone="attention" style={{ fontSize: 14, lineHeight: 20 }}>
             {usdcNote}
           </ThemedText>
+        ) : null}
+        {/* 10-22: the note's own fix, one tap; it stays mounted after a top-up so its confirmation shows once the note has gone */}
+        {session && (usdcNote || toppedUp) ? (
+          <TopUpButton user={session.pubkey} cents={TOPUP_DEFAULT_CENTS} done={TOPUP.doneLink} onDone={() => setToppedUp(true)} />
         ) : null}
         <Button title="Approve" loading={approving} onPress={linkThisPhone} />
         {approving ? (

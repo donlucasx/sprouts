@@ -12,8 +12,8 @@ export function plantingNotice(
   return `Your change was planted: ${plantedWhat({ ...p, usdPrice })}.`;
 }
 
-/** R161: the four notices, each behind its own switch in Settings > Notifications. */
-export type NoticeKind = "plantings" | "withdrawals" | "manager" | "limit";
+/** R161: the notices, each behind its own switch in Settings > Notifications ("paused": 10-22, the run paused a wallet for want of USDC). */
+export type NoticeKind = "plantings" | "withdrawals" | "manager" | "limit" | "paused";
 export type Notice = { kind: NoticeKind; title: string; body: string };
 
 /** "60% SKR, 40% stORE": the coins with a share, in the app's coin order. */
@@ -45,5 +45,15 @@ export function noticesFor(before: MeResponse | null, me: MeResponse, on: (k: No
   const feeCents = me.lastReceipt?.networkFeeCents ?? 0;
   if (landed.length > 0 && me.rules.dailyCapCents > 0 && me.nextPlanting.capLeftCents <= feeCents)
     out.push({ kind: "limit", title: "Daily limit reached", body: "Today's limit is used up. Your change keeps adding up and plants tomorrow." });
+  // 10-22: a wallet the run newly paused for want of USDC (this read says so, the last one did not), so once per pause, not every poll.
+  // This phone's wallet can top up from SOL in the app; another wallet's USDC is added wherever that wallet lives.
+  const noUsdc = (w: MeResponse["wallets"][number] | undefined) => w?.status === "paused" && w.pause?.reason === "no_usdc";
+  for (const w of me.wallets ?? []) {
+    if (!noUsdc(w) || noUsdc((before.wallets ?? []).find((b) => b.pubkey === w.pubkey))) continue;
+    const body = w.pubkey === me.user?.pubkey
+      ? "Your wallet doesn't have enough USDC for round-ups. Open Sprouts to top up from SOL."
+      : `Wallet ${w.pubkey.slice(0, 4)}...${w.pubkey.slice(-4)} doesn't have enough USDC for round-ups. Add USDC there to start again.`;
+    out.push({ kind: "paused", title: "Paused: add USDC", body });
+  }
   return out.filter((n) => on(n.kind));
 }

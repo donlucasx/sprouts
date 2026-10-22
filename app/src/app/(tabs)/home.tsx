@@ -36,6 +36,8 @@ import { NextPlanting, roomUnderBar } from '@/components/NextPlanting'
 import { canSlot } from '@/model/can'
 import { nextPlantingFor } from '@/lib/next-planting'
 import { RelinkCard } from '@/components/RelinkCard'
+import { TopUpButton } from '@/components/TopUp'
+import { TOPUP, topUpOffer } from '@/lib/topup'
 import { MoveCard } from '@/components/MoveCard'
 import { termsNeeded, termsSummary } from '@/lib/terms'
 import { arrivalLine, formatSkr, formatAsOf } from '@/lib/format'
@@ -205,6 +207,8 @@ export default function Home() {
   const value = valueBlock(totals, staked)
   const pause = pauseState(me.wallets)
   const noUsdc = noUsdcPauseLines(me.wallets)
+  // 10-22: the one-tap SOL top-up under the pause lines, for this phone's wallet only; other wallets get a line saying where to add it
+  const topUp = topUpOffer(me)
   // R96, R184 and R186: the one line and the can decided together, so they always agree; the can is in colour only while a bud waits.
   // R186: the Next planting row draws inside the garden (directly under it, the can at its bar's end). R199: the line rides in that
   // row too, tucked into the paper under the bar beside the can (WatcherLine's `tuck`).
@@ -282,6 +286,12 @@ export default function Home() {
             {line}
           </ThemedText>
         </View>
+      ))}
+      {topUp.phoneCents !== null ? <TopUpButton user={me.user.pubkey} cents={topUp.phoneCents} done={TOPUP.done} /> : null}
+      {topUp.others.map((line) => (
+        <ThemedText key={line} variant="caption" tone="secondary">
+          {line}
+        </ThemedText>
       ))}
       {pause.shown && !pause.on && !pausedOnlyForNoUsdc(me.wallets) ? (
         <Pressable
