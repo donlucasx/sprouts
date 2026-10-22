@@ -21,6 +21,8 @@ import { capLeftCents } from "@/domain/cap";
 import { SKR_MINT, STORE_MINT } from "@/lib/constants";
 import { STOP_DEFAULTS } from "@/domain/split";
 import { dayOf } from "@/domain/day";
+import { pauseCauseOf, PAUSE_EVENT_KINDS } from "@/domain/pause-cause";
+import { NETWORK_FEE_CENTS } from "@/lib/plant-run";
 
 export const runtime = "nodejs";
 
@@ -75,7 +77,7 @@ export async function GET(request: Request) {
   // Contracts 5.2: legsEnabled is null for a user with no leashed wallet; [] when the leash config cannot be read (nothing is enabled we can show).
   const leashWallets = wallets.filter((w) => w.linkModel === "leash" && w.status !== "revoked");
   // Second wave, at once: the reads that need the wallets, the rules or the stORE basis from the first.
-  const [pending, capLeft, splitRow, leashCfg, storeRedeem] = await Promise.all([
+  const [pending, capLeft, splitRow, leashCfg, storeRedeem, pauseEvents] = await Promise.all([
     Promise.all(wallets.map((w) => repo.unplantedSwaps(w.pubkey))).then((r) => r.flat().reduce((s, x) => s + x.roundupCents, 0)),
     // Queue item 12: what the delegation has actually pulled this period, so "left today" is a number the chain backs.
     (async () => {
@@ -92,7 +94,16 @@ export async function GET(request: Request) {
     (async () => (await repo.getSplitDay(day, rules.stop)) ?? (await repo.latestSplitDay(rules.stop)))(),
     leashWallets.length ? sharedLeashConfig().catch((): LeashConfig | null => null) : Promise.resolve<LeashConfig | null>(null),
     storePutInRaw > 0n ? sharedStoreRedeemRate().catch(() => null) : Promise.resolve(null),
+    // Why each paused wallet is paused (one read, only when one is paused): the app says "add USDC" only for the run's own pause.
+    wallets.some((w) => w.status === "paused") ? repo.listEvents(user.seedVaultPubkey, [...PAUSE_EVENT_KINDS], 200) : Promise.resolve([]),
   ]);
+  // A no-USDC pause ends by itself at the next daily run once the wallet holds threshold + network fee (plant-run.ts
+  // resumePausedWallets); needCents is what the run wanted to pull when it paused (the round-ups the cap allowed, fee included).
+  const pauseOf = (w: (typeof wallets)[number]) => {
+    if (w.status !== "paused") return null;
+    const cause = pauseCauseOf(pauseEvents, w.pubkey);
+    return cause.reason === "no_usdc" ? { reason: "no_usdc", needCents: cause.needCents, resumeAtCents: rules.plantThresholdCents + NETWORK_FEE_CENTS } : { reason: "user" };
+  };
   // R281: a retired coin's planting is history the app hides; Home's rows and receipt come from live legs only.
   const legOf = (id: string) => legs.find((x) => x.plantingId === id);
   const livePlantings = plantings.filter((p) => { const l = legOf(p.id); return !l || COINS[l.asset].live; });
@@ -160,7 +171,7 @@ export async function GET(request: Request) {
           readyAt: pot.skrUnstakeReadyAt ?? new Date(pendingBasket.unstakeTs.getTime() + COOLDOWN_MS), delivered: false, deliveredSignature: null,
         }
       : null,
-    wallets: wallets.map((w) => ({ pubkey: w.pubkey, status: w.status, dailyCapCents: w.dailyCapCents, linkModel: w.linkModel })),
+    wallets: wallets.map((w) => ({ pubkey: w.pubkey, status: w.status, dailyCapCents: w.dailyCapCents, linkModel: w.linkModel, pause: pauseOf(w) })),
     rules: rulesRowToRules(rules),
   }));
 }

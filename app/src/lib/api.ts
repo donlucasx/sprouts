@@ -63,6 +63,11 @@ export async function api<T>(path: string, init: { method?: "GET" | "POST" | "PU
 // adds are OPTIONAL here on purpose (the app ships before the API and phones keep cached reads): read them with `?? default`.
 export type VetoReason = "incentive_spike" | "near_full" | "deposits_fleeing" | "data_suspect";
 export type MoveStatus = "open" | "dismissed" | "expired" | "done" | "failed";
+/** Why a paused wallet is paused (/api/me, 10-22; absent from an older API): the daily run's own pause for want of USDC, which it
+ *  ends by itself once the wallet holds `resumeAtCents` (threshold + network fee), or the user's, which only their resume ends.
+ *  `needCents` is what the run wanted to pull when it paused (null when unknown). */
+export type WalletPause = { reason: "no_usdc"; needCents: number | null; resumeAtCents: number } | { reason: "user" };
+
 /** One wallet-held leg as /api/me serves it (zero balances are omitted); USDC_LEND/SOL_LEND are one aggregated row each, heldRaw in UNDERLYING units. */
 export type Holding = { asset: LiveAsset; heldRaw: string; putInCents: number; valueUsd: number | null; earnedUsd: number | null; earnedUnderlyingRaw: string | null; growthPct?: number | null };
 /** Contracts 5.2: one lending position per (asset, venue) with receiptRaw > 0. receiptRaw in receipt units; underlyingRaw in USDC 6 / SOL 9. */
@@ -101,7 +106,7 @@ export type MeResponse = {
   nextPlanting: { pendingCents: number; thresholdCents: number; capLeftCents: number; asset: LiveAsset };
   lastReceipt: { ts: string; usdcPulledCents: number; networkFeeCents: number; asset: Asset; amountOutRaw: string; feeCents: number; feeAmountRaw?: string; usdPrice: number | null; signature: string | null; venue?: AutoVenue | null } | null;
   basket: { id: string; asset: "SKR"; amountRaw: string; unstakeTs: string; readyAt: string; delivered: boolean; deliveredSignature: string | null } | null;
-  wallets: { pubkey: string; status: "active" | "paused" | "revoked"; dailyCapCents: number; linkModel?: "puller" | "leash" }[];
+  wallets: { pubkey: string; status: "active" | "paused" | "revoked"; dailyCapCents: number; linkModel?: "puller" | "leash"; pause?: WalletPause | null }[];
   rules: {
     roundupOn: boolean; roundupToCents: number; pctOn: boolean; pctBps: number; pctThresholdCents: number; plantThresholdCents: number; plantMaxDays: number; dailyCapCents: number;
     managed: boolean; stop: Stop; pins: Pins; allocation: Split;
