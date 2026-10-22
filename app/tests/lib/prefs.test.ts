@@ -20,7 +20,7 @@ describe('prefs (R153)', () => {
     expect(readAppearance()).toBe('system')
   })
   it('every notice defaults to on and round-trips on its own (R161)', () => {
-    for (const k of ['plantings', 'withdrawals', 'manager', 'limit'] as const) expect(readNotify(k)).toBe(true)
+    for (const k of ['plantings', 'withdrawals', 'manager', 'limit', 'paused'] as const) expect(readNotify(k)).toBe(true)
     writeNotify('manager', false)
     expect(readNotify('manager')).toBe(false)
     expect(readNotify('limit')).toBe(true)

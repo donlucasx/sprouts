@@ -37,6 +37,7 @@ const NOTICES: [NoticeKind, string][] = [
   ['withdrawals', 'Tell me when a withdrawal arrives'],
   ['manager', 'Tell me when the manager moves my split'],
   ['limit', 'Tell me when the daily limit is reached'],
+  ['paused', 'Tell me when a wallet runs out of USDC'],
 ]
 
 export default function Settings() {
