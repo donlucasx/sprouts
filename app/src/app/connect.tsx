@@ -15,7 +15,7 @@ import { newlyLinked } from '@/lib/newly-linked'
 import { confirmWithRetries, LINK_NOT_ON_CHAIN_YET } from '@/lib/confirm-retry'
 import { formatWallet } from '@/lib/format'
 import { useSession } from '@/lib/session'
-import { BEFORE_YOU_LINK, CAN, CANT, OTHER_WALLET_LINES, phoneUsdcNote } from '@/lib/safety-copy'
+import { APPROVAL_NOTE, CAN, CANT, OTHER_WALLET_LINE, phoneUsdcNote } from '@/lib/safety-copy'
 import { TopUpButton } from '@/components/TopUp'
 import { TOPUP, TOPUP_DEFAULT_CENTS } from '@/lib/topup'
 import { FONT, spacing } from '@/theme'
@@ -31,22 +31,14 @@ function confirmLink(code: string, wallet: string, signedTransaction: string) {
   })
 }
 
-/** A short heading and its points, one per line (the website's can / can't box, phone-sized). */
-function Bullets({ heading, lines, small }: { heading: string; lines: readonly string[]; small?: boolean }) {
+/** One marked line of the can / can't card: a check for what Sprouts can do, a cross for what it can't. */
+function Mark({ ok, text }: { ok: boolean; text: string }) {
   return (
-    <View style={{ gap: spacing.xs }}>
-      <ThemedText variant="label" tone="accentText">
-        {heading}
+    <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+      <ThemedText tone={ok ? 'accentText' : 'error'} style={{ width: 18 }}>
+        {ok ? '\u2713' : '\u2715'}
       </ThemedText>
-      {lines.map((l) => (
-        <ThemedText
-          key={l}
-          tone={small ? 'secondary' : 'text'}
-          style={small ? { fontSize: 14, lineHeight: 20 } : undefined}
-        >
-          {`• ${l}`}
-        </ThemedText>
-      ))}
+      <ThemedText style={{ flex: 1 }}>{text}</ThemedText>
     </View>
   )
 }
@@ -116,18 +108,16 @@ export default function Connect() {
 
   return (
     <Screen back title="Link a wallet">
-      <ThemedText>
-        Every swap from a linked wallet rounds up to the next dollar. Once a day Sprouts plants the change, up to $5.
-        Approve once; revoke any time.
-      </ThemedText>
+      <ThemedText>Every swap rounds up. Sprouts plants the change once a day.</ThemedText>
       <Card>
-        <Bullets heading="Sprouts can" lines={CAN} />
-        <Bullets heading="Sprouts can't" lines={CANT} />
+        {CAN.map((l) => <Mark key={l} ok text={l} />)}
+        {CANT.map((l) => <Mark key={l} ok={false} text={l} />)}
+        <ThemedText variant="caption" tone="secondary">
+          {APPROVAL_NOTE}
+        </ThemedText>
       </Card>
-      <Bullets heading="Before you link" lines={BEFORE_YOU_LINK} small />
       <Card>
         <ThemedText variant="heading">{"This phone's wallet"}</ThemedText>
-        <ThemedText tone="secondary">One fingerprint. Daily limit $5.</ThemedText>
         {usdcNote ? (
           <ThemedText tone="attention" style={{ fontSize: 14, lineHeight: 20 }}>
             {usdcNote}
@@ -148,11 +138,11 @@ export default function Connect() {
         <ThemedText variant="heading">Another wallet</ThemedText>
         {linked
           ? null
-          : OTHER_WALLET_LINES.map((l) => (
-              <ThemedText key={l} tone="secondary" style={{ fontSize: 14, lineHeight: 20 }}>
-                {l}
+          : (
+              <ThemedText tone="secondary" style={{ fontSize: 14, lineHeight: 20 }}>
+                {OTHER_WALLET_LINE}
               </ThemedText>
-            ))}
+            )}
         {linked ? (
           <View style={{ gap: spacing.sm }}>
             <ThemedText tone="accentText">{`Linked ${formatWallet(linked)}.`}</ThemedText>

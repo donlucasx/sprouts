@@ -1,30 +1,20 @@
 /**
- * What Sprouts can and can't do with a linked wallet, shown on Link a wallet before anyone signs. Mirrors the website's box
- * (api/src/app/safety.tsx, his ask 10-22, shortened on his note "simplify" the same day), word for word: change the facts there
- * first and keep the two in step.
+ * What Sprouts can and can't do with a linked wallet, shown on Link a wallet before anyone signs. His note 10-22 ("too much text,
+ * simplify"): three marked lines and one small note, shorter than the website's box (api/src/app/safety.tsx); same facts, so a fact
+ * changed there changes here too.
  */
-export const CAN: readonly string[] = [
-  'Plant up to $5 of USDC a day from each linked wallet, only into your own savings.',
-]
+export const CAN: readonly string[] = ['Plants up to $5 of USDC a day, only into your own savings']
 
 export const CANT: readonly string[] = [
-  'Send your money anywhere else. Our on-chain program blocks it.',
-  'Take more than $5 a day, even if our server is hacked.',
-  "Touch other tokens, or sell what's in your garden.",
+  "Can't send your money anywhere else, even if our server is hacked",
+  "Can't touch other tokens or sell your garden",
 ]
 
-/** The site's "Before you link": the USDC the round-ups are paid from, the unlimited approval, revoking. */
-export const BEFORE_YOU_LINK: readonly string[] = [
-  'Keep a few dollars of USDC in the wallet. Round-ups are paid from it.',
-  'Your wallet will show an unlimited USDC approval. The on-chain programs it names hold it to $5 a day.',
-  'Revoke any time in the app or at sprouts.money/revoke.',
-]
+/** Under the lines: why the wallet says "unlimited", and the way out. */
+export const APPROVAL_NOTE = 'Your wallet will show an unlimited USDC approval. Our on-chain program holds it to $5 a day. Revoke any time.'
 
 /** Under "Another wallet" (his note 10-22: make clear more than one wallet can be linked). Its balance is not read here. */
-export const OTHER_WALLET_LINES: readonly string[] = [
-  'Link as many wallets as you like, one code each.',
-  'Round-ups are paid from USDC in that wallet, so keep a few dollars there.',
-]
+export const OTHER_WALLET_LINE = 'Link as many as you like. Each pays round-ups from its own USDC.'
 
 /**
  * The note under "This phone's wallet" when its USDC is below one planting (the threshold), or null: no note when the balance is
