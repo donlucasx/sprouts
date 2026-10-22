@@ -4,6 +4,7 @@ import { Albert_Sans, Outfit } from "next/font/google";
 import { call } from "../call";
 import { useWallets, WalletButtons } from "../wallet-picker";
 import { connectWith, signWith, type StdWallet } from "@/lib/wallet-choice";
+import { Safety } from "../safety";
 
 /** 10-16 (his note "too much text, simplify, and brand the page"): the splash's paper, ink and Outfit, the deck's leaf green and Albert Sans. */
 const outfit = Outfit({ subsets: ["latin"], weight: ["300", "600"] });
@@ -139,12 +140,9 @@ export default function LinkPage() {
         ) : null}
         {message ? <p className={state === "done" ? "lk-done" : "lk-note"}>{message}</p> : null}
 
-        <details>
-          <summary>What Sprouts can and can&apos;t do</summary>
-          <p>Sprouts can only take the change your swaps rounded up, within your daily limit, and only plant it into accounts you own. Our smart contract enforces this on chain, and you can revoke any time.</p>
-          <p>The token approval itself is unlimited; the contract is what holds it to those rules. Under $1 of rent, refunded when you revoke.</p>
-        </details>
         <p className="lk-note">On a phone? Open this page in your wallet app&apos;s browser.</p>
+        {/* his ask 10-22: the boundaries open, before any wallet is asked (was a collapsed details) */}
+        <div style={{ marginTop: 28 }}><Safety ink={ink} muted={muted} leaf={leaf} rule={rule} /></div>
       </div>
       <nav className="lk-foot">
         <a href="/">sprouts.money</a> &nbsp;·&nbsp; <a href="/revoke">Revoke a wallet</a>

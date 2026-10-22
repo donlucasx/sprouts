@@ -1,5 +1,6 @@
 import { Outfit } from "next/font/google";
 import { ClockInLockup } from "./clockin-lockup";
+import { Safety } from "./safety";
 
 /** R-S3 (his note "a sleeker font for the 'coming soon...' and buttons underneath"): Outfit light, a little tracking. */
 const outfitLight = Outfit({ subsets: ["latin"], weight: ["300", "400"] });
@@ -23,7 +24,8 @@ export default function Home() {
   const paper = "#FFFBF5", ink = "#2B2622", muted = "#8A847B";
   const link = { color: muted, textDecoration: "none" };
   return (
-    <main className={outfitLight.className} style={{ minHeight: "100svh", background: paper, color: ink, display: "grid", gridTemplateRows: "1fr auto" }}>
+    <main className={outfitLight.className} style={{ background: paper, color: ink }}>
+      <div style={{ minHeight: "100svh", display: "grid", gridTemplateRows: "1fr auto" }}>
       <style>{`
         @keyframes sp-dots { 0%, 20% { content: "" } 40% { content: "." } 60% { content: ".." } 80%, 100% { content: "..." } }
         .sp-dots::after { content: "..."; display: inline-block; width: 1.2em; text-align: left; animation: sp-dots 2.4s steps(1) infinite; }
@@ -46,11 +48,17 @@ export default function Home() {
         <ClockInLockup className="sp-lockup" />
       </div>
       <nav className="sp-foot" style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: "8px 20px", padding: "24px 24px 32px", fontSize: 13, fontWeight: 400, letterSpacing: "0.04em" }}>
+        <a href="#safe" style={link}>What Sprouts can and can&apos;t do</a>
         <a href="/deck" style={link}>Deck</a>
         <a href="/terms" style={link}>Terms</a>
         <a href="/revoke" style={link}>Revoke a wallet</a>
         <a href="mailto:hello@sprouts.money" style={link}>hello@sprouts.money</a>
       </nav>
+      </div>
+      {/* his ask 10-22: the boundaries, below the splash, so the first screen stays the splash */}
+      <div style={{ display: "grid", justifyItems: "center", padding: "8vh 24px 12vh" }}>
+        <Safety id="safe" ink={ink} muted={muted} />
+      </div>
     </main>
   );
 }
