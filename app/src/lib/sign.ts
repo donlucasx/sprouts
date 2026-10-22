@@ -112,6 +112,11 @@ export type SignFlow =
   | { kind: 'relink'; user: string }
   /** The 409 partial's `unwrapTransaction` (moves/confirm): one Token CloseAccount of the user's WSOL account, its lamports to the user. */
   | { kind: 'unwrap_wsol'; user: string }
+  /**
+   * The SOL top-up (10-22): the user's own SOL swapped to USDC in the user's own wallet, one Jupiter ExactOut swap. usdcRaw is the amount
+   * the button showed (USDC base units), never the build response's; the swap must deliver exactly that, to this wallet's USDC account.
+   */
+  | { kind: 'topup'; user: string; usdcRaw: string }
 
 export type MovePart = 'redeem' | 'deposit' | 'whole'
 
@@ -332,6 +337,88 @@ async function checkApproval(ixs: Ix[], user: string, d: Awaited<ReturnType<type
   if (creates !== 1) refuse('plan')
 }
 
+/** The SOL top-up's programs (api/src/lib/topup.ts), copied. */
+export const JUPITER_PROGRAM = 'JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4'
+export const COMPUTE_BUDGET_PROGRAM = 'ComputeBudget111111111111111111111111111111'
+const TOKEN_SYNC_NATIVE = 17
+const SYSTEM_TRANSFER = 2
+/** The most a top-up may pay in priority fee (compute limit x price), in lamports: 0.001 SOL. */
+export const TOPUP_MAX_PRIORITY_LAMPORTS = 1_000_000n
+export const TOPUP_MAX_SLIPPAGE_BPS = 100
+/**
+ * Jupiter v6's two ExactOut layouts (Anchor discriminators, as api/src/lib/jupiter.ts OUTPUT_SLOTS): the slots of the transfer
+ * authority, the source, the output (plain: the custom slot when set, else the user slot) and the two mints. The data ends with
+ * out_amount u64, quoted_in_amount u64, slippage_bps u16, platform_fee_bps u8.
+ */
+const EXACT_OUT: Record<string, { authority: number; source: number; out: { user: number; custom: number } | { shared: number }; inMint: number; outMint: number }> = {
+  d033ef977b2bed5c: { authority: 1, source: 2, out: { user: 3, custom: 4 }, inMint: 5, outMint: 6 },
+  b0d169a89a7d453e: { authority: 2, source: 3, out: { shared: 6 }, inMint: 7, outMint: 8 },
+}
+const hex = (d: Uint8Array) => Array.from(d, (b) => b.toString(16).padStart(2, '0')).join('')
+const u16At = (d: Uint8Array, at: number) => new DataView(d.buffer, d.byteOffset, d.byteLength).getUint16(at, true)
+const u32At = (d: Uint8Array, at: number) => new DataView(d.buffer, d.byteOffset, d.byteLength).getUint32(at, true)
+const listIs = (ix: Ix, expected: readonly string[]) => ix.accounts.length === expected.length && expected.every((e, i) => ix.accounts[i] === e)
+
+/**
+ * The SOL top-up, in this order and nothing else: compute budget (at most one limit and one price, the priority fee at most 0.001 SOL);
+ * [create this wallet's wSOL account]; one SOL transfer into it; SyncNative; [create this wallet's USDC account]; ONE Jupiter ExactOut
+ * swap whose authority is this wallet, spending from its wSOL account, delivering exactly `usdcRaw` USDC to its USDC account, SOL to
+ * USDC, no platform fee, slippage at most 1%, the wrap no larger than the swap's own maximum; then the wSOL account closed back to this
+ * wallet. The route's own pool accounts are Jupiter's (the same trust as every planting's swap); nothing else here can pay anyone.
+ */
+async function checkTopUp(ixs: Ix[], user: string, usdcRaw: bigint): Promise<void> {
+  const [wsolAta, usdcAta] = await Promise.all([ata(user, WSOL_MINT), ata(user, USDC_MINT)])
+  const allowed = new Set([COMPUTE_BUDGET_PROGRAM, ATA_PROGRAM, SYSTEM_PROGRAM, TOKEN_PROGRAM, JUPITER_PROGRAM])
+  if (ixs.some((ix) => !allowed.has(ix.program))) refuse('program')
+  let i = 0
+  let limit: bigint | null = null
+  let price: bigint | null = null
+  for (; i < ixs.length && ixs[i].program === COMPUTE_BUDGET_PROGRAM; i++) {
+    const d = ixs[i].data
+    if (ixs[i].accounts.length !== 0) refuse('plan')
+    if (d.length === 5 && d[0] === 2 && limit === null) limit = BigInt(u32At(d, 1))
+    else if (d.length === 9 && d[0] === 3 && price === null) price = u64At(d, 1)
+    else refuse('plan')
+  }
+  if (((limit ?? 1_400_000n) * (price ?? 0n) + 999_999n) / 1_000_000n > TOPUP_MAX_PRIORITY_LAMPORTS) refuse('plan')
+  let wsolCreate = false
+  let usdcCreate = false
+  let synced = false
+  let wrap: bigint | null = null
+  for (; i < ixs.length && ixs[i].program !== JUPITER_PROGRAM; i++) {
+    const ix = ixs[i]
+    if (ix.program === ATA_PROGRAM) {
+      if (ix.data.length !== 1 || ix.data[0] !== ATA_CREATE_IDEMPOTENT) refuse('plan')
+      if (!wsolCreate && wrap === null && listIs(ix, [user, wsolAta, user, WSOL_MINT, SYSTEM_PROGRAM, TOKEN_PROGRAM])) wsolCreate = true
+      else if (!usdcCreate && listIs(ix, [user, usdcAta, user, USDC_MINT, SYSTEM_PROGRAM, TOKEN_PROGRAM])) usdcCreate = true
+      else refuse('plan')
+    } else if (ix.program === SYSTEM_PROGRAM) {
+      if (wrap !== null || ix.data.length !== 12 || u32At(ix.data, 0) !== SYSTEM_TRANSFER || !listIs(ix, [user, wsolAta])) refuse('plan')
+      wrap = u64At(ix.data, 4)
+    } else if (ix.program === TOKEN_PROGRAM) {
+      if (synced || wrap === null || ix.data.length !== 1 || ix.data[0] !== TOKEN_SYNC_NATIVE || !listIs(ix, [wsolAta])) refuse('plan')
+      synced = true
+    } else refuse('plan')
+  }
+  if (wrap === null || !synced) return refuse('plan')
+  const swap = ixs[i++]
+  if (!swap || swap.program !== JUPITER_PROGRAM || swap.data.length < 8 + 4 + 19) return refuse('plan')
+  const layout = EXACT_OUT[hex(swap.data.slice(0, 8))]
+  if (!layout) return refuse('plan')
+  const at = (k: number) => swap.accounts[k]
+  const outSlot = 'shared' in layout.out ? layout.out.shared : at(layout.out.custom) === JUPITER_PROGRAM ? layout.out.user : layout.out.custom
+  if (at(layout.authority) !== user || at(layout.source) !== wsolAta || at(outSlot) !== usdcAta) refuse('plan')
+  if (at(layout.inMint) !== WSOL_MINT || at(layout.outMint) !== USDC_MINT) refuse('plan')
+  const n = swap.data.length
+  const quotedIn = u64At(swap.data, n - 11)
+  const slippage = u16At(swap.data, n - 3)
+  if (u64At(swap.data, n - 19) !== usdcRaw || swap.data[n - 1] !== 0 || slippage > TOPUP_MAX_SLIPPAGE_BPS) refuse('plan')
+  if (quotedIn <= 0n || wrap > (quotedIn * BigInt(10_000 + slippage) + 9_999n) / 10_000n + 1n) refuse('plan')
+  const close = ixs[i++]
+  if (!close || close.program !== TOKEN_PROGRAM || close.data.length !== 1 || close.data[0] !== TOKEN_CLOSE_ACCOUNT || !listIs(close, [wsolAta, user, user])) refuse('plan')
+  if (i !== ixs.length) refuse('plan')
+}
+
 /**
  * Per flow, what the API's builder puts in (api/src/lib/staking.ts, subscriptions.ts, app/api/link/[code]); nothing else passes. Every
  * account list is pinned in full, in the generated builders' order (unstake: userStake, stakeConfig, guardianPool, user, stakeVault,
@@ -366,6 +453,7 @@ async function checkInstructions(ixs: Ix[], flow: SignFlow): Promise<void> {
   }
   // The unwrap: exactly the one close, nothing else (no ComputeBudget); it touches none of derived()'s PDAs either.
   if (flow.kind === 'unwrap_wsol') return steps(ixs, [closeWsol(await ata(user, WSOL_MINT), user)])
+  if (flow.kind === 'topup') return checkTopUp(ixs, user, amountOf(flow.usdcRaw))
   const d = await derived(user)
   switch (flow.kind) {
     case 'withdraw': {
