@@ -129,6 +129,10 @@ export const REFUSED = {
   program: 'This transaction touches a program Sprouts does not use here. Nothing was signed.',
   plan: 'This transaction does not match what the screen shows. Nothing was signed.',
   amount: 'This transaction moves more than your position holds. Nothing was signed.',
+  /** The top-up: the phone could not read the SOL price itself, so the amount could not be held to it. */
+  price: 'Sprouts could not check the SOL price, so nothing was asked of your wallet. Try again.',
+  /** The top-up: the swap may spend more SOL than the USDC is worth at the phone's own price (or over 1 SOL). */
+  overpriced: 'This swap asks for more SOL than the USDC is worth right now. Nothing was signed.',
 } as const
 
 /** A check before signing failed; `message` is one of REFUSED, safe to show as is. */
@@ -340,36 +344,133 @@ async function checkApproval(ixs: Ix[], user: string, d: Awaited<ReturnType<type
 /** The SOL top-up's programs (api/src/lib/topup.ts), copied. */
 export const JUPITER_PROGRAM = 'JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4'
 export const COMPUTE_BUDGET_PROGRAM = 'ComputeBudget111111111111111111111111111111'
+const TOKEN_2022_PROGRAM = 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb'
 const TOKEN_SYNC_NATIVE = 17
 const SYSTEM_TRANSFER = 2
 /** The most a top-up may pay in priority fee (compute limit x price), in lamports: 0.001 SOL. */
 export const TOPUP_MAX_PRIORITY_LAMPORTS = 1_000_000n
 export const TOPUP_MAX_SLIPPAGE_BPS = 100
+/** Never more than 1 SOL leaves the wallet in a top-up, whatever the price (the button offers at most $25). */
+export const TOPUP_MAX_LAMPORTS = 1_000_000_000n
+/** The SOL a top-up may spend, against the phone's own SOL price: the fair amount plus 3%, plus the priority-fee cap. */
+export const TOPUP_PRICE_MARGIN_BPS = 300n
+
 /**
- * Jupiter v6's two ExactOut layouts (Anchor discriminators, as api/src/lib/jupiter.ts OUTPUT_SLOTS): the slots of the transfer
- * authority, the source, the output (plain: the custom slot when set, else the user slot) and the two mints. The data ends with
- * out_amount u64, quoted_in_amount u64, slippage_bps u16, platform_fee_bps u8.
+ * Jupiter v6 shared_accounts_exact_out_route (sha256("global:shared_accounts_exact_out_route")[0..8]), the ONLY swap a top-up may carry.
+ * The shared-accounts route swaps through Jupiter's own program authority, so the AMMs never see this wallet: the user's key and its
+ * token accounts sit in the fixed slots only (the plain exact_out_route passes the user as the AMM's authority in the route accounts,
+ * which is what a hostile builder would abuse). The API asks Jupiter for useSharedAccounts and only the dexes below (api topup.ts).
+ * Data, Borsh (Jupiter v6 IDL): discriminator, id u8, route_plan Vec<RoutePlanStep { swap: Swap, percent u8, input_index u8,
+ * output_index u8 }>, out_amount u64, quoted_in_amount u64, slippage_bps u16, platform_fee_bps u8, and nothing after.
  */
-const EXACT_OUT: Record<string, { authority: number; source: number; out: { user: number; custom: number } | { shared: number }; inMint: number; outMint: number }> = {
-  d033ef977b2bed5c: { authority: 1, source: 2, out: { user: 3, custom: 4 }, inMint: 5, outMint: 6 },
-  b0d169a89a7d453e: { authority: 2, source: 3, out: { shared: 6 }, inMint: 7, outMint: 8 },
-}
-const hex = (d: Uint8Array) => Array.from(d, (b) => b.toString(16).padStart(2, '0')).join('')
+const SHARED_EXACT_OUT = [0xb0, 0xd1, 0x69, 0xa8, 0x9a, 0x7d, 0x45, 0x3e]
+/**
+ * The Swap enum variants a top-up route may use, with the size of their payload (Jupiter v6 IDL, @jup-ag/instruction-parser 6.0.28;
+ * every payload byte here is a bool, 0 or 1). Any other variant is refused: its payload size is not pinned here, so the data after it
+ * could not be read safely. Whirlpool and Raydium CLMM are the dexes the API asks for (Meteora DLMM has no ExactOut route).
+ */
+const SWAP_VARIANTS: Readonly<Record<number, number>> = Object.freeze({ 17: 1 /* Whirlpool { a_to_b } */, 26: 0 /* RaydiumClmm */, 40: 0 /* RaydiumClmmV2 */ })
+/** Jupiter's program authorities are ids 0..7 (PDA ["authority", id]); a route plan longer than this does not fit a top-up's 20 accounts. */
+const JUPITER_AUTHORITIES = 8
+const MAX_ROUTE_STEPS = 4
+/** Jupiter v6's Anchor event authority, PDA ["__event_authority"] under the program. */
+const JUPITER_EVENT_AUTHORITY = 'D8cy77BBepLMngZx6ZukaTff5hCt1HrWyKk3Hnd9oitf'
+
+/**
+ * The mints whose accounts this wallet may hold beside SOL and USDC (api domain/coins.ts and the lending receipts above), copied: none
+ * of the user's accounts for them may appear anywhere in a top-up, under either token program.
+ */
+const TOPUP_FOREIGN_MINTS: readonly string[] = Object.freeze([
+  SKR_MINT,
+  'storenSbvkfzircixnaosc5CbzNZVrHJ6S3EKrS1yqR', // stORE
+  'he1iusmfkpAdwvxLNGV8Y1iSbj4rUy6yMhEA3fotn9A', // hSOL
+  'cbbtcf3aa214zXHbiAZQwf4122FBYbraNdFqgw4iMij', // cbBTC
+  'J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn', // JitoSOL (retired, may still be held)
+  'jupSoLaHXQiZZTSfEWMTRRgpnyFm8f6sZdosWBjx93v', // JupSOL (retired, may still be held)
+  KLEND_RESERVE.USDC_LEND.collateralMint,
+  KLEND_RESERVE.SOL_LEND.collateralMint,
+  JLEND.USDC_LEND.fTokenMint,
+  JLEND.SOL_LEND.fTokenMint,
+])
+
 const u16At = (d: Uint8Array, at: number) => new DataView(d.buffer, d.byteOffset, d.byteLength).getUint16(at, true)
 const u32At = (d: Uint8Array, at: number) => new DataView(d.buffer, d.byteOffset, d.byteLength).getUint32(at, true)
 const listIs = (ix: Ix, expected: readonly string[]) => ix.accounts.length === expected.length && expected.every((e, i) => ix.accounts[i] === e)
 
+/** The swap's data, read the way Jupiter's program reads it; anything it cannot read in full, or with bytes left over, refuses. */
+export function parseSharedExactOut(d: Uint8Array): { id: number; steps: number; outAmount: bigint; quotedIn: bigint; slippageBps: number; feeBps: number } {
+  if (!startsWith(d, SHARED_EXACT_OUT) || d.length < 8 + 1 + 4) return refuse('plan')
+  const id = d[8]
+  const steps = u32At(d, 9)
+  if (id >= JUPITER_AUTHORITIES || steps < 1 || steps > MAX_ROUTE_STEPS) return refuse('plan')
+  let at = 13
+  for (let s = 0; s < steps; s++) {
+    if (at >= d.length) return refuse('plan')
+    const payload = SWAP_VARIANTS[d[at]]
+    if (payload === undefined) return refuse('plan')
+    at++
+    if (at + payload + 3 > d.length) return refuse('plan')
+    for (let b = 0; b < payload; b++) if (d[at + b] > 1) return refuse('plan')
+    at += payload
+    const percent = d[at]
+    if (percent < 1 || percent > 100) return refuse('plan')
+    at += 3 // percent, input_index, output_index
+  }
+  if (d.length - at !== 8 + 8 + 2 + 1) return refuse('plan')
+  return { id, steps, outAmount: u64At(d, at), quotedIn: u64At(d, at + 8), slippageBps: u16At(d, at + 16), feeBps: d[at + 18] }
+}
+
+/** The SOL price in USD, from a source that is not the Sprouts API. Throws when it cannot say. */
+export type SolUsdSource = () => Promise<number>
+/** Jupiter's public price API (no key), 4 s at most. The app reads it itself: the API it checks never hands it a price. */
+export const SOL_PRICE_URL = `https://lite-api.jup.ag/price/v3?ids=${WSOL_MINT}`
+export const fetchSolUsd: SolUsdSource = async () => {
+  const abort = new AbortController()
+  const timer = setTimeout(() => abort.abort(), 4_000)
+  try {
+    const res = await fetch(SOL_PRICE_URL, { signal: abort.signal })
+    if (!res.ok) throw new Error(`price ${res.status}`)
+    const body = (await res.json()) as Record<string, { usdPrice?: unknown } | undefined>
+    const p = body?.[WSOL_MINT]?.usdPrice
+    if (typeof p !== 'number') throw new Error('no SOL price')
+    return p
+  } finally {
+    clearTimeout(timer)
+  }
+}
+export type CheckOptions = { solUsd?: SolUsdSource }
+
+/** The most lamports `usdcRaw` USDC is worth at `solUsd`, plus the margin and the priority-fee cap; null when the price is not sane. */
+export function topUpLamportCeiling(usdcRaw: bigint, solUsd: number): bigint | null {
+  if (typeof solUsd !== 'number' || !Number.isFinite(solUsd) || solUsd < 1 || solUsd > 100_000) return null
+  const microUsdPerSol = BigInt(Math.round(solUsd * 1e6))
+  const fair = (usdcRaw * 1_000_000_000n + microUsdPerSol - 1n) / microUsdPerSol
+  return (fair * (10_000n + TOPUP_PRICE_MARGIN_BPS)) / 10_000n + TOPUP_MAX_PRIORITY_LAMPORTS
+}
+
 /**
  * The SOL top-up, in this order and nothing else: compute budget (at most one limit and one price, the priority fee at most 0.001 SOL);
- * [create this wallet's wSOL account]; one SOL transfer into it; SyncNative; [create this wallet's USDC account]; ONE Jupiter ExactOut
- * swap whose authority is this wallet, spending from its wSOL account, delivering exactly `usdcRaw` USDC to its USDC account, SOL to
- * USDC, no platform fee, slippage at most 1%, the wrap no larger than the swap's own maximum; then the wSOL account closed back to this
- * wallet. The route's own pool accounts are Jupiter's (the same trust as every planting's swap); nothing else here can pay anyone.
+ * [create this wallet's wSOL account]; one SOL transfer into it; SyncNative; [create this wallet's USDC account]; ONE Jupiter
+ * shared_accounts_exact_out_route, its data parsed in full (pinned swap variants only), every fixed account pinned (Jupiter's program
+ * authority for the data's id and that authority's own wSOL and USDC accounts, this wallet as the transfer authority, its wSOL account as
+ * the source, its USDC account as the destination, no platform fee account), this wallet and its token accounts nowhere in the route
+ * accounts; delivering exactly `usdcRaw` USDC, slippage at most 1%, the wrap no larger than the swap's own maximum; then the wSOL account
+ * closed back to this wallet. None of this wallet's other token accounts appears anywhere. Last, the SOL spent is held to the phone's
+ * own SOL price (+3%, + the fee cap) and to 1 SOL: a price the phone cannot read refuses, it never skips the bound.
  */
-async function checkTopUp(ixs: Ix[], user: string, usdcRaw: bigint): Promise<void> {
+async function checkTopUp(ixs: Ix[], user: string, usdcRaw: bigint, solUsd: SolUsdSource): Promise<void> {
   const [wsolAta, usdcAta] = await Promise.all([ata(user, WSOL_MINT), ata(user, USDC_MINT)])
   const allowed = new Set([COMPUTE_BUDGET_PROGRAM, ATA_PROGRAM, SYSTEM_PROGRAM, TOKEN_PROGRAM, JUPITER_PROGRAM])
   if (ixs.some((ix) => !allowed.has(ix.program))) refuse('program')
+  // The wallet's other token accounts (both token programs) and its wSOL / USDC accounts under Token-2022: in no instruction at all.
+  const foreign = new Set(
+    await Promise.all([
+      ...TOPUP_FOREIGN_MINTS.flatMap((m) => [ata(user, m), pda(ATA_PROGRAM, [key(user), key(TOKEN_2022_PROGRAM), key(m)])]),
+      pda(ATA_PROGRAM, [key(user), key(TOKEN_2022_PROGRAM), key(WSOL_MINT)]),
+      pda(ATA_PROGRAM, [key(user), key(TOKEN_2022_PROGRAM), key(USDC_MINT)]),
+    ]),
+  )
+  if (ixs.some((ix) => foreign.has(ix.program) || ix.accounts.some((a) => foreign.has(a)))) refuse('plan')
   let i = 0
   let limit: bigint | null = null
   let price: bigint | null = null
@@ -402,21 +503,34 @@ async function checkTopUp(ixs: Ix[], user: string, usdcRaw: bigint): Promise<voi
   }
   if (wrap === null || !synced) return refuse('plan')
   const swap = ixs[i++]
-  if (!swap || swap.program !== JUPITER_PROGRAM || swap.data.length < 8 + 4 + 19) return refuse('plan')
-  const layout = EXACT_OUT[hex(swap.data.slice(0, 8))]
-  if (!layout) return refuse('plan')
-  const at = (k: number) => swap.accounts[k]
-  const outSlot = 'shared' in layout.out ? layout.out.shared : at(layout.out.custom) === JUPITER_PROGRAM ? layout.out.user : layout.out.custom
-  if (at(layout.authority) !== user || at(layout.source) !== wsolAta || at(outSlot) !== usdcAta) refuse('plan')
-  if (at(layout.inMint) !== WSOL_MINT || at(layout.outMint) !== USDC_MINT) refuse('plan')
-  const n = swap.data.length
-  const quotedIn = u64At(swap.data, n - 11)
-  const slippage = u16At(swap.data, n - 3)
-  if (u64At(swap.data, n - 19) !== usdcRaw || swap.data[n - 1] !== 0 || slippage > TOPUP_MAX_SLIPPAGE_BPS) refuse('plan')
-  if (quotedIn <= 0n || wrap > (quotedIn * BigInt(10_000 + slippage) + 9_999n) / 10_000n + 1n) refuse('plan')
+  if (!swap || swap.program !== JUPITER_PROGRAM) return refuse('plan')
+  const route = parseSharedExactOut(swap.data)
+  const authority = await pda(JUPITER_PROGRAM, ['authority', new Uint8Array([route.id])])
+  const [authorityWsol, authorityUsdc] = await Promise.all([ata(authority, WSOL_MINT), ata(authority, USDC_MINT)])
+  // shared_accounts_exact_out_route's 13 fixed accounts (IDL order): token program, program authority, user transfer authority, source,
+  // program source, program destination, destination, source mint, destination mint, platform fee (None), token-2022 (None), event
+  // authority, program. Then the route's own accounts: at least one, and none of this wallet's.
+  const fixed = [TOKEN_PROGRAM, authority, user, wsolAta, authorityWsol, authorityUsdc, usdcAta, WSOL_MINT, USDC_MINT, JUPITER_PROGRAM, JUPITER_PROGRAM, JUPITER_EVENT_AUTHORITY, JUPITER_PROGRAM]
+  if (swap.accounts.length <= fixed.length || fixed.some((a, k) => swap.accounts[k] !== a)) refuse('plan')
+  const mine = new Set([user, wsolAta, usdcAta])
+  if (swap.accounts.slice(fixed.length).some((a) => mine.has(a))) refuse('plan')
+  if (route.outAmount !== usdcRaw || route.feeBps !== 0 || route.slippageBps > TOPUP_MAX_SLIPPAGE_BPS || route.quotedIn <= 0n) refuse('plan')
+  const maxIn = (route.quotedIn * BigInt(10_000 + route.slippageBps) + 9_999n) / 10_000n + 1n
+  if (wrap > maxIn) refuse('plan')
   const close = ixs[i++]
   if (!close || close.program !== TOKEN_PROGRAM || close.data.length !== 1 || close.data[0] !== TOKEN_CLOSE_ACCOUNT || !listIs(close, [wsolAta, user, user])) refuse('plan')
   if (i !== ixs.length) refuse('plan')
+  // The amount, against a price the API never touched. The swap can spend up to its maximum (more than the wrap if the wSOL account
+  // already held some), and the wrap is at most that maximum, so the maximum is what is bounded.
+  if (maxIn > TOPUP_MAX_LAMPORTS) refuse('overpriced')
+  let ceiling: bigint | null
+  try {
+    ceiling = topUpLamportCeiling(usdcRaw, await solUsd())
+  } catch {
+    ceiling = null
+  }
+  if (ceiling === null) return refuse('price')
+  if (maxIn > ceiling) refuse('overpriced')
 }
 
 /**
@@ -426,7 +540,7 @@ async function checkTopUp(ixs: Ix[], user: string, usdcRaw: bigint): Promise<voi
  * authority, mint, userAta, system, token; create: delegator, authority, delegation, delegatee, system; revoke delegation: authority,
  * delegation; revoke authority: user, userAta, mint, token, authority), so no extra or swapped account slips in.
  */
-async function checkInstructions(ixs: Ix[], flow: SignFlow): Promise<void> {
+async function checkInstructions(ixs: Ix[], flow: SignFlow, opts: CheckOptions): Promise<void> {
   const user = flow.user
   // The lending withdraws use none of derived()'s four PDAs (T6 review Minor 4).
   // Two union members (contracts 6), so the kind test narrows them out and the switch's default stays exhaustive. Each kind routes to its
@@ -453,7 +567,7 @@ async function checkInstructions(ixs: Ix[], flow: SignFlow): Promise<void> {
   }
   // The unwrap: exactly the one close, nothing else (no ComputeBudget); it touches none of derived()'s PDAs either.
   if (flow.kind === 'unwrap_wsol') return steps(ixs, [closeWsol(await ata(user, WSOL_MINT), user)])
-  if (flow.kind === 'topup') return checkTopUp(ixs, user, amountOf(flow.usdcRaw))
+  if (flow.kind === 'topup') return checkTopUp(ixs, user, amountOf(flow.usdcRaw), opts.solUsd ?? fetchSolUsd)
   const d = await derived(user)
   switch (flow.kind) {
     case 'withdraw': {
@@ -497,7 +611,7 @@ async function checkInstructions(ixs: Ix[], flow: SignFlow): Promise<void> {
  * Decodes the transaction and refuses (SignRefused) anything the flow's builder would not produce. Static accounts only: the API
  * builds every user transaction without a lookup table (api/src/lib/verify-tx.ts says the same on the way back).
  */
-export async function checkBeforeSigning(tx: Transaction, flow: SignFlow): Promise<void> {
+export async function checkBeforeSigning(tx: Transaction, flow: SignFlow, opts: CheckOptions = {}): Promise<void> {
   let message
   try {
     message = getCompiledTransactionMessageDecoder().decode(tx.messageBytes)
@@ -511,18 +625,19 @@ export async function checkBeforeSigning(tx: Transaction, flow: SignFlow): Promi
   if (keys[0] !== flow.user) refuse('payer')
   // The user signs and pays; one signer in the header and one slot in the signature map, both the user's.
   const slots = Object.keys(tx.signatures)
-  if (message.header.numSignerAccounts !== 1 || slots.length !== 1 || slots[0] !== flow.user) refuse('signer')
+  // The fee payer is a writable signer, so no signer may be read-only (and nothing else may sign).
+  if (message.header.numSignerAccounts !== 1 || message.header.numReadonlySignerAccounts !== 0 || slots.length !== 1 || slots[0] !== flow.user) refuse('signer')
   const ixs: Ix[] = message.instructions.map((ix) => ({
     program: keys[ix.programAddressIndex],
     accounts: (ix.accountIndices ?? []).map((i) => keys[i]),
     data: new Uint8Array(ix.data ?? []),
   }))
   if (ixs.some((ix) => ix.program === undefined || ix.accounts.some((a) => a === undefined))) refuse('unreadable')
-  await checkInstructions(ixs, flow)
+  await checkInstructions(ixs, flow, opts)
 }
 
 /** The API builds every transaction; the app checks it against the flow (above); the Seed Vault signs the bytes; the API sends. */
-export function makeSigner(signTransaction: (tx: Transaction) => Promise<Transaction>, flow: SignFlow) {
+export function makeSigner(signTransaction: (tx: Transaction) => Promise<Transaction>, flow: SignFlow, opts: CheckOptions = {}) {
   return async function signWithSeeker(base64: string): Promise<string> {
     let tx: Transaction
     try {
@@ -530,7 +645,7 @@ export function makeSigner(signTransaction: (tx: Transaction) => Promise<Transac
     } catch {
       return refuse('unreadable')
     }
-    await checkBeforeSigning(tx, flow)
+    await checkBeforeSigning(tx, flow, opts)
     const signed = await signTransaction(tx)
     return getBase64EncodedWireTransaction(signed)
   }
@@ -540,7 +655,7 @@ export function makeSigner(signTransaction: (tx: Transaction) => Promise<Transac
  * S3 (contracts 9, VERDICT ONE): several transactions in ONE wallet session, one passcode. Each is checked against its own flow, in order,
  * before the wallet is asked; one refusal (or a count that is not the flows') and the wallet is never asked.
  */
-export function makeBatchSigner(signTransactions: (txs: Transaction[]) => Promise<Transaction[]>, flows: readonly SignFlow[]) {
+export function makeBatchSigner(signTransactions: (txs: Transaction[]) => Promise<Transaction[]>, flows: readonly SignFlow[], opts: CheckOptions = {}) {
   return async function signAllWithSeeker(base64s: string[]): Promise<string[]> {
     if (base64s.length === 0 || base64s.length !== flows.length) return refuse('plan')
     const txs: Transaction[] = []
@@ -551,7 +666,7 @@ export function makeBatchSigner(signTransactions: (txs: Transaction[]) => Promis
         return refuse('unreadable')
       }
     }
-    for (let i = 0; i < txs.length; i++) await checkBeforeSigning(txs[i], flows[i])
+    for (let i = 0; i < txs.length; i++) await checkBeforeSigning(txs[i], flows[i], opts)
     const signed = await signTransactions(txs)
     if (signed.length !== txs.length) return refuse('unreadable')
     return signed.map((t) => getBase64EncodedWireTransaction(t))
