@@ -18,6 +18,9 @@ export const STOP_MAX: Record<Stop, Record<NonSkr, number>> = {
   bold: { stORE: 30, USDC_LEND: 20, SOL_LEND: 35, hSOL: 35, cbBTC: 20 },
 };
 export const MANUAL_FLOOR = 25;
+/** R-O1 (10-21), the API's STORE_FLOOR: stORE keeps at least this share of every split unless it is switched off (manager on, a 0
+ *  pin) or disabled. With the manager off there is no off switch: the planting run raises it to this whatever the pins say. */
+export const STORE_FLOOR = 10;
 export const PIN_MAX: Record<LiveAsset, number> = { SKR: 100, stORE: 50, USDC_LEND: 75, SOL_LEND: 75, hSOL: 75, cbBTC: 75 };
 export const PIN_STEP = 5;
 
@@ -32,6 +35,11 @@ export const ROWS_LINE = { on: "Switch a coin off and the manager won't buy it."
 export const STOP_LINE = "Careful keeps at least 50% in SKR, Balanced 35%, Bold 25%.";
 export const UNDONE_TEXT = "Yesterday's split is back. The AI Yield Manager is off until you turn it on.";
 export const STORE_ROW_NOTE = "ORE staked in ORE's program";
+/** R-O1 (10-21), build-written 10-22: the floor said where the split is set. Off has no stORE switch: the manager's is the only way out. */
+export const STORE_FLOOR_LINE = {
+  on: "stORE stays in every split at 10% or more unless you switch it off.",
+  off: "stORE stays in every split at 10% or more. To switch it off, turn on the AI Yield Manager.",
+} as const;
 
 export type Row = { asset: LiveAsset; pct: number; mode: "auto" | "off" | "pinned" | "the rest"; bound: string | null };
 export type RulesView = { managed: boolean; stop: Stop; pins: Pins; allocation: Split };
@@ -40,16 +48,35 @@ export type RulesView = { managed: boolean; stop: Stop; pins: Pins; allocation: 
  * `preview` (the draft's split, from `managedPreview`) or the saved allocation, with the stop's bound. An old non-zero pin reads as on. */
 export function splitRows(r: RulesView, preview?: Split): Row[] {
   if (!r.managed) {
-    const pinned = NON_SKR.reduce((s, c) => s + (r.pins[c] ?? 0), 0);
-    return ASSETS.map((asset) =>
-      asset === "SKR" ? { asset, pct: 100 - pinned, mode: "the rest", bound: null } : { asset, pct: r.pins[asset] ?? 0, mode: "pinned", bound: null },
-    );
+    const split = manualSplit(r.pins);
+    return ASSETS.map((asset) => ({ asset, pct: split[asset], mode: asset === "SKR" ? "the rest" : "pinned", bound: null }));
   }
   return ASSETS.map((asset) => {
     if (asset !== "SKR" && r.pins[asset] === 0) return { asset, pct: 0, mode: "off", bound: null };
     const bound = asset === "SKR" ? `at least ${STOP_FLOOR[r.stop]}%` : `at most ${STOP_MAX[r.stop][asset]}%`;
     return { asset, pct: (preview ?? r.allocation)[asset], mode: "auto", bound };
   });
+}
+
+/**
+ * The split the API plants with the manager off (api/src/domain/split.ts effectiveSplit, off): the pins, stORE at least STORE_FLOOR
+ * (R-O1), SKR the rest. Pins saved before R-O1 that leave SKR under MANUAL_FLOOR give stORE's floor from SKR above its quarter and
+ * then the largest other pins, as the API does.
+ */
+export function manualSplit(pins: Pins): Split {
+  const out = Object.fromEntries(ASSETS.map((c) => [c, 0])) as Split;
+  for (const c of NON_SKR) out[c] = c === "stORE" ? Math.max(pins.stORE ?? 0, STORE_FLOOR) : (pins[c] ?? 0);
+  out.SKR = 100 - NON_SKR.reduce((s, c) => s + out[c], 0);
+  if (out.SKR < MANUAL_FLOOR) {
+    out.stORE = pins.stORE ?? 0;
+    out.SKR = 100 - NON_SKR.reduce((s, c) => s + out[c], 0);
+    for (const tier of [["SKR"], NON_SKR.filter((c) => c !== "stORE")] as LiveAsset[][]) {
+      const need = STORE_FLOOR - out.stORE;
+      if (need <= 0) break;
+      out.stORE += takeFrom(out, tier, need, (c) => (c === "SKR" ? MANUAL_FLOOR : 0));
+    }
+  }
+  return out;
 }
 
 /** R346: with the manager on, the only pins are 0 pins (the coins switched off); an old non-zero pin from before R346 becomes "on" at the next save. */
@@ -92,27 +119,41 @@ export function managedPreview(stopSplit: Split, pins: Pins, stop: Stop): Split 
   }
   if (excess > 1e-9) x.SKR += excess;
   const floor = STOP_FLOOR[stop];
-  if (x.SKR < floor) {
-    let left = floor - x.SKR;
-    for (const c of free.filter((d) => d !== "SKR").sort((p, q) => x[q] - x[p])) {
-      if (left <= 0) break;
-      const take = Math.min(x[c], left);
-      x[c] -= take;
-      left -= take;
-      x.SKR += take;
-    }
-  }
+  const storeOn = !off.has("stORE");
+  // R-O1: the SKR top-up leaves stORE its floor (the API's storeKeep).
+  if (x.SKR < floor) x.SKR += takeFrom(x, free.filter((d) => d !== "SKR"), floor - x.SKR, (c) => (c === "stORE" && storeOn ? Math.min(x.stORE, STORE_FLOOR) : 0));
   const out = Object.fromEntries(ASSETS.map((c) => [c, Math.floor(x[c])])) as Split;
   const used = ASSETS.reduce((s, c) => s + out[c], 0);
   const order = [...ASSETS].sort((p, q) => x[q] - out[q] - (x[p] - out[p]));
   for (let i = 0; i < 100 - used; i++) out[order[i % order.length]] += 1;
+  // R-O1: stORE raised to its floor from the largest other coins left on, then SKR above its floor (the API's raiseStore).
+  if (storeOn) for (const tier of [free.filter((c) => c !== "SKR" && c !== "stORE"), ["SKR"]] as LiveAsset[][]) {
+    const need = STORE_FLOOR - out.stORE;
+    if (need <= 0) break;
+    out.stORE += takeFrom(out, tier, need, (c) => (c === "SKR" ? floor : 0));
+  }
   return out;
 }
 
-/** Move a pin by PIN_STEP inside 0 and the coin's pin max. */
+/** The API's takeFrom: up to `deficit` from the donors, largest first, none below `lower`; answers what it took. */
+function takeFrom(x: Record<LiveAsset, number>, donors: readonly LiveAsset[], deficit: number, lower: (c: LiveAsset) => number): number {
+  let left = deficit;
+  for (const c of [...donors].sort((p, q) => x[q] - x[p])) {
+    if (left <= 0) break;
+    const take = Math.min(x[c] - lower(c), left);
+    if (take <= 0) continue;
+    x[c] -= take;
+    left -= take;
+  }
+  return deficit - left;
+}
+
+/** Move a pin by PIN_STEP inside 0 and the coin's pin max (manager off: the only steppers). stORE moves from and never under
+ *  STORE_FLOOR (R-O1): the run plants at least that whatever the pin says. */
 export function stepPin(pins: Pins, asset: LiveAsset, dir: 1 | -1): Pins {
-  const current = pins[asset] ?? 0;
-  const next = Math.max(0, Math.min(PIN_MAX[asset], current + dir * PIN_STEP));
+  const min = asset === "stORE" ? STORE_FLOOR : 0;
+  const current = Math.max(pins[asset] ?? 0, min);
+  const next = Math.max(min, Math.min(PIN_MAX[asset], current + dir * PIN_STEP));
   return { ...pins, [asset]: next };
 }
 
@@ -122,7 +163,9 @@ export function canStepUp(r: RulesView, asset: LiveAsset): boolean {
   const current = r.pins[asset] ?? 0;
   if (current + PIN_STEP > PIN_MAX[asset]) return false;
   const floor = r.managed ? STOP_FLOOR[r.stop] : MANUAL_FLOOR;
-  const total = (Object.values(r.pins) as number[]).reduce((s, v) => s + (v ?? 0), 0);
+  // Off, stORE counts at its floor (R-O1: the run plants at least that), so the app never saves pins that crowd SKR's quarter.
+  const counted = !r.managed ? { ...r.pins, stORE: Math.max(r.pins.stORE ?? 0, STORE_FLOOR) } : r.pins;
+  const total = (Object.values(counted) as number[]).reduce((s, v) => s + (v ?? 0), 0);
   const next = total + PIN_STEP;
   if (r.pins.SKR !== undefined || asset === "SKR") return next <= 100;
   return next <= 100 - floor;

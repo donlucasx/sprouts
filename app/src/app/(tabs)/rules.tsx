@@ -31,6 +31,8 @@ import {
   STOP_LINE,
   UNDONE_TEXT,
   STORE_ROW_NOTE,
+  STORE_FLOOR_LINE,
+  STORE_FLOOR,
   canStepUp,
 } from '@/model/manager'
 import { ORE_DISCLOSURE } from '@/lib/ore-copy'
@@ -122,7 +124,8 @@ export default function Rules() {
     setUndone(false)
     setDraft((d) => ({ ...d, ...p }))
   }
-  // The ORE disclosure shows inline once: the first time the manager is switched on, or, off, the first time stORE's pin leaves zero (spec 3.1).
+  // The ORE disclosure shows inline once: the first time the manager is switched on, or, off, the first time stORE gets a pin above
+  // zero (spec 3.1; since R-O1 a first "+" pins it at 15, over the 10% floor every split keeps).
   // F1: switched on but not yet saved, the saved allocation is still the OFF one; the rows preview the stop's split instead.
   const unsavedOn = r.managed && !saved.managed
   // R346: the preview follows the draft's coin switches and stop; with nothing changed, the saved allocation is the truth.
@@ -343,7 +346,7 @@ export default function Rules() {
         </View>
         <ThemedText variant="caption" tone="secondary">
           {saved.managed && !coinsChanged ? "Today's split. " : r.managed ? 'The split after you save. ' : ''}
-          {r.managed ? ROWS_LINE.on : ROWS_LINE.off}
+          {r.managed ? ROWS_LINE.on : ROWS_LINE.off} {r.managed ? STORE_FLOOR_LINE.on : STORE_FLOOR_LINE.off}
         </ThemedText>
         {shownRows.map((row) => (
           <View
@@ -381,7 +384,7 @@ export default function Rules() {
                 what={COIN_NAME_LONG[row.asset]}
                 onLess={() => edit({ pins: stepPin(r.pins, row.asset, -1) })}
                 onMore={() => edit({ pins: stepPin(r.pins, row.asset, 1) })}
-                lessDisabled={busy || row.pct <= 0}
+                lessDisabled={busy || row.pct <= (row.asset === 'stORE' ? STORE_FLOOR : 0)}
                 moreDisabled={busy || !canStepUp(r, row.asset)}
               />
             )}
