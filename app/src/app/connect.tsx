@@ -15,7 +15,7 @@ import { newlyLinked } from '@/lib/newly-linked'
 import { confirmWithRetries, LINK_NOT_ON_CHAIN_YET } from '@/lib/confirm-retry'
 import { formatWallet } from '@/lib/format'
 import { useSession } from '@/lib/session'
-import { BEFORE_YOU_LINK, CAN, CANT, OTHER_WALLET_USDC, phoneUsdcNote } from '@/lib/safety-copy'
+import { BEFORE_YOU_LINK, CAN, CANT, OTHER_WALLET_LINES, phoneUsdcNote } from '@/lib/safety-copy'
 import { FONT, spacing } from '@/theme'
 
 /**
@@ -139,11 +139,13 @@ export default function Connect() {
       </Card>
       <Card>
         <ThemedText variant="heading">Another wallet</ThemedText>
-        {linked ? null : (
-          <ThemedText variant="caption" tone="secondary">
-            {OTHER_WALLET_USDC}
-          </ThemedText>
-        )}
+        {linked
+          ? null
+          : OTHER_WALLET_LINES.map((l) => (
+              <ThemedText key={l} tone="secondary" style={{ fontSize: 14, lineHeight: 20 }}>
+                {l}
+              </ThemedText>
+            ))}
         {linked ? (
           <View style={{ gap: spacing.sm }}>
             <ThemedText tone="accentText">{`Linked ${formatWallet(linked)}.`}</ThemedText>
