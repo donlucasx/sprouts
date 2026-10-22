@@ -54,6 +54,8 @@ export function nextPlantingRow(p: { pendingCents: number; thresholdCents: numbe
   const saved = `${formatUsd(Math.max(0, pending))} saved`;
   // His note 10-05: paused, the row says so instead of a run time; the bar keeps what was saved, dimmed (NextPlanting).
   if (p.paused) return { state: "paused", label, value: "Paused", fraction: Math.min(1, Math.max(0, pending) / Math.max(1, threshold)), line: `${saved} · paused` };
+  // Owner 10-22 (first planting right away): a garden with no plant yet is planted by the hourly first-planting run, not the 7 AM one.
+  if (pending >= threshold && !p.hasPlant) return { state: "reached", label, value: "Within the hour", fraction: 1, line: `${saved} · planted within the hour` };
   if (pending >= threshold) return { state: "reached", label, value: nextRunLabel(p.now), fraction: 1, line: `${saved} · planted ${nextRunWords(p.now)}` };
   const of = `${formatUsd(Math.max(0, pending))} of ${formatUsd(threshold)}`;
   // R590 (10-10, his note: when it says "0.00 saved" "should it say something like waiting for the next swap"): nothing saved yet
