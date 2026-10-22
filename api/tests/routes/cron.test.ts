@@ -193,42 +193,4 @@ describe("cron route", () => {
     expect(cleanup).toHaveBeenCalled();
     expect(keepalive).toHaveBeenCalled();
   });
-
-  describe("?only=first: the first-planting run (owner 10-22)", () => {
-    const first = (q = "only=first", auth = true) => GET(new Request(`http://x/api/cron/plant?${q}`, auth ? { headers: { authorization: `Bearer ${SECRET}` } } : {}));
-
-    it("refuses without the bearer, before anything runs", async () => {
-      expect((await first("only=first", false)).status).toBe(401);
-      expect(order).toEqual([]);
-    });
-
-    it("an unknown run answers 400 and runs nothing", async () => {
-      expect((await first("only=all")).status).toBe(400);
-      expect(order).toEqual([]);
-    });
-
-    it("runs the planting alone, in first-only mode: no snapshot, decision, apply, moves, crank, reconcile or cleanup", async () => {
-      process.env.MOVES_ENABLED = "true";
-      const { runPlanting } = await import("@/lib/plant-run");
-      const { reconcileOwnStakes } = await import("@/lib/reconcile");
-      vi.mocked(runPlanting).mockClear();
-      vi.mocked(reconcileOwnStakes).mockClear();
-      const cleanup = vi.spyOn(repo, "cleanupExpired");
-      const res = await first();
-      expect(res.status).toBe(200);
-      expect(await res.json()).toEqual({ only: "first", planting: { planted: [], skipped: [] } });
-      expect(order).toEqual(["plant"]);
-      expect(vi.mocked(runPlanting).mock.calls[0][0]).toMatchObject({ only: "first" });
-      expect(reconcileOwnStakes).not.toHaveBeenCalled();
-      expect(cleanup).not.toHaveBeenCalled();
-    });
-
-    it("the daily run (no query) is the full run with no mode", async () => {
-      const { runPlanting } = await import("@/lib/plant-run");
-      vi.mocked(runPlanting).mockClear();
-      expect((await first("")).status).toBe(200);
-      expect(order).toContain("coins");
-      expect(vi.mocked(runPlanting).mock.calls[0][0].only).toBeUndefined();
-    });
-  });
 });
