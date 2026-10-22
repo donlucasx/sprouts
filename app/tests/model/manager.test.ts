@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { ASSETS, type Split, type Pins, type Stop } from "@/lib/coins";
 import {
   STOP_FLOOR, STOP_MAX, PIN_MAX, PIN_STEP, MANAGER_LINE, PRO_BADGE, PRO_LINE, ROWS_LINE, STOP_LINE, UNDONE_TEXT,
-  splitRows, setCoinOn, managedPins, stepPin, canStepUp, undoLine, changeSummary, splitRowLine, pinsForOn,
+  splitRows, manualSplit, setCoinOn, managedPins, stepPin, canStepUp, undoLine, changeSummary, splitRowLine, pinsForOn,
 } from "@/model/manager";
 
 const split = (p: Partial<Split>): Split => ({ SKR: 0, stORE: 0, hSOL: 0, USDC_LEND: 0, SOL_LEND: 0, cbBTC: 0, ...p });
@@ -35,8 +35,18 @@ describe("splitRows (spec 3.1)", () => {
     expect(rows[4]).toEqual({ asset: "hSOL", pct: 0, mode: "pinned", bound: null });
   });
 
-  it("off with no pins: SKR 100 the rest", () => {
-    expect(splitRows(rules({}))[0]).toEqual({ asset: "SKR", pct: 100, mode: "the rest", bound: null });
+  it("off with no pins: stORE at its floor of 10 (R-O1, the run plants it), SKR 90 the rest", () => {
+    expect(splitRows(rules({}))[0]).toEqual({ asset: "SKR", pct: 90, mode: "the rest", bound: null });
+    expect(splitRows(rules({}))[1]).toEqual({ asset: "stORE", pct: 10, mode: "pinned", bound: null });
+  });
+
+  // R-O1 (10-21): the rows show what the API's effectiveSplit (off) plants, floor included.
+  it("off: a stORE pin under the floor reads as the floor; old pins that crowd SKR's quarter take the floor from SKR above it, then the largest pin", () => {
+    expect(manualSplit({ stORE: 5, hSOL: 20 })).toEqual(split({ SKR: 70, stORE: 10, hSOL: 20 }));
+    // the API's effectiveSplit (off) answers these (checked with tsx against api/src/domain/split.ts, 10-22)
+    expect(manualSplit({ hSOL: 40, cbBTC: 35 })).toEqual(split({ SKR: 25, stORE: 10, hSOL: 30, cbBTC: 35 }));
+    expect(manualSplit({ hSOL: 60 })).toEqual(split({ SKR: 30, stORE: 10, hSOL: 60 }));
+    expect(manualSplit({ stORE: 50 })).toEqual(split({ SKR: 50, stORE: 50 }));
   });
 
   it("on with no pins: every row auto, SKR with its floor, the others with their max", () => {
@@ -73,7 +83,7 @@ describe("splitRows (spec 3.1)", () => {
     expect(rows[4].pct).toBe(20);
   });
   it("off ignores the preview", () => {
-    expect(splitRows(rules({}), preview)[0]).toEqual({ asset: "SKR", pct: 100, mode: "the rest", bound: null });
+    expect(splitRows(rules({}), preview)[0]).toEqual({ asset: "SKR", pct: 90, mode: "the rest", bound: null });
     expect(splitRows(rules({}), preview)[2].pct).toBe(0);
   });
 });
@@ -108,6 +118,17 @@ describe("pins", () => {
     expect(stepPin({ stORE: 50 }, "stORE", 1)).toEqual({ stORE: 50 });
     expect(stepPin({ hSOL: 3 }, "hSOL", -1)).toEqual({ hSOL: 0 });
     expect(stepPin({}, "cbBTC", 1)).toEqual({ cbBTC: 5 });
+  });
+  it("stepPin: stORE moves from its floor and never under it (R-O1)", () => {
+    expect(stepPin({}, "stORE", 1)).toEqual({ stORE: 15 });
+    expect(stepPin({ stORE: 15 }, "stORE", -1)).toEqual({ stORE: 10 });
+    expect(stepPin({ stORE: 10 }, "stORE", -1)).toEqual({ stORE: 10 });
+  });
+  it("canStepUp off counts stORE at its floor", () => {
+    const off = (pins: Pins) => ({ managed: false, stop: "balanced" as Stop, pins, allocation: split({ SKR: 100 }) });
+    expect(canStepUp(off({ hSOL: 60 }), "hSOL")).toBe(true);    // 60 + stORE 10 + 5 leaves SKR 25
+    expect(canStepUp(off({ hSOL: 65 }), "hSOL")).toBe(false);   // would leave SKR 20
+    expect(canStepUp(off({ hSOL: 60 }), "stORE")).toBe(true);   // stORE 10 -> 15, SKR 25
   });
   it("pinsForOn (R346): turning the manager on starts every coin on; the off-mode manual split is not carried", () => {
     expect(pinsForOn({ hSOL: 0, stORE: 50, cbBTC: 0 })).toEqual({});
