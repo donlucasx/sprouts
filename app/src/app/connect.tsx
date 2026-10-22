@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { View } from 'react-native'
 import { router } from 'expo-router'
 import { useMobileWallet } from '@wallet-ui/react-native-kit'
@@ -14,6 +15,7 @@ import { newlyLinked } from '@/lib/newly-linked'
 import { confirmWithRetries, LINK_NOT_ON_CHAIN_YET } from '@/lib/confirm-retry'
 import { formatWallet } from '@/lib/format'
 import { useSession } from '@/lib/session'
+import { BEFORE_YOU_LINK, CAN, CANT, OTHER_WALLET_USDC, phoneUsdcNote } from '@/lib/safety-copy'
 import { FONT, spacing } from '@/theme'
 
 /**
@@ -25,6 +27,26 @@ function confirmLink(code: string, wallet: string, signedTransaction: string) {
   return confirmWithRetries((attempt) => api('/api/link/confirm', { method: 'POST', body: attempt === 0 ? { code, wallet, signedTransaction } : { code, wallet } }), {
     notOnChainYet: LINK_NOT_ON_CHAIN_YET,
   })
+}
+
+/** A short heading and its points, one per line (the website's can / can't box, phone-sized). */
+function Bullets({ heading, lines, small }: { heading: string; lines: readonly string[]; small?: boolean }) {
+  return (
+    <View style={{ gap: spacing.xs }}>
+      <ThemedText variant="label" tone="accentText">
+        {heading}
+      </ThemedText>
+      {lines.map((l) => (
+        <ThemedText
+          key={l}
+          tone={small ? 'secondary' : 'text'}
+          style={small ? { fontSize: 14, lineHeight: 20 } : undefined}
+        >
+          {`• ${l}`}
+        </ThemedText>
+      ))}
+    </View>
+  )
 }
 
 export default function Connect() {
@@ -39,6 +61,16 @@ export default function Connect() {
   const [before, setBefore] = useState<string[]>([])
   // Derived, not stored: the wallet that appeared since this code was made.
   const linked = code && me ? newlyLinked(before, me.wallets) : null
+  // This phone's wallet's USDC, read only, for a note that never blocks the approval; a failed read (or an API without the route)
+  // is no note: the "before you link" point says it anyway.
+  const { data: usdc } = useQuery({
+    queryKey: ['me-usdc', session?.pubkey],
+    queryFn: () => api<{ usdcRaw: string | null }>('/api/me/usdc'),
+    enabled: !!session,
+    retry: false,
+    staleTime: 30_000,
+  })
+  const usdcNote = phoneUsdcNote(usdc?.usdcRaw, me?.rules.plantThresholdCents ?? 200)
 
   // While a code is on screen, look for the wallet the web page links (the Saga, 2026-09-29: the app never noticed).
   useEffect(() => {
@@ -85,13 +117,19 @@ export default function Connect() {
         Every swap from a linked wallet rounds up to the next dollar. Once a day Sprouts plants the change, up to $5.
         Approve once; revoke any time.
       </ThemedText>
-      <ThemedText variant="caption" tone="secondary">
-        Under a dollar of rent, refunded when you revoke. The approval itself is unlimited; the program holds it to your
-        limit on chain.
-      </ThemedText>
+      <Card>
+        <Bullets heading="Sprouts can" lines={CAN} />
+        <Bullets heading="Sprouts can't" lines={CANT} />
+      </Card>
+      <Bullets heading="Before you link" lines={BEFORE_YOU_LINK} small />
       <Card>
         <ThemedText variant="heading">{"This phone's wallet"}</ThemedText>
         <ThemedText tone="secondary">One fingerprint. Daily limit $5.</ThemedText>
+        {usdcNote ? (
+          <ThemedText tone="attention" style={{ fontSize: 14, lineHeight: 20 }}>
+            {usdcNote}
+          </ThemedText>
+        ) : null}
         <Button title="Approve" loading={approving} onPress={linkThisPhone} />
         {approving ? (
           <ThemedText variant="caption" tone="secondary">
@@ -101,6 +139,11 @@ export default function Connect() {
       </Card>
       <Card>
         <ThemedText variant="heading">Another wallet</ThemedText>
+        {linked ? null : (
+          <ThemedText variant="caption" tone="secondary">
+            {OTHER_WALLET_USDC}
+          </ThemedText>
+        )}
         {linked ? (
           <View style={{ gap: spacing.sm }}>
             <ThemedText tone="accentText">{`Linked ${formatWallet(linked)}.`}</ThemedText>
