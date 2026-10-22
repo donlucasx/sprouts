@@ -250,6 +250,13 @@ export class SupabaseRepo implements Repo {
     if (error) throw new Error(error.message);
   }
 
+  /** One row at most: an exact answer at any table size (no row cap to fall under). */
+  async hasPlanted(userPubkey: string) {
+    const { data, error } = await this.db.from("plantings").select("id").eq("user_pubkey", userPubkey).in("status", ["sent", "confirmed"]).limit(1);
+    if (error) throw new Error(error.message);
+    return (data ?? []).length > 0;
+  }
+
   async listPlantings(userPubkey: string, limit: number) {
     return this.many(this.db.from("plantings").select().eq("user_pubkey", userPubkey).order("ts", { ascending: false }).limit(limit), plantingRow);
   }

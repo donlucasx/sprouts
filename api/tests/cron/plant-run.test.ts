@@ -54,10 +54,17 @@ async function seedVenues(repo: MemoryRepo, over: Partial<Record<"kamino_klend" 
 }
 const leashCfg = (enabled: number[]): LeashConfig => ({ puller: "P" as never, pullerUsdc: "PU" as never, maxPullRaw: 5_000_000n, legs: [0, 1, 2, 3, 4, 5, 6, 7].map((l) => ({ enabled: enabled.includes(l), reader: 0, feeBps: 0, tolBps: 0, confCapBps: 0, maxAgeS: 60, receiptMint: null, rateAccount: null, extra: null, feedId: null, feedAccount: null })) });
 
-async function seeded(roundups: number[], opts: { cap?: number; ago?: number } = {}) {
+/** First planting (domain/threshold.ts): a user past their first planting, so their own threshold ($2 by default) applies. */
+async function pastPlanting(repo: MemoryRepo, user = "U", wallet = "W") {
+  const p = await repo.insertPlanting({ userPubkey: user, walletPubkey: wallet, signature: `past-${user}`, usdcPulledCents: 200, networkFeeCents: 0, status: "sent", aiLine: null, ts: new Date(NOW.getTime() - 30 * 86_400_000) }, []);
+  await repo.setPlantingStatus(p.id, "confirmed");
+}
+
+async function seeded(roundups: number[], opts: { cap?: number; ago?: number; planted?: boolean } = {}) {
   const repo = new MemoryRepo();
   await repo.upsertUser({ seedVaultPubkey: "U", sgtMint: "M", skrName: null });
   await repo.addWallet({ pubkey: "W", userPubkey: "U", delegationPda: "D", dailyCapCents: opts.cap ?? 500 });
+  if (opts.planted) await pastPlanting(repo);
   for (const [i, c] of roundups.entries()) {
     await repo.insertSwap({ signature: `s${i}`, walletPubkey: "W", ts: new Date(NOW.getTime() - (opts.ago ?? 3_600_000)), inMint: "a", inAmount: 1, outMint: "b", outAmount: 1, usdSizeCents: 100, class: "major", roundupCents: c });
   }
@@ -135,7 +142,7 @@ describe("runPlanting", () => {
   });
 
   it("waits below the threshold", async () => {
-    const r = await runPlanting({ repo: await seeded([83, 62]), now: NOW, chain: fakeChain() });
+    const r = await runPlanting({ repo: await seeded([83, 62], { planted: true }), now: NOW, chain: fakeChain() });
     expect(r.planted).toEqual([]);
     expect(r.skipped[0].reason).toBe("below threshold");
   });
@@ -218,9 +225,9 @@ describe("runPlanting", () => {
   });
 
   it("a balance exactly at the minimum plants it; one cent under pauses and claims nothing", async () => {
-    const at = await seeded(many(10, 50));
+    const at = await seeded(many(10, 50), { planted: true });
     expect((await runPlanting({ repo: at, now: NOW, chain: fakeChain({ usdcBalanceRaw: async () => 2_000_000n }) })).planted[0].pullCents).toBe(200);
-    const under = await seeded(many(10, 50));
+    const under = await seeded(many(10, 50), { planted: true });
     const r = await runPlanting({ repo: under, now: NOW, chain: fakeChain({ usdcBalanceRaw: async () => 1_999_999n }) });
     expect(r.skipped[0].reason).toBe("no usdc");
     expect((await under.getWallet("W"))!.status).toBe("paused");
@@ -365,7 +372,7 @@ describe("runPlanting", () => {
   });
 
   it("a wallet below the threshold with its delegation in place stays active, waiting", async () => {
-    const repo = await seeded([83, 62]);
+    const repo = await seeded([83, 62], { planted: true });
     const r = await runPlanting({ repo, now: NOW, chain: fakeChain() });
     expect(r.skipped).toEqual([{ wallet: "W", reason: "below threshold" }]);
     expect((await repo.getWallet("W"))!.status).toBe("active");
@@ -440,7 +447,7 @@ describe("runPlanting", () => {
   });
 
   it("when the cap left is below the threshold, nothing is planted and the change waits", async () => {
-    const repo = await seeded([1000]);
+    const repo = await seeded([1000], { planted: true });
     const periodStart = BigInt(Math.floor(NOW.getTime() / 1000) - 3600);
     const r = await runPlanting({ repo, now: NOW, chain: fakeChain({ readDelegation: async () => ({ ...DELEGATION, pulledInPeriodRaw: 4_000_000n, periodStartTs: periodStart }) }) });
     expect(r.planted).toEqual([]);
@@ -1675,5 +1682,159 @@ describe("SKR posted (leg 0, contracts 10 item 15): the run with a Pyth key", ()
     expect(builds2.map((b) => b.asset)).toEqual(["hSOL"]);
     expect(r2.skipped).toEqual([{ wallet: "W", reason: "leg failed" }]);
     expect(repo2.events.map((e) => e.kind)).toEqual(["leg_skipped"]);
+  });
+});
+
+describe("first planting (owner 10-22): 50 cents for a user who never planted; the first-only run", () => {
+  type BuildArgs = Parameters<Chain["buildPlantingTx"]>[0];
+  const counting = (over: Partial<Chain> = {}) => {
+    const calls = { builds: [] as BuildArgs[], delegationReads: 0, statusReads: 0 };
+    const base = fakeChain(over);
+    const chain: Chain = {
+      ...base,
+      buildPlantingTx: async (a) => { calls.builds.push(a); return base.buildPlantingTx(a); },
+      readDelegation: async (pda) => { calls.delegationReads++; return base.readDelegation(pda); },
+      signatureStatus: async (sig) => { calls.statusReads++; return base.signatureStatus(sig); },
+    };
+    return { chain, calls };
+  };
+  const confirmed = (repo: MemoryRepo) => [...repo.plantings.values()].filter((p) => p.status === "confirmed" && !p.signature?.startsWith("past-"));
+
+  it("a first-time wallet at $0.60 plants in first-only mode", async () => {
+    const repo = await seeded([25, 35]);
+    const { chain } = counting();
+    const r = await runPlanting({ repo, now: NOW, chain, only: "first" });
+    expect(r.planted).toEqual([{ wallet: "W", asset: "SKR", pullCents: 60, signature: "sig1" }]);
+    expect((await repo.unplantedSwaps("W")).length).toBe(0);
+    expect(await repo.hasPlanted("U")).toBe(true);
+  });
+
+  it("a wallet whose user already planted, at $0.60, does not plant in first-only mode: not even read from the chain", async () => {
+    const repo = await seeded([25, 35], { planted: true });
+    const { chain, calls } = counting();
+    const r = await runPlanting({ repo, now: NOW, chain, only: "first" });
+    expect(r).toEqual({ planted: [], skipped: [] });
+    expect(calls.builds.length + calls.delegationReads).toBe(0);
+    expect((await repo.unplantedSwaps("W")).length).toBe(2);
+  });
+
+  it("the daily run is unchanged for a user who already planted: $0.60 and $1.99 wait, $2.00 plants", async () => {
+    for (const [roundups, plants] of [[[25, 35], false], [[100, 99], false], [[100, 100], true]] as const) {
+      const repo = await seeded([...roundups], { planted: true });
+      const r = await runPlanting({ repo, now: NOW, chain: fakeChain() });
+      expect(r.planted.length).toBe(plants ? 1 : 0);
+      if (!plants) expect(r.skipped).toEqual([{ wallet: "W", reason: "below threshold" }]);
+    }
+  });
+
+  it("the daily run plants a first-time wallet at 50 cents too, and waits at 49", async () => {
+    const at = await seeded([20, 30]);
+    expect((await runPlanting({ repo: at, now: NOW, chain: fakeChain() })).planted[0].pullCents).toBe(50);
+    const under = await seeded([20, 29]);
+    expect((await runPlanting({ repo: under, now: NOW, chain: fakeChain() })).skipped).toEqual([{ wallet: "W", reason: "below threshold" }]);
+  });
+
+  it("after the first planting the user's threshold is back: the next $0.60 waits, in either mode", async () => {
+    const repo = await seeded([25, 35]);
+    await runPlanting({ repo, now: NOW, chain: fakeChain(), only: "first" });
+    await repo.insertSwap({ signature: "next", walletPubkey: "W", ts: NOW, inMint: "a", inAmount: 1, outMint: "b", outAmount: 1, usdSizeCents: 100, class: "major", roundupCents: 60 });
+    const later = new Date(NOW.getTime() + 3_600_000);
+    expect(await runPlanting({ repo, now: later, chain: fakeChain(), only: "first" })).toEqual({ planted: [], skipped: [] });
+    expect((await runPlanting({ repo, now: later, chain: fakeChain() })).skipped).toEqual([{ wallet: "W", reason: "below threshold" }]);
+    expect(confirmed(repo).length).toBe(1);
+  });
+
+  it("a failed planting does not count as planted; a sent one (in flight) does", async () => {
+    const failed = await seeded([25, 35]);
+    const f = await failed.insertPlanting({ userPubkey: "U", walletPubkey: "W", signature: "x", usdcPulledCents: 60, networkFeeCents: 0, status: "sent", aiLine: null }, []);
+    await failed.setPlantingStatus(f.id, "failed");
+    expect((await runPlanting({ repo: failed, now: NOW, chain: fakeChain(), only: "first" })).planted.length).toBe(1);
+
+    const sent = await seeded([25, 35]);
+    await sent.insertPlanting({ userPubkey: "U", walletPubkey: "W", signature: "y", usdcPulledCents: 60, networkFeeCents: 0, status: "sent", aiLine: null, ts: NOW }, []);
+    expect(await runPlanting({ repo: sent, now: NOW, chain: fakeChain(), only: "first" })).toEqual({ planted: [], skipped: [] });
+  });
+
+  it("first-only mode never reconciles a `sent` planting (the daily run's job): no status read, the row stays sent", async () => {
+    const repo = await seeded([25, 35]);
+    const other = "U2";
+    await repo.upsertUser({ seedVaultPubkey: other, sgtMint: "M2", skrName: null });
+    const p = await repo.insertPlanting({ userPubkey: other, walletPubkey: "W2", signature: "old", usdcPulledCents: 200, networkFeeCents: 0, status: "sent", aiLine: null, ts: new Date(NOW.getTime() - 3_600_000) }, []);
+    const { chain, calls } = counting({ signatureStatus: async () => "confirmed" });
+    await runPlanting({ repo, now: NOW, chain, only: "first" });
+    expect(calls.statusReads).toBe(0);
+    expect(repo.plantings.get(p.id)!.status).toBe("sent");
+    // ...and the daily run still does reconcile it.
+    await runPlanting({ repo, now: NOW, chain });
+    expect(repo.plantings.get(p.id)!.status).toBe("confirmed");
+  });
+
+  it("first-only mode leaves a first-time wallet with no round-ups to the daily run: no chain read at all", async () => {
+    const repo = await seeded([]);
+    const { chain, calls } = counting();
+    expect(await runPlanting({ repo, now: NOW, chain, only: "first" })).toEqual({ planted: [], skipped: [] });
+    expect(calls.delegationReads).toBe(0);
+  });
+
+  it("two wallets of one first-time user: the first plants at $0.60, the second is left to the daily run, where $0.60 waits", async () => {
+    const repo = await seeded([25, 35]);
+    await repo.addWallet({ pubkey: "W2", userPubkey: "U", delegationPda: "D2", dailyCapCents: 500 });
+    await repo.insertSwap({ signature: "w2", walletPubkey: "W2", ts: new Date(NOW.getTime() - 3_600_000), inMint: "a", inAmount: 1, outMint: "b", outAmount: 1, usdSizeCents: 100, class: "major", roundupCents: 60 });
+    const r = await runPlanting({ repo, now: NOW, chain: fakeChain(), only: "first" });
+    expect(r.planted.map((p) => p.wallet)).toEqual(["W"]);
+    expect(r.skipped).toEqual([{ wallet: "W2", reason: "not first" }]);
+    expect((await runPlanting({ repo, now: NOW, chain: fakeChain() })).skipped.filter((x) => x.wallet === "W2")).toEqual([{ wallet: "W2", reason: "below threshold" }]);
+  });
+
+  it("an unreadable plantings table fails closed: the daily run uses the user's own threshold, first-only takes no wallet", async () => {
+    const repo = await seeded([25, 35]);
+    repo.hasPlanted = async () => { throw new Error("db down"); };
+    const { chain, calls } = counting();
+    expect(await runPlanting({ repo, now: NOW, chain, only: "first" })).toEqual({ planted: [], skipped: [] });
+    expect(calls.builds.length).toBe(0);
+    expect((await runPlanting({ repo, now: NOW, chain })).skipped).toEqual([{ wallet: "W", reason: "below threshold" }]);
+  });
+
+  it("a first-only run and the daily run overlapping on one first-time wallet plant its round-ups once", async () => {
+    const repo = await seeded([25, 35]);
+    const chain = fakeChain({ sendPlanting: async () => { await new Promise((r) => setTimeout(r, 5)); } });
+    const [a, b] = await Promise.all([runPlanting({ repo, now: NOW, chain, only: "first" }), runPlanting({ repo, now: NOW, chain })]);
+    expect(a.planted.length + b.planted.length).toBe(1);
+    expect([...a.skipped, ...b.skipped].map((s) => s.reason)).toEqual(["claimed elsewhere"]);
+    expect((await repo.getWallet("W"))!.ledgerCents.SKR ?? 0).toBe(60);
+    expect(confirmed(repo).length).toBe(1);
+  });
+
+  it("two first-only runs overlapping plant once", async () => {
+    const repo = await seeded([25, 35]);
+    const chain = fakeChain({ sendPlanting: async () => { await new Promise((r) => setTimeout(r, 5)); } });
+    const [a, b] = await Promise.all([runPlanting({ repo, now: NOW, chain, only: "first" }), runPlanting({ repo, now: NOW, chain, only: "first" })]);
+    expect(a.planted.length + b.planted.length).toBe(1);
+    expect(confirmed(repo).length).toBe(1);
+  });
+
+  it("first-time, $0.60 waiting and no USDC: paused for USDC at 60 cents; resumed by a first-only run once 50 cents is there", async () => {
+    const repo = await seeded([25, 35]);
+    const r = await runPlanting({ repo, now: NOW, chain: fakeChain({ usdcBalanceRaw: async () => 0n }), only: "first" });
+    expect(r.skipped).toEqual([{ wallet: "W", reason: "no usdc" }]);
+    expect((await repo.getWallet("W"))!.status).toBe("paused");
+    expect(repo.events.find((e) => e.kind === "paused_no_usdc")!.detail).toEqual({ needCents: 60 });
+    // 50 cents covers no whole round-up here (25 + 35 = 60), but it is the resume point: the wallet is active again and waits.
+    await runPlanting({ repo, now: NOW, chain: fakeChain({ usdcBalanceRaw: async () => 500_000n }), only: "first" });
+    expect((await repo.getWallet("W"))!.status).toBe("active");
+    const ok = await runPlanting({ repo, now: NOW, chain: fakeChain({ usdcBalanceRaw: async () => 600_000n }), only: "first" });
+    expect(ok.planted[0]).toMatchObject({ wallet: "W", pullCents: 60 });
+  });
+
+  it("first-only mode never resumes a wallet whose user already planted (the daily run does, at their own threshold)", async () => {
+    const repo = await seeded([83, 62, 70], { planted: true });
+    await repo.setWalletStatus("W", "paused");
+    await repo.addEvent({ userPubkey: "U", walletPubkey: "W", kind: "paused_no_usdc", detail: null });
+    await runPlanting({ repo, now: NOW, chain: fakeChain(), only: "first" });
+    expect((await repo.getWallet("W"))!.status).toBe("paused");
+    await runPlanting({ repo, now: NOW, chain: fakeChain({ usdcBalanceRaw: async () => 1_990_000n }) });
+    expect((await repo.getWallet("W"))!.status).toBe("paused");    // $1.99 is under their $2 resume point
+    await runPlanting({ repo, now: NOW, chain: fakeChain() });
+    expect((await repo.getWallet("W"))!.status).toBe("active");
   });
 });
