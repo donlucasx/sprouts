@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   usableMe,
   pickMeState,
+  staleLine,
   withdrawMode,
   applyRulesTo,
   gardenTotals,
@@ -305,5 +306,15 @@ describe('valueBlock (R355)', () => {
     expect(b.big).toBe('12,980.46 SKR')
     expect(b.side).toEqual([{ label: 'Put in', value: '$10.00' }])
     expect(b.a11y).toBe('12,980.46 SKR in your garden. Put in $10.00.')
+  })
+})
+
+describe('staleLine (his note 10-22: name the cause)', () => {
+  it('says offline when the read got no answer', () => {
+    expect(staleLine('as of Oct 16', 0)).toBe("You're offline. Showing your garden as of Oct 16.")
+  })
+  it('says Sprouts could not load it when the server answered with a failure', () => {
+    expect(staleLine('as of 9:12 AM', 500)).toBe("Sprouts couldn't load your garden just now. Showing it as of 9:12 AM.")
+    expect(staleLine('as of Oct 16', -1)).toBe("Sprouts couldn't load your garden just now. Showing it as of Oct 16.")
   })
 })

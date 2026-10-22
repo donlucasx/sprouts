@@ -40,7 +40,7 @@ import { MoveCard } from '@/components/MoveCard'
 import { termsNeeded, termsSummary } from '@/lib/terms'
 import { arrivalLine, formatSkr, formatAsOf } from '@/lib/format'
 import { useSession } from '@/lib/session'
-import { gardenTotals, pauseState, noUsdcPauseLines, pausedOnlyForNoUsdc, coinRows, valueBlock, walletsLine, lastPlantingLine, type CoinRow } from '@/lib/me-state'
+import { gardenTotals, pauseState, noUsdcPauseLines, pausedOnlyForNoUsdc, coinRows, valueBlock, walletsLine, lastPlantingLine, staleLine, type CoinRow } from '@/lib/me-state'
 import { FONT, radius, spacing, TARGET, useTheme } from '@/theme'
 
 /** R562: each row of Home's coin list leads with the coin's official round logo (lib/coin-icons), Phantom style. */
@@ -71,7 +71,7 @@ function devSplitLending(me: MeResponse): MeResponse {
 export default function Home() {
   const { setSession } = useSession()
   const { colors, dark } = useTheme()
-  const { data: me, stale, fresh, refetch, asOf, loading, unauthorized } = useMe()
+  const { data: me, stale, fresh, refetch, asOf, loading, unauthorized, errorStatus } = useMe()
   const invalidate = useInvalidateMe()
   const [failed, setFailed] = useState(false)
   const [nudged, setNudged] = useState(false)
@@ -334,7 +334,7 @@ export default function Home() {
         </View>
         {stale && asOf ? (
           <ThemedText variant="caption" tone="error">
-            {formatAsOf(asOf, now)}, the chain could not be read just now.
+            {staleLine(formatAsOf(asOf, now), errorStatus)}
           </ThemedText>
         ) : null}
       </View>
