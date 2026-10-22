@@ -127,6 +127,27 @@ describe("GET /api/me", () => {
     expect((await me(new Request("http://x/api/me", bearer(token)))).status).toBe(401);
   });
 
+  // Home tells a run's pause for want of USDC (which resumes by itself at threshold + fee) from the user's own pause (R207).
+  it("says why a paused wallet is paused: no USDC with what the run wanted and where it resumes, or the user's own pause", async () => {
+    const token = await issueSession(U, "M");
+    let body = await (await me(new Request("http://x/api/me", bearer(token)))).json();
+    expect(body.wallets[0].pause).toBeNull();
+    await repo.setWalletStatus("W", "paused");
+    await repo.addEvent({ userPubkey: U, walletPubkey: "W", kind: "paused_no_usdc", detail: { needCents: 205 } });
+    body = await (await me(new Request("http://x/api/me", bearer(token)))).json();
+    expect(body.wallets[0].pause).toEqual({ reason: "no_usdc", needCents: 205, resumeAtCents: 200 });
+    // the user paused on top of it: theirs is the newest word, so no "add USDC" (the run would not resume it either)
+    await repo.addEvent({ userPubkey: U, walletPubkey: "W", kind: "paused_by_user", detail: { by: "user" } });
+    body = await (await me(new Request("http://x/api/me", bearer(token)))).json();
+    expect(body.wallets[0].pause).toEqual({ reason: "user" });
+  });
+
+  it("calls a pause with no event the user's (fail closed, as the run reads it)", async () => {
+    await repo.setWalletStatus("W", "paused");
+    const body = await (await me(new Request("http://x/api/me", bearer(await issueSession(U, "M"))))).json();
+    expect(body.wallets[0].pause).toEqual({ reason: "user" });
+  });
+
   it("POST /api/auth/signout-all ends the other device's session too", async () => {
     const phone = await issueSession(U, "M");
     const other = await issueSession(U, "M2");

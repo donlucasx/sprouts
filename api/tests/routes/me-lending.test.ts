@@ -45,7 +45,7 @@ describe("GET /api/me, lending (contracts 5.2)", () => {
     expect(body.lendSigns).toEqual({ USDC_LEND: { line1: "USDC", line2: "Kamino 4.4%", venue: "kamino_klend", ratePct: 4.43 }, SOL_LEND: null });
     expect(body.terms).toEqual({ currentVersion: "2026-10-09", acceptedVersion: null });
     expect(body.manager).toMatchObject({ picks: { USDC_LEND: "kamino_klend", SOL_LEND: null }, legsEnabled: null });
-    expect(body.wallets).toEqual([{ pubkey: "W", status: "active", dailyCapCents: 500, linkModel: "puller" }]);
+    expect(body.wallets).toEqual([{ pubkey: "W", status: "active", dailyCapCents: 500, linkModel: "puller", pause: null }]);
     expect(body.moveProposal).toBeNull();
   });
   it("K-I5: a user over the 60% venue cap is shown where the money really goes: picks, the routing sentence and the sign", async () => {

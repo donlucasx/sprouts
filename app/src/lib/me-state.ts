@@ -72,6 +72,30 @@ export function pauseState(wallets: { status: string }[]): { shown: boolean; on:
   }
 }
 
+/**
+ * Home's line for each wallet the daily run paused for want of USDC (10-22). The run starts it again on its own at its next daily
+ * check once the wallet holds threshold + network fee (api plant-run.ts resumePausedWallets); the amount named is the larger of
+ * that and what the run wanted to pull (`needCents`), rounded up to whole dollars, so holding it both restarts the wallet and covers
+ * the waiting round-ups. A wallet the user paused, or one an older API gives no reason for, gets no line here.
+ */
+export function noUsdcPauseLines(wallets: MeResponse['wallets']): string[] {
+  const linked = wallets.filter((w) => w.status !== 'revoked')
+  return linked.flatMap((w) => {
+    const p = w.status === 'paused' ? w.pause : null
+    if (p?.reason !== 'no_usdc') return []
+    const dollars = Math.max(1, Math.ceil(Math.max(p.needCents ?? 0, p.resumeAtCents) / 100))
+    const who = linked.length > 1 ? `wallet ${w.pubkey.slice(0, 4)}...${w.pubkey.slice(-4)}` : 'your wallet'
+    return [`Paused: ${who} doesn't have enough USDC. Once it holds at least $${dollars} of USDC, Sprouts starts again on its own at the next daily planting.`]
+  })
+}
+
+/** Whether every paused wallet was paused by the run for want of USDC: then Home's lines above say it all and the Rules chip (the
+ *  user's switch) stays hidden. False when any wallet is the user's pause or has no reason. */
+export function pausedOnlyForNoUsdc(wallets: MeResponse['wallets']): boolean {
+  const paused = wallets.filter((w) => w.status === 'paused')
+  return paused.length > 0 && paused.every((w) => w.pause?.reason === 'no_usdc')
+}
+
 /** Home's coin rows (R150): SKR first, locked (R134's lock), then each held coin in the coins' order; amounts, and stORE's one
  * caption (R177, R194): where its growth comes from, with the week's measured rate; none while collecting or under 1%.
  * R198 (device check 2, his note): `lead` marks the SKR and stORE rows, which Home sets one step up the type ramp from the other

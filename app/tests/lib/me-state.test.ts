@@ -6,6 +6,8 @@ import {
   applyRulesTo,
   gardenTotals,
   pauseState,
+  noUsdcPauseLines,
+  pausedOnlyForNoUsdc,
   coinRows,
   statTiles,
   valueBlock,
@@ -176,6 +178,32 @@ describe('pauseState', () => {
       on: false,
       line: 'Sprouts is paused',
     })
+  })
+})
+
+// 10-22: a wallet the run paused for want of USDC says what brings it back (the run resumes it at threshold + fee).
+describe('noUsdcPauseLines / pausedOnlyForNoUsdc', () => {
+  const noUsdc = (pubkey: string, needCents: number | null, resumeAtCents = 200) =>
+    ({ pubkey, status: 'paused', dailyCapCents: 500, pause: { reason: 'no_usdc', needCents, resumeAtCents } }) as const
+  const userPaused = { pubkey: 'U1111111111111111111111111111111', status: 'paused', dailyCapCents: 500, pause: { reason: 'user' } } as const
+  const active = { pubkey: 'A1111111111111111111111111111111', status: 'active', dailyCapCents: 500 } as const
+  it('names the larger of the wanted pull and the resume point, rounded up to whole dollars', () => {
+    expect(noUsdcPauseLines([noUsdc('W1111111111111111111111111111111', 205)])).toEqual([
+      "Paused: your wallet doesn't have enough USDC. Once it holds at least $3 of USDC, Sprouts starts again on its own at the next daily planting.",
+    ])
+    expect(noUsdcPauseLines([noUsdc('W1111111111111111111111111111111', 40)])[0]).toContain('at least $2 of USDC')
+    expect(noUsdcPauseLines([noUsdc('W1111111111111111111111111111111', null)])[0]).toContain('at least $2 of USDC')
+  })
+  it('names the wallet when more than one is linked, and says nothing for a user pause or an older API', () => {
+    expect(noUsdcPauseLines([noUsdc('W1111111111111111111111111111xyz9', 500), active])[0]).toMatch(/^Paused: wallet W111\.\.\.xyz9 /)
+    expect(noUsdcPauseLines([userPaused])).toEqual([])
+    expect(noUsdcPauseLines([{ ...active, status: 'paused' }])).toEqual([])
+  })
+  it('hides the Rules chip only when every paused wallet is the run\'s no-USDC pause', () => {
+    expect(pausedOnlyForNoUsdc([noUsdc('W1', 205)])).toBe(true)
+    expect(pausedOnlyForNoUsdc([noUsdc('W1', 205), userPaused])).toBe(false)
+    expect(pausedOnlyForNoUsdc([{ ...active, status: 'paused' }])).toBe(false)
+    expect(pausedOnlyForNoUsdc([active])).toBe(false)
   })
 })
 

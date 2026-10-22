@@ -1,4 +1,5 @@
 import type { Address } from "@solana/kit";
+import { pauseCauseOf, PAUSE_EVENT_KINDS } from "@/domain/pause-cause";
 import type { Repo } from "@/db/repo";
 import type { CarryKind, PlantingLegRow, PlantingRow, VenueDayRow, WalletRow } from "@/db/types";
 import { rulesRowToRules } from "@/db/types";
@@ -330,8 +331,8 @@ async function estimateMinted(chain: Chain, legs: { asset: Asset; amountOutRaw: 
  * stays paused, failing closed (security audit R207, HIGH).
  */
 async function pausedForNoUsdc(repo: Repo, w: WalletRow): Promise<boolean> {
-  const events = await repo.listEvents(w.userPubkey, ["paused_no_usdc", "paused_by_user", "resumed"], 200);
-  return events.find((e) => e.walletPubkey === w.pubkey)?.kind === "paused_no_usdc";
+  const events = await repo.listEvents(w.userPubkey, [...PAUSE_EVENT_KINDS], 200);
+  return pauseCauseOf(events, w.pubkey).reason === "no_usdc";
 }
 
 /** R207: the user's own newest word on a wallet is a pause (a run's resume, detail null, does not count against it). */

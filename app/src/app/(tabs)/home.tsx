@@ -40,7 +40,7 @@ import { MoveCard } from '@/components/MoveCard'
 import { termsNeeded, termsSummary } from '@/lib/terms'
 import { arrivalLine, formatSkr, formatAsOf } from '@/lib/format'
 import { useSession } from '@/lib/session'
-import { gardenTotals, pauseState, coinRows, valueBlock, walletsLine, lastPlantingLine, type CoinRow } from '@/lib/me-state'
+import { gardenTotals, pauseState, noUsdcPauseLines, pausedOnlyForNoUsdc, coinRows, valueBlock, walletsLine, lastPlantingLine, type CoinRow } from '@/lib/me-state'
 import { FONT, radius, spacing, TARGET, useTheme } from '@/theme'
 
 /** R562: each row of Home's coin list leads with the coin's official round logo (lib/coin-icons), Phantom style. */
@@ -204,6 +204,7 @@ export default function Home() {
   const totals = gardenTotals(me)
   const value = valueBlock(totals, staked)
   const pause = pauseState(me.wallets)
+  const noUsdc = noUsdcPauseLines(me.wallets)
   // R96, R184 and R186: the one line and the can decided together, so they always agree; the can is in colour only while a bud waits.
   // R186: the Next planting row draws inside the garden (directly under it, the can at its bar's end). R199: the line rides in that
   // row too, tucked into the paper under the bar beside the can (WatcherLine's `tuck`).
@@ -273,7 +274,16 @@ export default function Home() {
         </View>
       </View>
       {/* R448: the switch lives at the top of Rules; R459: Home shows a chip that opens it only while Sprouts is paused */}
-      {pause.shown && !pause.on ? (
+      {/* 10-22: a wallet the run paused for want of USDC says what brings it back; the run resumes it, so no switch is needed */}
+      {noUsdc.map((line) => (
+        <View key={line} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm }}>
+          <View style={{ width: 8, height: 8, borderRadius: radius.full, backgroundColor: colors.attention, marginTop: 6 }} />
+          <ThemedText tone="secondary" style={{ flex: 1, fontSize: 14, lineHeight: 20 }}>
+            {line}
+          </ThemedText>
+        </View>
+      ))}
+      {pause.shown && !pause.on && !pausedOnlyForNoUsdc(me.wallets) ? (
         <Pressable
           onPress={() => router.push('/rules')}
           accessibilityRole="button"
