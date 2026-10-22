@@ -9,6 +9,7 @@ import { Safety } from "../safety";
 /** 10-16 (his note "too much text, simplify, and brand the page"): the splash's paper, ink and Outfit, the deck's leaf green and Albert Sans. */
 const outfit = Outfit({ subsets: ["latin"], weight: ["300", "600"] });
 const albert = Albert_Sans({ subsets: ["latin"], weight: ["400", "600"] });
+const ART = "/site/link-mandarin-s14.mp4?v=2";
 const paper = "#FFFBF5", ink = "#2B2622", muted = "#7A746B", leaf = "#1E6B44", rule = "#E6DFD2";
 
 /**
@@ -61,7 +62,7 @@ export default function LinkPage() {
       const done = await call<{ skrName: string | null }>("/api/link/confirm", {
         method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ code: c, wallet, signedTransaction: signed }),
       });
-      setMessage(`Linked${done.skrName ? ` to ${done.skrName}'s garden` : ""}. This wallet's swaps now round up into your garden, at most $${(t.cap / 100).toFixed(2)} a day.${t.revokes ? " The previous approval was revoked." : ""} You can close this page and go back to the app.`);
+      setMessage(`Linked${done.skrName ? ` to ${done.skrName}'s garden` : ""}, up to $${(t.cap / 100).toFixed(0)} a day.${t.revokes ? " The old approval was revoked." : ""} To link another wallet, get a new code in the app.`);
       setState("done");
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "Something did not go through. Nothing moved.");
@@ -99,14 +100,14 @@ export default function LinkPage() {
         .lk-foot a:hover { color: ${ink}; }
       `}</style>
       <div className="lk-col">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img className="lk-art" src="/site/grown-mandarin.webp?v=14" alt="" />
+        {/* his ask 10-22: one of the garden's mandarin idle loops (brand/garden2/idle/final) in place of the still */}
+        <video className="lk-art" src={ART} autoPlay loop muted playsInline aria-hidden="true" />
         <div className={`lk-mark ${outfit.className}`}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/deck/mark.svg" alt="" />Sprouts
         </div>
-        <h1 className={outfit.className}>Link your trading wallet</h1>
-        <p className="lk-sub">Phantom, Solflare, Backpack or any Solana wallet. Its swaps round up into your Seeker garden.</p>
+        <h1 className={outfit.className}>Link your trading wallets</h1>
+        <p className="lk-sub">Phantom, Solflare, Backpack or any Solana wallet. Link as many as you like, one code each.</p>
 
         <input className={`lk-code ${outfit.className}`} value={code} onChange={(e) => edit(e.target.value)} disabled={state !== "idle"} placeholder="CODE"
           maxLength={6} autoCapitalize="characters" aria-label="Code from the Sprouts app" />
@@ -114,12 +115,12 @@ export default function LinkPage() {
         {state === "done" ? null : state === "busy" ? <p className="lk-note">{owner ? "Waiting for your wallet." : "Checking the code."}</p> : !owner ? (
           <>
             <button disabled={c.length !== 6} onClick={check}>Continue</button>
-            <p className="lk-note">Get the code in the app: Link a wallet, then Another wallet.</p>
+            <p className="lk-note">Get a code in the Sprouts app: Link a wallet, then Another wallet.</p>
           </>
         ) : !confirmed ? (
           <>
-            <p style={{ fontWeight: 600 }}>This links your wallet to {owner}&apos;s garden. Only continue if that&apos;s you.</p>
-            <p className="lk-note">If someone sent you this code, stop here.</p>
+            <p style={{ fontWeight: 600 }}>This links your wallet to {owner}&apos;s garden.</p>
+            <p className="lk-note">If that&apos;s not you, or someone sent you this code, stop here.</p>
             <div className="lk-row">
               <button onClick={() => setConfirmed(true)}>{owner} is me</button>
               <button className="lk-quiet" onClick={() => edit("")}>Cancel</button>
@@ -134,7 +135,7 @@ export default function LinkPage() {
 
         {leash ? (
           <p className="lk-note">
-            Your approval names this Sprouts program, not a server key:<br />
+            Your wallet should name this Sprouts program:<br />
             <code style={{ wordBreak: "break-all" }}>{leash}</code>
           </p>
         ) : null}
