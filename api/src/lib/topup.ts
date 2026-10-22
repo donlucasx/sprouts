@@ -1,7 +1,10 @@
-import { AccountRole, getBase64Encoder, type Address, type Instruction } from "@solana/kit";
+import { AccountRole, address, getBase64Encoder, getProgramDerivedAddress, type Address, type Instruction } from "@solana/kit";
 import { findAssociatedTokenPda, TOKEN_PROGRAM_ADDRESS, ASSOCIATED_TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
+import { TOKEN_2022_PROGRAM_ADDRESS } from "@solana-program/token-2022";
 import { checkQuoteMints, getQuote, getSwapInstructions, JUPITER_AGGREGATOR } from "./jupiter";
 import { SYSTEM_PROGRAM, USDC_MINT, WSOL_MINT } from "./constants";
+import { COINS } from "@/domain/coins";
+import { RECEIPT } from "./venues/addresses";
 import { buildUserTransaction } from "./user-tx";
 import { rpc } from "./rpc";
 
@@ -22,6 +25,13 @@ export const TOPUP_MAX_SLIPPAGE_BPS = 100;
 /** The priority fee asked of Jupiter, and the ceiling the check accepts (limit x price), in lamports. */
 export const TOPUP_PRIORITY_LAMPORTS = 100_000;
 export const TOPUP_MAX_PRIORITY_LAMPORTS = 1_000_000n;
+/** Never more than 1 SOL leaves the wallet in a top-up (the app holds the same ceiling, sign.ts TOPUP_MAX_LAMPORTS). */
+export const TOPUP_MAX_LAMPORTS = 1_000_000_000n;
+/**
+ * The dexes a top-up quote may route through: the ones whose Swap variant the app can parse (sign.ts SWAP_VARIANTS). Meteora DLMM has
+ * no ExactOut route; Raydium AMM v4 is a variant (105 today) past the IDL the app pins.
+ */
+export const TOPUP_DEXES = ["Raydium CLMM", "Whirlpool"] as const;
 /** A v0 transaction's wire limit; the top-up is compiled without a lookup table (the app refuses one), so the route must fit. */
 const MAX_WIRE_BYTES = 1232;
 
@@ -36,17 +46,24 @@ const SYSTEM_TRANSFER = 2;
 const DEFAULT_CU_LIMIT = 1_400_000n;
 
 /**
- * The two Jupiter v6 ExactOut layouts (Anchor discriminators, as jupiter.ts OUTPUT_SLOTS): the account slots of the transfer authority,
- * the source (the user's wSOL), the output (plain: the custom slot when set, else the user slot; shared: one slot), and the two mints.
- * The data ends: out_amount u64, quoted_in_amount u64, slippage_bps u16, platform_fee_bps u8.
+ * Jupiter v6 shared_accounts_exact_out_route, the only swap a top-up may carry (the API asks useSharedAccounts): the AMMs swap through
+ * Jupiter's program authority, so the wallet and its token accounts sit only in the fixed slots. Data, Borsh (Jupiter v6 IDL):
+ * discriminator, id u8, route_plan Vec<RoutePlanStep { swap: Swap, percent u8, input_index u8, output_index u8 }>, out_amount u64,
+ * quoted_in_amount u64, slippage_bps u16, platform_fee_bps u8, nothing after. Swap variants: only those whose payload size is pinned
+ * (Whirlpool { a_to_b: bool } 17, RaydiumClmm 26, RaydiumClmmV2 40), as the app (sign.ts parseSharedExactOut).
  */
-const EXACT_OUT: Record<string, { authority: number; source: number; out: { user: number; custom: number } | { shared: number }; inMint: number; outMint: number }> = {
-  d033ef977b2bed5c: { authority: 1, source: 2, out: { user: 3, custom: 4 }, inMint: 5, outMint: 6 }, // exact_out_route
-  b0d169a89a7d453e: { authority: 2, source: 3, out: { shared: 6 }, inMint: 7, outMint: 8 }, // shared_accounts_exact_out_route
-};
+const SHARED_EXACT_OUT = "b0d169a89a7d453e";
+const SWAP_VARIANTS: Readonly<Record<number, number>> = Object.freeze({ 17: 1, 26: 0, 40: 0 });
+const JUPITER_AUTHORITIES = 8;
+const MAX_ROUTE_STEPS = 4;
+const JUPITER_EVENT_AUTHORITY = "D8cy77BBepLMngZx6ZukaTff5hCt1HrWyKk3Hnd9oitf";
 
 export type TopUpIx = { program: string; accounts: string[]; signers?: string[]; data: Uint8Array };
 export type TopUpPlan = { outRaw: bigint; quotedInLamports: bigint; wrapLamports: bigint; slippageBps: number };
+/** Jupiter's program authority for an id, and its own wSOL and USDC accounts (shared_accounts_exact_out_route slots 1, 4, 5). */
+export type JupiterAuthority = { authority: string; wsol: string; usdc: string };
+/** What checkTopUp compares against, all derived from the wallet alone (topUpAccounts). */
+export type TopUpAccounts = { wsolAta: string; usdcAta: string; foreign: readonly string[]; authorities: readonly JupiterAuthority[] };
 
 const no = (why: string): never => { throw new Error(`Top-up refused: ${why}`); };
 const u16At = (d: Uint8Array, at: number) => new DataView(d.buffer, d.byteOffset, d.byteLength).getUint16(at, true);
@@ -54,26 +71,72 @@ const u32At = (d: Uint8Array, at: number) => new DataView(d.buffer, d.byteOffset
 const u64At = (d: Uint8Array, at: number) => new DataView(d.buffer, d.byteOffset, d.byteLength).getBigUint64(at, true);
 const same = (ix: TopUpIx, expected: readonly string[]) => ix.accounts.length === expected.length && expected.every((e, i) => ix.accounts[i] === e);
 
-export async function topUpAccounts(user: Address): Promise<{ wsolAta: string; usdcAta: string }> {
-  const [[wsolAta], [usdcAta]] = await Promise.all([
-    findAssociatedTokenPda({ owner: user, mint: WSOL_MINT, tokenProgram: TOKEN_PROGRAM_ADDRESS }),
-    findAssociatedTokenPda({ owner: user, mint: USDC_MINT, tokenProgram: TOKEN_PROGRAM_ADDRESS }),
+const ataOf = async (owner: Address, mint: Address, tokenProgram: Address = TOKEN_PROGRAM_ADDRESS) => (await findAssociatedTokenPda({ owner, mint, tokenProgram }))[0] as string;
+/** The mints whose accounts the wallet may hold beside SOL and USDC: the coins (live and retired) and the lending receipts. */
+const FOREIGN_MINTS: readonly Address[] = [
+  ...Object.values(COINS).map((c) => c.mint).filter((m) => m !== USDC_MINT && m !== WSOL_MINT),
+  ...Object.values(RECEIPT).flatMap((v) => Object.values(v).map((r) => r.mint)),
+];
+let authorities: Promise<JupiterAuthority[]> | null = null;
+const jupiterAuthorities = () =>
+  (authorities ??= Promise.all(
+    Array.from({ length: JUPITER_AUTHORITIES }, async (_, id) => {
+      const [authority] = await getProgramDerivedAddress({ programAddress: address(JUPITER_AGGREGATOR), seeds: ["authority", new Uint8Array([id])] });
+      return { authority, wsol: await ataOf(authority, WSOL_MINT), usdc: await ataOf(authority, USDC_MINT) };
+    }),
+  ));
+
+export async function topUpAccounts(user: Address): Promise<TopUpAccounts> {
+  const [wsolAta, usdcAta, foreign, auth] = await Promise.all([
+    ataOf(user, WSOL_MINT),
+    ataOf(user, USDC_MINT),
+    Promise.all([
+      ...FOREIGN_MINTS.flatMap((m) => [ataOf(user, m), ataOf(user, m, TOKEN_2022_PROGRAM_ADDRESS)]),
+      ataOf(user, WSOL_MINT, TOKEN_2022_PROGRAM_ADDRESS),
+      ataOf(user, USDC_MINT, TOKEN_2022_PROGRAM_ADDRESS),
+    ]),
+    jupiterAuthorities(),
   ]);
-  return { wsolAta, usdcAta };
+  return { wsolAta, usdcAta, foreign, authorities: auth };
+}
+
+/** The swap's data read the way Jupiter's program reads it; anything it cannot read in full, or with bytes left over, refuses. */
+export function parseSharedExactOut(d: Uint8Array): { id: number; outAmount: bigint; quotedIn: bigint; slippageBps: number; feeBps: number } {
+  if (d.length < 13 || Buffer.from(d.slice(0, 8)).toString("hex") !== SHARED_EXACT_OUT) no("the swap is not Jupiter's shared-accounts ExactOut route");
+  const id = d[8], steps = u32At(d, 9);
+  if (id >= JUPITER_AUTHORITIES || steps < 1 || steps > MAX_ROUTE_STEPS) no(`the swap's id ${id} or route length ${steps} is not one Jupiter builds`);
+  let at = 13;
+  for (let s = 0; s < steps; s++) {
+    if (at >= d.length) no("the route plan is cut short");
+    const payload = SWAP_VARIANTS[d[at]];
+    if (payload === undefined) no(`swap variant ${d[at]} is not one a top-up may use`);
+    at++;
+    if (at + payload + 3 > d.length) no("the route plan is cut short");
+    for (let b = 0; b < payload; b++) if (d[at + b] > 1) no("a route step's flag is not a bool");
+    at += payload;
+    if (d[at] < 1 || d[at] > 100) no(`a route step's percent ${d[at]} is out of range`);
+    at += 3;
+  }
+  if (d.length - at !== 19) no(`the swap data has ${d.length - at} bytes after the route plan, not 19`);
+  return { id, outAmount: u64At(d, at), quotedIn: u64At(d, at + 8), slippageBps: u16At(d, at + 16), feeBps: d[at + 18] };
 }
 
 /**
  * What a top-up transaction may hold, and nothing else (the app runs the same check before the wallet is asked, sign.ts 'topup'):
  * compute budget (a limit and a price, the priority fee at most 0.001 SOL); create the user's wSOL and USDC accounts (optional, paid by
- * the user); move SOL into the user's own wSOL account, then SyncNative; ONE Jupiter ExactOut swap from that wSOL account into the
- * user's USDC account, USDC out, no platform fee, slippage at most 1%, the wrap no larger than the swap's own maximum; then close the
- * wSOL account back to the user. The user is the only signer. `outRaw`, when given, is the USDC the screen promised.
+ * the user); move SOL into the user's own wSOL account, then SyncNative; ONE Jupiter shared_accounts_exact_out_route (its data parsed
+ * in full, its 13 fixed accounts pinned, the wallet and its token accounts nowhere in the route accounts) from that wSOL account into the
+ * user's USDC account, USDC out, no platform fee, slippage at most 1%, the wrap no larger than the swap's own maximum, at most 1 SOL; then
+ * close the wSOL account back to the user. The user is the only signer; none of its other token accounts appears anywhere. `outRaw`,
+ * when given, is the USDC the screen promised. The SOL price bound is the app's alone (sign.ts): it reads a price this API never touches.
  */
-export function checkTopUp(ixs: TopUpIx[], a: { user: string; wsolAta: string; usdcAta: string; outRaw?: bigint }): TopUpPlan {
+export function checkTopUp(ixs: TopUpIx[], a: TopUpAccounts & { user: string; outRaw?: bigint }): TopUpPlan {
   const allowed = new Set([COMPUTE_BUDGET, ATA, SYSTEM, TOKEN, JUPITER_AGGREGATOR]);
+  const foreign = new Set(a.foreign);
   for (const ix of ixs) {
     if (!allowed.has(ix.program)) no(`program ${ix.program} is not used by a top-up`);
     for (const s of ix.signers ?? []) if (s !== a.user) no(`signer ${s} is not the wallet`);
+    for (const acc of ix.accounts) if (foreign.has(acc)) no(`the wallet's other token account ${acc} is in the transaction`);
   }
   let i = 0;
   let cuLimit: bigint | null = null, cuPrice: bigint | null = null;
@@ -104,24 +167,25 @@ export function checkTopUp(ixs: TopUpIx[], a: { user: string; wsolAta: string; u
   if (wrapLamports === null || !synced) no("the SOL is not wrapped before the swap");
   const swap = ixs[i++];
   if (!swap || swap.program !== JUPITER_AGGREGATOR) no("no Jupiter swap");
-  const disc = Buffer.from(swap.data.slice(0, 8)).toString("hex");
-  const layout = EXACT_OUT[disc];
-  if (!layout) no(`swap instruction ${disc} is not an ExactOut route`);
-  const at = (k: number) => swap.accounts[k];
-  const outSlot = "shared" in layout.out ? layout.out.shared : at(layout.out.custom) === JUPITER_AGGREGATOR ? layout.out.user : layout.out.custom;
-  if (at(layout.authority) !== a.user) no("the swap's authority is not the wallet");
-  if (at(layout.source) !== a.wsolAta) no("the swap does not spend from the wallet's wSOL account");
-  if (at(outSlot) !== a.usdcAta) no("the swap does not deliver to the wallet's USDC account");
-  if (at(layout.inMint) !== WSOL_MINT || at(layout.outMint) !== USDC_MINT) no("the swap is not SOL to USDC");
-  const d = swap.data;
-  if (d.length < 8 + 4 + 19) no("the swap data is too short");
-  const n = d.length;
-  const outRaw = u64At(d, n - 19), quotedIn = u64At(d, n - 11), slippageBps = u16At(d, n - 3), feeBps = d[n - 1];
+  const route = parseSharedExactOut(swap.data);
+  const auth = a.authorities[route.id];
+  if (!auth) no(`no Jupiter program authority for id ${route.id}`);
+  // The 13 fixed accounts (IDL order): token program, program authority, transfer authority, source, program source, program
+  // destination, destination, source mint, destination mint, platform fee (None), token-2022 (None), event authority, program.
+  const fixed = [TOKEN, auth.authority, a.user, a.wsolAta, auth.wsol, auth.usdc, a.usdcAta, WSOL_MINT, USDC_MINT, JUPITER_AGGREGATOR, JUPITER_AGGREGATOR, JUPITER_EVENT_AUTHORITY, JUPITER_AGGREGATOR] as string[];
+  if (swap.accounts.length <= fixed.length) no("the swap has no route accounts");
+  fixed.forEach((want, k) => {
+    if (swap.accounts[k] !== want) no(`the swap's account ${k} is ${swap.accounts[k]}, not ${want}`);
+  });
+  const mine = new Set([a.user, a.wsolAta, a.usdcAta]);
+  if (swap.accounts.slice(fixed.length).some((acc) => mine.has(acc))) no("the wallet or its own token accounts are in the route accounts");
+  const { outAmount: outRaw, quotedIn, slippageBps, feeBps } = route;
   if (feeBps !== 0) no("the swap carries a platform fee");
   if (slippageBps > TOPUP_MAX_SLIPPAGE_BPS) no(`slippage ${slippageBps} bps is above ${TOPUP_MAX_SLIPPAGE_BPS}`);
   if (a.outRaw !== undefined ? outRaw !== a.outRaw : outRaw < BigInt(TOPUP_MIN_CENTS) * 10_000n || outRaw > BigInt(TOPUP_MAX_CENTS) * 10_000n) no(`the swap delivers ${outRaw}, not the amount asked`);
   const maxIn = (quotedIn * BigInt(10_000 + slippageBps) + 9_999n) / 10_000n + 1n;
   if (quotedIn <= 0n || wrapLamports! > maxIn) no("the SOL wrapped is above the swap's maximum");
+  if (maxIn > TOPUP_MAX_LAMPORTS) no("the swap may spend more than 1 SOL");
   const close = ixs[i++];
   if (!close || close.program !== TOKEN || close.data.length !== 1 || close.data[0] !== CLOSE_ACCOUNT || !same(close, [a.wsolAta, a.user, a.user])) no("the wSOL account is not closed back to the wallet after the swap");
   if (i !== ixs.length) no("an instruction after the unwrap");
@@ -176,7 +240,7 @@ export async function buildTopUp(user: Address, cents: number): Promise<{ transa
   const accounts = await topUpAccounts(user);
   let quote;
   try {
-    quote = await getQuote({ inputMint: WSOL_MINT, outputMint: USDC_MINT, amountRaw: outRaw, slippageBps: TOPUP_SLIPPAGE_BPS, swapMode: "ExactOut", maxAccounts: 20 });
+    quote = await getQuote({ inputMint: WSOL_MINT, outputMint: USDC_MINT, amountRaw: outRaw, slippageBps: TOPUP_SLIPPAGE_BPS, swapMode: "ExactOut", maxAccounts: 20, dexes: TOPUP_DEXES });
     checkQuoteMints(quote, { inputMint: WSOL_MINT, outputMint: USDC_MINT });
   } catch (e) {
     console.error(`topup: no quote for ${user} (${e instanceof Error ? e.message : String(e)})`);
@@ -187,7 +251,7 @@ export async function buildTopUp(user: Address, cents: number): Promise<{ transa
   if (BigInt(balance) < maxIn + SOL_RESERVE_LAMPORTS) throw new TopUpRefused(TOPUP_COPY.noSol(cents, maxIn, BigInt(balance)), 409);
   let parsed;
   try {
-    parsed = await getSwapInstructions({ quote, userPublicKey: user, wrapAndUnwrapSol: true, maxPriorityLamports: TOPUP_PRIORITY_LAMPORTS });
+    parsed = await getSwapInstructions({ quote, userPublicKey: user, wrapAndUnwrapSol: true, maxPriorityLamports: TOPUP_PRIORITY_LAMPORTS, useSharedAccounts: true });
   } catch (e) {
     console.error(`topup: no swap instructions for ${user} (${e instanceof Error ? e.message : String(e)})`);
     throw new TopUpRefused(TOPUP_COPY.noRoute, 503);
