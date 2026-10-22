@@ -100,9 +100,29 @@ async function step<T>(name: string, fn: () => Promise<T>): Promise<T | null> {
 
 const json = (v: unknown) => JSON.parse(JSON.stringify(v, (_k, x) => (typeof x === "bigint" ? x.toString() : x)));
 
+async function firstOnly() {
+  const startedMs = Date.now();
+  try {
+    const repo = await getRepo();
+    const planting = await runPlanting({ repo, now: new Date(), chain: realChain(), deadlineMs: startedMs + 240_000, only: "first" });
+    console.log(`cron (first plantings): planted ${planting.planted.length}, skipped ${planting.skipped.length}`);
+    return NextResponse.json(json({ only: "first", planting }));
+  } catch (e) {
+    const message = errorText(e);
+    console.error(`cron (first plantings) failed: ${message}`);
+    return NextResponse.json({ error: `Cron failed: ${message}` }, { status: 500 });
+  }
+}
+
 /** Once a day (Vercel cron, bearer = CRON_SECRET): plant, crank withdrawals, reconcile the Seed Vaults' own stakes, clean up, keep the database awake. */
 export async function GET(request: Request) {
   if (!authorized(request.headers.get("authorization"))) return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  // First planting (owner 10-22): `?only=first` is the hourly run from GitHub Actions (.github/workflows/first-planting.yml; Vercel
+  // Hobby crons run once a day). Same bearer. It plants first plantings only (runPlanting's first-only mode) and runs none of the
+  // daily steps: no snapshot, decision, moves, withdraw crank, stake reconcile or cleanup.
+  const only = new URL(request.url).searchParams.get("only");
+  if (only !== null && only !== "first") return NextResponse.json({ error: "Unknown run: only=first is the one other run." }, { status: 400 });
+  if (only === "first") return firstOnly();
   // Review M1: the planting run starts no new wallet past 240 s from here, so the crank, the reconcile and the cleanup always run.
   const startedMs = Date.now();
   try {
