@@ -69,6 +69,8 @@ export interface Repo {
   setPlantingSkrSurplus(plantingId: string, surplusRaw: bigint): Promise<void>;
   /** Plantings still `sent` (their send threw before confirmation) that started before `olderThan`. */
   listSentPlantings(olderThan: Date): Promise<T.PlantingRow[]>;
+  /** First planting (domain/threshold.ts): the user has a planting that is `sent` or `confirmed` (a failed one does not count). */
+  hasPlanted(userPubkey: string): Promise<boolean>;
   /** Newest first, any status. */
   listPlantings(userPubkey: string, limit: number): Promise<T.PlantingRow[]>;
   /** Oldest first. */

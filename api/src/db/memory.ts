@@ -188,6 +188,10 @@ export class MemoryRepo implements Repo {
     return [...this.plantings.values()].filter((p) => p.status === "sent" && p.ts.getTime() < olderThan.getTime());
   }
 
+  async hasPlanted(userPubkey: string) {
+    return [...this.plantings.values()].some((p) => p.userPubkey === userPubkey && p.status !== "failed");
+  }
+
   async listPlantings(userPubkey: string, limit: number) {
     return [...this.plantings.values()].filter((p) => p.userPubkey === userPubkey).sort((a, b) => b.ts.getTime() - a.ts.getTime()).slice(0, limit);
   }

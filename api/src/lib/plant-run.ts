@@ -7,6 +7,7 @@ import { pickAsset, type Asset } from "@/domain/allocation";
 import { ASSETS, COINS, LEND_ASSETS, isLendAsset, type LendAsset, type LiveAsset } from "@/domain/coins";
 import { addDays, dayOf } from "@/domain/day";
 import { capLeftCents, plantAmountCents } from "@/domain/cap";
+import { plantThresholdFor } from "@/domain/threshold";
 import { floorFor, redistributeDisabled, withStoreFloor } from "@/domain/split";
 import { lendingUsdByProtocol } from "./user-routing";
 import { errorText } from "./redact";
@@ -106,6 +107,14 @@ export type Chain = {
 };
 
 export type Planted = { wallet: string; asset: LiveAsset; pullCents: number; signature: string };
+/**
+ * `only: "first"` (owner 10-22, first planting right away): a run over first plantings only, called more often than the daily cron
+ * (GitHub Actions, .github/workflows/first-planting.yml). It takes only wallets whose user has never planted and that have round-ups
+ * waiting; it does not reconcile `sent` plantings (the daily run's job: two runs booking one planting would bump the ledger twice)
+ * and resumes only first-time users' no-USDC pauses. Everything else is the daily run's own code path.
+ */
+export type RunMode = { only?: "first" };
+type RunArgs = { repo: Repo; now: Date; chain: Chain } & RunMode;
 export type Skipped = { wallet: string; reason: string };
 
 /**
@@ -119,18 +128,19 @@ export type Skipped = { wallet: string; reason: string };
  * Vault [A16, R141]): sequential runs take 5 to 10 s per wallet against Vercel's 300 s and Jupiter's 60 requests a minute, so the
  * free stack serves the 20 to 50 wallet beta and needs paid tiers somewhere past 100 wallets.
  */
-export async function runPlanting(a: { repo: Repo; now: Date; chain: Chain; deadlineMs?: number }): Promise<{ planted: Planted[]; skipped: Skipped[] }> {
+export async function runPlanting(a: RunArgs & { deadlineMs?: number }): Promise<{ planted: Planted[]; skipped: Skipped[] }> {
   const planted: Planted[] = [];
   const skipped: Skipped[] = [];
   const deadline = a.deadlineMs ?? Date.now() + RUN_BUDGET_MS;
 
-  await reconcileSentPlantings(a);
+  if (a.only !== "first") await reconcileSentPlantings(a);
   await resumePausedWallets(a);
 
   // Read once per run (T8 carry): the leash config, today's and yesterday's venue rows, the lending prices.
   const day = dayOf(a.now);
   const leash = await a.chain.readLeashConfig().catch((e) => { console.error(`leash config unreadable: ${message(e)}`); return null; });
-  const wallets = await a.repo.listActiveWallets();
+  const active = await a.repo.listActiveWallets();
+  const wallets = a.only === "first" ? await firstPlantingWallets(a.repo, active) : active;
   const ctx: RunCtx = {
     leash,
     venueDays: await a.repo.listVenueDays(day),
@@ -206,6 +216,38 @@ function startPriceWaits(chain: Chain, leash: LeashConfig | null, anyLeashed: bo
     }
   }
   return (leg) => waits.get(LEG_SPEC[leg].feed ?? "") ?? Promise.resolve(true);
+}
+
+/** Fails closed: a failed read counts as planted (the user's own threshold applies, and a first-only run leaves the wallet alone). */
+async function userHasPlanted(repo: Repo, userPubkey: string): Promise<boolean> {
+  try {
+    return await repo.hasPlanted(userPubkey);
+  } catch (e) {
+    console.error(`plantings of ${userPubkey} unreadable (${message(e)}); treated as planted (no first-planting threshold this run)`);
+    return true;
+  }
+}
+
+/**
+ * The first-only run's wallets: active wallets of users with no `sent` or `confirmed` planting that have at least one round-up
+ * waiting. A wallet with nothing waiting is left to the daily run (its revoke check), so an hourly run over a quiet beta reads
+ * almost nothing from the chain and starts no price wait.
+ */
+export async function firstPlantingWallets(repo: Repo, wallets: WalletRow[]): Promise<WalletRow[]> {
+  const planted = new Map<string, boolean>();
+  const out: WalletRow[] = [];
+  for (const w of wallets) {
+    if (!planted.has(w.userPubkey)) planted.set(w.userPubkey, await userHasPlanted(repo, w.userPubkey));
+    if (planted.get(w.userPubkey)) continue;
+    try {
+      if ((await repo.unplantedSwaps(w.pubkey)).length === 0) continue;
+    } catch (e) {
+      console.error(`round-ups of ${w.pubkey} unreadable (${message(e)}); left to the next run`);
+      continue;
+    }
+    out.push(w);
+  }
+  return out;
 }
 
 /** A planting recorded as `sent` whose send threw: the chain decides whether it landed. */
@@ -342,11 +384,14 @@ async function userPauseStands(repo: Repo, w: WalletRow): Promise<boolean> {
   return mine?.kind === "paused_by_user";
 }
 
-async function resumePausedWallets(a: { repo: Repo; now: Date; chain: Chain }) {
+async function resumePausedWallets(a: RunArgs) {
   for (const w of await a.repo.listPausedWallets()) {
     if (!(await pausedForNoUsdc(a.repo, w))) continue;
+    // The resume point is the threshold the pause was judged against (first planting: 50 cents), so pause and resume converge.
+    const hasPlanted = await userHasPlanted(a.repo, w.userPubkey);
+    if (a.only === "first" && hasPlanted) continue;
     const rules = rulesRowToRules(await a.repo.getRules(w.userPubkey));
-    const need = BigInt(rules.plantThresholdCents + NETWORK_FEE_CENTS) * USDC_PER_CENT;
+    const need = BigInt(plantThresholdFor({ ruleCents: rules.plantThresholdCents, hasPlanted }) + NETWORK_FEE_CENTS) * USDC_PER_CENT;
     try {
       if ((await a.chain.usdcBalanceRaw(w.pubkey)) >= need) {
         await a.repo.setWalletStatus(w.pubkey, "active");
@@ -442,7 +487,7 @@ async function legSkipped(a: { repo: Repo; now: Date }, w: WalletRow, asset: Liv
 
 const json = (v: unknown) => JSON.stringify(v, (_k, x) => (typeof x === "bigint" ? x.toString() : x));
 
-async function plantOne(a: { repo: Repo; now: Date; chain: Chain }, w: WalletRow, ctx: RunCtx): Promise<Planted | Skipped> {
+async function plantOne(a: RunArgs, w: WalletRow, ctx: RunCtx): Promise<Planted | Skipped> {
   try {
     return await plantOneOrThrow(a, w, ctx);
   } catch (e) {
@@ -453,13 +498,18 @@ async function plantOne(a: { repo: Repo; now: Date; chain: Chain }, w: WalletRow
   }
 }
 
-async function plantOneOrThrow(a: { repo: Repo; now: Date; chain: Chain }, w: WalletRow, ctx: RunCtx): Promise<Planted | Skipped> {
+async function plantOneOrThrow(a: RunArgs, w: WalletRow, ctx: RunCtx): Promise<Planted | Skipped> {
+  // Read per wallet, not per run: a wallet of the same user that planted earlier in this run (or a planting another run sent since
+  // the list was read) ends the first-planting threshold for the rest, and a first-only run then leaves them to the daily run.
+  const hasPlanted = await userHasPlanted(a.repo, w.userPubkey);
+  if (a.only === "first" && hasPlanted) return { wallet: w.pubkey, reason: "not first" };
   const swaps = await a.repo.unplantedSwaps(w.pubkey);
   const pending = swaps.reduce((sum, s) => sum + s.roundupCents, 0);
   const rules = rulesRowToRules(await a.repo.getRules(w.userPubkey));
+  const threshold = plantThresholdFor({ ruleCents: rules.plantThresholdCents, hasPlanted });
   const oldestMs = swaps.length ? Math.min(...swaps.map((s) => s.ts.getTime())) : a.now.getTime();
   let forced = a.now.getTime() - oldestMs >= rules.plantMaxDays * 86_400_000;
-  if (pending <= 0 || (!forced && pending < rules.plantThresholdCents)) {
+  if (pending <= 0 || (!forced && pending < threshold)) {
     // 10-07: a revoke made outside the app is seen on a wallet with nothing due too (else it stays active and the app keeps asking
     // for a re-link). A failed read changes nothing: it is no outage and records no event; the next run reads it again.
     const gone = await a.chain.readDelegation(w.delegationPda).then((d) => !d.exists, () => false);
@@ -486,7 +536,7 @@ async function plantOneOrThrow(a: { repo: Repo; now: Date; chain: Chain }, w: Wa
   // The lowest of the user's own limit (rules, adjustable in the app), the wallet's recorded cap and the on-chain allowance.
   const cap = Math.min(rules.dailyCapCents, w.dailyCapCents, Number(delegation.amountPerPeriodRaw / USDC_PER_CENT));
   let left = capLeftCents(cap, pulledThisPeriod);
-  let amount = plantAmountCents({ pendingCents: pending, capLeftCents: left, feeCents: NETWORK_FEE_CENTS, minCents: forced ? 0 : rules.plantThresholdCents });
+  let amount = plantAmountCents({ pendingCents: pending, capLeftCents: left, feeCents: NETWORK_FEE_CENTS, minCents: forced ? 0 : threshold });
   if (amount.pullCents === 0) return { wallet: w.pubkey, reason: left === 0 ? "cap reached" : "below threshold" };
 
   // R207: the run listed this wallet as active at its start; a pause made since, or a run resume racing a user pause, must not pull.
@@ -517,9 +567,9 @@ async function plantOneOrThrow(a: { repo: Repo; now: Date; chain: Chain }, w: Wa
     covered = 0;
     for (const s of swaps) if (covered + s.roundupCents <= room) { claim.push(s); covered += s.roundupCents; }
     forced = claim.some((s) => a.now.getTime() - s.ts.getTime() >= rules.plantMaxDays * 86_400_000);
-    amount = plantAmountCents({ pendingCents: covered, capLeftCents: left, feeCents: NETWORK_FEE_CENTS, minCents: forced ? 0 : rules.plantThresholdCents });
+    amount = plantAmountCents({ pendingCents: covered, capLeftCents: left, feeCents: NETWORK_FEE_CENTS, minCents: forced ? 0 : threshold });
     if (amount.pullCents === 0) {
-      if (balanceCents >= rules.plantThresholdCents + NETWORK_FEE_CENTS) return { wallet: w.pubkey, reason: "no usdc" };
+      if (balanceCents >= threshold + NETWORK_FEE_CENTS) return { wallet: w.pubkey, reason: "no usdc" };
       await a.repo.setWalletStatus(w.pubkey, "paused");
       await a.repo.addEvent({ userPubkey: w.userPubkey, walletPubkey: w.pubkey, kind: "paused_no_usdc", detail: { needCents: wanted } });
       return { wallet: w.pubkey, reason: "no usdc" };
@@ -581,7 +631,7 @@ async function plantOneOrThrow(a: { repo: Repo; now: Date; chain: Chain }, w: Wa
   // wallet; the round-ups are all claimed by this planting). The venue check above used the larger amount (the stricter 60% test); both are already bounded by the cap and the USDC balance.
   const share = ASSETS.reduce((sum, leg) => sum + target[leg], 0);
   if (share < 100 - 1e-9) {
-    amount = plantAmountCents({ pendingCents: Math.floor((covered * share) / 100), capLeftCents: left, feeCents: NETWORK_FEE_CENTS, minCents: forced ? 0 : rules.plantThresholdCents });
+    amount = plantAmountCents({ pendingCents: Math.floor((covered * share) / 100), capLeftCents: left, feeCents: NETWORK_FEE_CENTS, minCents: forced ? 0 : threshold });
     if (amount.pullCents === 0) return { wallet: w.pubkey, reason: "below threshold" };
     pullRaw = BigInt(amount.pullCents) * USDC_PER_CENT;
   }
