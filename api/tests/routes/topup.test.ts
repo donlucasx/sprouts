@@ -4,6 +4,7 @@ import { MemoryRepo } from "@/db/memory";
 import { setRepoForTests } from "@/db/repo";
 import { issueSession } from "@/lib/session";
 import fixture from "../fixtures/jupiter-topup-exactout.json";
+import plain from "../fixtures/jupiter-topup-exactout-plain.json";
 
 /** A fake chain for the SOL top-up: the wallet's lamports, the simulation, the send and the signature's status. */
 const { chain, simulateMock } = vi.hoisted(() => ({
@@ -63,8 +64,9 @@ describe("POST /api/topup/build (the SOL top-up's unsigned transaction)", () => 
     expect(quoteUrl).toContain("amount=5000000");
     expect(quoteUrl).toContain("inputMint=So11111111111111111111111111111111111111112");
     expect(quoteUrl).not.toContain("platformFeeBps");
+    expect(new URL(quoteUrl).searchParams.get("dexes")).toBe("Raydium CLMM,Whirlpool"); // the dexes whose swap the app can parse
     const swapBody = JSON.parse(String(fetchMock.mock.calls[1][1]?.body));
-    expect(swapBody).toMatchObject({ userPublicKey: USER, wrapAndUnwrapSol: true });
+    expect(swapBody).toMatchObject({ userPublicKey: USER, wrapAndUnwrapSol: true, useSharedAccounts: true });
     expect(swapBody.feeAccount).toBeUndefined();
     const m = getCompiledTransactionMessageDecoder().decode(decode(body.transaction).messageBytes);
     expect(m.version).toBe(0);
@@ -102,6 +104,13 @@ describe("POST /api/topup/build (the SOL top-up's unsigned transaction)", () => 
     const bad = JSON.parse(JSON.stringify(fixture.swapInstructions));
     bad.cleanupInstruction.accounts[1].pubkey = "4wiD3N7FrBNJSmZUQDkGHM4CsvDrvyvx7G1FApLGEbJ1";
     fetchMock.mockImplementationOnce(async () => new Response(JSON.stringify(fixture.quote))).mockImplementationOnce(async () => new Response(JSON.stringify(bad)));
+    const res = await call(build, {});
+    expect(res.status).toBe(503);
+    expect(simulateMock).not.toHaveBeenCalled();
+  });
+
+  it("refuses Jupiter's plain ExactOut route (the wallet among the AMM's accounts), before building anything", async () => {
+    fetchMock.mockImplementationOnce(async () => new Response(JSON.stringify(plain.quote))).mockImplementationOnce(async () => new Response(JSON.stringify(plain.swapInstructions)));
     const res = await call(build, {});
     expect(res.status).toBe(503);
     expect(simulateMock).not.toHaveBeenCalled();

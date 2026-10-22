@@ -208,6 +208,8 @@ export async function getQuote(a: {
   inputMint: Address; outputMint: Address; amountRaw: bigint; slippageBps?: number; maxAccounts?: number; onlyDirectRoutes?: boolean; platformFeeBps?: number;
   /** ExactOut: `amountRaw` is the output wanted (the SOL top-up); every planting leaves it unset (ExactIn). */
   swapMode?: "ExactIn" | "ExactOut";
+  /** The SOL top-up only: route through these dexes alone (Jupiter labels), the ones the app can parse. Plantings leave it unset. */
+  dexes?: readonly string[];
 }): Promise<Quote> {
   const slippageBps = a.slippageBps ?? 100;
   const q = new URLSearchParams({
@@ -215,6 +217,7 @@ export async function getQuote(a: {
     maxAccounts: String(a.maxAccounts ?? 24), onlyDirectRoutes: String(a.onlyDirectRoutes ?? false), restrictIntermediateTokens: "true",
     ...(a.platformFeeBps ? { platformFeeBps: String(a.platformFeeBps) } : {}),
     ...(a.swapMode === "ExactOut" ? { swapMode: "ExactOut" } : {}),
+    ...(a.dexes?.length ? { dexes: a.dexes.join(",") } : {}),
   });
   const res = await fetch(`${BASE}/swap/v1/quote?${q}`, { headers: headers(), signal: timeout() });
   if (!res.ok) throw new Error(`Jupiter quote failed: ${res.status} ${(await res.text()).slice(0, 200)}`);
@@ -232,6 +235,8 @@ export async function getSwapInstructions(a: {
   wrapAndUnwrapSol?: boolean;
   /** The SOL top-up only: the priority fee's ceiling in lamports (Jupiter's "medium" level, capped). Plantings set their own. */
   maxPriorityLamports?: number;
+  /** The SOL top-up only: Jupiter's shared-accounts route, so the AMMs swap through Jupiter's authority and never see the wallet. */
+  useSharedAccounts?: boolean;
 }) {
   const res = await fetch(`${BASE}/swap/v1/swap-instructions`, {
     method: "POST",
@@ -242,6 +247,7 @@ export async function getSwapInstructions(a: {
       ...(a.maxPriorityLamports ? { prioritizationFeeLamports: { priorityLevelWithMaxLamports: { maxLamports: a.maxPriorityLamports, priorityLevel: "medium" } } } : {}),
       ...(a.destinationTokenAccount ? { destinationTokenAccount: a.destinationTokenAccount } : {}),
       ...(a.feeAccount ? { feeAccount: a.feeAccount } : {}),
+      ...(a.useSharedAccounts !== undefined ? { useSharedAccounts: a.useSharedAccounts } : {}),
     }),
   });
   if (!res.ok) throw new Error(`Jupiter swap-instructions failed: ${res.status} ${(await res.text()).slice(0, 200)}`);
