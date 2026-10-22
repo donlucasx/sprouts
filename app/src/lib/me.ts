@@ -44,6 +44,8 @@ export function useMe() {
     asOf: data ? new Date(data.pot.asOf) : null,
     loading: q.isLoading && !data,
     unauthorized: q.error instanceof ApiError && q.error.status === 401,
+    /** The failed read's status (0 = no answer: offline), for the stale line; null when the read did not fail. */
+    errorStatus: q.error instanceof ApiError ? q.error.status : q.error ? -1 : null,
   };
 }
 

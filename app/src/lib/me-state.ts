@@ -7,6 +7,12 @@ export function usableMe(cached: MeResponse | null | undefined): MeResponse | nu
   return cached && 'holdings' in cached && 'manager' in cached && typeof cached.rules?.allocation === 'object' && cached.rules.allocation !== null ? cached : null
 }
 
+/** His note 10-22: the stale line names the cause. `status` is the failed read's ApiError status: 0 is no answer at all (the phone
+ *  is offline, or the server could not be reached), anything else is the server's own failure. `asOf` is formatAsOf's "as of ...". */
+export function staleLine(asOf: string, status: number | null): string {
+  return status === 0 ? `You're offline. Showing your garden ${asOf}.` : `Sprouts couldn't load your garden just now. Showing it ${asOf}.`
+}
+
 /** Review Focus 2, as a pure decision: a failed read keeps the last verified state and says so; never a zero garden. */
 export function pickMeState(
   live: MeResponse | undefined,
