@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest'
 import { CAN, CANT, BEFORE_YOU_LINK, phoneUsdcNote } from '../../src/lib/safety-copy'
 
 describe('safety copy (mirrors api/src/app/safety.tsx)', () => {
-  it('keeps the phone-sized shape: two can, three can\'t, and no em dashes', () => {
-    expect(CAN).toHaveLength(2)
+  it('keeps the phone-sized shape: one can, three can\'t, and no em dashes', () => {
+    expect(CAN).toHaveLength(1)
     expect(CANT).toHaveLength(3)
     for (const l of [...CAN, ...CANT, ...BEFORE_YOU_LINK]) expect(l).not.toMatch(/—/)
   })
