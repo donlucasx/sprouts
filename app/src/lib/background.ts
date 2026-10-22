@@ -11,7 +11,7 @@ import { coalesce } from "./coalesce";
 
 const TASK = "sprouts-refresh";
 
-/** Every 60 minutes or so (perf 10-08: was 15; each read costs ~7 RPC reads per user) (Android decides): read the pot; say what changed since the last read (R161: plantings, a delivered withdrawal, the manager's move, the daily limit) and refresh the widget. */
+/** Every 60 minutes or so (perf 10-08: was 15; each read costs ~7 RPC reads per user) (Android decides): read the pot; say what changed since the last read (R161: plantings, a delivered withdrawal, the manager's move, the daily limit, a wallet paused for want of USDC) and refresh the widget. */
 TaskManager.defineTask(TASK, coalesce(async () => {
   try {
     const before = readLastMe();

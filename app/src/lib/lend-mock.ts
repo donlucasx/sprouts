@@ -24,7 +24,7 @@ export function mockBefore(path: string, method: string, body: unknown): MockSte
     const full = FIXTURE_POSITIONS.some((p) => p.asset === b?.asset && p.venue === b?.venue && p.poolFull);
     return { error: { status: 409, message: full ? POOL_FULL : NEEDS_LIVE } };
   }
-  if (path === "/api/relink/build" || path === "/api/moves/build") return { error: { status: 409, message: NEEDS_LIVE } };
+  if (path === "/api/relink/build" || path === "/api/moves/build" || path === "/api/topup/build") return { error: { status: 409, message: NEEDS_LIVE } };
   if (path === "/api/moves/dismiss") return { answer: { dismissed: true } };
   return null;
 }

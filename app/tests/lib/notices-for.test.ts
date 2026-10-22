@@ -69,4 +69,23 @@ describe("noticesFor (R161)", () => {
       expect(noticesFor(before, after, (k) => k !== off)).toHaveLength(3);
     }
   });
+
+  it("a wallet newly paused for want of USDC: once per pause, worded for this phone's wallet or another (10-22)", () => {
+    const PHONE = "HJCJKRQLV2HVKfe3sFdTF5jjBY1xfWgnK8cLcjH7qnHd", WEB = "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU";
+    const noUsdc = { reason: "no_usdc", needCents: 300, resumeAtCents: 201 };
+    const at = (wallets: { pubkey: string; status: string; pause?: unknown }[]) => ({ ...me(), user: { pubkey: PHONE }, wallets }) as unknown as MeResponse;
+    const active = at([{ pubkey: PHONE, status: "active" }, { pubkey: WEB, status: "active" }]);
+    const paused = at([{ pubkey: PHONE, status: "paused", pause: noUsdc }, { pubkey: WEB, status: "paused", pause: noUsdc }]);
+    expect(noticesFor(active, paused, all)).toEqual([
+      { kind: "paused", title: "Paused: add USDC", body: "Your wallet doesn't have enough USDC for round-ups. Open Sprouts to top up from SOL." },
+      { kind: "paused", title: "Paused: add USDC", body: "Wallet 7xKX...gAsU doesn't have enough USDC for round-ups. Add USDC there to start again." },
+    ]);
+    // the next poll, still paused: nothing; the user's own pause: nothing; its switch off: nothing
+    expect(noticesFor(paused, paused, all)).toEqual([]);
+    expect(noticesFor(active, at([{ pubkey: PHONE, status: "paused", pause: { reason: "user" } }]), all)).toEqual([]);
+    expect(noticesFor(active, paused, (k) => k !== "paused")).toEqual([]);
+    // paused again after it had started again: a new pause, a new notice
+    expect(titles(paused, active)).toEqual([]);
+    expect(titles(active, at([{ pubkey: PHONE, status: "paused", pause: noUsdc }]))).toEqual(["Paused: add USDC"]);
+  });
 });
