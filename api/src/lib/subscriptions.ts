@@ -40,6 +40,12 @@ export async function readUsdcAtaExists(owner: Address): Promise<boolean> {
   return (await fetchMaybeToken(rpc(), await usdcAta(owner))).exists;
 }
 
+/** The wallet's USDC in base units: 0n with no USDC account; throws on an RPC error (which must not read as zero). */
+export async function readUsdcBalanceRaw(owner: Address): Promise<bigint> {
+  const acc = await fetchMaybeToken(rpc(), await usdcAta(owner));
+  return acc.exists ? acc.data.amount : 0n;
+}
+
 export async function buildApproveOnceIxs(a: { delegator: Address; delegatee: Address; capRaw: bigint; nonce: bigint; startTs?: bigint; existingInitId?: bigint; createAta?: boolean }): Promise<Instruction[]> {
   const owner = createNoopSigner(a.delegator);
   const create = await getCreateRecurringDelegationOverlayInstructionAsync({
