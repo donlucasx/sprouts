@@ -114,7 +114,8 @@ describe("topup: this wallet's own SOL to USDC, one Jupiter shared-accounts Exac
 
   it('refuses route data Jupiter would read differently: bytes after the fee, an unknown swap, a route length that does not match', async () => {
     await refused(wire(swap(built(), (d) => Uint8Array.from([...d, 0])), USER), 'plan')
-    await refused(wire(swap(built(), (d) => Uint8Array.from([...d, 0, 0, 0, 0, 0, 0, 0, 0])), USER), 'plan')
+    // A second tail after the real one: a reader that takes the tail from the end sees these numbers, Jupiter reads the first ones.
+    await refused(wire(swap(built(), (d) => Uint8Array.from([...d, ...d.slice(-19)])), USER), 'plan')
     await refused(wire(swap(built(), (d) => void (d[13] = 105)), USER), 'plan') // Raydium AMM v4 today: payload size not pinned
     await refused(wire(swap(built(), (d) => void (d[13] = 61)), USER), 'plan') // SolFi { is_quote_to_base }: not pinned
     await refused(wire(swap(built(), (_d, v) => v.setUint32(9, 2, true)), USER), 'plan')
