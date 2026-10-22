@@ -16,32 +16,30 @@ export function Safety({ id, ink = "#2B2622", muted = "#7A746B", leaf = "#1E6B44
         <div>
           <p style={h}>Sprouts can</p>
           <ul style={ul}>
-            <li>Take up to $5 of USDC a day from a wallet you link. You can set a lower limit.</li>
-            <li>Put it into your own savings: staked SKR, stORE, hSOL, cbBTC, or USDC and SOL lending.</li>
+            <li>Plant up to $5 of USDC a day from each linked wallet, only into your own savings.</li>
           </ul>
         </div>
         <div>
           <p style={h}>Sprouts can&apos;t</p>
           <ul style={ul}>
-            <li>Send your money anywhere else. Our on-chain program cancels any pull that doesn&apos;t land in your own savings.</li>
-            <li>Take more than your daily limit, even if our server is hacked.</li>
-            <li>Touch any token besides USDC, or sell or withdraw what&apos;s in your garden.</li>
+            <li>Send your money anywhere else. Our on-chain program blocks it.</li>
+            <li>Take more than $5 a day, even if our server is hacked.</li>
+            <li>Touch other tokens, or sell what&apos;s in your garden.</li>
           </ul>
         </div>
       </div>
       <div>
         <p style={h}>Before you link</p>
         <ul style={ul}>
-          <li>Keep a few dollars of USDC in the wallet. Your round-ups are paid from it.</li>
-          <li>Linking needs a little SOL for rent (under $1), refunded when you revoke.</li>
-          <li>Your wallet will show an unlimited USDC approval. The $5 limit and the savings-only rule are enforced on chain by the programs it names.</li>
-          <li>Stop any time: turn Sprouts off in Rules, or revoke in Settings or at <a href="/revoke" style={a}>sprouts.money/revoke</a>.</li>
+          <li>Keep a few dollars of USDC in the wallet. Round-ups are paid from it.</li>
+          <li>Your wallet will show an unlimited USDC approval. The on-chain programs it names hold it to $5 a day.</li>
+          <li>Revoke any time in the app or at <a href="/revoke" style={a}>sprouts.money/revoke</a>.</li>
         </ul>
       </div>
       <p style={{ fontSize: 13, color: muted, margin: 0 }}>
-        The program is <a href="https://github.com/donlucasx/sprouts" style={a}>open source</a> and its build is{" "}
-        <a href={`https://verify.osec.io/status/${PROGRAM}`} style={a}>verified by OtterSec</a>. Its admin key lives on the founder&apos;s
-        laptop, not our server. It can update the program but can&apos;t raise anyone&apos;s limit. A multisig comes after the hackathon.
+        <a href="https://github.com/donlucasx/sprouts" style={a}>Open source</a> and{" "}
+        <a href={`https://verify.osec.io/status/${PROGRAM}`} style={a}>verified by OtterSec</a>. The admin key lives on the founder&apos;s laptop, never on
+        our server. A multisig comes after the hackathon.
       </p>
     </section>
   );
