@@ -23,6 +23,7 @@ import { STOP_DEFAULTS } from "@/domain/split";
 import { dayOf } from "@/domain/day";
 import { pauseCauseOf, PAUSE_EVENT_KINDS } from "@/domain/pause-cause";
 import { NETWORK_FEE_CENTS } from "@/lib/plant-run";
+import { plantThresholdFor } from "@/domain/threshold";
 
 export const runtime = "nodejs";
 
@@ -58,6 +59,10 @@ export async function GET(request: Request) {
   ]);
   const pot = potFromInputs(user, inputs, { position, sharePrice: price });
   const { plantings, withdrawals } = inputs;
+  // First planting (domain/threshold.ts): the threshold the run will use, so Home's bar reads "$0.30 of $0.50" for a new user. A
+  // confirmed planting answers it; otherwise the run's own read (a `sent` one counts), failing closed to the user's own threshold.
+  const hasPlanted = plantings.length > 0 || (await repo.hasPlanted(user.seedVaultPubkey).catch(() => true));
+  const thresholdCents = plantThresholdFor({ ruleCents: rules.plantThresholdCents, hasPlanted });
   // R583 / audits/putin-3c: put in = what was pulled (the legacy 3c added back), for every screen this answer feeds; the pot's SKR
   // amounts above read raw units and are untouched.
   const legs = withNetworkFee(inputs.legs, plantings);
@@ -102,7 +107,7 @@ export async function GET(request: Request) {
   const pauseOf = (w: (typeof wallets)[number]) => {
     if (w.status !== "paused") return null;
     const cause = pauseCauseOf(pauseEvents, w.pubkey);
-    return cause.reason === "no_usdc" ? { reason: "no_usdc", needCents: cause.needCents, resumeAtCents: rules.plantThresholdCents + NETWORK_FEE_CENTS } : { reason: "user" };
+    return cause.reason === "no_usdc" ? { reason: "no_usdc", needCents: cause.needCents, resumeAtCents: thresholdCents + NETWORK_FEE_CENTS } : { reason: "user" };
   };
   // R281: a retired coin's planting is history the app hides; Home's rows and receipt come from live legs only.
   const legOf = (id: string) => legs.find((x) => x.plantingId === id);
@@ -157,7 +162,7 @@ export async function GET(request: Request) {
       }),
       picks: withdrawals.filter((w) => w.cancelSignature === null && COINS[w.asset].live).map((w) => ({ ts: w.unstakeTs, asset: w.asset, amountRaw: w.amountRaw ?? 0n })),
     },
-    nextPlanting: { pendingCents: pending, thresholdCents: rules.plantThresholdCents, capLeftCents: capLeft, asset: nextAsset },
+    nextPlanting: { pendingCents: pending, thresholdCents, capLeftCents: capLeft, asset: nextAsset },
     lastReceipt: last
       ? { ts: last.ts, usdcPulledCents: last.usdcPulledCents, networkFeeCents: last.networkFeeCents, asset: lastAsset, amountOutRaw: lastLegs[0]?.amountOutRaw ?? 0n, feeCents: lastLegs[0]?.feeCents ?? 0,
           feeAmountRaw: lastLegs[0]?.feeAmountRaw ?? 0n, // R139: "0" on a new leg (the fee was in USDC and rounds to zero), so the app says "fee under 1 cent" as on Activity

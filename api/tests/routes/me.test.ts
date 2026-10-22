@@ -56,6 +56,23 @@ describe("GET /api/me", () => {
     expect(body.wallets[0].status).toBe("active");
   });
 
+  // First planting (owner 10-22, domain/threshold.ts): Home's bar and the resume point use the threshold the run will use.
+  it("a user who never planted sees the 50-cent first-planting threshold, also as the no-USDC resume point; a sent planting ends it", async () => {
+    const fresh = "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU";
+    await repo.upsertUser({ seedVaultPubkey: fresh, sgtMint: "M2", skrName: null });
+    await repo.addWallet({ pubkey: "W9", userPubkey: fresh, delegationPda: "D9", dailyCapCents: 500 });
+    await repo.insertSwap({ signature: "s9", walletPubkey: "W9", ts: new Date(), inMint: "a", inAmount: 1, outMint: "b", outAmount: 1, usdSizeCents: 70, class: "major", roundupCents: 30 });
+    await repo.setWalletStatus("W9", "paused");
+    await repo.addEvent({ userPubkey: fresh, walletPubkey: "W9", kind: "paused_no_usdc", detail: { needCents: 60 } });
+    const token = await issueSession(fresh, "M2");
+    let body = await (await me(new Request("http://x/api/me", bearer(token)))).json();
+    expect(body.nextPlanting).toMatchObject({ pendingCents: 30, thresholdCents: 50 });
+    expect(body.wallets[0].pause).toEqual({ reason: "no_usdc", needCents: 60, resumeAtCents: 50 });
+    await repo.insertPlanting({ userPubkey: fresh, walletPubkey: "W9", signature: "in-flight", usdcPulledCents: 60, networkFeeCents: 0, status: "sent", aiLine: null }, []);
+    body = await (await me(new Request("http://x/api/me", bearer(token)))).json();
+    expect(body.nextPlanting.thresholdCents).toBe(200);
+  });
+
   // Plan v2 (audits/ore-plan, finding 2): the stORE rate read fails today; Home must not fail with it.
   it("answers with a null stORE rate when the rate read fails, instead of failing the request", async () => {
     await repo.insertPlanting({ userPubkey: U, walletPubkey: "W", signature: "sig2", usdcPulledCents: 23, networkFeeCents: 3, status: "confirmed", aiLine: null },
