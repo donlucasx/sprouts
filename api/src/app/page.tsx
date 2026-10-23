@@ -30,6 +30,7 @@ export default function Home() {
         @keyframes sp-dots { 0%, 20% { content: "" } 40% { content: "." } 60% { content: ".." } 80%, 100% { content: "..." } }
         .sp-dots::after { content: "..."; display: inline-block; width: 1.2em; text-align: left; animation: sp-dots 2.4s steps(1) infinite; }
         .sp-foot a:hover { color: ${ink} !important; }
+        .sp-sep { width: 1px; height: 11px; background: ${muted}; opacity: 0.45; margin: 0 14px; }
         .sp-stage { width: min(72vw, 360px); aspect-ratio: 6 / 5; }
         .sp-grow, .sp-grown { width: 100%; height: 100%; display: block; mix-blend-mode: multiply; object-fit: contain; object-position: center bottom; }
         .sp-grown { display: none; }
@@ -47,13 +48,18 @@ export default function Home() {
         {/* R-D93: the stacked co-brand lockup (shared with the deck cover) */}
         <ClockInLockup className="sp-lockup" />
       </div>
-      <nav className="sp-foot" style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: "8px 20px", padding: "24px 24px 32px", fontSize: 13, fontWeight: 400, letterSpacing: "0.04em" }}>
-        <a href="#safe" style={link}>What Sprouts can and can&apos;t do</a>
-        <a href="/deck" style={link}>Deck</a>
-        <a href="/terms" style={link}>Terms</a>
-        <a href="/revoke" style={link}>Revoke a wallet</a>
-        <a href="mailto:hello@sprouts.money" style={link}>hello@sprouts.money</a>
-      </nav>
+      {/* his ask 10-23: "DECK | FAQs | TERMS | REVOKE and underneath the contact email" */}
+      <footer className="sp-foot" style={{ display: "grid", justifyItems: "center", gap: 10, padding: "24px 24px 32px", fontWeight: 400 }}>
+        <nav style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", alignItems: "center", fontSize: 12, letterSpacing: "0.16em" }}>
+          {[["/deck", "DECK"], ["#safe", "FAQs"], ["/terms", "TERMS"], ["/revoke", "REVOKE"]].map(([href, label], i) => (
+            <span key={href} style={{ display: "inline-flex", alignItems: "center" }}>
+              {i > 0 ? <span aria-hidden className="sp-sep" /> : null}
+              <a href={href} style={link}>{label}</a>
+            </span>
+          ))}
+        </nav>
+        <a href="mailto:hello@sprouts.money" style={{ ...link, fontSize: 13, letterSpacing: "0.02em" }}>hello@sprouts.money</a>
+      </footer>
       </div>
       {/* his ask 10-22: the boundaries, below the splash, so the first screen stays the splash */}
       <div style={{ display: "grid", justifyItems: "center", padding: "8vh 24px 12vh" }}>
