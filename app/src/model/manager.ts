@@ -19,7 +19,7 @@ export const STOP_MAX: Record<Stop, Record<NonSkr, number>> = {
 };
 export const MANUAL_FLOOR = 25;
 /** R-O1 (10-21), the API's STORE_FLOOR: stORE keeps at least this share of every split unless it is switched off (manager on, a 0
- *  pin) or disabled. With the manager off there is no off switch: the planting run raises it to this whatever the pins say. */
+ *  pin) or disabled. Since 10-23 the manager-off split has the same switch (a 0 pin), so the run floors it only while it is on. */
 export const STORE_FLOOR = 10;
 export const PIN_MAX: Record<LiveAsset, number> = { SKR: 100, stORE: 50, USDC_LEND: 75, SOL_LEND: 75, hSOL: 75, cbBTC: 75 };
 export const PIN_STEP = 5;
@@ -31,14 +31,14 @@ export const MANAGER_LINE = "Each morning, Claude Haiku 5.5 reads live rates and
 export const PRO_BADGE = "Pro";
 export const PRO_LINE = "Included free during launch.";
 /** R348: the one line above the split rows, so each control says what it does. */
-export const ROWS_LINE = { on: "Switch a coin off and the manager won't buy it.", off: "Set your own split." } as const;
+export const ROWS_LINE = { on: "Switch a coin off and the manager won't buy it.", off: "Set your own split. Switch a coin off and Sprouts won't buy it." } as const;
 export const STOP_LINE = "Careful keeps at least 50% in SKR, Balanced 35%, Bold 25%.";
 export const UNDONE_TEXT = "Yesterday's split is back. The AI Yield Manager is off until you turn it on.";
 export const STORE_ROW_NOTE = "ORE staked in ORE's program";
-/** R-O1 (10-21), build-written 10-22: the floor said where the split is set. Off has no stORE switch: the manager's is the only way out. */
+/** R-O1 (10-21), build-written 10-22: the floor said where the split is set. 10-23: off has its own switches now. */
 export const STORE_FLOOR_LINE = {
   on: "stORE stays in every split at 10% or more unless you switch it off.",
-  off: "stORE stays in every split at 10% or more. To switch it off, turn on the AI Yield Manager.",
+  off: "stORE stays at 10% or more while it's on.",
 } as const;
 
 export type Row = { asset: LiveAsset; pct: number; mode: "auto" | "off" | "pinned" | "the rest"; bound: string | null };
@@ -49,7 +49,8 @@ export type RulesView = { managed: boolean; stop: Stop; pins: Pins; allocation: 
 export function splitRows(r: RulesView, preview?: Split): Row[] {
   if (!r.managed) {
     const split = manualSplit(r.pins);
-    return ASSETS.map((asset) => ({ asset, pct: split[asset], mode: asset === "SKR" ? "the rest" : "pinned", bound: null }));
+    // 10-23: a coin switched off (a 0 pin) reads "off"; SKR has no switch, it is the rest.
+    return ASSETS.map((asset) => ({ asset, pct: split[asset], mode: asset === "SKR" ? "the rest" : r.pins[asset] === 0 ? "off" : "pinned", bound: null }));
   }
   return ASSETS.map((asset) => {
     if (asset !== "SKR" && r.pins[asset] === 0) return { asset, pct: 0, mode: "off", bound: null };
@@ -60,14 +61,15 @@ export function splitRows(r: RulesView, preview?: Split): Row[] {
 
 /**
  * The split the API plants with the manager off (api/src/domain/split.ts effectiveSplit, off): the pins, stORE at least STORE_FLOOR
- * (R-O1), SKR the rest. Pins saved before R-O1 that leave SKR under MANUAL_FLOOR give stORE's floor from SKR above its quarter and
- * then the largest other pins, as the API does.
+ * (R-O1) while it is on, SKR the rest. A coin switched off (a 0 pin, 10-23) gives its share to SKR. Pins saved before R-O1 that leave
+ * SKR under MANUAL_FLOOR give stORE's floor from SKR above its quarter and then the largest other pins, as the API does.
  */
 export function manualSplit(pins: Pins): Split {
+  const storeOn = pins.stORE !== 0;
   const out = Object.fromEntries(ASSETS.map((c) => [c, 0])) as Split;
-  for (const c of NON_SKR) out[c] = c === "stORE" ? Math.max(pins.stORE ?? 0, STORE_FLOOR) : (pins[c] ?? 0);
+  for (const c of NON_SKR) out[c] = c === "stORE" && storeOn ? Math.max(pins.stORE ?? 0, STORE_FLOOR) : (pins[c] ?? 0);
   out.SKR = 100 - NON_SKR.reduce((s, c) => s + out[c], 0);
-  if (out.SKR < MANUAL_FLOOR) {
+  if (storeOn && out.SKR < MANUAL_FLOOR) {
     out.stORE = pins.stORE ?? 0;
     out.SKR = 100 - NON_SKR.reduce((s, c) => s + out[c], 0);
     for (const tier of [["SKR"], NON_SKR.filter((c) => c !== "stORE")] as LiveAsset[][]) {
@@ -93,6 +95,21 @@ export function setCoinOn(pins: Pins, asset: LiveAsset, on: boolean): Pins {
   if (on) delete next[asset];
   else next[asset] = 0;
   return next;
+}
+
+/** 10-23 (his ruling): with the manager off, switch any coin but SKR on (back to no pin: stORE at its floor, the others at 0%) or off
+ *  (a 0 pin: never bought, its share goes to SKR). Other pins stay. */
+export function setManualCoinOn(pins: Pins, asset: LiveAsset, on: boolean): Pins {
+  if (asset === "SKR") return pins;
+  const next: Pins = { ...pins };
+  if (on) delete next[asset];
+  else next[asset] = 0;
+  return next;
+}
+
+/** The coins switched off (0 pins), sent to the API as `off` with every save that carries the split (10-23). Never SKR. */
+export function offCoins(pins: Pins): LiveAsset[] {
+  return NON_SKR.filter((c) => pins[c] === 0);
 }
 
 /**
@@ -154,6 +171,12 @@ export function stepPin(pins: Pins, asset: LiveAsset, dir: 1 | -1): Pins {
   const min = asset === "stORE" ? STORE_FLOOR : 0;
   const current = Math.max(pins[asset] ?? 0, min);
   const next = Math.max(min, Math.min(PIN_MAX[asset], current + dir * PIN_STEP));
+  // 10-23: a 0 pin is the off switch, so stepping down to 0% leaves the coin on with no pin.
+  if (next === 0) {
+    const rest: Pins = { ...pins };
+    delete rest[asset];
+    return rest;
+  }
   return { ...pins, [asset]: next };
 }
 
@@ -163,17 +186,18 @@ export function canStepUp(r: RulesView, asset: LiveAsset): boolean {
   const current = r.pins[asset] ?? 0;
   if (current + PIN_STEP > PIN_MAX[asset]) return false;
   const floor = r.managed ? STOP_FLOOR[r.stop] : MANUAL_FLOOR;
-  // Off, stORE counts at its floor (R-O1: the run plants at least that), so the app never saves pins that crowd SKR's quarter.
-  const counted = !r.managed ? { ...r.pins, stORE: Math.max(r.pins.stORE ?? 0, STORE_FLOOR) } : r.pins;
+  // Off, stORE counts at its floor while it is on (R-O1: the run plants at least that), so the app never saves pins that crowd SKR's quarter.
+  const counted = !r.managed && r.pins.stORE !== 0 ? { ...r.pins, stORE: Math.max(r.pins.stORE ?? 0, STORE_FLOOR) } : r.pins;
   const total = (Object.values(counted) as number[]).reduce((s, v) => s + (v ?? 0), 0);
   const next = total + PIN_STEP;
   if (r.pins.SKR !== undefined || asset === "SKR") return next <= 100;
   return next <= 100 - floor;
 }
 
-/** The pins when the switch flips on (R346): every coin starts on. The off-mode pins were a manual split; a 0 among them meant "nothing" (SKR was the rest), not "never". */
-export function pinsForOn(_pins: Pins): Pins {
-  return {};
+/** The pins when the switch flips on (R346): the manual split's shares go (the manager sets them); a coin switched off stays off,
+ *  since a 0 pin means "never" in both modes (10-23). */
+export function pinsForOn(pins: Pins): Pins {
+  return managedPins(pins);
 }
 
 /** "Changed {Mon D}." (F4: labelled by the day the manager changed the split, gated by undoAvailable). */
