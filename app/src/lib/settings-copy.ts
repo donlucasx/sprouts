@@ -15,7 +15,7 @@ export const ADMIN_KEY_LINE = "The admin key lives on the owner's laptop, not th
 /** R452 (10-08): About Sprouts = three lines on how it works, then six questions. Every fact of the 13 earlier disclosures is kept
  *  (spec 3.5 and 9; R60; RECONCILED rules 10 to 12; R81; R84; spec 6.2 and 11); only the grouping and the order changed. */
 export const HOW_IT_WORKS =
-  'Each swap you make rounds up to the next dollar. Once a day Sprouts plants that change into the coins you chose, inside your own wallet. It can never move more than your daily limit, and you can turn it off or revoke it any time.'
+  'Each swap you make rounds up to the next dollar. Once a day Sprouts plants that change into your split, paid from the USDC in your linked wallet. Everything it buys stays in your own wallet. It can never move more than your daily limit, and you can turn it off or revoke it any time.'
 
 export const DISCLOSURES: [string, string][] = [
   [

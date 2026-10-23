@@ -19,7 +19,7 @@ describe("the tables", () => {
     expect(MANAGER_LINE).toBe("Each morning, Claude Haiku 5.5 reads live rates and sends your new change where it pays best. It never sells what you hold.");  // R348; 10-12 names the model, as the deck does
     expect(PRO_BADGE).toBe("Pro");
     expect(PRO_LINE).toBe("Included free during launch.");  // R347
-    expect(ROWS_LINE).toEqual({ on: "Switch a coin off and the manager won't buy it.", off: "Set your own split." });  // R348; 10-12 names the model, as the deck does
+    expect(ROWS_LINE).toEqual({ on: "Switch a coin off and the manager won't buy it.", off: "Set your own split. Switch a coin off and Sprouts won't buy it." });  // 10-23  // R348; 10-12 names the model, as the deck does
     expect(STOP_LINE).toBe("Careful keeps at least 50% in SKR, Balanced 35%, Bold 25%.");
     expect(UNDONE_TEXT).toBe("Yesterday's split is back. The AI Yield Manager is off until you turn it on.");
   });
@@ -116,7 +116,9 @@ describe("pins", () => {
     expect(stepPin({ hSOL: 20 }, "hSOL", 1)).toEqual({ hSOL: 25 });
     expect(stepPin({ hSOL: 75 }, "hSOL", 1)).toEqual({ hSOL: 75 });
     expect(stepPin({ stORE: 50 }, "stORE", 1)).toEqual({ stORE: 50 });
-    expect(stepPin({ hSOL: 3 }, "hSOL", -1)).toEqual({ hSOL: 0 });
+    // 10-23: a 0 pin is the off switch, so stepping down to 0% leaves the coin on with no pin
+    expect(stepPin({ hSOL: 3 }, "hSOL", -1)).toEqual({});
+    expect(stepPin({ hSOL: 5, stORE: 0 }, "hSOL", -1)).toEqual({ stORE: 0 });
     expect(stepPin({}, "cbBTC", 1)).toEqual({ cbBTC: 5 });
   });
   it("stepPin: stORE moves from its floor and never under it (R-O1)", () => {
@@ -130,8 +132,9 @@ describe("pins", () => {
     expect(canStepUp(off({ hSOL: 65 }), "hSOL")).toBe(false);   // would leave SKR 20
     expect(canStepUp(off({ hSOL: 60 }), "stORE")).toBe(true);   // stORE 10 -> 15, SKR 25
   });
-  it("pinsForOn (R346): turning the manager on starts every coin on; the off-mode manual split is not carried", () => {
-    expect(pinsForOn({ hSOL: 0, stORE: 50, cbBTC: 0 })).toEqual({});
+  it("pinsForOn (R346, 10-23): turning the manager on drops the manual shares and keeps the coins switched off", () => {
+    expect(pinsForOn({ hSOL: 0, stORE: 50, cbBTC: 0 })).toEqual({ hSOL: 0, cbBTC: 0 });
+    expect(pinsForOn({ stORE: 20 })).toEqual({});
     expect(pinsForOn({})).toEqual({});
   });
 });

@@ -19,6 +19,8 @@ import { undoSplit } from '@/lib/manager-api'
 import {
   splitRows,
   setCoinOn,
+  setManualCoinOn,
+  offCoins,
   managedPins,
   managedPreview,
   stepPin,
@@ -141,7 +143,10 @@ export default function Rules() {
   const hiddenRows = showAll || !r.managed ? [] : rows.filter((row) => row.pct === 0 && row.asset !== 'SKR' && row.mode !== 'off')
   const shownRows = rows.filter((row) => !hiddenRows.includes(row))
   const showDisclosure =
-    (r.managed && !saved.managed) || (!r.managed && (r.pins.stORE ?? 0) > 0 && (saved.pins.stORE ?? 0) === 0)
+    (r.managed && !saved.managed) ||
+    (!r.managed && (r.pins.stORE ?? 0) > 0 && (saved.pins.stORE ?? 0) === 0) ||
+    // 10-23: stORE switched back on with the manager off
+    (!r.managed && r.pins.stORE !== 0 && saved.pins.stORE === 0)
 
   /** Saves the whole draft at once; if it raises the daily limit, the Seeker signs in once for all of it (R84). */
   async function saveAll() {
@@ -154,7 +159,12 @@ export default function Rules() {
       const answer = await api<MeResponse['rules']>('/api/rules', {
         method: 'PUT',
         // R346: with the manager on, the only pins saved are the coins switched off (an old non-zero pin becomes "on" here).
-        body: { ...patch, ...(r.managed ? { pins: managedPins(r.pins) } : {}), ...(reauth ? { reauth } : {}) },
+        // 10-23: off, the split goes with its switches as `off` (without it the API reads a 0 pin as "no share", for old builds).
+        body: {
+          ...patch,
+          ...(r.managed ? { pins: managedPins(r.pins) } : 'pins' in patch || 'managed' in patch ? { pins: r.pins, off: offCoins(r.pins) } : {}),
+          ...(reauth ? { reauth } : {}),
+        },
       })
       // The answer and the draft clear land together, so the screen moves once; the fresh read reconciles in the background.
       applyRules(answer, { undoAvailable: false, changedDay: null })
@@ -370,15 +380,16 @@ export default function Rules() {
             <ThemedText numeric style={{ width: 48, textAlign: 'right' }}>
               {row.pct}%
             </ThemedText>
-            {r.managed && (
-              <Switch
-                {...toggle}
-                accessibilityLabel={`Use ${COIN_NAME_LONG[row.asset]}`}
-                value={row.mode !== 'off'}
-                disabled={row.asset === 'SKR'}
-                onValueChange={(on) => edit({ pins: setCoinOn(r.pins, row.asset, on) })}
-              />
-            )}
+            {/* R346, and 10-23 with the manager off too: every coin has its switch; SKR's stays on ("keep SKR on, for now"). */}
+            <Switch
+              {...toggle}
+              accessibilityLabel={`Use ${COIN_NAME_LONG[row.asset]}`}
+              value={row.mode !== 'off'}
+              disabled={row.asset === 'SKR'}
+              onValueChange={(on) =>
+                edit({ pins: r.managed ? setCoinOn(r.pins, row.asset, on) : setManualCoinOn(r.pins, row.asset, on) })
+              }
+            />
             {!r.managed && row.mode === 'pinned' && (
               <StepButtons
                 what={COIN_NAME_LONG[row.asset]}
