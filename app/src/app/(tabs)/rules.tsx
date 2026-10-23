@@ -355,7 +355,7 @@ export default function Rules() {
             ))}
         </View>
         <ThemedText variant="caption" tone="secondary">
-          {saved.managed && !coinsChanged ? "Today's split. " : r.managed ? 'The split after you save. ' : ''}
+          {r.managed && saved.managed && !coinsChanged ? "Today's split. " : r.managed ? 'The split after you save. ' : ''}
           {r.managed ? ROWS_LINE.on : ROWS_LINE.off} {r.managed ? STORE_FLOOR_LINE.on : STORE_FLOOR_LINE.off}
         </ThemedText>
         {shownRows.map((row) => (
@@ -366,7 +366,8 @@ export default function Rules() {
             <View style={{ width: 10, height: 10, borderRadius: 3, backgroundColor: coinColor(row.asset) }} />
             {/* The coin on one line; stORE's note on its own line under it (10-01 device check: it wrapped to three lines). */}
             <View style={{ flex: 1 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
+              {/* 10-23 device check: with steppers beside it, the Pro badge ran into the percent; it wraps under the name instead. */}
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.xs }}>
                 <ThemedText>{COIN_NAME_LONG[row.asset]}</ThemedText>
                 {/* R446: automatic lending is part of Pro (free during launch) */}
                 {row.asset === 'USDC_LEND' || row.asset === 'SOL_LEND' ? <ProBadge /> : null}
@@ -386,6 +387,7 @@ export default function Rules() {
               accessibilityLabel={`Use ${COIN_NAME_LONG[row.asset]}`}
               value={row.mode !== 'off'}
               disabled={row.asset === 'SKR'}
+              style={row.asset === 'SKR' ? { opacity: 0.5 } : undefined}
               onValueChange={(on) =>
                 edit({ pins: r.managed ? setCoinOn(r.pins, row.asset, on) : setManualCoinOn(r.pins, row.asset, on) })
               }
