@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { Analytics } from "@vercel/analytics/next";
 import { siteMetadata } from "./metadata";
 
 const geistSans = Geist({
@@ -24,6 +25,8 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable}`}>
         {children}
+        {/* 10-23: page views for sprouts.money (Vercel Web Analytics, Hobby plan); enable it in the project's Analytics tab */}
+        <Analytics />
       </body>
     </html>
   );
