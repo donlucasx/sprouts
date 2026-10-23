@@ -26,6 +26,9 @@ const Body = z.object({
   managed: z.boolean().optional(),
   stop: z.enum(["careful", "balanced", "bold"]).optional(),
   pins: z.record(z.string(), z.number().int()).optional(),
+  // 10-23 (his ruling): the coins switched off, in either mode. Only app builds after 0.1.3 send it; without it, a 0 pin sent with the
+  // manager off still means nothing (old builds send zeros for "no share").
+  off: z.array(z.string()).max(6).optional(),
   reauth: ReauthSchema.optional(),
 }).strict();
 
@@ -41,7 +44,11 @@ export async function PUT(request: Request) {
   if (session instanceof NextResponse) return session;
   const parsed = Body.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return badRequest("rules", parsed.error);
-  const { reauth, managed, stop, pins: rawPins, ...rest } = parsed.data;
+  const { reauth, managed, stop, pins: rawPins, off, ...rest } = parsed.data;
+  if (off !== undefined) {
+    if (!off.every(isLiveAsset)) return NextResponse.json({ error: "Bad request: off." }, { status: 400 });
+    if (off.includes("SKR")) return NextResponse.json({ error: "SKR stays on." }, { status: 400 });
+  }
   const repo = await getRepo();
   const current = await repo.getRules(session.pubkey);
   if (rest.dailyCapCents !== undefined && rest.dailyCapCents > current.dailyCapCents) {
@@ -51,7 +58,7 @@ export async function PUT(request: Request) {
   // Any save clears the undo (spec 4.5): once you have changed something yourself there is nothing to undo.
   const patch: Partial<Omit<RulesRow, "userPubkey" | "updatedAt">> = { ...rest, prevAllocation: null, allocationDay: null };
 
-  if (managed !== undefined || stop !== undefined || rawPins !== undefined) {
+  if (managed !== undefined || stop !== undefined || rawPins !== undefined || off !== undefined) {
     let pins: Pins = { ...current.pins };
     let pinsByUndo = current.pinsByUndo;
     if (rawPins !== undefined) {
@@ -65,14 +72,24 @@ export async function PUT(request: Request) {
     const nextManaged = managed ?? current.managed;
     const nextStop = stop ?? current.stop;
     if (nextManaged && !current.managed && pinsByUndo) {
-      // R137: the pins an undo made held the manager's old split still; turning it back on frees it. Pins set by hand stay.
-      pins = {};
+      // R137: the pins an undo made held the manager's old split still; turning it back on frees it. Pins set by hand stay, and so
+      // do the coins switched off (10-23).
+      for (const k of Object.keys(pins) as LiveAsset[]) if (pins[k] !== 0) delete pins[k];
       pinsByUndo = false;
     }
     if (!nextManaged) delete pins.SKR; // spec 4.2: off, SKR is always the rest, so an SKR pin from the manager's time is dropped
-    // R346: on, a 0 pin is a coin switched off (the manager never buys it), so it is kept; SKR cannot be switched off (its floor).
-    // Off, a 0 pin is no pin: the manual split's 0 means nothing, SKR is the rest (the audit's P5 note).
-    for (const k of Object.keys(pins) as LiveAsset[]) if (pins[k] === 0 && (!nextManaged || k === "SKR")) delete pins[k];
+    if (off !== undefined) {
+      // 10-23: the app's switches are the truth for every coin; a coin not in `off` is on (a 0 pin left over means nothing).
+      for (const k of Object.keys(pins) as LiveAsset[]) if (pins[k] === 0) delete pins[k];
+      for (const k of off as LiveAsset[]) pins[k] = 0;
+    } else {
+      // R346: on, a 0 pin is a coin switched off (the manager never buys it), so it is kept; SKR cannot be switched off (its floor).
+      // Off, a 0 pin SENT without `off` is no pin (old builds: the manual split's 0 means nothing, SKR is the rest; the audit's P5
+      // note), and so is a manager-time 0 carried into manual by an old build. A manual save that leaves the pins alone keeps its
+      // switches (10-23).
+      const dropZeros = !nextManaged && (rawPins !== undefined || current.managed);
+      for (const k of Object.keys(pins) as LiveAsset[]) if (pins[k] === 0 && (dropZeros || k === "SKR")) delete pins[k];
+    }
     const floor = floorFor(nextManaged, nextStop);
     const problem = validatePins(pins, floor);
     if (problem) return NextResponse.json({ error: PIN_COPY(floor, STOP_LABEL[nextStop])[problem] }, { status: 400 });
