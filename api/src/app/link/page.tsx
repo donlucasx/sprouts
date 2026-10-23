@@ -5,6 +5,7 @@ import { call } from "../call";
 import { useWallets, WalletButtons } from "../wallet-picker";
 import { connectWith, signWith, type StdWallet } from "@/lib/wallet-choice";
 import { Safety } from "../safety";
+import { SiteFooter, SiteHeader } from "../site-chrome";
 
 /** 10-16 (his note "too much text, simplify, and brand the page"): the splash's paper, ink and Outfit, the deck's leaf green and Albert Sans. */
 const outfit = Outfit({ subsets: ["latin"], weight: ["300", "600"] });
@@ -73,11 +74,9 @@ export default function LinkPage() {
   return (
     <main className={`lk ${albert.className}`}>
       <style>{`
-        .lk { min-height: 100svh; background: ${paper}; color: ${ink}; display: grid; grid-template-rows: 1fr auto; line-height: 1.5; }
-        .lk-col { width: 100%; max-width: 440px; margin: 0 auto; padding: 6vh 24px 24px; display: grid; justify-items: center; text-align: center; gap: 14px; align-content: center; }
+        .lk { min-height: 100svh; background: ${paper}; color: ${ink}; display: grid; grid-template-rows: auto 1fr auto; line-height: 1.5; }
+        .lk-col { width: 100%; max-width: 440px; margin: 0 auto; padding: 2vh 24px 24px; display: grid; justify-items: center; text-align: center; gap: 14px; align-content: center; }
         .lk-art { width: min(52vw, 200px); aspect-ratio: 1; object-fit: contain; object-position: center bottom; mix-blend-mode: multiply; }
-        .lk-mark { display: flex; align-items: center; gap: .3em; font-size: 22px; font-weight: 600; letter-spacing: -0.03em; }
-        .lk-mark img { height: .95em; filter: brightness(0); opacity: .86; }
         .lk h1 { font-size: clamp(28px, 7vw, 36px); font-weight: 600; letter-spacing: -0.02em; line-height: 1.15; margin-top: 6px; }
         .lk-sub { color: ${muted}; font-size: 16px; }
         .lk-code { font-size: 30px; letter-spacing: .3em; text-align: center; text-transform: uppercase; width: 100%; max-width: 280px; padding: 14px 12px 14px calc(12px + .3em);
@@ -95,17 +94,12 @@ export default function LinkPage() {
         .lk summary::-webkit-details-marker { display: none; }
         .lk details p { margin-top: 8px; text-align: left; }
         .lk-done { color: ${leaf}; font-weight: 600; }
-        .lk-foot { text-align: center; padding: 24px 24px 32px; font-size: 13px; letter-spacing: .04em; }
-        .lk-foot a { color: ${muted}; }
-        .lk-foot a:hover { color: ${ink}; }
       `}</style>
+      {/* his ask 10-23: the shared header (the mark moved up into it) and footer */}
+      <SiteHeader />
       <div className="lk-col">
         {/* his ask 10-22: one of the garden's mandarin idle loops (brand/garden2/idle/final) in place of the still */}
         <video className="lk-art" src={ART} autoPlay loop muted playsInline aria-hidden="true" />
-        <div className={`lk-mark ${outfit.className}`}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/deck/mark.svg" alt="" />Sprouts
-        </div>
         <h1 className={outfit.className}>Link your trading wallets</h1>
         <p className="lk-sub">Phantom, Solflare, Backpack or any Solana wallet. Link as many as you like, one code each.</p>
 
@@ -145,9 +139,7 @@ export default function LinkPage() {
         {/* his ask 10-22: the boundaries open, before any wallet is asked (was a collapsed details) */}
         <div style={{ marginTop: 28 }}><Safety ink={ink} muted={muted} leaf={leaf} rule={rule} /></div>
       </div>
-      <nav className="lk-foot">
-        <a href="/">sprouts.money</a> &nbsp;·&nbsp; <a href="/revoke">Revoke a wallet</a>
-      </nav>
+      <SiteFooter />
     </main>
   );
 }

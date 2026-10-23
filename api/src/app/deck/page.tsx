@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { ClockInLockup } from "../clockin-lockup";
 import { Outfit, Albert_Sans } from "next/font/google";
+import { SiteFooter, SiteHeader } from "../site-chrome";
 import { DeckKeys } from "./keys";
 
 /**
@@ -271,6 +272,9 @@ function Slide({ n, label, chip, art, children }: { n: number; label?: string; c
 
 export default function Deck() {
   return (
+    // his ask 10-23: the shared header and footer around the slides (hidden in print), on the deck's backdrop
+    <div style={{ background: "#E9E3D6" }}>
+    <SiteHeader />
     <main className={`deck ${outfit.variable} ${albert.variable}`}>
       <style>{CSS}</style>
       <DeckKeys />
@@ -507,5 +511,7 @@ export default function Deck() {
         <DeckKeys printButton />
       </div>
     </main>
+    <SiteFooter />
+    </div>
   );
 }
