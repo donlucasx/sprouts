@@ -113,6 +113,18 @@ describe("the stORE floor in the planting run (R-O1, 10-21)", () => {
     expect(builds.map((b) => b.asset)).toEqual(["SKR"]);
   });
 
+  it("stORE switched off with the manager off (10-23, a 0 pin): never planted over ten days", async () => {
+    const repo = await seeded([215]);
+    await repo.saveRules("U", { managed: false, pins: { stORE: 0 } });
+    const assets: string[] = [];
+    for (let d = 0; d < 10; d++) {
+      if (d > 0) await repo.insertSwap({ signature: `m${d}`, walletPubkey: "W", ts: new Date(NOW.getTime() + d * 86_400_000 - 3_600_000), inMint: "a", inAmount: 1, outMint: "b", outAmount: 1, usdSizeCents: 100, class: "major", roundupCents: 215 });
+      const r = await runPlanting({ repo, now: new Date(NOW.getTime() + d * 86_400_000), chain: fakeChain() });
+      assets.push(r.planted[0].asset);
+    }
+    expect(assets.filter((a) => a === "stORE").length).toBe(0);
+  });
+
   it("stORE's leash leg disabled for a leashed user: no stORE leg, the floor gives way", async () => {
     const repo = await seeded([83, 62, 70]);
     await repo.setWalletLink("W", { delegationPda: "D", linkModel: "leash" });

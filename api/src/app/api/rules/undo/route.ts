@@ -21,6 +21,8 @@ export async function POST(request: Request) {
   if (!prev) return NextResponse.json({ error: "Nothing to undo." }, { status: 409 });
   const pins: Pins = {};
   for (const c of ASSETS) if (c !== "SKR" && prev[c] > 0) pins[c] = prev[c];
+  // 10-23: a coin switched off stays off through the undo (a 0 pin means off with the manager off too now).
+  for (const c of ASSETS) if (c !== "SKR" && current.pins[c] === 0) pins[c] = 0;
   // The pins are marked as the undo's (R137): turning the manager back on drops them, so it is free again; pins set by hand are not marked.
   const saved = await repo.saveRules(session.pubkey, { managed: false, pins, pinsByUndo: true, allocation: prev, prevAllocation: null, allocationDay: null });
   await repo.addEvent({ userPubkey: session.pubkey, walletPubkey: null, kind: "split_undone", detail: { from: current.allocation, to: prev, day: dayOf(new Date()) } });

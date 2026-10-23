@@ -622,8 +622,9 @@ async function plantOneOrThrow(a: RunArgs, w: WalletRow, ctx: RunCtx): Promise<P
   // once any leg is disabled every lending leg needs its venue. A lending leg with no venue is itself disabled and gets no points.
   if (disabled.length > 0) for (const leg of LEND_ASSETS) if (!(leg in venues)) await checkLend(leg);
   // R-O1 (10-21): every planting's split keeps stORE at its floor, whatever split was saved (a manager-off user's split is only
-  // recomputed when they save), unless stORE is disabled here (its leash leg) or switched off (a 0 pin with the manager on, R346).
-  const floored = withStoreFloor(rules.allocation, { skrFloor: floorFor(rules.managed, rules.stop), off: disabled.includes("stORE") || (rules.managed && rules.pins.stORE === 0) });
+  // recomputed when they save), unless stORE is disabled here (its leash leg) or switched off: a 0 pin, manager on (R346) or off
+  // (10-23; the route stores a manual 0 pin only from the app's explicit `off`).
+  const floored = withStoreFloor(rules.allocation, { skrFloor: floorFor(rules.managed, rules.stop), off: disabled.includes("stORE") || rules.pins.stORE === 0 });
   const target = redistributeDisabled(floored, disabled, rules.stop);
   if (!target) return { wallet: w.pubkey, reason: "no leg enabled" };
   // R336 follow-up: with USDC lending disabled and every enabled leg at its stop max, the rest of the split is left unpulled. One leg

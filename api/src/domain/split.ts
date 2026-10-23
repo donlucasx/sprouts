@@ -166,15 +166,17 @@ export function withStoreFloor(split: Split, a: { skrFloor: number; off: boolean
 /**
  * The user's split (spec 4.3). Off: pins are the split and SKR is the rest. On: pinned coins fixed, the stop split's weights
  * over the free coins renormalised to what is left, clamped to the stop maxes, SKR kept at the floor, rounded to 100.
- * R-O1 (10-21), in both modes: stORE keeps STORE_FLOOR unless it is disabled or (on) pinned at 0, its off switch (R346). A stORE pin
+ * R-O1 (10-21), in both modes: stORE keeps STORE_FLOOR unless it is disabled or pinned at 0, its off switch (R346; off too, 10-23). A stORE pin
  * saved under the floor before the rule reads as the floor; pins that leave no room for it give way after SKR's share above its floor.
  */
 export function effectiveSplit(a: { managed: boolean; stop: Stop; pins: Pins; stopSplit: Split; disabled?: readonly LiveAsset[] }): Split {
   const done = (s: Split): Split => (a.disabled?.length ? (redistributeDisabled(s, a.disabled, a.stop) ?? s) : s);
   const others = (c: LiveAsset) => c !== "SKR" && c !== "stORE";
   if (!a.managed) {
-    // Off, a 0 pin is no pin (the route drops it), so stORE is off here only when disabled.
-    const storeOn = !a.disabled?.includes("stORE");
+    // Off (his ruling 10-23): a 0 pin is a coin switched off, as with the manager on (R346). The route stores one only when the app
+    // sends `off`, so splits saved before have none. A coin switched off gives its share to SKR (the rest); stORE off has no floor.
+    // SKR has no switch in either mode ("keep SKR on, for now").
+    const storeOn = !a.disabled?.includes("stORE") && a.pins.stORE !== 0;
     const out = zeroSplit();
     let rest = 100;
     for (const c of NON_SKR) {
