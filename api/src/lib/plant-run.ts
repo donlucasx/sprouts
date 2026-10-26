@@ -3,6 +3,7 @@ import { pauseCauseOf, PAUSE_EVENT_KINDS } from "@/domain/pause-cause";
 import type { Repo } from "@/db/repo";
 import type { CarryKind, PlantingLegRow, PlantingRow, VenueDayRow, WalletRow } from "@/db/types";
 import { rulesRowToRules } from "@/db/types";
+import { alertFounder } from "./founder-alert";
 import { pickAsset, type Asset } from "@/domain/allocation";
 import { ASSETS, COINS, LEND_ASSETS, isLendAsset, type LendAsset, type LiveAsset } from "@/domain/coins";
 import { addDays, dayOf } from "@/domain/day";
@@ -463,7 +464,9 @@ export function leashErrorOf(sim: { logs: string[] }): number | null {
 /** A refusal by one of the money guards or checkers (a possible attack, or a builder bug), not weather: it gets an ALERT line (review M2). */
 const GUARD_REFUSAL = /fell by|under the minimum|still holds|(Planting|Jupiter response|Jupiter Lend|K-Lend|Leash) refused/;
 function alertIfGuard(w: WalletRow, asset: LiveAsset, err: string) {
-  if (GUARD_REFUSAL.test(err)) console.error(`ALERT: guard refusal on ${asset} for ${w.pubkey}: ${err}`);
+  if (!GUARD_REFUSAL.test(err)) return;
+  console.error(`ALERT: guard refusal on ${asset} for ${w.pubkey}: ${err}`);
+  void alertFounder(`ALERT: guard refusal on ${asset} for ${w.pubkey}: ${err.slice(0, 300)}`);
 }
 
 /**
@@ -706,7 +709,11 @@ async function plantOneOrThrow(a: RunArgs, w: WalletRow, ctx: RunCtx): Promise<P
         return tryLeg(failed);
       }
     }
-    if (isLendAsset(failed)) console.error(`ALERT: lending leg ${failed} skipped for ${w.pubkey}${retriedVenue.has(failed) ? " on both venues" : ""}; the planting waits for the next run: ${err}`);
+    if (isLendAsset(failed)) {
+      const line = `ALERT: lending leg ${failed} skipped for ${w.pubkey}${retriedVenue.has(failed) ? " on both venues" : ""}; the planting waits for the next run: ${err}`;
+      console.error(line);
+      void alertFounder(line.slice(0, 500));
+    }
     // Review M4: a leashed user never falls back to SKR while leg 0 has no price source (no PYTH_API_KEY, R324): it would be skipped there anyway.
     if (isLendAsset(failed) || disabled.includes("SKR") || (leashed && !skrPriceSource())) {
       await legSkipped(a, w, failed, err);
@@ -734,7 +741,11 @@ async function plantOneOrThrow(a: RunArgs, w: WalletRow, ctx: RunCtx): Promise<P
       // Review M3: a repeat is a SettleMismatch skip of this wallet within the last 7 days (by the run's own day).
       const since = addDays(dayOf(a.now), -7);
       const repeat = before.some((e) => { const d = e.detail as { leashError?: string; day?: string } | null; return e.walletPubkey === w.pubkey && d?.leashError === "SettleMismatch" && !!d.day && d.day >= since && d.day <= dayOf(a.now); });
-      if (repeat) console.error(`ALERT: leash SettleMismatch (6007) again for ${w.pubkey} on ${leg}: the receipt keeps moving between build and pull`);
+      if (repeat) {
+        const line = `ALERT: leash SettleMismatch (6007) again for ${w.pubkey} on ${leg}: the receipt keeps moving between build and pull`;
+        console.error(line);
+        void alertFounder(line);
+      }
       await discard(r.built);
       await legSkipped(a, w, leg, "leash SettleMismatch (6007) after one rebuild", { leashError: "SettleMismatch", alert: repeat });
       return null;

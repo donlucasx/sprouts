@@ -4,11 +4,13 @@ import { address, createNoopSigner, pipe, createTransactionMessage, setTransacti
   getBase64EncodedWireTransaction, type Address } from "@solana/kit";
 import { getRepo } from "@/db/repo";
 import { clientIp, rateLimited } from "@/lib/auth-guard";
-import { buildApproveOnceIxs, buildRevokeDelegationIx, delegationPda, readDelegation, readSubscriptionAuthority, readUsdcAtaExists } from "@/lib/subscriptions";
+import { buildApproveOnceIxs, buildRevokeDelegationIx, delegationPda, readDelegation, readSubscriptionAuthority, readUsdcAtaExists, readUsdcBalanceRaw } from "@/lib/subscriptions";
 import { pullerSigner } from "@/lib/puller";
 import { leashLive, leashPda } from "@/lib/leash";
 import { rpc } from "@/lib/rpc";
 import { ownerLabel } from "@/lib/owner-label";
+import { rulesRowToRules } from "@/db/types";
+import { plantThresholdFor } from "@/domain/threshold";
 
 export const runtime = "nodejs";
 
@@ -82,7 +84,16 @@ export async function GET(request: Request, ctx: { params: Promise<{ code: strin
   if (sim.value.err) return NextResponse.json({ error: simulationError(sim.value.err, sim.value.logs ?? []) }, { status: 400 });
   if (!link.walletPubkey) await repo.bindLinkCode(link.code, wallet, pda);
   const owner = ownerLabel(await repo.getUser(link.userPubkey), link.userPubkey);
-  return NextResponse.json({ transaction, cap: DAILY_CAP_CENTS, puller, delegatee, delegationPda: pda, revokes, owner });
+  // 10-26 (Kimi user-comms D): plantings are paid only from this wallet's USDC, and a wallet linked with none pauses on its first
+  // planting. The page says so once the link is done. usdcRaw is null when the balance could not be read: no note, never a wrong zero.
+  const [usdcRaw, rules, hasPlanted] = await Promise.all([
+    ataExists ? readUsdcBalanceRaw(wallet).then((r) => r.toString(), () => null) : Promise.resolve("0"),
+    repo.getRules(link.userPubkey).then(rulesRowToRules),
+    repo.hasPlanted(link.userPubkey).catch(() => true),
+  ]);
+  // The run's own bar (plant-run.ts resume: threshold, lower for a first planting, + NETWORK_FEE_CENTS, which is 0).
+  const usdcNeedCents = plantThresholdFor({ ruleCents: rules.plantThresholdCents, hasPlanted });
+  return NextResponse.json({ transaction, cap: DAILY_CAP_CENTS, puller, delegatee, delegationPda: pda, revokes, owner, usdcRaw, usdcNeedCents });
 }
 
 /** A failed simulation in the words the user needs: no SOL for the rent and fee, or a failure that would happen on chain. */
