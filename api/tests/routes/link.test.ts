@@ -27,6 +27,7 @@ vi.mock("@/lib/subscriptions", async (orig) => {
     waitForDelegation: vi.fn(async (pda: unknown) => readDelegation(pda)),
     readSubscriptionAuthority: vi.fn(async () => ({ exists: false })),
     readUsdcAtaExists: vi.fn(async () => true),
+    readUsdcBalanceRaw: vi.fn(async () => 0n),
   };
 });
 vi.mock("@/lib/helius", () => ({ heliusAddAddress: vi.fn(async () => undefined) }));
@@ -101,6 +102,23 @@ describe("link flow", () => {
     expect((await repo.getWallet(WALLET))?.delegationPda).toBe(t.delegationPda);
     // the wallet row carries the webhook outcome, not only the event (the first real link on 09-28 showed false on the row, true on the event)
     expect((await repo.getWallet(WALLET))?.webhookAdded).toBe(true);
+  });
+
+  it("10-26: the built approval says how much USDC the wallet holds and what the first planting needs, for the page's note", async () => {
+    const { readUsdcBalanceRaw, readUsdcAtaExists } = await import("@/lib/subscriptions");
+    const c = await mintCode(repo);
+    const get = async () => (await getTx(new Request(`http://x/api/link/${c.code}?wallet=${WALLET}`), { params: Promise.resolve({ code: c.code }) })).json();
+    vi.mocked(readUsdcBalanceRaw).mockResolvedValueOnce(1_250_000n);
+    const t = await get();
+    expect(t.usdcRaw).toBe("1250000");
+    // a user who never planted: the first planting's lower bar (domain/threshold.ts), not the $2 rule
+    expect(t.usdcNeedCents).toBe(50);
+    // no USDC account: zero without a read
+    vi.mocked(readUsdcAtaExists).mockResolvedValueOnce(false);
+    expect((await get()).usdcRaw).toBe("0");
+    // a failed read: null, so the page shows no note rather than a wrong zero
+    vi.mocked(readUsdcBalanceRaw).mockRejectedValueOnce(new Error("rpc down"));
+    expect((await get()).usdcRaw).toBeNull();
   });
 
   it("still links when the webhook add fails, and the row says so", async () => {

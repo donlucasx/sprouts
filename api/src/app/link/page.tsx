@@ -18,6 +18,17 @@ const paper = "#FFFBF5", ink = "#2B2622", muted = "#7A746B", leaf = "#1E6B44", r
  * Security R207 #5: the page first says whose garden the code links into and waits for "this is me" before any wallet is asked,
  * so a code someone else sent ("enter ABC123 to get the airdrop") shows their name, not a bare approval for "Sprouts".
  */
+/**
+ * 10-26 (Kimi user-comms D): a wallet linked with too little USDC pauses on its first planting, and the "another wallet" path never
+ * said so. Null when there is enough, or when the API could not read the balance (no note rather than a wrong one).
+ */
+function shortOfUsdc(raw: string | null | undefined, needCents: number | undefined): string | null {
+  if (raw == null || needCents == null) return null;
+  const haveCents = Number(BigInt(raw) / 10_000n);
+  if (haveCents >= needCents) return null;
+  return `This wallet has $${(haveCents / 100).toFixed(2)} of USDC. Sprouts pays for every planting with USDC from this wallet, so add at least $${(needCents / 100).toFixed(2)} to start planting.`;
+}
+
 export default function LinkPage() {
   const [code, setCode] = useState("");
   const [owner, setOwner] = useState<string | null>(null);   // whose garden the checked code links into
@@ -25,6 +36,7 @@ export default function LinkPage() {
   const [state, setState] = useState<"idle" | "busy" | "done">("idle");
   const [message, setMessage] = useState<string>("");
   const [leash, setLeash] = useState<string | null>(null);    // contracts 5.5: the leash PDA this wallet's delegation names (after go-live)
+  const [usdcNote, setUsdcNote] = useState<string | null>(null); // 10-26: the linked wallet holds less USDC than its first planting needs
   const wallets = useWallets();
   const c = code.trim().toUpperCase();
 
@@ -34,6 +46,7 @@ export default function LinkPage() {
     setConfirmed(false);
     setMessage("");
     setLeash(null);
+    setUsdcNote(null);
   }
 
   async function check() {
@@ -54,7 +67,7 @@ export default function LinkPage() {
     try {
       const account = await connectWith(w);
       const wallet = account.address;
-      const t = await call<{ transaction: string; cap: number; revokes: string | null; owner: string; puller: string; delegatee: string }>(`/api/link/${c}?wallet=${wallet}`);
+      const t = await call<{ transaction: string; cap: number; revokes: string | null; owner: string; puller: string; delegatee: string; usdcRaw?: string | null; usdcNeedCents?: number }>(`/api/link/${c}?wallet=${wallet}`);
       if (t.owner !== owner) throw new Error(`This code now links to ${t.owner}, not ${owner}. Nothing was signed. Check the code again.`);
       // After go-live the delegate is leashPda(wallet, garden), shown before the wallet is asked so it can be compared with the app's
       // re-link card (contracts 5.5, Kimi #4); the signer refuses an approval naming any other delegate.
@@ -64,6 +77,7 @@ export default function LinkPage() {
         method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ code: c, wallet, signedTransaction: signed }),
       });
       setMessage(`Linked${done.skrName ? ` to ${done.skrName}'s garden` : ""}, up to $${(t.cap / 100).toFixed(0)} a day.${t.revokes ? " The old approval was revoked." : ""} To link another wallet, get a new code in the app.`);
+      setUsdcNote(shortOfUsdc(t.usdcRaw, t.usdcNeedCents));
       setState("done");
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "Something did not go through. Nothing moved.");
@@ -94,6 +108,7 @@ export default function LinkPage() {
         .lk summary::-webkit-details-marker { display: none; }
         .lk details p { margin-top: 8px; text-align: left; }
         .lk-done { color: ${leaf}; font-weight: 600; }
+        .lk-usdc { background: #FFF1D6; border-radius: 14px; padding: 12px 16px; font-size: 15px; max-width: 360px; }
       `}</style>
       {/* his ask 10-23: the shared header (the mark moved up into it) and footer */}
       <SiteHeader />
@@ -101,7 +116,7 @@ export default function LinkPage() {
         {/* his ask 10-22: one of the garden's mandarin idle loops (brand/garden2/idle/final) in place of the still */}
         <video className="lk-art" src={ART} autoPlay loop muted playsInline aria-hidden="true" />
         <h1 className={outfit.className}>Link your trading wallets</h1>
-        <p className="lk-sub">Phantom, Solflare, Backpack or any Solana wallet. Link as many as you like, one code each.</p>
+        <p className="lk-sub">Phantom, Solflare, Backpack or any Solana wallet. Link as many as you like, one code each. Each one pays its round-ups from its own USDC.</p>
 
         <input className={`lk-code ${outfit.className}`} value={code} onChange={(e) => edit(e.target.value)} disabled={state !== "idle"} placeholder="CODE"
           maxLength={6} autoCapitalize="characters" aria-label="Code from the Sprouts app" />
@@ -134,6 +149,7 @@ export default function LinkPage() {
           </p>
         ) : null}
         {message ? <p className={state === "done" ? "lk-done" : "lk-note"}>{message}</p> : null}
+        {state === "done" && usdcNote ? <p className="lk-usdc">{usdcNote}</p> : null}
 
         <p className="lk-note">On a phone? Open this page in your wallet app&apos;s browser.</p>
         {/* his ask 10-22: the boundaries open, before any wallet is asked (was a collapsed details) */}
