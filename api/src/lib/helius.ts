@@ -39,6 +39,13 @@ export async function heliusAddAddress(webhookId: string, address: string): Prom
   if (!res.ok) throw new Error(`Helius update webhook failed: ${res.status} ${(await res.text()).slice(0, 200)}`);
 }
 
+/** The addresses the swap webhook watches (read-only), for the daily coverage check. */
+export async function heliusWebhookAddresses(webhookId: string): Promise<string[]> {
+  const res = await fetch(url(`/v0/webhooks/${webhookId}`));
+  if (!res.ok) throw new Error(`Helius read webhook failed: ${res.status}`);
+  return ((await res.json()) as Webhook).accountAddresses;
+}
+
 /** Recent swaps for one address through Parsed Events (the cheaper successor of Enhanced Transactions). Onboarding preview only. */
 export async function heliusHistory(address: string, limit = 100): Promise<unknown[]> {
   const res = await fetch(url("/v1/parsed-events/transaction-history"), {

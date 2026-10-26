@@ -64,3 +64,23 @@ describe("alertFounder", () => {
     log.mockRestore();
   });
 });
+
+describe("checkWebhookCoverage", () => {
+  it("alerts on active and paused wallets the webhook does not watch, never on revoked ones", async () => {
+    const { MemoryRepo } = await import("@/db/memory");
+    const { checkWebhookCoverage } = await import("@/lib/founder-alert");
+    const repo = new MemoryRepo();
+    const add = (pubkey: string) => repo.addWallet({ pubkey, userPubkey: U, delegationPda: "P", dailyCapCents: 500, webhookAdded: true });
+    await add("watched1111"); await add("activeMissing"); await add("pausedMissing"); await add("revokedMissing");
+    await repo.setWalletStatus("pausedMissing", "paused");
+    await repo.setWalletStatus("revokedMissing", "revoked");
+    const alert = vi.fn(async () => {});
+    const r = await checkWebhookCoverage({ repo, watched: async () => ["watched1111"], alert });
+    expect(r.missing.sort()).toEqual(["activeMissing", "pausedMissing"]);
+    expect(alert).toHaveBeenCalledOnce();
+    expect((alert.mock.calls[0] as unknown as [string])[0]).toContain("2 linked wallet(s)");
+    alert.mockClear();
+    expect((await checkWebhookCoverage({ repo, watched: async () => ["watched1111", "activeMissing", "pausedMissing"], alert })).missing).toEqual([]);
+    expect(alert).not.toHaveBeenCalled();
+  });
+});
