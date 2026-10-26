@@ -1,4 +1,5 @@
 import type { EventRow } from "@/db/types";
+import type { Repo } from "@/db/repo";
 import { errorText } from "./redact";
 
 /**
@@ -51,4 +52,17 @@ export function founderAlertFor(e: Omit<EventRow, "id" | "ts">): string | null {
     default:
       return null;
   }
+}
+
+/**
+ * 10-26: a linked wallet the Helius webhook does not watch has its swaps never booked, and nothing else would say so (Helius
+ * replaces the whole address list on every update, so one bad write could drop them all). Once a day the cron compares the list
+ * with every wallet that is not revoked (a paused one still tallies its round-ups) and alerts on any that are missing.
+ */
+export async function checkWebhookCoverage(a: { repo: Repo; watched: () => Promise<string[]>; alert?: (text: string) => Promise<void> }): Promise<{ missing: string[] }> {
+  const [watched, active, paused] = await Promise.all([a.watched(), a.repo.listActiveWallets(), a.repo.listPausedWallets()]);
+  const on = new Set(watched);
+  const missing = [...active, ...paused].map((w) => w.pubkey).filter((k) => !on.has(k));
+  if (missing.length) await (a.alert ?? alertFounder)(`Round-ups NOT being counted: ${missing.length} linked wallet(s) missing from the Helius webhook: ${missing.map((k) => short(k)).join(", ")}. Add them back.`);
+  return { missing };
 }
