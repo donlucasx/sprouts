@@ -43,7 +43,7 @@ export function PauseRow({
         {on ? (
           <View style={{ width: 10, height: 10, borderRadius: radius.full, backgroundColor: colors.success }} />
         ) : (
-          <MaterialCommunityIcons name="pause-circle" size={16} color={colors.textSecondary} />
+          <MaterialCommunityIcons name="pause-circle" size={16} color={colors.warning} />
         )}
         <ThemedText variant="heading" style={{ flex: 1 }}>
           {line}

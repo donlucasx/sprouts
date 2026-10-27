@@ -20,6 +20,8 @@ import type { PlantId } from "@/model/garden";
 const SAND = "#ECE5D3", PAPER = "#FFFCF7", INK = "#2B2B2B" as const, QUIET = "#6B6558" as const, ACCENT = "#145A3C" as const;
 const RIPPLE = "rgba(140,116,78,0.45)", RIPPLE_LIGHT = "rgba(255,255,255,0.85)";
 const BIG = 16, LINE = 12;
+/** Tall from this width to height ratio (a 3x3 is 0.66, the 3x2 square 1.0); the words' blocks above and below the ring, in dp. */
+const TALL_RATIO = 0.8, TALL_TOP = 42, TALL_BOT = 34, TALL_EDGE = 12, TALL_GAP = 6;
 const f = (n: number) => Number(n.toFixed(2));
 
 type Words = { title: string; sub: string | null; accent: string | null; foot: string | null; fraction: number | null; ask: boolean };
@@ -62,13 +64,17 @@ const text = (t: string | null, size: number, color: `#${string}`, bold: boolean
 
 export function EnsoWidget({ me, width, height, wateredPlants = null, restartMarks = {}, now = new Date() }: { me: MeResponse | null; width: number; height: number; wateredPlants?: PlantId[] | null; restartMarks?: ZeroMarks; now?: Date }) {
   const ratio = width / Math.max(1, height);
-  const mode = isSlim(width, height) ? "pill" : ratio >= 1.3 ? "wide" : "full";
+  // 10-27 (his note on the 3x3, 276 x 417: "shall we adapt the text to fit it better?"): a widget much taller than wide puts the words
+  // in the sand above and below the ring (tall), the ring holding only the garden
+  const mode = isSlim(width, height) ? "pill" : ratio >= 1.3 ? "wide" : ratio <= TALL_RATIO ? "tall" : "full";
+  const round = mode === "full" || mode === "tall";
   // the slim pill sits centred in its row (his ruling 10-23: "slimmer like the pill"); the others fill the widget, 4 dp in
   const W = width - 8, H = mode === "pill" ? Math.min(height - 8, 72) : height - 8;
   const top = (height - H) / 2;
-  const R = mode === "full" ? Math.min(W, H) / 2 - 8 : H / 2 - (mode === "pill" ? 5 : 10);
-  const sw = mode === "full" ? Math.max(5, R / 17) : mode === "wide" ? 4.5 : 3.5;
-  const cx = mode === "full" ? W / 2 : mode === "pill" ? H / 2 : R + 12, cy = H / 2;
+  const tallTop = TALL_EDGE + TALL_TOP + TALL_GAP, tallBot = H - (TALL_EDGE + TALL_BOT + TALL_GAP);
+  const R = mode === "full" ? Math.min(W, H) / 2 - 8 : mode === "tall" ? Math.min(W / 2 - 8, (tallBot - tallTop) / 2 - 6) : H / 2 - (mode === "pill" ? 5 : 10);
+  const sw = round ? Math.max(5, R / 17) : mode === "wide" ? 4.5 : 3.5;
+  const cx = round ? W / 2 : mode === "pill" ? H / 2 : R + 12, cy = mode === "tall" ? (tallTop + tallBot) / 2 : H / 2;
   const rx = mode === "pill" ? H / 2 : Math.min(22, H * 0.12);
   const shell = (children: unknown) => (
     <FlexWidget clickAction="OPEN_APP" style={{ width: "match_parent", height: "match_parent", paddingLeft: 4, paddingRight: 4, paddingTop: top, paddingBottom: top }}>
@@ -77,14 +83,14 @@ export function EnsoWidget({ me, width, height, wateredPlants = null, restartMar
   );
   if (!me) return shell(<SvgWidget svg={card(W, H, rx, cx, cy, R, sw, null)} style={{ width: W, height: H }} />);
   let words: Words, garden: string | null = null;
-  const room = mode === "full" ? R * 1.5 : W - (cx + R) - 18;
+  const room = mode === "full" ? R * 1.5 : mode === "tall" ? W - 24 : W - (cx + R) - 18;
   try {
     const total = valueBlock(gardenTotals(me), BigInt(me.pot.skrStakedRaw)).big;
     let scene: ReturnType<typeof buildScene> | null = null, input: ReturnType<typeof toGardenInput> | null = null;
     try { input = toGardenInput(me, now, wateredPlants, restartMarks); scene = buildScene(input); } catch { scene = null; }
     words = wordsFor(me, total, { parts: scene?.parts ?? [] }, now, room);
     const D = Math.floor(2 * (R - sw * 0.45)) + 2;
-    if (input) garden = ensoGarden(stagesFor(input), { basket: !!me.basket && !me.basket.delivered }, D, PAPER, mode === "full");
+    if (input) garden = ensoGarden(stagesFor(input), { basket: !!me.basket && !me.basket.delivered }, D, PAPER, round);
   } catch {
     return shell([<SvgWidget key="c" svg={card(W, H, rx, cx, cy, R, sw, null)} style={{ width: W, height: H }} />]);
   }
@@ -101,6 +107,21 @@ export function EnsoWidget({ me, width, height, wateredPlants = null, restartMar
     // the words inside the ring; 10-27 (his note: the bottom line touched the ring) the bottom inset 0.16 R -> 0.24 R
     layers.push(
       <FlexWidget key="t" style={{ width: W, height: H, flexDirection: "column", justifyContent: "space-between", alignItems: "center", paddingTop: cy - R + R * 0.2, paddingBottom: H - cy - R + R * 0.24, paddingLeft: cx - R * 0.72, paddingRight: W - cx - R * 0.72 }}>
+        <FlexWidget style={{ flexDirection: "column", alignItems: "center" }}>
+          {text(words.title, BIG + 2, INK, true, "center")}
+          {text(words.sub, LABEL_SIZE, QUIET, false, "center")}
+        </FlexWidget>
+        <FlexWidget style={{ flexDirection: "column", alignItems: "center" }}>
+          {text(words.accent, LINE, ACCENT, true, "center")}
+          {text(words.foot, LABEL_SIZE, QUIET, false, "center")}
+        </FlexWidget>
+      </FlexWidget>,
+    );
+  } else if (mode === "tall") {
+    // the words just outside the ring: the total above it, the state under it
+    const above = Math.max(TALL_EDGE, cy - R - sw - TALL_GAP - TALL_TOP), below = Math.max(TALL_EDGE, H - (cy + R + sw + TALL_GAP) - TALL_BOT);
+    layers.push(
+      <FlexWidget key="t" style={{ width: W, height: H, flexDirection: "column", justifyContent: "space-between", alignItems: "center", paddingTop: above, paddingBottom: below, paddingLeft: 12, paddingRight: 12 }}>
         <FlexWidget style={{ flexDirection: "column", alignItems: "center" }}>
           {text(words.title, BIG + 2, INK, true, "center")}
           {text(words.sub, LABEL_SIZE, QUIET, false, "center")}

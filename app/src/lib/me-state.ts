@@ -96,6 +96,41 @@ export function noUsdcPauseLines(wallets: MeResponse['wallets']): string[] {
   })
 }
 
+/**
+ * Home's amber USDC notice (10-27, his notes: the line must "stand out"; for another wallet the copy was "too long, repetitive, and it
+ * doesnt say which wallet is low"): a title that names what stops (and the wallet, when it is another one), the lines, and whether
+ * this phone's top-up belongs in it. `low` is lowUsdcLine's line for this phone's wallet (null when not low); null: no notice.
+ */
+export function usdcNotice(me: Pick<MeResponse, 'wallets' | 'user'>, low: string | null, phoneUsdcCents: number | null): { title: string; lines: string[]; topUp: boolean } | null {
+  const paused = me.wallets.filter((w) => w.status === 'paused' && w.pause?.reason === 'no_usdc')
+  const need = (w: (typeof paused)[number]) => { const p = w.pause?.reason === 'no_usdc' ? w.pause : null; return Math.max(1, Math.ceil(Math.max(p?.needCents ?? 0, p?.resumeAtCents ?? 0) / 100)) }
+  const short = (k: string) => `${k.slice(0, 4)}...${k.slice(-4)}`
+  const phone = paused.find((w) => w.pubkey === me.user.pubkey)
+  const others = paused.filter((w) => w.pubkey !== me.user.pubkey)
+  if (phone) {
+    return {
+      title: 'Plantings paused',
+      lines: [
+        `Your wallet needs at least $${need(phone)} of USDC. Your round-ups are still counted, and planting restarts on its own.`,
+        ...others.map((w) => `${short(w.pubkey)} also needs $${need(w)} of USDC.`),
+      ],
+      topUp: true,
+    }
+  }
+  // this phone's own low or empty wallet leads (its top-up is right here); another wallet's pause follows in one short line
+  if (low) {
+    return { title: phoneUsdcCents !== null && phoneUsdcCents <= 0 ? 'No USDC for plantings' : 'Low on USDC', lines: [low, ...others.map((w) => `${short(w.pubkey)} also needs $${need(w)} of USDC.`)], topUp: true }
+  }
+  if (others.length === 1) {
+    const w = others[0]
+    return { title: `${short(w.pubkey)} needs USDC`, lines: [`Its plantings are paused. Add at least $${need(w)} of USDC to that wallet and they restart on their own.`], topUp: false }
+  }
+  if (others.length > 1) {
+    return { title: `${others.length} wallets need USDC`, lines: [...others.map((w) => `${short(w.pubkey)}: add at least $${need(w)} of USDC.`), 'Their plantings restart on their own.'], topUp: false }
+  }
+  return null
+}
+
 /** Whether every paused wallet was paused by the run for want of USDC: then Home's lines above say it all and the Rules chip (the
  *  user's switch) stays hidden. False when any wallet is the user's pause or has no reason. */
 export function pausedOnlyForNoUsdc(wallets: MeResponse['wallets']): boolean {
