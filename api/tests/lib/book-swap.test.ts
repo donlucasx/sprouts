@@ -250,3 +250,15 @@ describe("a Sprouts top-up is never booked", () => {
     expect((await bookSwap({ repo, tx: orderEngine, priceUsd: async () => 1 })).booked).toBe(true);
   });
 });
+
+describe("a top-up mark is trusted only for its own wallet (10-27 security review)", () => {
+  const PHANTOM = "887dEPR85vfSZ45zFrxttJ6cLomwvnYbh5HnyGbTAXVu";
+  const orderEngine = orderEngineJson as unknown as HeliusEnhancedTx;
+  it("another user's mark carrying this wallet's swap signature does not stop the booking", async () => {
+    const repo = new MemoryRepo();
+    await repo.upsertUser({ seedVaultPubkey: "U", sgtMint: "M", skrName: null });
+    await repo.addWallet({ pubkey: PHANTOM, userPubkey: "U", delegationPda: "D", dailyCapCents: 500 });
+    await repo.addEvent({ userPubkey: "ATTACKER", walletPubkey: "ATTACKER", kind: "topup_sent", detail: { signature: orderEngine.signature, usdcRaw: "5000000" } });
+    expect((await bookSwap({ repo, tx: orderEngine, priceUsd: async () => 1 })).booked).toBe(true);
+  });
+});

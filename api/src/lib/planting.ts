@@ -500,9 +500,17 @@ export async function sendPlanting(b: BuiltPlanting): Promise<void> {
 
 /** What the chain says about a signature: landed, landed and failed, or not seen (still in flight or never sent). */
 export async function signatureStatus(sig: string): Promise<"confirmed" | "failed" | "pending"> {
-  const { value } = await rpc().getSignatureStatuses([sig as Parameters<ReturnType<typeof rpc>["getSignatureStatuses"]>[0][number]], { searchTransactionHistory: true }).send();
-  const s = value[0];
-  if (!s) return "pending";
-  if (s.err) return "failed";
-  return s.confirmationStatus === "confirmed" || s.confirmationStatus === "finalized" ? "confirmed" : "pending";
+  return (await signatureStatuses([sig]))[0];
+}
+
+/** signatureStatus for several signatures in ONE RPC call (the method takes up to 256), in the order given. */
+export async function signatureStatuses(sigs: string[]): Promise<("confirmed" | "failed" | "pending")[]> {
+  if (sigs.length === 0) return [];
+  const { value } = await rpc().getSignatureStatuses(sigs as unknown as Parameters<ReturnType<typeof rpc>["getSignatureStatuses"]>[0], { searchTransactionHistory: true }).send();
+  return sigs.map((_, i) => {
+    const s = value[i];
+    if (!s) return "pending";
+    if (s.err) return "failed";
+    return s.confirmationStatus === "confirmed" || s.confirmationStatus === "finalized" ? "confirmed" : "pending";
+  });
 }
