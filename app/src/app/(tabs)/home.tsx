@@ -41,6 +41,7 @@ import { canSlot } from '@/model/can'
 import { nextPlantingFor } from '@/lib/next-planting'
 import { RelinkCard } from '@/components/RelinkCard'
 import { TopUpButton } from '@/components/TopUp'
+import { BambooFrame } from '@/garden2/BambooFrame'
 import { TOPUP, topUpOffer } from '@/lib/topup'
 import { MoveCard } from '@/components/MoveCard'
 import { termsNeeded, termsSummary } from '@/lib/terms'
@@ -394,15 +395,23 @@ export default function Home() {
             pointerEvents="box-none"
             style={{ marginHorizontal: garden2Bleeds(dark) ? -spacing.edge : 0, marginTop: -spacing.sm, paddingBottom: CARD_OVERFLOW, marginBottom: -CARD_OVERFLOW, zIndex: 2 }}
           >
-            <Garden2
-              stages={stages}
-              extras={extras2}
-              reveal={reveal}
-              width={garden2Bleeds(dark) ? screenW : screenW - 2 * spacing.edge}
-              cardFor={(p) => ({ ...plantCard(devSplit ? devSplitLending(me) : me, ASSET_OF_PLANT[p]), icon: COIN_LOGO[ASSET_OF_PLANT[p]] })}
-              onCard={(c) => c.row && setSheetRow(c.row)}
-              cardOverflow={CARD_OVERFLOW}
-            />
+            {(() => {
+              const garden = (w: number) => (
+                <Garden2
+                  stages={stages}
+                  extras={extras2}
+                  reveal={reveal}
+                  width={w}
+                  cardFor={(p) => ({ ...plantCard(devSplit ? devSplitLending(me) : me, ASSET_OF_PLANT[p]), icon: COIN_LOGO[ASSET_OF_PLANT[p]] })}
+                  onCard={(c) => c.row && setSheetRow(c.row)}
+                  cardOverflow={CARD_OVERFLOW}
+                />
+              )
+              // 10-27 (his note: in dark mode the garden "always stands out... What if we try framing it with bamboo (like the widget)?
+              // Dark mode only."): the paper card in the widget's bamboo frame
+              if (garden2Bleeds(dark)) return garden(screenW)
+              return dark ? <BambooFrame width={screenW - 2 * spacing.edge}>{garden}</BambooFrame> : garden(screenW - 2 * spacing.edge)
+            })()}
           </View>
           <NextPlanting row={nextRow} pendingCents={me.nextPlanting.pendingCents} thresholdCents={me.nextPlanting.thresholdCents} />
           {watcher.line ? <WatcherLine text={watcher.line} /> : null}

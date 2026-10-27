@@ -160,7 +160,8 @@ export function frameInner(width: number, height: number): FrameInner {
  * knots and the crossed ends) at FRAME_K and its four runs stretched between them, over paper that fills the frame to its poles' centre
  * lines. Outside the poles the widget is clear: the crossed ends overhang onto the wallpaper.
  */
-export function widgetFrame(width: number, height: number): string {
+/** `withPaper` false: the poles alone, for drawing over something (Home's dark-mode garden, 10-27). */
+export function widgetFrame(width: number, height: number, withPaper = true): string {
   const F = WIDGET2_FRAME, k = frameK(width, height);
   const xs = { l: [0, F.cut.l * k], c: [F.cut.l * k, width - F.cut.r * k], r: [width - F.cut.r * k, width] } as const;
   const ys = { t: [0, F.cut.t * k], c: [F.cut.t * k, height - F.cut.b * k], b: [height - F.cut.b * k, height] } as const;
@@ -173,5 +174,5 @@ export function widgetFrame(width: number, height: number): string {
   // paper to the poles' centre lines: the garden (widgetGarden2) is drawn over it, and its sky is this same paper
   const m = F.mid, x0 = m.l * k, y0 = m.t * k;
   const paper = `<rect x="${f(x0)}" y="${f(y0)}" width="${f(width - x0 - m.r * k)}" height="${f(height - y0 - m.b * k)}" fill="${WIDGET2_PAPER}"/>`;
-  return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${paper}${parts.join("")}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${withPaper ? paper : ""}${parts.join("")}</svg>`;
 }
