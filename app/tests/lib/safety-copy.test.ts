@@ -11,12 +11,11 @@ describe('safety copy (mirrors api/src/app/safety.tsx)', () => {
 
 describe('phoneUsdcNote', () => {
   it('says the wallet has no USDC at zero', () => {
-    expect(phoneUsdcNote('0', 200)).toBe(
-      'This wallet has no USDC yet. Round-ups are paid from USDC, so add a few dollars before your first planting.',
-    )
+    // 10-26 copy review row 2: the wallet named, the amount to add
+    expect(phoneUsdcNote('0', 200)).toBe('This wallet has no USDC. Add at least $2.00 to it so Sprouts can plant.')
   })
   it('names a balance under one planting', () => {
-    expect(phoneUsdcNote('400000', 200)).toMatch(/^This wallet holds \$0\.40 of USDC\./)
+    expect(phoneUsdcNote('400000', 200)).toBe('This wallet has $0.40 of USDC. Add at least $1.60 to it so Sprouts can plant.')
   })
   it('says nothing at or above the threshold, or when the balance is unknown', () => {
     expect(phoneUsdcNote('2000000', 200)).toBeNull()

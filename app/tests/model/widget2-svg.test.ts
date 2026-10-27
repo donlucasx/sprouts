@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { allStages, frameTop, type Stages } from "@/model/garden2";
 import { CANVAS } from "@/garden2/layout";
-import { FRAME_K, frameInner, frameK, HORIZON_TOP, MIN_SPAN, plantedSpan, plantedTop, PLATE_FOOT, widget2View, widgetFrame, widgetGarden2 } from "@/model/widget2-svg";
+import { FRAME_K, HEADROOM, SPARE_BELOW, frameInner, frameK, HORIZON_TOP, MIN_SPAN, plantedSpan, plantedTop, PLATE_FOOT, widget2View, widgetFrame, widgetGarden2 } from "@/model/widget2-svg";
 import { WIDGET2_FRAME } from "@/garden2/widget-b64";
 
 const only = (s: Partial<Stages>): Stages => ({ ...allStages(0), ...s });
@@ -15,14 +15,19 @@ describe("10-11 (his notes: \"a lot of sand under and above... we should have a 
     expect([g.w, g.h]).toEqual([W, H]); expect(g.svg).toContain(`width="${W}" height="${H}"`);
     expect(x).toBeGreaterThanOrEqual(0); expect(x + vw).toBeLessThanOrEqual(CANVAS.w + 0.01); expect(vw / vh).toBeCloseTo(W / H, 2);
   });
-  it("what is planted sits in the garden box: across it whole, its tallest plant at the box's top, the plate's foot above the bottom line", () => {
+  it("what is planted sits in the garden box: across it whole, on the box's foot with sky above it, the plate's foot above the bottom line", () => {
     const v = widget2View(st, W, H, GB), span = plantedSpan(st), at = (cx: number) => (cx - v.x) * v.s, down = (cy: number) => (cy - v.y) * v.s;
     expect(at(span.x0)).toBeGreaterThanOrEqual(GB.x - 0.5); expect(at(span.x1)).toBeLessThanOrEqual(GB.x + GB.w + 0.5);
     expect(down(plantedTop(st))).toBeGreaterThanOrEqual(GB.y - 0.5);
     expect(down(PLATE_FOOT)).toBeLessThanOrEqual(GB.y + GB.h + 0.5);
-    // and it fills the box one way or the other: as tall as it, or as wide as what is planted
+    // 10-27 (his Saga notes: "a bit more negative space underneath" the words): the plate's foot on the box's foot, at most HEADROOM
+    // of the box tall, and either that tall or as wide as what is planted
     const tall = (PLATE_FOOT - plantedTop(st)) * v.s, wide = (span.x1 - span.x0) * v.s;
-    expect(Math.abs(tall - GB.h) < 0.5 || Math.abs(wide - GB.w) < 0.5).toBe(true);
+    // round 2: the spare height splits, SPARE_BELOW of it under the plate's foot
+    const spare = GB.h - tall;
+    expect(Math.abs(down(PLATE_FOOT) - (GB.y + GB.h - spare * SPARE_BELOW))).toBeLessThan(0.5);
+    expect(tall).toBeLessThanOrEqual(GB.h * 1.04 + 0.5);
+    expect(tall >= GB.h * HEADROOM - 0.5 || Math.abs(wide - GB.w) < 0.5).toBe(true);
   });
   it("cropped in: the decor at the plate's sides may fall outside, what is planted never does", () => {
     const v = widget2View(st, W, H, GB);

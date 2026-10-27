@@ -7,7 +7,7 @@ import {
   applyRulesTo,
   gardenTotals,
   pauseState,
-  noUsdcPauseLines,
+  usdcNotice,
   pausedOnlyForNoUsdc,
   coinRows,
   statTiles,
@@ -183,22 +183,22 @@ describe('pauseState', () => {
 })
 
 // 10-22: a wallet the run paused for want of USDC says what brings it back (the run resumes it at threshold + fee).
-describe('noUsdcPauseLines / pausedOnlyForNoUsdc', () => {
+describe('the no-USDC pause on Home (usdcNotice) / pausedOnlyForNoUsdc', () => {
   const noUsdc = (pubkey: string, needCents: number | null, resumeAtCents = 200) =>
     ({ pubkey, status: 'paused', dailyCapCents: 500, pause: { reason: 'no_usdc', needCents, resumeAtCents } }) as const
   const userPaused = { pubkey: 'U1111111111111111111111111111111', status: 'paused', dailyCapCents: 500, pause: { reason: 'user' } } as const
   const active = { pubkey: 'A1111111111111111111111111111111', status: 'active', dailyCapCents: 500 } as const
+  const at = (wallets: unknown[], phone = 'W1111111111111111111111111111111') => ({ user: { pubkey: phone }, wallets }) as never
   it('names the larger of the wanted pull and the resume point, rounded up to whole dollars', () => {
-    expect(noUsdcPauseLines([noUsdc('W1111111111111111111111111111111', 205)])).toEqual([
-      "Paused: your wallet doesn't have enough USDC. Once it holds at least $3 of USDC, Sprouts starts again on its own at the next daily planting.",
-    ])
-    expect(noUsdcPauseLines([noUsdc('W1111111111111111111111111111111', 40)])[0]).toContain('at least $2 of USDC')
-    expect(noUsdcPauseLines([noUsdc('W1111111111111111111111111111111', null)])[0]).toContain('at least $2 of USDC')
+    const one = (need: number | null) => usdcNotice(at([noUsdc('W1111111111111111111111111111111', need)]), { usdcCents: null, low: false })!.lines[0]
+    expect(one(205)).toContain('until it has $3.')
+    expect(one(40)).toContain('until it has $2.')
+    expect(one(null)).toContain('until it has $2.')
   })
-  it('names the wallet when more than one is linked, and says nothing for a user pause or an older API', () => {
-    expect(noUsdcPauseLines([noUsdc('W1111111111111111111111111111xyz9', 500), active])[0]).toMatch(/^Paused: wallet W111\.\.\.xyz9 /)
-    expect(noUsdcPauseLines([userPaused])).toEqual([])
-    expect(noUsdcPauseLines([{ ...active, status: 'paused' }])).toEqual([])
+  it('names another wallet by address, and says nothing for a user pause or an older API', () => {
+    expect(usdcNotice(at([noUsdc('W1111111111111111111111111111xyz9', 500), active], 'A1111111111111111111111111111111'), { usdcCents: 900, low: false })?.title).toBe('W111...xyz9 needs USDC')
+    expect(usdcNotice(at([userPaused]), { usdcCents: 900, low: false })).toBeNull()
+    expect(usdcNotice(at([{ ...active, status: 'paused' }]), { usdcCents: 900, low: false })).toBeNull()
   })
   it('hides the Rules chip only when every paused wallet is the run\'s no-USDC pause', () => {
     expect(pausedOnlyForNoUsdc([noUsdc('W1', 205)])).toBe(true)
@@ -318,3 +318,23 @@ describe('staleLine (his note 10-22: name the cause)', () => {
     expect(staleLine('as of Oct 16', -1)).toBe("Sprouts couldn't load your garden just now. Showing it as of Oct 16.")
   })
 })
+
+// 10-27 (his notes: the USDC line must stand out; then "one message that adapts... name each wallet... Simplify")
+describe("usdcNotice: one message that names each wallet short of USDC", async () => {
+  const { usdcNotice } = await import("@/lib/me-state");
+  const PHONE = "PhoneWa11et111111111111111111111111111111111", OTHER = "887dOther111111111111111111111111111111AXVu";
+  const w = (pubkey: string, paused: boolean) => ({ pubkey, status: paused ? "paused" : "active", pause: paused ? { reason: "no_usdc", needCents: 150, resumeAtCents: 200 } : null });
+  const me = (ws: ReturnType<typeof w>[]) => ({ user: { pubkey: PHONE }, wallets: ws }) as never;
+  it("one wallet: its name in the title, one line; the Seed Vault wallet gets the top-up, another wallet does not", () => {
+    expect(usdcNotice(me([w(PHONE, false)]), { usdcCents: 0, low: false })).toEqual({ title: "Seed Vault wallet has no USDC", lines: ["Sprouts plants your round-ups with USDC from this wallet. Until you add some, they wait."], topUp: true });
+    expect(usdcNotice(me([w(PHONE, false)]), { usdcCents: 120, low: true })?.title).toBe("Seed Vault wallet is low on USDC");
+    expect(usdcNotice(me([w(PHONE, true)]), { usdcCents: 0, low: false })?.lines).toEqual(["Sprouts plants your round-ups with USDC from this wallet. They wait until it has $2."]);
+    expect(usdcNotice(me([w(PHONE, false), w(OTHER, true)]), { usdcCents: 900, low: false })).toEqual({ title: "887d...AXVu needs USDC", lines: ["Sprouts plants your round-ups with USDC from this wallet. They wait until it has $2."], topUp: false });
+  });
+  it("several: a count in the title, each wallet named on its own line, the Seed Vault wallet first", () => {
+    expect(usdcNotice(me([w(OTHER, true), w(PHONE, false)]), { usdcCents: 0, low: false })).toEqual({ title: "2 wallets need USDC", lines: ["Sprouts plants your round-ups with USDC from each wallet.", "Seed Vault wallet: no USDC", "887d...AXVu: needs $2", "Your round-ups wait until they have it."], topUp: true });
+  });
+  it("nothing short: no notice", () => {
+    expect(usdcNotice(me([w(PHONE, false)]), { usdcCents: 900, low: false })).toBeNull();
+  });
+});

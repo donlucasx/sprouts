@@ -52,13 +52,45 @@ export function plantedTop(stages: Stages): number {
  * reach the headline). Down, what is planted starts at the box's top, centred in it when the width is what binds.
  */
 export function widget2View(stages: Stages, width: number, height: number, gb: Box): View {
+  // 10-27 (his notes: the 2x1 "art too small, should be cropped in on the tree"; tall sizes "need garden art adjusted to fill the
+  // widget"): the planted garden always fills the box's HEIGHT, cropped across about the SKR tree when the box is narrower than it (a
+  // wide box is as before); a short box (under SHORT_BOX dp) frames the SKR tree alone, crown to mound
+  const tree = stages.mandarin >= 1 ? paintedBox("mandarin", stages.mandarin) : null;
+  if (tree && gb.h < SHORT_BOX) {
+    const th = tree.y1 - tree.y0, s = gb.h / Math.max(1, th * (1 + 2 * ENSO_PAD));
+    const w = width / s, h = height / s, cxT = (tree.x0 + tree.x1) / 2;
+    return { x: Math.max(0, Math.min(CANVAS.w - w, cxT - (gb.x + gb.w / 2) / s)), y: tree.y0 - th * ENSO_PAD - gb.y / s, w, h, s };
+  }
   const top = plantedTop(stages), span = plantedSpan(stages);
-  const s = Math.min(gb.h / Math.max(1, PLATE_FOOT - top), gb.w / Math.max(1, span.x1 - span.x0));
+  // 10-27 (his Saga notes: the 3x2 art "overlaps under top text and planting gauge"; 3x3, 1x3, 1x4 "stretched... needs just a bit more
+  // negative space underneath" the words): never the full box height; the
+  // garden sits on the box's foot (it ends above the bottom line), the sky between it and the words
+  // Round 2 (his Saga notes the same day): a wide box's paper at the sides "doesnt look great- fill it w the garden... cropping the
+  // sides": the plate spans the opening, never taller than the box; tall boxes (3x3, 2x3) had "a lot of negative space above" and the
+  // narrow ones (1x2, 1x3) "way too much": they crop in further, still under TALL_HEAD of the box; the spare height splits SPARE_BELOW
+  // under the garden (off the bottom line) and the rest above (the headroom)
+  const hf = gb.h / Math.max(1, PLATE_FOOT - top), wf = gb.w / Math.max(1, span.x1 - span.x0);
+  const tall = gb.h > gb.w, beside = gb.x >= width * 0.15;   // beside: the wide layout, the words in a column at the opening's left
+  // filling the width may run the crowns a little past the box's top, into the plants' own FRAME_PAD headroom, when the words run
+  // across the top; beside the words, never
+  // (never a planted plant cropped across, wf; never a crown past the opening's top)
+  // nothing under the box (its bottom line moved up, Widget.tsx lineUp): the plate's front sand may run past the opening's foot, the
+  // plants whole, so a wide low opening can still be spanned
+  const belowFree = !beside && height - (gb.y + gb.h) < 14;
+  const capH = beside ? hf : belowFree ? hf * 1.3 : hf * 1.04;
+  const s = tall ? Math.min(hf * TALL_HEAD, wf * ZOOM_TALL) : Math.min(capH, wf, Math.max(hf * HEADROOM, width / CANVAS.w));
   const w = width / s, h = height / s;
-  const y = top - (gb.y + Math.max(0, (gb.h - (PLATE_FOOT - top) * s) / 2)) / s;
-  const centred = (span.x0 + span.x1) / 2 - (gb.x + gb.w / 2) / s;
+  const spare = Math.max(0, gb.h - (PLATE_FOOT - top) * s);
+  // taller than the box with nothing under it: the plants from the box's top down, the front sand cropped by the opening
+  const y = belowFree && (PLATE_FOOT - top) * s > gb.h ? top - gb.y / s : PLATE_FOOT - (gb.y + gb.h - spare * SPARE_BELOW) / s;
+  // across: centred on what is planted when it all fits, else on the SKR tree (the crop keeps the tree in view)
+  const fits = (span.x1 - span.x0) * s <= gb.w;
+  const centred = (fits || !tree ? (span.x0 + span.x1) / 2 : (tree.x0 + tree.x1) / 2) - (gb.x + gb.w / 2) / s;
   // inside the plate; or, wider than it, the whole plate in view (paper beside it), as near centred as that allows
-  const x = w <= CANVAS.w ? Math.max(0, Math.min(CANVAS.w - w, centred)) : Math.max(CANVAS.w - w, Math.min(0, centred));
+  // 10-27 (his note: the 3x2 "left uncentered w empty space to its right"): a stacked opening (the box across it) wider than the plate
+  // centres the plate; the wide layout keeps it beside the words' column, as near centred in its box as that allows
+  const stacked = gb.x < width * 0.15;
+  const x = w <= CANVAS.w ? Math.max(0, Math.min(CANVAS.w - w, centred)) : stacked ? (CANVAS.w - w) / 2 : Math.max(CANVAS.w - w, Math.min(0, centred));
   return { x, y, w, h, s };
 }
 
@@ -68,7 +100,38 @@ export function widget2View(stages: Stages, width: number, height: number, gb: B
  * WIDGET2_SCALE (widget-b64.ts) and declared once, in widget2View. Above the plate's top it is clear: the frame's paper, the plate's own sky.
  */
 export function widgetGarden2(stages: Stages, extras: Extras, width: number, height: number, gb: Box): { svg: string; w: number; h: number } {
-  const v = widget2View(stages, width, height, gb);
+  return gardenSvg(stages, extras, width, height, widget2View(stages, width, height, gb));
+}
+
+/** Ensō (10-26 draft): the canvas px kept round the SKR tree in the ring's window, as a share of the tree's painted height. */
+export const ENSO_PAD = 0.08;
+/** A bamboo garden box shorter than this (dp) frames the SKR tree alone (the 2x1, 10-27). */
+export const SHORT_BOX = 70;
+/** The garden's share of its box's height at most (the rest is sky under the words), and its zoom past the fit to its width at most. */
+export const HEADROOM = 0.88, TALL_HEAD = 0.8, ZOOM_TALL = 1.7, SPARE_BELOW = 0.35;
+/**
+ * The ensō widget's window (his note 10-26: "lowered and centered so the circle crop is more focused around the growth of the SKR
+ * tree"): a `size` square of the garden centred on the SKR tree's painted box (crown to mound), the paper sky behind it. No SKR tree
+ * yet: the planted span, else the whole plate, centred the same way.
+ */
+export function ensoGarden(stages: Stages, extras: Extras, size: number, paper: string, whole = false): string {
+  const span = plantedSpan(stages), top = plantedTop(stages);
+  if (whole) {
+    // the full ensō (mock F-E-full): the whole garden across the ring, sky above for the total and the plate low for the state line
+    const side = span.x1 - span.x0, cx = (span.x0 + span.x1) / 2, cy = PLATE_FOOT - side * 0.29;
+    return gardenSvg(stages, extras, size, size, { x: cx - side / 2, y: cy - side / 2, w: side, h: side, s: size / side }, paper, true).svg;
+  }
+  const tree = stages.mandarin >= 1 ? paintedBox("mandarin", stages.mandarin) : null;
+  const box = tree ?? { x0: span.x0, x1: span.x1, y0: top, y1: PLATE_FOOT };
+  const side = Math.max(box.x1 - box.x0, box.y1 - box.y0) * (1 + 2 * ENSO_PAD);
+  const cx = (box.x0 + box.x1) / 2, cy = (box.y0 + box.y1) / 2;
+  const v = { x: cx - side / 2, y: cy - side / 2, w: side, h: side, s: size / side };
+  return gardenSvg(stages, extras, size, size, v, paper, true).svg;
+}
+
+/** `round`: the ensō's window clipped to its circle (10-27, his note: the pill showed "a square edge underneath the left end": the
+ *  window's square corners reached past the pill's round end, where the sand card is transparent). */
+function gardenSvg(stages: Stages, extras: Extras, width: number, height: number, v: View, paper: string | null = null, round = false): { svg: string; w: number; h: number } {
   const signs = STAKE.font * v.s >= STAKE_MIN_FONT;
   const layers = composeLayers(stages, extras).filter((l) => signs || l.kind !== "stake");
   const used = new Map<string, Layer>(), body: string[] = [];
@@ -83,7 +146,10 @@ export function widgetGarden2(stages: Stages, extras: Extras, width: number, hei
     }
   }
   const defs = [...used].map(([k, l]) => `<image id="w-${k}" width="${l.w}" height="${l.h}" preserveAspectRatio="none" xlink:href="data:image/webp;base64,${WIDGET2_B64[k]}"/>`).join("");
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${width}" height="${height}" viewBox="${f(v.x)} ${f(v.y)} ${f(v.w)} ${f(v.h)}" preserveAspectRatio="none"><defs>${defs}</defs>${body.join("")}</svg>`;
+  const ground = paper ? `<rect x="${f(v.x)}" y="${f(v.y)}" width="${f(v.w)}" height="${f(v.h)}" fill="${paper}"/>` : "";
+  const clip = round ? `<clipPath id="r"><circle cx="${f(v.x + v.w / 2)}" cy="${f(v.y + v.h / 2)}" r="${f(Math.min(v.w, v.h) / 2)}"/></clipPath>` : "";
+  const paint = round ? `<g clip-path="url(#r)">${ground}${body.join("")}</g>` : `${ground}${body.join("")}`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${width}" height="${height}" viewBox="${f(v.x)} ${f(v.y)} ${f(v.w)} ${f(v.h)}" preserveAspectRatio="none"><defs>${defs}${clip}</defs>${paint}</svg>`;
   return { svg, w: width, h: height };
 }
 
@@ -108,7 +174,8 @@ export function frameInner(width: number, height: number): FrameInner {
  * knots and the crossed ends) at FRAME_K and its four runs stretched between them, over paper that fills the frame to its poles' centre
  * lines. Outside the poles the widget is clear: the crossed ends overhang onto the wallpaper.
  */
-export function widgetFrame(width: number, height: number): string {
+/** `withPaper` false: the poles alone, for drawing over something (Home's dark-mode garden, 10-27). */
+export function widgetFrame(width: number, height: number, withPaper = true): string {
   const F = WIDGET2_FRAME, k = frameK(width, height);
   const xs = { l: [0, F.cut.l * k], c: [F.cut.l * k, width - F.cut.r * k], r: [width - F.cut.r * k, width] } as const;
   const ys = { t: [0, F.cut.t * k], c: [F.cut.t * k, height - F.cut.b * k], b: [height - F.cut.b * k, height] } as const;
@@ -121,5 +188,5 @@ export function widgetFrame(width: number, height: number): string {
   // paper to the poles' centre lines: the garden (widgetGarden2) is drawn over it, and its sky is this same paper
   const m = F.mid, x0 = m.l * k, y0 = m.t * k;
   const paper = `<rect x="${f(x0)}" y="${f(y0)}" width="${f(width - x0 - m.r * k)}" height="${f(height - y0 - m.b * k)}" fill="${WIDGET2_PAPER}"/>`;
-  return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${paper}${parts.join("")}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${withPaper ? paper : ""}${parts.join("")}</svg>`;
 }

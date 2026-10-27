@@ -15,12 +15,12 @@ import { GUST, gustSpanMs } from "./motion";
  * height, kept to the sky above the soil (the soil's top sits at about 0.45 of the view on the demo garden). */
 export const WIND = {
   spanMs: 3200,
-  maxOpacity: 0.75,
+  maxOpacity: 0.9,   // 10-27 (his note on the Garden2 clip: "a bit subtle"): 0.75 -> 0.9, and a touch larger
   minCurls: 2, maxCurls: 3,
   delayMs: [0, 650] as const,     // when a curl lands after the gust starts (the first one always within the first 250 ms)
   lifeMs: [2100, 2700] as const,  // how long it is on screen
   top: [0.04, 0.34] as const,     // its top edge, as a fraction of the view's height
-  scale: [0.9, 1.3] as const,     // dp per painted 1x unit (the curls are 54 to 77 units long)
+  scale: [1.05, 1.5] as const,     // dp per painted 1x unit (the curls are 54 to 77 units long)
   startX: [-0.12, 0.08] as const, // its left edge at landing, as a fraction of the garden's width
   travel: [0.55, 0.85] as const,  // how far it drifts, as a fraction of the garden's width
   lift: [-10, 4] as const,        // dp it rises (negative) or sinks over its life
@@ -59,7 +59,7 @@ export function curlCount(seed: number): number {
 /** Slot `i` (0, 1 or 2) of gust `seed`. The slots are spread so the curls never stack: each takes its own band of the sky (a third of
  * the height range, jittered inside it, the band order shuffled per gust), lands one after another (slot 0 within 250 ms of the gust's
  * start, the others later), and paints a different curl. Every curl is gone by `WIND.spanMs`. */
-export function curlPlan(seed: number, i: number): Curl {
+export function curlPlan(seed: number, i: number, focus: readonly number[] = []): Curl {
   "worklet";
   const r = (k: number) => rand(seed, 1 + i * 8 + k);
   const n = curlCount(seed);
@@ -68,6 +68,26 @@ export function curlPlan(seed: number, i: number): Curl {
   const top = lerp(WIND.top, (band + 0.15 + 0.7 * r(0)) / 3);
   const delay = i === 0 ? 250 * r(1) : lerp(WIND.delayMs, (i - 1 + r(1)) / 2) + 120;
   const life = Math.min(lerp(WIND.lifeMs, r(2)), WIND.spanMs - delay);
+  // 10-27 (his note: "populate around the plants that are actually swaying at the time, instead of one fixed placement"): `focus`
+  // holds the swaying plants' crowns as [x, top, x, top...] fractions; each curl takes one (in turn) and crosses it, landing a little
+  // before it and drifting a shorter way past it, at its crown's height give or take
+  const k = Math.floor(focus.length / 2);
+  if (k > 0) {
+    const j = (i + Math.floor(rand(seed, 42) * k)) % k;
+    const fx = focus[2 * j], ft = focus[2 * j + 1];
+    return {
+      on: i < n,
+      sprite: (i + Math.floor(rand(seed, 41) * WIND_SPRITE_COUNT)) % WIND_SPRITE_COUNT,
+      delay, life,
+      top: Math.max(0.02, Math.min(0.6, ft + (r(0) - 0.5) * 0.18 + (i - 1) * 0.06)),
+      x0: fx - 0.22 + r(3) * 0.08,
+      travel: 0.3 + r(4) * 0.15,
+      scale: lerp(WIND.scale, r(5)),
+      lift: lerp(WIND.lift, r(6)),
+      phase: r(7),
+      peak: WIND.maxOpacity * (0.75 + 0.25 * r(8)),
+    };
+  }
   return {
     on: i < n,
     sprite: (i + Math.floor(rand(seed, 41) * WIND_SPRITE_COUNT)) % WIND_SPRITE_COUNT,

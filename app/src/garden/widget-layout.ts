@@ -17,11 +17,19 @@ export const LABEL_SIZE = 11;
 export const STATE_SIZE = 12;
 /** The state line shrinks to fit the dense 2x2 ("A bud is ready. Water it." at 150 dp), never under this. */
 export const STATE_MIN = 10;
-/** Each line's box: Roboto's line height is about 1.17 em; a little more so a descender is never clipped. */
-export const lineBox = (size: number) => Math.ceil(size * 1.25);
+/** Each line's box: Roboto's line height is about 1.17 em, and Android's font padding adds more: at 1.25 the "g" of "Waiting" was
+ *  clipped on the Seeker's 2x1 (his note 10-27), so 1.35. */
+export const lineBox = (size: number) => Math.ceil(size * 1.35);
 const GAP = 4;
 /** Wide (text left, garden right) from this width to height ratio: 4x2 is about 2.1, 3x2 about 1.5 (stacked), the square 1. */
-export const WIDE_RATIO = 1.8;
+export const WIDE_RATIO = 2;   // 10-27: at 1.8 the Saga's 3x2 (opening 336 x 177, 1.9) took the side column and its garden only the right half
+/**
+ * The slim pill (both styles): one row tall and at least twice as wide. 10-27 (his note "not when resizing into the pill shaped
+ * versions"): a ratio of 3 alone missed the Seeker's 4x1 (372 x 131 dp, 2.84), which drew the stacked layout with a sliver of garden.
+ * The height keeps a 4x2 on a wide grid (430 x 205, 320 x 150: about 2.1) out of it; the 2x1 (about 1.5) keeps its garden.
+ */
+export const SLIM_RATIO = 2, SLIM_MAX_H = 145;
+export const isSlim = (width: number, height: number) => height < SLIM_MAX_H && width / Math.max(1, height) >= SLIM_RATIO;
 const COL_GAP = 10;
 
 /**
@@ -79,3 +87,14 @@ export function widgetLayout(width: number, height: number, big: string, label: 
   const garden: Box = { x: P, y: gy, w: innerW, h: Math.max(1, state.y - GAP - gy) };
   return { mode: "stacked", pad: P, bigSize, stateSize, stateLines, header, garden, state };
 }
+
+/** The smallest widget, both styles: words and the gauge, no art (10-27: the Seeker's smallest widget, which he calls the 1x1, is
+ *  180 x 131 dp; a launcher with narrower cells gives less, and a one-cell widget can come with no size at all). */
+export const isSmallest = (width: number, height: number) => width < 200 && height < 145;
+/** One cell on the Seeker's grid (its 2-column widget is 180 x 131 dp), for a widget the launcher gave no size. */
+export const ONE_CELL = { w: 84, h: 120 } as const;
+/** 10-27: a one-cell widget arrives with no size (0 x 0: Android leaves its size options unset); it is drawn as one cell. */
+export const sizeOrOneCell = (info: { width: number; height: number }) => ({
+  width: info.width > 0 ? info.width : ONE_CELL.w,
+  height: info.height > 0 ? info.height : ONE_CELL.h,
+});

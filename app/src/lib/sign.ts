@@ -29,6 +29,9 @@ export const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
 export const SUBSCRIPTIONS_PROGRAM = 'De1egAFMkMWZSN5rYXRj9CAdheBamobVNubTsi9avR44'
 export const ATA_PROGRAM = 'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL'
 const TOKEN_PROGRAM = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA'
+/** SPL Token Approve, and the allowance the subscription init grants (the most a u64 holds); the re-link's reapprove repeats both. */
+const TOKEN_APPROVE = 4
+const APPROVE_ALL = 18_446_744_073_709_551_615n
 const SYSTEM_PROGRAM = '11111111111111111111111111111111'
 
 /** Contracts 1.4 and 6: the lending venues' accounts, copied (never fetched; the app never takes an address from the API). Venue program
@@ -291,11 +294,12 @@ function movePart(ixs: Ix[], part: MovePart, redeem: Step[], deposit: Step[]): v
 }
 
 /**
- * An approval (link, relink): [create the USDC account], [revoke an old delegation], [init the authority], create the delegation: exactly
+ * An approval (link, relink): [create the USDC account], [revoke an old delegation], [init the authority | reapprove], create the delegation: exactly
  * one create, from this wallet, to one of `delegatees`, at $5 a day with no expiry; at most `maxRevokes` revokes. A fixed delegation or a
  * transfer (other discriminators) is refused. Order (both API builders): the ATA create and the revokes (link/[code] prepends its revoke,
  * contracts 5.5 puts it after the ATA create) before the init, the init before the create, the create last; at most one ATA create and
- * one init. A revoke may not name the delegation being created.
+ * one init. A revoke may not name the delegation being created. A re-link on an existing authority whose USDC delegate was removed may
+ * carry one token Approve of the full allowance to that authority before the create (10-27, the API's reapprove), never with an init.
  */
 async function checkApproval(ixs: Ix[], user: string, d: Awaited<ReturnType<typeof derived>>, delegatees: readonly string[], maxRevokes: number): Promise<void> {
   let creates = 0
@@ -303,10 +307,21 @@ async function checkApproval(ixs: Ix[], user: string, d: Awaited<ReturnType<type
   let atas = 0
   let inits = 0
   const revoked: string[] = []
-  // Only the two programs the builders use (no ComputeBudget, contracts 6 AMEND s20); a foreign one is 'program' wherever it sits.
-  if (ixs.some((ix) => ix.program !== ATA_PROGRAM && ix.program !== SUBSCRIPTIONS_PROGRAM)) refuse('program')
+  let reapproves = 0
+  // Only the programs the builders use (no ComputeBudget, contracts 6 AMEND s20); a foreign one is 'program' wherever it sits. The Token
+  // program only for the re-link's one Approve (10-27, Kimi's 0.1.5 audit: the API's reapprove, api/src/lib/subscriptions.ts, was
+  // refused here, so a wallet whose USDC approval was removed in its wallet could never link again from this phone).
+  if (ixs.some((ix) => ix.program !== ATA_PROGRAM && ix.program !== SUBSCRIPTIONS_PROGRAM && ix.program !== TOKEN_PROGRAM)) refuse('program')
   for (const ix of ixs) {
     if (creates > 0) refuse('plan') // the create is the last instruction
+    if (ix.program === TOKEN_PROGRAM) {
+      // exactly the confirm route's allow-list (api/src/app/api/link/confirm/route.ts): SPL Approve (4) of the full allowance, from this
+      // wallet's USDC account to its own USDC subscription authority, signed by the wallet; once, on an authority that exists (no init)
+      if (ix.data.length !== 9 || ix.data[0] !== TOKEN_APPROVE || u64At(ix.data, 1) !== APPROVE_ALL) refuse('plan')
+      accountsAre(ix, [d.usdcAta, d.authority, user])
+      if (++reapproves > 1 || inits > 0) refuse('plan')
+      continue
+    }
     if (ix.program === ATA_PROGRAM) {
       if (ix.data.length !== 1 || ix.data[0] !== ATA_CREATE_IDEMPOTENT) refuse('plan')
       accountsAre(ix, [user, d.usdcAta, user, USDC_MINT, SYSTEM_PROGRAM, TOKEN_PROGRAM])
@@ -338,7 +353,7 @@ async function checkApproval(ixs: Ix[], user: string, d: Awaited<ReturnType<type
     if (revoked.includes(delegation)) refuse('plan')
     creates++
   }
-  if (creates !== 1) refuse('plan')
+  if (creates !== 1 || (reapproves > 0 && inits > 0)) refuse('plan')
 }
 
 /** The SOL top-up's programs (api/src/lib/topup.ts), copied. */

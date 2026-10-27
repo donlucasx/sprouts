@@ -14,7 +14,7 @@ const SLOTS = [0, 1, 2] as const;   // WIND.maxCurls slots; a gust with two curl
  * The clock: whenever the garden's `gust` clock restarts (isGustStart: it only falls at a new gust), the wind clock restarts at 0 and
  * runs linearly to WIND.spanMs, and the gust count steps, which reseeds every curl (curlPlan). All on the UI thread: no re-render
  * per gust. Under reduced motion the layer is not drawn at all (and the gust clock never runs, motion.ts). */
-export function Wind({ gust, width, viewH, reduced }: { gust: SharedValue<number>; width: number; viewH: SharedValue<number>; reduced: boolean }) {
+export function Wind({ gust, width, viewH, reduced, focus }: { gust: SharedValue<number>; width: number; viewH: SharedValue<number>; reduced: boolean; focus?: SharedValue<number[]> }) {
   const clock = useSharedValue(WIND_IDLE);
   const seed = useSharedValue(0);
   useAnimatedReaction(() => gust.value, (cur, prev) => {
@@ -27,37 +27,59 @@ export function Wind({ gust, width, viewH, reduced }: { gust: SharedValue<number
   if (reduced) return null;
   return (
     <Animated.View pointerEvents="none" style={[{ position: "absolute", left: 0, top: 0, width, overflow: "hidden" }, box]}>
-      {SLOTS.map((i) => <WindCurl key={i} slot={i} clock={clock} seed={seed} width={width} viewH={viewH} />)}
+      {SLOTS.map((i) => <WindCurl key={i} slot={i} clock={clock} seed={seed} width={width} viewH={viewH} focus={focus} />)}
     </Animated.View>
   );
 }
 
 /** One slot: all three painted curls stacked, only this gust's pick visible (an image's source cannot change on the UI thread, so
  * the pick is an opacity per sprite); the slot's position, stretch and fade come from curlAt on every frame. */
-function WindCurl({ slot, clock, seed, width, viewH }: { slot: number; clock: SharedValue<number>; seed: SharedValue<number>; width: number; viewH: SharedValue<number> }) {
+function WindCurl({ slot, clock, seed, width, viewH, focus }: { slot: number; clock: SharedValue<number>; seed: SharedValue<number>; width: number; viewH: SharedValue<number>; focus?: SharedValue<number[]> }) {
   return (
     <>
-      {WIND_NAMES.map((name, s) => <CurlImage key={name} name={name} sprite={s} slot={slot} clock={clock} seed={seed} width={width} viewH={viewH} />)}
+      {WIND_NAMES.map((name, s) => <CurlImage key={name} name={name} sprite={s} slot={slot} clock={clock} seed={seed} width={width} viewH={viewH} focus={focus} />)}
     </>
   );
 }
 
-function CurlImage({ name, sprite, slot, clock, seed, width, viewH }: { name: (typeof WIND_NAMES)[number]; sprite: number; slot: number; clock: SharedValue<number>; seed: SharedValue<number>; width: number; viewH: SharedValue<number> }) {
+/** smoothstep, on the UI thread (a top-level worklet: an arrow inside the style callback was hoisted out of it and threw, 10-27) */
+function sm(v: number) {
+  "worklet";
+  return v * v * (3 - 2 * v);
+}
+
+function CurlImage({ name, sprite, slot, clock, seed, width, viewH, focus }: { name: (typeof WIND_NAMES)[number]; sprite: number; slot: number; clock: SharedValue<number>; seed: SharedValue<number>; width: number; viewH: SharedValue<number>; focus?: SharedValue<number[]> }) {
   const m = WIND_SPRITES[name];
-  const style = useAnimatedStyle(() => {
-    const c = curlPlan(seed.value, slot);
+  // 10-27 (his question: "should the wind gusts actually curl on themselves/animate subtly as they happen?"): each curl is a stroke
+  // the wind writes and wipes: it draws itself in left to right as it lands (its head), its tail dissolves as it leaves, and it rocks
+  // a few degrees as it drifts. A window over the painted curl (`win`) does the drawing; the image inside slides against it.
+  const win = useAnimatedStyle(() => {
+    const c = curlPlan(seed.value, slot, focus ? focus.value : []);
     const f = curlAt(c, clock.value, false);
+    const u = Math.max(0, Math.min(1, (clock.value - c.delay) / c.life));
+    const head = m.w * sm(Math.min(1, u / 0.4)), tail = m.w * sm(Math.max(0, (u - 0.6) / 0.4));
     const shown = c.sprite === sprite ? f.opacity : 0;
     return {
       opacity: shown,
-      // the image is laid out at 1x units; scale about its left-centre so `x` stays the curl's left edge as it stretches
+      width: Math.max(0, head - tail),
       transform: [
-        { translateX: f.x * width - (m.w * (1 - c.scale * f.stretch)) / 2 },
-        { translateY: c.top * viewH.value + f.dy - (m.h * (1 - c.scale)) / 2 },
+        // the origin is the window's left-centre (transformOrigin), so `x` is the curl's left edge as before, moved on by its dissolved tail
+        { translateX: f.x * width + tail * c.scale * f.stretch },
+        { translateY: c.top * viewH.value + f.dy },
+        { rotate: `${3.5 * Math.sin(2 * Math.PI * (u + c.phase))}deg` },
         { scaleX: c.scale * f.stretch },
         { scaleY: c.scale },
       ],
     };
   });
-  return <Animated.Image source={m.src} style={[{ position: "absolute", left: 0, top: 0, width: m.w, height: m.h }, style]} />;
+  const img = useAnimatedStyle(() => {
+    const c = curlPlan(seed.value, slot, focus ? focus.value : []);
+    const u = Math.max(0, Math.min(1, (clock.value - c.delay) / c.life));
+    return { transform: [{ translateX: -m.w * sm(Math.max(0, (u - 0.6) / 0.4)) }] };
+  });
+  return (
+    <Animated.View style={[{ position: "absolute", left: 0, top: 0, height: m.h, overflow: "hidden", transformOrigin: [0, m.h / 2, 0] }, win]}>
+      <Animated.Image source={m.src} style={[{ width: m.w, height: m.h }, img]} />
+    </Animated.View>
+  );
 }

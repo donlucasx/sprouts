@@ -37,6 +37,11 @@ export type Palette = {
   attention: string
   /** A desaturated brick: error (the manual leaves the value to the UI pass). */
   error: string
+  /** 10-27 (his note: the no-USDC line "does not read like an error now... stand out a bit more (not on red though)"): a warm amber
+   *  for a notice that blocks plantings, its title and icon; not in the manual yet. */
+  warning: string
+  /** The amber notice's fill. */
+  warningSurface: string
   /** Hairlines and the off state of a switch track (derived). */
   hairline: string
   /** A disabled control's fill (derived). */
@@ -62,6 +67,8 @@ export const palette: { light: Palette; dark: Palette } = {
     success: '#2E8B57',
     attention: '#7A6248',
     error: '#9E4B3F',
+    warning: '#94570F',
+    warningSurface: '#FBEFD8',
     hairline: '#E6DFD2',
     disabled: '#D9D2C6',
     trackOff: '#D9D2C6',
@@ -81,6 +88,8 @@ export const palette: { light: Palette; dark: Palette } = {
     success: '#A7F0B6',
     attention: '#C9A98A',
     error: '#E8998C',
+    warning: '#F0C27A',
+    warningSurface: '#2C2617',
     hairline: '#243A2E',
     disabled: '#2A3F33',
     trackOff: '#3A5546',

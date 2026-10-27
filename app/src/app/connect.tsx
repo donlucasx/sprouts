@@ -60,7 +60,7 @@ export default function Connect() {
   // is no note: the "before you link" point says it anyway.
   const { data: usdc } = useQuery({
     queryKey: ['me-usdc', session?.pubkey],
-    queryFn: () => api<{ usdcRaw: string | null }>('/api/me/usdc'),
+    queryFn: () => api<{ usdcRaw: string | null; topUpCents?: number[] | null }>('/api/me/usdc'),
     enabled: !!session,
     retry: false,
     staleTime: 30_000,
@@ -108,7 +108,7 @@ export default function Connect() {
 
   return (
     <Screen back title="Link a wallet">
-      <ThemedText>Every swap rounds up. Sprouts plants the change once a day.</ThemedText>
+      <ThemedText>Every swap rounds up. Once a day, Sprouts plants the change using USDC in your wallet. Your USDC stays in your wallet until then.</ThemedText>
       <Card>
         {CAN.map((l) => <Mark key={l} ok text={l} />)}
         {CANT.map((l) => <Mark key={l} ok={false} text={l} />)}
@@ -125,7 +125,7 @@ export default function Connect() {
         ) : null}
         {/* 10-22: the note's own fix, one tap; it stays mounted after a top-up so its confirmation shows once the note has gone */}
         {session && (usdcNote || toppedUp) ? (
-          <TopUpButton user={session.pubkey} cents={TOPUP_DEFAULT_CENTS} done={TOPUP.doneLink} onDone={() => setToppedUp(true)} />
+          <TopUpButton compact user={session.pubkey} cents={TOPUP_DEFAULT_CENTS} done={TOPUP.doneLink} onDone={() => setToppedUp(true)} offers={usdc?.topUpCents ?? null} />
         ) : null}
         <Button title="Approve" loading={approving} onPress={linkThisPhone} />
         {approving ? (

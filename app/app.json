@@ -54,20 +54,33 @@
         }
       ],
       "expo-background-task",
+      "./plugins/widget-min-resize",
       [
         "react-native-android-widget",
         {
           "widgets": [
             {
               "name": "Sprouts",
-              "label": "Sprouts",
+              "label": "Sprouts · Bamboo",
               "minWidth": "110dp",
-              "minHeight": "110dp",
-              "targetCellWidth": 2,
+              "minHeight": "40dp",
+              "targetCellWidth": 3,
               "targetCellHeight": 2,
               "resizeMode": "horizontal|vertical",
-              "description": "Your garden",
-              "previewImage": "./assets/widget-preview.png",
+              "description": "Your garden in a bamboo frame",
+              "previewImage": "./assets/widget-preview-bamboo.png",
+              "updatePeriodMillis": 1800000
+            },
+            {
+              "name": "SproutsEnso",
+              "label": "Sprouts · Ensō",
+              "minWidth": "110dp",
+              "minHeight": "40dp",
+              "targetCellWidth": 3,
+              "targetCellHeight": 2,
+              "resizeMode": "horizontal|vertical",
+              "description": "Your garden in a raked-sand circle",
+              "previewImage": "./assets/widget-preview-enso.png",
               "updatePeriodMillis": 1800000
             }
           ]
@@ -83,7 +96,7 @@
       "favicon": "./assets/images/favicon.png",
       "output": "static"
     },
-    "version": "0.1.4",
+    "version": "0.1.5",
     "extra": {
       "router": {},
       "eas": {
