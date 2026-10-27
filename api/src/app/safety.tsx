@@ -36,7 +36,8 @@ export function Safety({ id, ink = "#2B2622", muted = "#7A746B", leaf = "#1E6B44
           <li>Revoke any time in the app or at <a href="/revoke" style={a}>sprouts.money/revoke</a>.</li>
         </ul>
       </div>
-      <p style={{ fontSize: 13, color: muted, margin: 0 }}>
+      {/* 10-27 (his note): centred */}
+      <p style={{ fontSize: 13, color: muted, margin: 0, textAlign: "center" }}>
         <a href="https://github.com/donlucasx/sprouts" style={a}>Open source</a> and{" "}
         <a href={`https://verify.osec.io/status/${PROGRAM}`} style={a}>verified by OtterSec</a>.
       </p>
