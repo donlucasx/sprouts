@@ -22,6 +22,13 @@ export const lineBox = (size: number) => Math.ceil(size * 1.25);
 const GAP = 4;
 /** Wide (text left, garden right) from this width to height ratio: 4x2 is about 2.1, 3x2 about 1.5 (stacked), the square 1. */
 export const WIDE_RATIO = 1.8;
+/**
+ * The slim pill (both styles): one row tall and at least twice as wide. 10-27 (his note "not when resizing into the pill shaped
+ * versions"): a ratio of 3 alone missed the Seeker's 4x1 (372 x 131 dp, 2.84), which drew the stacked layout with a sliver of garden.
+ * The height keeps a 4x2 on a wide grid (430 x 205, 320 x 150: about 2.1) out of it; the 2x1 (about 1.5) keeps its garden.
+ */
+export const SLIM_RATIO = 2, SLIM_MAX_H = 145;
+export const isSlim = (width: number, height: number) => height < SLIM_MAX_H && width / Math.max(1, height) >= SLIM_RATIO;
 const COL_GAP = 10;
 
 /**

@@ -10,7 +10,7 @@ import { toGardenInput, type ZeroMarks } from "@/lib/garden-input";
 import { gardenTotals, valueBlock } from "@/lib/me-state";
 import { formatUsd } from "@/lib/format";
 import { widgetHeadline, widgetStateLine, type WidgetState } from "@/lib/widget-state";
-import { BAR_GAP, BAR_H, G2_BIG, G2_BIG_MIN, LABEL_SIZE, lineBox, padFor, STATE_MIN, textWidth, widgetLayout, type Box } from "./widget-layout";
+import { BAR_GAP, BAR_H, G2_BIG, G2_BIG_MIN, LABEL_SIZE, lineBox, isSlim, padFor, STATE_MIN, textWidth, widgetLayout, type Box } from "./widget-layout";
 import type { PlantId, Scene } from "@/model/garden";
 
 /** Brand colours (manual 4, light: the widget draws on paper whatever the phone's theme; Garden2's paper sits inside its bamboo frame). */
@@ -43,7 +43,7 @@ export function SproutsWidget({ me, width, height, wateredPlants = null, restart
   // the frame itself, FRAME_INSET in from the widget's edges, the wallpaper showing around it
   // 10-26 draft (his ruling 10-23: the 4x1 "slimmer like the pill"; 10-26: no garden art in it): a widget at least 3x as wide as it is
   // tall draws a slim frame, words and the bar only, centred in its row
-  const slim = GARDEN2 && width / Math.max(1, height) >= 3;
+  const slim = GARDEN2 && isSlim(width, height);
   const inset = frameInset(width), FW = Math.max(1, width - 2 * inset), FH = Math.max(1, slim ? Math.min(H - 2 * inset, 64) : H - 2 * inset);
   const padTop = slim ? Math.max(inset, (H - FH) / 2) : inset;
   const inner = GARDEN2 ? frameInner(FW, FH) : null;
