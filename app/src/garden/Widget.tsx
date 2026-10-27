@@ -49,8 +49,8 @@ export function SproutsWidget({ me, width, height, wateredPlants = null, restart
   const H = GARDEN2 ? Math.max(1, height - BOTTOM_SAFE) : height;
   // Garden2 (his ask 10-10): a bamboo frame (widgetFrame) holds the paper, the content laid out in the frame's opening (frameInner)
   // the frame itself, FRAME_INSET in from the widget's edges, the wallpaper showing around it
-  // 10-26 draft (his ruling 10-23: the 4x1 "slimmer like the pill"; 10-26: no garden art in it): a widget at least 3x as wide as it is
-  // tall draws a slim frame, words and the bar only, centred in its row
+  // his rulings 10-23 (the 4x1 "slimmer like the pill"), 10-26 (no garden art in it) and 10-27 (isSlim: one row tall, at least twice as
+  // wide): a slim frame, words and the bar only, centred in its row
   const slim = GARDEN2 && isSlim(width, height);
   const inset = frameInset(width), FW = Math.max(1, width - 2 * inset), FH = Math.max(1, slim ? Math.min(H - 2 * inset, SLIM_FRAME_H) : H - 2 * inset);
   const padTop = slim ? Math.max(inset, (H - FH) / 2) : inset;

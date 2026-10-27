@@ -44,7 +44,7 @@ export const choiceFor = (cents: number, offers: readonly number[] = TOPUP_CHOIC
  */
 export function topUpCentsFor(pause: WalletPause | null | undefined): number {
   if (pause?.reason !== 'no_usdc') return TOPUP_DEFAULT_CENTS
-  const dollars = Math.max(1, Math.ceil(Math.max(pause.needCents ?? 0, pause.resumeAtCents) / 100))
+  const dollars = Math.max(1, Math.ceil(Math.max(pause.needCents ?? 0, pause.resumeAtCents ?? 0) / 100))   // ?? 0: an older cached read (Kimi 10-27)
   return Math.min(TOPUP_MAX_CENTS, Math.max(TOPUP_DEFAULT_CENTS, dollars * 100))
 }
 

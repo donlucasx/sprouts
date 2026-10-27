@@ -16,8 +16,10 @@ module.exports = function withWidgetMinResize(config) {
       const file = path.join(dir, `widgetprovider_${name}.xml`);
       if (!fs.existsSync(file)) throw new Error(`widget-min-resize: ${file} missing (the widget plugin must run first)`);
       let xml = fs.readFileSync(file, "utf8").replace(/\s*android:minResize(Width|Height)="[^"]*"/g, "");
-      xml = xml.replace("<appwidget-provider", "<appwidget-provider").replace(/(android:minHeight="[^"]*")/, `$1\n    android:minResizeWidth="${MIN_RESIZE_WIDTH}"\n    android:minResizeHeight="${MIN_RESIZE_HEIGHT}"`);
-      fs.writeFileSync(file, xml);
+      const out = xml.replace(/(android:minHeight="[^"]*")/, `$1\n    android:minResizeWidth="${MIN_RESIZE_WIDTH}"\n    android:minResizeHeight="${MIN_RESIZE_HEIGHT}"`);
+      // the widget plugin's XML shape changed (no minHeight to anchor on): fail the build rather than silently drop the setting (Kimi 10-27)
+      if (out === xml) throw new Error(`widget-min-resize: no android:minHeight in ${file} to anchor on`);
+      fs.writeFileSync(file, out);
     }
     return c;
   }]);
