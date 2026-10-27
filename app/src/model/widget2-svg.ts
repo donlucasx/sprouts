@@ -62,7 +62,11 @@ export function widget2View(stages: Stages, width: number, height: number, gb: B
     return { x: Math.max(0, Math.min(CANVAS.w - w, cxT - (gb.x + gb.w / 2) / s)), y: tree.y0 - th * ENSO_PAD - gb.y / s, w, h, s };
   }
   const top = plantedTop(stages), span = plantedSpan(stages);
-  const s = gb.h / Math.max(1, PLATE_FOOT - top);
+  // stacked (the box spans the opening): at least as wide as the opening; the 3x2 at height-fill was narrower than the plate's opening
+  // and sat to the left with paper beside it (10-27); the extra height falls below the box, into the plate's foot that fades out behind
+  // the bottom line. The wide layout (the total in a column at the left, the box beside it) keeps the paper, so no plant reaches the words.
+  const stacked = gb.x < width * 0.15;
+  const s = Math.max(gb.h / Math.max(1, PLATE_FOOT - top), stacked ? width / CANVAS.w : 0);
   const w = width / s, h = height / s;
   const y = top - (gb.y + Math.max(0, (gb.h - (PLATE_FOOT - top) * s) / 2)) / s;
   // across: centred on what is planted when it all fits, else on the SKR tree (the crop keeps the tree in view)

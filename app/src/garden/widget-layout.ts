@@ -87,3 +87,11 @@ export function widgetLayout(width: number, height: number, big: string, label: 
   const garden: Box = { x: P, y: gy, w: innerW, h: Math.max(1, state.y - GAP - gy) };
   return { mode: "stacked", pad: P, bigSize, stateSize, stateLines, header, garden, state };
 }
+
+/** One cell on the Seeker's grid (its 2-column widget is 180 x 131 dp), for a widget the launcher gave no size. */
+export const ONE_CELL = { w: 84, h: 120 } as const;
+/** 10-27: a one-cell widget arrives with no size (0 x 0: Android leaves its size options unset); it is drawn as one cell. */
+export const sizeOrOneCell = (info: { width: number; height: number }) => ({
+  width: info.width > 0 ? info.width : ONE_CELL.w,
+  height: info.height > 0 ? info.height : ONE_CELL.h,
+});
