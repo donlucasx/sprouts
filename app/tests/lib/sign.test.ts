@@ -73,6 +73,26 @@ describe('makeSigner (security R207 #3: the app checks what the Seed Vault signs
     it('link: a wallet with no USDC account (ATA create first) re-linking over a live delegation (revoke first)', async () =>
       signed(wire(await linkIxs({ createAta: true, revokeOld: true })), link))
     it('link: a re-link on an existing authority (the create alone)', async () => signed(wire(await linkIxs({ existingInitId: 9n })), link))
+    // 10-27 (Kimi's 0.1.5 audit): the wallet removed its USDC approval; the API's re-link puts it back with one Approve
+    it('link: a re-link that restores the USDC approval (the API\'s reapprove: Approve, then the create)', async () =>
+      signed(wire(await linkIxs({ existingInitId: 9n, reapprove: true })), link))
+    it('link with the reapprove twice', async () => {
+      const ixs = await linkIxs({ existingInitId: 9n, reapprove: true })
+      await refused(wire([ixs[0], ...ixs]), link, 'plan')
+    })
+    it('link with the Approve to another delegate', async () => {
+      const ixs = await linkIxs({ existingInitId: 9n, reapprove: true })
+      await refused(wire([{ ...ixs[0], accounts: [ixs[0].accounts![0], { ...ixs[0].accounts![1], address: ATTACKER }, ixs[0].accounts![2]] }, ixs[1]]), link, 'plan')
+    })
+    it('link with an Approve of less than the full allowance', async () => {
+      const ixs = await linkIxs({ existingInitId: 9n, reapprove: true })
+      const data = new Uint8Array(ixs[0].data!); data[1] = 0
+      await refused(wire([{ ...ixs[0], data }, ixs[1]]), link, 'plan')
+    })
+    it('link with an Approve beside a fresh init', async () => {
+      const re = await linkIxs({ existingInitId: 9n, reapprove: true }), fresh = await linkIxs()
+      await refused(wire([re[0], ...fresh]), link, 'plan')
+    })
     it('revoke: the delegation then the authority', async () => signed(wire(await revokeIxs()), revoke))
   })
 
@@ -104,8 +124,8 @@ describe('makeSigner (security R207 #3: the app checks what the Seed Vault signs
     it('put it back on another position', async () => refused(wire([await cancelIx(USER, OTHER)]), cancel, 'plan'))
     it('put it back with a System transfer added', async () => refused(wire([await cancelIx(), drain]), cancel, 'program'))
     it('link with a System transfer added', async () => refused(wire([...(await linkIxs()), drain]), link, 'program'))
-    it('link calling the Token program directly', async () =>
-      refused(wire([...(await linkIxs()), { programAddress: TOKEN, accounts: [{ address: USER, role: AccountRole.WRITABLE_SIGNER }], data: new Uint8Array([4]) }]), link, 'program'))
+    it('link calling the Token program directly (anything but the one reapprove)', async () =>
+      refused(wire([{ programAddress: TOKEN, accounts: [{ address: USER, role: AccountRole.WRITABLE_SIGNER }], data: new Uint8Array([4]) }, ...(await linkIxs({ existingInitId: 9n }))]), link, 'plan'))
     it('link at more than $5 a day', async () => refused(wire(await linkIxs({ capRaw: 500_000_000n })), link, 'plan'))
     it('link with a period other than a day', async () => refused(wire(await linkWith((d) => setU64(d, 17, 1n))), link, 'plan'))
     it('link with an expiry', async () => refused(wire(await linkWith((d) => setU64(d, 33, 1n))), link, 'plan'))

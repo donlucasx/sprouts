@@ -78,21 +78,50 @@ export function pauseState(wallets: { status: string }[]): { shown: boolean; on:
   }
 }
 
+
+/** What this phone's own wallet is called in the USDC notice: Home's line under the title says "Held in your Seed Vault wallet". */
+export const PHONE_WALLET = 'Seed Vault wallet'
+
 /**
- * Home's line for each wallet the daily run paused for want of USDC (10-22). The run starts it again on its own at its next daily
- * check once the wallet holds threshold + network fee (api plant-run.ts resumePausedWallets); the amount named is the larger of
- * that and what the run wanted to pull (`needCents`), rounded up to whole dollars, so holding it both restarts the wallet and covers
- * the waiting round-ups. A wallet the user paused, or one an older API gives no reason for, gets no line here.
+ * Home's amber USDC notice (10-27, his notes: the line must "stand out"; then "it should be one message that adapts... 'xxxx wallet has
+ * no usdc' or 'xxxx wallet has low usdc'... name each wallet... Simplify"). Every wallet short of USDC by name (this phone's is the
+ * Seed Vault wallet, others by address): one wallet is a title and one line; several, a title and a line each. `phone` is this phone's
+ * wallet's own read (its balance, and whether lowUsdcLine calls it low); the top-up shows when the Seed Vault wallet is one of them.
  */
-export function noUsdcPauseLines(wallets: MeResponse['wallets']): string[] {
-  const linked = wallets.filter((w) => w.status !== 'revoked')
-  return linked.flatMap((w) => {
-    const p = w.status === 'paused' ? w.pause : null
-    if (p?.reason !== 'no_usdc') return []
-    const dollars = Math.max(1, Math.ceil(Math.max(p.needCents ?? 0, p.resumeAtCents) / 100))
-    const who = linked.length > 1 ? `wallet ${w.pubkey.slice(0, 4)}...${w.pubkey.slice(-4)}` : 'your wallet'
-    return [`Paused: ${who} doesn't have enough USDC. Once it holds at least $${dollars} of USDC, Sprouts starts again on its own at the next daily planting.`]
-  })
+export function usdcNotice(me: Pick<MeResponse, 'wallets' | 'user'>, phone: { usdcCents: number | null; low: boolean }): { title: string; lines: string[]; topUp: boolean } | null {
+  type Entry = { name: string; mine: boolean; state: 'paused' | 'zero' | 'low'; cents: number }
+  const short = (k: string) => `${k.slice(0, 4)}...${k.slice(-4)}`
+  const entries: Entry[] = []
+  for (const w of me.wallets) {
+    if (w.status !== 'paused' || w.pause?.reason !== 'no_usdc') continue
+    const need = Math.max(1, Math.ceil(Math.max(w.pause.needCents ?? 0, w.pause.resumeAtCents ?? 0) / 100)) * 100   // ?? 0: an older cached read never says $NaN (Kimi 10-27)
+    const mine = w.pubkey === me.user.pubkey
+    entries.push({ name: mine ? PHONE_WALLET : short(w.pubkey), mine, state: 'paused', cents: need })
+  }
+  if (!entries.some((e) => e.mine) && phone.usdcCents !== null && (phone.usdcCents <= 0 || phone.low))
+    entries.unshift({ name: PHONE_WALLET, mine: true, state: phone.usdcCents <= 0 ? 'zero' : 'low', cents: phone.usdcCents })
+  entries.sort((x, y) => Number(y.mine) - Number(x.mine))
+  if (!entries.length) return null
+  const usd = (c: number) => `$${(c / 100).toFixed(c % 100 ? 2 : 0)}`
+  const topUp = entries.some((e) => e.mine)
+  // the name alone: 'Your Seed Vault wallet has no USDC' wrapped to two lines on the Saga (10-27)
+  const the = (e: Entry) => e.name
+  // 10-27 (his note: say "WHY sprouts needs USDC on such wallets... brief and simple"): the why leads every line, in the words of the
+  // approved intro ("Sprouts plants the change with USDC from your wallet")
+  const WHY = 'Sprouts plants your round-ups with USDC from this wallet.'
+  if (entries.length === 1) {
+    const [e] = entries
+    // 10-27 (his question: can "your round-ups are still counted" fit, simply?): "they wait" says nothing is lost, in two words
+    if (e.state === 'zero') return { title: `${the(e)} has no USDC`, lines: [`${WHY} Until you add some, they wait.`], topUp }
+    if (e.state === 'low') return { title: `${the(e)} is low on USDC`, lines: [`${WHY} ${usd(e.cents)} left, so add more before plantings pause.`], topUp }
+    return { title: `${the(e)} needs USDC`, lines: [`${WHY} They wait until it has ${usd(e.cents)}.`], topUp }
+  }
+  const brief = (e: Entry) => (e.state === 'zero' ? 'no USDC' : e.state === 'low' ? `${usd(e.cents)} left` : `needs ${usd(e.cents)}`)
+  return {
+    title: `${entries.length} wallets need USDC`,
+    lines: ['Sprouts plants your round-ups with USDC from each wallet.', ...entries.map((e) => `${e.name}: ${brief(e)}`), 'Your round-ups wait until they have it.'],
+    topUp,
+  }
 }
 
 /** Whether every paused wallet was paused by the run for want of USDC: then Home's lines above say it all and the Rules chip (the

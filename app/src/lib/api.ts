@@ -138,4 +138,6 @@ export type ActivityResponse = {
   lendWithdrawals?: { ts: string; asset: LendAsset; venue: AutoVenue; receiptRaw: string; underlyingRaw?: string | null; signature: string; whole?: boolean }[];
   moves?: { ts: string; asset: LendAsset; from: AutoVenue; to: AutoVenue; receiptRaw: string; status: MoveStatus }[];
   found?: FoundVenue[];
+  /** 10-27: the Add USDC top-ups that landed (usdcRaw: USDC base units, exactly what arrived); absent from an older API. */
+  topUps?: { ts: string; signature: string; usdcRaw: string }[];
 };

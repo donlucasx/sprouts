@@ -77,8 +77,8 @@ describe("noticesFor (R161)", () => {
     const active = at([{ pubkey: PHONE, status: "active" }, { pubkey: WEB, status: "active" }]);
     const paused = at([{ pubkey: PHONE, status: "paused", pause: noUsdc }, { pubkey: WEB, status: "paused", pause: noUsdc }]);
     expect(noticesFor(active, paused, all)).toEqual([
-      { kind: "paused", title: "Paused: add USDC", body: "Your wallet doesn't have enough USDC for round-ups. Open Sprouts to top up from SOL." },
-      { kind: "paused", title: "Paused: add USDC", body: "Wallet 7xKX...gAsU doesn't have enough USDC for round-ups. Add USDC there to start again." },
+      { kind: "paused", title: "Seed Vault wallet needs USDC", body: "Plantings are paused and your round-ups wait. Open Sprouts to add USDC." },
+      { kind: "paused", title: "7xKX...gAsU needs USDC", body: "Plantings from it are paused and your round-ups wait. Add USDC to 7xKX...gAsU to start again." },
     ]);
     // the next poll, still paused: nothing; the user's own pause: nothing; its switch off: nothing
     expect(noticesFor(paused, paused, all)).toEqual([]);
@@ -86,6 +86,24 @@ describe("noticesFor (R161)", () => {
     expect(noticesFor(active, paused, (k) => k !== "paused")).toEqual([]);
     // paused again after it had started again: a new pause, a new notice
     expect(titles(paused, active)).toEqual([]);
-    expect(titles(active, at([{ pubkey: PHONE, status: "paused", pause: noUsdc }]))).toEqual(["Paused: add USDC"]);
+    expect(titles(active, at([{ pubkey: PHONE, status: "paused", pause: noUsdc }]))).toEqual(["Seed Vault wallet needs USDC"]);
+  });
+});
+
+// 10-27: this phone's wallet running low on USDC, from the background task, once per low spell
+describe("lowUsdcNotice", async () => {
+  const { lowUsdcNotice } = await import("@/lib/notices");
+  it("says so once when the wallet drops under a week of round-ups, again only after it recovered", () => {
+    const first = lowUsdcNotice(120, 35, false, false);
+    expect(first).toEqual({ notice: { kind: "paused", title: "Seed Vault wallet is low on USDC", body: "$1.20 left. Open Sprouts to add more before plantings pause." }, low: true });
+    expect(lowUsdcNotice(110, 35, true, false)).toEqual({ notice: null, low: true });
+    expect(lowUsdcNotice(900, 35, true, false)).toEqual({ notice: null, low: false });
+    expect(lowUsdcNotice(120, 35, false, false).notice).not.toBeNull();
+  });
+  it("an empty wallet says so even with no pace yet; a paused wallet is the paused notice's; an unread balance changes nothing", () => {
+    expect(lowUsdcNotice(0, null, false, false).notice?.title).toBe("Seed Vault wallet has no USDC");
+    expect(lowUsdcNotice(0, null, false, true)).toEqual({ notice: null, low: true });
+    expect(lowUsdcNotice(null, 35, true, false)).toEqual({ notice: null, low: true });
+    expect(lowUsdcNotice(500, null, false, false)).toEqual({ notice: null, low: false });
   });
 });

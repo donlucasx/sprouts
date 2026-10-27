@@ -9,12 +9,21 @@ import { DROPPED_NOTHING_SENT } from './wallet-errors'
  * Only this phone's wallet: another linked wallet's key is not on this phone. Build-written copy, every line below (his ruling owed).
  */
 export const TOPUP = {
-  button: (cents: number) => `Top up $${Math.round(cents / 100)} of USDC from SOL`,
-  how: 'Swaps SOL for USDC in this wallet through Jupiter. No Sprouts fee.',
+  // 10-26 copy review rows 8-9 (his: make clear the USDC goes to the user's own wallet, not to Sprouts)
+  // 10-27 (his ruling: "We dont want to tell the user 'you need sol' so 'you can buy usdc'... Should be a simpler solution"): one
+  // "Add USDC" button; the SOL swap stays behind it, named once in a quiet line; a wallet whose SOL covers nothing gets its address
+  open: 'Add USDC',
+  button: (cents: number) => `Add $${Math.round(cents / 100)} of USDC`,
+  // 10-27 (his note on the Saga: "should state somewhere that you are swapping existing sol from your wallet into USDC")
+  how: (cents: number, covers: string | null) =>
+    `Swaps SOL already in this wallet for $${Math.round(cents / 100)} of USDC${covers ? `, ${covers.charAt(0).toLowerCase()}${covers.slice(1)}` : ''}. No Sprouts fee.`,
+  sendHere: 'Send USDC to this address from any wallet or exchange. Plantings start again once it arrives.',
+  copy: 'Copy address',
+  copied: 'Copied',
   waiting: 'Waiting for your wallet.',
   checking: 'Approved. Checking the chain.',
-  done: (cents: number) => `Added $${(cents / 100).toFixed(2)} of USDC. Sprouts plants at the next run.`,
-  doneLink: (cents: number) => `Added $${(cents / 100).toFixed(2)} of USDC.`,
+  done: (cents: number) => `Your wallet now has $${(cents / 100).toFixed(2)} more USDC. Sprouts plants again at the next daily planting.`,
+  doneLink: (cents: number) => `Your wallet now has $${(cents / 100).toFixed(2)} more USDC.`,
   /** After the signature went out and no final answer came back: never "nothing moved". */
   sent: 'Your top-up was sent but is not confirmed yet. Check Home in a minute before you try again.',
   /** Before the wallet was asked (the build failed for a reason the API did not word). */
@@ -24,6 +33,10 @@ export const TOPUP = {
 
 export const TOPUP_DEFAULT_CENTS = 500
 export const TOPUP_MAX_CENTS = 2_500
+/** 10-26 (his: "can the top up be dialed?"): the amounts offered; the one that covers the pause is picked first. */
+export const TOPUP_CHOICES = [500, 1_000, 2_500] as const
+/** The smallest choice that covers `cents`, else the largest. */
+export const choiceFor = (cents: number, offers: readonly number[] = TOPUP_CHOICES) => offers.find((c) => c >= cents) ?? offers[offers.length - 1] ?? TOPUP_CHOICES[0]
 
 /**
  * How much the button offers (build-invented, 10-22): $5, or the whole dollars the pause line names when that is more (so one tap both
@@ -31,7 +44,7 @@ export const TOPUP_MAX_CENTS = 2_500
  */
 export function topUpCentsFor(pause: WalletPause | null | undefined): number {
   if (pause?.reason !== 'no_usdc') return TOPUP_DEFAULT_CENTS
-  const dollars = Math.max(1, Math.ceil(Math.max(pause.needCents ?? 0, pause.resumeAtCents) / 100))
+  const dollars = Math.max(1, Math.ceil(Math.max(pause.needCents ?? 0, pause.resumeAtCents ?? 0) / 100))   // ?? 0: an older cached read (Kimi 10-27)
   return Math.min(TOPUP_MAX_CENTS, Math.max(TOPUP_DEFAULT_CENTS, dollars * 100))
 }
 

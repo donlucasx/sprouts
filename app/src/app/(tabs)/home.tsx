@@ -3,8 +3,10 @@ import { View, Pressable, RefreshControl, Image, useWindowDimensions } from 'rea
 import { Link, Redirect, router, useFocusEffect } from 'expo-router'
 import { MaterialCommunityIcons } from '@expo/vector-icons'
 import { useMe, useInvalidateMe, toGardenInput } from '@/lib/me'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { activityQuery } from '@/lib/activity-query'
+import { avgDailyRoundupCents, lowUsdcLine } from '@/lib/usdc-runway'
+import { writeLastAvg } from '@/lib/usdc-watch'
 import { recordWatering, wateredPlantsFor } from '@/lib/last-watering'
 import { readZeroMarks } from '@/lib/zero-marks'
 import { plantLabel } from '@/lib/plant-label'
@@ -37,12 +39,15 @@ import { canSlot } from '@/model/can'
 import { nextPlantingFor } from '@/lib/next-planting'
 import { RelinkCard } from '@/components/RelinkCard'
 import { TopUpButton } from '@/components/TopUp'
+import { BambooFrame } from '@/garden2/BambooFrame'
+/** Canvas px of extra sky above the plants inside the dark-mode bamboo frame (10-27, his note: "more negative space above the plants"). */
+const FRAMED_SKY = 110
 import { TOPUP, topUpOffer } from '@/lib/topup'
 import { MoveCard } from '@/components/MoveCard'
 import { termsNeeded, termsSummary } from '@/lib/terms'
 import { arrivalLine, formatSkr, formatAsOf } from '@/lib/format'
 import { useSession } from '@/lib/session'
-import { gardenTotals, pauseState, noUsdcPauseLines, pausedOnlyForNoUsdc, coinRows, valueBlock, walletsLine, lastPlantingLine, staleLine, type CoinRow } from '@/lib/me-state'
+import { gardenTotals, pauseState, pausedOnlyForNoUsdc, usdcNotice, coinRows, valueBlock, walletsLine, lastPlantingLine, staleLine, type CoinRow } from '@/lib/me-state'
 import { FONT, radius, spacing, TARGET, useTheme } from '@/theme'
 
 /** R562: each row of Home's coin list leads with the coin's official round logo (lib/coin-icons), Phantom style. */
@@ -74,6 +79,12 @@ export default function Home() {
   const { setSession } = useSession()
   const { colors, dark } = useTheme()
   const { data: me, stale, fresh, refetch, asOf, loading, unauthorized, errorStatus } = useMe()
+  const { data: activity } = useQuery(activityQuery)
+  // the low-USDC notification's pace (usdc-watch): saved whenever Home measures it, for the background task, which reads no Activity
+  useEffect(() => {
+    if (me && activity) writeLastAvg(avgDailyRoundupCents(activity.swaps, me.user.pubkey, new Date()))
+  }, [me, activity])
+  const { data: usdcRead } = useQuery({ queryKey: ['me-usdc', me?.user.pubkey], queryFn: () => api<{ usdcRaw: string | null; topUpCents?: number[] | null }>('/api/me/usdc'), enabled: !!me, retry: false, staleTime: 60_000 })
   const invalidate = useInvalidateMe()
   const [failed, setFailed] = useState(false)
   const [nudged, setNudged] = useState(false)
@@ -206,9 +217,14 @@ export default function Home() {
   const totals = gardenTotals(me)
   const value = valueBlock(totals, staked)
   const pause = pauseState(me.wallets)
-  const noUsdc = noUsdcPauseLines(me.wallets)
   // 10-22: the one-tap SOL top-up under the pause lines, for this phone's wallet only; other wallets get a line saying where to add it
   const topUp = topUpOffer(me)
+  // 10-26: how long this phone's wallet's USDC lasts at its own pace (its recent round-ups); the background task reads the same pace
+  // (saved by the effect above) for the low-USDC notification
+  const avg = activity ? avgDailyRoundupCents(activity.swaps, me.user.pubkey, now) : null
+  const usdcCents = usdcRead?.usdcRaw != null ? Number(BigInt(usdcRead.usdcRaw) / 10_000n) : null
+  const low = topUp.phoneCents === null ? lowUsdcLine(usdcCents, avg) : null
+  const notice = usdcNotice(me, { usdcCents, low: low !== null })
   // R96, R184 and R186: the one line and the can decided together, so they always agree; the can is in colour only while a bud waits.
   // R186: the Next planting row draws inside the garden (directly under it, the can at its bar's end). R199: the line rides in that
   // row too, tucked into the paper under the bar beside the can (WatcherLine's `tuck`).
@@ -279,34 +295,42 @@ export default function Home() {
       </View>
       {/* R448: the switch lives at the top of Rules; R459: Home shows a chip that opens it only while Sprouts is paused */}
       {/* 10-22: a wallet the run paused for want of USDC says what brings it back; the run resumes it, so no switch is needed */}
-      {noUsdc.map((line) => (
-        <View key={line} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm }}>
-          <View style={{ width: 8, height: 8, borderRadius: radius.full, backgroundColor: colors.attention, marginTop: 6 }} />
-          <ThemedText tone="secondary" style={{ flex: 1, fontSize: 14, lineHeight: 20 }}>
-            {line}
-          </ThemedText>
+      {/* 10-27 (his note on the Saga: the no-USDC line "does not read like an error now- it should stand out a bit more (not on red
+          though)... a simple top up button that once clicked it opens up the different amounts"): one amber notice, a title that says
+          what stops, the lines, and one Top up button that opens the amounts */}
+      {notice ? (
+        <View style={{ backgroundColor: colors.warningSurface, borderColor: colors.warning, borderWidth: 1, borderRadius: radius.lg, borderCurve: 'continuous', padding: spacing.md, gap: spacing.sm }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+            <MaterialCommunityIcons name="alert-circle" size={20} color={colors.warning} />
+            <ThemedText variant="heading" style={{ flex: 1, color: colors.warning }}>
+              {notice.title}
+            </ThemedText>
+          </View>
+          {notice.lines.map((line) => (
+            <ThemedText key={line} style={{ fontSize: 14, lineHeight: 20 }}>
+              {line}
+            </ThemedText>
+          ))}
+          {notice.topUp ? <TopUpButton compact user={me.user.pubkey} cents={topUp.phoneCents ?? 500} done={TOPUP.done} avgDailyCents={avg} offers={usdcRead?.topUpCents ?? null} /> : null}
         </View>
-      ))}
-      {topUp.phoneCents !== null ? <TopUpButton user={me.user.pubkey} cents={topUp.phoneCents} done={TOPUP.done} /> : null}
-      {topUp.others.map((line) => (
-        <ThemedText key={line} variant="caption" tone="secondary">
-          {line}
-        </ThemedText>
-      ))}
+      ) : null}
       {pause.shown && !pause.on && !pausedOnlyForNoUsdc(me.wallets) ? (
         <Pressable
           onPress={() => router.push('/rules')}
           accessibilityRole="button"
           accessibilityLabel={`${pause.line}. Open Rules to change it.`}
-          style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, alignSelf: 'flex-start', minHeight: TARGET }}
+          style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: TARGET, backgroundColor: colors.warningSurface, borderColor: colors.warning, borderWidth: 1, borderRadius: radius.lg, borderCurve: 'continuous', padding: spacing.md, opacity: pressed ? 0.7 : 1 })}
         >
-          <View
-            style={{ width: 8, height: 8, borderRadius: radius.full, backgroundColor: colors.attention }}
-          />
-          <ThemedText variant="caption" tone="secondary">
-            {pause.line}
-          </ThemedText>
-          <MaterialCommunityIcons name="chevron-right" size={16} color={colors.textSecondary} />
+          {/* 10-27 (his notes "Should it be red?" then "should it be orange then?... I worry a user may not notice its paused"): no red, a
+              chosen pause is no error; the same amber as the USDC notice, since both mean nothing plants, with a pause mark */}
+          <MaterialCommunityIcons name="pause-circle" size={20} color={colors.warning} />
+          <View style={{ flex: 1, gap: 2 }}>
+            <ThemedText variant="heading" style={{ color: colors.warning }}>
+              {pause.line}
+            </ThemedText>
+            <ThemedText style={{ fontSize: 14, lineHeight: 20 }}>Nothing plants until you turn it back on.</ThemedText>
+          </View>
+          <MaterialCommunityIcons name="chevron-right" size={20} color={colors.warning} />
         </Pressable>
       ) : null}
       <RelinkCard me={me} />
@@ -355,17 +379,27 @@ export default function Home() {
           {/* s6 review K1: this wrapper's bounds reach the card's overhang too (Garden2's root gives it back), taps elsewhere pass through */}
           <View
             pointerEvents="box-none"
-            style={{ marginHorizontal: garden2Bleeds(dark) ? -spacing.edge : 0, marginTop: -spacing.sm, paddingBottom: CARD_OVERFLOW, marginBottom: -CARD_OVERFLOW, zIndex: 2 }}
+            style={{ marginHorizontal: garden2Bleeds(dark) && !dark ? -spacing.edge : 0, marginTop: -spacing.sm, paddingBottom: CARD_OVERFLOW, marginBottom: -CARD_OVERFLOW, zIndex: 2 }}
           >
-            <Garden2
-              stages={stages}
-              extras={extras2}
-              reveal={reveal}
-              width={garden2Bleeds(dark) ? screenW : screenW - 2 * spacing.edge}
-              cardFor={(p) => ({ ...plantCard(devSplit ? devSplitLending(me) : me, ASSET_OF_PLANT[p]), icon: COIN_LOGO[ASSET_OF_PLANT[p]] })}
-              onCard={(c) => c.row && setSheetRow(c.row)}
-              cardOverflow={CARD_OVERFLOW}
-            />
+            {(() => {
+              const garden = (w: number, skyPad = 0) => (
+                <Garden2
+                  skyPad={skyPad}
+                  stages={stages}
+                  extras={extras2}
+                  reveal={reveal}
+                  width={w}
+                  cardFor={(p) => ({ ...plantCard(devSplit ? devSplitLending(me) : me, ASSET_OF_PLANT[p]), icon: COIN_LOGO[ASSET_OF_PLANT[p]] })}
+                  onCard={(c) => c.row && setSheetRow(c.row)}
+                  cardOverflow={CARD_OVERFLOW}
+                />
+              )
+              // 10-27 (his note: in dark mode the garden "always stands out... What if we try framing it with bamboo (like the widget)?
+              // Dark mode only."): the paper card in the widget's bamboo frame
+              // (garden2Bleeds is true in both themes since R529; in dark the frame now takes the garden inside the gutters)
+              if (dark) return <BambooFrame width={screenW - 2 * spacing.edge}>{(w) => garden(w, FRAMED_SKY)}</BambooFrame>
+              return garden(garden2Bleeds(dark) ? screenW : screenW - 2 * spacing.edge)
+            })()}
           </View>
           <NextPlanting row={nextRow} pendingCents={me.nextPlanting.pendingCents} thresholdCents={me.nextPlanting.thresholdCents} />
           {watcher.line ? <WatcherLine text={watcher.line} /> : null}

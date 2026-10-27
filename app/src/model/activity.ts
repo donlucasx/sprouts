@@ -15,6 +15,7 @@ type Swap = Pick<ActivityResponse['swaps'][number], 'signature' | 'ts' | 'usdSiz
 type Withdrawal = Pick<ActivityResponse['withdrawals'][number], 'id' | 'ts' | 'amountRaw' | 'cancelled' | 'delivered' | 'source' | 'withdrawSignature' | 'unstakeSignature'>
 type LendWithdrawal = NonNullable<ActivityResponse['lendWithdrawals']>[number]
 type Move = NonNullable<ActivityResponse['moves']>[number]
+type TopUp = NonNullable<ActivityResponse['topUps']>[number]
 
 /** "Planted SKR" and its dollars; several legs as "Planted 2 coins". A retired coin's planting is not a row (R281). */
 export function plantingRow(p: Planting): ActivityRow | null {
@@ -83,6 +84,12 @@ export function moveRow(m: Move): ActivityRow | null {
   }
   if (m.status === 'dismissed') return { ...base, label: `Kept ${coin} on ${from}`, details: [`Not moved to ${to}.`] }
   return null
+}
+
+/** 10-27 (his rulings: top-ups show in Activity, never as a swap; copy approved): an Add USDC top-up, the USDC it added. */
+export const TOPUP_NOTE = 'From SOL in this wallet. No Sprouts fee.'
+export function topUpRow(t: TopUp): ActivityRow {
+  return { key: `tu-${t.signature}`, ts: t.ts, label: `Added ${formatUsd(Number(BigInt(t.usdcRaw) / 10_000n))} of USDC`, amount: null, details: [TOPUP_NOTE], signature: t.signature }
 }
 
 /** R278: what the Yield Manager found; shown, never routed to. */
@@ -154,7 +161,7 @@ export function visibleRows<T>(rows: T[], open: boolean, limit = 5): { shown: T[
 }
 
 /** R450 (10-08): Activity as ONE list, newest first, each row tagged with its kind; the chips filter by kind. */
-export type ActivityKind = 'plant' | 'swap' | 'withdraw' | 'split' | 'move' | 'found'
+export type ActivityKind = 'plant' | 'swap' | 'withdraw' | 'split' | 'move' | 'found' | 'topup'
 export type TaggedRow = { kind: ActivityKind; row: ActivityRow; walletAccount?: boolean }
 export const KIND_FILTERS: { value: 'all' | ActivityKind; label: string }[] = [
   { value: 'all', label: 'All' },
@@ -164,7 +171,7 @@ export const KIND_FILTERS: { value: 'all' | ActivityKind; label: string }[] = [
   { value: 'split', label: 'Split' },
 ]
 /** R480: the tag on each row, spelled out so no legend is needed (the colour comes from the screen); a split the AI made carries "AI". */
-export const KIND_TAG: Record<ActivityKind, string> = { plant: 'Plant', swap: 'Swap', withdraw: 'Withdraw', split: 'Split', move: 'Move', found: 'Found' }
+export const KIND_TAG: Record<ActivityKind, string> = { plant: 'Plant', swap: 'Swap', withdraw: 'Withdraw', split: 'Split', move: 'Move', found: 'Found', topup: 'Top up' }
 
 export function mergeRows(groups: Partial<Record<ActivityKind, { row: ActivityRow; walletAccount?: boolean }[]>>): TaggedRow[] {
   const all: TaggedRow[] = []
@@ -173,7 +180,7 @@ export function mergeRows(groups: Partial<Record<ActivityKind, { row: ActivityRo
   return all.sort((x, y) => Date.parse(y.row.ts) - Date.parse(x.row.ts))
 }
 
-/** The chips: "All" keeps every kind (moves and found venues only show there). */
+/** The chips: "All" keeps every kind (moves, found venues and top-ups only show there). */
 export function filterRows(rows: TaggedRow[], filter: 'all' | ActivityKind): TaggedRow[] {
   return filter === 'all' ? rows : rows.filter((r) => r.kind === filter)
 }

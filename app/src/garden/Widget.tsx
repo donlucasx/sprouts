@@ -10,13 +10,17 @@ import { toGardenInput, type ZeroMarks } from "@/lib/garden-input";
 import { gardenTotals, valueBlock } from "@/lib/me-state";
 import { formatUsd } from "@/lib/format";
 import { widgetHeadline, widgetStateLine, type WidgetState } from "@/lib/widget-state";
-import { BAR_GAP, BAR_H, G2_BIG, G2_BIG_MIN, LABEL_SIZE, lineBox, padFor, STATE_MIN, textWidth, widgetLayout, type Box } from "./widget-layout";
+import { BAR_GAP, BAR_H, G2_BIG, G2_BIG_MIN, LABEL_SIZE, lineBox, isSlim, isSmallest, padFor, STATE_MIN, textWidth, widgetLayout, type Box } from "./widget-layout";
 import type { PlantId, Scene } from "@/model/garden";
 
 /** Brand colours (manual 4, light: the widget draws on paper whatever the phone's theme; Garden2's paper sits inside its bamboo frame). */
 const PAPER = "#F4EEDF", INK = "#2B2B2B", QUIET = "#6B6558", ACCENT = "#145A3C";
 /** dp of garden the bar must leave, or it is dropped. */
 const MIN_GARDEN_H = 16;
+/** A frame opening shorter than this (the 2x1's ~89 dp) keeps no bottom line (10-27). */
+const SHORT_OPENING = 100;
+/** An opening at least this wide for its height keeps its bottom line in the headline's row (10-27). */
+const LINE_UP_RATIO = 1.7;
 /** The next-planting bar's empty track (10-11): a soft ink on the painting's paper sky. */
 const TRACK = "#E4DCC8";
 /** dp Garden2 keeps clear at the bottom: in portrait the library sizes the widget to its MAX height, a few dp taller than the cell on
@@ -26,6 +30,10 @@ export const BOTTOM_SAFE = 10;
  *  around"); half on a widget under 140 dp. */
 export const FRAME_INSET = 8;
 export const frameInset = (width: number) => (width < 140 ? FRAME_INSET / 2 : FRAME_INSET);
+/** Narrower than this (one column, the 1x1 and 1xN): words and the bar only, no art (10-27). */
+export const TINY_W = 140;
+/** The slim frame's height: 64 cut the bottom line once the empty bar showed too (10-27); the ensō pill is 72. */
+const SLIM_FRAME_H = 74;
 /** R363's tiny label under the total. */
 export const WIDGET_LABEL = "your garden";
 
@@ -41,12 +49,16 @@ export function SproutsWidget({ me, width, height, wateredPlants = null, restart
   const H = GARDEN2 ? Math.max(1, height - BOTTOM_SAFE) : height;
   // Garden2 (his ask 10-10): a bamboo frame (widgetFrame) holds the paper, the content laid out in the frame's opening (frameInner)
   // the frame itself, FRAME_INSET in from the widget's edges, the wallpaper showing around it
-  const inset = frameInset(width), FW = Math.max(1, width - 2 * inset), FH = Math.max(1, H - 2 * inset);
+  // his rulings 10-23 (the 4x1 "slimmer like the pill"), 10-26 (no garden art in it) and 10-27 (isSlim: one row tall, at least twice as
+  // wide): a slim frame, words and the bar only, centred in its row
+  const slim = GARDEN2 && isSlim(width, height);
+  const inset = frameInset(width), FW = Math.max(1, width - 2 * inset), FH = Math.max(1, slim ? Math.min(H - 2 * inset, SLIM_FRAME_H) : H - 2 * inset);
+  const padTop = slim ? Math.max(inset, (H - FH) / 2) : inset;
   const inner = GARDEN2 ? frameInner(FW, FH) : null;
   // 10-11: the painting (`bg`, widgetGarden2) fills the frame's whole opening behind the text
   const card = (pad: number, style: Record<string, unknown>, children: unknown, bg: string | null = null) =>
     inner ? (
-      <FlexWidget clickAction="OPEN_APP" style={{ height: "match_parent", width: "match_parent", padding: inset }}>
+      <FlexWidget clickAction="OPEN_APP" style={{ height: "match_parent", width: "match_parent", paddingLeft: inset, paddingRight: inset, paddingTop: padTop }}>
         <OverlapWidget style={{ width: FW, height: FH }}>
           <SvgWidget svg={widgetFrame(FW, FH)} style={{ width: FW, height: FH }} />
           <FlexWidget style={{ width: FW, height: FH, paddingLeft: inner.l, paddingTop: inner.t, paddingRight: inner.r, paddingBottom: inner.b }}>
@@ -84,7 +96,48 @@ export function SproutsWidget({ me, width, height, wateredPlants = null, restart
       labelAction = head.action;
     }
   } catch { return notice("Open Sprouts to see your garden"); }
+  // 10-27 (his note: "the 1x1 should have no art and feature the planting gauge instead"): one column wide, the words and the bar
+  const tiny = !!inner && !slim && (width < TINY_W || isSmallest(width, height));
+  if (tiny && inner) {
+    const w = inner.w - 2 * frameGap(width), fillW = fraction === null ? 0 : Math.round(w * Math.min(1, Math.max(0, fraction)));
+    return card(frameGap(width), { flexDirection: "column", justifyContent: "center" }, [
+      <TextWidget key="b" text={big} maxLines={1} truncate="END" style={{ fontSize: G2_BIG_MIN, color: INK, fontWeight: "700" }} />,
+      <TextWidget key="l" text={label} maxLines={2} truncate="END" style={{ fontSize: LABEL_SIZE - 1, color: labelAction ? ACCENT : QUIET, fontWeight: labelAction ? "600" : "normal" }} />,
+      fraction === null ? null : (
+        <FlexWidget key="bar" style={{ width: w, height: BAR_H, marginTop: 6, flexDirection: "row", backgroundColor: TRACK, borderRadius: BAR_H / 2 }}>
+          {fillW > 0 ? <FlexWidget style={{ width: fillW, height: BAR_H, backgroundColor: ACCENT, borderRadius: BAR_H / 2 }} /> : null}
+        </FlexWidget>
+      ),
+    ].filter(Boolean));
+  }
+  if (slim && inner) {
+    const w = inner.w - 2 * frameGap(width), fillW = fraction === null ? 0 : Math.round(w * Math.min(1, Math.max(0, fraction)));
+    const words = labelAction
+      ? [<TextWidget key="b" text={big} maxLines={1} truncate="END" style={{ fontSize: G2_BIG, color: INK, fontWeight: "700" }} />,
+         <TextWidget key="l" text={label} maxLines={1} truncate="END" style={{ fontSize: LABEL_SIZE, color: ACCENT, fontWeight: "600" }} />]
+      : [<FlexWidget key="r" style={{ flexDirection: "row", alignItems: "flex-end" }}>
+           <TextWidget text={big} maxLines={1} style={{ fontSize: G2_BIG, color: INK, fontWeight: "700" }} />
+           <TextWidget text={`  ${label}`} maxLines={1} truncate="END" style={{ fontSize: LABEL_SIZE, color: QUIET }} />
+         </FlexWidget>];
+    const slimBar = fraction === null ? null : (
+      <FlexWidget key="bar" style={{ width: w, height: BAR_H, marginTop: 3, marginBottom: 3, flexDirection: "row", backgroundColor: TRACK, borderRadius: BAR_H / 2 }}>
+        {fillW > 0 ? <FlexWidget style={{ width: fillW, height: BAR_H, backgroundColor: ACCENT, borderRadius: BAR_H / 2 }} /> : null}
+      </FlexWidget>
+    );
+    return card(frameGap(width), { flexDirection: "column", justifyContent: "center" }, [...words, slimBar, <TextWidget key="t" text={state.text} maxLines={1} truncate="END" style={{ fontSize: LABEL_SIZE, color: QUIET }} />]);
+  }
+  // 10-27 (his note: the 2x1 "art too small, should be cropped in on the tree"): an opening under SHORT_OPENING dp drops the bottom
+  // line, so the garden (framed on the tree, widget2View) takes its room
+  const short = !!inner && inner.h < SHORT_OPENING;
+  // 10-27 round 2 (his Saga note: the 3x2 "negative spacing on the sides doesnt look great- fill it w the garden"): a wide, low opening
+  // (the Saga's 3x2 is 336 x 177) is too short for the garden to span it under a bottom line, so that line moves up, right-aligned in
+  // the headline's row, when both fit there; the garden takes the room
+  const upText = state.text;
+  const lineUp = !!inner && !short && inner.w / inner.h >= LINE_UP_RATIO
+    && textWidth(big, G2_BIG, true) + textWidth(upText, LABEL_SIZE) + 16 <= inner.w - 2 * frameGap(width);
+  if (short || lineUp) state = { text: "", action: false };
   let L = inner ? widgetLayout(inner.w, inner.h, big, label, state.text, frameGap(width), fraction !== null, G2_BIG, G2_BIG_MIN) : widgetLayout(width, height, big, label, state.text);
+  if (short || lineUp) L = { ...L, garden: { ...L.garden, h: L.garden.h + L.state.h + 4 }, state: { ...L.state, h: 0 } };
   // a widget too short for the bar and a garden (110 dp tall) keeps the garden and drops the bar
   if (inner && fraction !== null && L.garden.h < MIN_GARDEN_H) { fraction = null; L = widgetLayout(inner.w, inner.h, big, label, state.text, frameGap(width), false, G2_BIG, G2_BIG_MIN); }
   let garden: { svg: string; w?: number; h: number } | null = null, painting: string | null = null;
@@ -106,7 +159,14 @@ export function SproutsWidget({ me, width, height, wateredPlants = null, restart
 
   const header = (
     <FlexWidget style={{ width: L.header.w, height: L.header.h, flexDirection: "column" }}>
-      <TextWidget text={big} maxLines={1} truncate="END" style={{ fontSize: L.bigSize, color: INK, fontWeight: "700", height: lineBox(L.bigSize) }} />
+      {lineUp ? (
+        <FlexWidget style={{ width: L.header.w, height: lineBox(L.bigSize), flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+          <TextWidget text={big} maxLines={1} style={{ fontSize: L.bigSize, color: INK, fontWeight: "700" }} />
+          <TextWidget text={upText} maxLines={1} truncate="END" style={{ fontSize: LABEL_SIZE, color: QUIET }} />
+        </FlexWidget>
+      ) : (
+        <TextWidget text={big} maxLines={1} truncate="END" style={{ fontSize: L.bigSize, color: INK, fontWeight: "700", height: lineBox(L.bigSize) }} />
+      )}
       <TextWidget text={label} maxLines={1} truncate="END" style={{ fontSize: LABEL_SIZE, color: labelAction ? ACCENT : QUIET, fontWeight: labelAction ? "600" : "normal", height: lineBox(LABEL_SIZE) }} />
       {bar}
     </FlexWidget>
@@ -136,5 +196,5 @@ export function SproutsWidget({ me, width, height, wateredPlants = null, restart
         {gardenBox(L.garden)}
       </FlexWidget>
     );
-  return card(L.pad, { flexDirection: "column", justifyContent: "space-between" }, [top, line], painting);
+  return card(L.pad, { flexDirection: "column", justifyContent: "space-between" }, short ? [top] : [top, line], painting);
 }

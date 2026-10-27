@@ -143,7 +143,9 @@ export type EventKind =
   | "move_failed"   // C-I2 #5: the redeem landed, the deposit did not; Activity says the money is back in the wallet
   | "move_built"   // T20: the amounts one build answered (the confirm checks against them; a done move carries basis and earned from them)
   | "relinked"
-  | "terms_accepted";
+  | "terms_accepted"
+  | "topup_sent"   // 10-27: written before a top-up is sent, so the swap booking never rounds it up (detail: signature, usdcRaw)
+  | "topped_up";   // 10-27: the top-up landed; Activity's row (detail: signature, usdcRaw, sentAt)
 
 export type EventRow = { id: number; userPubkey: string | null; walletPubkey: string | null; ts: Date; kind: EventKind; detail: unknown };
 
