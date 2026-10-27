@@ -62,11 +62,13 @@ export function widget2View(stages: Stages, width: number, height: number, gb: B
     return { x: Math.max(0, Math.min(CANVAS.w - w, cxT - (gb.x + gb.w / 2) / s)), y: tree.y0 - th * ENSO_PAD - gb.y / s, w, h, s };
   }
   const top = plantedTop(stages), span = plantedSpan(stages);
-  // the garden ends at the box's foot: filling the width instead ran the art under the bottom line (10-27: "round-ups plant at..."
-  // over the hSOL stake), so the height is what binds and a plate narrower than the opening is centred in it (below)
-  const s = gb.h / Math.max(1, PLATE_FOOT - top);
+  // 10-27 (his Saga notes: the 3x2 art "overlaps under top text and planting gauge"; 3x3, 1x3, 1x4 "stretched... needs just a bit more
+  // negative space underneath" the words): never the full box height, and never zoomed past ZOOM_MAX times the fit to its width; the
+  // garden sits on the box's foot (it ends above the bottom line), the sky between it and the words
+  const hf = gb.h / Math.max(1, PLATE_FOOT - top), wf = gb.w / Math.max(1, span.x1 - span.x0);
+  const s = Math.min(hf * HEADROOM, Math.min(hf, wf) * ZOOM_MAX);
   const w = width / s, h = height / s;
-  const y = top - (gb.y + Math.max(0, (gb.h - (PLATE_FOOT - top) * s) / 2)) / s;
+  const y = PLATE_FOOT - (gb.y + gb.h) / s;
   // across: centred on what is planted when it all fits, else on the SKR tree (the crop keeps the tree in view)
   const fits = (span.x1 - span.x0) * s <= gb.w;
   const centred = (fits || !tree ? (span.x0 + span.x1) / 2 : (tree.x0 + tree.x1) / 2) - (gb.x + gb.w / 2) / s;
@@ -91,6 +93,8 @@ export function widgetGarden2(stages: Stages, extras: Extras, width: number, hei
 export const ENSO_PAD = 0.08;
 /** A bamboo garden box shorter than this (dp) frames the SKR tree alone (the 2x1, 10-27). */
 export const SHORT_BOX = 70;
+/** The garden's share of its box's height at most (the rest is sky under the words), and its zoom past the fit to its width at most. */
+export const HEADROOM = 0.88, ZOOM_MAX = 1.35;
 /**
  * The ensō widget's window (his note 10-26: "lowered and centered so the circle crop is more focused around the growth of the SKR
  * tree"): a `size` square of the garden centred on the SKR tree's painted box (crown to mound), the paper sky behind it. No SKR tree
