@@ -46,7 +46,7 @@ import { MoveCard } from '@/components/MoveCard'
 import { termsNeeded, termsSummary } from '@/lib/terms'
 import { arrivalLine, formatSkr, formatAsOf } from '@/lib/format'
 import { useSession } from '@/lib/session'
-import { gardenTotals, pauseState, noUsdcPauseLines, pausedOnlyForNoUsdc, coinRows, valueBlock, walletsLine, lastPlantingLine, staleLine, type CoinRow } from '@/lib/me-state'
+import { gardenTotals, pauseState, pausedOnlyForNoUsdc, usdcNotice, coinRows, valueBlock, walletsLine, lastPlantingLine, staleLine, type CoinRow } from '@/lib/me-state'
 import { FONT, radius, spacing, TARGET, useTheme } from '@/theme'
 
 /** R562: each row of Home's coin list leads with the coin's official round logo (lib/coin-icons), Phantom style. */
@@ -230,7 +230,6 @@ export default function Home() {
   const totals = gardenTotals(me)
   const value = valueBlock(totals, staked)
   const pause = pauseState(me.wallets)
-  const noUsdc = noUsdcPauseLines(me.wallets)
   // 10-22: the one-tap SOL top-up under the pause lines, for this phone's wallet only; other wallets get a line saying where to add it
   const topUp = topUpOffer(me)
   // DRAFT 10-26: how long this phone's wallet's USDC lasts at its own pace (the release moves the average to the API)
@@ -238,6 +237,7 @@ export default function Home() {
   const avg = preview === 'low' ? PREVIEW_AVG_CENTS : avgReal ?? (preview !== 'off' ? PREVIEW_AVG_CENTS : null) // low: a pace at which $1.20 is under a week
   const usdcCents = preview === 'low' ? PREVIEW_LOW_CENTS : usdcRead?.usdcRaw != null ? Number(BigInt(usdcRead.usdcRaw) / 10_000n) : null
   const low = topUp.phoneCents === null ? lowUsdcLine(usdcCents, avg) : null
+  const notice = usdcNotice(me, low, usdcCents)
   // R96, R184 and R186: the one line and the can decided together, so they always agree; the can is in colour only while a bud waits.
   // R186: the Next planting row draws inside the garden (directly under it, the can at its bar's end). R199: the line rides in that
   // row too, tucked into the paper under the bar beside the can (WatcherLine's `tuck`).
@@ -311,46 +311,39 @@ export default function Home() {
       {/* 10-27 (his note on the Saga: the no-USDC line "does not read like an error now- it should stand out a bit more (not on red
           though)... a simple top up button that once clicked it opens up the different amounts"): one amber notice, a title that says
           what stops, the lines, and one Top up button that opens the amounts */}
-      {noUsdc.length || low ? (
+      {notice ? (
         <View style={{ backgroundColor: colors.warningSurface, borderColor: colors.warning, borderWidth: 1, borderRadius: radius.lg, borderCurve: 'continuous', padding: spacing.md, gap: spacing.sm }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
             <MaterialCommunityIcons name="alert-circle" size={20} color={colors.warning} />
             <ThemedText variant="heading" style={{ flex: 1, color: colors.warning }}>
-              {topUp.phoneCents !== null ? 'Plantings paused' : noUsdc.length ? 'A wallet needs USDC' : usdcCents !== null && usdcCents <= 0 ? 'No USDC for plantings' : 'Low on USDC'}
+              {notice.title}
             </ThemedText>
           </View>
-          {[...noUsdc, ...(low ? [low] : [])].map((line) => (
+          {notice.lines.map((line) => (
             <ThemedText key={line} style={{ fontSize: 14, lineHeight: 20 }}>
               {line}
             </ThemedText>
           ))}
-          {topUp.phoneCents !== null || low ? <TopUpButton compact user={me.user.pubkey} cents={topUp.phoneCents ?? 500} done={TOPUP.done} avgDailyCents={avg} /> : null}
-          {topUp.others.map((line) => (
-            <ThemedText key={line} variant="caption" tone="secondary">
-              {line}
-            </ThemedText>
-          ))}
+          {notice.topUp ? <TopUpButton compact user={me.user.pubkey} cents={topUp.phoneCents ?? 500} done={TOPUP.done} avgDailyCents={avg} /> : null}
         </View>
-      ) : (
-        topUp.others.map((line) => (
-          <ThemedText key={line} variant="caption" tone="secondary">
-            {line}
-          </ThemedText>
-        ))
-      )}
+      ) : null}
       {pause.shown && !pause.on && !pausedOnlyForNoUsdc(me.wallets) ? (
         <Pressable
           onPress={() => router.push('/rules')}
           accessibilityRole="button"
           accessibilityLabel={`${pause.line}. Open Rules to change it.`}
-          style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, alignSelf: 'flex-start', minHeight: TARGET }}
+          style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: TARGET, backgroundColor: colors.warningSurface, borderColor: colors.warning, borderWidth: 1, borderRadius: radius.lg, borderCurve: 'continuous', padding: spacing.md, opacity: pressed ? 0.7 : 1 })}
         >
-          {/* 10-27 (his question "Should it be red?"): a pause the user chose is no error; a pause mark, not the brown dot */}
-          <MaterialCommunityIcons name="pause-circle" size={14} color={colors.textSecondary} />
-          <ThemedText variant="caption" tone="secondary">
-            {pause.line}
-          </ThemedText>
-          <MaterialCommunityIcons name="chevron-right" size={16} color={colors.textSecondary} />
+          {/* 10-27 (his notes "Should it be red?" then "should it be orange then?... I worry a user may not notice its paused"): no red, a
+              chosen pause is no error; the same amber as the USDC notice, since both mean nothing plants, with a pause mark */}
+          <MaterialCommunityIcons name="pause-circle" size={20} color={colors.warning} />
+          <View style={{ flex: 1, gap: 2 }}>
+            <ThemedText variant="heading" style={{ color: colors.warning }}>
+              {pause.line}
+            </ThemedText>
+            <ThemedText style={{ fontSize: 14, lineHeight: 20 }}>Nothing plants until you turn it back on.</ThemedText>
+          </View>
+          <MaterialCommunityIcons name="chevron-right" size={20} color={colors.warning} />
         </Pressable>
       ) : null}
       <RelinkCard me={me} />
