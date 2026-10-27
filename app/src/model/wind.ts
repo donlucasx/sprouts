@@ -15,12 +15,12 @@ import { GUST, gustSpanMs } from "./motion";
  * height, kept to the sky above the soil (the soil's top sits at about 0.45 of the view on the demo garden). */
 export const WIND = {
   spanMs: 3200,
-  maxOpacity: 0.75,
+  maxOpacity: 0.9,   // 10-27 (his note on the Garden2 clip: "a bit subtle"): 0.75 -> 0.9, and a touch larger
   minCurls: 2, maxCurls: 3,
   delayMs: [0, 650] as const,     // when a curl lands after the gust starts (the first one always within the first 250 ms)
   lifeMs: [2100, 2700] as const,  // how long it is on screen
   top: [0.04, 0.34] as const,     // its top edge, as a fraction of the view's height
-  scale: [0.9, 1.3] as const,     // dp per painted 1x unit (the curls are 54 to 77 units long)
+  scale: [1.05, 1.5] as const,     // dp per painted 1x unit (the curls are 54 to 77 units long)
   startX: [-0.12, 0.08] as const, // its left edge at landing, as a fraction of the garden's width
   travel: [0.55, 0.85] as const,  // how far it drifts, as a fraction of the garden's width
   lift: [-10, 4] as const,        // dp it rises (negative) or sinks over its life

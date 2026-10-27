@@ -128,14 +128,15 @@ export function usdcNotice(me: Pick<MeResponse, 'wallets' | 'user'>, phone: { us
   const WHY = 'Sprouts plants your round-ups with USDC from this wallet.'
   if (entries.length === 1) {
     const [e] = entries
-    if (e.state === 'zero') return { title: `${the(e)} has no USDC`, lines: [`${WHY} Nothing plants until you add some.`], topUp }
+    // 10-27 (his question: can "your round-ups are still counted" fit, simply?): "they wait" says nothing is lost, in two words
+    if (e.state === 'zero') return { title: `${the(e)} has no USDC`, lines: [`${WHY} Until you add some, they wait.`], topUp }
     if (e.state === 'low') return { title: `${the(e)} is low on USDC`, lines: [`${WHY} ${usd(e.cents)} left, so top up before plantings pause.`], topUp }
-    return { title: `${the(e)} needs USDC`, lines: [`${WHY} Plantings are paused until it has ${usd(e.cents)}.`], topUp }
+    return { title: `${the(e)} needs USDC`, lines: [`${WHY} They wait until it has ${usd(e.cents)}.`], topUp }
   }
   const brief = (e: Entry) => (e.state === 'zero' ? 'no USDC' : e.state === 'low' ? `${usd(e.cents)} left` : `needs ${usd(e.cents)}`)
   return {
     title: `${entries.length} wallets need USDC`,
-    lines: ['Sprouts plants your round-ups with USDC from each wallet.', ...entries.map((e) => `${e.name}: ${brief(e)}`), 'Plantings restart once they have it.'],
+    lines: ['Sprouts plants your round-ups with USDC from each wallet.', ...entries.map((e) => `${e.name}: ${brief(e)}`), 'Your round-ups wait until they have it.'],
     topUp,
   }
 }

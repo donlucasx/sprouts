@@ -356,12 +356,6 @@ export function Garden2({
                   fadeDuration={0}
                   style={[{ position: 'absolute', left: l.x, top: l.y, width: l.w, height: l.h }, fading]}
                 />
-              ) : l.kind === 'plate' ? (
-                // the wind curls draw in the sky right over the plate, behind every plant
-                <Fragment key={l.key}>
-                  <Image source={sourceOf(l, night)} fadeDuration={0} style={{ position: 'absolute', left: l.x, top: l.y, width: l.w, height: l.h }} />
-                  {canStir ? <Wind gust={gust} width={width} viewH={gardenH} reduced={reduced} /> : null}
-                </Fragment>
               ) : (
                 <Image
                   key={l.kind === 'fruit' ? `f-${l.key}-${l.index}` : l.key}
@@ -371,6 +365,8 @@ export function Garden2({
                 />
               ),
             )}
+            {/* 10-27 (his note on the clip: "it should happen over it"): the wind curls cross OVER the plants */}
+            {canStir ? <Wind gust={gust} width={width} viewH={gardenH} reduced={reduced} /> : null}
           </Animated.View>
         </View>
       </GestureDetector>
