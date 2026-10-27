@@ -10,7 +10,7 @@ import { toGardenInput, type ZeroMarks } from "@/lib/garden-input";
 import { gardenTotals, valueBlock } from "@/lib/me-state";
 import { formatUsd } from "@/lib/format";
 import { widgetHeadline, widgetStateLine, type WidgetState } from "@/lib/widget-state";
-import { BAR_GAP, BAR_H, G2_BIG, G2_BIG_MIN, LABEL_SIZE, lineBox, isSlim, padFor, STATE_MIN, textWidth, widgetLayout, type Box } from "./widget-layout";
+import { BAR_GAP, BAR_H, G2_BIG, G2_BIG_MIN, LABEL_SIZE, lineBox, isSlim, isSmallest, padFor, STATE_MIN, textWidth, widgetLayout, type Box } from "./widget-layout";
 import type { PlantId, Scene } from "@/model/garden";
 
 /** Brand colours (manual 4, light: the widget draws on paper whatever the phone's theme; Garden2's paper sits inside its bamboo frame). */
@@ -95,7 +95,7 @@ export function SproutsWidget({ me, width, height, wateredPlants = null, restart
     }
   } catch { return notice("Open Sprouts to see your garden"); }
   // 10-27 (his note: "the 1x1 should have no art and feature the planting gauge instead"): one column wide, the words and the bar
-  const tiny = !!inner && !slim && width < TINY_W;
+  const tiny = !!inner && !slim && (width < TINY_W || isSmallest(width, height));
   if (tiny && inner) {
     const w = inner.w - 2 * frameGap(width), fillW = fraction === null ? 0 : Math.round(w * Math.min(1, Math.max(0, fraction)));
     return card(frameGap(width), { flexDirection: "column", justifyContent: "center" }, [

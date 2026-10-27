@@ -62,18 +62,19 @@ export function widget2View(stages: Stages, width: number, height: number, gb: B
     return { x: Math.max(0, Math.min(CANVAS.w - w, cxT - (gb.x + gb.w / 2) / s)), y: tree.y0 - th * ENSO_PAD - gb.y / s, w, h, s };
   }
   const top = plantedTop(stages), span = plantedSpan(stages);
-  // stacked (the box spans the opening): at least as wide as the opening; the 3x2 at height-fill was narrower than the plate's opening
-  // and sat to the left with paper beside it (10-27); the extra height falls below the box, into the plate's foot that fades out behind
-  // the bottom line. The wide layout (the total in a column at the left, the box beside it) keeps the paper, so no plant reaches the words.
-  const stacked = gb.x < width * 0.15;
-  const s = Math.max(gb.h / Math.max(1, PLATE_FOOT - top), stacked ? width / CANVAS.w : 0);
+  // the garden ends at the box's foot: filling the width instead ran the art under the bottom line (10-27: "round-ups plant at..."
+  // over the hSOL stake), so the height is what binds and a plate narrower than the opening is centred in it (below)
+  const s = gb.h / Math.max(1, PLATE_FOOT - top);
   const w = width / s, h = height / s;
   const y = top - (gb.y + Math.max(0, (gb.h - (PLATE_FOOT - top) * s) / 2)) / s;
   // across: centred on what is planted when it all fits, else on the SKR tree (the crop keeps the tree in view)
   const fits = (span.x1 - span.x0) * s <= gb.w;
   const centred = (fits || !tree ? (span.x0 + span.x1) / 2 : (tree.x0 + tree.x1) / 2) - (gb.x + gb.w / 2) / s;
   // inside the plate; or, wider than it, the whole plate in view (paper beside it), as near centred as that allows
-  const x = w <= CANVAS.w ? Math.max(0, Math.min(CANVAS.w - w, centred)) : Math.max(CANVAS.w - w, Math.min(0, centred));
+  // 10-27 (his note: the 3x2 "left uncentered w empty space to its right"): a stacked opening (the box across it) wider than the plate
+  // centres the plate; the wide layout keeps it beside the words' column, as near centred in its box as that allows
+  const stacked = gb.x < width * 0.15;
+  const x = w <= CANVAS.w ? Math.max(0, Math.min(CANVAS.w - w, centred)) : stacked ? (CANVAS.w - w) / 2 : Math.max(CANVAS.w - w, Math.min(0, centred));
   return { x, y, w, h, s };
 }
 

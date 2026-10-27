@@ -293,10 +293,11 @@ describe("one column wide: no art, the gauge", () => {
     expect(els.some(isGardenSvg)).toBe(false);
     expect(els.filter((e) => e.type === "TextWidget").map((e) => e.props.text)).toContain(texts(EnsoWidget({ me: priced(grown), width: 276, height: 274, now: NOW }) as El)[0].props.text);
   });
-  it("the bamboo 2x1 keeps a garden and no bottom line", () => {
-    const els = all(SproutsWidget({ me: priced(grown), width: 180, height: 131, now: NOW }) as El);
+  it("a short bamboo wider than the smallest keeps a garden and no bottom line; the Seeker's smallest (180 x 131) has no art", () => {
+    const els = all(SproutsWidget({ me: priced(grown), width: 230, height: 131, now: NOW }) as El);
     expect(els.some(isGardenSvg)).toBe(true);
-    expect(texts(SproutsWidget({ me: priced(grown), width: 180, height: 131, now: NOW }) as El).length).toBe(2);
+    expect(texts(SproutsWidget({ me: priced(grown), width: 230, height: 131, now: NOW }) as El).length).toBe(2);
+    expect(all(SproutsWidget({ me: priced(grown), width: 180, height: 131, now: NOW }) as El).some(isGardenSvg)).toBe(false);
   });
 });
 
