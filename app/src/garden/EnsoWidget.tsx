@@ -111,19 +111,13 @@ export function EnsoWidget({ me, width, height, wateredPlants = null, restartMar
     const left = cx + R + (mode === "pill" ? 10 : 12);
     layers.push(
       <FlexWidget key="t" style={{ width: W, height: H, flexDirection: "column", justifyContent: "center", paddingLeft: left, paddingRight: mode === "pill" ? 20 : 6 }}>
-        {mode === "pill" ? (
-          <>
-            {text(words.sub ? `${words.title} ${words.sub}` : words.title, BIG, INK, true)}
-            {text([words.accent, words.foot].filter(Boolean).join(" · "), LINE, words.fraction === 0 ? ACCENT : QUIET, words.fraction === 0)}
-          </>
-        ) : (
-          <>
-            {text(words.title, BIG, INK, true)}
-            {text(words.sub ? "in garden" : null, LABEL_SIZE, QUIET, false)}
-            {text(words.accent, LINE, ACCENT, true)}
-            {text(words.foot, LABEL_SIZE, QUIET, false)}
-          </>
-        )}
+        {/* the widget renderer draws widget elements only: plain children, never a fragment (TypeError on the Seeker, 10-26) */}
+        {mode === "pill" ? text(words.sub ? `${words.title} ${words.sub}` : words.title, BIG, INK, true) : text(words.title, BIG, INK, true)}
+        {mode === "pill"
+          ? text([words.accent, words.foot].filter(Boolean).join(" · "), LINE, words.fraction === 0 ? ACCENT : QUIET, words.fraction === 0)
+          : text(words.sub ? "in garden" : null, LABEL_SIZE, QUIET, false)}
+        {mode === "pill" ? null : text(words.accent, LINE, ACCENT, true)}
+        {mode === "pill" ? null : text(words.foot, LABEL_SIZE, QUIET, false)}
       </FlexWidget>,
     );
   }

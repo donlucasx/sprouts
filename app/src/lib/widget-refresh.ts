@@ -10,6 +10,7 @@ import { readZeroMarks } from "./zero-marks";
  * watered plants and R360 zero marks as Home, so its bud line never disagrees with Home's can. */
 export function widgetFor(me: MeResponse | null, info: { width: number; height: number; widgetName?: string }) {
   // 10-26 draft: two providers (app.json): "Sprouts" is the bamboo frame, "SproutsEnso" the ensō
+  if (__DEV__) console.log(`[widget] ${info.widgetName ?? "?"} ${JSON.stringify(info)}`);
   return React.createElement(info.widgetName === "SproutsEnso" ? EnsoWidget : SproutsWidget, { me, width: info.width, height: info.height, wateredPlants: wateredPlantsFor(me?.user.wateredAt), restartMarks: readZeroMarks() });
 }
 
