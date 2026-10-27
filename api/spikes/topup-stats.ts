@@ -29,3 +29,11 @@ const sigs = [...sent.keys()];
 const { data: booked, error: e2 } = sigs.length ? await db.from("swaps").select("signature").in("signature", sigs) : { data: [], error: null };
 if (e2) throw new Error(`swaps read failed: ${e2.message}`);
 console.log(`top-ups booked as swaps: ${booked?.length ?? 0} (must be 0)`);
+// Kimi R2-2: the webhook's skip rides on SupabaseRepo.topUpKinds (a JSON-path filter only production exercises). Ask it, as the
+// webhook does, for the newest mark: it must answer at least ["topup_sent"].
+const newest = [...sent].at(-1);
+if (newest) {
+  const { SupabaseRepo } = await import("../src/db/supabase");
+  const kinds = await new SupabaseRepo().topUpKinds(newest[0], newest[1].user);
+  console.log(`topUpKinds on the newest top-up: ${JSON.stringify(kinds)} (must include "topup_sent")`);
+}
