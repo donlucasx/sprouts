@@ -197,8 +197,14 @@ describe("POST /api/topup/confirm records the top-up", () => {
   });
 
   it("an unknown (202), failed or expired send keeps only the mark", async () => {
+    const tx = signed(await built());
     chain.status = "pending";
-    expect((await call(confirm, { signedTransaction: signed(await built()) })).status).toBe(202);
+    expect((await call(confirm, { signedTransaction: tx })).status).toBe(202);
+    chain.status = "failed";
+    expect((await call(confirm, { signedTransaction: tx })).status).toBe(400);
+    chain.status = "pending";
+    chain.blockhashValid = false;
+    expect((await call(confirm, { signedTransaction: tx })).status).toBe(409);
     expect(kinds()).toEqual(["topup_sent"]);
   });
 });
