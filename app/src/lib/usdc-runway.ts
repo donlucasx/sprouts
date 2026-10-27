@@ -1,7 +1,7 @@
 /**
  * How long a wallet's USDC lasts at its owner's own pace (10-26 copy review rows 10-11 and the top-up's coverage hint, his rulings:
- * "coverage hint is good, just ensure its subtle"). DRAFT: computed here from Activity's recent swaps; the release moves the average to
- * the API, per wallet.
+ * "coverage hint is good, just ensure its subtle"): computed on the phone from Activity's recent swaps, for this phone's wallet only
+ * (another wallet's USDC is not read; its pause comes from the run).
  */
 export const WINDOW_DAYS = 28;
 /** Less history than this and there is no average: the hint and the warning stay hidden rather than guess. */

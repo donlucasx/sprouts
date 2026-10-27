@@ -12,10 +12,10 @@ import { isSlim, isSmallest, LABEL_SIZE, lineBox, STATE_MIN, textWidth } from ".
 import type { PlantId } from "@/model/garden";
 
 /**
- * DRAFT 10-26 (his rulings 10-23 and 10-26; previews/widget-styles-1023/board-states.png): the ensō widget. Raked sand, the app's
- * gauge as a ring, and inside it a window on the live garden centred on the SKR tree (ensoGarden), never faded: the ring owns its edge.
- * Three shapes from the widget's proportions: full (the ring round the garden, the words inside it), wide (2x1: the ring at the left,
- * the words at the right) and the slim pill (4x1). Paused, the ring is its empty track and the words ask for USDC in the wallet.
+ * The ensō widget (his rulings 10-23 to 10-27; previews/widget-styles-1023/board-states.png): raked sand, the app's gauge as a ring,
+ * and inside it a window on the live garden, never faded: the ring owns its edge. Shapes from the widget's size: full (the ring round
+ * the whole garden, the words inside), tall (the words above and below the ring, on paper labels), wide (the ring at the left, the
+ * words at the right), the slim pill (one row), and the mini (the smallest: the ring as the gauge, the words inside, no art).
  */
 const SAND = "#ECE5D3", PAPER = "#FFFCF7", INK = "#2B2B2B" as const, QUIET = "#6B6558" as const, ACCENT = "#145A3C" as const;
 const RIPPLE = "rgba(140,116,78,0.45)", RIPPLE_LIGHT = "rgba(255,255,255,0.85)";

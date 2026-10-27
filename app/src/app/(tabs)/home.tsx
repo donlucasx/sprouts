@@ -5,10 +5,8 @@ import { MaterialCommunityIcons } from '@expo/vector-icons'
 import { useMe, useInvalidateMe, toGardenInput } from '@/lib/me'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { activityQuery } from '@/lib/activity-query'
-import { notify } from '@/lib/notify'
-import { refreshWidget } from '@/lib/widget-refresh'
-import { PREVIEW_AVG_CENTS, PREVIEW_LOW_CENTS, setDraftPreview, useDraftPreview, withDraftPreview } from '@/lib/draft-preview'
 import { avgDailyRoundupCents, lowUsdcLine } from '@/lib/usdc-runway'
+import { writeLastAvg } from '@/lib/usdc-watch'
 import { recordWatering, wateredPlantsFor } from '@/lib/last-watering'
 import { readZeroMarks } from '@/lib/zero-marks'
 import { plantLabel } from '@/lib/plant-label'
@@ -80,13 +78,7 @@ function devSplitLending(me: MeResponse): MeResponse {
 export default function Home() {
   const { setSession } = useSession()
   const { colors, dark } = useTheme()
-  const { data: meRead, stale, fresh, refetch, asOf, loading, unauthorized, errorStatus } = useMe()
-  // DRAFT 10-26: the dev menu's preview of the paused and low-USDC states (lib/draft-preview.ts); off, the read as it is
-  const preview = useDraftPreview()
-  const me = useMemo(() => (meRead ? withDraftPreview(meRead, preview) : meRead), [meRead, preview])
-  useEffect(() => {
-    if (me && preview !== 'off') void refreshWidget(me).catch(() => {})
-  }, [me, preview])
+  const { data: me, stale, fresh, refetch, asOf, loading, unauthorized, errorStatus } = useMe()
   const { data: activity } = useQuery(activityQuery)
   const { data: usdcRead } = useQuery({ queryKey: ['me-usdc', me?.user.pubkey], queryFn: () => api<{ usdcRaw: string | null; topUpCents?: number[] | null }>('/api/me/usdc'), enabled: !!me, retry: false, staleTime: 60_000 })
   const invalidate = useInvalidateMe()
@@ -116,18 +108,6 @@ export default function Home() {
             { name: 'Garden2 stages', callback: () => router.push('/dev-garden2'), shouldCollapse: true },
             { name: 'Loading screen options', callback: () => router.push('/dev-splash'), shouldCollapse: true },
             { name: 'Split lending across 2 venues (local)', callback: () => setDevSplit((v) => !v), shouldCollapse: true },
-            { name: 'DRAFT preview: paused, no USDC', callback: () => setDraftPreview('paused'), shouldCollapse: true },
-            { name: 'DRAFT preview: low on USDC', callback: () => setDraftPreview('low'), shouldCollapse: true },
-            { name: 'DRAFT preview: other wallet needs USDC', callback: () => setDraftPreview('oneOfTwo'), shouldCollapse: true },
-            { name: 'DRAFT preview: off', callback: () => setDraftPreview('off'), shouldCollapse: true },
-            {
-              name: 'DRAFT: send the two notifications',
-              callback: () => {
-                void notify('Paused: your wallet needs USDC', 'Your round-ups are still counted. Open Sprouts to swap a little SOL to USDC in your wallet.')
-                void notify('Your wallet is low on USDC', '$1.20 left in your wallet. Top up from SOL in Sprouts so plantings don\'t pause.')
-              },
-              shouldCollapse: true,
-            },
           ]),
         )
         .catch(() => {})
@@ -235,10 +215,11 @@ export default function Home() {
   const pause = pauseState(me.wallets)
   // 10-22: the one-tap SOL top-up under the pause lines, for this phone's wallet only; other wallets get a line saying where to add it
   const topUp = topUpOffer(me)
-  // DRAFT 10-26: how long this phone's wallet's USDC lasts at its own pace (the release moves the average to the API)
-  const avgReal = activity ? avgDailyRoundupCents(activity.swaps, me.user.pubkey, now) : null
-  const avg = preview === 'low' ? PREVIEW_AVG_CENTS : avgReal ?? (preview !== 'off' ? PREVIEW_AVG_CENTS : null) // low: a pace at which $1.20 is under a week
-  const usdcCents = preview === 'low' ? PREVIEW_LOW_CENTS : usdcRead?.usdcRaw != null ? Number(BigInt(usdcRead.usdcRaw) / 10_000n) : null
+  // 10-26: how long this phone's wallet's USDC lasts at its own pace (its recent round-ups); the background task reads the same pace
+  // (saved by the effect above) for the low-USDC notification
+  const avg = activity ? avgDailyRoundupCents(activity.swaps, me.user.pubkey, now) : null
+  writeLastAvg(avg)
+  const usdcCents = usdcRead?.usdcRaw != null ? Number(BigInt(usdcRead.usdcRaw) / 10_000n) : null
   const low = topUp.phoneCents === null ? lowUsdcLine(usdcCents, avg) : null
   const notice = usdcNotice(me, { usdcCents, low: low !== null })
   // R96, R184 and R186: the one line and the can decided together, so they always agree; the can is in colour only while a bud waits.

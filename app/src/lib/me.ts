@@ -2,7 +2,6 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, type MeResponse } from "./api";
 import { applyRulesTo, normalizeMe, pickMeState, usableMe, type ManagerExtra } from "./me-state";
 import { refreshWidget } from "./widget-refresh";
-import { withDraftPreview } from "./draft-preview";
 import { recordZeroMarks } from "./zero-marks";
 export { toGardenInput } from "./garden-input";
 
@@ -29,7 +28,7 @@ export function useMe() {
     queryFn: async () => {
       const me = normalizeMe(await api<MeResponse>("/api/me"));
       writeLastMe(me);
-      void refreshWidget(withDraftPreview(me)).catch(() => {}); // the home-screen widget follows every good read (DRAFT: as previewed)
+      void refreshWidget(me).catch(() => {}); // the home-screen widget follows every good read
       return me;
     },
     placeholderData: () => readLastMe() ?? undefined,

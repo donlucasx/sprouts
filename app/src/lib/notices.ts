@@ -1,3 +1,4 @@
+import { LOW_DAYS } from "./usdc-runway";
 import { plantedWhat, formatSkr, COIN_NAME_LONG } from "./format";
 import { ASSETS, isRetired, type AutoVenue, type LiveAsset, type Split } from "./coins";
 import type { MeResponse } from "./api";
@@ -50,12 +51,28 @@ export function noticesFor(before: MeResponse | null, me: MeResponse, on: (k: No
   const noUsdc = (w: MeResponse["wallets"][number] | undefined) => w?.status === "paused" && w.pause?.reason === "no_usdc";
   for (const w of me.wallets ?? []) {
     if (!noUsdc(w) || noUsdc((before.wallets ?? []).find((b) => b.pubkey === w.pubkey))) continue;
-    // 10-26 copy review row 6: the wallet needs the USDC, not Sprouts
+    // 10-27 (his rulings on Home's notice: each wallet by name, this phone's the Seed Vault wallet; one "Add USDC", never "you need SOL")
     const mine = w.pubkey === me.user?.pubkey, short = `${w.pubkey.slice(0, 4)}...${w.pubkey.slice(-4)}`;
     const body = mine
-      ? "Your round-ups are still counted. Open Sprouts to swap a little SOL to USDC in your wallet."
-      : `Your round-ups are still counted. Add USDC to wallet ${short} to start again.`;
-    out.push({ kind: "paused", title: mine ? "Paused: your wallet needs USDC" : `Paused: wallet ${short} needs USDC`, body });
+      ? "Plantings are paused and your round-ups wait. Open Sprouts to add USDC."
+      : `Plantings from it are paused and your round-ups wait. Add USDC to ${short} to start again.`;
+    out.push({ kind: "paused", title: mine ? "Seed Vault wallet needs USDC" : `${short} needs USDC`, body });
   }
   return out.filter((n) => on(n.kind));
+}
+
+/**
+ * 10-27 (the notification his review list named for the release): this phone's wallet running low on USDC, once per low spell. `usdcCents`
+ * its USDC now, `avg` its round-ups a day (Home saves its last reading, usdc-runway), `wasLow` whether the last check already said so.
+ * Low = under LOW_DAYS of round-ups; a wallet the run already paused is the paused notice's, not this one's. Behind the "paused" switch
+ * (Settings: "Tell me when a wallet runs out of USDC").
+ */
+export function lowUsdcNotice(usdcCents: number | null, avg: number | null, wasLow: boolean, paused: boolean): { notice: Notice | null; low: boolean } {
+  if (usdcCents === null) return { notice: null, low: wasLow };
+  const low = usdcCents <= 0 || (avg !== null && avg > 0 && usdcCents < avg * LOW_DAYS);
+  if (!low || wasLow || paused) return { notice: null, low };
+  const notice: Notice = usdcCents <= 0
+    ? { kind: "paused", title: "Seed Vault wallet has no USDC", body: "Your round-ups wait until it has some. Open Sprouts to add USDC." }
+    : { kind: "paused", title: "Seed Vault wallet is low on USDC", body: `$${(usdcCents / 100).toFixed(2)} left. Open Sprouts to add more before plantings pause.` };
+  return { notice, low };
 }
