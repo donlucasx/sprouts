@@ -6,7 +6,9 @@ import { Button } from '@/components/Button'
 import { ThemedText } from '@/components/ThemedText'
 import { api } from '@/lib/api'
 import { makeSigner } from '@/lib/sign'
-import { TOPUP, TopUpFailed, topUpThisPhone } from '@/lib/topup'
+import { choiceFor, TOPUP, TOPUP_CHOICES, TopUpFailed, topUpThisPhone } from '@/lib/topup'
+import { coverageLine } from '@/lib/usdc-runway'
+import { TwoWay } from '@/components/TwoWay'
 import { oneAtATime } from '@/lib/withdraw-flow'
 import { spacing } from '@/theme'
 
@@ -15,7 +17,9 @@ import { spacing } from '@/theme'
  * short for THIS phone's wallet (Home's no-USDC pause, Link a wallet's note). After it lands, /api/me and /api/me/usdc are read again,
  * so the pause line and the note go by themselves. `done` is the confirmation line (Home's names the next run; Link's does not).
  */
-export function TopUpButton({ user, cents, done, onDone }: { user: string; cents: number; done: (cents: number) => string; onDone?: () => void }) {
+export function TopUpButton({ user, cents: suggested, done, onDone, avgDailyCents = null }: { user: string; cents: number; done: (cents: number) => string; onDone?: () => void; avgDailyCents?: number | null }) {
+  // 10-26: $5 / $10 / $25, the one covering the pause picked first; one quiet line says how long it lasts (his: "subtle")
+  const [cents, setCents] = useState<number>(() => choiceFor(suggested))
   const { signTransaction } = useMobileWallet()
   const qc = useQueryClient()
   const [gate] = useState(oneAtATime)
@@ -52,6 +56,9 @@ export function TopUpButton({ user, cents, done, onDone }: { user: string; cents
   const landed = line !== null && !line.error && line.text === done(cents)
   return (
     <View style={{ gap: spacing.xs }}>
+      {landed || phase ? null : (
+        <TwoWay options={TOPUP_CHOICES.map((c) => ({ value: String(c), label: `$${c / 100}` }))} value={String(cents)} onChange={(v) => setCents(Number(v))} />
+      )}
       {landed ? null : <Button title={TOPUP.button(cents)} loading={phase !== null} onPress={topUp} />}
       {phase ? (
         <ThemedText variant="caption" tone="secondary">
@@ -59,7 +66,7 @@ export function TopUpButton({ user, cents, done, onDone }: { user: string; cents
         </ThemedText>
       ) : landed ? null : (
         <ThemedText variant="caption" tone="secondary">
-          {TOPUP.how}
+          {[coverageLine(cents, avgDailyCents), TOPUP.how].filter(Boolean).join('. ')}
         </ThemedText>
       )}
       {line ? (

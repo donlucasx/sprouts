@@ -50,10 +50,12 @@ export function noticesFor(before: MeResponse | null, me: MeResponse, on: (k: No
   const noUsdc = (w: MeResponse["wallets"][number] | undefined) => w?.status === "paused" && w.pause?.reason === "no_usdc";
   for (const w of me.wallets ?? []) {
     if (!noUsdc(w) || noUsdc((before.wallets ?? []).find((b) => b.pubkey === w.pubkey))) continue;
-    const body = w.pubkey === me.user?.pubkey
-      ? "Your wallet doesn't have enough USDC for round-ups. Open Sprouts to top up from SOL."
-      : `Wallet ${w.pubkey.slice(0, 4)}...${w.pubkey.slice(-4)} doesn't have enough USDC for round-ups. Add USDC there to start again.`;
-    out.push({ kind: "paused", title: "Paused: add USDC", body });
+    // 10-26 copy review row 6: the wallet needs the USDC, not Sprouts
+    const mine = w.pubkey === me.user?.pubkey, short = `${w.pubkey.slice(0, 4)}...${w.pubkey.slice(-4)}`;
+    const body = mine
+      ? "Your round-ups are still counted. Open Sprouts to swap a little SOL to USDC in your wallet."
+      : `Your round-ups are still counted. Add USDC to wallet ${short} to start again.`;
+    out.push({ kind: "paused", title: mine ? "Paused: your wallet needs USDC" : `Paused: wallet ${short} needs USDC`, body });
   }
   return out.filter((n) => on(n.kind));
 }

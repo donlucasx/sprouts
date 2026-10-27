@@ -41,12 +41,16 @@ export function SproutsWidget({ me, width, height, wateredPlants = null, restart
   const H = GARDEN2 ? Math.max(1, height - BOTTOM_SAFE) : height;
   // Garden2 (his ask 10-10): a bamboo frame (widgetFrame) holds the paper, the content laid out in the frame's opening (frameInner)
   // the frame itself, FRAME_INSET in from the widget's edges, the wallpaper showing around it
-  const inset = frameInset(width), FW = Math.max(1, width - 2 * inset), FH = Math.max(1, H - 2 * inset);
+  // 10-26 draft (his ruling 10-23: the 4x1 "slimmer like the pill"; 10-26: no garden art in it): a widget at least 3x as wide as it is
+  // tall draws a slim frame, words and the bar only, centred in its row
+  const slim = GARDEN2 && width / Math.max(1, height) >= 3;
+  const inset = frameInset(width), FW = Math.max(1, width - 2 * inset), FH = Math.max(1, slim ? Math.min(H - 2 * inset, 64) : H - 2 * inset);
+  const padTop = slim ? Math.max(inset, (H - FH) / 2) : inset;
   const inner = GARDEN2 ? frameInner(FW, FH) : null;
   // 10-11: the painting (`bg`, widgetGarden2) fills the frame's whole opening behind the text
   const card = (pad: number, style: Record<string, unknown>, children: unknown, bg: string | null = null) =>
     inner ? (
-      <FlexWidget clickAction="OPEN_APP" style={{ height: "match_parent", width: "match_parent", padding: inset }}>
+      <FlexWidget clickAction="OPEN_APP" style={{ height: "match_parent", width: "match_parent", paddingLeft: inset, paddingRight: inset, paddingTop: padTop }}>
         <OverlapWidget style={{ width: FW, height: FH }}>
           <SvgWidget svg={widgetFrame(FW, FH)} style={{ width: FW, height: FH }} />
           <FlexWidget style={{ width: FW, height: FH, paddingLeft: inner.l, paddingTop: inner.t, paddingRight: inner.r, paddingBottom: inner.b }}>
@@ -84,6 +88,22 @@ export function SproutsWidget({ me, width, height, wateredPlants = null, restart
       labelAction = head.action;
     }
   } catch { return notice("Open Sprouts to see your garden"); }
+  if (slim && inner) {
+    const w = inner.w - 2 * frameGap(width), fillW = fraction === null ? 0 : Math.round(w * Math.min(1, Math.max(0, fraction)));
+    const words = labelAction
+      ? [<TextWidget key="b" text={big} maxLines={1} truncate="END" style={{ fontSize: G2_BIG, color: INK, fontWeight: "700" }} />,
+         <TextWidget key="l" text={label} maxLines={1} truncate="END" style={{ fontSize: LABEL_SIZE, color: ACCENT, fontWeight: "600" }} />]
+      : [<FlexWidget key="r" style={{ flexDirection: "row", alignItems: "flex-end" }}>
+           <TextWidget text={big} maxLines={1} style={{ fontSize: G2_BIG, color: INK, fontWeight: "700" }} />
+           <TextWidget text={`  ${label}`} maxLines={1} truncate="END" style={{ fontSize: LABEL_SIZE, color: QUIET }} />
+         </FlexWidget>];
+    const slimBar = fraction === null ? null : (
+      <FlexWidget key="bar" style={{ width: w, height: BAR_H, marginTop: 3, marginBottom: 3, flexDirection: "row", backgroundColor: TRACK, borderRadius: BAR_H / 2 }}>
+        {fillW > 0 ? <FlexWidget style={{ width: fillW, height: BAR_H, backgroundColor: ACCENT, borderRadius: BAR_H / 2 }} /> : null}
+      </FlexWidget>
+    );
+    return card(frameGap(width), { flexDirection: "column", justifyContent: "center" }, [...words, slimBar, <TextWidget key="t" text={state.text} maxLines={1} truncate="END" style={{ fontSize: LABEL_SIZE, color: QUIET }} />]);
+  }
   let L = inner ? widgetLayout(inner.w, inner.h, big, label, state.text, frameGap(width), fraction !== null, G2_BIG, G2_BIG_MIN) : widgetLayout(width, height, big, label, state.text);
   // a widget too short for the bar and a garden (110 dp tall) keeps the garden and drops the bar
   if (inner && fraction !== null && L.garden.h < MIN_GARDEN_H) { fraction = null; L = widgetLayout(inner.w, inner.h, big, label, state.text, frameGap(width), false, G2_BIG, G2_BIG_MIN); }

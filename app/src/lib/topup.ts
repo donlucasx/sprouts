@@ -9,12 +9,13 @@ import { DROPPED_NOTHING_SENT } from './wallet-errors'
  * Only this phone's wallet: another linked wallet's key is not on this phone. Build-written copy, every line below (his ruling owed).
  */
 export const TOPUP = {
-  button: (cents: number) => `Top up $${Math.round(cents / 100)} of USDC from SOL`,
-  how: 'Swaps SOL for USDC in this wallet through Jupiter. No Sprouts fee.',
+  // 10-26 copy review rows 8-9 (his: make clear the USDC goes to the user's own wallet, not to Sprouts)
+  button: (cents: number) => `Swap $${Math.round(cents / 100)} of SOL to USDC in your wallet`,
+  how: 'Through Jupiter. No Sprouts fee.',
   waiting: 'Waiting for your wallet.',
   checking: 'Approved. Checking the chain.',
-  done: (cents: number) => `Added $${(cents / 100).toFixed(2)} of USDC. Sprouts plants at the next run.`,
-  doneLink: (cents: number) => `Added $${(cents / 100).toFixed(2)} of USDC.`,
+  done: (cents: number) => `Your wallet now has $${(cents / 100).toFixed(2)} more USDC. Sprouts plants again at the next daily planting.`,
+  doneLink: (cents: number) => `Your wallet now has $${(cents / 100).toFixed(2)} more USDC.`,
   /** After the signature went out and no final answer came back: never "nothing moved". */
   sent: 'Your top-up was sent but is not confirmed yet. Check Home in a minute before you try again.',
   /** Before the wallet was asked (the build failed for a reason the API did not word). */
@@ -24,6 +25,10 @@ export const TOPUP = {
 
 export const TOPUP_DEFAULT_CENTS = 500
 export const TOPUP_MAX_CENTS = 2_500
+/** 10-26 (his: "can the top up be dialed?"): the amounts offered; the one that covers the pause is picked first. */
+export const TOPUP_CHOICES = [500, 1_000, 2_500] as const
+/** The smallest choice that covers `cents`, else the largest. */
+export const choiceFor = (cents: number) => TOPUP_CHOICES.find((c) => c >= cents) ?? TOPUP_CHOICES[TOPUP_CHOICES.length - 1]
 
 /**
  * How much the button offers (build-invented, 10-22): $5, or the whole dollars the pause line names when that is more (so one tap both

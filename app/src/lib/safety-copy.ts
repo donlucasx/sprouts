@@ -14,7 +14,7 @@ export const CANT: readonly string[] = [
 export const APPROVAL_NOTE = 'Your wallet will show an unlimited USDC approval. Our on-chain program holds it to $5 a day. Revoke any time.'
 
 /** Under "Another wallet" (his note 10-22: make clear more than one wallet can be linked). Its balance is not read here. */
-export const OTHER_WALLET_LINE = 'Link as many as you like. Each pays round-ups from its own USDC.'
+export const OTHER_WALLET_LINE = 'Link as many as you like. Each wallet pays from its own USDC.'
 
 /**
  * The note under "This phone's wallet" when its USDC is below one planting (the threshold), or null: no note when the balance is
@@ -25,7 +25,8 @@ export function phoneUsdcNote(usdcRaw: string | null | undefined, thresholdCents
   if (usdcRaw == null || !/^\d+$/.test(usdcRaw)) return null
   const cents = Number(BigInt(usdcRaw) / 10_000n)
   if (cents >= thresholdCents) return null
-  if (cents === 0)
-    return 'This wallet has no USDC yet. Round-ups are paid from USDC, so add a few dollars before your first planting.'
-  return `This wallet holds $${(cents / 100).toFixed(2)} of USDC. Round-ups are paid from USDC, so add a few dollars before your first planting.`
+  // 10-26 copy review row 2: the wallet named, the amount to add (the threshold less what it holds)
+  const add = `$${((thresholdCents - cents) / 100).toFixed(2)}`
+  if (cents === 0) return `This wallet has no USDC. Add at least ${add} to it so Sprouts can plant.`
+  return `This wallet has $${(cents / 100).toFixed(2)} of USDC. Add at least ${add} to it so Sprouts can plant.`
 }
