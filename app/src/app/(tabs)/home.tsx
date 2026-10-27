@@ -393,7 +393,7 @@ export default function Home() {
           {/* s6 review K1: this wrapper's bounds reach the card's overhang too (Garden2's root gives it back), taps elsewhere pass through */}
           <View
             pointerEvents="box-none"
-            style={{ marginHorizontal: garden2Bleeds(dark) ? -spacing.edge : 0, marginTop: -spacing.sm, paddingBottom: CARD_OVERFLOW, marginBottom: -CARD_OVERFLOW, zIndex: 2 }}
+            style={{ marginHorizontal: garden2Bleeds(dark) && !dark ? -spacing.edge : 0, marginTop: -spacing.sm, paddingBottom: CARD_OVERFLOW, marginBottom: -CARD_OVERFLOW, zIndex: 2 }}
           >
             {(() => {
               const garden = (w: number) => (
@@ -409,8 +409,9 @@ export default function Home() {
               )
               // 10-27 (his note: in dark mode the garden "always stands out... What if we try framing it with bamboo (like the widget)?
               // Dark mode only."): the paper card in the widget's bamboo frame
-              if (garden2Bleeds(dark)) return garden(screenW)
-              return dark ? <BambooFrame width={screenW - 2 * spacing.edge}>{garden}</BambooFrame> : garden(screenW - 2 * spacing.edge)
+              // (garden2Bleeds is true in both themes since R529; in dark the frame now takes the garden inside the gutters)
+              if (dark) return <BambooFrame width={screenW - 2 * spacing.edge}>{garden}</BambooFrame>
+              return garden(garden2Bleeds(dark) ? screenW : screenW - 2 * spacing.edge)
             })()}
           </View>
           <NextPlanting row={nextRow} pendingCents={me.nextPlanting.pendingCents} thresholdCents={me.nextPlanting.thresholdCents} />
