@@ -48,8 +48,8 @@ export async function cancelIx(user: Address = USER, position?: Address): Promis
 }
 
 /** link/[code] GET: approve once at $5 a day (DAILY_CAP_RAW), optionally the first link of a wallet with no USDC account, or a re-link. */
-export async function linkIxs(o: { capRaw?: bigint; existingInitId?: bigint; createAta?: boolean; revokeOld?: boolean; delegatee?: Address } = {}): Promise<Instruction[]> {
-  const ixs = (await buildApproveOnceIxs({ delegator: USER, delegatee: o.delegatee ?? PULLER, capRaw: o.capRaw ?? 5_000_000n, nonce: 42n, existingInitId: o.existingInitId, createAta: o.createAta })) as Instruction[]
+export async function linkIxs(o: { capRaw?: bigint; existingInitId?: bigint; createAta?: boolean; revokeOld?: boolean; delegatee?: Address; reapprove?: boolean } = {}): Promise<Instruction[]> {
+  const ixs = (await buildApproveOnceIxs({ delegator: USER, delegatee: o.delegatee ?? PULLER, capRaw: o.capRaw ?? 5_000_000n, nonce: 42n, existingInitId: o.existingInitId, createAta: o.createAta, reapprove: o.reapprove })) as Instruction[]
   if (o.revokeOld) ixs.unshift(buildRevokeDelegationIx({ delegator: USER, delegationPda: await delegationPda({ delegator: USER, delegatee: PULLER, nonce: 7n }) }) as Instruction)
   return ixs
 }
