@@ -8,6 +8,7 @@ import { PRO_LINE } from '@/model/manager'
 import { Button } from '@/components/Button'
 import { ThemedText } from '@/components/ThemedText'
 import { Disclosure } from '@/components/Disclosure'
+import { AddWidget } from '@/components/AddWidget'
 import { TwoWay } from '@/components/TwoWay'
 import { useQueryClient } from '@tanstack/react-query'
 import { api, ApiError, type MeResponse } from '@/lib/api'
@@ -212,6 +213,7 @@ export default function Settings() {
           value={appearance}
           onChange={setAppearance}
         />
+        <AddWidget />
       </Card>
       <Card>
         {/* R160 and R161: the notices grouped under their own heading, one switch each. */}

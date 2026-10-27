@@ -90,8 +90,9 @@ export function noUsdcPauseLines(wallets: MeResponse['wallets']): string[] {
     const p = w.status === 'paused' ? w.pause : null
     if (p?.reason !== 'no_usdc') return []
     const dollars = Math.max(1, Math.ceil(Math.max(p.needCents ?? 0, p.resumeAtCents) / 100))
-    const who = linked.length > 1 ? `wallet ${w.pubkey.slice(0, 4)}...${w.pubkey.slice(-4)}` : 'your wallet'
-    return [`Paused: ${who} doesn't have enough USDC. Once it holds at least $${dollars} of USDC, Sprouts starts again on its own at the next daily planting.`]
+    const who = linked.length > 1 ? `Wallet ${w.pubkey.slice(0, 4)}...${w.pubkey.slice(-4)}` : 'Your wallet'
+    // 10-26 copy review row 5
+    return [`Paused. ${who} needs at least $${dollars} of USDC. Your round-ups are still counted, and planting restarts on its own.`]
   })
 }
 

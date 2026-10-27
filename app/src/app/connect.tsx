@@ -108,7 +108,7 @@ export default function Connect() {
 
   return (
     <Screen back title="Link a wallet">
-      <ThemedText>Every swap rounds up. Sprouts plants the change once a day.</ThemedText>
+      <ThemedText>Every swap rounds up. Once a day, Sprouts plants the change using USDC in your wallet. Your USDC stays in your wallet until then.</ThemedText>
       <Card>
         {CAN.map((l) => <Mark key={l} ok text={l} />)}
         {CANT.map((l) => <Mark key={l} ok={false} text={l} />)}

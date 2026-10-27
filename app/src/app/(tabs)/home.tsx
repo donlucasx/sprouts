@@ -3,8 +3,12 @@ import { View, Pressable, RefreshControl, Image, useWindowDimensions } from 'rea
 import { Link, Redirect, router, useFocusEffect } from 'expo-router'
 import { MaterialCommunityIcons } from '@expo/vector-icons'
 import { useMe, useInvalidateMe, toGardenInput } from '@/lib/me'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { activityQuery } from '@/lib/activity-query'
+import { notify } from '@/lib/notify'
+import { refreshWidget } from '@/lib/widget-refresh'
+import { PREVIEW_AVG_CENTS, PREVIEW_LOW_CENTS, setDraftPreview, useDraftPreview, withDraftPreview } from '@/lib/draft-preview'
+import { avgDailyRoundupCents, lowUsdcLine } from '@/lib/usdc-runway'
 import { recordWatering, wateredPlantsFor } from '@/lib/last-watering'
 import { readZeroMarks } from '@/lib/zero-marks'
 import { plantLabel } from '@/lib/plant-label'
@@ -73,7 +77,15 @@ function devSplitLending(me: MeResponse): MeResponse {
 export default function Home() {
   const { setSession } = useSession()
   const { colors, dark } = useTheme()
-  const { data: me, stale, fresh, refetch, asOf, loading, unauthorized, errorStatus } = useMe()
+  const { data: meRead, stale, fresh, refetch, asOf, loading, unauthorized, errorStatus } = useMe()
+  // DRAFT 10-26: the dev menu's preview of the paused and low-USDC states (lib/draft-preview.ts); off, the read as it is
+  const preview = useDraftPreview()
+  const me = useMemo(() => (meRead ? withDraftPreview(meRead, preview) : meRead), [meRead, preview])
+  useEffect(() => {
+    if (me && preview !== 'off') void refreshWidget(me).catch(() => {})
+  }, [me, preview])
+  const { data: activity } = useQuery(activityQuery)
+  const { data: usdcRead } = useQuery({ queryKey: ['me-usdc', me?.user.pubkey], queryFn: () => api<{ usdcRaw: string | null }>('/api/me/usdc'), enabled: !!me, retry: false, staleTime: 60_000 })
   const invalidate = useInvalidateMe()
   const [failed, setFailed] = useState(false)
   const [nudged, setNudged] = useState(false)
@@ -101,6 +113,17 @@ export default function Home() {
             { name: 'Garden2 stages', callback: () => router.push('/dev-garden2'), shouldCollapse: true },
             { name: 'Loading screen options', callback: () => router.push('/dev-splash'), shouldCollapse: true },
             { name: 'Split lending across 2 venues (local)', callback: () => setDevSplit((v) => !v), shouldCollapse: true },
+            { name: 'DRAFT preview: paused, no USDC', callback: () => setDraftPreview('paused'), shouldCollapse: true },
+            { name: 'DRAFT preview: low on USDC', callback: () => setDraftPreview('low'), shouldCollapse: true },
+            { name: 'DRAFT preview: off', callback: () => setDraftPreview('off'), shouldCollapse: true },
+            {
+              name: 'DRAFT: send the two notifications',
+              callback: () => {
+                void notify('Paused: your wallet needs USDC', 'Your round-ups are still counted. Open Sprouts to swap a little SOL to USDC in your wallet.')
+                void notify('Your wallet is low on USDC', '$1.20 left in your wallet. Top up from SOL in Sprouts so plantings don\'t pause.')
+              },
+              shouldCollapse: true,
+            },
           ]),
         )
         .catch(() => {})
@@ -209,6 +232,11 @@ export default function Home() {
   const noUsdc = noUsdcPauseLines(me.wallets)
   // 10-22: the one-tap SOL top-up under the pause lines, for this phone's wallet only; other wallets get a line saying where to add it
   const topUp = topUpOffer(me)
+  // DRAFT 10-26: how long this phone's wallet's USDC lasts at its own pace (the release moves the average to the API)
+  const avgReal = activity ? avgDailyRoundupCents(activity.swaps, me.user.pubkey, now) : null
+  const avg = avgReal ?? (preview !== 'off' ? PREVIEW_AVG_CENTS : null)
+  const usdcCents = preview === 'low' ? PREVIEW_LOW_CENTS : usdcRead?.usdcRaw != null ? Number(BigInt(usdcRead.usdcRaw) / 10_000n) : null
+  const low = topUp.phoneCents === null ? lowUsdcLine(usdcCents, avg) : null
   // R96, R184 and R186: the one line and the can decided together, so they always agree; the can is in colour only while a bud waits.
   // R186: the Next planting row draws inside the garden (directly under it, the can at its bar's end). R199: the line rides in that
   // row too, tucked into the paper under the bar beside the can (WatcherLine's `tuck`).
@@ -287,7 +315,15 @@ export default function Home() {
           </ThemedText>
         </View>
       ))}
-      {topUp.phoneCents !== null ? <TopUpButton user={me.user.pubkey} cents={topUp.phoneCents} done={TOPUP.done} /> : null}
+      {low ? (
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm }}>
+          <View style={{ width: 8, height: 8, borderRadius: radius.full, backgroundColor: colors.attention, marginTop: 6 }} />
+          <ThemedText tone="secondary" style={{ flex: 1, fontSize: 14, lineHeight: 20 }}>
+            {low}
+          </ThemedText>
+        </View>
+      ) : null}
+      {topUp.phoneCents !== null || low ? <TopUpButton user={me.user.pubkey} cents={topUp.phoneCents ?? 500} done={TOPUP.done} avgDailyCents={avg} /> : null}
       {topUp.others.map((line) => (
         <ThemedText key={line} variant="caption" tone="secondary">
           {line}

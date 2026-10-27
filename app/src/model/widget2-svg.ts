@@ -68,7 +68,27 @@ export function widget2View(stages: Stages, width: number, height: number, gb: B
  * WIDGET2_SCALE (widget-b64.ts) and declared once, in widget2View. Above the plate's top it is clear: the frame's paper, the plate's own sky.
  */
 export function widgetGarden2(stages: Stages, extras: Extras, width: number, height: number, gb: Box): { svg: string; w: number; h: number } {
-  const v = widget2View(stages, width, height, gb);
+  return gardenSvg(stages, extras, width, height, widget2View(stages, width, height, gb));
+}
+
+/** Ensō (10-26 draft): the canvas px kept round the SKR tree in the ring's window, as a share of the tree's painted height. */
+export const ENSO_PAD = 0.08;
+/**
+ * The ensō widget's window (his note 10-26: "lowered and centered so the circle crop is more focused around the growth of the SKR
+ * tree"): a `size` square of the garden centred on the SKR tree's painted box (crown to mound), the paper sky behind it. No SKR tree
+ * yet: the planted span, else the whole plate, centred the same way.
+ */
+export function ensoGarden(stages: Stages, extras: Extras, size: number, paper: string): string {
+  const tree = stages.mandarin >= 1 ? paintedBox("mandarin", stages.mandarin) : null;
+  const span = plantedSpan(stages), top = plantedTop(stages);
+  const box = tree ?? { x0: span.x0, x1: span.x1, y0: top, y1: PLATE_FOOT };
+  const side = Math.max(box.x1 - box.x0, box.y1 - box.y0) * (1 + 2 * ENSO_PAD);
+  const cx = (box.x0 + box.x1) / 2, cy = (box.y0 + box.y1) / 2;
+  const v = { x: cx - side / 2, y: cy - side / 2, w: side, h: side, s: size / side };
+  return gardenSvg(stages, extras, size, size, v, paper).svg;
+}
+
+function gardenSvg(stages: Stages, extras: Extras, width: number, height: number, v: View, paper: string | null = null): { svg: string; w: number; h: number } {
   const signs = STAKE.font * v.s >= STAKE_MIN_FONT;
   const layers = composeLayers(stages, extras).filter((l) => signs || l.kind !== "stake");
   const used = new Map<string, Layer>(), body: string[] = [];
@@ -83,7 +103,8 @@ export function widgetGarden2(stages: Stages, extras: Extras, width: number, hei
     }
   }
   const defs = [...used].map(([k, l]) => `<image id="w-${k}" width="${l.w}" height="${l.h}" preserveAspectRatio="none" xlink:href="data:image/webp;base64,${WIDGET2_B64[k]}"/>`).join("");
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${width}" height="${height}" viewBox="${f(v.x)} ${f(v.y)} ${f(v.w)} ${f(v.h)}" preserveAspectRatio="none"><defs>${defs}</defs>${body.join("")}</svg>`;
+  const ground = paper ? `<rect x="${f(v.x)}" y="${f(v.y)}" width="${f(v.w)}" height="${f(v.h)}" fill="${paper}"/>` : "";
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${width}" height="${height}" viewBox="${f(v.x)} ${f(v.y)} ${f(v.w)} ${f(v.h)}" preserveAspectRatio="none"><defs>${defs}</defs>${ground}${body.join("")}</svg>`;
   return { svg, w: width, h: height };
 }
 

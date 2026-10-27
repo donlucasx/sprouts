@@ -19,7 +19,7 @@ export function widgetStateLine(me: Pick<MeResponse, "nextPlanting" | "wallets">
   if (watcherLine({ unrevealed: scene.unrevealed, failed: false, nudged: false }).can === "ready") return { text: BUD_LINE, action: true };
   const row = nextPlantingFor(me, scene, now);
   switch (row.state) {
-    case "paused": return { text: "Paused", action: false };
+    case "paused": return { text: me.wallets.some((w) => w.status === "paused" && w.pause?.reason === "no_usdc") ? "Wallet needs USDC" : "Paused", action: false };
     case "saving": return { text: `+${formatUsd(me.nextPlanting.pendingCents)} waiting`, action: false };
     case "reached": return { text: `Next: ${nextRunClock(now)}`, action: false };
     case "empty": return { text: "No change waiting yet", action: false };
@@ -56,7 +56,11 @@ export function widgetHeadline(
   const inGarden = line(`${total} in your garden`, `${total} in garden`);
   const plantsAt = line(`Round-ups plant at ${goal}`, `Plants at ${goal}`);
   switch (row.state) {
-    case "paused": return { big: big("Round-ups paused", "Paused"), label: label("Open Sprouts to turn them on", "Open to turn on"), line: inGarden, fraction: null, action: true };
+    case "paused":
+      // 10-26 copy review row 7: a pause for want of USDC asks for USDC in the wallet; the user's own pause keeps its words
+      if (me.wallets.some((w) => w.status === "paused" && w.pause?.reason === "no_usdc"))
+        return { big: big("Paused: wallet needs USDC", "Wallet needs USDC", "Needs USDC"), label: label("Open Sprouts to top up your wallet", "Open to top up"), line: inGarden, fraction: null, action: true };
+      return { big: big("Round-ups paused", "Paused"), label: label("Open Sprouts to turn them on", "Open to turn on"), line: inGarden, fraction: null, action: true };
     case "reached": return { big: big(`${formatUsd(pending)} saved`, formatUsd(pending)), label: label(`plants ${nextRunWords(now)}`, `plants ${nextRunClock(now)}`), line: inGarden, fraction: 1, action: false };
     case "saving": return { big: big(`${formatUsd(pending)} of ${goal}`, formatUsd(pending)), label: label("rounds up from every swap", "from your swaps", "from swaps"), line: inGarden, fraction: row.fraction, action: false };
     case "empty": {
