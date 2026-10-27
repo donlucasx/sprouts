@@ -30,7 +30,7 @@ function wordsFor(me: MeResponse, total: string, parts: { parts: never[] } | { p
   });
   if (head.action) return { title: head.big, sub: null, accent: head.label, foot: head.line, fraction: 0 };
   const saving = head.fraction !== null && head.fraction < 1;
-  return { title: total, sub: "in your garden", accent: head.big === total ? null : head.big, foot: saving ? "next planting" : head.label, fraction: head.fraction };
+  return { title: total, sub: "in your garden", accent: head.big.includes(total) ? null : head.big, foot: saving ? "next planting" : head.label, fraction: head.fraction };
 }
 
 function ring(cx: number, cy: number, r: number, sw: number, fr: number | null): string {
@@ -81,7 +81,7 @@ export function EnsoWidget({ me, width, height, wateredPlants = null, restartMar
     try { input = toGardenInput(me, now, wateredPlants, restartMarks); scene = buildScene(input); } catch { scene = null; }
     words = wordsFor(me, total, { parts: scene?.parts ?? [] }, now, room);
     const D = Math.floor(2 * (R - sw * 0.45)) + 2;
-    if (input) garden = ensoGarden(stagesFor(input), { basket: !!me.basket && !me.basket.delivered }, D, PAPER);
+    if (input) garden = ensoGarden(stagesFor(input), { basket: !!me.basket && !me.basket.delivered }, D, PAPER, mode === "full");
   } catch {
     return shell([<SvgWidget key="c" svg={card(W, H, rx, cx, cy, R, sw, null)} style={{ width: W, height: H }} />]);
   }

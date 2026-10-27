@@ -78,9 +78,14 @@ export const ENSO_PAD = 0.08;
  * tree"): a `size` square of the garden centred on the SKR tree's painted box (crown to mound), the paper sky behind it. No SKR tree
  * yet: the planted span, else the whole plate, centred the same way.
  */
-export function ensoGarden(stages: Stages, extras: Extras, size: number, paper: string): string {
-  const tree = stages.mandarin >= 1 ? paintedBox("mandarin", stages.mandarin) : null;
+export function ensoGarden(stages: Stages, extras: Extras, size: number, paper: string, whole = false): string {
   const span = plantedSpan(stages), top = plantedTop(stages);
+  if (whole) {
+    // the full ensō (mock F-E-full): the whole garden across the ring, sky above for the total and the plate low for the state line
+    const side = span.x1 - span.x0, cx = (span.x0 + span.x1) / 2, cy = PLATE_FOOT - side * 0.29;
+    return gardenSvg(stages, extras, size, size, { x: cx - side / 2, y: cy - side / 2, w: side, h: side, s: size / side }, paper).svg;
+  }
+  const tree = stages.mandarin >= 1 ? paintedBox("mandarin", stages.mandarin) : null;
   const box = tree ?? { x0: span.x0, x1: span.x1, y0: top, y1: PLATE_FOOT };
   const side = Math.max(box.x1 - box.x0, box.y1 - box.y0) * (1 + 2 * ENSO_PAD);
   const cx = (box.x0 + box.x1) / 2, cy = (box.y0 + box.y1) / 2;
