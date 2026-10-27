@@ -383,6 +383,25 @@ describe("runPlanting", () => {
     expect(repo.events.map((e) => e.kind)).toContain("revoke_seen");
   });
 
+  // 10-27 (wallet BTDG): the delegation stayed but the wallet's revoke-approvals tool cleared the USDC delegate; every run failed at simulate.
+  it("marks the wallet revoked, once and before any build, when its USDC account no longer names Sprouts as delegate", async () => {
+    const repo = await seeded([83, 62, 70]);
+    const build = vi.fn();
+    const r = await runPlanting({ repo, now: NOW, chain: fakeChain({ readUsdcApproved: async () => false, buildPlantingTx: build }) });
+    expect(r.skipped).toEqual([{ wallet: "W", reason: "revoked" }]);
+    expect(build).not.toHaveBeenCalled();
+    expect((await repo.getWallet("W"))!.status).toBe("revoked");
+    expect(repo.events.find((e) => e.kind === "revoke_seen")?.detail).toEqual({ by: "token_revoke" });
+  });
+  it("an unreadable or missing USDC account is no revoke: the planting goes on", async () => {
+    for (const read of [async () => null, async () => { throw new Error("rpc down"); }]) {
+      const repo = await seeded([83, 62, 70]);
+      const r = await runPlanting({ repo, now: NOW, chain: fakeChain({ readUsdcApproved: read }) });
+      expect((await repo.getWallet("W"))!.status).not.toBe("revoked");
+      expect(r.skipped.some((s) => s.reason === "revoked")).toBe(false);
+    }
+  });
+
   it("a wallet below the threshold with its delegation in place stays active, waiting", async () => {
     const repo = await seeded([83, 62], { planted: true });
     const r = await runPlanting({ repo, now: NOW, chain: fakeChain() });

@@ -77,6 +77,8 @@ export type SignatureStatus = "confirmed" | "failed" | "pending";
 /** Everything the run needs from the chain, injected so the run is unit-tested with fakes. */
 export type Chain = {
   readDelegation(delegationPda: string): Promise<DelegationState>;
+  /** subscriptions.readUsdcApproved: false when the wallet's USDC account no longer names Sprouts as delegate. Absent: not checked. */
+  readUsdcApproved?(owner: string): Promise<boolean | null>;
   /** 0n when the wallet has no USDC account; throws on an RPC error (which must not read as "no USDC"). */
   usdcBalanceRaw(owner: string): Promise<bigint>;
   /** Builds and signs; the signature is known before anything is sent. `priceOpts`: a leashed priced leg's on-chain conf cap and max age, waitS 0. */
@@ -531,6 +533,14 @@ async function plantOneOrThrow(a: RunArgs, w: WalletRow, ctx: RunCtx): Promise<P
   if (!delegation.exists) {
     await a.repo.setWalletStatus(w.pubkey, "revoked");
     await a.repo.addEvent({ userPubkey: w.userPubkey, walletPubkey: w.pubkey, kind: "revoke_seen", detail: null });
+    return { wallet: w.pubkey, reason: "revoked" };
+  }
+  // 10-27 (wallet BTDG, 3 failed plantings a day since 10-23): the wallet's own "revoke approvals" tool cleared the USDC delegate
+  // while the delegation stayed, so every pull failed at simulation with token error 0x4. That is a revoke: the wallet stops here
+  // once, and a re-link puts the approval back (link/[code] reapprove). A failed read changes nothing; the simulation decides.
+  if ((await a.chain.readUsdcApproved?.(w.pubkey).catch(() => null)) === false) {
+    await a.repo.setWalletStatus(w.pubkey, "revoked");
+    await a.repo.addEvent({ userPubkey: w.userPubkey, walletPubkey: w.pubkey, kind: "revoke_seen", detail: { by: "token_revoke" } });
     return { wallet: w.pubkey, reason: "revoked" };
   }
 

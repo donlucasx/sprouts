@@ -1,9 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { address, AccountRole, createNoopSigner } from "@solana/kit";
-import { buildApproveOnceIxs, buildTransferRecurringIx, delegationPda, usdcAta } from "@/lib/subscriptions";
-import { ASSOCIATED_TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
+import { APPROVE_ALL, buildApproveOnceIxs, buildTransferRecurringIx, delegationPda, usdcAta } from "@/lib/subscriptions";
+import { ASSOCIATED_TOKEN_PROGRAM_ADDRESS, TOKEN_PROGRAM_ADDRESS, getApproveInstructionDataDecoder } from "@solana-program/token";
 import { SUBSCRIPTIONS_PROGRAM } from "@/lib/constants";
-import { UNKNOWN_INIT_ID, getCreateRecurringDelegationInstructionDataDecoder } from "@solana/subscriptions";
+import { UNKNOWN_INIT_ID, findSubscriptionAuthorityPda, getCreateRecurringDelegationInstructionDataDecoder } from "@solana/subscriptions";
+import { USDC_MINT } from "@/lib/constants";
 
 const delegator = address("9H7ChDC2o32wC8jcpVDjLGQhwyx1hmLW1fiCjsjUuzFm");
 const delegatee = address("4wiD3N7FrBNJSmZUQDkGHM4CsvDrvyvx7G1FApLGEbJ1");
@@ -41,6 +42,17 @@ describe("subscriptions builders", () => {
     expect(ixs[0].programAddress).toBe(SUBSCRIPTIONS_PROGRAM);
     const data = getCreateRecurringDelegationInstructionDataDecoder().decode(ixs[0].data!);
     expect(data.recurringDelegation.expectedSubscriptionAuthorityInitId).toBe(42n);
+  });
+
+  it("re-link with the USDC approval removed (10-27): a token Approve of the wallet's own authority, the full allowance, then the create", async () => {
+    const ixs = await buildApproveOnceIxs({ delegator, delegatee, capRaw: 5_000_000n, nonce: 8n, existingInitId: 42n, reapprove: true });
+    expect(ixs.map((i) => i.programAddress)).toEqual([TOKEN_PROGRAM_ADDRESS, SUBSCRIPTIONS_PROGRAM]);
+    const [authority] = await findSubscriptionAuthorityPda({ user: delegator, tokenMint: USDC_MINT });
+    expect(ixs[0].accounts!.map((a) => a.address)).toEqual([await usdcAta(delegator), authority, delegator]);
+    expect(isSigner(ixs[0].accounts![2].role)).toBe(true);
+    expect(getApproveInstructionDataDecoder().decode(ixs[0].data!).amount).toBe(APPROVE_ALL);
+    // a fresh wallet's init sets the delegate itself: reapprove adds nothing there
+    expect((await buildApproveOnceIxs({ delegator, delegatee, capRaw: 5_000_000n, nonce: 8n, reapprove: true })).length).toBe(2);
   });
 
   it("the delegation address is deterministic for a delegator, delegatee and nonce", async () => {

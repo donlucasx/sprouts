@@ -28,6 +28,7 @@ vi.mock("@/lib/subscriptions", async (orig) => {
     readSubscriptionAuthority: vi.fn(async () => ({ exists: false })),
     readUsdcAtaExists: vi.fn(async () => true),
     readUsdcBalanceRaw: vi.fn(async () => 0n),
+    readUsdcApproved: vi.fn(async () => true),
   };
 });
 vi.mock("@/lib/helius", () => ({ heliusAddAddress: vi.fn(async () => undefined) }));
@@ -160,6 +161,38 @@ describe("link flow", () => {
     } finally {
       mock.mockResolvedValue({ exists: false });
     }
+  });
+
+  // 10-27 (wallet BTDG): the wallet's own revoke-approvals tool cleared the USDC delegate; the re-link puts it back and confirm sends it.
+  it("re-link: a wallet whose USDC approval was removed gets a token Approve of its authority in front of the create", async () => {
+    const subs = await import("@/lib/subscriptions");
+    vi.mocked(subs.readSubscriptionAuthority).mockResolvedValue({ exists: true, initId: 42n });
+    vi.mocked(subs.readUsdcApproved).mockResolvedValue(false);
+    try {
+      const c = await mintCode(repo);
+      const t = await (await getTx(new Request(`http://x/api/link/${c.code}?wallet=${WALLET}`), { params: Promise.resolve({ code: c.code }) })).json();
+      expect(instructionCount(t.transaction)).toBe(2);
+      const signed = getBase64EncodedWireTransaction(await signTransaction([walletKeyPair.keyPair], getTransactionDecoder().decode(getBase64Encoder().encode(t.transaction))));
+      const r = await confirm(new Request("http://x/api/link/confirm", { method: "POST", body: JSON.stringify({ code: c.code, wallet: WALLET, signedTransaction: signed }) }));
+      expect(r.status).toBe(200);
+    } finally {
+      vi.mocked(subs.readSubscriptionAuthority).mockResolvedValue({ exists: false });
+      vi.mocked(subs.readUsdcApproved).mockResolvedValue(true);
+    }
+  });
+
+  it("confirm refuses, unsent, a posted approval carrying any other token instruction (a transfer out of the wallet)", async () => {
+    const { getTransferInstruction } = await import("@solana-program/token");
+    const { usdcAta } = await import("@/lib/subscriptions");
+    const c = await mintCode(repo);
+    const t = await (await getTx(new Request(`http://x/api/link/${c.code}?wallet=${WALLET}`), { params: Promise.resolve({ code: c.code }) })).json();
+    const tx = getTransactionDecoder().decode(getBase64Encoder().encode(t.transaction));
+    const m = decompileTransactionMessage(getCompiledTransactionMessageDecoder().decode(tx.messageBytes));
+    const steal = getTransferInstruction({ source: await usdcAta(walletKeyPair.address), destination: address(OTHER), authority: walletKeyPair, amount: 1n });
+    const signed = getBase64EncodedWireTransaction(await signTransaction([walletKeyPair.keyPair], compileTransaction(prependTransactionMessageInstructions([steal], m))));
+    const r = await confirm(new Request("http://x/api/link/confirm", { method: "POST", body: JSON.stringify({ code: c.code, wallet: WALLET, signedTransaction: signed }) }));
+    expect(r.status).toBe(400);
+    expect(await repo.getWallet(WALLET)).toBeNull();
   });
 
   it("a fresh wallet gets the two-instruction approval (init the authority, then the delegation)", async () => {

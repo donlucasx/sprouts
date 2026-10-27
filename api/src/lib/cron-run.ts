@@ -3,7 +3,7 @@ import { address } from "@solana/kit";
 import { config } from "./config";
 import { rpc } from "./rpc";
 import type { Chain } from "./plant-run";
-import { readDelegation, usdcAta } from "./subscriptions";
+import { readDelegation, readUsdcApproved, usdcAta } from "./subscriptions";
 import { buildPlantingTx, simulatePlanting, sendPlanting, signatureStatus, pullerSkrChangeRaw, pullerTokenChangeRaw, cleanupPlanting, type BuiltPlanting } from "./planting";
 import { readLeashConfig, priceSourceFor, type LeashLegByte } from "./leash";
 import { readPosition, sharePrice } from "./staking";
@@ -25,6 +25,7 @@ export function cronAuthorized(header: string | null): boolean {
 export function realPlantingChain(): Chain {
   return {
     readDelegation: (pda) => readDelegation(address(pda)),
+    readUsdcApproved: (owner) => readUsdcApproved(address(owner)),
     usdcBalanceRaw: async (owner) => {
       // A missing token account is "no USDC"; anything else (an RPC outage) throws, so the wallet is skipped, not paused (review I8).
       const ata = await usdcAta(address(owner));
