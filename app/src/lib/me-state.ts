@@ -123,16 +123,19 @@ export function usdcNotice(me: Pick<MeResponse, 'wallets' | 'user'>, phone: { us
   const topUp = entries.some((e) => e.mine)
   // the name alone: 'Your Seed Vault wallet has no USDC' wrapped to two lines on the Saga (10-27)
   const the = (e: Entry) => e.name
+  // 10-27 (his note: say "WHY sprouts needs USDC on such wallets... brief and simple"): the why leads every line, in the words of the
+  // approved intro ("Sprouts plants the change with USDC from your wallet")
+  const WHY = 'Sprouts plants your round-ups with USDC from this wallet.'
   if (entries.length === 1) {
     const [e] = entries
-    if (e.state === 'zero') return { title: `${the(e)} has no USDC`, lines: ['Nothing plants until you add some. Your round-ups are still counted.'], topUp }
-    if (e.state === 'low') return { title: `${the(e)} is low on USDC`, lines: [`${usd(e.cents)} left. Top up so plantings don't pause.`], topUp }
-    return { title: `${the(e)} needs USDC`, lines: [`Plantings are paused until it has ${usd(e.cents)}. Your round-ups are still counted.`], topUp }
+    if (e.state === 'zero') return { title: `${the(e)} has no USDC`, lines: [`${WHY} Nothing plants until you add some.`], topUp }
+    if (e.state === 'low') return { title: `${the(e)} is low on USDC`, lines: [`${WHY} ${usd(e.cents)} left, so top up before plantings pause.`], topUp }
+    return { title: `${the(e)} needs USDC`, lines: [`${WHY} Plantings are paused until it has ${usd(e.cents)}.`], topUp }
   }
   const brief = (e: Entry) => (e.state === 'zero' ? 'no USDC' : e.state === 'low' ? `${usd(e.cents)} left` : `needs ${usd(e.cents)}`)
   return {
     title: `${entries.length} wallets need USDC`,
-    lines: [...entries.map((e) => `${e.name}: ${brief(e)}`), 'Your round-ups are still counted, and plantings restart once they have it.'],
+    lines: ['Sprouts plants your round-ups with USDC from each wallet.', ...entries.map((e) => `${e.name}: ${brief(e)}`), 'Plantings restart once they have it.'],
     topUp,
   }
 }

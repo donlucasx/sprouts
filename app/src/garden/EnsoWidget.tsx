@@ -8,7 +8,7 @@ import { toGardenInput, type ZeroMarks } from "@/lib/garden-input";
 import { gardenTotals, valueBlock } from "@/lib/me-state";
 import { formatUsd } from "@/lib/format";
 import { widgetHeadline } from "@/lib/widget-state";
-import { isSlim, LABEL_SIZE, STATE_MIN, textWidth } from "./widget-layout";
+import { isSlim, LABEL_SIZE, lineBox, STATE_MIN, textWidth } from "./widget-layout";
 import type { PlantId } from "@/model/garden";
 
 /**
@@ -21,7 +21,11 @@ const SAND = "#ECE5D3", PAPER = "#FFFCF7", INK = "#2B2B2B" as const, QUIET = "#6
 const RIPPLE = "rgba(140,116,78,0.45)", RIPPLE_LIGHT = "rgba(255,255,255,0.85)";
 const BIG = 16, LINE = 12;
 /** Tall from this width to height ratio (a 3x3 is 0.66, the 3x2 square 1.0); the words' blocks above and below the ring, in dp. */
-const TALL_RATIO = 0.8, TALL_TOP = 54, TALL_BOT = 42, TALL_EDGE = 12, TALL_GAP = 6;
+const TALL_RATIO = 0.8;
+/** Tall (10-27 round 4, his notes: the bottom words "touching the edges of the planting circle... a tad smaller"; "format the text to
+ *  read well over the sand rings"): each block centred in its band of sand, on a soft paper label so the rings never cross the letters. */
+const TALL_PAD = 12, PLATE_X = 14, PLATE_Y = 5;
+type Plate = { x: number; y: number; w: number; h: number };
 const f = (n: number) => Number(n.toFixed(2));
 
 type Words = { title: string; sub: string | null; accent: string | null; foot: string | null; fraction: number | null; ask: boolean };
@@ -48,7 +52,7 @@ function ring(cx: number, cy: number, r: number, sw: number, fr: number | null):
 }
 
 /** The sand card with a round hole for the garden window, its raked ripples round the ring, and the ring. */
-function card(w: number, h: number, rx: number, cx: number, cy: number, r: number, sw: number, fr: number | null): string {
+function card(w: number, h: number, rx: number, cx: number, cy: number, r: number, sw: number, fr: number | null, plates: Plate[] = []): string {
   const hole = r - sw * 0.45;
   const rr = `M${rx},0 H${f(w - rx)} A${rx},${rx} 0 0 1 ${w},${rx} V${f(h - rx)} A${rx},${rx} 0 0 1 ${f(w - rx)},${h} H${rx} A${rx},${rx} 0 0 1 0,${f(h - rx)} V${rx} A${rx},${rx} 0 0 1 ${rx},0 Z`;
   const circle = `M${f(cx - hole)},${f(cy)} A${f(hole)},${f(hole)} 0 1 0 ${f(cx + hole)},${f(cy)} A${f(hole)},${f(hole)} 0 1 0 ${f(cx - hole)},${f(cy)} Z`;
@@ -56,7 +60,7 @@ function card(w: number, h: number, rx: number, cx: number, cy: number, r: numbe
   const step = Math.max(4, r / 9);
   for (let k = 0, rad = r + sw; rad < Math.hypot(w, h); k++, rad += step)
     ripples += `<circle cx="${f(cx)}" cy="${f(cy)}" r="${f(rad)}" fill="none" stroke="${RIPPLE}" stroke-width="0.6"/><circle cx="${f(cx)}" cy="${f(cy + 0.5)}" r="${f(rad)}" fill="none" stroke="${RIPPLE_LIGHT}" stroke-width="0.45"/>`;
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><defs><clipPath id="c"><path d="${rr}"/></clipPath></defs><path d="${rr} ${circle}" fill="${SAND}" fill-rule="evenodd"/><g clip-path="url(#c)">${ripples}</g>${ring(cx, cy, r, sw, fr)}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><defs><clipPath id="c"><path d="${rr}"/></clipPath></defs><path d="${rr} ${circle}" fill="${SAND}" fill-rule="evenodd"/><g clip-path="url(#c)">${ripples}</g>${plates.map((q) => `<rect x="${f(q.x)}" y="${f(q.y)}" width="${f(q.w)}" height="${f(q.h)}" rx="${f(Math.min(14, q.h / 2))}" fill="${PAPER}" fill-opacity="0.9" stroke="${RIPPLE}" stroke-width="0.6"/>`).join("")}${ring(cx, cy, r, sw, fr)}</svg>`;
 }
 
 const text = (t: string | null, size: number, color: `#${string}`, bold: boolean, align: "left" | "center" = "left") =>
@@ -71,8 +75,11 @@ export function EnsoWidget({ me, width, height, wateredPlants = null, restartMar
   // the slim pill sits centred in its row (his ruling 10-23: "slimmer like the pill"); the others fill the widget, 4 dp in
   const W = width - 8, H = mode === "pill" ? Math.min(height - 8, 72) : height - 8;
   const top = (height - H) / 2;
-  const tallTop = TALL_EDGE + TALL_TOP + TALL_GAP, tallBot = H - (TALL_EDGE + TALL_BOT + TALL_GAP);
-  const R = mode === "full" ? Math.min(W, H) / 2 - 8 : mode === "tall" ? Math.min(W / 2 - 8, (tallBot - tallTop) / 2 - 6) : H / 2 - (mode === "pill" ? 5 : 10);
+  // tall: the words' sizes come from the width first, then the ring takes what the two bands leave
+  const tT = Math.round(Math.min(28, Math.max(BIG + 2, W * 0.11))), tS = Math.max(LABEL_SIZE, Math.round(tT * 0.48)), tA = Math.max(LINE, Math.round(tT * 0.52));
+  const topH = lineBox(tT) + lineBox(tS), botH = lineBox(tA) + lineBox(tS);
+  const tallTop = topH + 2 * (TALL_PAD + PLATE_Y), tallBot = H - (botH + 2 * (TALL_PAD + PLATE_Y));
+  const R = mode === "full" ? Math.min(W, H) / 2 - 8 : mode === "tall" ? Math.min(W / 2 - 8, (tallBot - tallTop) / 2 - 4) : H / 2 - (mode === "pill" ? 5 : 10);
   const sw = round ? Math.max(5, R / 17) : mode === "wide" ? 4.5 : 3.5;
   const cx = round ? W / 2 : mode === "pill" ? H / 2 : R + 12, cy = mode === "tall" ? (tallTop + tallBot) / 2 : H / 2;
   const rx = mode === "pill" ? H / 2 : Math.min(22, H * 0.12);
@@ -87,8 +94,8 @@ export function EnsoWidget({ me, width, height, wateredPlants = null, restartMar
   // 10-27 (his note: the 2x2 / 2x3 "should show the 19.92 a bit bigger... the bigger 3x3, fonts should fit accordingly"): the full and
   // tall words grow with the widget, the title with the ring (or the width when tall), the smaller lines in step; never under the
   // approved mock's sizes (18 / 11 / 12)
-  const T = round ? Math.round(Math.min(30, Math.max(BIG + 2, mode === "tall" ? Math.max(R * 0.19, W * 0.12) : R * 0.19))) : BIG + 2;
-  const S = Math.max(LABEL_SIZE, Math.round(T * 0.6)), A = Math.max(LINE, Math.round(T * 0.66));
+  const T = mode === "tall" ? tT : round ? Math.round(Math.min(30, Math.max(BIG + 2, R * 0.19))) : BIG + 2;
+  const S = mode === "tall" ? tS : Math.max(LABEL_SIZE, Math.round(T * 0.5)), A = mode === "tall" ? tA : Math.max(LINE, Math.round(T * 0.55)); // the bottom lines sit where the ring narrows (10-27)
   try {
     const total = valueBlock(gardenTotals(me), BigInt(me.pot.skrStakedRaw)).big;
     let scene: ReturnType<typeof buildScene> | null = null, input: ReturnType<typeof toGardenInput> | null = null;
@@ -100,13 +107,25 @@ export function EnsoWidget({ me, width, height, wateredPlants = null, restartMar
     return shell([<SvgWidget key="c" svg={card(W, H, rx, cx, cy, R, sw, null)} style={{ width: W, height: H }} />]);
   }
   const D = Math.floor(2 * (R - sw * 0.45)) + 2;
+  // tall: the bands of sand above and below the ring, and a paper label sized to each block's words
+  const bandTop = cy - R - sw, bandBot = cy + R + sw;
+  const plate = (lines: [string | null, number, boolean][], mid: number): Plate | null => {
+    const shown = lines.filter(([t]) => t);
+    if (!shown.length) return null;
+    const w = Math.min(W - 16, Math.max(...shown.map(([t, s, b]) => textWidth(t!, s, b))) + 2 * PLATE_X);
+    const h = shown.reduce((c, [, s]) => c + lineBox(s), 0) + 2 * PLATE_Y;
+    return { x: cx - w / 2, y: mid - h / 2, w, h };
+  };
+  const plates = mode === "tall"
+    ? [plate([[words.title, T, true], [words.sub, S, false]], bandTop / 2), plate([[words.accent, A, true], [words.foot, S, false]], (bandBot + H) / 2)].filter((q): q is Plate => q !== null)
+    : [];
   const layers = [
     garden ? (
       <FlexWidget key="g" style={{ width: W, height: H, paddingLeft: Math.round(cx - D / 2), paddingTop: Math.round(cy - D / 2) }}>
         <SvgWidget svg={garden} style={{ width: D, height: D }} />
       </FlexWidget>
     ) : null,
-    <SvgWidget key="c" svg={card(W, H, rx, cx, cy, R, sw, words.fraction)} style={{ width: W, height: H }} />,
+    <SvgWidget key="c" svg={card(W, H, rx, cx, cy, R, sw, words.fraction, plates)} style={{ width: W, height: H }} />,
   ];
   if (mode === "full") {
     // the words inside the ring; 10-27 (his note: the bottom line touched the ring) the bottom inset 0.16 R -> 0.24 R
@@ -123,15 +142,14 @@ export function EnsoWidget({ me, width, height, wateredPlants = null, restartMar
       </FlexWidget>,
     );
   } else if (mode === "tall") {
-    // the words just outside the ring: the total above it, the state under it
-    const above = Math.max(TALL_EDGE, cy - R - sw - TALL_GAP - TALL_TOP), below = Math.max(TALL_EDGE, H - (cy + R + sw + TALL_GAP) - TALL_BOT);
     layers.push(
-      <FlexWidget key="t" style={{ width: W, height: H, flexDirection: "column", justifyContent: "space-between", alignItems: "center", paddingTop: above, paddingBottom: below, paddingLeft: 12, paddingRight: 12 }}>
-        <FlexWidget style={{ flexDirection: "column", alignItems: "center" }}>
+      <FlexWidget key="t" style={{ width: W, height: H, flexDirection: "column", alignItems: "center" }}>
+        <FlexWidget style={{ width: W, height: Math.round(bandTop), flexDirection: "column", justifyContent: "center", alignItems: "center" }}>
           {text(words.title, T, INK, true, "center")}
           {text(words.sub, S, QUIET, false, "center")}
         </FlexWidget>
-        <FlexWidget style={{ flexDirection: "column", alignItems: "center" }}>
+        <FlexWidget style={{ width: W, height: Math.round(bandBot) - Math.round(bandTop) }} />
+        <FlexWidget style={{ width: W, height: H - Math.round(bandBot), flexDirection: "column", justifyContent: "center", alignItems: "center" }}>
           {text(words.accent, A, ACCENT, true, "center")}
           {text(words.foot, S, QUIET, false, "center")}
         </FlexWidget>
