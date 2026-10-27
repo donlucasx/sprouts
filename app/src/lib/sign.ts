@@ -294,11 +294,12 @@ function movePart(ixs: Ix[], part: MovePart, redeem: Step[], deposit: Step[]): v
 }
 
 /**
- * An approval (link, relink): [create the USDC account], [revoke an old delegation], [init the authority], create the delegation: exactly
+ * An approval (link, relink): [create the USDC account], [revoke an old delegation], [init the authority | reapprove], create the delegation: exactly
  * one create, from this wallet, to one of `delegatees`, at $5 a day with no expiry; at most `maxRevokes` revokes. A fixed delegation or a
  * transfer (other discriminators) is refused. Order (both API builders): the ATA create and the revokes (link/[code] prepends its revoke,
  * contracts 5.5 puts it after the ATA create) before the init, the init before the create, the create last; at most one ATA create and
- * one init. A revoke may not name the delegation being created.
+ * one init. A revoke may not name the delegation being created. A re-link on an existing authority whose USDC delegate was removed may
+ * carry one token Approve of the full allowance to that authority before the create (10-27, the API's reapprove), never with an init.
  */
 async function checkApproval(ixs: Ix[], user: string, d: Awaited<ReturnType<typeof derived>>, delegatees: readonly string[], maxRevokes: number): Promise<void> {
   let creates = 0
