@@ -8,7 +8,7 @@ import { toGardenInput, type ZeroMarks } from "@/lib/garden-input";
 import { gardenTotals, valueBlock } from "@/lib/me-state";
 import { formatUsd } from "@/lib/format";
 import { widgetHeadline } from "@/lib/widget-state";
-import { LABEL_SIZE, STATE_MIN, textWidth } from "./widget-layout";
+import { isSlim, LABEL_SIZE, STATE_MIN, textWidth } from "./widget-layout";
 import type { PlantId } from "@/model/garden";
 
 /**
@@ -62,7 +62,7 @@ const text = (t: string | null, size: number, color: `#${string}`, bold: boolean
 
 export function EnsoWidget({ me, width, height, wateredPlants = null, restartMarks = {}, now = new Date() }: { me: MeResponse | null; width: number; height: number; wateredPlants?: PlantId[] | null; restartMarks?: ZeroMarks; now?: Date }) {
   const ratio = width / Math.max(1, height);
-  const mode = ratio >= 3 ? "pill" : ratio >= 1.3 ? "wide" : "full";
+  const mode = isSlim(width, height) ? "pill" : ratio >= 1.3 ? "wide" : "full";
   // the slim pill sits centred in its row (his ruling 10-23: "slimmer like the pill"); the others fill the widget, 4 dp in
   const W = width - 8, H = mode === "pill" ? Math.min(height - 8, 72) : height - 8;
   const top = (height - H) / 2;

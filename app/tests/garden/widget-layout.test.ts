@@ -265,3 +265,16 @@ describe("Garden2 (10-11, his notes \"$0.00 alone... not very inviting\", \"too 
     }
   });
 });
+
+// 10-27 (his note: the bamboo "not when resizing into the pill shaped versions"): the Seeker's 4x1 is 372 x 131 dp
+describe("isSlim: one row tall and at least twice as wide", () => {
+  it("the Seeker's 4x1 and 3x1 are slim; a 2x1, the square and a 4x2 on a wide grid are not", async () => {
+    const { isSlim } = await import("@/garden/widget-layout");
+    expect(isSlim(372, 131)).toBe(true);
+    expect(isSlim(276, 131)).toBe(true);
+    expect(isSlim(184, 131)).toBe(false);
+    expect(isSlim(276, 274)).toBe(false);
+    expect(isSlim(430, 205)).toBe(false);
+    expect(isSlim(320, 150)).toBe(false);
+  });
+});
