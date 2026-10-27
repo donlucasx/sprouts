@@ -22,15 +22,18 @@ const RIPPLE = "rgba(140,116,78,0.45)", RIPPLE_LIGHT = "rgba(255,255,255,0.85)";
 const BIG = 16, LINE = 12;
 const f = (n: number) => Number(n.toFixed(2));
 
-type Words = { title: string; sub: string | null; accent: string | null; foot: string | null; fraction: number | null };
+type Words = { title: string; sub: string | null; accent: string | null; foot: string | null; fraction: number | null; ask: boolean };
 
 function wordsFor(me: MeResponse, total: string, parts: { parts: never[] } | { parts: unknown[] }, now: Date, room: number): Words {
   const head = widgetHeadline(me, parts as never, now, total, total !== formatUsd(0), {
     big: (t) => textWidth(t, BIG, true) <= room, label: (t) => textWidth(t, LABEL_SIZE, true) <= room, line: (t) => textWidth(t, STATE_MIN, true) <= room,
   });
-  if (head.action) return { title: head.big, sub: null, accent: head.label, foot: head.line, fraction: 0 };
+  // the garden itself paused: the ask is the headline and the ring empties
+  if (head.action && !head.walletAsk) return { title: head.big, sub: null, accent: head.label, foot: head.line, fraction: 0, ask: true };
+  // one wallet needs USDC while the garden still plants (10-26): the money stays the headline, the ask takes the accent line
+  if (head.action) return { title: total, sub: "in your garden", accent: head.label, foot: head.big.includes(total) ? null : head.big, fraction: head.fraction, ask: true };
   const saving = head.fraction !== null && head.fraction < 1;
-  return { title: total, sub: "in your garden", accent: head.big.includes(total) ? null : head.big, foot: saving ? "next planting" : head.label, fraction: head.fraction };
+  return { title: total, sub: "in your garden", accent: head.big.includes(total) ? null : head.big, foot: saving ? "next planting" : head.label, fraction: head.fraction, ask: false };
 }
 
 function ring(cx: number, cy: number, r: number, sw: number, fr: number | null): string {
@@ -114,7 +117,7 @@ export function EnsoWidget({ me, width, height, wateredPlants = null, restartMar
         {/* the widget renderer draws widget elements only: plain children, never a fragment (TypeError on the Seeker, 10-26) */}
         {mode === "pill" ? text(words.sub ? `${words.title} ${words.sub}` : words.title, BIG, INK, true) : text(words.title, BIG, INK, true)}
         {mode === "pill"
-          ? text([words.accent, words.foot].filter(Boolean).join(" · "), LINE, words.fraction === 0 ? ACCENT : QUIET, words.fraction === 0)
+          ? text([words.accent, words.foot].filter(Boolean).join(" · "), LINE, words.ask ? ACCENT : QUIET, words.ask)
           : text(words.sub ? "in garden" : null, LABEL_SIZE, QUIET, false)}
         {mode === "pill" ? null : text(words.accent, LINE, ACCENT, true)}
         {mode === "pill" ? null : text(words.foot, LABEL_SIZE, QUIET, false)}

@@ -6,7 +6,7 @@ import type { MeResponse } from "./api";
  * this phone's wallet into the states he has to review without touching money: paused for want of USDC, or low on it. Nothing here is
  * sent anywhere; the API and the wallet are never asked. Off by default and in release builds.
  */
-export type DraftPreview = "off" | "paused" | "low";
+export type DraftPreview = "off" | "paused" | "low" | "oneOfTwo";
 let current: DraftPreview = "off";
 const subs = new Set<() => void>();
 export function setDraftPreview(p: DraftPreview) {
@@ -25,6 +25,12 @@ export const PREVIEW_AVG_CENTS = 35;
 
 /** The read as the preview shows it: "paused" pauses this phone's wallet for want of USDC; "low" and "off" change nothing here. */
 export function withDraftPreview(me: MeResponse, p: DraftPreview = current): MeResponse {
+  if (p === "oneOfTwo") {
+    // a second wallet out of USDC while this phone's wallet still plants (the widget's flag, 10-26)
+    const need = Math.max(me.nextPlanting.thresholdCents, me.nextPlanting.pendingCents);
+    const other = me.wallets.find((w) => w.pubkey !== me.user.pubkey && w.status !== "revoked");
+    return { ...me, wallets: me.wallets.map((w) => (w === other ? { ...w, status: "paused" as const, pause: { reason: "no_usdc" as const, needCents: need, resumeAtCents: me.nextPlanting.thresholdCents } } : w)) };
+  }
   if (p !== "paused") return me;
   const need = Math.max(me.nextPlanting.thresholdCents, me.nextPlanting.pendingCents);
   return {
