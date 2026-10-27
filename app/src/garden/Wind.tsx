@@ -42,22 +42,44 @@ function WindCurl({ slot, clock, seed, width, viewH, focus }: { slot: number; cl
   );
 }
 
+/** smoothstep, on the UI thread (a top-level worklet: an arrow inside the style callback was hoisted out of it and threw, 10-27) */
+function sm(v: number) {
+  "worklet";
+  return v * v * (3 - 2 * v);
+}
+
 function CurlImage({ name, sprite, slot, clock, seed, width, viewH, focus }: { name: (typeof WIND_NAMES)[number]; sprite: number; slot: number; clock: SharedValue<number>; seed: SharedValue<number>; width: number; viewH: SharedValue<number>; focus?: SharedValue<number[]> }) {
   const m = WIND_SPRITES[name];
-  const style = useAnimatedStyle(() => {
+  // 10-27 (his question: "should the wind gusts actually curl on themselves/animate subtly as they happen?"): each curl is a stroke
+  // the wind writes and wipes: it draws itself in left to right as it lands (its head), its tail dissolves as it leaves, and it rocks
+  // a few degrees as it drifts. A window over the painted curl (`win`) does the drawing; the image inside slides against it.
+  const win = useAnimatedStyle(() => {
     const c = curlPlan(seed.value, slot, focus ? focus.value : []);
     const f = curlAt(c, clock.value, false);
+    const u = Math.max(0, Math.min(1, (clock.value - c.delay) / c.life));
+    const head = m.w * sm(Math.min(1, u / 0.4)), tail = m.w * sm(Math.max(0, (u - 0.6) / 0.4));
     const shown = c.sprite === sprite ? f.opacity : 0;
     return {
       opacity: shown,
-      // the image is laid out at 1x units; scale about its left-centre so `x` stays the curl's left edge as it stretches
+      width: Math.max(0, head - tail),
       transform: [
-        { translateX: f.x * width - (m.w * (1 - c.scale * f.stretch)) / 2 },
-        { translateY: c.top * viewH.value + f.dy - (m.h * (1 - c.scale)) / 2 },
+        // the origin is the window's left-centre (transformOrigin), so `x` is the curl's left edge as before, moved on by its dissolved tail
+        { translateX: f.x * width + tail * c.scale * f.stretch },
+        { translateY: c.top * viewH.value + f.dy },
+        { rotate: `${3.5 * Math.sin(2 * Math.PI * (u + c.phase))}deg` },
         { scaleX: c.scale * f.stretch },
         { scaleY: c.scale },
       ],
     };
   });
-  return <Animated.Image source={m.src} style={[{ position: "absolute", left: 0, top: 0, width: m.w, height: m.h }, style]} />;
+  const img = useAnimatedStyle(() => {
+    const c = curlPlan(seed.value, slot, focus ? focus.value : []);
+    const u = Math.max(0, Math.min(1, (clock.value - c.delay) / c.life));
+    return { transform: [{ translateX: -m.w * sm(Math.max(0, (u - 0.6) / 0.4)) }] };
+  });
+  return (
+    <Animated.View style={[{ position: "absolute", left: 0, top: 0, height: m.h, overflow: "hidden", transformOrigin: [0, m.h / 2, 0] }, win]}>
+      <Animated.Image source={m.src} style={[{ width: m.w, height: m.h }, img]} />
+    </Animated.View>
+  );
 }
