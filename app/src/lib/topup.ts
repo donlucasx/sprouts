@@ -14,7 +14,9 @@ export const TOPUP = {
   // "Add USDC" button; the SOL swap stays behind it, named once in a quiet line; a wallet whose SOL covers nothing gets its address
   open: 'Add USDC',
   button: (cents: number) => `Add $${Math.round(cents / 100)} of USDC`,
-  how: "Paid from this wallet's SOL. No Sprouts fee.",
+  // 10-27 (his note on the Saga: "should state somewhere that you are swapping existing sol from your wallet into USDC")
+  how: (cents: number, covers: string | null) =>
+    `Swaps SOL already in this wallet for $${Math.round(cents / 100)} of USDC${covers ? `, ${covers.charAt(0).toLowerCase()}${covers.slice(1)}` : ''}. No Sprouts fee.`,
   sendHere: 'Send USDC to this address from any wallet or exchange. Plantings start again once it arrives.',
   copy: 'Copy address',
   copied: 'Copied',
