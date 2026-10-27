@@ -317,6 +317,12 @@ export class SupabaseRepo implements Repo {
     return this.many(this.db.from("events").select().eq("user_pubkey", userPubkey).in("kind", kinds).order("id", { ascending: false }).limit(limit), eventRow);
   }
 
+  async topUpKinds(signature: string) {
+    const { data, error } = await this.db.from("events").select("kind").in("kind", ["topup_sent", "topped_up"]).eq("detail->>signature", signature);
+    if (error) throw new Error(error.message);
+    return ((data ?? []) as Row[]).map((r) => r.kind as T.EventKind);
+  }
+
   async putCoinDay(r: T.CoinDayRow) {
     const { error } = await this.db.from("coin_days").upsert({
       day: r.day, asset: r.asset, rate: r.rate, rate_prev: r.ratePrev, rate_prev_days: r.ratePrevDays, price_usd: r.priceUsd, liquidity_usd: r.liquidityUsd,

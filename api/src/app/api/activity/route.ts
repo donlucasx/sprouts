@@ -10,6 +10,7 @@ import { isLendAsset } from "@/domain/coins";
 import { isAutoVenue } from "@/domain/venues";
 import type { EventKind, MoveStatus } from "@/db/types";
 import { SKR_MINT, STORE_MINT } from "@/lib/constants";
+import { settleTopUps } from "@/lib/topup-record";
 
 export const runtime = "nodejs";
 
@@ -23,13 +24,18 @@ export async function GET(request: Request) {
   const repo = await getRepo();
   // Everything that needs only the user starts at once: the lists, both event reads, the scout's finds and the live SKR price.
   const skrUsdRead = sharedPriceUsd(SKR_MINT).catch(() => null);
-  const [swaps, plantings, withdrawals, events, lendEvents, foundRows] = await Promise.all([
+  const [swaps, plantings, withdrawals, events, lendEvents, foundRows, topUpEvents] = await Promise.all([
     repo.listSwaps(session.pubkey, LIMIT), repo.listPlantings(session.pubkey, LIMIT), repo.listWithdrawals(session.pubkey, LIMIT),
     repo.listEvents(session.pubkey, ["split_changed", "split_undone"], LIMIT),
     // Contracts 5.7: a lending position back to the wallet (underlyingRaw = what came back, from the confirmed tx; null when unknown),
     // the moves the user approved or turned down, and the scout's finds of the last 7 days.
     repo.listEvents(session.pubkey, ["lend_withdrawn", "move_proposed", "move_done", "move_dismissed", "move_failed"], LIMIT),
     repo.listFoundVenues(addDays(dayOf(new Date()), -7), 20),
+    // 10-27: the user's top-ups, any that landed late given their row first (Kimi F4); a failed read lists none rather than failing.
+    settleTopUps(repo, session.pubkey).catch((e) => {
+      console.error(`/api/activity: top-ups not read: ${e instanceof Error ? e.message : String(e)}`);
+      return [];
+    }),
   ]);
   // Every leg of the listed plantings in one read (was one read per planting), grouped back per planting in list order.
   const legRows = plantings.length ? await repo.plantingLegsFor(plantings.map((p) => p.id)) : [];
@@ -77,6 +83,12 @@ export async function GET(request: Request) {
     if (!status) return [];
     return [{ ts: e.ts, asset: d.asset, from: d.from, to: d.to, receiptRaw: digits(d.receiptRaw) ? d.receiptRaw : "0", status }];
   });
+  const topUps = topUpEvents.slice(0, LIMIT).flatMap((e) => {
+    const d = (e.detail ?? {}) as EvDetail;
+    if (!str_(d.signature) || !digits(d.usdcRaw)) return [];
+    const sentAt = typeof d.sentAt === "string" && !Number.isNaN(Date.parse(d.sentAt)) ? new Date(d.sentAt) : e.ts;
+    return [{ ts: sentAt, signature: d.signature, usdcRaw: d.usdcRaw }];
+  });
   const found = foundRows.map((f) => ({ day: f.day, project: f.project, symbol: f.symbol, asset: f.asset, apyBasePct: f.apyBasePct, tvlUsd: f.tvlUsd, note: f.note }));
   return NextResponse.json(str({
     splits,
@@ -93,5 +105,6 @@ export async function GET(request: Request) {
     lendWithdrawals,
     moves,
     found,
+    topUps,
   }));
 }

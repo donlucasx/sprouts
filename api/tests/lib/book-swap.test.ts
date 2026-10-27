@@ -219,3 +219,34 @@ describe("a swap whose wallet app takes a fee in the same coin", () => {
     expect(roundup(await bookSwap({ repo, tx, priceUsd: prices }))).toBe(50);
   });
 });
+
+// 10-27 (his ruling: a top-up is not a swap): a Sprouts top-up is a SOL->USDC swap the linked wallet signs, so without its mark it
+// books like any other. The fixture is that shape (0.1 SOL out, USDC in), marked as /api/topup/confirm marks it before the send.
+describe("a Sprouts top-up is never booked", () => {
+  const PHANTOM = "887dEPR85vfSZ45zFrxttJ6cLomwvnYbh5HnyGbTAXVu";
+  const orderEngine = orderEngineJson as unknown as HeliusEnhancedTx;
+  async function repoWithPhantom() {
+    const r = new MemoryRepo();
+    await r.upsertUser({ seedVaultPubkey: "U", sgtMint: "M", skrName: null });
+    await r.addWallet({ pubkey: PHANTOM, userPubkey: "U", delegationPda: "D", dailyCapCents: 500 });
+    return r;
+  }
+  const mark = (repo: MemoryRepo, kind: "topup_sent" | "topped_up") =>
+    repo.addEvent({ userPubkey: PHANTOM, walletPubkey: PHANTOM, kind, detail: { signature: orderEngine.signature, usdcRaw: "5000000" } });
+
+  it("skips a marked signature quietly, before the on-chain verify is asked", async () => {
+    const repo = await repoWithPhantom();
+    await mark(repo, "topup_sent");
+    let verified = 0;
+    const r = await bookSwap({ repo, tx: orderEngine, priceUsd: async () => 1, verify: async () => { verified++; return null; } });
+    expect(r).toEqual({ booked: false });
+    expect(verified).toBe(0);
+    expect(await repo.unplantedSwaps(PHANTOM)).toEqual([]);
+  });
+
+  it("still books the same swap when it carries no top-up mark (a SOL->USDC swap made in another app rounds up)", async () => {
+    const repo = await repoWithPhantom();
+    await repo.addEvent({ userPubkey: PHANTOM, walletPubkey: PHANTOM, kind: "topup_sent", detail: { signature: "another-signature", usdcRaw: "5000000" } });
+    expect((await bookSwap({ repo, tx: orderEngine, priceUsd: async () => 1 })).booked).toBe(true);
+  });
+});

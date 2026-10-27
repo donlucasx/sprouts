@@ -20,3 +20,21 @@ describe('Activity as one list (R450)', () => {
     expect(filterRows(merged, 'split').map((r) => r.kind)).toEqual(['split'])
   })
 })
+
+// 10-27 (his rulings: top-ups show in Activity, never as a swap; copy "Added $5.00 of USDC" / "From SOL in this wallet. No Sprouts fee.")
+describe('a top-up row', () => {
+  it('says the USDC it added, the note, its transaction, and the tag "Top up"', async () => {
+    const { topUpRow, KIND_TAG } = await import('@/model/activity')
+    expect(topUpRow({ ts: '2026-10-27T20:00:00Z', signature: 'sig', usdcRaw: '5000000' })).toEqual({
+      key: 'tu-sig', ts: '2026-10-27T20:00:00Z', label: 'Added $5.00 of USDC', amount: null, details: ['From SOL in this wallet. No Sprouts fee.'], signature: 'sig',
+    })
+    expect(topUpRow({ ts: '2026-10-27T20:00:00Z', signature: 's', usdcRaw: '25000000' }).label).toBe('Added $25.00 of USDC')
+    expect(KIND_TAG.topup).toBe('Top up')
+  })
+
+  it('sorts among the other rows by time and shows only under All', () => {
+    const merged = mergeRows({ swap: [{ row: row('s1', '2026-10-27T19:00:00Z') }], topup: [{ row: row('t1', '2026-10-27T20:00:00Z') }] })
+    expect(merged.map((r) => [r.kind, r.row.key])).toEqual([['topup', 't1'], ['swap', 's1']])
+    expect(filterRows(merged, 'swap').map((r) => r.row.key)).toEqual(['s1'])
+  })
+})
