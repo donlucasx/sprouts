@@ -130,7 +130,7 @@ export function usdcNotice(me: Pick<MeResponse, 'wallets' | 'user'>, phone: { us
     const [e] = entries
     // 10-27 (his question: can "your round-ups are still counted" fit, simply?): "they wait" says nothing is lost, in two words
     if (e.state === 'zero') return { title: `${the(e)} has no USDC`, lines: [`${WHY} Until you add some, they wait.`], topUp }
-    if (e.state === 'low') return { title: `${the(e)} is low on USDC`, lines: [`${WHY} ${usd(e.cents)} left, so top up before plantings pause.`], topUp }
+    if (e.state === 'low') return { title: `${the(e)} is low on USDC`, lines: [`${WHY} ${usd(e.cents)} left, so add more before plantings pause.`], topUp }
     return { title: `${the(e)} needs USDC`, lines: [`${WHY} They wait until it has ${usd(e.cents)}.`], topUp }
   }
   const brief = (e: Entry) => (e.state === 'zero' ? 'no USDC' : e.state === 'low' ? `${usd(e.cents)} left` : `needs ${usd(e.cents)}`)
