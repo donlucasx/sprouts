@@ -234,10 +234,11 @@ describe("Garden2 (10-11, his notes \"$0.00 alone... not very inviting\", \"too 
     const h = headOf(priced(STATES.paused)); expect(h.big.props.text).toBe("Round-ups paused"); expect(h.label.props.style.color).toBe("#145A3C");
     expect(barOf(priced(STATES.paused))).toBe(false);
   });
-  it("nothing pending, money in the garden: the garden leads, no bar, what plants at the bottom", () => {
+  // 10-27 (his note: the pill "not showing the planting bar"; R164: Home's bar is always shown): nothing pending is an EMPTY bar
+  it("nothing pending, money in the garden: the garden leads, an empty bar, what plants at the bottom", () => {
     const m = priced(ALL.empty); expect(rowOf(m).state).toBe("empty");
     const h = headOf(m); expect(h.big.props.text).toMatch(/^\$[\d.,]+ in your garden$/); expect(h.label.props.text).toBe("Waiting for your next swap");
-    expect(h.line.props.text).toBe("Round-ups plant at $2.00"); expect(barOf(m)).toBe(false);
+    expect(h.line.props.text).toBe("Round-ups plant at $2.00"); expect(barOf(m)).toBe(true);
   });
   it("a planting in the last day leads with what was planted (the day's plantings summed); a day later the garden leads again", () => {
     const at = (ms: number) => new Date(NOW_W.getTime() - ms).toISOString();
@@ -248,7 +249,7 @@ describe("Garden2 (10-11, his notes \"$0.00 alone... not very inviting\", \"too 
   });
   it("nothing ever: waiting for the first swap, what plants at the bottom", () => {
     const h = widgetHeadline({ nextPlanting: { pendingCents: 0, thresholdCents: 200, capLeftCents: 500, asset: "SKR" }, wallets: [], history: { plantings: [] } } as unknown as MeResponse, { parts: [] }, NOW_W, "$0.00", false);
-    expect([h.big, h.label, h.line, h.fraction]).toEqual(["Your garden", "Waiting for your first swap", "Round-ups plant at $2.00", null]);
+    expect([h.big, h.label, h.line, h.fraction]).toEqual(["Your garden", "Waiting for your first swap", "Round-ups plant at $2.00", 0]);
   });
   it("a narrow widget takes each text's shorter form", () => {
     const h = widgetHeadline(priced(STATES.saving), { parts: [] }, NOW_W, "$14.98", true, { big: (t) => t.length <= 6, label: (t) => t.length <= 16, line: (t) => t.length <= 16 });

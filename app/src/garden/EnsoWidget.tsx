@@ -32,7 +32,7 @@ function wordsFor(me: MeResponse, total: string, parts: { parts: never[] } | { p
   if (head.action && !head.walletAsk) return { title: head.big, sub: null, accent: head.label, foot: head.line, fraction: 0, ask: true };
   // one wallet needs USDC while the garden still plants (10-26): the money stays the headline, the ask takes the accent line
   if (head.action) return { title: total, sub: "in your garden", accent: head.label, foot: head.big.includes(total) ? null : head.big, fraction: head.fraction, ask: true };
-  const saving = head.fraction !== null && head.fraction < 1;
+  const saving = head.fraction !== null && head.fraction > 0 && head.fraction < 1;
   return { title: total, sub: "in your garden", accent: head.big.includes(total) ? null : head.big, foot: saving ? "next planting" : head.label, fraction: head.fraction, ask: false };
 }
 
