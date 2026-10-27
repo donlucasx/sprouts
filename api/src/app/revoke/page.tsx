@@ -73,7 +73,7 @@ export default function RevokePage() {
           </>
         )}
         {message ? <p className={state === "done" ? "rv-done" : "rv-note"}>{message}</p> : null}
-        <p className="rv-note" style={{ marginTop: 18 }}>You can also revoke in the app, in Settings. On a phone? Open this page in your wallet app&apos;s browser.</p>
+        <p className="rv-note" style={{ marginTop: 18 }}>You can also revoke in the app, in Settings.</p>
       </div>
       <SiteFooter />
     </main>

@@ -151,7 +151,6 @@ export default function LinkPage() {
         {message ? <p className={state === "done" ? "lk-done" : "lk-note"}>{message}</p> : null}
         {state === "done" && usdcNote ? <p className="lk-usdc">{usdcNote}</p> : null}
 
-        <p className="lk-note">On a phone? Open this page in your wallet app&apos;s browser.</p>
         {/* his ask 10-22: the boundaries open, before any wallet is asked (was a collapsed details) */}
         <div style={{ marginTop: 28 }}><Safety ink={ink} muted={muted} leaf={leaf} rule={rule} /></div>
       </div>

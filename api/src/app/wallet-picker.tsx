@@ -18,7 +18,8 @@ export function useWallets(): StdWallet[] {
 
 /** One button per installed wallet; the user picks, nothing guesses. */
 export function WalletButtons(props: { wallets: StdWallet[]; verb: string; disabled?: boolean; onPick(w: StdWallet): void }) {
-  if (!props.wallets.length) return <p>No Solana wallet found in this browser. Install Phantom or Solflare, then reload this page.</p>;
+  // 10-27 (his question: do we need the page's standing "On a phone?" line): it is only true when no wallet is found, so it lives here
+  if (!props.wallets.length) return <p>No Solana wallet found in this browser. On a phone, open this page in your wallet app&apos;s browser. On a computer, install Phantom or Solflare, then reload.</p>;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-start" }}>
       {props.wallets.map((w) => (
