@@ -37,5 +37,7 @@ export function coverageLine(cents: number, avg: number | null): string | null {
 /** Home's line when the wallet has under LOW_DAYS of round-ups left (copy review row 10), or null. */
 export function lowUsdcLine(balanceCents: number | null, avg: number | null): string | null {
   if (balanceCents == null || !avg || balanceCents >= avg * LOW_DAYS) return null;
+  // 10-27 (his note on the Saga: "$0.00... top it up so plantings don't pause" understated it): at zero nothing can plant
+  if (balanceCents <= 0) return "Your wallet has no USDC, so nothing plants until you add some. Your round-ups are still counted.";
   return `Your wallet has $${(balanceCents / 100).toFixed(2)} of USDC left. Top it up so plantings don't pause.`;
 }

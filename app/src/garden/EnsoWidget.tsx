@@ -98,8 +98,9 @@ export function EnsoWidget({ me, width, height, wateredPlants = null, restartMar
     <SvgWidget key="c" svg={card(W, H, rx, cx, cy, R, sw, words.fraction)} style={{ width: W, height: H }} />,
   ];
   if (mode === "full") {
+    // the words inside the ring; 10-27 (his note: the bottom line touched the ring) the bottom inset 0.16 R -> 0.24 R
     layers.push(
-      <FlexWidget key="t" style={{ width: W, height: H, flexDirection: "column", justifyContent: "space-between", alignItems: "center", paddingTop: cy - R + R * 0.2, paddingBottom: H - cy - R + R * 0.16, paddingLeft: cx - R * 0.72, paddingRight: W - cx - R * 0.72 }}>
+      <FlexWidget key="t" style={{ width: W, height: H, flexDirection: "column", justifyContent: "space-between", alignItems: "center", paddingTop: cy - R + R * 0.2, paddingBottom: H - cy - R + R * 0.24, paddingLeft: cx - R * 0.72, paddingRight: W - cx - R * 0.72 }}>
         <FlexWidget style={{ flexDirection: "column", alignItems: "center" }}>
           {text(words.title, BIG + 2, INK, true, "center")}
           {text(words.sub, LABEL_SIZE, QUIET, false, "center")}

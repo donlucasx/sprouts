@@ -308,28 +308,36 @@ export default function Home() {
       </View>
       {/* R448: the switch lives at the top of Rules; R459: Home shows a chip that opens it only while Sprouts is paused */}
       {/* 10-22: a wallet the run paused for want of USDC says what brings it back; the run resumes it, so no switch is needed */}
-      {noUsdc.map((line) => (
-        <View key={line} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm }}>
-          <View style={{ width: 8, height: 8, borderRadius: radius.full, backgroundColor: colors.attention, marginTop: 6 }} />
-          <ThemedText tone="secondary" style={{ flex: 1, fontSize: 14, lineHeight: 20 }}>
+      {/* 10-27 (his note on the Saga: the no-USDC line "does not read like an error now- it should stand out a bit more (not on red
+          though)... a simple top up button that once clicked it opens up the different amounts"): one amber notice, a title that says
+          what stops, the lines, and one Top up button that opens the amounts */}
+      {noUsdc.length || low ? (
+        <View style={{ backgroundColor: colors.warningSurface, borderColor: colors.warning, borderWidth: 1, borderRadius: radius.lg, borderCurve: 'continuous', padding: spacing.md, gap: spacing.sm }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+            <MaterialCommunityIcons name="alert-circle" size={20} color={colors.warning} />
+            <ThemedText variant="heading" style={{ flex: 1, color: colors.warning }}>
+              {topUp.phoneCents !== null ? 'Plantings paused' : noUsdc.length ? 'A wallet needs USDC' : usdcCents !== null && usdcCents <= 0 ? 'No USDC for plantings' : 'Low on USDC'}
+            </ThemedText>
+          </View>
+          {[...noUsdc, ...(low ? [low] : [])].map((line) => (
+            <ThemedText key={line} style={{ fontSize: 14, lineHeight: 20 }}>
+              {line}
+            </ThemedText>
+          ))}
+          {topUp.phoneCents !== null || low ? <TopUpButton compact user={me.user.pubkey} cents={topUp.phoneCents ?? 500} done={TOPUP.done} avgDailyCents={avg} /> : null}
+          {topUp.others.map((line) => (
+            <ThemedText key={line} variant="caption" tone="secondary">
+              {line}
+            </ThemedText>
+          ))}
+        </View>
+      ) : (
+        topUp.others.map((line) => (
+          <ThemedText key={line} variant="caption" tone="secondary">
             {line}
           </ThemedText>
-        </View>
-      ))}
-      {low ? (
-        <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm }}>
-          <View style={{ width: 8, height: 8, borderRadius: radius.full, backgroundColor: colors.attention, marginTop: 6 }} />
-          <ThemedText tone="secondary" style={{ flex: 1, fontSize: 14, lineHeight: 20 }}>
-            {low}
-          </ThemedText>
-        </View>
-      ) : null}
-      {topUp.phoneCents !== null || low ? <TopUpButton user={me.user.pubkey} cents={topUp.phoneCents ?? 500} done={TOPUP.done} avgDailyCents={avg} /> : null}
-      {topUp.others.map((line) => (
-        <ThemedText key={line} variant="caption" tone="secondary">
-          {line}
-        </ThemedText>
-      ))}
+        ))
+      )}
       {pause.shown && !pause.on && !pausedOnlyForNoUsdc(me.wallets) ? (
         <Pressable
           onPress={() => router.push('/rules')}
@@ -337,9 +345,8 @@ export default function Home() {
           accessibilityLabel={`${pause.line}. Open Rules to change it.`}
           style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, alignSelf: 'flex-start', minHeight: TARGET }}
         >
-          <View
-            style={{ width: 8, height: 8, borderRadius: radius.full, backgroundColor: colors.attention }}
-          />
+          {/* 10-27 (his question "Should it be red?"): a pause the user chose is no error; a pause mark, not the brown dot */}
+          <MaterialCommunityIcons name="pause-circle" size={14} color={colors.textSecondary} />
           <ThemedText variant="caption" tone="secondary">
             {pause.line}
           </ThemedText>
