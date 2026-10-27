@@ -183,6 +183,12 @@ export function Garden2({
     if (stirrable.includes(p)) stirRaw(p)
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on which plants can stir
   }, [stirKey, stirRaw])
+  // the stir loop reads the garden as it is now, not as it was when the loop started (review 10-27: the wind landed on old crowns
+  // after a resize or a stage change that kept the same plants stirrable)
+  const live = useRef({ layers, h, width, stages })
+  useLayoutEffect(() => {
+    live.current = { layers, h, width, stages }
+  })
   useEffect(() => {
     if (stirrable.length === 0) return
     let wait: ReturnType<typeof setTimeout> | undefined
@@ -197,13 +203,14 @@ export function Garden2({
         gusts.length = 0
         // every sway the garden starts on its own comes with its wind: the curls land at the left as the first plant moves and drift
         // across with the rest (a garden with one swaying plant, as the Seeker's on 10-27, never has a 2-plant gust); a tap has none
+        const g = live.current
         windFocus.value = s.plants.flatMap((q) => {
-          const l = layers.find((x) => x.kind === 'plant' && x.key === q.plant)
-          return l ? [(l.x + l.w * 0.5) / width, Math.max(0, (l.y + l.h * 0.18) / h)] : []
+          const l = g.layers.find((x) => x.kind === 'plant' && x.key === q.plant)
+          return l ? [(l.x + l.w * 0.5) / g.width, Math.max(0, (l.y + l.h * 0.18) / g.h)] : []
         })
         gust.value = withSequence(withTiming(0, { duration: 0 }), withTiming(1, { duration: 50 }))
         for (const q of s.plants) gusts.push(setTimeout(() => stir(q.plant), q.atMs))
-        const cycle = Math.max(...s.plants.map((q) => q.atMs + (LOOP_SRC[q.plant]?.[stages[q.plant] ?? 0]?.ms ?? 0)))
+        const cycle = Math.max(...s.plants.map((q) => q.atMs + (LOOP_SRC[q.plant]?.[live.current.stages[q.plant] ?? 0]?.ms ?? 0)))
         next(cycle, s.plants.map((q) => q.plant))
       }, busyMs + s.waitMs)
     }
