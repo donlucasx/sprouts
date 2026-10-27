@@ -1,12 +1,12 @@
-// 10-27 (his note: the bamboo resized to 1x1 "doesnt look good- can we prevent it"): react-native-android-widget writes no
-// android:minResizeWidth, so Android falls back to minWidth (110dp), which the Seeker's launcher fits in ONE cell (its 4x1 is 372 dp,
-// about 93 dp a cell plus spacing). 150dp is more than one cell and less than two: both widgets stop at two cells wide, one row tall
-// still allowed (the slim pill). Native: takes effect with the next build, not a Metro reload.
+// 10-27: react-native-android-widget writes no android:minResizeWidth, so Android falls back to minWidth (110dp), which some launchers
+// round to two cells and the Seeker's to one. First (his note on the bamboo 1x1: "can we prevent it") 150dp stopped both widgets at two
+// cells; then his ruling the same day ("the 1x1 should have no art and feature the planting gauge instead"; the ensō 1x1 "a version
+// without art") made 1x1 a designed size, so 40dp lets every launcher go down to one cell. Native: takes effect with the next build, not a Metro reload.
 const fs = require("fs");
 const path = require("path");
 const { withDangerousMod } = require("expo/config-plugins");
 
-const MIN_RESIZE_WIDTH = "150dp";
+const MIN_RESIZE_WIDTH = "40dp";
 const MIN_RESIZE_HEIGHT = "40dp";
 
 module.exports = function withWidgetMinResize(config) {

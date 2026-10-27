@@ -52,11 +52,22 @@ export function plantedTop(stages: Stages): number {
  * reach the headline). Down, what is planted starts at the box's top, centred in it when the width is what binds.
  */
 export function widget2View(stages: Stages, width: number, height: number, gb: Box): View {
+  // 10-27 (his notes: the 2x1 "art too small, should be cropped in on the tree"; tall sizes "need garden art adjusted to fill the
+  // widget"): the planted garden always fills the box's HEIGHT, cropped across about the SKR tree when the box is narrower than it (a
+  // wide box is as before); a short box (under SHORT_BOX dp) frames the SKR tree alone, crown to mound
+  const tree = stages.mandarin >= 1 ? paintedBox("mandarin", stages.mandarin) : null;
+  if (tree && gb.h < SHORT_BOX) {
+    const th = tree.y1 - tree.y0, s = gb.h / Math.max(1, th * (1 + 2 * ENSO_PAD));
+    const w = width / s, h = height / s, cxT = (tree.x0 + tree.x1) / 2;
+    return { x: Math.max(0, Math.min(CANVAS.w - w, cxT - (gb.x + gb.w / 2) / s)), y: tree.y0 - th * ENSO_PAD - gb.y / s, w, h, s };
+  }
   const top = plantedTop(stages), span = plantedSpan(stages);
-  const s = Math.min(gb.h / Math.max(1, PLATE_FOOT - top), gb.w / Math.max(1, span.x1 - span.x0));
+  const s = gb.h / Math.max(1, PLATE_FOOT - top);
   const w = width / s, h = height / s;
   const y = top - (gb.y + Math.max(0, (gb.h - (PLATE_FOOT - top) * s) / 2)) / s;
-  const centred = (span.x0 + span.x1) / 2 - (gb.x + gb.w / 2) / s;
+  // across: centred on what is planted when it all fits, else on the SKR tree (the crop keeps the tree in view)
+  const fits = (span.x1 - span.x0) * s <= gb.w;
+  const centred = (fits || !tree ? (span.x0 + span.x1) / 2 : (tree.x0 + tree.x1) / 2) - (gb.x + gb.w / 2) / s;
   // inside the plate; or, wider than it, the whole plate in view (paper beside it), as near centred as that allows
   const x = w <= CANVAS.w ? Math.max(0, Math.min(CANVAS.w - w, centred)) : Math.max(CANVAS.w - w, Math.min(0, centred));
   return { x, y, w, h, s };
@@ -73,6 +84,8 @@ export function widgetGarden2(stages: Stages, extras: Extras, width: number, hei
 
 /** Ensō (10-26 draft): the canvas px kept round the SKR tree in the ring's window, as a share of the tree's painted height. */
 export const ENSO_PAD = 0.08;
+/** A bamboo garden box shorter than this (dp) frames the SKR tree alone (the 2x1, 10-27). */
+export const SHORT_BOX = 70;
 /**
  * The ensō widget's window (his note 10-26: "lowered and centered so the circle crop is more focused around the growth of the SKR
  * tree"): a `size` square of the garden centred on the SKR tree's painted box (crown to mound), the paper sky behind it. No SKR tree
