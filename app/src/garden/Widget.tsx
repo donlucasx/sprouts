@@ -19,6 +19,8 @@ const PAPER = "#F4EEDF", INK = "#2B2B2B", QUIET = "#6B6558", ACCENT = "#145A3C";
 const MIN_GARDEN_H = 16;
 /** A frame opening shorter than this (the 2x1's ~89 dp) keeps no bottom line (10-27). */
 const SHORT_OPENING = 100;
+/** An opening at least this wide for its height keeps its bottom line in the headline's row (10-27). */
+const LINE_UP_RATIO = 1.7;
 /** The next-planting bar's empty track (10-11): a soft ink on the painting's paper sky. */
 const TRACK = "#E4DCC8";
 /** dp Garden2 keeps clear at the bottom: in portrait the library sizes the widget to its MAX height, a few dp taller than the cell on
@@ -127,9 +129,15 @@ export function SproutsWidget({ me, width, height, wateredPlants = null, restart
   // 10-27 (his note: the 2x1 "art too small, should be cropped in on the tree"): an opening under SHORT_OPENING dp drops the bottom
   // line, so the garden (framed on the tree, widget2View) takes its room
   const short = !!inner && inner.h < SHORT_OPENING;
-  if (short) state = { text: "", action: false };
+  // 10-27 round 2 (his Saga note: the 3x2 "negative spacing on the sides doesnt look great- fill it w the garden"): a wide, low opening
+  // (the Saga's 3x2 is 336 x 177) is too short for the garden to span it under a bottom line, so that line moves up, right-aligned in
+  // the headline's row, when both fit there; the garden takes the room
+  const upText = state.text;
+  const lineUp = !!inner && !short && inner.w / inner.h >= LINE_UP_RATIO
+    && textWidth(big, G2_BIG, true) + textWidth(upText, LABEL_SIZE) + 16 <= inner.w - 2 * frameGap(width);
+  if (short || lineUp) state = { text: "", action: false };
   let L = inner ? widgetLayout(inner.w, inner.h, big, label, state.text, frameGap(width), fraction !== null, G2_BIG, G2_BIG_MIN) : widgetLayout(width, height, big, label, state.text);
-  if (short) L = { ...L, garden: { ...L.garden, h: L.garden.h + L.state.h + 4 }, state: { ...L.state, h: 0 } };
+  if (short || lineUp) L = { ...L, garden: { ...L.garden, h: L.garden.h + L.state.h + 4 }, state: { ...L.state, h: 0 } };
   // a widget too short for the bar and a garden (110 dp tall) keeps the garden and drops the bar
   if (inner && fraction !== null && L.garden.h < MIN_GARDEN_H) { fraction = null; L = widgetLayout(inner.w, inner.h, big, label, state.text, frameGap(width), false, G2_BIG, G2_BIG_MIN); }
   let garden: { svg: string; w?: number; h: number } | null = null, painting: string | null = null;
@@ -151,7 +159,14 @@ export function SproutsWidget({ me, width, height, wateredPlants = null, restart
 
   const header = (
     <FlexWidget style={{ width: L.header.w, height: L.header.h, flexDirection: "column" }}>
-      <TextWidget text={big} maxLines={1} truncate="END" style={{ fontSize: L.bigSize, color: INK, fontWeight: "700", height: lineBox(L.bigSize) }} />
+      {lineUp ? (
+        <FlexWidget style={{ width: L.header.w, height: lineBox(L.bigSize), flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+          <TextWidget text={big} maxLines={1} style={{ fontSize: L.bigSize, color: INK, fontWeight: "700" }} />
+          <TextWidget text={upText} maxLines={1} truncate="END" style={{ fontSize: LABEL_SIZE, color: QUIET }} />
+        </FlexWidget>
+      ) : (
+        <TextWidget text={big} maxLines={1} truncate="END" style={{ fontSize: L.bigSize, color: INK, fontWeight: "700", height: lineBox(L.bigSize) }} />
+      )}
       <TextWidget text={label} maxLines={1} truncate="END" style={{ fontSize: LABEL_SIZE, color: labelAction ? ACCENT : QUIET, fontWeight: labelAction ? "600" : "normal", height: lineBox(LABEL_SIZE) }} />
       {bar}
     </FlexWidget>

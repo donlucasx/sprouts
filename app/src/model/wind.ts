@@ -59,7 +59,7 @@ export function curlCount(seed: number): number {
 /** Slot `i` (0, 1 or 2) of gust `seed`. The slots are spread so the curls never stack: each takes its own band of the sky (a third of
  * the height range, jittered inside it, the band order shuffled per gust), lands one after another (slot 0 within 250 ms of the gust's
  * start, the others later), and paints a different curl. Every curl is gone by `WIND.spanMs`. */
-export function curlPlan(seed: number, i: number): Curl {
+export function curlPlan(seed: number, i: number, focus: readonly number[] = []): Curl {
   "worklet";
   const r = (k: number) => rand(seed, 1 + i * 8 + k);
   const n = curlCount(seed);
@@ -68,6 +68,26 @@ export function curlPlan(seed: number, i: number): Curl {
   const top = lerp(WIND.top, (band + 0.15 + 0.7 * r(0)) / 3);
   const delay = i === 0 ? 250 * r(1) : lerp(WIND.delayMs, (i - 1 + r(1)) / 2) + 120;
   const life = Math.min(lerp(WIND.lifeMs, r(2)), WIND.spanMs - delay);
+  // 10-27 (his note: "populate around the plants that are actually swaying at the time, instead of one fixed placement"): `focus`
+  // holds the swaying plants' crowns as [x, top, x, top...] fractions; each curl takes one (in turn) and crosses it, landing a little
+  // before it and drifting a shorter way past it, at its crown's height give or take
+  const k = Math.floor(focus.length / 2);
+  if (k > 0) {
+    const j = (i + Math.floor(rand(seed, 42) * k)) % k;
+    const fx = focus[2 * j], ft = focus[2 * j + 1];
+    return {
+      on: i < n,
+      sprite: (i + Math.floor(rand(seed, 41) * WIND_SPRITE_COUNT)) % WIND_SPRITE_COUNT,
+      delay, life,
+      top: Math.max(0.02, Math.min(0.6, ft + (r(0) - 0.5) * 0.18 + (i - 1) * 0.06)),
+      x0: fx - 0.22 + r(3) * 0.08,
+      travel: 0.3 + r(4) * 0.15,
+      scale: lerp(WIND.scale, r(5)),
+      lift: lerp(WIND.lift, r(6)),
+      phase: r(7),
+      peak: WIND.maxOpacity * (0.75 + 0.25 * r(8)),
+    };
+  }
   return {
     on: i < n,
     sprite: (i + Math.floor(rand(seed, 41) * WIND_SPRITE_COUNT)) % WIND_SPRITE_COUNT,

@@ -58,7 +58,7 @@ const svgBox = (svg: string) => svg.match(/viewBox="([-\d.]+) ([-\d.]+) ([-\d.]+
  * the outline's highest point, GROUND_OUTLINE, not the sprite's transparent strip). */
 
 // R363 + R364 (10-05): the square widget: the total big and alone, "your garden" under it, the garden, ONE state line at the bottom.
-const { widgetLayout, textWidth, BIG_SIZE, BAR_H, LABEL_SIZE, STATE_SIZE, STATE_MIN, G2_BIG, G2_BIG_MIN } = await import("@/garden/widget-layout");
+const { widgetLayout, textWidth, WIDE_RATIO, BIG_SIZE, BAR_H, LABEL_SIZE, STATE_SIZE, STATE_MIN, G2_BIG, G2_BIG_MIN } = await import("@/garden/widget-layout");
 const { widgetStateLine, widgetHeadline, BUD_LINE, PLANTED_RECENT_MS } = await import("@/lib/widget-state");
 const { watcherLine } = await import("@/model/watcher");
 
@@ -173,7 +173,7 @@ describe("R363 + R364: every size lays out the total, the garden and one state l
     }
   });
   it("the square and the tall sizes stack (total, garden, line); 4x2 puts the total at the left of the garden", () => {
-    for (const [cells, w, h] of CASES) expect(widgetLayout(w, h, "$14.99", "your garden").mode, `${cells} ${w}`).toBe(cells === "4x2" ? "wide" : w / h >= 1.8 ? "wide" : "stacked");
+    for (const [cells, w, h] of CASES) expect(widgetLayout(w, h, "$14.99", "your garden").mode, `${cells} ${w}`).toBe(cells === "4x2" ? "wide" : w / h >= WIDE_RATIO ? "wide" : "stacked");
     // a total too long for a wide widget's column stacks instead of being cut
     expect(widgetLayout(200, 110, "$123456.78", "your garden").mode).toBe("stacked");
     const sq = widgetLayout(206, 205, "$14.99", "your garden");

@@ -81,9 +81,9 @@ export function EnsoWidget({ me, width, height, wateredPlants = null, restartMar
   const tT = Math.round(Math.min(28, Math.max(BIG + 2, W * 0.11))), tS = Math.max(LABEL_SIZE, Math.round(tT * 0.48)), tA = Math.max(LINE, Math.round(tT * 0.52));
   const topH = lineBox(tT) + lineBox(tS), botH = lineBox(tA) + lineBox(tS);
   const tallTop = topH + 2 * (TALL_PAD + PLATE_Y), tallBot = H - (botH + 2 * (TALL_PAD + PLATE_Y));
-  const R = mode === "mini" ? Math.min(W / 2 - 6, (H - 22) / 2 - 4) : mode === "full" ? Math.min(W, H) / 2 - 8 : mode === "tall" ? Math.min(W / 2 - 8, (tallBot - tallTop) / 2 - 4) : H / 2 - (mode === "pill" ? 5 : 10);
+  const R = mode === "mini" ? Math.min(W, H) / 2 - 6 : mode === "full" ? Math.min(W, H) / 2 - 8 : mode === "tall" ? Math.min(W / 2 - 8, (tallBot - tallTop) / 2 - 4) : H / 2 - (mode === "pill" ? 5 : 10);
   const sw = round ? Math.max(5, R / 17) : mode === "wide" ? 4.5 : mode === "mini" ? 4 : 3.5;
-  const cx = round || mode === "mini" ? W / 2 : mode === "pill" ? H / 2 : R + 12, cy = mode === "tall" ? (tallTop + tallBot) / 2 : mode === "mini" ? R + 8 : H / 2;
+  const cx = round || mode === "mini" ? W / 2 : mode === "pill" ? H / 2 : R + 12, cy = mode === "tall" ? (tallTop + tallBot) / 2 : H / 2;
   const rx = mode === "pill" ? H / 2 : Math.min(22, H * 0.12);
   const shell = (children: unknown) => (
     <FlexWidget clickAction="OPEN_APP" style={{ width: "match_parent", height: "match_parent", paddingLeft: 4, paddingRight: 4, paddingTop: top, paddingBottom: top }}>
@@ -144,15 +144,20 @@ export function EnsoWidget({ me, width, height, wateredPlants = null, restartMar
       </FlexWidget>,
     );
   } else if (mode === "mini") {
-    // the total inside the gauge ring, the one line that matters under it (the ask in accent, else the state)
-    const under = words.ask ? words.accent : words.fraction !== null && words.fraction > 0 && words.fraction < 1 ? "next planting" : words.foot ?? words.accent;
+    // 10-27 round 2 (his note: the mini's "center is too empty w just white... fit the text underneath the total garden value so both
+    // elements fill the empty circle"): everything inside the gauge ring, sized to it: the total, then the next planting (or the ask),
+    // then the line under it
+    const inner = 2 * (R - sw) * 0.82;
+    const mT = Math.max(13, Math.min(22, Math.round(R * 0.36))), mL = Math.max(9, Math.round(mT * 0.5));
+    // the total, "in your garden", and in green the one thing moving (the next planting's progress, or the ask)
+    const second = words.ask && !words.sub ? null : words.sub;
+    const third = words.accent ?? words.foot;
     layers.push(
-      <FlexWidget key="t" style={{ width: W, height: H, flexDirection: "column", alignItems: "center" }}>
-        <FlexWidget style={{ width: W, height: Math.round(cy + R + sw / 2), justifyContent: "center", alignItems: "center", paddingLeft: 4, paddingRight: 4 }}>
-          {text(words.title, Math.max(12, Math.min(16, Math.round(R * 0.36))), INK, true, "center")}
-        </FlexWidget>
-        <FlexWidget style={{ width: W, height: H - Math.round(cy + R + sw / 2), justifyContent: "center", alignItems: "center", paddingLeft: 4, paddingRight: 4 }}>
-          {text(under, LABEL_SIZE - 1, words.ask ? ACCENT : QUIET, words.ask, "center")}
+      <FlexWidget key="t" style={{ width: W, height: H, justifyContent: "center", alignItems: "center" }}>
+        <FlexWidget style={{ width: Math.round(inner), flexDirection: "column", alignItems: "center" }}>
+          {text(words.title, mT, INK, true, "center")}
+          {text(second, mL + 1, QUIET, false, "center")}
+          {text(third, mL, ACCENT, true, "center")}
         </FlexWidget>
       </FlexWidget>,
     );

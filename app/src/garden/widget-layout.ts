@@ -22,7 +22,7 @@ export const STATE_MIN = 10;
 export const lineBox = (size: number) => Math.ceil(size * 1.35);
 const GAP = 4;
 /** Wide (text left, garden right) from this width to height ratio: 4x2 is about 2.1, 3x2 about 1.5 (stacked), the square 1. */
-export const WIDE_RATIO = 1.8;
+export const WIDE_RATIO = 2;   // 10-27: at 1.8 the Saga's 3x2 (opening 336 x 177, 1.9) took the side column and its garden only the right half
 /**
  * The slim pill (both styles): one row tall and at least twice as wide. 10-27 (his note "not when resizing into the pill shaped
  * versions"): a ratio of 3 alone missed the Seeker's 4x1 (372 x 131 dp, 2.84), which drew the stacked layout with a sliver of garden.

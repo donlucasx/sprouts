@@ -63,12 +63,26 @@ export function widget2View(stages: Stages, width: number, height: number, gb: B
   }
   const top = plantedTop(stages), span = plantedSpan(stages);
   // 10-27 (his Saga notes: the 3x2 art "overlaps under top text and planting gauge"; 3x3, 1x3, 1x4 "stretched... needs just a bit more
-  // negative space underneath" the words): never the full box height, and never zoomed past ZOOM_MAX times the fit to its width; the
+  // negative space underneath" the words): never the full box height; the
   // garden sits on the box's foot (it ends above the bottom line), the sky between it and the words
+  // Round 2 (his Saga notes the same day): a wide box's paper at the sides "doesnt look great- fill it w the garden... cropping the
+  // sides": the plate spans the opening, never taller than the box; tall boxes (3x3, 2x3) had "a lot of negative space above" and the
+  // narrow ones (1x2, 1x3) "way too much": they crop in further, still under TALL_HEAD of the box; the spare height splits SPARE_BELOW
+  // under the garden (off the bottom line) and the rest above (the headroom)
   const hf = gb.h / Math.max(1, PLATE_FOOT - top), wf = gb.w / Math.max(1, span.x1 - span.x0);
-  const s = Math.min(hf * HEADROOM, Math.min(hf, wf) * ZOOM_MAX);
+  const tall = gb.h > gb.w, beside = gb.x >= width * 0.15;   // beside: the wide layout, the words in a column at the opening's left
+  // filling the width may run the crowns a little past the box's top, into the plants' own FRAME_PAD headroom, when the words run
+  // across the top; beside the words, never
+  // (never a planted plant cropped across, wf; never a crown past the opening's top)
+  // nothing under the box (its bottom line moved up, Widget.tsx lineUp): the plate's front sand may run past the opening's foot, the
+  // plants whole, so a wide low opening can still be spanned
+  const belowFree = !beside && height - (gb.y + gb.h) < 14;
+  const capH = beside ? hf : belowFree ? hf * 1.3 : hf * 1.04;
+  const s = tall ? Math.min(hf * TALL_HEAD, wf * ZOOM_TALL) : Math.min(capH, wf, Math.max(hf * HEADROOM, width / CANVAS.w));
   const w = width / s, h = height / s;
-  const y = PLATE_FOOT - (gb.y + gb.h) / s;
+  const spare = Math.max(0, gb.h - (PLATE_FOOT - top) * s);
+  // taller than the box with nothing under it: the plants from the box's top down, the front sand cropped by the opening
+  const y = belowFree && (PLATE_FOOT - top) * s > gb.h ? top - gb.y / s : PLATE_FOOT - (gb.y + gb.h - spare * SPARE_BELOW) / s;
   // across: centred on what is planted when it all fits, else on the SKR tree (the crop keeps the tree in view)
   const fits = (span.x1 - span.x0) * s <= gb.w;
   const centred = (fits || !tree ? (span.x0 + span.x1) / 2 : (tree.x0 + tree.x1) / 2) - (gb.x + gb.w / 2) / s;
@@ -94,7 +108,7 @@ export const ENSO_PAD = 0.08;
 /** A bamboo garden box shorter than this (dp) frames the SKR tree alone (the 2x1, 10-27). */
 export const SHORT_BOX = 70;
 /** The garden's share of its box's height at most (the rest is sky under the words), and its zoom past the fit to its width at most. */
-export const HEADROOM = 0.88, ZOOM_MAX = 1.35;
+export const HEADROOM = 0.88, TALL_HEAD = 0.8, ZOOM_TALL = 1.7, SPARE_BELOW = 0.35;
 /**
  * The ensō widget's window (his note 10-26: "lowered and centered so the circle crop is more focused around the growth of the SKR
  * tree"): a `size` square of the garden centred on the SKR tree's painted box (crown to mound), the paper sky behind it. No SKR tree
