@@ -21,10 +21,14 @@ def clean(im):
             if px[x, y][3] == 0: px[x, y] = (0, 0, 0, 0)
     return im
 
-def b64(path):
+# 10-27 (his note: the 3x2 ensō "still seems to show a lower resolution tree"): the full ensō draws the garden at ~0.54 device px per
+# canvas px, so the two trees are stored sharper; an image is declared at its canvas size, so its stored scale is free per image
+SHARP = {"mandarin": 0.6, "store": 0.6}
+
+def b64(path, scale=SCALE):
     im = Image.open(path)
     im = clean(im.convert("RGBA" if im.mode in ("RGBA", "LA", "P") or "A" in im.getbands() else "RGB"))
-    im = im.resize((max(1, round(im.width * SCALE)), max(1, round(im.height * SCALE))), Image.LANCZOS)
+    im = im.resize((max(1, round(im.width * scale)), max(1, round(im.height * scale))), Image.LANCZOS)
     buf = io.BytesIO()
     im.save(buf, "WEBP", quality=QUALITY, alpha_quality=100, method=6)
     return base64.b64encode(buf.getvalue()).decode()
@@ -36,7 +40,7 @@ for key, name in (("stand", "stand.png"), ("cords", "cords.png"), ("stake", "dec
 for path in sorted(glob.glob(os.path.join(G2, "*", "stage[0-9][0-9].webp"))):
     plant = os.path.basename(os.path.dirname(path))
     if plant in ("loops", "growth"): continue
-    entries[f"{plant}-{int(re.search(r'stage(\d+)', path).group(1))}"] = b64(path)
+    entries[f"{plant}-{int(re.search(r'stage(\d+)', path).group(1))}"] = b64(path, SHARP.get(plant, SCALE))
 
 # The widget's bamboo frame (his ask 10-10: "contained by a bamboo frame in the same style of the artwork"): Midjourney job d987af3c #2
 # (--sref of the garden), white keyed out, cropped to the frame, cut into nine (the centre is empty): the corners (knot + crossed ends)

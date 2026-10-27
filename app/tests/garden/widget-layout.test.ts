@@ -279,3 +279,23 @@ describe("isSlim: one row tall and at least twice as wide", () => {
     expect(isSlim(320, 150)).toBe(false);
   });
 });
+
+// 10-27 round 5 (his notes): the 1x1s carry no art (words and the gauge); the 2x1 bamboo frames the SKR tree and drops its bottom line
+describe("one column wide: no art, the gauge", () => {
+  it("the bamboo 1x1 draws no garden, only words and the bar", () => {
+    const els = all(SproutsWidget({ me: priced(grown), width: 84, height: 131, now: NOW }) as El);
+    expect(els.some(isGardenSvg)).toBe(false);
+    expect(els.filter((e) => e.type === "TextWidget").length).toBeGreaterThanOrEqual(2);
+  });
+  it("the ensō 1x1 draws no garden, the ring holds the total", async () => {
+    const { EnsoWidget } = await import("@/garden/EnsoWidget");
+    const els = all(EnsoWidget({ me: priced(grown), width: 84, height: 131, now: NOW }) as El);
+    expect(els.some(isGardenSvg)).toBe(false);
+    expect(els.filter((e) => e.type === "TextWidget").map((e) => e.props.text)).toContain(texts(EnsoWidget({ me: priced(grown), width: 276, height: 274, now: NOW }) as El)[0].props.text);
+  });
+  it("the bamboo 2x1 keeps a garden and no bottom line", () => {
+    const els = all(SproutsWidget({ me: priced(grown), width: 180, height: 131, now: NOW }) as El);
+    expect(els.some(isGardenSvg)).toBe(true);
+    expect(texts(SproutsWidget({ me: priced(grown), width: 180, height: 131, now: NOW }) as El).length).toBe(2);
+  });
+});

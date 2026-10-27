@@ -21,7 +21,7 @@ const SAND = "#ECE5D3", PAPER = "#FFFCF7", INK = "#2B2B2B" as const, QUIET = "#6
 const RIPPLE = "rgba(140,116,78,0.45)", RIPPLE_LIGHT = "rgba(255,255,255,0.85)";
 const BIG = 16, LINE = 12;
 /** Tall from this width to height ratio (a 3x3 is 0.66, the 3x2 square 1.0); the words' blocks above and below the ring, in dp. */
-const TALL_RATIO = 0.8;
+const TALL_RATIO = 0.8, MINI_W = 140;
 /** Tall (10-27 round 4, his notes: the bottom words "touching the edges of the planting circle... a tad smaller"; "format the text to
  *  read well over the sand rings"): each block centred in its band of sand, on a soft paper label so the rings never cross the letters. */
 const TALL_PAD = 12, PLATE_X = 14, PLATE_Y = 5;
@@ -52,7 +52,7 @@ function ring(cx: number, cy: number, r: number, sw: number, fr: number | null):
 }
 
 /** The sand card with a round hole for the garden window, its raked ripples round the ring, and the ring. */
-function card(w: number, h: number, rx: number, cx: number, cy: number, r: number, sw: number, fr: number | null, plates: Plate[] = []): string {
+function card(w: number, h: number, rx: number, cx: number, cy: number, r: number, sw: number, fr: number | null, plates: Plate[] = [], paperHole = false): string {
   const hole = r - sw * 0.45;
   const rr = `M${rx},0 H${f(w - rx)} A${rx},${rx} 0 0 1 ${w},${rx} V${f(h - rx)} A${rx},${rx} 0 0 1 ${f(w - rx)},${h} H${rx} A${rx},${rx} 0 0 1 0,${f(h - rx)} V${rx} A${rx},${rx} 0 0 1 ${rx},0 Z`;
   const circle = `M${f(cx - hole)},${f(cy)} A${f(hole)},${f(hole)} 0 1 0 ${f(cx + hole)},${f(cy)} A${f(hole)},${f(hole)} 0 1 0 ${f(cx - hole)},${f(cy)} Z`;
@@ -60,7 +60,7 @@ function card(w: number, h: number, rx: number, cx: number, cy: number, r: numbe
   const step = Math.max(4, r / 9);
   for (let k = 0, rad = r + sw; rad < Math.hypot(w, h); k++, rad += step)
     ripples += `<circle cx="${f(cx)}" cy="${f(cy)}" r="${f(rad)}" fill="none" stroke="${RIPPLE}" stroke-width="0.6"/><circle cx="${f(cx)}" cy="${f(cy + 0.5)}" r="${f(rad)}" fill="none" stroke="${RIPPLE_LIGHT}" stroke-width="0.45"/>`;
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><defs><clipPath id="c"><path d="${rr}"/></clipPath></defs><path d="${rr} ${circle}" fill="${SAND}" fill-rule="evenodd"/><g clip-path="url(#c)">${ripples}</g>${plates.map((q) => `<rect x="${f(q.x)}" y="${f(q.y)}" width="${f(q.w)}" height="${f(q.h)}" rx="${f(Math.min(14, q.h / 2))}" fill="${PAPER}" fill-opacity="0.9" stroke="${RIPPLE}" stroke-width="0.6"/>`).join("")}${ring(cx, cy, r, sw, fr)}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><defs><clipPath id="c"><path d="${rr}"/></clipPath></defs><path d="${rr} ${circle}" fill="${SAND}" fill-rule="evenodd"/><g clip-path="url(#c)">${ripples}</g>${paperHole ? `<circle cx="${f(cx)}" cy="${f(cy)}" r="${f(hole + 1)}" fill="${PAPER}"/>` : ""}${plates.map((q) => `<rect x="${f(q.x)}" y="${f(q.y)}" width="${f(q.w)}" height="${f(q.h)}" rx="${f(Math.min(14, q.h / 2))}" fill="${PAPER}" fill-opacity="0.9" stroke="${RIPPLE}" stroke-width="0.6"/>`).join("")}${ring(cx, cy, r, sw, fr)}</svg>`;
 }
 
 const text = (t: string | null, size: number, color: `#${string}`, bold: boolean, align: "left" | "center" = "left") =>
@@ -70,7 +70,9 @@ export function EnsoWidget({ me, width, height, wateredPlants = null, restartMar
   const ratio = width / Math.max(1, height);
   // 10-27 (his note on the 3x3, 276 x 417: "shall we adapt the text to fit it better?"): a widget much taller than wide puts the words
   // in the sand above and below the ring (tall), the ring holding only the garden
-  const mode = isSlim(width, height) ? "pill" : ratio >= 1.3 ? "wide" : ratio <= TALL_RATIO ? "tall" : "full";
+  // 10-27 (his note: "the enso 1x1 does not work rn- lets make a version without art that has relevant text and planting bar"): one
+  // column wide is the mini, the ring as the gauge with the total inside it and one line under it, no garden
+  const mode = isSlim(width, height) ? "pill" : width < MINI_W ? "mini" : ratio >= 1.3 ? "wide" : ratio <= TALL_RATIO ? "tall" : "full";
   const round = mode === "full" || mode === "tall";
   // the slim pill sits centred in its row (his ruling 10-23: "slimmer like the pill"); the others fill the widget, 4 dp in
   const W = width - 8, H = mode === "pill" ? Math.min(height - 8, 72) : height - 8;
@@ -79,9 +81,9 @@ export function EnsoWidget({ me, width, height, wateredPlants = null, restartMar
   const tT = Math.round(Math.min(28, Math.max(BIG + 2, W * 0.11))), tS = Math.max(LABEL_SIZE, Math.round(tT * 0.48)), tA = Math.max(LINE, Math.round(tT * 0.52));
   const topH = lineBox(tT) + lineBox(tS), botH = lineBox(tA) + lineBox(tS);
   const tallTop = topH + 2 * (TALL_PAD + PLATE_Y), tallBot = H - (botH + 2 * (TALL_PAD + PLATE_Y));
-  const R = mode === "full" ? Math.min(W, H) / 2 - 8 : mode === "tall" ? Math.min(W / 2 - 8, (tallBot - tallTop) / 2 - 4) : H / 2 - (mode === "pill" ? 5 : 10);
-  const sw = round ? Math.max(5, R / 17) : mode === "wide" ? 4.5 : 3.5;
-  const cx = round ? W / 2 : mode === "pill" ? H / 2 : R + 12, cy = mode === "tall" ? (tallTop + tallBot) / 2 : H / 2;
+  const R = mode === "mini" ? Math.min(W / 2 - 6, (H - 22) / 2 - 4) : mode === "full" ? Math.min(W, H) / 2 - 8 : mode === "tall" ? Math.min(W / 2 - 8, (tallBot - tallTop) / 2 - 4) : H / 2 - (mode === "pill" ? 5 : 10);
+  const sw = round ? Math.max(5, R / 17) : mode === "wide" ? 4.5 : mode === "mini" ? 4 : 3.5;
+  const cx = round || mode === "mini" ? W / 2 : mode === "pill" ? H / 2 : R + 12, cy = mode === "tall" ? (tallTop + tallBot) / 2 : mode === "mini" ? R + 8 : H / 2;
   const rx = mode === "pill" ? H / 2 : Math.min(22, H * 0.12);
   const shell = (children: unknown) => (
     <FlexWidget clickAction="OPEN_APP" style={{ width: "match_parent", height: "match_parent", paddingLeft: 4, paddingRight: 4, paddingTop: top, paddingBottom: top }}>
@@ -90,7 +92,7 @@ export function EnsoWidget({ me, width, height, wateredPlants = null, restartMar
   );
   if (!me) return shell(<SvgWidget svg={card(W, H, rx, cx, cy, R, sw, null)} style={{ width: W, height: H }} />);
   let words: Words, garden: string | null = null;
-  const room = mode === "full" ? R * 1.5 : mode === "tall" ? W - 24 : W - (cx + R) - 18;
+  const room = mode === "full" ? R * 1.5 : mode === "tall" ? W - 24 : mode === "mini" ? W - 8 : W - (cx + R) - 18;
   // 10-27 (his note: the 2x2 / 2x3 "should show the 19.92 a bit bigger... the bigger 3x3, fonts should fit accordingly"): the full and
   // tall words grow with the widget, the title with the ring (or the width when tall), the smaller lines in step; never under the
   // approved mock's sizes (18 / 11 / 12)
@@ -102,7 +104,7 @@ export function EnsoWidget({ me, width, height, wateredPlants = null, restartMar
     try { input = toGardenInput(me, now, wateredPlants, restartMarks); scene = buildScene(input); } catch { scene = null; }
     words = wordsFor(me, total, { parts: scene?.parts ?? [] }, now, room, round ? T - 2 : BIG);
     const D = Math.floor(2 * (R - sw * 0.45)) + 2;
-    if (input) garden = ensoGarden(stagesFor(input), { basket: !!me.basket && !me.basket.delivered }, D, PAPER, round);
+    if (input && mode !== "mini") garden = ensoGarden(stagesFor(input), { basket: !!me.basket && !me.basket.delivered }, D, PAPER, round);
   } catch {
     return shell([<SvgWidget key="c" svg={card(W, H, rx, cx, cy, R, sw, null)} style={{ width: W, height: H }} />]);
   }
@@ -125,7 +127,7 @@ export function EnsoWidget({ me, width, height, wateredPlants = null, restartMar
         <SvgWidget svg={garden} style={{ width: D, height: D }} />
       </FlexWidget>
     ) : null,
-    <SvgWidget key="c" svg={card(W, H, rx, cx, cy, R, sw, words.fraction, plates)} style={{ width: W, height: H }} />,
+    <SvgWidget key="c" svg={card(W, H, rx, cx, cy, R, sw, words.fraction, plates, mode === "mini")} style={{ width: W, height: H }} />,
   ];
   if (mode === "full") {
     // the words inside the ring; 10-27 (his note: the bottom line touched the ring) the bottom inset 0.16 R -> 0.24 R
@@ -138,6 +140,19 @@ export function EnsoWidget({ me, width, height, wateredPlants = null, restartMar
         <FlexWidget style={{ flexDirection: "column", alignItems: "center" }}>
           {text(words.accent, A, ACCENT, true, "center")}
           {text(words.foot, S, QUIET, false, "center")}
+        </FlexWidget>
+      </FlexWidget>,
+    );
+  } else if (mode === "mini") {
+    // the total inside the gauge ring, the one line that matters under it (the ask in accent, else the state)
+    const under = words.ask ? words.accent : words.fraction !== null && words.fraction > 0 && words.fraction < 1 ? "next planting" : words.foot ?? words.accent;
+    layers.push(
+      <FlexWidget key="t" style={{ width: W, height: H, flexDirection: "column", alignItems: "center" }}>
+        <FlexWidget style={{ width: W, height: Math.round(cy + R + sw / 2), justifyContent: "center", alignItems: "center", paddingLeft: 4, paddingRight: 4 }}>
+          {text(words.title, Math.max(12, Math.min(16, Math.round(R * 0.36))), INK, true, "center")}
+        </FlexWidget>
+        <FlexWidget style={{ width: W, height: H - Math.round(cy + R + sw / 2), justifyContent: "center", alignItems: "center", paddingLeft: 4, paddingRight: 4 }}>
+          {text(under, LABEL_SIZE - 1, words.ask ? ACCENT : QUIET, words.ask, "center")}
         </FlexWidget>
       </FlexWidget>,
     );
