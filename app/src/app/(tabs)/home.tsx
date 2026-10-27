@@ -237,7 +237,7 @@ export default function Home() {
   const avg = preview === 'low' ? PREVIEW_AVG_CENTS : avgReal ?? (preview !== 'off' ? PREVIEW_AVG_CENTS : null) // low: a pace at which $1.20 is under a week
   const usdcCents = preview === 'low' ? PREVIEW_LOW_CENTS : usdcRead?.usdcRaw != null ? Number(BigInt(usdcRead.usdcRaw) / 10_000n) : null
   const low = topUp.phoneCents === null ? lowUsdcLine(usdcCents, avg) : null
-  const notice = usdcNotice(me, low, usdcCents)
+  const notice = usdcNotice(me, { usdcCents, low: low !== null })
   // R96, R184 and R186: the one line and the can decided together, so they always agree; the can is in colour only while a bud waits.
   // R186: the Next planting row draws inside the garden (directly under it, the can at its bar's end). R199: the line rides in that
   // row too, tucked into the paper under the bar beside the can (WatcherLine's `tuck`).

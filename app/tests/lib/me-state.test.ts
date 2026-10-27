@@ -319,23 +319,22 @@ describe('staleLine (his note 10-22: name the cause)', () => {
   })
 })
 
-// 10-27 (his notes: the USDC line must stand out; for another wallet "too long, repetitive, and it doesnt say which wallet is low")
-describe("usdcNotice: one amber notice, the wallet named in the title", async () => {
+// 10-27 (his notes: the USDC line must stand out; then "one message that adapts... name each wallet... Simplify")
+describe("usdcNotice: one message that names each wallet short of USDC", async () => {
   const { usdcNotice } = await import("@/lib/me-state");
   const PHONE = "PhoneWa11et111111111111111111111111111111111", OTHER = "887dOther111111111111111111111111111111AXVu";
   const w = (pubkey: string, paused: boolean) => ({ pubkey, status: paused ? "paused" : "active", pause: paused ? { reason: "no_usdc", needCents: 150, resumeAtCents: 200 } : null });
   const me = (ws: ReturnType<typeof w>[]) => ({ user: { pubkey: PHONE }, wallets: ws }) as never;
-  it("another wallet paused: its address is the title, one line, no top-up (it works only for this phone)", () => {
-    expect(usdcNotice(me([w(PHONE, false), w(OTHER, true)]), null, 900)).toEqual({ title: "887d...AXVu needs USDC", lines: ["Its plantings are paused. Add at least $2 of USDC to that wallet and they restart on their own."], topUp: false });
+  it("one wallet: its name in the title, one line; the Seed Vault wallet gets the top-up, another wallet does not", () => {
+    expect(usdcNotice(me([w(PHONE, false)]), { usdcCents: 0, low: false })).toEqual({ title: "Seed Vault wallet has no USDC", lines: ["Nothing plants until you add some. Your round-ups are still counted."], topUp: true });
+    expect(usdcNotice(me([w(PHONE, false)]), { usdcCents: 120, low: true })?.title).toBe("Seed Vault wallet is low on USDC");
+    expect(usdcNotice(me([w(PHONE, true)]), { usdcCents: 0, low: false })?.lines).toEqual(["Plantings are paused until it has $2. Your round-ups are still counted."]);
+    expect(usdcNotice(me([w(PHONE, false), w(OTHER, true)]), { usdcCents: 900, low: false })).toEqual({ title: "887d...AXVu needs USDC", lines: ["Plantings are paused until it has $2. Your round-ups are still counted."], topUp: false });
   });
-  it("this phone's empty wallet leads; another wallet's pause follows in one short line", () => {
-    const n = usdcNotice(me([w(PHONE, false), w(OTHER, true)]), "LOW", 0)!;
-    expect([n.title, n.lines, n.topUp]).toEqual(["No USDC for plantings", ["LOW", "887d...AXVu also needs $2 of USDC."], true]);
-  });
-  it("this phone's wallet paused: Plantings paused, with the top-up", () => {
-    expect(usdcNotice(me([w(PHONE, true)]), null, 0)?.title).toBe("Plantings paused");
+  it("several: a count in the title, each wallet named on its own line, the Seed Vault wallet first", () => {
+    expect(usdcNotice(me([w(OTHER, true), w(PHONE, false)]), { usdcCents: 0, low: false })).toEqual({ title: "2 wallets need USDC", lines: ["Seed Vault wallet: no USDC", "887d...AXVu: needs $2", "Your round-ups are still counted, and plantings restart once they have it."], topUp: true });
   });
   it("nothing short: no notice", () => {
-    expect(usdcNotice(me([w(PHONE, false)]), null, 900)).toBeNull();
+    expect(usdcNotice(me([w(PHONE, false)]), { usdcCents: 900, low: false })).toBeNull();
   });
 });

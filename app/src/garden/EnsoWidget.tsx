@@ -21,14 +21,14 @@ const SAND = "#ECE5D3", PAPER = "#FFFCF7", INK = "#2B2B2B" as const, QUIET = "#6
 const RIPPLE = "rgba(140,116,78,0.45)", RIPPLE_LIGHT = "rgba(255,255,255,0.85)";
 const BIG = 16, LINE = 12;
 /** Tall from this width to height ratio (a 3x3 is 0.66, the 3x2 square 1.0); the words' blocks above and below the ring, in dp. */
-const TALL_RATIO = 0.8, TALL_TOP = 42, TALL_BOT = 34, TALL_EDGE = 12, TALL_GAP = 6;
+const TALL_RATIO = 0.8, TALL_TOP = 54, TALL_BOT = 42, TALL_EDGE = 12, TALL_GAP = 6;
 const f = (n: number) => Number(n.toFixed(2));
 
 type Words = { title: string; sub: string | null; accent: string | null; foot: string | null; fraction: number | null; ask: boolean };
 
-function wordsFor(me: MeResponse, total: string, parts: { parts: never[] } | { parts: unknown[] }, now: Date, room: number): Words {
+function wordsFor(me: MeResponse, total: string, parts: { parts: never[] } | { parts: unknown[] }, now: Date, room: number, big = BIG): Words {
   const head = widgetHeadline(me, parts as never, now, total, total !== formatUsd(0), {
-    big: (t) => textWidth(t, BIG, true) <= room, label: (t) => textWidth(t, LABEL_SIZE, true) <= room, line: (t) => textWidth(t, STATE_MIN, true) <= room,
+    big: (t) => textWidth(t, big, true) <= room, label: (t) => textWidth(t, LABEL_SIZE, true) <= room, line: (t) => textWidth(t, STATE_MIN, true) <= room,
   });
   // the garden itself paused: the ask is the headline and the ring empties
   if (head.action && !head.walletAsk) return { title: head.big, sub: null, accent: head.label, foot: head.line, fraction: 0, ask: true };
@@ -84,11 +84,16 @@ export function EnsoWidget({ me, width, height, wateredPlants = null, restartMar
   if (!me) return shell(<SvgWidget svg={card(W, H, rx, cx, cy, R, sw, null)} style={{ width: W, height: H }} />);
   let words: Words, garden: string | null = null;
   const room = mode === "full" ? R * 1.5 : mode === "tall" ? W - 24 : W - (cx + R) - 18;
+  // 10-27 (his note: the 2x2 / 2x3 "should show the 19.92 a bit bigger... the bigger 3x3, fonts should fit accordingly"): the full and
+  // tall words grow with the widget, the title with the ring (or the width when tall), the smaller lines in step; never under the
+  // approved mock's sizes (18 / 11 / 12)
+  const T = round ? Math.round(Math.min(30, Math.max(BIG + 2, mode === "tall" ? Math.max(R * 0.19, W * 0.12) : R * 0.19))) : BIG + 2;
+  const S = Math.max(LABEL_SIZE, Math.round(T * 0.6)), A = Math.max(LINE, Math.round(T * 0.66));
   try {
     const total = valueBlock(gardenTotals(me), BigInt(me.pot.skrStakedRaw)).big;
     let scene: ReturnType<typeof buildScene> | null = null, input: ReturnType<typeof toGardenInput> | null = null;
     try { input = toGardenInput(me, now, wateredPlants, restartMarks); scene = buildScene(input); } catch { scene = null; }
-    words = wordsFor(me, total, { parts: scene?.parts ?? [] }, now, room);
+    words = wordsFor(me, total, { parts: scene?.parts ?? [] }, now, room, round ? T - 2 : BIG);
     const D = Math.floor(2 * (R - sw * 0.45)) + 2;
     if (input) garden = ensoGarden(stagesFor(input), { basket: !!me.basket && !me.basket.delivered }, D, PAPER, round);
   } catch {
@@ -108,12 +113,12 @@ export function EnsoWidget({ me, width, height, wateredPlants = null, restartMar
     layers.push(
       <FlexWidget key="t" style={{ width: W, height: H, flexDirection: "column", justifyContent: "space-between", alignItems: "center", paddingTop: cy - R + R * 0.2, paddingBottom: H - cy - R + R * 0.24, paddingLeft: cx - R * 0.72, paddingRight: W - cx - R * 0.72 }}>
         <FlexWidget style={{ flexDirection: "column", alignItems: "center" }}>
-          {text(words.title, BIG + 2, INK, true, "center")}
-          {text(words.sub, LABEL_SIZE, QUIET, false, "center")}
+          {text(words.title, T, INK, true, "center")}
+          {text(words.sub, S, QUIET, false, "center")}
         </FlexWidget>
         <FlexWidget style={{ flexDirection: "column", alignItems: "center" }}>
-          {text(words.accent, LINE, ACCENT, true, "center")}
-          {text(words.foot, LABEL_SIZE, QUIET, false, "center")}
+          {text(words.accent, A, ACCENT, true, "center")}
+          {text(words.foot, S, QUIET, false, "center")}
         </FlexWidget>
       </FlexWidget>,
     );
@@ -123,12 +128,12 @@ export function EnsoWidget({ me, width, height, wateredPlants = null, restartMar
     layers.push(
       <FlexWidget key="t" style={{ width: W, height: H, flexDirection: "column", justifyContent: "space-between", alignItems: "center", paddingTop: above, paddingBottom: below, paddingLeft: 12, paddingRight: 12 }}>
         <FlexWidget style={{ flexDirection: "column", alignItems: "center" }}>
-          {text(words.title, BIG + 2, INK, true, "center")}
-          {text(words.sub, LABEL_SIZE, QUIET, false, "center")}
+          {text(words.title, T, INK, true, "center")}
+          {text(words.sub, S, QUIET, false, "center")}
         </FlexWidget>
         <FlexWidget style={{ flexDirection: "column", alignItems: "center" }}>
-          {text(words.accent, LINE, ACCENT, true, "center")}
-          {text(words.foot, LABEL_SIZE, QUIET, false, "center")}
+          {text(words.accent, A, ACCENT, true, "center")}
+          {text(words.foot, S, QUIET, false, "center")}
         </FlexWidget>
       </FlexWidget>,
     );
