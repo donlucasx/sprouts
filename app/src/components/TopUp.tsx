@@ -17,7 +17,10 @@ import { spacing } from '@/theme'
  * short for THIS phone's wallet (Home's no-USDC pause, Link a wallet's note). After it lands, /api/me and /api/me/usdc are read again,
  * so the pause line and the note go by themselves. `done` is the confirmation line (Home's names the next run; Link's does not).
  */
-export function TopUpButton({ user, cents: suggested, done, onDone, avgDailyCents = null }: { user: string; cents: number; done: (cents: number) => string; onDone?: () => void; avgDailyCents?: number | null }) {
+/** `compact` (10-27, his note: "a simple top up button that once clicked it opens up the different amounts"): one "Top up" button
+ *  first; the amounts, the swap button and its line open under it on the tap. */
+export function TopUpButton({ user, cents: suggested, done, onDone, avgDailyCents = null, compact = false }: { user: string; cents: number; done: (cents: number) => string; onDone?: () => void; avgDailyCents?: number | null; compact?: boolean }) {
+  const [open, setOpen] = useState(!compact)
   // 10-26: $5 / $10 / $25, the one covering the pause picked first; one quiet line says how long it lasts (his: "subtle")
   const [cents, setCents] = useState<number>(() => choiceFor(suggested))
   const { signTransaction } = useMobileWallet()
@@ -54,6 +57,7 @@ export function TopUpButton({ user, cents: suggested, done, onDone, avgDailyCent
   }
 
   const landed = line !== null && !line.error && line.text === done(cents)
+  if (!open) return <Button title="Top up" onPress={() => setOpen(true)} />
   return (
     <View style={{ gap: spacing.xs }}>
       {landed || phase ? null : (

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { ApiError, type MeResponse } from './api'
 import { useInvalidateMe } from './me'
@@ -13,7 +13,11 @@ export function usePauseToggle() {
   const invalidate = useInvalidateMe()
   const [pausing, setPausing] = useState(false)
   const [pauseError, setPauseError] = useState<string | null>(null)
+  const inFlight = useRef(false)
   async function togglePaused(on: boolean) {
+    // 10-27: a second tap before the first answer lands is ignored (it read the old state and asked to turn Sprouts back on)
+    if (inFlight.current) return
+    inFlight.current = true
     setPausing(true)
     setPauseError(null)
     try {
@@ -35,6 +39,7 @@ export function usePauseToggle() {
         e instanceof ApiError ? e.message : on ? 'Could not turn Sprouts back on. Try again.' : 'Could not pause. Try again.',
       )
     } finally {
+      inFlight.current = false
       setPausing(false)
     }
   }

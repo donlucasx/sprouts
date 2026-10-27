@@ -83,17 +83,19 @@ export function ensoGarden(stages: Stages, extras: Extras, size: number, paper: 
   if (whole) {
     // the full ensō (mock F-E-full): the whole garden across the ring, sky above for the total and the plate low for the state line
     const side = span.x1 - span.x0, cx = (span.x0 + span.x1) / 2, cy = PLATE_FOOT - side * 0.29;
-    return gardenSvg(stages, extras, size, size, { x: cx - side / 2, y: cy - side / 2, w: side, h: side, s: size / side }, paper).svg;
+    return gardenSvg(stages, extras, size, size, { x: cx - side / 2, y: cy - side / 2, w: side, h: side, s: size / side }, paper, true).svg;
   }
   const tree = stages.mandarin >= 1 ? paintedBox("mandarin", stages.mandarin) : null;
   const box = tree ?? { x0: span.x0, x1: span.x1, y0: top, y1: PLATE_FOOT };
   const side = Math.max(box.x1 - box.x0, box.y1 - box.y0) * (1 + 2 * ENSO_PAD);
   const cx = (box.x0 + box.x1) / 2, cy = (box.y0 + box.y1) / 2;
   const v = { x: cx - side / 2, y: cy - side / 2, w: side, h: side, s: size / side };
-  return gardenSvg(stages, extras, size, size, v, paper).svg;
+  return gardenSvg(stages, extras, size, size, v, paper, true).svg;
 }
 
-function gardenSvg(stages: Stages, extras: Extras, width: number, height: number, v: View, paper: string | null = null): { svg: string; w: number; h: number } {
+/** `round`: the ensō's window clipped to its circle (10-27, his note: the pill showed "a square edge underneath the left end": the
+ *  window's square corners reached past the pill's round end, where the sand card is transparent). */
+function gardenSvg(stages: Stages, extras: Extras, width: number, height: number, v: View, paper: string | null = null, round = false): { svg: string; w: number; h: number } {
   const signs = STAKE.font * v.s >= STAKE_MIN_FONT;
   const layers = composeLayers(stages, extras).filter((l) => signs || l.kind !== "stake");
   const used = new Map<string, Layer>(), body: string[] = [];
@@ -109,7 +111,9 @@ function gardenSvg(stages: Stages, extras: Extras, width: number, height: number
   }
   const defs = [...used].map(([k, l]) => `<image id="w-${k}" width="${l.w}" height="${l.h}" preserveAspectRatio="none" xlink:href="data:image/webp;base64,${WIDGET2_B64[k]}"/>`).join("");
   const ground = paper ? `<rect x="${f(v.x)}" y="${f(v.y)}" width="${f(v.w)}" height="${f(v.h)}" fill="${paper}"/>` : "";
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${width}" height="${height}" viewBox="${f(v.x)} ${f(v.y)} ${f(v.w)} ${f(v.h)}" preserveAspectRatio="none"><defs>${defs}</defs>${ground}${body.join("")}</svg>`;
+  const clip = round ? `<clipPath id="r"><circle cx="${f(v.x + v.w / 2)}" cy="${f(v.y + v.h / 2)}" r="${f(Math.min(v.w, v.h) / 2)}"/></clipPath>` : "";
+  const paint = round ? `<g clip-path="url(#r)">${ground}${body.join("")}</g>` : `${ground}${body.join("")}`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${width}" height="${height}" viewBox="${f(v.x)} ${f(v.y)} ${f(v.w)} ${f(v.h)}" preserveAspectRatio="none"><defs>${defs}${clip}</defs>${paint}</svg>`;
   return { svg, w: width, h: height };
 }
 

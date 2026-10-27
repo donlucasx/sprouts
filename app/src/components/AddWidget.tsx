@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import { Image, Pressable, View } from 'react-native'
+import { BackHandler, Image, Pressable, View } from 'react-native'
 import { MaterialCommunityIcons } from '@expo/vector-icons'
-import { requestPinWidget } from 'react-native-android-widget'
+import { getWidgetInfo, requestPinWidget } from 'react-native-android-widget'
 import { radius, spacing, TARGET, useTheme } from '@/theme'
 import { ThemedText } from './ThemedText'
 
@@ -11,6 +11,19 @@ export const WIDGETS = [
   { name: 'SproutsEnso', label: 'Ensō', image: require('../../assets/widget-preview-enso.png') },
 ] as const
 export const PIN_FALLBACK = 'Long-press your home screen, then tap Widgets.'
+/** 10-27 (his note: "nothing notes/shows that the widgets are resizable... while keeping descriptions short"). */
+export const RESIZE_HINT = 'Long-press a widget to resize it.'
+/** How long the app watches for the new widget after the launcher's prompt: the person may take a while to tap Add. */
+const WATCH_MS = 30_000, WATCH_STEP_MS = 1_000
+
+/** Resolves true once more `name` widgets are placed than `before`, false after WATCH_MS. */
+async function placed(name: string, before: number): Promise<boolean> {
+  for (let t = 0; t < WATCH_MS; t += WATCH_STEP_MS) {
+    await new Promise((r) => setTimeout(r, WATCH_STEP_MS))
+    if ((await getWidgetInfo(name).catch(() => [])).length > before) return true
+  }
+  return false
+}
 
 /**
  * 10-26 (his: "add the row"): Settings' "Add a widget". Opens in place to the two styles; a tap asks the launcher's own "Add to home
@@ -22,7 +35,11 @@ export function AddWidget() {
   const [fallback, setFallback] = useState(false)
   async function pin(name: string) {
     try {
-      if (!(await requestPinWidget({ widgetName: name }))) setFallback(true)
+      const before = (await getWidgetInfo(name).catch(() => [])).length
+      if (!(await requestPinWidget({ widgetName: name }))) return setFallback(true)
+      // 10-27 (his note: "after adding it to the home page nothing happens"): once the launcher has placed it, Sprouts steps back
+      // to the home screen so the new widget is in view (Android's back on the root screen: the app stays open behind)
+      if (await placed(name, before)) BackHandler.exitApp()
     } catch {
       setFallback(true)
     }
@@ -59,11 +76,9 @@ export function AddWidget() {
               </Pressable>
             ))}
           </View>
-          {fallback ? (
-            <ThemedText variant="caption" tone="secondary">
-              {PIN_FALLBACK}
-            </ThemedText>
-          ) : null}
+          <ThemedText variant="caption" tone="secondary">
+            {fallback ? `${PIN_FALLBACK} ${RESIZE_HINT}` : RESIZE_HINT}
+          </ThemedText>
         </View>
       ) : null}
     </View>

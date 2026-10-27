@@ -17,8 +17,9 @@ export const LABEL_SIZE = 11;
 export const STATE_SIZE = 12;
 /** The state line shrinks to fit the dense 2x2 ("A bud is ready. Water it." at 150 dp), never under this. */
 export const STATE_MIN = 10;
-/** Each line's box: Roboto's line height is about 1.17 em; a little more so a descender is never clipped. */
-export const lineBox = (size: number) => Math.ceil(size * 1.25);
+/** Each line's box: Roboto's line height is about 1.17 em, and Android's font padding adds more: at 1.25 the "g" of "Waiting" was
+ *  clipped on the Seeker's 2x1 (his note 10-27), so 1.35. */
+export const lineBox = (size: number) => Math.ceil(size * 1.35);
 const GAP = 4;
 /** Wide (text left, garden right) from this width to height ratio: 4x2 is about 2.1, 3x2 about 1.5 (stacked), the square 1. */
 export const WIDE_RATIO = 1.8;
