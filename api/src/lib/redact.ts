@@ -16,7 +16,8 @@ export function redact(s: string): string {
 
 /** An error's message plus its cause's (Node's "fetch failed" keeps the host and the reason only in the cause), redacted. */
 export function errorText(e: unknown): string {
-  if (!(e instanceof Error)) return redact(String(e));
+  // A simulation's error is an object ({ InstructionError: [2, { Custom: 4 }] }): String() made it "[object Object]" (10-27).
+  if (!(e instanceof Error)) return redact(e !== null && typeof e === "object" ? safeJson(e) : String(e));
   const cause = e.cause instanceof Error ? e.cause.message : e.cause !== undefined ? String(e.cause) : "";
   return redact(cause ? `${e.message} (${cause})` : e.message);
 }

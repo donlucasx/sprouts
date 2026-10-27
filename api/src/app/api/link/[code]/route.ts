@@ -4,7 +4,7 @@ import { address, createNoopSigner, pipe, createTransactionMessage, setTransacti
   getBase64EncodedWireTransaction, type Address } from "@solana/kit";
 import { getRepo } from "@/db/repo";
 import { clientIp, rateLimited } from "@/lib/auth-guard";
-import { buildApproveOnceIxs, buildRevokeDelegationIx, delegationPda, readDelegation, readSubscriptionAuthority, readUsdcAtaExists, readUsdcBalanceRaw } from "@/lib/subscriptions";
+import { buildApproveOnceIxs, buildRevokeDelegationIx, delegationPda, readDelegation, readSubscriptionAuthority, readUsdcApproved, readUsdcAtaExists, readUsdcBalanceRaw } from "@/lib/subscriptions";
 import { pullerSigner } from "@/lib/puller";
 import { leashLive, leashPda } from "@/lib/leash";
 import { rpc } from "@/lib/rpc";
@@ -62,8 +62,9 @@ export async function GET(request: Request, ctx: { params: Promise<{ code: strin
 
   // A wallet that linked before already has its USDC authority on chain: re-init would fail, so the create carries its init id.
   // A wallet with no USDC account yet gets it created in the same approval (the init needs it).
-  const [authority, ataExists] = await Promise.all([readSubscriptionAuthority(wallet), readUsdcAtaExists(wallet)]);
-  const ixs = await buildApproveOnceIxs({ delegator: wallet, delegatee, capRaw: DAILY_CAP_RAW, nonce: link.nonce, existingInitId: authority.exists ? authority.initId : undefined, createAta: !ataExists });
+  // An authority whose token delegate the wallet removed (10-27) gets it back in the same approval (buildApproveOnceIxs reapprove).
+  const [authority, ataExists, approved] = await Promise.all([readSubscriptionAuthority(wallet), readUsdcAtaExists(wallet), readUsdcApproved(wallet)]);
+  const ixs = await buildApproveOnceIxs({ delegator: wallet, delegatee, capRaw: DAILY_CAP_RAW, nonce: link.nonce, existingInitId: authority.exists ? authority.initId : undefined, createAta: !ataExists, reapprove: authority.exists && approved === false });
   // One delegation per wallet: if the previous one is still live, the same approval revokes it first (review I4).
   let revokes: string | null = null;
   if (existing && existing.delegationPda !== pda && (await readDelegation(address(existing.delegationPda))).exists) {

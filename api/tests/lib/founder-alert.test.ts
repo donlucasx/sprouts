@@ -24,6 +24,13 @@ describe("founderAlertFor", () => {
     expect(founderAlertFor(ev("pull_failed", { stage: "send", err: "blockhash expired" }))).toContain("blockhash expired");
   });
 
+  it("10-27: a simulation error object reads as JSON, never [object Object]; a removed USDC approval says so", () => {
+    const line = founderAlertFor(ev("pull_failed", { stage: "simulate", err: { InstructionError: [2, { Custom: 4 }] } }));
+    expect(line).toContain('{"InstructionError":[2,{"Custom":4}]}');
+    expect(line).not.toContain("[object Object]");
+    expect(founderAlertFor(ev("revoke_seen", { by: "token_revoke" }))).toContain("USDC approval removed in the wallet");
+  });
+
   it("alerts on a link only when the wallet missed the webhook (its swaps are not counted)", () => {
     expect(founderAlertFor(ev("wallet_linked", { webhookAdded: true, linkModel: "leash" }))).toBeNull();
     expect(founderAlertFor(ev("wallet_linked", { webhookAdded: false, linkModel: "leash" }))).toContain("NOT on the Helius webhook");

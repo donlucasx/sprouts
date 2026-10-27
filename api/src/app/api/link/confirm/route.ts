@@ -4,14 +4,14 @@ import { z } from "zod";
 import { getRepo } from "@/db/repo";
 import { clientIp, rateLimited } from "@/lib/auth-guard";
 import { config } from "@/lib/config";
-import { delegationPda, waitForDelegation } from "@/lib/subscriptions";
+import { APPROVE_ALL, delegationPda, usdcAta, waitForDelegation } from "@/lib/subscriptions";
 import { leashPda } from "@/lib/leash";
 import { heliusAddAddress } from "@/lib/helius";
 import { verifyPostedTransaction } from "@/lib/verify-tx";
 import { rpc } from "@/lib/rpc";
 import { SUBSCRIPTIONS_PROGRAM, USDC_MINT } from "@/lib/constants";
 import { findSubscriptionAuthorityPda } from "@solana/subscriptions";
-import { ASSOCIATED_TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
+import { ASSOCIATED_TOKEN_PROGRAM_ADDRESS, TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
 import { errorText } from "@/lib/redact";
 
 export const runtime = "nodejs";
@@ -61,10 +61,19 @@ export async function POST(request: Request) {
     let posted;
     try {
       // The approval may begin by creating the wallet's USDC account (a wallet that never held USDC).
-      posted = verifyPostedTransaction({ base64: parsed.data.signedTransaction, feePayer: wallet, programs: [SUBSCRIPTIONS_PROGRAM, ASSOCIATED_TOKEN_PROGRAM_ADDRESS] });
+      // A re-link may also put back the USDC approval the wallet removed (link/[code] reapprove, 10-27): one token Approve.
+      posted = verifyPostedTransaction({ base64: parsed.data.signedTransaction, feePayer: wallet, programs: [SUBSCRIPTIONS_PROGRAM, ASSOCIATED_TOKEN_PROGRAM_ADDRESS, TOKEN_PROGRAM_ADDRESS] });
     } catch (e) {
       return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 400 });
     }
+    // The token program is allowed for that Approve only: this wallet's USDC account, its own USDC subscription authority as delegate,
+    // the full allowance the init sets. Any other token instruction (a transfer, an approve to anyone else) is refused unsent.
+    const [authorityPda] = await findSubscriptionAuthorityPda({ user: wallet, tokenMint: USDC_MINT });
+    const ata = await usdcAta(wallet);
+    const approveOk = (ix: { data: Uint8Array; accounts: Address[] }) => ix.data.length === 9 && ix.data[0] === 4
+      && new DataView(ix.data.buffer, ix.data.byteOffset, 9).getBigUint64(1, true) === APPROVE_ALL
+      && ix.accounts[0] === ata && ix.accounts[1] === authorityPda && ix.accounts[2] === wallet;
+    if (posted.instructions.some((ix) => ix.program === TOKEN_PROGRAM_ADDRESS && !approveOk(ix))) return NextResponse.json({ error: "This approval is not the one Sprouts asked for. Nothing was linked; get a new code in the app." }, { status: 400 });
     const boundPda = address(link.delegationPda);
     if (!posted.instructions.some((ix) => ix.accounts.includes(boundPda))) return NextResponse.json({ error: "This approval is for another delegation. Get a new code in the app, then try again." }, { status: 400 });
     try {

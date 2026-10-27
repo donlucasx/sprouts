@@ -1,5 +1,5 @@
 import { createNoopSigner, type Address, type Instruction, type TransactionSigner } from "@solana/kit";
-import { findAssociatedTokenPda, fetchMaybeToken, getCreateAssociatedTokenIdempotentInstructionAsync, TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
+import { findAssociatedTokenPda, fetchMaybeToken, getApproveInstruction, getCreateAssociatedTokenIdempotentInstructionAsync, TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
 import {
   getInitSubscriptionAuthorityOverlayInstructionAsync,
   getCreateRecurringDelegationOverlayInstructionAsync,
@@ -16,6 +16,8 @@ import { USDC_MINT } from "./constants";
 import { rpc } from "./rpc";
 
 const DAY = 86_400n;
+/** What the init approves: the most a u64 holds (the delegation, not this allowance, is the limit). */
+export const APPROVE_ALL = 18_446_744_073_709_551_615n;
 const now = () => BigInt(Math.floor(Date.now() / 1000));
 
 export async function usdcAta(owner: Address): Promise<Address> {
@@ -34,10 +36,25 @@ export async function usdcAta(owner: Address): Promise<Address> {
  *
  * A wallet with no USDC account yet (the Saga, 2026-09-29): `createAta` prepends the idempotent associated-account create, paid
  * by the wallet, since the init sets the program as delegate on that account and fails when it is missing.
+ *
+ * `reapprove` (10-27, wallet BTDG): a wallet's own "revoke approvals" tool can clear the token delegate the init set while the
+ * authority and the delegation stay; every pull then fails with token error 0x4. A re-link that keeps the authority puts the
+ * delegate back with a plain token Approve of the authority, signed in the same transaction (simulated on mainnet: the pull lands).
  */
 /** Whether the wallet's USDC associated token account is on chain. The init sets a delegate on it, so it must exist first. */
 export async function readUsdcAtaExists(owner: Address): Promise<boolean> {
   return (await fetchMaybeToken(rpc(), await usdcAta(owner))).exists;
+}
+
+/**
+ * Whether the wallet's USDC account still names its subscription authority as delegate, which every pull needs; null with no USDC
+ * account (the run's no-USDC pause covers that). Throws on an RPC error, which must not read as a revoke.
+ */
+export async function readUsdcApproved(owner: Address): Promise<boolean | null> {
+  const acc = await fetchMaybeToken(rpc(), await usdcAta(owner));
+  if (!acc.exists) return null;
+  const [authority] = await findSubscriptionAuthorityPda({ user: owner, tokenMint: USDC_MINT });
+  return acc.data.delegate.__option === "Some" && acc.data.delegate.value === authority;
 }
 
 /** The wallet's USDC in base units: 0n with no USDC account; throws on an RPC error (which must not read as zero). */
@@ -46,7 +63,7 @@ export async function readUsdcBalanceRaw(owner: Address): Promise<bigint> {
   return acc.exists ? acc.data.amount : 0n;
 }
 
-export async function buildApproveOnceIxs(a: { delegator: Address; delegatee: Address; capRaw: bigint; nonce: bigint; startTs?: bigint; existingInitId?: bigint; createAta?: boolean }): Promise<Instruction[]> {
+export async function buildApproveOnceIxs(a: { delegator: Address; delegatee: Address; capRaw: bigint; nonce: bigint; startTs?: bigint; existingInitId?: bigint; createAta?: boolean; reapprove?: boolean }): Promise<Instruction[]> {
   const owner = createNoopSigner(a.delegator);
   const create = await getCreateRecurringDelegationOverlayInstructionAsync({
     delegator: owner,
@@ -62,8 +79,12 @@ export async function buildApproveOnceIxs(a: { delegator: Address; delegatee: Ad
     // 136 STALE_SUBSCRIPTION_AUTHORITY). An existing authority needs its live init id instead (`readSubscriptionAuthority`).
     expectedSubscriptionAuthorityInitId: a.existingInitId ?? UNKNOWN_INIT_ID,
   });
-  if (a.existingInitId !== undefined) return [create];
   const userAta = await usdcAta(a.delegator);
+  if (a.existingInitId !== undefined) {
+    if (!a.reapprove) return [create];
+    const [authority] = await findSubscriptionAuthorityPda({ user: a.delegator, tokenMint: USDC_MINT });
+    return [getApproveInstruction({ source: userAta, delegate: authority, owner, amount: APPROVE_ALL }), create];
+  }
   const init = await getInitSubscriptionAuthorityOverlayInstructionAsync({ owner, tokenMint: USDC_MINT, tokenProgram: TOKEN_PROGRAM_ADDRESS, userAta });
   if (!a.createAta) return [init, create];
   const createAta = await getCreateAssociatedTokenIdempotentInstructionAsync({ payer: owner, owner: a.delegator, mint: USDC_MINT });
