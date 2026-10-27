@@ -317,8 +317,8 @@ export class SupabaseRepo implements Repo {
     return this.many(this.db.from("events").select().eq("user_pubkey", userPubkey).in("kind", kinds).order("id", { ascending: false }).limit(limit), eventRow);
   }
 
-  async topUpKinds(signature: string) {
-    const { data, error } = await this.db.from("events").select("kind").in("kind", ["topup_sent", "topped_up"]).eq("detail->>signature", signature);
+  async topUpKinds(signature: string, walletPubkey: string) {
+    const { data, error } = await this.db.from("events").select("kind").in("kind", ["topup_sent", "topped_up"]).eq("wallet_pubkey", walletPubkey).eq("detail->>signature", signature);
     if (error) throw new Error(error.message);
     return ((data ?? []) as Row[]).map((r) => r.kind as T.EventKind);
   }
