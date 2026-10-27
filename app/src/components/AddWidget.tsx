@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { BackHandler, Image, Pressable, View } from 'react-native'
 import { MaterialCommunityIcons } from '@expo/vector-icons'
 import { getWidgetInfo, requestPinWidget } from 'react-native-android-widget'
@@ -31,9 +31,10 @@ function goHome() {
 }
 
 /** Resolves true once more `name` widgets are placed than `before`, false after WATCH_MS. */
-async function placed(name: string, before: number): Promise<boolean> {
+async function placed(name: string, before: number, stale: () => boolean): Promise<boolean> {
   for (let t = 0; t < WATCH_MS; t += WATCH_STEP_MS) {
     await new Promise((r) => setTimeout(r, WATCH_STEP_MS))
+    if (stale()) return false
     const n = (await getWidgetInfo(name).catch(() => [])).length
     if (n > before) return true
   }
@@ -48,14 +49,18 @@ export function AddWidget() {
   const { colors } = useTheme()
   const [open, setOpen] = useState(false)
   const [fallback, setFallback] = useState(false)
+  // one watcher at a time: a second tap, or leaving Settings, ends the one before (review 10-27: two taps sent the app home twice)
+  const watch = useRef(0)
+  useEffect(() => () => void (watch.current = -1), [])
   async function pin(name: string) {
+    const token = ++watch.current
     try {
       const before = (await getWidgetInfo(name).catch(() => [])).length
       const asked = await requestPinWidget({ widgetName: name })
       if (!asked) return setFallback(true)
       // 10-27 (his note: "after adding it to the home page nothing happens"): once the launcher has placed it, Sprouts steps back
       // to the home screen so the new widget is in view (Android's back on the root screen: the app stays open behind)
-      const ok = await placed(name, before)
+      const ok = await placed(name, before, () => watch.current !== token)
       if (ok) goHome()
     } catch {
       setFallback(true)

@@ -25,7 +25,9 @@ export function TopUpButton({ user, cents: suggested, done, onDone, avgDailyCent
   const [open, setOpen] = useState(!compact)
   const choices = offers ?? TOPUP_CHOICES
   // 10-26: $5 / $10 / $25, the one covering the pause picked first; one quiet line says how long it lasts (his: "subtle")
-  const [cents, setCents] = useState<number>(() => choiceFor(suggested, choices))
+  const [picked, setPicked] = useState<number>(() => choiceFor(suggested, choices))
+  // the offers can arrive after the first render (Home's /api/me/usdc read): an amount they do not hold is never built or shown
+  const cents = choices.includes(picked) ? picked : choiceFor(suggested, choices)
   const [copied, setCopied] = useState(false)
   const { signTransaction } = useMobileWallet()
   const qc = useQueryClient()
@@ -66,7 +68,7 @@ export function TopUpButton({ user, cents: suggested, done, onDone, avgDailyCent
   return (
     <View style={{ gap: spacing.xs }}>
       {landed || phase ? null : (
-        choices.length > 1 ? <TwoWay options={choices.map((c) => ({ value: String(c), label: `$${c / 100}` }))} value={String(cents)} onChange={(v) => setCents(Number(v))} /> : null
+        choices.length > 1 ? <TwoWay options={choices.map((c) => ({ value: String(c), label: `$${c / 100}` }))} value={String(cents)} onChange={(v) => setPicked(Number(v))} /> : null
       )}
       {landed ? null : <Button title={TOPUP.button(cents)} loading={phase !== null} onPress={topUp} />}
       {phase ? (

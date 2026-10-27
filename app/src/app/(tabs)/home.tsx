@@ -80,6 +80,10 @@ export default function Home() {
   const { colors, dark } = useTheme()
   const { data: me, stale, fresh, refetch, asOf, loading, unauthorized, errorStatus } = useMe()
   const { data: activity } = useQuery(activityQuery)
+  // the low-USDC notification's pace (usdc-watch): saved whenever Home measures it, for the background task, which reads no Activity
+  useEffect(() => {
+    if (me && activity) writeLastAvg(avgDailyRoundupCents(activity.swaps, me.user.pubkey, new Date()))
+  }, [me, activity])
   const { data: usdcRead } = useQuery({ queryKey: ['me-usdc', me?.user.pubkey], queryFn: () => api<{ usdcRaw: string | null; topUpCents?: number[] | null }>('/api/me/usdc'), enabled: !!me, retry: false, staleTime: 60_000 })
   const invalidate = useInvalidateMe()
   const [failed, setFailed] = useState(false)
@@ -218,7 +222,6 @@ export default function Home() {
   // 10-26: how long this phone's wallet's USDC lasts at its own pace (its recent round-ups); the background task reads the same pace
   // (saved by the effect above) for the low-USDC notification
   const avg = activity ? avgDailyRoundupCents(activity.swaps, me.user.pubkey, now) : null
-  writeLastAvg(avg)
   const usdcCents = usdcRead?.usdcRaw != null ? Number(BigInt(usdcRead.usdcRaw) / 10_000n) : null
   const low = topUp.phoneCents === null ? lowUsdcLine(usdcCents, avg) : null
   const notice = usdcNotice(me, { usdcCents, low: low !== null })
