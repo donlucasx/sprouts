@@ -75,7 +75,7 @@ export function TopUpButton({ user, cents: suggested, done, onDone, avgDailyCent
         </ThemedText>
       ) : landed ? null : (
         <ThemedText variant="caption" tone="secondary">
-          {[coverageLine(cents, avgDailyCents), TOPUP.how].filter(Boolean).join('. ')}
+          {TOPUP.how(cents, coverageLine(cents, avgDailyCents))}
         </ThemedText>
       )}
       {line ? (
