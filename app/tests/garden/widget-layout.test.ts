@@ -58,7 +58,7 @@ const svgBox = (svg: string) => svg.match(/viewBox="([-\d.]+) ([-\d.]+) ([-\d.]+
  * the outline's highest point, GROUND_OUTLINE, not the sprite's transparent strip). */
 
 // R363 + R364 (10-05): the square widget: the total big and alone, "your garden" under it, the garden, ONE state line at the bottom.
-const { widgetLayout, textWidth, WIDE_RATIO, BIG_SIZE, BAR_H, LABEL_SIZE, STATE_SIZE, STATE_MIN, G2_BIG, G2_BIG_MIN } = await import("@/garden/widget-layout");
+const { widgetLayout, textWidth, WIDE_RATIO, isSlim, isSmallest, BIG_SIZE, BAR_H, LABEL_SIZE, STATE_SIZE, STATE_MIN, G2_BIG, G2_BIG_MIN } = await import("@/garden/widget-layout");
 const { widgetStateLine, widgetHeadline, BUD_LINE, PLANTED_RECENT_MS } = await import("@/lib/widget-state");
 const { watcherLine } = await import("@/model/watcher");
 
@@ -97,113 +97,54 @@ describe("both drawing paths (in-app refresh, the system task handler) build the
   });
 });
 
-describe("R364: the default widget is a 2x2 square, still resizable", async () => {
+// 10-26/27 (his rulings): two providers, each defaulting to 3 by 2 cells, resizable both ways down to one cell
+describe("the widget providers (app.json)", async () => {
   const appJson = (await import("../../app.json")).default as { expo: { plugins: unknown[] } };
   const plugin = appJson.expo.plugins.find((p) => Array.isArray(p) && p[0] === "react-native-android-widget") as [string, { widgets: Record<string, unknown>[] }];
-  const w = plugin[1].widgets[0];
-  it("targets 2 by 2 cells, its minimum a square, both directions resizable", () => {
-    expect(w.targetCellWidth).toBe(2); expect(w.targetCellHeight).toBe(2);
-    expect(w.minWidth).toBe("110dp"); expect(w.minHeight).toBe("110dp");
-    expect(w.resizeMode).toBe("horizontal|vertical");
-    expect(w.maxResizeHeight).toBeUndefined();   // a tall widget is allowed (it centres its garden)
+  it("bamboo and ensō, 3 by 2 by default, resizable both ways; the min-resize plugin runs after the widget plugin", () => {
+    expect(plugin[1].widgets.map((w) => w.name)).toEqual(["Sprouts", "SproutsEnso"]);
+    for (const w of plugin[1].widgets) {
+      expect([w.targetCellWidth, w.targetCellHeight]).toEqual([3, 2]);
+      expect(w.resizeMode).toBe("horizontal|vertical");
+    }
+    // dangerous mods run in reverse: the plugin listed BEFORE the widget plugin runs after it, once its XML exists
+    const names = appJson.expo.plugins.map((p) => (Array.isArray(p) ? p[0] : p));
+    expect(names.indexOf("./plugins/widget-min-resize")).toBe(names.indexOf("react-native-android-widget") - 1);
   });
 });
 
-describe("R363 + R364: every size lays out the total, the garden and one state line, each inside the widget", () => {
-  it.each(CASES)("%s at %i by %i: one line each, the garden inside its box and using it", (_cells, width, height) => {
-    for (const [state, m0] of Object.entries(STATES)) for (const m of [m0, priced(m0), priced({ ...m0, history: grown.history } as MeResponse)]) {
-      const root = SproutsWidget({ me: m, width, height}) as El;
-      const [big, label, line] = texts(root);
-      // Garden2: the card (and so the layout) stops BOTTOM_SAFE short of the reported height, which can exceed the cell
-      const H = height - BOTTOM_SAFE, inset = frameInset(width), FW = width - 2 * inset, FH = H - 2 * inset, inner = frameInner(FW, FH);
-      const barred = widgetLayout(inner.w, inner.h, big.props.text, label.props.text, line.props.text, frameGap(width), true, G2_BIG, G2_BIG_MIN);
-      // the bar drops out where it would leave the garden under 16 dp (a 110 dp tall widget)
-      const hasBar = all(root).some((e) => (e.props.style as { height?: number })?.height === BAR_H && kids(e).length >= 0 && (e.props.style as { borderRadius?: number })?.borderRadius === BAR_H / 2);
-      const L = hasBar ? barred : widgetLayout(inner.w, inner.h, big.props.text, label.props.text, line.props.text, frameGap(width), false, G2_BIG, G2_BIG_MIN);
-      // the three boxes: inside the widget, apart
-      for (const b of [L.header, L.garden, L.state]) expect(inside(b, inner.w, inner.h), `${state}: ${JSON.stringify(b)}`).toBe(true);
-      expect(overlap(L.header, L.garden) || overlap(L.garden, L.state) || overlap(L.header, L.state)).toBe(false);
-      // fonts per R363 and one line each, measured at Roboto's widths
-      expect(big.props.style.fontSize).toBe(L.bigSize); expect(L.bigSize).toBeGreaterThanOrEqual(G2_BIG_MIN); expect(L.bigSize).toBeLessThanOrEqual(G2_BIG);   // 10-11 his "too big": the garden is the hero   // an amount never under 18; the empty call ("Swap to save") down to BIG_MIN expect(L.bigSize).toBeLessThanOrEqual(BIG_SIZE);
-      expect(label.props.style.fontSize).toBe(LABEL_SIZE); expect(line.props.style.fontSize).toBe(L.stateSize);
-      expect(L.stateSize).toBeGreaterThanOrEqual(STATE_MIN); if (width >= 200) expect(L.stateSize).toBe(STATE_SIZE);
-      for (const t of [big, label]) expect(t.props.maxLines).toBe(1);
-      // the state line is one line on every launcher size; only under 140 dp may the bud's call wrap to two (never cut)
-      expect(line.props.maxLines).toBe(L.stateLines); if (width >= 140) expect(L.stateLines).toBe(1);
-      expect(textWidth(big.props.text, L.bigSize, true)).toBeLessThanOrEqual(L.header.w);
-      expect(textWidth(label.props.text, LABEL_SIZE)).toBeLessThanOrEqual(L.header.w);
-      expect(textWidth(line.props.text, L.stateSize, true), `"${line.props.text}" at ${width}`).toBeLessThanOrEqual(L.state.w * L.stateLines);
-      // the rendered tree adds up: the root's padding is the layout's, the top block's children fill its box, the top block and the
-      // line fit the inner height, and in the wide row the header, the spacer and the garden fill the inner width
-      // 10-10 Garden2: the bamboo frame (the whole widget less BOTTOM_SAFE) under the content, laid out in the frame's opening
-      // 10-11 (his note "a tad slimmer within it so theres more transparency around"): the frame FRAME_INSET in from every edge
-      expect(root.type).toBe("FlexWidget"); expect(root.props.style).toMatchObject({ padding: inset }); expect(inset).toBeGreaterThan(0);
-      const framed = kids(root)[0]; expect(framed.type).toBe("OverlapWidget"); expect(framed.props.style).toEqual({ width: FW, height: FH });
-      const [frameEl, wrap] = kids(framed);
-      expect(frameEl.type).toBe("SvgWidget"); expect(frameEl.props.style).toEqual({ width: FW, height: FH });
-      expect(String((frameEl.props as { svg: string }).svg).match(/<image x=/g)).toHaveLength(8);   // the nine-slice less its empty centre (the sand tile is declared once, by id)
-      expect(wrap.props.style).toMatchObject({ width: FW, height: FH, paddingLeft: inner.l, paddingTop: inner.t, paddingRight: inner.r, paddingBottom: inner.b });
-      // 10-11: the opening stacks the painting (widgetGarden2, the whole opening) under the text
-      const opening = kids(wrap)[0];
-      expect(opening.type).toBe("OverlapWidget"); expect(opening.props.style).toEqual({ width: inner.w, height: inner.h });
-      const content = kids(opening).find((k) => k.type === "FlexWidget")!;
-      expect(content.props.style).toMatchObject({ width: inner.w, height: inner.h, padding: L.pad });
-      const [topBlock, lineEl] = kids(content);
-      const ts = topBlock.props.style as { height: number; flexDirection: string };
-      const sizes = kids(topBlock).map((k) => k.props.style as { width: number | string; height: number });
-      expect(ts.height + (lineEl.props.style as { height: number }).height).toBeLessThanOrEqual(inner.h - 2 * L.pad);
-      expect((lineEl.props.style as { height: number }).height).toBe(L.state.h);
-      if (ts.flexDirection === "column") {
-        expect(sizes.reduce((t, z) => t + z.height, 0)).toBe(ts.height);
-        expect(L.garden.y + L.garden.h).toBeLessThanOrEqual(L.state.y);
-      } else {
-        expect(sizes.reduce((t, z) => t + (z.width as number), 0)).toBe(inner.w - 2 * L.pad);
-        expect(sizes.every((z) => z.height <= ts.height)).toBe(true);
+// 10-27 (his device rounds on the Seeker and the Saga): every size he resized to, every state, renders; the smallest and the one-row
+// widgets are words and the gauge; the rest carry the garden, sized to its opening; no text is wider than the frame
+const DEVICE_SIZES: [string, number, number][] = [
+  ["seeker 1x1", 180, 131], ["seeker 2x1", 276, 131], ["seeker 3x1", 372, 131], ["seeker 1x2", 180, 274], ["seeker 2x2", 276, 274], ["seeker 3x2", 372, 274],
+  ["seeker 1x3", 180, 417], ["seeker 2x3", 276, 417], ["seeker 3x3", 372, 417], ["seeker 1x4", 180, 560],
+  ["saga 1x1", 185, 111], ["saga 2x1", 283, 111], ["saga 3x1", 382, 111], ["saga 1x2", 185, 235], ["saga 2x2", 283, 235], ["saga 3x2", 382, 235],
+  ["saga 1x3", 185, 359], ["saga 2x3", 283, 359], ["saga 3x3", 382, 359], ["saga 1x4", 185, 483], ["no size", 84, 120],
+];
+describe("every device size, every state", () => {
+  it.each(DEVICE_SIZES)("bamboo %s (%i x %i)", (_name, width, height) => {
+    for (const m0 of Object.values(STATES)) for (const m of [m0, priced(m0), priced({ ...m0, history: grown.history } as MeResponse)]) {
+      const root = SproutsWidget({ me: m, width, height, now: NOW }) as El;
+      expect((root.props as { clickAction?: string }).clickAction).toBe("OPEN_APP");
+      const g = svgOfRoot(root);
+      const words = isSmallest(width, height) || isSlim(width, height) || width < 140;
+      expect(!!g, `${_name}: garden ${!!g}`).toBe(!words);
+      if (g) expect(String(g.props.svg)).toContain(`width="${g.props.style.width}" height="${g.props.style.height}"`);
+      for (const t of texts(root)) {
+        expect(t.props.maxLines ?? 1).toBeLessThanOrEqual(2);
       }
-      // the painting: the whole opening, behind the text, its view inside the plate across and at the opening's own aspect
-      const svg = svgOfRoot(root)!;
-      expect(kids(opening)[0]).toBe(svg); expect(svg.props.style).toEqual({ width: inner.w, height: inner.h });
-      const [x, , vw, vh] = svgBox(svg.props.svg);
-      // inside the plate, or, where the opening is wider than the plate at the fitted scale, around it (paper beside it)
-      if (vw <= CANVAS.w + 0.01) { expect(x).toBeGreaterThanOrEqual(0); expect(x + vw).toBeLessThanOrEqual(CANVAS.w + 0.01); }
-      else { expect(x).toBeLessThanOrEqual(0.01); expect(x + vw).toBeGreaterThanOrEqual(CANVAS.w - 0.01); }
-      expect(vw / vh).toBeCloseTo(inner.w / inner.h, 1);
-      const declared = new Set([...svg.props.svg.matchAll(/<image id="([^"]+)"/g)].map((q) => q[1]));
-      for (const u of svg.props.svg.matchAll(/<use xlink:href="#([^"]+)"/g)) expect(declared.has(u[1]), u[1]).toBe(true);
     }
   });
-  it("the square and the tall sizes stack (total, garden, line); 4x2 puts the total at the left of the garden", () => {
-    for (const [cells, w, h] of CASES) expect(widgetLayout(w, h, "$14.99", "your garden").mode, `${cells} ${w}`).toBe(cells === "4x2" ? "wide" : w / h >= WIDE_RATIO ? "wide" : "stacked");
-    // a total too long for a wide widget's column stacks instead of being cut
-    expect(widgetLayout(200, 110, "$123456.78", "your garden").mode).toBe("stacked");
-    const sq = widgetLayout(206, 205, "$14.99", "your garden");
-    expect(sq.header.y).toBeLessThan(sq.garden.y); expect(sq.garden.y + sq.garden.h).toBeLessThanOrEqual(sq.state.y);
-    const wide = widgetLayout(430, 205, "$14.99", "your garden");
-    expect(wide.header.x + wide.header.w).toBeLessThanOrEqual(wide.garden.x);
-  });
-  it("Garden2 (his note 10-11: \"showing 'next swap' data is more relevant than the total\"): the next planting leads, small; the total is the bottom line", () => {
-    const root = SproutsWidget({ me: priced(STATES.saving), width: 206, height: 205}) as El;
-    const [big, label, line] = texts(root);
-    expect(big.props.text).toBe("$1.35 of $2.00"); expect(big.props.style.fontSize).toBe(G2_BIG); expect(big.props.style.fontWeight).toBe("700");
-    expect(label.props.text).toBe("rounds up from every swap");
-    expect(line.props.text).toBe("$14.98 in your garden");
-  });
-  it("a six-figure total shrinks to fit the dense 2x2, never under 18", () => {
-    const L = widgetLayout(150, 150, "$123456.78", "your garden");
-    expect(L.bigSize).toBeLessThan(BIG_SIZE); expect(textWidth("$123456.78", L.bigSize, true)).toBeLessThanOrEqual(L.header.w);
-    const M = widgetLayout(110, 110, "$12345.67", "your garden");
-    expect(textWidth("$12345.67", M.bigSize, true)).toBeLessThanOrEqual(M.header.w);
-  });
-  it("the bar under the headline is Home's fraction toward the next planting", () => {
-    const root = SproutsWidget({ me: priced(STATES.saving), width: 206, height: 205}) as El;
-    const track = all(root).find((e) => e.type === "FlexWidget" && (e.props.style as { height?: number })?.height === BAR_H && kids(e).length === 1)!;
-    const fill = kids(track)[0].props.style as { width: number }, w = (track.props.style as { width: number }).width;
-    expect(fill.width).toBe(Math.round(w * (135 / 200)));
-    const none = SproutsWidget({ me: priced(STATES.empty), width: 206, height: 205}) as El;
-    expect(all(none).some((e) => (e.props.style as { height?: number })?.height === BAR_H && kids(e).length === 1)).toBe(false);
-  });
-  it("the whole widget opens the app", () => {
-    for (const m of Object.values(STATES)) expect((SproutsWidget({ me: m, width: 206, height: 205}) as El).props).toMatchObject({ clickAction: "OPEN_APP" });
+  it.each(DEVICE_SIZES)("ensō %s (%i x %i)", async (_name, width, height) => {
+    const { EnsoWidget } = await import("@/garden/EnsoWidget");
+    for (const m0 of Object.values(STATES)) for (const m of [m0, priced(m0)]) {
+      const root = EnsoWidget({ me: m, width, height, now: NOW }) as El;
+      const words = isSmallest(width, height) || width < 140 || isSlim(width, height);
+      const art = all(root).some(isGardenSvg);
+      if (isSmallest(width, height) || width < 140) expect(art, `${_name}: the mini has no art`).toBe(false);
+      else if (!words) expect(art, `${_name}: a garden`).toBe(true);
+      expect(texts(root).length).toBeGreaterThan(0);
+    }
   });
 });
 

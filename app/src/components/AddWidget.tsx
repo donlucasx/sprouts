@@ -16,9 +16,6 @@ export const RESIZE_HINT = 'Long-press a widget to resize it.'
 /** How long the app watches for the new widget after the launcher's prompt: the person may take a while to tap Add. */
 const WATCH_MS = 30_000, WATCH_STEP_MS = 1_000
 
-// DRAFT: the add-widget flow's steps in the dev log (his note 10-27: the app did not step back after adding)
-const log = (m: string) => { if (__DEV__) console.log(`[add-widget] ${m}`) }
-
 /**
  * Shows the home screen. 10-27: BackHandler.exitApp() did nothing on the Seeker (the log showed the widget placed, the app stayed), so
  * the launcher is opened directly (expo-intent-launcher, native: from the next build). A build without the module falls back to back.
@@ -38,7 +35,6 @@ async function placed(name: string, before: number): Promise<boolean> {
   for (let t = 0; t < WATCH_MS; t += WATCH_STEP_MS) {
     await new Promise((r) => setTimeout(r, WATCH_STEP_MS))
     const n = (await getWidgetInfo(name).catch(() => [])).length
-    if (t % 5_000 === 0) log(`watch ${name}: ${n} placed`)
     if (n > before) return true
   }
   return false
@@ -54,14 +50,12 @@ export function AddWidget() {
   const [fallback, setFallback] = useState(false)
   async function pin(name: string) {
     try {
-      const before = (await getWidgetInfo(name).catch((e) => (log(`info failed ${String(e)}`), []))).length
+      const before = (await getWidgetInfo(name).catch(() => [])).length
       const asked = await requestPinWidget({ widgetName: name })
-      log(`pin ${name}: asked=${asked} before=${before}`)
       if (!asked) return setFallback(true)
       // 10-27 (his note: "after adding it to the home page nothing happens"): once the launcher has placed it, Sprouts steps back
       // to the home screen so the new widget is in view (Android's back on the root screen: the app stays open behind)
       const ok = await placed(name, before)
-      log(`pin ${name}: placed=${ok}`)
       if (ok) goHome()
     } catch {
       setFallback(true)

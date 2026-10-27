@@ -78,23 +78,6 @@ export function pauseState(wallets: { status: string }[]): { shown: boolean; on:
   }
 }
 
-/**
- * Home's line for each wallet the daily run paused for want of USDC (10-22). The run starts it again on its own at its next daily
- * check once the wallet holds threshold + network fee (api plant-run.ts resumePausedWallets); the amount named is the larger of
- * that and what the run wanted to pull (`needCents`), rounded up to whole dollars, so holding it both restarts the wallet and covers
- * the waiting round-ups. A wallet the user paused, or one an older API gives no reason for, gets no line here.
- */
-export function noUsdcPauseLines(wallets: MeResponse['wallets']): string[] {
-  const linked = wallets.filter((w) => w.status !== 'revoked')
-  return linked.flatMap((w) => {
-    const p = w.status === 'paused' ? w.pause : null
-    if (p?.reason !== 'no_usdc') return []
-    const dollars = Math.max(1, Math.ceil(Math.max(p.needCents ?? 0, p.resumeAtCents) / 100))
-    const who = linked.length > 1 ? `Wallet ${w.pubkey.slice(0, 4)}...${w.pubkey.slice(-4)}` : 'Your wallet'
-    // 10-26 copy review row 5
-    return [`Paused. ${who} needs at least $${dollars} of USDC. Your round-ups are still counted, and planting restarts on its own.`]
-  })
-}
 
 /** What this phone's own wallet is called in the USDC notice: Home's line under the title says "Held in your Seed Vault wallet". */
 export const PHONE_WALLET = 'Seed Vault wallet'
