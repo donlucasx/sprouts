@@ -290,6 +290,10 @@ export class MemoryRepo implements Repo {
     return this.events.filter((e) => e.userPubkey === userPubkey && kinds.includes(e.kind)).sort((a, b) => b.id - a.id).slice(0, limit);
   }
 
+  async topUpKinds(signature: string) {
+    return this.events.filter((e) => (e.kind === "topup_sent" || e.kind === "topped_up") && (e.detail as { signature?: unknown } | null)?.signature === signature).map((e) => e.kind);
+  }
+
   async putCoinDay(row: T.CoinDayRow) {
     this.coinDays.set(`${row.day}|${row.asset}`, { ...row });
   }

@@ -86,6 +86,8 @@ export interface Repo {
   addEvent(e: Omit<T.EventRow, "id" | "ts">): Promise<void>;
   /** The user's events of the given kinds, newest first, at most `limit`: Activity's split rows (spec 3.2). */
   listEvents(userPubkey: string, kinds: T.EventKind[], limit: number): Promise<T.EventRow[]>;
+  /** 10-27: which top-up events (topup_sent, topped_up) carry this signature; the swap booking skips a marked one. */
+  topUpKinds(signature: string): Promise<T.EventKind[]>;
 
   putNonce(n: { nonce: string; expiresAt: Date }): Promise<void>;
   /** One atomic step; false when unknown, used or expired. */

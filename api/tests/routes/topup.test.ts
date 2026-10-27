@@ -155,3 +155,50 @@ describe("POST /api/topup/confirm (sends the signed top-up)", () => {
     expect((await call(confirm, { signedTransaction: tx })).status).toBe(202);
   });
 });
+
+// 10-27 (his rulings: a top-up is not a swap; top-ups show in Activity): the mark before the send, the row once it landed.
+describe("POST /api/topup/confirm records the top-up", () => {
+  let repo: MemoryRepo;
+  beforeEach(() => {
+    repo = new MemoryRepo();
+    setRepoForTests(repo);
+    process.env.JUPITER_API_KEY ??= "test";
+    vi.stubGlobal("fetch", fetchMock);
+    Object.assign(chain, { lamports: 200_000_000n, sent: 0, status: "confirmed", blockhashValid: true });
+  });
+  const built = async () => (await (await call(build, {})).json()).transaction as string;
+  const kinds = () => repo.events.map((e) => e.kind);
+
+  it("writes topup_sent before the send and topped_up once it confirmed, both carrying the signature and the exact USDC", async () => {
+    const sentWhenMarked: number[] = [];
+    const write = repo.addEvent.bind(repo);
+    repo.addEvent = async (e) => { if (e.kind === "topup_sent") sentWhenMarked.push(chain.sent); await write(e); };
+    const res = await call(confirm, { signedTransaction: signed(await built()) });
+    const { signature } = await res.json();
+    expect(sentWhenMarked).toEqual([0]);
+    expect(kinds()).toEqual(["topup_sent", "topped_up"]);
+    expect(repo.events.map((e) => e.detail)).toEqual([{ signature, usdcRaw: "5000000" }, { signature, usdcRaw: "5000000", sentAt: expect.any(String) }]);
+    expect(repo.events.every((e) => e.userPubkey === USER && e.walletPubkey === USER)).toBe(true);
+  });
+
+  it("a mark that cannot be written sends nothing and answers 400 'nothing moved' (the app shows a 400's words as they are)", async () => {
+    repo.addEvent = async () => { throw new Error("db down"); };
+    const res = await call(confirm, { signedTransaction: signed(await built()) });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("Could not start the top-up. Nothing moved. Try again.");
+    expect(chain.sent).toBe(0);
+  });
+
+  it("the same top-up confirmed twice keeps one mark and one row", async () => {
+    const tx = signed(await built());
+    await call(confirm, { signedTransaction: tx });
+    await call(confirm, { signedTransaction: tx });
+    expect(kinds()).toEqual(["topup_sent", "topped_up"]);
+  });
+
+  it("an unknown (202), failed or expired send keeps only the mark", async () => {
+    chain.status = "pending";
+    expect((await call(confirm, { signedTransaction: signed(await built()) })).status).toBe(202);
+    expect(kinds()).toEqual(["topup_sent"]);
+  });
+});

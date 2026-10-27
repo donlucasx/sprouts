@@ -241,6 +241,7 @@ export const TOPUP_COPY = {
 /** The confirm route's answers (api/topup/confirm). */
 export const TOPUP_CONFIRM = {
   notTopUp: "This is not a Sprouts top-up, so nothing was sent.",
+  notMarked: "Could not start the top-up. Nothing moved. Try again.",
   failed: "The swap failed on chain. Your SOL stayed in your wallet, less the network fee.",
   expired: "The top-up did not go through. Nothing moved. Try again.",
   pending: "Your top-up was sent but is not confirmed yet. Check Home in a minute before you try again.",

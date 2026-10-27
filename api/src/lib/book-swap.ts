@@ -99,6 +99,9 @@ export async function bookSwap(a: { repo: Repo; tx: HeliusEnhancedTx; priceUsd: 
     if (!wallet || wallet.status === "revoked") continue;
     const legs = extractSwapLegs(a.tx, pubkey);
     if (!legs) continue;
+    // 10-27: a Sprouts top-up (marked before it was sent) is the user adding USDC, not a swap to round up. Checked before the
+    // on-chain verify (no RPC call spent on it) and skipped quietly, not as a refusal (Kimi F3).
+    if ((await a.repo.topUpKinds(a.tx.signature)).length > 0) return { booked: false };
     if (a.verify) {
       const refused = await a.verify({ signature: a.tx.signature, wallet: pubkey, legs, timestamp: a.tx.timestamp });
       if (refused) return { booked: false, refused };

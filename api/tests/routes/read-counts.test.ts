@@ -62,7 +62,7 @@ describe("read counts per request (perf 10-08)", () => {
     expect(c.calls.plantingLegsFor).toBe(1);
     expect(c.calls.getCoinDay ?? 0).toBe(0);
     expect(c.calls.getCoinDaysFor).toBe(1);
-    expect(c.calls.listEvents).toBe(2);
+    expect(c.calls.listEvents).toBe(3); // splits, lending, and the top-ups (10-27: one read, the settle included)
   });
 
   it("/api/me: legs in one read; the shared reads (share price, prices, snapshot rows) once per TTL, the user's chain reads every call", async () => {

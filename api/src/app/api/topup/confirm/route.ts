@@ -9,6 +9,8 @@ import { checkTopUp, COMPUTE_BUDGET, topUpAccounts, TOPUP_CONFIRM } from "@/lib/
 import { JUPITER_AGGREGATOR } from "@/lib/jupiter";
 import { SYSTEM_PROGRAM } from "@/lib/constants";
 import { rpc } from "@/lib/rpc";
+import { getRepo } from "@/db/repo";
+import { markTopUpSent, recordTopUpLanded } from "@/lib/topup-record";
 
 export const runtime = "nodejs";
 export const maxDuration = 60; // the send plus the confirm poll (up to 30 s)
@@ -37,6 +39,17 @@ export async function POST(request: Request) {
     console.error(`/api/topup/confirm: refused for ${me}: ${e instanceof Error ? e.message : String(e)}`);
     return NextResponse.json({ error: TOPUP_CONFIRM.notTopUp }, { status: 400 });
   }
+  // 10-27: marked BEFORE the send, so the swap booking can never round the top-up up; no mark, no send (Kimi F1: answered 400,
+  // whose message the app shows as it is, so the user reads "nothing moved", never the "sent" line a 500 would map to).
+  const repo = await getRepo();
+  const sentAt = new Date();
+  const mark = { user: session.pubkey, signature: posted.signature, usdcRaw: plan.outRaw.toString() };
+  try {
+    await markTopUpSent(repo, mark);
+  } catch (e) {
+    console.error(`/api/topup/confirm: not marked, not sent, for ${me}: ${e instanceof Error ? e.message : String(e)}`);
+    return NextResponse.json({ error: TOPUP_CONFIRM.notMarked }, { status: 400 });
+  }
   try {
     await rpc().sendTransaction(posted.wire as Base64EncodedWireTransaction, { encoding: "base64", preflightCommitment: "confirmed" }).send();
   } catch (e) {
@@ -45,7 +58,10 @@ export async function POST(request: Request) {
   }
   let status: "confirmed" | "failed" | "pending" | "expired" = await waitConfirmed(posted.signature);
   if (status === "pending") status = await settleUnconfirmed(posted);
-  if (status === "confirmed") return NextResponse.json({ status, signature: posted.signature, usdcRaw: plan.outRaw.toString() });
+  if (status === "confirmed") {
+    await recordTopUpLanded(repo, { ...mark, sentAt });
+    return NextResponse.json({ status, signature: posted.signature, usdcRaw: plan.outRaw.toString() });
+  }
   if (status === "failed") return NextResponse.json({ error: TOPUP_CONFIRM.failed }, { status: 400 });
   if (status === "expired") return NextResponse.json({ error: TOPUP_CONFIRM.expired }, { status: 409 });
   return NextResponse.json({ status, signature: posted.signature, message: TOPUP_CONFIRM.pending }, { status: 202 });
