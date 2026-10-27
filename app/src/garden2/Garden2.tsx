@@ -88,6 +88,7 @@ export function Garden2({
   cardFor,
   onCard,
   cardOverflow = 0,
+  skyPad = 0,
 }: {
   stages: Stages
   /** R533 the trees' earned fruit/flowers, R535 the basket while SKR waits out its unstake; nothing extra when absent. */
@@ -102,13 +103,16 @@ export function Garden2({
   /** R587: how far a card may hang past the garden's bottom, over what follows it (Home: the saved line); the parent keeps the garden
    *  above its later siblings (zIndex) so the card draws on top. */
   cardOverflow?: number
+  /** 10-27 (his note: "more negative space above the plants within the bamboo frame"): canvas px of extra sky above the view's top;
+   *  past the painting's top the view's own paper shows. */
+  skyPad?: number
 }) {
   const { colors, dark } = useTheme()
   // R530 (option B): dark draws the light plate full bleed and square; a dark plate, if one is ever exported, replaces it (R529 plumbing).
   const night = dark && PLATE_DARK !== null
   const reduced = useReducedMotion()
   // R525: the view starts just above the tallest thing drawn (frameTop), so a young garden sits tight and the frame opens as it grows.
-  const top = useMemo(() => frameTop(stages), [stages])
+  const top = useMemo(() => frameTop(stages) - skyPad, [stages, skyPad])
   const k = width / CANVAS.w
   const h = viewHeight(width) - top * k
   const layers = useMemo(

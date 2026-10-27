@@ -42,6 +42,8 @@ import { nextPlantingFor } from '@/lib/next-planting'
 import { RelinkCard } from '@/components/RelinkCard'
 import { TopUpButton } from '@/components/TopUp'
 import { BambooFrame } from '@/garden2/BambooFrame'
+/** Canvas px of extra sky above the plants inside the dark-mode bamboo frame (10-27, his note: "more negative space above the plants"). */
+const FRAMED_SKY = 110
 import { TOPUP, topUpOffer } from '@/lib/topup'
 import { MoveCard } from '@/components/MoveCard'
 import { termsNeeded, termsSummary } from '@/lib/terms'
@@ -396,8 +398,9 @@ export default function Home() {
             style={{ marginHorizontal: garden2Bleeds(dark) && !dark ? -spacing.edge : 0, marginTop: -spacing.sm, paddingBottom: CARD_OVERFLOW, marginBottom: -CARD_OVERFLOW, zIndex: 2 }}
           >
             {(() => {
-              const garden = (w: number) => (
+              const garden = (w: number, skyPad = 0) => (
                 <Garden2
+                  skyPad={skyPad}
                   stages={stages}
                   extras={extras2}
                   reveal={reveal}
@@ -410,7 +413,7 @@ export default function Home() {
               // 10-27 (his note: in dark mode the garden "always stands out... What if we try framing it with bamboo (like the widget)?
               // Dark mode only."): the paper card in the widget's bamboo frame
               // (garden2Bleeds is true in both themes since R529; in dark the frame now takes the garden inside the gutters)
-              if (dark) return <BambooFrame width={screenW - 2 * spacing.edge}>{garden}</BambooFrame>
+              if (dark) return <BambooFrame width={screenW - 2 * spacing.edge}>{(w) => garden(w, FRAMED_SKY)}</BambooFrame>
               return garden(garden2Bleeds(dark) ? screenW : screenW - 2 * spacing.edge)
             })()}
           </View>
