@@ -8,7 +8,7 @@ import { toGardenInput, type ZeroMarks } from "@/lib/garden-input";
 import { gardenTotals, valueBlock } from "@/lib/me-state";
 import { formatUsd } from "@/lib/format";
 import { widgetHeadline } from "@/lib/widget-state";
-import { isSlim, LABEL_SIZE, lineBox, STATE_MIN, textWidth } from "./widget-layout";
+import { isSlim, isSmallest, LABEL_SIZE, lineBox, STATE_MIN, textWidth } from "./widget-layout";
 import type { PlantId } from "@/model/garden";
 
 /**
@@ -72,7 +72,7 @@ export function EnsoWidget({ me, width, height, wateredPlants = null, restartMar
   // in the sand above and below the ring (tall), the ring holding only the garden
   // 10-27 (his note: "the enso 1x1 does not work rn- lets make a version without art that has relevant text and planting bar"): one
   // column wide is the mini, the ring as the gauge with the total inside it and one line under it, no garden
-  const mode = isSlim(width, height) ? "pill" : width < MINI_W ? "mini" : ratio >= 1.3 ? "wide" : ratio <= TALL_RATIO ? "tall" : "full";
+  const mode = isSlim(width, height) ? "pill" : width < MINI_W || isSmallest(width, height) ? "mini" : ratio >= 1.3 ? "wide" : ratio <= TALL_RATIO ? "tall" : "full";
   const round = mode === "full" || mode === "tall";
   // the slim pill sits centred in its row (his ruling 10-23: "slimmer like the pill"); the others fill the widget, 4 dp in
   const W = width - 8, H = mode === "pill" ? Math.min(height - 8, 72) : height - 8;

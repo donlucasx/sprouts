@@ -88,6 +88,9 @@ export function widgetLayout(width: number, height: number, big: string, label: 
   return { mode: "stacked", pad: P, bigSize, stateSize, stateLines, header, garden, state };
 }
 
+/** The smallest widget, both styles: words and the gauge, no art (10-27: the Seeker's smallest widget, which he calls the 1x1, is
+ *  180 x 131 dp; a launcher with narrower cells gives less, and a one-cell widget can come with no size at all). */
+export const isSmallest = (width: number, height: number) => width < 200 && height < 145;
 /** One cell on the Seeker's grid (its 2-column widget is 180 x 131 dp), for a widget the launcher gave no size. */
 export const ONE_CELL = { w: 84, h: 120 } as const;
 /** 10-27: a one-cell widget arrives with no size (0 x 0: Android leaves its size options unset); it is drawn as one cell. */
