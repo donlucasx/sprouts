@@ -19,6 +19,20 @@ const WATCH_MS = 30_000, WATCH_STEP_MS = 1_000
 // DRAFT: the add-widget flow's steps in the dev log (his note 10-27: the app did not step back after adding)
 const log = (m: string) => { if (__DEV__) console.log(`[add-widget] ${m}`) }
 
+/**
+ * Shows the home screen. 10-27: BackHandler.exitApp() did nothing on the Seeker (the log showed the widget placed, the app stayed), so
+ * the launcher is opened directly (expo-intent-launcher, native: from the next build). A build without the module falls back to back.
+ */
+function goHome() {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { startActivityAsync } = require('expo-intent-launcher') as typeof import('expo-intent-launcher')
+    void startActivityAsync('android.intent.action.MAIN', { category: 'android.intent.category.HOME', flags: 0x10000000 }).catch(() => BackHandler.exitApp())
+  } catch {
+    BackHandler.exitApp()
+  }
+}
+
 /** Resolves true once more `name` widgets are placed than `before`, false after WATCH_MS. */
 async function placed(name: string, before: number): Promise<boolean> {
   for (let t = 0; t < WATCH_MS; t += WATCH_STEP_MS) {
@@ -48,7 +62,7 @@ export function AddWidget() {
       // to the home screen so the new widget is in view (Android's back on the root screen: the app stays open behind)
       const ok = await placed(name, before)
       log(`pin ${name}: placed=${ok}`)
-      if (ok) BackHandler.exitApp()
+      if (ok) goHome()
     } catch {
       setFallback(true)
     }

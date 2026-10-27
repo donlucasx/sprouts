@@ -96,39 +96,45 @@ export function noUsdcPauseLines(wallets: MeResponse['wallets']): string[] {
   })
 }
 
+/** What this phone's own wallet is called in the USDC notice: Home's line under the title says "Held in your Seed Vault wallet". */
+export const PHONE_WALLET = 'Seed Vault wallet'
+
 /**
- * Home's amber USDC notice (10-27, his notes: the line must "stand out"; for another wallet the copy was "too long, repetitive, and it
- * doesnt say which wallet is low"): a title that names what stops (and the wallet, when it is another one), the lines, and whether
- * this phone's top-up belongs in it. `low` is lowUsdcLine's line for this phone's wallet (null when not low); null: no notice.
+ * Home's amber USDC notice (10-27, his notes: the line must "stand out"; then "it should be one message that adapts... 'xxxx wallet has
+ * no usdc' or 'xxxx wallet has low usdc'... name each wallet... Simplify"). Every wallet short of USDC by name (this phone's is the
+ * Seed Vault wallet, others by address): one wallet is a title and one line; several, a title and a line each. `phone` is this phone's
+ * wallet's own read (its balance, and whether lowUsdcLine calls it low); the top-up shows when the Seed Vault wallet is one of them.
  */
-export function usdcNotice(me: Pick<MeResponse, 'wallets' | 'user'>, low: string | null, phoneUsdcCents: number | null): { title: string; lines: string[]; topUp: boolean } | null {
-  const paused = me.wallets.filter((w) => w.status === 'paused' && w.pause?.reason === 'no_usdc')
-  const need = (w: (typeof paused)[number]) => { const p = w.pause?.reason === 'no_usdc' ? w.pause : null; return Math.max(1, Math.ceil(Math.max(p?.needCents ?? 0, p?.resumeAtCents ?? 0) / 100)) }
+export function usdcNotice(me: Pick<MeResponse, 'wallets' | 'user'>, phone: { usdcCents: number | null; low: boolean }): { title: string; lines: string[]; topUp: boolean } | null {
+  type Entry = { name: string; mine: boolean; state: 'paused' | 'zero' | 'low'; cents: number }
   const short = (k: string) => `${k.slice(0, 4)}...${k.slice(-4)}`
-  const phone = paused.find((w) => w.pubkey === me.user.pubkey)
-  const others = paused.filter((w) => w.pubkey !== me.user.pubkey)
-  if (phone) {
-    return {
-      title: 'Plantings paused',
-      lines: [
-        `Your wallet needs at least $${need(phone)} of USDC. Your round-ups are still counted, and planting restarts on its own.`,
-        ...others.map((w) => `${short(w.pubkey)} also needs $${need(w)} of USDC.`),
-      ],
-      topUp: true,
-    }
+  const entries: Entry[] = []
+  for (const w of me.wallets) {
+    if (w.status !== 'paused' || w.pause?.reason !== 'no_usdc') continue
+    const need = Math.max(1, Math.ceil(Math.max(w.pause.needCents ?? 0, w.pause.resumeAtCents) / 100)) * 100
+    const mine = w.pubkey === me.user.pubkey
+    entries.push({ name: mine ? PHONE_WALLET : short(w.pubkey), mine, state: 'paused', cents: need })
   }
-  // this phone's own low or empty wallet leads (its top-up is right here); another wallet's pause follows in one short line
-  if (low) {
-    return { title: phoneUsdcCents !== null && phoneUsdcCents <= 0 ? 'No USDC for plantings' : 'Low on USDC', lines: [low, ...others.map((w) => `${short(w.pubkey)} also needs $${need(w)} of USDC.`)], topUp: true }
+  if (!entries.some((e) => e.mine) && phone.usdcCents !== null && (phone.usdcCents <= 0 || phone.low))
+    entries.unshift({ name: PHONE_WALLET, mine: true, state: phone.usdcCents <= 0 ? 'zero' : 'low', cents: phone.usdcCents })
+  entries.sort((x, y) => Number(y.mine) - Number(x.mine))
+  if (!entries.length) return null
+  const usd = (c: number) => `$${(c / 100).toFixed(c % 100 ? 2 : 0)}`
+  const topUp = entries.some((e) => e.mine)
+  // the name alone: 'Your Seed Vault wallet has no USDC' wrapped to two lines on the Saga (10-27)
+  const the = (e: Entry) => e.name
+  if (entries.length === 1) {
+    const [e] = entries
+    if (e.state === 'zero') return { title: `${the(e)} has no USDC`, lines: ['Nothing plants until you add some. Your round-ups are still counted.'], topUp }
+    if (e.state === 'low') return { title: `${the(e)} is low on USDC`, lines: [`${usd(e.cents)} left. Top up so plantings don't pause.`], topUp }
+    return { title: `${the(e)} needs USDC`, lines: [`Plantings are paused until it has ${usd(e.cents)}. Your round-ups are still counted.`], topUp }
   }
-  if (others.length === 1) {
-    const w = others[0]
-    return { title: `${short(w.pubkey)} needs USDC`, lines: [`Its plantings are paused. Add at least $${need(w)} of USDC to that wallet and they restart on their own.`], topUp: false }
+  const brief = (e: Entry) => (e.state === 'zero' ? 'no USDC' : e.state === 'low' ? `${usd(e.cents)} left` : `needs ${usd(e.cents)}`)
+  return {
+    title: `${entries.length} wallets need USDC`,
+    lines: [...entries.map((e) => `${e.name}: ${brief(e)}`), 'Your round-ups are still counted, and plantings restart once they have it.'],
+    topUp,
   }
-  if (others.length > 1) {
-    return { title: `${others.length} wallets need USDC`, lines: [...others.map((w) => `${short(w.pubkey)}: add at least $${need(w)} of USDC.`), 'Their plantings restart on their own.'], topUp: false }
-  }
-  return null
 }
 
 /** Whether every paused wallet was paused by the run for want of USDC: then Home's lines above say it all and the Rules chip (the
