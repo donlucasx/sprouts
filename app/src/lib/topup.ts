@@ -10,8 +10,14 @@ import { DROPPED_NOTHING_SENT } from './wallet-errors'
  */
 export const TOPUP = {
   // 10-26 copy review rows 8-9 (his: make clear the USDC goes to the user's own wallet, not to Sprouts)
-  button: (cents: number) => `Swap $${Math.round(cents / 100)} of SOL to USDC in your wallet`,
-  how: 'Through Jupiter. No Sprouts fee.',
+  // 10-27 (his ruling: "We dont want to tell the user 'you need sol' so 'you can buy usdc'... Should be a simpler solution"): one
+  // "Add USDC" button; the SOL swap stays behind it, named once in a quiet line; a wallet whose SOL covers nothing gets its address
+  open: 'Add USDC',
+  button: (cents: number) => `Add $${Math.round(cents / 100)} of USDC`,
+  how: "Paid from this wallet's SOL. No Sprouts fee.",
+  sendHere: 'Send USDC to this address from any wallet or exchange. Plantings start again once it arrives.',
+  copy: 'Copy address',
+  copied: 'Copied',
   waiting: 'Waiting for your wallet.',
   checking: 'Approved. Checking the chain.',
   done: (cents: number) => `Your wallet now has $${(cents / 100).toFixed(2)} more USDC. Sprouts plants again at the next daily planting.`,
@@ -28,7 +34,7 @@ export const TOPUP_MAX_CENTS = 2_500
 /** 10-26 (his: "can the top up be dialed?"): the amounts offered; the one that covers the pause is picked first. */
 export const TOPUP_CHOICES = [500, 1_000, 2_500] as const
 /** The smallest choice that covers `cents`, else the largest. */
-export const choiceFor = (cents: number) => TOPUP_CHOICES.find((c) => c >= cents) ?? TOPUP_CHOICES[TOPUP_CHOICES.length - 1]
+export const choiceFor = (cents: number, offers: readonly number[] = TOPUP_CHOICES) => offers.find((c) => c >= cents) ?? offers[offers.length - 1] ?? TOPUP_CHOICES[0]
 
 /**
  * How much the button offers (build-invented, 10-22): $5, or the whole dollars the pause line names when that is more (so one tap both

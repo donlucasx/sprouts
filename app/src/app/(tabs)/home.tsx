@@ -88,7 +88,7 @@ export default function Home() {
     if (me && preview !== 'off') void refreshWidget(me).catch(() => {})
   }, [me, preview])
   const { data: activity } = useQuery(activityQuery)
-  const { data: usdcRead } = useQuery({ queryKey: ['me-usdc', me?.user.pubkey], queryFn: () => api<{ usdcRaw: string | null }>('/api/me/usdc'), enabled: !!me, retry: false, staleTime: 60_000 })
+  const { data: usdcRead } = useQuery({ queryKey: ['me-usdc', me?.user.pubkey], queryFn: () => api<{ usdcRaw: string | null; topUpCents?: number[] | null }>('/api/me/usdc'), enabled: !!me, retry: false, staleTime: 60_000 })
   const invalidate = useInvalidateMe()
   const [failed, setFailed] = useState(false)
   const [nudged, setNudged] = useState(false)
@@ -327,7 +327,7 @@ export default function Home() {
               {line}
             </ThemedText>
           ))}
-          {notice.topUp ? <TopUpButton compact user={me.user.pubkey} cents={topUp.phoneCents ?? 500} done={TOPUP.done} avgDailyCents={avg} /> : null}
+          {notice.topUp ? <TopUpButton compact user={me.user.pubkey} cents={topUp.phoneCents ?? 500} done={TOPUP.done} avgDailyCents={avg} offers={usdcRead?.topUpCents ?? null} /> : null}
         </View>
       ) : null}
       {pause.shown && !pause.on && !pausedOnlyForNoUsdc(me.wallets) ? (

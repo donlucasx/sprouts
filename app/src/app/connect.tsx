@@ -60,7 +60,7 @@ export default function Connect() {
   // is no note: the "before you link" point says it anyway.
   const { data: usdc } = useQuery({
     queryKey: ['me-usdc', session?.pubkey],
-    queryFn: () => api<{ usdcRaw: string | null }>('/api/me/usdc'),
+    queryFn: () => api<{ usdcRaw: string | null; topUpCents?: number[] | null }>('/api/me/usdc'),
     enabled: !!session,
     retry: false,
     staleTime: 30_000,
@@ -125,7 +125,7 @@ export default function Connect() {
         ) : null}
         {/* 10-22: the note's own fix, one tap; it stays mounted after a top-up so its confirmation shows once the note has gone */}
         {session && (usdcNote || toppedUp) ? (
-          <TopUpButton user={session.pubkey} cents={TOPUP_DEFAULT_CENTS} done={TOPUP.doneLink} onDone={() => setToppedUp(true)} />
+          <TopUpButton compact user={session.pubkey} cents={TOPUP_DEFAULT_CENTS} done={TOPUP.doneLink} onDone={() => setToppedUp(true)} offers={usdc?.topUpCents ?? null} />
         ) : null}
         <Button title="Approve" loading={approving} onPress={linkThisPhone} />
         {approving ? (
