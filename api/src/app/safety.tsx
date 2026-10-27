@@ -39,7 +39,7 @@ export function Safety({ id, ink = "#2B2622", muted = "#7A746B", leaf = "#1E6B44
       <p style={{ fontSize: 13, color: muted, margin: 0 }}>
         <a href="https://github.com/donlucasx/sprouts" style={a}>Open source</a> and{" "}
         <a href={`https://verify.osec.io/status/${PROGRAM}`} style={a}>verified by OtterSec</a>. The admin key lives on the founder&apos;s laptop, never on
-        our server. A multisig comes after the hackathon.
+        our server.
       </p>
     </section>
   );
