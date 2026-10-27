@@ -154,3 +154,20 @@ describe("checkQuoteSlippageExactOut", () => {
     expect(() => checkQuoteSlippageExactOut(q("1000000", "999999"), 50)).toThrow(/maximum/);
   });
 });
+
+// 10-27 (his ruling: one "Add USDC" button, SOL never the user's problem): the amounts a wallet's SOL covers, or none
+describe("affordableTopUps", async () => {
+  const { affordableTopUps } = await import("@/lib/topup");
+  const SOL = 1_000_000_000n;
+  it("offers each amount the SOL covers after the 0.01 SOL reserve and the fee; none at all with too little", () => {
+    expect(affordableTopUps(SOL, 200)).toEqual([500, 1_000, 2_500]);          // 1 SOL at $200: $25 is 0.126 SOL
+    expect(affordableTopUps(70_000_000n, 200)).toEqual([500, 1_000]);         // 0.07 SOL: $10 (0.0505) yes, $25 no
+    expect(affordableTopUps(40_000_000n, 200)).toEqual([500]);                // 0.04 SOL: $5 (0.02525 of 0.029 spare) yes
+    expect(affordableTopUps(30_000_000n, 200)).toEqual([]);                   // 0.03 SOL: 0.019 spare, under $5
+    expect(affordableTopUps(20_000_000n, 200)).toEqual([]);                   // 0.02 SOL less 0.011 kept: under $5
+    expect(affordableTopUps(0n, 200)).toEqual([]);
+  });
+  it("no price, no offer", () => {
+    expect(affordableTopUps(SOL, 0)).toEqual([]);
+  });
+});
