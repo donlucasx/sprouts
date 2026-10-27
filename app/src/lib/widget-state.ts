@@ -79,9 +79,10 @@ function gardenHeadline(
     case "empty": {
       const recent = (me.history?.plantings ?? []).filter((p) => { const t = Date.parse(p.ts); return t <= now.getTime() && now.getTime() - t < PLANTED_RECENT_MS; });
       const planted = recent.reduce((c, p) => c + p.usdcInCents, 0);
-      if (planted > 0) return { big: big(`Planted ${formatUsd(planted)}`, formatUsd(planted)), label: label(`${total} in your garden`, `${total} in garden`), line: line("Waiting for your next swap", "Waiting for a swap", "Swap to grow"), fraction: null, action: false };
-      if (hasMoney) return { big: big(`${total} in your garden`, total), label: label("Waiting for your next swap", "Waiting for a swap", "Swap to grow"), line: plantsAt, fraction: null, action: false };
-      return { big: "Your garden", label: label("Waiting for your first swap", "Waiting for a swap", "Swap to start"), line: plantsAt, fraction: null, action: false };
+      // 10-27 (his note: the pill "not showing the planting bar"): nothing waiting is an empty bar (fraction 0), not no bar
+      if (planted > 0) return { big: big(`Planted ${formatUsd(planted)}`, formatUsd(planted)), label: label(`${total} in your garden`, `${total} in garden`), line: line("Waiting for your next swap", "Waiting for a swap", "Swap to grow"), fraction: 0, action: false };
+      if (hasMoney) return { big: big(`${total} in your garden`, total), label: label("Waiting for your next swap", "Waiting for a swap", "Swap to grow"), line: plantsAt, fraction: 0, action: false };
+      return { big: "Your garden", label: label("Waiting for your first swap", "Waiting for a swap", "Swap to start"), line: plantsAt, fraction: 0, action: false };
     }
   }
 }
