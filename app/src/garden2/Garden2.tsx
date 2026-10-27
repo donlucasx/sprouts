@@ -10,12 +10,14 @@ import Animated, {
   useReducedMotion,
   useSharedValue,
   withDelay,
+  withSequence,
   withTiming,
 } from 'react-native-reanimated'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import { ThemedText } from '@/components/ThemedText'
 import { FONT, GARDEN_INK, radius, spacing, useTheme } from '@/theme'
 import { pinchOffset } from '@/model/motion'
+import { Wind } from '@/garden/Wind'
 import type { PlantCard } from '@/lib/plant-card'
 import { CANVAS } from './layout'
 import { LoopImage } from './loop-image'
@@ -144,6 +146,13 @@ export function Garden2({
   const focused = useIsFocused()
   const canStir = LoopImage !== null && !reduced && !night && focused
   const [stirs, setStirs] = useState<Partial<Record<Plant2, number>>>({})
+  // 10-27 (his ask: "incorporate the gusts of winds we had in our previous garden as a way to motivate visually the gentle swaying"):
+  // the old garden's painted wind curls (R200, Wind.tsx) cross the sky with each gust; Wind starts its clock whenever this falls
+  const gust = useSharedValue(1)
+  const gardenH = useSharedValue(h)
+  useEffect(() => {
+    gardenH.value = h
+  }, [h, gardenH])
   // 10-11 tap blink (the video session saw the SKR mandarin vanish for a frame, twice, as a tap's sway began): the still used to be
   // unmounted the moment a stir began, before the loop had drawn. Now the still stays mounted under the loop and hides only once the
   // loop's first frame is on screen (expo-image onDisplay); when the stir ends it is already decoded there, so that hand-off is clean too.
@@ -180,6 +189,9 @@ export function Garden2({
       if (!s) return
       wait = setTimeout(() => {
         gusts.length = 0
+        // every sway the garden starts on its own comes with its wind: the curls land at the left as the first plant moves and drift
+        // across with the rest (a garden with one swaying plant, as the Seeker's on 10-27, never has a 2-plant gust); a tap has none
+        gust.value = withSequence(withTiming(0, { duration: 0 }), withTiming(1, { duration: 50 }))
         for (const q of s.plants) gusts.push(setTimeout(() => stir(q.plant), q.atMs))
         const cycle = Math.max(...s.plants.map((q) => q.atMs + (LOOP_SRC[q.plant]?.[stages[q.plant] ?? 0]?.ms ?? 0)))
         next(cycle, s.plants.map((q) => q.plant))
@@ -344,6 +356,12 @@ export function Garden2({
                   fadeDuration={0}
                   style={[{ position: 'absolute', left: l.x, top: l.y, width: l.w, height: l.h }, fading]}
                 />
+              ) : l.kind === 'plate' ? (
+                // the wind curls draw in the sky right over the plate, behind every plant
+                <Fragment key={l.key}>
+                  <Image source={sourceOf(l, night)} fadeDuration={0} style={{ position: 'absolute', left: l.x, top: l.y, width: l.w, height: l.h }} />
+                  {canStir ? <Wind gust={gust} width={width} viewH={gardenH} reduced={reduced} /> : null}
+                </Fragment>
               ) : (
                 <Image
                   key={l.kind === 'fruit' ? `f-${l.key}-${l.index}` : l.key}
