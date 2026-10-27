@@ -94,7 +94,7 @@ export function usdcNotice(me: Pick<MeResponse, 'wallets' | 'user'>, phone: { us
   const entries: Entry[] = []
   for (const w of me.wallets) {
     if (w.status !== 'paused' || w.pause?.reason !== 'no_usdc') continue
-    const need = Math.max(1, Math.ceil(Math.max(w.pause.needCents ?? 0, w.pause.resumeAtCents) / 100)) * 100
+    const need = Math.max(1, Math.ceil(Math.max(w.pause.needCents ?? 0, w.pause.resumeAtCents ?? 0) / 100)) * 100   // ?? 0: an older cached read never says $NaN (Kimi 10-27)
     const mine = w.pubkey === me.user.pubkey
     entries.push({ name: mine ? PHONE_WALLET : short(w.pubkey), mine, state: 'paused', cents: need })
   }
