@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { View } from 'react-native'
+import { Pressable, Share, View } from 'react-native'
 import { useQueryClient } from '@tanstack/react-query'
 import { useMobileWallet } from '@wallet-ui/react-native-kit'
 import { Button } from '@/components/Button'
@@ -19,10 +19,14 @@ import { spacing } from '@/theme'
  */
 /** `compact` (10-27, his note: "a simple top up button that once clicked it opens up the different amounts"): one "Top up" button
  *  first; the amounts, the swap button and its line open under it on the tap. */
-export function TopUpButton({ user, cents: suggested, done, onDone, avgDailyCents = null, compact = false }: { user: string; cents: number; done: (cents: number) => string; onDone?: () => void; avgDailyCents?: number | null; compact?: boolean }) {
+/** `offers` (10-27, /api/me/usdc topUpCents): the amounts this wallet's SOL covers; [] = none, so the address to send USDC to is shown
+ *  instead; null or absent = unknown, every amount offered (the build route decides). */
+export function TopUpButton({ user, cents: suggested, done, onDone, avgDailyCents = null, compact = false, offers = null }: { user: string; cents: number; done: (cents: number) => string; onDone?: () => void; avgDailyCents?: number | null; compact?: boolean; offers?: readonly number[] | null }) {
   const [open, setOpen] = useState(!compact)
+  const choices = offers ?? TOPUP_CHOICES
   // 10-26: $5 / $10 / $25, the one covering the pause picked first; one quiet line says how long it lasts (his: "subtle")
-  const [cents, setCents] = useState<number>(() => choiceFor(suggested))
+  const [cents, setCents] = useState<number>(() => choiceFor(suggested, choices))
+  const [copied, setCopied] = useState(false)
   const { signTransaction } = useMobileWallet()
   const qc = useQueryClient()
   const [gate] = useState(oneAtATime)
@@ -57,11 +61,12 @@ export function TopUpButton({ user, cents: suggested, done, onDone, avgDailyCent
   }
 
   const landed = line !== null && !line.error && line.text === done(cents)
-  if (!open) return <Button title="Top up" onPress={() => setOpen(true)} />
+  if (!open) return <Button title={TOPUP.open} onPress={() => setOpen(true)} />
+  if (choices.length === 0) return <SendUsdcHere address={user} copied={copied} onCopy={() => void copyAddress(user).then(() => setCopied(true))} />
   return (
     <View style={{ gap: spacing.xs }}>
       {landed || phase ? null : (
-        <TwoWay options={TOPUP_CHOICES.map((c) => ({ value: String(c), label: `$${c / 100}` }))} value={String(cents)} onChange={(v) => setCents(Number(v))} />
+        choices.length > 1 ? <TwoWay options={choices.map((c) => ({ value: String(c), label: `$${c / 100}` }))} value={String(cents)} onChange={(v) => setCents(Number(v))} /> : null
       )}
       {landed ? null : <Button title={TOPUP.button(cents)} loading={phase !== null} onPress={topUp} />}
       {phase ? (
@@ -78,6 +83,32 @@ export function TopUpButton({ user, cents: suggested, done, onDone, avgDailyCent
           {line.text}
         </ThemedText>
       ) : null}
+    </View>
+  )
+}
+
+/** The clipboard (expo-clipboard, native: from the next build); a build without it opens the share sheet, which has its own Copy. */
+async function copyAddress(address: string) {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { setStringAsync } = require('expo-clipboard') as typeof import('expo-clipboard')
+    await setStringAsync(address)
+  } catch {
+    await Share.share({ message: address }).catch(() => undefined)
+  }
+}
+
+/** 10-27: a wallet whose SOL covers no amount is shown where to send USDC, never told about SOL. */
+function SendUsdcHere({ address, copied, onCopy }: { address: string; copied: boolean; onCopy: () => void }) {
+  return (
+    <View style={{ gap: spacing.xs }}>
+      <ThemedText style={{ fontSize: 14, lineHeight: 20 }}>{TOPUP.sendHere}</ThemedText>
+      <Pressable onPress={onCopy} accessibilityRole="button" accessibilityLabel={TOPUP.copy}>
+        <ThemedText variant="caption" tone="secondary" selectable style={{ fontFamily: 'monospace' }}>
+          {address}
+        </ThemedText>
+      </Pressable>
+      <Button title={copied ? TOPUP.copied : TOPUP.copy} onPress={onCopy} />
     </View>
   )
 }
