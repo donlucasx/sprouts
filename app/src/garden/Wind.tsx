@@ -14,7 +14,7 @@ const SLOTS = [0, 1, 2] as const;   // WIND.maxCurls slots; a gust with two curl
  * The clock: whenever the garden's `gust` clock restarts (isGustStart: it only falls at a new gust), the wind clock restarts at 0 and
  * runs linearly to WIND.spanMs, and the gust count steps, which reseeds every curl (curlPlan). All on the UI thread: no re-render
  * per gust. Under reduced motion the layer is not drawn at all (and the gust clock never runs, motion.ts). */
-export function Wind({ gust, width, viewH, reduced }: { gust: SharedValue<number>; width: number; viewH: SharedValue<number>; reduced: boolean }) {
+export function Wind({ gust, width, viewH, reduced, focus }: { gust: SharedValue<number>; width: number; viewH: SharedValue<number>; reduced: boolean; focus?: SharedValue<number[]> }) {
   const clock = useSharedValue(WIND_IDLE);
   const seed = useSharedValue(0);
   useAnimatedReaction(() => gust.value, (cur, prev) => {
@@ -27,25 +27,25 @@ export function Wind({ gust, width, viewH, reduced }: { gust: SharedValue<number
   if (reduced) return null;
   return (
     <Animated.View pointerEvents="none" style={[{ position: "absolute", left: 0, top: 0, width, overflow: "hidden" }, box]}>
-      {SLOTS.map((i) => <WindCurl key={i} slot={i} clock={clock} seed={seed} width={width} viewH={viewH} />)}
+      {SLOTS.map((i) => <WindCurl key={i} slot={i} clock={clock} seed={seed} width={width} viewH={viewH} focus={focus} />)}
     </Animated.View>
   );
 }
 
 /** One slot: all three painted curls stacked, only this gust's pick visible (an image's source cannot change on the UI thread, so
  * the pick is an opacity per sprite); the slot's position, stretch and fade come from curlAt on every frame. */
-function WindCurl({ slot, clock, seed, width, viewH }: { slot: number; clock: SharedValue<number>; seed: SharedValue<number>; width: number; viewH: SharedValue<number> }) {
+function WindCurl({ slot, clock, seed, width, viewH, focus }: { slot: number; clock: SharedValue<number>; seed: SharedValue<number>; width: number; viewH: SharedValue<number>; focus?: SharedValue<number[]> }) {
   return (
     <>
-      {WIND_NAMES.map((name, s) => <CurlImage key={name} name={name} sprite={s} slot={slot} clock={clock} seed={seed} width={width} viewH={viewH} />)}
+      {WIND_NAMES.map((name, s) => <CurlImage key={name} name={name} sprite={s} slot={slot} clock={clock} seed={seed} width={width} viewH={viewH} focus={focus} />)}
     </>
   );
 }
 
-function CurlImage({ name, sprite, slot, clock, seed, width, viewH }: { name: (typeof WIND_NAMES)[number]; sprite: number; slot: number; clock: SharedValue<number>; seed: SharedValue<number>; width: number; viewH: SharedValue<number> }) {
+function CurlImage({ name, sprite, slot, clock, seed, width, viewH, focus }: { name: (typeof WIND_NAMES)[number]; sprite: number; slot: number; clock: SharedValue<number>; seed: SharedValue<number>; width: number; viewH: SharedValue<number>; focus?: SharedValue<number[]> }) {
   const m = WIND_SPRITES[name];
   const style = useAnimatedStyle(() => {
-    const c = curlPlan(seed.value, slot);
+    const c = curlPlan(seed.value, slot, focus ? focus.value : []);
     const f = curlAt(c, clock.value, false);
     const shown = c.sprite === sprite ? f.opacity : 0;
     return {

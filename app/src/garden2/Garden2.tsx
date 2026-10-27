@@ -153,6 +153,8 @@ export function Garden2({
   // 10-27 (his ask: "incorporate the gusts of winds we had in our previous garden as a way to motivate visually the gentle swaying"):
   // the old garden's painted wind curls (R200, Wind.tsx) cross the sky with each gust; Wind starts its clock whenever this falls
   const gust = useSharedValue(1)
+  // the swaying plants' crowns, [x, top, ...] as fractions of the view, so the curls cross them (10-27)
+  const windFocus = useSharedValue<number[]>([])
   const gardenH = useSharedValue(h)
   useEffect(() => {
     gardenH.value = h
@@ -195,6 +197,10 @@ export function Garden2({
         gusts.length = 0
         // every sway the garden starts on its own comes with its wind: the curls land at the left as the first plant moves and drift
         // across with the rest (a garden with one swaying plant, as the Seeker's on 10-27, never has a 2-plant gust); a tap has none
+        windFocus.value = s.plants.flatMap((q) => {
+          const l = layers.find((x) => x.kind === 'plant' && x.key === q.plant)
+          return l ? [(l.x + l.w * 0.5) / width, Math.max(0, (l.y + l.h * 0.18) / h)] : []
+        })
         gust.value = withSequence(withTiming(0, { duration: 0 }), withTiming(1, { duration: 50 }))
         for (const q of s.plants) gusts.push(setTimeout(() => stir(q.plant), q.atMs))
         const cycle = Math.max(...s.plants.map((q) => q.atMs + (LOOP_SRC[q.plant]?.[stages[q.plant] ?? 0]?.ms ?? 0)))
@@ -370,7 +376,7 @@ export function Garden2({
               ),
             )}
             {/* 10-27 (his note on the clip: "it should happen over it"): the wind curls cross OVER the plants */}
-            {canStir ? <Wind gust={gust} width={width} viewH={gardenH} reduced={reduced} /> : null}
+            {canStir ? <Wind gust={gust} width={width} viewH={gardenH} reduced={reduced} focus={windFocus} /> : null}
           </Animated.View>
         </View>
       </GestureDetector>
