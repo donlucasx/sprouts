@@ -29,8 +29,9 @@ export function withDraftPreview(me: MeResponse, p: DraftPreview = current): MeR
   const need = Math.max(me.nextPlanting.thresholdCents, me.nextPlanting.pendingCents);
   return {
     ...me,
-    wallets: me.wallets.map((w) =>
-      w.pubkey === me.user.pubkey ? { ...w, status: "paused" as const, pause: { reason: "no_usdc" as const, needCents: need, resumeAtCents: me.nextPlanting.thresholdCents } } : w,
-    ),
+    // shown as most users have it, one wallet: the phone's, paused (a second, still planting wallet keeps the garden "not paused")
+    wallets: me.wallets
+      .filter((w) => w.pubkey === me.user.pubkey)
+      .map((w) => ({ ...w, status: "paused" as const, pause: { reason: "no_usdc" as const, needCents: need, resumeAtCents: me.nextPlanting.thresholdCents } })),
   };
 }

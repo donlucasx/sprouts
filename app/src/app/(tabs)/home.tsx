@@ -234,7 +234,7 @@ export default function Home() {
   const topUp = topUpOffer(me)
   // DRAFT 10-26: how long this phone's wallet's USDC lasts at its own pace (the release moves the average to the API)
   const avgReal = activity ? avgDailyRoundupCents(activity.swaps, me.user.pubkey, now) : null
-  const avg = avgReal ?? (preview !== 'off' ? PREVIEW_AVG_CENTS : null)
+  const avg = preview === 'low' ? PREVIEW_AVG_CENTS : avgReal ?? (preview !== 'off' ? PREVIEW_AVG_CENTS : null) // low: a pace at which $1.20 is under a week
   const usdcCents = preview === 'low' ? PREVIEW_LOW_CENTS : usdcRead?.usdcRaw != null ? Number(BigInt(usdcRead.usdcRaw) / 10_000n) : null
   const low = topUp.phoneCents === null ? lowUsdcLine(usdcCents, avg) : null
   // R96, R184 and R186: the one line and the can decided together, so they always agree; the can is in colour only while a bud waits.
