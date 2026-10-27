@@ -17,6 +17,22 @@ import { rpc } from "./rpc";
 export const TOPUP_DEFAULT_CENTS = 500;
 export const TOPUP_MIN_CENTS = 200;
 export const TOPUP_MAX_CENTS = 2_500;
+/** The amounts the app offers (app/src/lib/topup.ts TOPUP_CHOICES), in cents. */
+export const TOPUP_OFFERS = [500, 1_000, 2_500] as const;
+/**
+ * 10-27 (his ruling: one "Add USDC" button; SOL is never the user's problem): which offers this wallet's SOL covers, at `solUsd`, with
+ * the swap's 1% slippage, the 0.001 SOL priority fee and SOL_RESERVE_LAMPORTS kept back, never past TOPUP_MAX_LAMPORTS. Empty: the app
+ * shows the wallet's address to send USDC to instead. A rough gate only: the build route quotes and checks the real amount.
+ */
+export function affordableTopUps(solLamports: bigint, solUsd: number): number[] {
+  if (!(solUsd > 0)) return [];
+  const spare = solLamports - SOL_RESERVE_LAMPORTS - TOPUP_MAX_PRIORITY_LAMPORTS;
+  return TOPUP_OFFERS.filter((cents) => {
+    const need = BigInt(Math.ceil(((cents / 100) / solUsd) * 1e9 * (1 + TOPUP_MAX_SLIPPAGE_BPS / 10_000)));
+    return need <= spare && need <= TOPUP_MAX_LAMPORTS;
+  });
+}
+
 /** Kept in the wallet for network fees and rent after the top-up (about 0.01 SOL). */
 export const SOL_RESERVE_LAMPORTS = 10_000_000n;
 export const TOPUP_SLIPPAGE_BPS = 50;
