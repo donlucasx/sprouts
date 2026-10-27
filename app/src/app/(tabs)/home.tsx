@@ -115,6 +115,7 @@ export default function Home() {
             { name: 'Split lending across 2 venues (local)', callback: () => setDevSplit((v) => !v), shouldCollapse: true },
             { name: 'DRAFT preview: paused, no USDC', callback: () => setDraftPreview('paused'), shouldCollapse: true },
             { name: 'DRAFT preview: low on USDC', callback: () => setDraftPreview('low'), shouldCollapse: true },
+            { name: 'DRAFT preview: other wallet needs USDC', callback: () => setDraftPreview('oneOfTwo'), shouldCollapse: true },
             { name: 'DRAFT preview: off', callback: () => setDraftPreview('off'), shouldCollapse: true },
             {
               name: 'DRAFT: send the two notifications',

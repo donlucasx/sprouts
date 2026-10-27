@@ -30,7 +30,7 @@ export function widgetStateLine(me: Pick<MeResponse, "nextPlanting" | "wallets">
 export const PLANTED_RECENT_MS = 24 * 60 * 60 * 1000;
 /** Garden2's three lines (10-11, after Kimi's analysis): the headline (one small bold line), the line under it and its accent, the bottom
  *  line, and the bar's fill (null: no bar). */
-export type WidgetHeadline = { big: string; label: string; line: string; fraction: number | null; action: boolean };
+export type WidgetHeadline = { big: string; label: string; line: string; fraction: number | null; action: boolean; walletAsk?: boolean };
 type Fit = (text: string) => boolean;
 
 /**
@@ -45,6 +45,19 @@ type Fit = (text: string) => boolean;
  * Each text lists its forms longest first; a narrow widget takes the first that fits, else the last.
  */
 export function widgetHeadline(
+  me: Pick<MeResponse, "nextPlanting" | "wallets"> & { history?: Pick<MeResponse["history"], "plantings"> },
+  scene: Pick<Scene, "parts">, now: Date, total: string, hasMoney: boolean,
+  fits: { big?: Fit; label?: Fit; line?: Fit } = {},
+): WidgetHeadline {
+  const head = gardenHeadline(me, scene, now, total, hasMoney, fits);
+  // 10-26 (his ruling: "the widget should flag this issue"): one wallet out of USDC while another still plants. The garden is not paused,
+  // so the money and the bar stay; the line under the headline turns into the ask, in the accent green, and a tap opens Home's top-up.
+  if (head.action || !me.wallets.some((w) => w.status === "paused" && w.pause?.reason === "no_usdc")) return head;
+  const pick = (f: Fit | undefined, texts: string[]) => texts.find((t) => (f ?? (() => true))(t)) ?? texts[texts.length - 1];
+  return { ...head, label: pick(fits.label, ["A wallet needs USDC", "Wallet needs USDC", "Needs USDC"]), action: true, walletAsk: true };
+}
+
+function gardenHeadline(
   me: Pick<MeResponse, "nextPlanting" | "wallets"> & { history?: Pick<MeResponse["history"], "plantings"> },
   scene: Pick<Scene, "parts">, now: Date, total: string, hasMoney: boolean,
   fits: { big?: Fit; label?: Fit; line?: Fit } = {},
