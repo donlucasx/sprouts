@@ -299,3 +299,15 @@ describe("one column wide: no art, the gauge", () => {
     expect(texts(SproutsWidget({ me: priced(grown), width: 180, height: 131, now: NOW }) as El).length).toBe(2);
   });
 });
+
+// 10-27 (his notes: both 1x1s still showed the garden): a one-cell widget arrives with no size (0 x 0); it is drawn as one cell
+describe("a widget the launcher gave no size", () => {
+  it("is drawn at ONE_CELL, where both widgets are their text-and-gauge versions", async () => {
+    const { sizeOrOneCell, ONE_CELL } = await import("@/garden/widget-layout");
+    expect(sizeOrOneCell({ width: 0, height: 0 })).toEqual({ width: ONE_CELL.w, height: ONE_CELL.h });
+    expect(sizeOrOneCell({ width: 276, height: 274 })).toEqual({ width: 276, height: 274 });
+    const { EnsoWidget } = await import("@/garden/EnsoWidget");
+    expect(all(SproutsWidget({ me: priced(grown), width: ONE_CELL.w, height: ONE_CELL.h, now: NOW }) as El).some(isGardenSvg)).toBe(false);
+    expect(all(EnsoWidget({ me: priced(grown), width: ONE_CELL.w, height: ONE_CELL.h, now: NOW }) as El).some(isGardenSvg)).toBe(false);
+  });
+});
