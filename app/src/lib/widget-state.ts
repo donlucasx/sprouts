@@ -13,7 +13,7 @@ export const BUD_LINE = "A bud is ready. Water it.";
  * R363 (10-05, "Value + the one thing to do"): ONE line that invites a tap, decided from Home's own state so the two never disagree:
  * a bud waiting (Home's can in colour, watcherLine) -> "A bud is ready. Water it."; else Home's Next planting row (nextPlantingFor):
  * paused -> "Paused"; change saved below the threshold -> "+$1.35 waiting"; the threshold reached, waiting for the run -> its clock,
- * "Next: 7 AM" (Home: "Tomorrow, 7 AM"). Nothing saved yet (Claude's call; the ruling names no line for it) -> "No change waiting yet".
+ * "Next: 7 AM" (Home: "Tomorrow, 7 AM"). Nothing saved yet -> "Waiting for a swap" (his 10-26 note: "waiting on your next swap", in the least text).
  */
 export function widgetStateLine(me: Pick<MeResponse, "nextPlanting" | "wallets">, scene: Pick<Scene, "parts" | "unrevealed">, now: Date): WidgetState {
   if (watcherLine({ unrevealed: scene.unrevealed, failed: false, nudged: false }).can === "ready") return { text: BUD_LINE, action: true };
@@ -22,7 +22,7 @@ export function widgetStateLine(me: Pick<MeResponse, "nextPlanting" | "wallets">
     case "paused": return { text: me.wallets.some((w) => w.status === "paused" && w.pause?.reason === "no_usdc") ? "Wallet needs USDC" : "Paused", action: false };
     case "saving": return { text: `+${formatUsd(me.nextPlanting.pendingCents)} waiting`, action: false };
     case "reached": return { text: `Next: ${nextRunClock(now)}`, action: false };
-    case "empty": return { text: "No change waiting yet", action: false };
+    case "empty": return { text: "Waiting for a swap", action: false };
   }
 }
 
@@ -66,9 +66,9 @@ export function widgetHeadline(
     case "empty": {
       const recent = (me.history?.plantings ?? []).filter((p) => { const t = Date.parse(p.ts); return t <= now.getTime() && now.getTime() - t < PLANTED_RECENT_MS; });
       const planted = recent.reduce((c, p) => c + p.usdcInCents, 0);
-      if (planted > 0) return { big: big(`Planted ${formatUsd(planted)}`, formatUsd(planted)), label: label(`${total} in your garden`, `${total} in garden`), line: line("Waiting for your next swap", "No change waiting yet", "No change yet"), fraction: null, action: false };
-      if (hasMoney) return { big: big(`${total} in your garden`, total), label: label("Waiting for your next swap", "No change waiting yet", "No change yet"), line: plantsAt, fraction: null, action: false };
-      return { big: "Your garden", label: label("Waiting for your first swap", "No change yet"), line: plantsAt, fraction: null, action: false };
+      if (planted > 0) return { big: big(`Planted ${formatUsd(planted)}`, formatUsd(planted)), label: label(`${total} in your garden`, `${total} in garden`), line: line("Waiting for your next swap", "Waiting for a swap", "Swap to grow"), fraction: null, action: false };
+      if (hasMoney) return { big: big(`${total} in your garden`, total), label: label("Waiting for your next swap", "Waiting for a swap", "Swap to grow"), line: plantsAt, fraction: null, action: false };
+      return { big: "Your garden", label: label("Waiting for your first swap", "Waiting for a swap", "Swap to start"), line: plantsAt, fraction: null, action: false };
     }
   }
 }
