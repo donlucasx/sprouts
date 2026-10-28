@@ -15,10 +15,10 @@ import { newlyLinked } from '@/lib/newly-linked'
 import { confirmWithRetries, LINK_NOT_ON_CHAIN_YET } from '@/lib/confirm-retry'
 import { formatWallet } from '@/lib/format'
 import { useSession } from '@/lib/session'
-import { APPROVAL_NOTE, CAN, CANT, OTHER_WALLET_LINE, phoneUsdcNote } from '@/lib/safety-copy'
+import { APPROVAL_WARN_BODY, APPROVAL_WARN_TITLE, CAN, CANT, OTHER_WALLET_LINE, phoneUsdcNote } from '@/lib/safety-copy'
 import { TopUpButton } from '@/components/TopUp'
 import { TOPUP, TOPUP_DEFAULT_CENTS } from '@/lib/topup'
-import { FONT, spacing } from '@/theme'
+import { FONT, radius, spacing, useTheme } from '@/theme'
 
 /**
  * Confirms the link; when the delegation is late on chain the same code is confirmed again (no new signature, no new code), so a late
@@ -29,6 +29,19 @@ function confirmLink(code: string, wallet: string, signedTransaction: string) {
   return confirmWithRetries((attempt) => api('/api/link/confirm', { method: 'POST', body: attempt === 0 ? { code, wallet, signedTransaction } : { code, wallet } }), {
     notOnChainYet: LINK_NOT_ON_CHAIN_YET,
   })
+}
+
+/** 10-27 (WAL-002): the wallet's "unlimited USDC" warning, said right above Approve so it is expected, not a surprise. */
+function ApprovalWarning() {
+  const { colors } = useTheme()
+  return (
+    <View style={{ borderWidth: 1.5, borderColor: colors.attention, borderRadius: radius.md, padding: spacing.md, gap: spacing.xs }}>
+      <ThemedText tone="attention" style={{ fontFamily: FONT.label, fontSize: 15, lineHeight: 21 }}>
+        {APPROVAL_WARN_TITLE}
+      </ThemedText>
+      <ThemedText style={{ fontSize: 14, lineHeight: 20 }}>{APPROVAL_WARN_BODY}</ThemedText>
+    </View>
+  )
 }
 
 /** One marked line of the can / can't card: a check for what Sprouts can do, a cross for what it can't. */
@@ -112,9 +125,6 @@ export default function Connect() {
       <Card>
         {CAN.map((l) => <Mark key={l} ok text={l} />)}
         {CANT.map((l) => <Mark key={l} ok={false} text={l} />)}
-        <ThemedText variant="caption" tone="secondary">
-          {APPROVAL_NOTE}
-        </ThemedText>
       </Card>
       <Card>
         <ThemedText variant="heading">{"This phone's wallet"}</ThemedText>
@@ -127,6 +137,7 @@ export default function Connect() {
         {session && (usdcNote || toppedUp) ? (
           <TopUpButton compact user={session.pubkey} cents={TOPUP_DEFAULT_CENTS} done={TOPUP.doneLink} onDone={() => setToppedUp(true)} offers={usdc?.topUpCents ?? null} />
         ) : null}
+        <ApprovalWarning />
         <Button title="Approve" loading={approving} onPress={linkThisPhone} />
         {approving ? (
           <ThemedText variant="caption" tone="secondary">

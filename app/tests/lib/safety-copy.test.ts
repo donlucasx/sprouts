@@ -1,11 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import { CAN, CANT, APPROVAL_NOTE, OTHER_WALLET_LINE, phoneUsdcNote } from '../../src/lib/safety-copy'
+import { CAN, CANT, APPROVAL_WARN_TITLE, APPROVAL_WARN_BODY, OTHER_WALLET_LINE, phoneUsdcNote } from '../../src/lib/safety-copy'
 
 describe('safety copy (mirrors api/src/app/safety.tsx)', () => {
   it('keeps the phone-sized shape: one can, three can\'t, and no em dashes', () => {
     expect(CAN).toHaveLength(1)
     expect(CANT).toHaveLength(2)
-    for (const l of [...CAN, ...CANT, APPROVAL_NOTE, OTHER_WALLET_LINE]) expect(l).not.toMatch(/—/)
+    for (const l of [...CAN, ...CANT, APPROVAL_WARN_TITLE, APPROVAL_WARN_BODY, OTHER_WALLET_LINE]) expect(l).not.toMatch(/—/)
   })
 })
 

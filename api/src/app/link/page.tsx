@@ -4,7 +4,7 @@ import { Albert_Sans, Outfit } from "next/font/google";
 import { call } from "../call";
 import { useWallets, WalletButtons } from "../wallet-picker";
 import { connectWith, signWith, type StdWallet } from "@/lib/wallet-choice";
-import { Safety } from "../safety";
+import { ApprovalWarning, Safety } from "../safety";
 import { SiteFooter, SiteHeader } from "../site-chrome";
 
 /** 10-16 (his note "too much text, simplify, and brand the page"): the splash's paper, ink and Outfit, the deck's leaf green and Albert Sans. */
@@ -138,6 +138,7 @@ export default function LinkPage() {
         ) : (
           <>
             <p className="lk-note">Linking to {owner}&apos;s garden.</p>
+            <ApprovalWarning ink={ink} attention="#7A6248" />
             <div className="lk-row"><WalletButtons wallets={wallets} verb="Approve with" onPick={approve} /></div>
           </>
         )}

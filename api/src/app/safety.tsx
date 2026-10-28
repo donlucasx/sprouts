@@ -32,7 +32,6 @@ export function Safety({ id, ink = "#2B2622", muted = "#7A746B", leaf = "#1E6B44
         <p style={h}>Before you link</p>
         <ul style={ul}>
           <li>Keep a few dollars of USDC in the wallet. Round-ups are paid from it.</li>
-          <li>Your wallet will show an unlimited USDC approval. The on-chain programs it names hold it to $5 a day.</li>
           <li>Revoke any time in the app or at <a href="/revoke" style={a}>sprouts.money/revoke</a>.</li>
         </ul>
       </div>
@@ -42,5 +41,21 @@ export function Safety({ id, ink = "#2B2622", muted = "#7A746B", leaf = "#1E6B44
         <a href={`https://verify.osec.io/status/${PROGRAM}`} style={a}>verified by OtterSec</a>.
       </p>
     </section>
+  );
+}
+
+/**
+ * 10-27 (WAL-002 store rejection + his note "this is a scary permission that will turn off most people"): the wallet's "unlimited
+ * USDC" warning, said right above the Approve buttons, before the wallet says it. Same words as app/src/lib/safety-copy.ts.
+ */
+export function ApprovalWarning({ ink, attention }: { ink: string; attention: string }) {
+  return (
+    <div style={{ border: `1.5px solid ${attention}`, borderRadius: 14, padding: "12px 16px", maxWidth: 420, margin: "0 auto 14px", textAlign: "left" }}>
+      <p style={{ margin: 0, fontWeight: 600, color: attention }}>Your wallet will warn about &quot;unlimited USDC&quot;</p>
+      <p style={{ margin: "4px 0 0", fontSize: 15, color: ink }}>
+        That&apos;s expected. The approval goes to Sprouts&apos; on-chain program, which only lets Sprouts take up to $5 a day, into your own
+        garden. Revoke any time.
+      </p>
+    </div>
   );
 }
