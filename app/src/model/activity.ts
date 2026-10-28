@@ -2,6 +2,7 @@ import type { ActivityResponse, FoundVenue, SplitRow } from '@/lib/api'
 import { isRetired, VENUE_NAME, type LiveAsset, type Stop } from '@/lib/coins'
 import { arrivalLine, COIN_NAME, COIN_NAME_LONG, formatSkr, formatUsd, plantedLine, timeOf, underlyingAmount } from '@/lib/format'
 import { changeSummary, STOP_LABEL } from './manager'
+import { PHONE_WALLET } from '@/lib/me-state'
 
 /**
  * R284 + R362: every Activity row is ONE line: its time, a short label, an amount on the right. The rows sit under day headers;
@@ -11,7 +12,7 @@ import { changeSummary, STOP_LABEL } from './manager'
 export type ActivityRow = { key: string; ts: string; label: string; amount: string | null; details: string[]; signature: string | null; tag?: string }
 type Planting = ActivityResponse['plantings'][number]
 type Leg = Planting['legs'][number] & { asset: LiveAsset }
-type Swap = Pick<ActivityResponse['swaps'][number], 'signature' | 'ts' | 'usdSizeCents' | 'roundupCents' | 'plantingId'>
+type Swap = Pick<ActivityResponse['swaps'][number], 'signature' | 'ts' | 'usdSizeCents' | 'roundupCents' | 'plantingId'> & { walletPubkey?: string | null }
 type Withdrawal = Pick<ActivityResponse['withdrawals'][number], 'id' | 'ts' | 'amountRaw' | 'cancelled' | 'delivered' | 'source' | 'withdrawSignature' | 'unstakeSignature'>
 type LendWithdrawal = NonNullable<ActivityResponse['lendWithdrawals']>[number]
 type Move = NonNullable<ActivityResponse['moves']>[number]
@@ -43,13 +44,23 @@ export function splitRow(s: SplitRow, i: number): ActivityRow {
   return { ...base, tag: 'AI', label: 'AI moved your split', details: [summary, s.why ?? ''].filter(Boolean) }
 }
 
-/** "Swap $10.00" and its change "+$1.00"; planted or waiting behind the tap. */
-export function swapRow(s: Swap): ActivityRow {
+/**
+ * 10-28 (his ruling): which wallet a row came from, only when 2+ wallets are linked (null otherwise, and the rows read as before).
+ * This phone's wallet is "your Seed Vault wallet", another one its short address, as the stopped-wallet card names them.
+ */
+export function walletNamer(wallets: readonly { pubkey: string; status: string }[], phone: string): ((pubkey: string) => string) | null {
+  if (wallets.filter((w) => w.status !== 'revoked').length < 2) return null
+  return (pubkey) => (pubkey === phone ? `your ${PHONE_WALLET}` : `${pubkey.slice(0, 4)}...${pubkey.slice(-4)}`)
+}
+
+/** "Swap $10.00" and its change "+$1.00"; planted or waiting behind the tap; the wallet's name last when `name` is given. */
+export function swapRow(s: Swap, name?: ((pubkey: string) => string) | null): ActivityRow {
   const label = s.usdSizeCents === null ? 'Unpriced swap' : `Swap ${formatUsd(s.usdSizeCents)}`
+  const from = name && s.walletPubkey ? [`In ${name(s.walletPubkey)}.`] : []
   // R484: a whole-dollar swap saves nothing; its row says so instead of "+$0.00, waiting to be planted"
-  if (s.roundupCents <= 0) return { key: s.signature, ts: s.ts, label, amount: null, details: ['No spare change on a whole-dollar swap.'], signature: s.signature }
+  if (s.roundupCents <= 0) return { key: s.signature, ts: s.ts, label, amount: null, details: ['No spare change on a whole-dollar swap.', ...from], signature: s.signature }
   const change = formatUsd(s.roundupCents)
-  return { key: s.signature, ts: s.ts, label, amount: `+${change}`, details: [`Change ${change}, ${s.plantingId ? 'planted' : 'waiting to be planted'}.`], signature: s.signature }
+  return { key: s.signature, ts: s.ts, label, amount: `+${change}`, details: [`Change ${change}, ${s.plantingId ? 'planted' : 'waiting to be planted'}.`, ...from], signature: s.signature }
 }
 
 const COOLDOWN_MS = 172_800_000
@@ -88,8 +99,10 @@ export function moveRow(m: Move): ActivityRow | null {
 
 /** 10-27 (his rulings: top-ups show in Activity, never as a swap; copy approved): an Add USDC top-up, the USDC it added. */
 export const TOPUP_NOTE = 'From SOL in this wallet. No Sprouts fee.'
-export function topUpRow(t: TopUp): ActivityRow {
-  return { key: `tu-${t.signature}`, ts: t.ts, label: `Added ${formatUsd(Number(BigInt(t.usdcRaw) / 10_000n))} of USDC`, amount: null, details: [TOPUP_NOTE], signature: t.signature }
+// 10-28: with 2+ wallets linked, "this wallet" names it; a top-up is always this phone's wallet (topup-record: wallet = the user)
+export const TOPUP_NOTE_NAMED = `From SOL in your ${PHONE_WALLET}. No Sprouts fee.`
+export function topUpRow(t: TopUp, named = false): ActivityRow {
+  return { key: `tu-${t.signature}`, ts: t.ts, label: `Added ${formatUsd(Number(BigInt(t.usdcRaw) / 10_000n))} of USDC`, amount: null, details: [named ? TOPUP_NOTE_NAMED : TOPUP_NOTE], signature: t.signature }
 }
 
 /** R278: what the Yield Manager found; shown, never routed to. */
