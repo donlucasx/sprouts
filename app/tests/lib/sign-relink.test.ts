@@ -63,6 +63,8 @@ describe('relink: one Seed Vault signature that revokes the old approval and mak
 describe('Review Focus 5: link after go-live (new links point at the leash PDA)', () => {
   it('link: the leash PDA of this user is accepted', async () => signed(wire(await linkIxs({ delegatee: await leashOf(USER, USER) })), link))
   it('link: the puller is still accepted before go-live', async () => signed(wire(await linkIxs()), link))
+  // 10-27 WAL-002 rejection: the store reviewer's wallet (1m463.skr) had no authority and no USDC account, the first link's full shape
+  it('link: a fresh wallet on the leash (ATA create, init, create)', async () => signed(wire(await linkIxs({ delegatee: await leashOf(USER, USER), createAta: true })), link))
   it('link: the leash PDA of another user is refused', async () => refused(wire(await linkIxs({ delegatee: await leashOf(USER, ATTACKER) })), link, 'plan'))
 })
 
