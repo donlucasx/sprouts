@@ -39,7 +39,9 @@ export function founderAlertFor(e: Omit<EventRow, "id" | "ts">): string | null {
       return `Paused for no USDC: ${who}, needs $${(Number(d.needCents ?? 0) / 100).toFixed(2)}. Plantings resume on their own once USDC is there.`;
     case "revoke_seen":
       return d.by === "token_revoke"
-        ? `USDC approval removed in the wallet: ${who}. Sprouts has stopped planting for this wallet; a re-link restores it.`
+        // 10-27 (wallet 2hEw): "removed" was wrong when the approval was never granted (a link on an older API skipped it), so the
+        // line says what the run saw, not how it got there.
+        ? `No USDC approval on this wallet: ${who}. Sprouts has stopped planting for it; a re-link (app 0.1.5 or later) restores it.`
         : `Revoked outside the app: ${who}. Sprouts has stopped planting for this wallet.`;
     case "pull_failed":
       return `Planting failed at ${String(d.stage ?? "?")}: ${who}: ${clip(d.err)}`;

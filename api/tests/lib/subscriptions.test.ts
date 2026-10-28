@@ -51,6 +51,10 @@ describe("subscriptions builders", () => {
     expect(ixs[0].accounts!.map((a) => a.address)).toEqual([await usdcAta(delegator), authority, delegator]);
     expect(isSigner(ixs[0].accounts![2].role)).toBe(true);
     expect(getApproveInstructionDataDecoder().decode(ixs[0].data!).amount).toBe(APPROVE_ALL);
+    // 10-27 (wallet 2hEw): an existing authority with no USDC account gets the account created AND approved, then the create
+    const fresh = await buildApproveOnceIxs({ delegator, delegatee, capRaw: 5_000_000n, nonce: 8n, existingInitId: 42n, createAta: true });
+    expect(fresh.map((i) => i.programAddress)).toEqual([ASSOCIATED_TOKEN_PROGRAM_ADDRESS, TOKEN_PROGRAM_ADDRESS, SUBSCRIPTIONS_PROGRAM]);
+    expect(fresh[1].accounts!.map((a) => a.address)).toEqual([await usdcAta(delegator), authority, delegator]);
     // a fresh wallet's init sets the delegate itself: reapprove adds nothing there
     expect((await buildApproveOnceIxs({ delegator, delegatee, capRaw: 5_000_000n, nonce: 8n, reapprove: true })).length).toBe(2);
   });
