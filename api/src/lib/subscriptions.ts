@@ -81,9 +81,14 @@ export async function buildApproveOnceIxs(a: { delegator: Address; delegatee: Ad
   });
   const userAta = await usdcAta(a.delegator);
   if (a.existingInitId !== undefined) {
-    if (!a.reapprove) return [create];
+    // 10-27 (Kimi 0.1.5 r2 follow-up; wallet 2hEw, whose USDC account an account cleaner closed): a USDC account created here is new,
+    // so it names no delegate and needs the Approve as much as one whose delegate was removed. Order as the app's checkApproval and
+    // the confirm route accept it: the account create, the Approve, the delegation create.
+    if (!a.reapprove && !a.createAta) return [create];
     const [authority] = await findSubscriptionAuthorityPda({ user: a.delegator, tokenMint: USDC_MINT });
-    return [getApproveInstruction({ source: userAta, delegate: authority, owner, amount: APPROVE_ALL }), create];
+    const approve = getApproveInstruction({ source: userAta, delegate: authority, owner, amount: APPROVE_ALL });
+    if (!a.createAta) return [approve, create];
+    return [await getCreateAssociatedTokenIdempotentInstructionAsync({ payer: owner, owner: a.delegator, mint: USDC_MINT }), approve, create];
   }
   const init = await getInitSubscriptionAuthorityOverlayInstructionAsync({ owner, tokenMint: USDC_MINT, tokenProgram: TOKEN_PROGRAM_ADDRESS, userAta });
   if (!a.createAta) return [init, create];

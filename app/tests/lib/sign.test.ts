@@ -76,6 +76,10 @@ describe('makeSigner (security R207 #3: the app checks what the Seed Vault signs
     // 10-27 (Kimi's 0.1.5 audit): the wallet removed its USDC approval; the API's re-link puts it back with one Approve
     it('link: a re-link that restores the USDC approval (the API\'s reapprove: Approve, then the create)', async () =>
       signed(wire(await linkIxs({ existingInitId: 9n, reapprove: true })), link))
+    // 10-27 (wallet 2hEw: an account cleaner closed its USDC account; its authority dates from another app): the API's re-link creates
+    // the account, approves it and creates the delegation, all from the API's own builder
+    it('link: a re-link on an existing authority with no USDC account (create the account, Approve, then the create)', async () =>
+      signed(wire(await linkIxs({ existingInitId: 9n, createAta: true })), link))
     it('link with the reapprove twice', async () => {
       const ixs = await linkIxs({ existingInitId: 9n, reapprove: true })
       await refused(wire([ixs[0], ...ixs]), link, 'plan')

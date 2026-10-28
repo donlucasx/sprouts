@@ -28,7 +28,7 @@ describe("founderAlertFor", () => {
     const line = founderAlertFor(ev("pull_failed", { stage: "simulate", err: { InstructionError: [2, { Custom: 4 }] } }));
     expect(line).toContain('{"InstructionError":[2,{"Custom":4}]}');
     expect(line).not.toContain("[object Object]");
-    expect(founderAlertFor(ev("revoke_seen", { by: "token_revoke" }))).toContain("USDC approval removed in the wallet");
+    expect(founderAlertFor(ev("revoke_seen", { by: "token_revoke" }))).toContain("No USDC approval on this wallet");
   });
 
   it("alerts on a link only when the wallet missed the webhook (its swaps are not counted)", () => {
