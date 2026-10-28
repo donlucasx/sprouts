@@ -15,7 +15,7 @@ import { newlyLinked } from '@/lib/newly-linked'
 import { confirmWithRetries, LINK_NOT_ON_CHAIN_YET } from '@/lib/confirm-retry'
 import { formatWallet } from '@/lib/format'
 import { useSession } from '@/lib/session'
-import { APPROVAL_WARN_BODY, APPROVAL_WARN_TITLE, CAN, CANT, OTHER_WALLET_LINE, phoneUsdcNote } from '@/lib/safety-copy'
+import { APPROVAL_WARN_BODY, APPROVAL_WARN_TITLE, CAN, CANT, LINK_INTRO, OTHER_WALLET_LINE, phoneUsdcNote } from '@/lib/safety-copy'
 import { TopUpButton } from '@/components/TopUp'
 import { TOPUP, TOPUP_DEFAULT_CENTS } from '@/lib/topup'
 import { FONT, radius, spacing, useTheme } from '@/theme'
@@ -121,7 +121,7 @@ export default function Connect() {
 
   return (
     <Screen back title="Link a wallet">
-      <ThemedText>Every swap rounds up. Once a day, Sprouts plants the change using USDC in your wallet. Your USDC stays in your wallet until then.</ThemedText>
+      <ThemedText>{LINK_INTRO}</ThemedText>
       <Card>
         {CAN.map((l) => <Mark key={l} ok text={l} />)}
         {CANT.map((l) => <Mark key={l} ok={false} text={l} />)}

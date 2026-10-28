@@ -1,8 +1,11 @@
 /**
  * What Sprouts can and can't do with a linked wallet, shown on Link a wallet before anyone signs. His note 10-22 ("too much text,
  * simplify"): three marked lines and one small note, shorter than the website's box (api/src/app/safety.tsx); same facts, so a fact
- * changed there changes here too.
+ * changed there changes here too. /link says these exact lines (api/src/lib/link-safety-copy.ts).
  */
+/** The line above the card. His note 10-28: "Your USDC stays in your wallet until then." cut. */
+export const LINK_INTRO = 'Every swap rounds up. Once a day, Sprouts plants the change using USDC in your wallet.'
+
 export const CAN: readonly string[] = ['Plants up to $5 of USDC a day, only into your own savings']
 
 export const CANT: readonly string[] = [
