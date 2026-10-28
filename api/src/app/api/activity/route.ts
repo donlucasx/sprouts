@@ -24,7 +24,7 @@ export async function GET(request: Request) {
   const repo = await getRepo();
   // Everything that needs only the user starts at once: the lists, both event reads, the scout's finds and the live SKR price.
   const skrUsdRead = sharedPriceUsd(SKR_MINT).catch(() => null);
-  const [swaps, plantings, withdrawals, events, lendEvents, foundRows, topUpEvents] = await Promise.all([
+  const [swaps, plantings, withdrawals, events, lendEvents, foundRows, topUpEvents, walletEvents] = await Promise.all([
     repo.listSwaps(session.pubkey, LIMIT), repo.listPlantings(session.pubkey, LIMIT), repo.listWithdrawals(session.pubkey, LIMIT),
     repo.listEvents(session.pubkey, ["split_changed", "split_undone"], LIMIT),
     // Contracts 5.7: a lending position back to the wallet (underlyingRaw = what came back, from the confirmed tx; null when unknown),
@@ -36,6 +36,8 @@ export async function GET(request: Request) {
       console.error(`/api/activity: top-ups not read: ${e instanceof Error ? e.message : String(e)}`);
       return [];
     }),
+    // 10-28 (his note: "revoked wallets should appear on the activity tab"): each wallet's links and revokes
+    repo.listEvents(session.pubkey, ["wallet_linked", "relinked", "revoke_seen"], LIMIT),
   ]);
   // Every leg of the listed plantings in one read (was one read per planting), grouped back per planting in list order.
   const legRows = plantings.length ? await repo.plantingLegsFor(plantings.map((p) => p.id)) : [];
@@ -89,6 +91,16 @@ export async function GET(request: Request) {
     const sentAt = typeof d.sentAt === "string" && !Number.isNaN(Date.parse(d.sentAt)) ? new Date(d.sentAt) : e.ts;
     return [{ ts: sentAt, signature: d.signature, usdcRaw: d.usdcRaw }];
   });
+  // A revoke's `by`: "user" (in the app or on /revoke), "token_revoke" (the USDC approval was removed in the wallet), else Sprouts
+  // found the link gone (unlinked outside the app). Rows without a wallet are skipped.
+  type WalletEvent = { ts: Date; kind: "linked" | "revoked"; wallet: string; why: "user" | "approval" | "outside" | null; signature: string | null };
+  const wallets = walletEvents.flatMap((e): WalletEvent[] => {
+    if (!e.walletPubkey) return [];
+    const d = (e.detail ?? {}) as EvDetail;
+    if (e.kind !== "revoke_seen") return [{ ts: e.ts, kind: "linked" as const, wallet: e.walletPubkey, why: null, signature: null }];
+    const why = d.by === "user" ? ("user" as const) : d.by === "token_revoke" ? ("approval" as const) : ("outside" as const);
+    return [{ ts: e.ts, kind: "revoked" as const, wallet: e.walletPubkey, why, signature: str_(d.signature) ? d.signature : null }];
+  });
   const found = foundRows.map((f) => ({ day: f.day, project: f.project, symbol: f.symbol, asset: f.asset, apyBasePct: f.apyBasePct, tvlUsd: f.tvlUsd, note: f.note }));
   return NextResponse.json(str({
     splits,
@@ -106,5 +118,6 @@ export async function GET(request: Request) {
     moves,
     found,
     topUps,
+    wallets,
   }));
 }

@@ -11,7 +11,7 @@ import { ApiError } from '@/lib/api'
 import { useMe, useInvalidateMe, useApplyRules } from '@/lib/me'
 import { coinColor } from '@/lib/coin-colors'
 import { activityQuery } from '@/lib/activity-query'
-import { filterRows, foundRow, groupByDay, KIND_FILTERS, KIND_TAG, lendWithdrawalRow, mergeRows, moveRow, plantingRow, rowTime, spokenLabel, splitRow, swapRow, topUpRow, visibleRows, walletNamer, withdrawalRow, type ActivityKind, type ActivityRow } from '@/model/activity'
+import { filterRows, foundRow, groupByDay, KIND_FILTERS, KIND_TAG, lendWithdrawalRow, mergeRows, moveRow, plantingRow, rowTime, spokenLabel, splitRow, swapRow, topUpRow, visibleRows, walletNamer, walletRow, withdrawalRow, type ActivityKind, type ActivityRow } from '@/model/activity'
 import { undoSplit } from '@/lib/manager-api'
 import { radius, spacing, TARGET, useTheme } from '@/theme'
 
@@ -24,6 +24,7 @@ const KIND_COLOR: Record<ActivityKind, string> = {
   move: coinColor('USDC_LEND'),
   found: '#6E6A64',
   topup: '#2F7A8A', // 10-27: Claude's pick (a USDC teal, apart from the swap brown), his look owed
+  wallet: '#4A5568', // 10-28: Claude's pick, a slate grey (a wallet event moves no money)
 }
 /** R482: the same hues lightened for the dark ground, so the small-caps word stays readable (Claude's picks, shown on the options page). */
 const KIND_COLOR_DARK: Record<ActivityKind, string> = {
@@ -34,6 +35,7 @@ const KIND_COLOR_DARK: Record<ActivityKind, string> = {
   move: '#9CC3EE',
   found: '#BEBAB2',
   topup: '#8FCBD6',
+  wallet: '#B8C2D0',
 }
 
 /**
@@ -157,7 +159,8 @@ export default function Activity() {
   const moves = a?.moves ? a.moves.flatMap((m) => { const r = moveRow(m); return r ? [{ row: r }] : [] }) : []
   const found = a?.found ? a.found.map((f) => ({ row: foundRow(f) })) : []
   const topUps = a?.topUps ? a.topUps.map((t) => ({ row: topUpRow(t, name !== null) })) : []
-  const all = mergeRows({ plant: plantings, split: splits, swap: swaps, withdraw: withdrawals, move: moves, found, topup: topUps })
+  const walletRows = a?.wallets && me ? a.wallets.map((e) => ({ row: walletRow(e, me.user.pubkey) })) : []
+  const all = mergeRows({ plant: plantings, split: splits, swap: swaps, withdraw: withdrawals, move: moves, found, topup: topUps, wallet: walletRows })
   const rows = filterRows(all, filter)
   const { shown, hidden } = visibleRows(rows, more, 25)
   // The undo sits on the newest split row when the manager made it (as before, now in the one list)

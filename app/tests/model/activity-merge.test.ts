@@ -58,3 +58,16 @@ describe('10-28: which wallet a row came from, only with 2+ wallets linked', () 
     expect(topUpRow({ ts: swap.ts, signature: 't', usdcRaw: '5000000' }, true).details).toEqual(['From SOL in your Seed Vault wallet. No Sprouts fee.'])
   })
 })
+
+describe('10-28: wallet links and revokes in Activity', () => {
+  const phone = 'PHONEaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaZZ'
+  const other = 'FdPpbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbYjB6'
+  const ts = '2026-10-28T10:00:00Z'
+  it('names the wallet and says why a revoke happened', async () => {
+    const { walletRow, WALLET_LINE } = await import('@/model/activity')
+    expect(walletRow({ ts, kind: 'linked', wallet: other, why: null, signature: null }, phone)).toMatchObject({ label: 'Linked FdPp...YjB6', details: [WALLET_LINE.linked], signature: null })
+    expect(walletRow({ ts, kind: 'revoked', wallet: other, why: 'user', signature: 'sig' }, phone)).toMatchObject({ label: 'Unlinked FdPp...YjB6', details: [WALLET_LINE.user], signature: 'sig' })
+    expect(walletRow({ ts, kind: 'revoked', wallet: phone, why: 'approval', signature: null }, phone)).toMatchObject({ label: 'Stopped planting from your Seed Vault wallet', details: [WALLET_LINE.approval] })
+    expect(walletRow({ ts, kind: 'revoked', wallet: phone, why: 'outside', signature: null }, phone).details).toEqual([WALLET_LINE.outside])
+  })
+})
