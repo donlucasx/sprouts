@@ -10,8 +10,12 @@ export const CANT: readonly string[] = [
   "Can't touch other tokens or sell your garden",
 ]
 
-/** Under the lines: why the wallet says "unlimited", and the way out. */
-export const APPROVAL_NOTE = 'Your wallet will show an unlimited USDC approval. Our on-chain program holds it to $5 a day. Revoke any time.'
+/**
+ * 10-27 (WAL-002 store rejection + his note "this is a scary permission that will turn off most people"): the wallet's "unlimited USDC"
+ * warning, said right above Approve, before the wallet says it. Same words as api/src/app/safety.tsx ApprovalWarning.
+ */
+export const APPROVAL_WARN_TITLE = 'Your wallet will warn about "unlimited USDC"'
+export const APPROVAL_WARN_BODY = "That's expected. The approval goes to Sprouts' on-chain program, which only lets Sprouts take up to $5 a day, into your own garden. Revoke any time."
 
 /** Under "Another wallet" (his note 10-22: make clear more than one wallet can be linked). Its balance is not read here. */
 export const OTHER_WALLET_LINE = 'Link as many as you like. Each wallet pays from its own USDC.'
