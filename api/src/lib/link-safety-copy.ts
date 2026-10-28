@@ -14,5 +14,5 @@ export const CANT: readonly string[] = [
 ];
 
 /** The wallet's "unlimited USDC" warning, said before the wallet says it (10-27; shortened 10-28 so the title fits one line on the Seeker). */
-export const APPROVAL_WARN_TITLE = 'Your wallet will say "unlimited USDC"';
-export const APPROVAL_WARN_BODY = "That's normal. Sprouts' on-chain program caps it at $5 a day, only into your garden. You can revoke it any time.";
+export const APPROVAL_WARN_TITLE = 'Your wallet will ask for approval';
+export const APPROVAL_WARN_BODY = "It shows as \"unlimited USDC\". That's normal. Sprouts' on-chain program caps it at $5 a day, only into your garden. You can revoke it any time.";
