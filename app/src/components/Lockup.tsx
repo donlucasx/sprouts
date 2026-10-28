@@ -32,11 +32,12 @@ export function Lockup({ wordSize = 40 }: { wordSize?: number }) {
 }
 
 /** The horizontal lockup (manual 3): the mark on the left at 1.18 x the word size, a gap of 0.26 x, the wordmark. R574: under the
- *  loading screen's tree. */
-export function HorizontalLockup({ wordSize = 32 }: { wordSize?: number }) {
+ *  loading screen's tree. `ink` (10-28, his pick "A + B"): the mark in the text colour, the one-colour black lockup. */
+export function HorizontalLockup({ wordSize = 32, ink = false }: { wordSize?: number; ink?: boolean }) {
+  const { colors } = useTheme()
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: Math.round(0.26 * wordSize) }}>
-      <Mark size={Math.round(1.18 * wordSize)} decorative />
+      <Mark size={Math.round(1.18 * wordSize)} decorative color={ink ? colors.text : undefined} />
       <Wordmark size={wordSize} />
     </View>
   )

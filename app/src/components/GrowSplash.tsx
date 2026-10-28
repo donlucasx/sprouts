@@ -69,7 +69,7 @@ export function GrowSplash({ onEnd }: { onEnd?: () => void }) {
         ))}
       </View>
       <View style={{ marginTop: -spacing.lg }}>
-        <HorizontalLockup wordSize={42} />
+        <HorizontalLockup wordSize={42} ink />
       </View>
       <ThemedText variant="caption" tone="secondary" style={{ position: 'absolute', bottom: insets.bottom + 48, textAlign: 'center' }}>
         {LOADING_LINE}

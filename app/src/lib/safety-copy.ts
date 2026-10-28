@@ -21,9 +21,9 @@ export const APPROVAL_WARN_TITLE = 'Your wallet will say "unlimited USDC"'
 export const APPROVAL_WARN_BODY = "That's normal. Sprouts' on-chain program caps it at $5 a day, only into your garden. You can revoke it any time."
 
 /** Under "Another wallet" (his note 10-22: make clear more than one wallet can be linked). Its balance is not read here. */
-export const OTHER_WALLET_LINE = 'Link as many as you like. Each wallet plants from its own USDC.'
-/** 10-28: under the code. Plain text, no link: the other wallet lives on a computer, so a tap here would open a browser with no wallet. */
-export const CODE_STEPS = 'On a computer with that wallet, go to sprouts.money/link and enter this code. It works once, for 15 minutes.'
+export const OTHER_WALLET_LINE = 'Link a wallet from your computer, or from the browser inside any mobile wallet app. Each wallet plants from its own USDC.'
+/** 10-28: under the code. Plain text, no link: a tap would open the phone's own browser, which has no wallet. */
+export const CODE_STEPS = 'Go to sprouts.money/link and enter this code. It works once, for 15 minutes.'
 /** 10-28: after the wallet signs, while the link is confirmed on chain. */
 export const LINK_FINISHING = 'Approved. Finishing the link (a few seconds).'
 /** 10-28 (his note): Home's notice after a link, until OK. */
