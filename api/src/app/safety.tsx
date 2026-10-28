@@ -8,7 +8,7 @@ const PROGRAM = "GyBmDLN72kg6xwAnZfj9c7fjeaJ3GvhkHNhFns83f8f7";
  * copy and format (a line, then one card of checks and crosses), and "match it so the messaging is always the same", so the lines live
  * in lib/link-safety-copy.ts and the app's test checks they match. Was a longer box (his ask 10-22).
  */
-export function Safety({ ink = "#2B2622", muted = "#7A746B", leaf = "#1E6B44", rule = "#E6DFD2" }: { ink?: string; muted?: string; leaf?: string; rule?: string }) {
+export function Safety({ ink = "#2B2622", muted = "#7A746B", leaf = "#1E6B44", rule = "#E6DFD2", intro = true }: { ink?: string; muted?: string; leaf?: string; rule?: string; intro?: boolean }) {
   const a = { color: leaf };
   const mark = (ok: boolean, text: string) => (
     <li key={text} style={{ display: "flex", gap: 10 }}>
@@ -18,7 +18,8 @@ export function Safety({ ink = "#2B2622", muted = "#7A746B", leaf = "#1E6B44", r
   );
   return (
     <section style={{ width: "100%", maxWidth: 440, textAlign: "left", fontSize: 15, lineHeight: 1.5, color: ink, display: "grid", gap: 14 }}>
-      <p style={{ margin: 0 }}>{LINK_INTRO}</p>
+      {/* off inside the /faqs permissions answer, where "How does it work?" already says it */}
+      {intro ? <p style={{ margin: 0 }}>{LINK_INTRO}</p> : null}
       <ul style={{ listStyle: "none", margin: 0, border: `1.5px solid ${rule}`, borderRadius: 16, padding: "16px 18px", background: "#fff", display: "grid", gap: 10 }}>
         {CAN.map((l) => mark(true, l))}
         {CANT.map((l) => mark(false, l))}
