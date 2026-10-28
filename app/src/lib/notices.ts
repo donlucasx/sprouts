@@ -58,6 +58,14 @@ export function noticesFor(before: MeResponse | null, me: MeResponse, on: (k: No
       : `Plantings from it are paused and your round-ups wait. Add USDC to ${short} to start again.`;
     out.push({ kind: "paused", title: mine ? "Seed Vault wallet needs USDC" : `${short} needs USDC`, body });
   }
+  // 10-27 (ikeonsol.skr): a wallet Sprouts newly stopped on its own (this read says so, the last did not), once; behind the same switch
+  // as the no-USDC pause (plantings from a wallet stopped). A wallet the user revoked carries no `stopped`, so it never fires.
+  const stopped = (w: MeResponse["wallets"][number] | undefined) => w?.status === "revoked" && !!w.stopped;
+  for (const w of me.wallets ?? []) {
+    if (!stopped(w) || stopped((before.wallets ?? []).find((b) => b.pubkey === w.pubkey))) continue;
+    const mine = w.pubkey === me.user?.pubkey, short = `${w.pubkey.slice(0, 4)}...${w.pubkey.slice(-4)}`;
+    out.push({ kind: "paused", title: `Sprouts stopped planting from ${mine ? "your Seed Vault wallet" : short}`, body: "Open Sprouts to link it again." });
+  }
   return out.filter((n) => on(n.kind));
 }
 

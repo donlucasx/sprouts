@@ -82,7 +82,7 @@ export async function GET(request: Request) {
   // Contracts 5.2: legsEnabled is null for a user with no leashed wallet; [] when the leash config cannot be read (nothing is enabled we can show).
   const leashWallets = wallets.filter((w) => w.linkModel === "leash" && w.status !== "revoked");
   // Second wave, at once: the reads that need the wallets, the rules or the stORE basis from the first.
-  const [pending, capLeft, splitRow, leashCfg, storeRedeem, pauseEvents] = await Promise.all([
+  const [pending, capLeft, splitRow, leashCfg, storeRedeem, pauseEvents, revokeEvents] = await Promise.all([
     Promise.all(wallets.map((w) => repo.unplantedSwaps(w.pubkey))).then((r) => r.flat().reduce((s, x) => s + x.roundupCents, 0)),
     // Queue item 12: what the delegation has actually pulled this period, so "left today" is a number the chain backs.
     (async () => {
@@ -101,6 +101,8 @@ export async function GET(request: Request) {
     storePutInRaw > 0n ? sharedStoreRedeemRate().catch(() => null) : Promise.resolve(null),
     // Why each paused wallet is paused (one read, only when one is paused): the app says "add USDC" only for the run's own pause.
     wallets.some((w) => w.status === "paused") ? repo.listEvents(user.seedVaultPubkey, [...PAUSE_EVENT_KINDS], 200) : Promise.resolve([]),
+    // 10-27 (ikeonsol.skr, wallet 2hEw: stopped by the run and hidden, so the app looked unlinked): why each revoked wallet stopped
+    wallets.some((w) => w.status === "revoked") ? repo.listEvents(user.seedVaultPubkey, ["revoke_seen"], 50) : Promise.resolve([]),
   ]);
   // A no-USDC pause ends by itself at the next daily run once the wallet holds threshold + network fee (plant-run.ts
   // resumePausedWallets); needCents is what the run wanted to pull when it paused (the round-ups the cap allowed, fee included).
@@ -108,6 +110,15 @@ export async function GET(request: Request) {
     if (w.status !== "paused") return null;
     const cause = pauseCauseOf(pauseEvents, w.pubkey);
     return cause.reason === "no_usdc" ? { reason: "no_usdc", needCents: cause.needCents, resumeAtCents: thresholdCents + NETWORK_FEE_CENTS } : { reason: "user" };
+  };
+  // 10-27: a wallet Sprouts stopped on its own (its USDC approval gone, or its delegation gone outside the app) says so, so Home can ask
+  // for a re-link; one the user revoked in the app or on sprouts.money/revoke ("by: user") stays quiet. The newest revoke of each wallet.
+  const stoppedOf = (w: (typeof wallets)[number]): "approval" | "outside" | null => {
+    if (w.status !== "revoked") return null;
+    const e = revokeEvents.find((x) => x.walletPubkey === w.pubkey);
+    const by = (e?.detail as { by?: unknown } | null)?.by;
+    if (!e || by === "user") return null;
+    return by === "token_revoke" ? "approval" : "outside";
   };
   // R281: a retired coin's planting is history the app hides; Home's rows and receipt come from live legs only.
   const legOf = (id: string) => legs.find((x) => x.plantingId === id);
@@ -176,7 +187,7 @@ export async function GET(request: Request) {
           readyAt: pot.skrUnstakeReadyAt ?? new Date(pendingBasket.unstakeTs.getTime() + COOLDOWN_MS), delivered: false, deliveredSignature: null,
         }
       : null,
-    wallets: wallets.map((w) => ({ pubkey: w.pubkey, status: w.status, dailyCapCents: w.dailyCapCents, linkModel: w.linkModel, pause: pauseOf(w) })),
+    wallets: wallets.map((w) => ({ pubkey: w.pubkey, status: w.status, dailyCapCents: w.dailyCapCents, linkModel: w.linkModel, pause: pauseOf(w), stopped: stoppedOf(w) })),
     rules: rulesRowToRules(rules),
   }));
 }

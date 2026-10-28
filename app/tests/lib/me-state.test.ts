@@ -338,3 +338,31 @@ describe("usdcNotice: one message that names each wallet short of USDC", async (
     expect(usdcNotice(me([w(PHONE, false)]), { usdcCents: 900, low: false })).toBeNull();
   });
 });
+
+
+// 10-27 (ikeonsol.skr): Home names the wallets Sprouts stopped on its own and offers the one fix
+describe("stoppedNotice", async () => {
+  const { stoppedNotice } = await import("@/lib/me-state")
+  const PHONE = "HJCJKRQLV2HVKfe3sFdTF5jjBY1xfWgnK8cLcjH7qnHd", WEB = "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU"
+  const at = (wallets: { pubkey: string; status: string; stopped?: string | null }[]) => ({ user: { pubkey: PHONE }, wallets }) as never
+  it("nothing for active wallets, a user's own revoke, or an older API without the field", () => {
+    expect(stoppedNotice(at([{ pubkey: PHONE, status: "active" }, { pubkey: WEB, status: "revoked", stopped: null }, { pubkey: "X".repeat(44), status: "revoked" }]))).toBeNull()
+  })
+  it("one wallet: its name, what happened, the fix", () => {
+    expect(stoppedNotice(at([{ pubkey: PHONE, status: "revoked", stopped: "approval" }]))).toEqual({
+      title: "Sprouts stopped planting from your Seed Vault wallet",
+      lines: ["Your Seed Vault wallet's USDC approval is gone, so Sprouts can't plant your round-ups from it.", "Link it again to restart plantings."],
+      button: "Link it again",
+    })
+  })
+  it("two wallets: counted in the title, a line each", () => {
+    const n = stoppedNotice(at([{ pubkey: PHONE, status: "revoked", stopped: "approval" }, { pubkey: WEB, status: "revoked", stopped: "outside" }]))!
+    expect(n.title).toBe("Sprouts stopped planting from 2 wallets")
+    expect(n.lines).toEqual([
+      "Your Seed Vault wallet's USDC approval is gone, so Sprouts can't plant your round-ups from it.",
+      "7xKX...gAsU was unlinked outside the app, so Sprouts can't plant your round-ups from it.",
+      "Link them again to restart plantings.",
+    ])
+    expect(n.button).toBe("Link wallets")
+  })
+})

@@ -88,6 +88,21 @@ describe("noticesFor (R161)", () => {
     expect(titles(paused, active)).toEqual([]);
     expect(titles(active, at([{ pubkey: PHONE, status: "paused", pause: noUsdc }]))).toEqual(["Seed Vault wallet needs USDC"]);
   });
+
+  // 10-27 (ikeonsol.skr): a wallet Sprouts stopped on its own was only hidden; now the phone hears it once
+  it("a wallet newly stopped by Sprouts: once, by name; never for a wallet the user revoked", () => {
+    const PHONE = "HJCJKRQLV2HVKfe3sFdTF5jjBY1xfWgnK8cLcjH7qnHd", WEB = "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU";
+    const at = (wallets: { pubkey: string; status: string; stopped?: string | null }[]) => ({ ...me(), user: { pubkey: PHONE }, wallets }) as unknown as MeResponse;
+    const active = at([{ pubkey: PHONE, status: "active" }, { pubkey: WEB, status: "active" }]);
+    const stopped = at([{ pubkey: PHONE, status: "revoked", stopped: "approval" }, { pubkey: WEB, status: "revoked", stopped: "outside" }]);
+    expect(noticesFor(active, stopped, all)).toEqual([
+      { kind: "paused", title: "Sprouts stopped planting from your Seed Vault wallet", body: "Open Sprouts to link it again." },
+      { kind: "paused", title: "Sprouts stopped planting from 7xKX...gAsU", body: "Open Sprouts to link it again." },
+    ]);
+    expect(noticesFor(stopped, stopped, all)).toEqual([]);
+    expect(noticesFor(active, at([{ pubkey: PHONE, status: "revoked", stopped: null }]), all)).toEqual([]);
+    expect(noticesFor(active, stopped, (k) => k !== "paused")).toEqual([]);
+  });
 });
 
 // 10-27: this phone's wallet running low on USDC, from the background task, once per low spell

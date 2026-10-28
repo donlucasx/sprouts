@@ -83,6 +83,34 @@ export function pauseState(wallets: { status: string }[]): { shown: boolean; on:
 export const PHONE_WALLET = 'Seed Vault wallet'
 
 /**
+ * 10-27 (his: "we dont have a lot of users, so we gotta tend to them promptly"; ikeonsol.skr's wallet was stopped and only hidden, so
+ * the app looked unlinked): the wallets Sprouts stopped on its own, by name, with what happened and the one fix, a re-link.
+ * Build-written copy, his look owed. null when none.
+ */
+export const STOPPED = {
+  title: (name: string) => `Sprouts stopped planting from ${name}`,
+  titleMany: (n: number) => `Sprouts stopped planting from ${n} wallets`,
+  approval: (name: string) => `${name}'s USDC approval is gone, so Sprouts can't plant your round-ups from it.`,
+  outside: (name: string) => `${name} was unlinked outside the app, so Sprouts can't plant your round-ups from it.`,
+  fix: 'Link it again to restart plantings.',
+  fixMany: 'Link them again to restart plantings.',
+  button: 'Link it again',
+  buttonMany: 'Link wallets',
+} as const
+export function stoppedNotice(me: Pick<MeResponse, 'wallets' | 'user'>): { title: string; lines: string[]; button: string } | null {
+  const stopped = me.wallets.filter((w) => w.status === 'revoked' && w.stopped)
+  if (!stopped.length) return null
+  const name = (w: { pubkey: string }) => (w.pubkey === me.user.pubkey ? `Your ${PHONE_WALLET}` : `${w.pubkey.slice(0, 4)}...${w.pubkey.slice(-4)}`)
+  const lines = stopped.map((w) => (w.stopped === 'approval' ? STOPPED.approval(name(w)) : STOPPED.outside(name(w))))
+  const one = stopped.length === 1
+  return {
+    title: one ? STOPPED.title(name(stopped[0]).replace(/^Your /, 'your ')) : STOPPED.titleMany(stopped.length),
+    lines: [...lines, one ? STOPPED.fix : STOPPED.fixMany],
+    button: one ? STOPPED.button : STOPPED.buttonMany,
+  }
+}
+
+/**
  * Home's amber USDC notice (10-27, his notes: the line must "stand out"; then "it should be one message that adapts... 'xxxx wallet has
  * no usdc' or 'xxxx wallet has low usdc'... name each wallet... Simplify"). Every wallet short of USDC by name (this phone's is the
  * Seed Vault wallet, others by address): one wallet is a title and one line; several, a title and a line each. `phone` is this phone's

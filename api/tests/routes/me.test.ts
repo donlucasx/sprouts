@@ -57,6 +57,21 @@ describe("GET /api/me", () => {
   });
 
   // First planting (owner 10-22, domain/threshold.ts): Home's bar and the resume point use the threshold the run will use.
+  // 10-27 (ikeonsol.skr, wallet 2hEw): a wallet Sprouts stopped on its own says why, so Home can ask for a re-link; a user's revoke is quiet
+  it("a revoked wallet carries why Sprouts stopped it: the USDC approval, outside the app, or nothing when the user revoked it", async () => {
+    for (const [pk, detail] of [["A", { by: "token_revoke" }], ["O", null], ["Y", { by: "user", signature: "s" }], ["R", { by: "user" }]] as const) {
+      await repo.addWallet({ pubkey: pk, userPubkey: U, delegationPda: `D${pk}`, dailyCapCents: 500 });
+      await repo.setWalletStatus(pk, "revoked");
+      await repo.addEvent({ userPubkey: U, walletPubkey: pk, kind: "revoke_seen", detail });
+    }
+    // R: stopped by the run first, revoked by the user after; the newest revoke decides
+    await repo.addEvent({ userPubkey: U, walletPubkey: "R", kind: "revoke_seen", detail: { by: "token_revoke" } });
+    await repo.addEvent({ userPubkey: U, walletPubkey: "R", kind: "revoke_seen", detail: { by: "user" } });
+    const body = await (await me(new Request("http://x/api/me", bearer(await issueSession(U, "M"))))).json();
+    const stopped = Object.fromEntries(body.wallets.map((w: { pubkey: string; stopped: unknown }) => [w.pubkey, w.stopped]));
+    expect(stopped).toEqual({ W: null, A: "approval", O: "outside", Y: null, R: null });
+  });
+
   it("a user who never planted sees the 50-cent first-planting threshold, also as the no-USDC resume point; a sent planting ends it", async () => {
     const fresh = "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU";
     await repo.upsertUser({ seedVaultPubkey: fresh, sgtMint: "M2", skrName: null });
