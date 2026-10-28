@@ -62,6 +62,10 @@ export default function Connect() {
   const invalidate = useInvalidateMe()
   const [code, setCode] = useState<string | null>(null)
   const [approving, setApproving] = useState(false)
+  // 10-28: after the wallet signs, the link is still being checked on chain; the caption says so instead of "Waiting for your wallet"
+  const [signed, setSigned] = useState(false)
+  // 10-28 (his ask): this phone's wallet linked; the card says so before Home, the way "Another wallet" does
+  const [phoneLinked, setPhoneLinked] = useState<{ pubkey: string; status: string; dailyCapCents: number } | null>(null)
   const [coding, setCoding] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [toppedUp, setToppedUp] = useState(false)
@@ -91,14 +95,17 @@ export default function Connect() {
   async function linkThisPhone() {
     if (!session) return
     setApproving(true)
+    setSigned(false)
     setError(null)
     try {
       const { code } = await api<{ code: string }>('/api/link/new', { method: 'POST', body: {} })
       const t = await api<{ transaction: string; cap: number }>(`/api/link/${code}?wallet=${session.pubkey}`)
-      const signed = await makeSigner(signTransaction, { kind: 'link', user: session.pubkey })(t.transaction)
-      await confirmLink(code, session.pubkey, signed)
+      const signedTx = await makeSigner(signTransaction, { kind: 'link', user: session.pubkey })(t.transaction)
+      setSigned(true)
+      await confirmLink(code, session.pubkey, signedTx)
       await invalidate()
-      router.replace('/home')
+      const fresh = (await refetch()).data
+      setPhoneLinked(fresh?.wallets.find((w) => w.pubkey === session.pubkey && w.status !== 'revoked') ?? { pubkey: session.pubkey, status: 'active', dailyCapCents: t.cap })
     } catch (e) {
       setError(e instanceof ApiError || e instanceof SignRefused ? e.message : isSessionDropped(e) ? DROPPED_NOTHING_SENT : 'The approval did not go through. Try again.')
     } finally {
@@ -138,12 +145,22 @@ export default function Connect() {
           <TopUpButton compact user={session.pubkey} cents={TOPUP_DEFAULT_CENTS} done={TOPUP.doneLink} onDone={() => setToppedUp(true)} offers={usdc?.topUpCents ?? null} />
         ) : null}
         <ApprovalWarning />
-        <Button title="Approve" loading={approving} onPress={linkThisPhone} />
-        {approving ? (
-          <ThemedText variant="caption" tone="secondary">
-            Waiting for your wallet.
-          </ThemedText>
-        ) : null}
+        {phoneLinked ? (
+          <View style={{ gap: spacing.sm }}>
+            <ThemedText tone="accentText">{`Linked ${formatWallet(phoneLinked)}.`}</ThemedText>
+            <ThemedText tone="secondary">Its swaps now round up into your garden.</ThemedText>
+            <Button title="Done" onPress={() => router.replace('/home')} />
+          </View>
+        ) : (
+          <>
+            <Button title="Approve" loading={approving} onPress={linkThisPhone} />
+            {approving ? (
+              <ThemedText variant="caption" tone="secondary">
+                {signed ? 'Approved. Checking it landed, this can take a few seconds.' : 'Waiting for your wallet.'}
+              </ThemedText>
+            ) : null}
+          </>
+        )}
       </Card>
       <Card>
         <ThemedText variant="heading">Another wallet</ThemedText>
