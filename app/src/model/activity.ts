@@ -201,6 +201,8 @@ export const KIND_FILTERS: { value: 'all' | ActivityKind; label: string }[] = [
   { value: 'swap', label: 'Swap' },
   { value: 'withdraw', label: 'Withdraw' },
   { value: 'split', label: 'Split' },
+  // 10-28 (his ruling "One 'Wallet' chip"): top-ups and links/unlinks together, what happens to the wallets rather than the garden
+  { value: 'wallet', label: 'Wallet' },
 ]
 /** R480: the tag on each row, spelled out so no legend is needed (the colour comes from the screen); a split the AI made carries "AI". */
 export const KIND_TAG: Record<ActivityKind, string> = { plant: 'Plant', swap: 'Swap', withdraw: 'Withdraw', split: 'Split', move: 'Move', found: 'Found', topup: 'Top up', wallet: 'Wallet' }
@@ -212,7 +214,9 @@ export function mergeRows(groups: Partial<Record<ActivityKind, { row: ActivityRo
   return all.sort((x, y) => Date.parse(y.row.ts) - Date.parse(x.row.ts))
 }
 
-/** The chips: "All" keeps every kind (moves, found venues and top-ups only show there). */
+/** The chips: "All" keeps every kind (moves and found venues only show there); "Wallet" also keeps the top-ups. */
 export function filterRows(rows: TaggedRow[], filter: 'all' | ActivityKind): TaggedRow[] {
-  return filter === 'all' ? rows : rows.filter((r) => r.kind === filter)
+  if (filter === 'all') return rows
+  if (filter === 'wallet') return rows.filter((r) => r.kind === 'wallet' || r.kind === 'topup')
+  return rows.filter((r) => r.kind === filter)
 }

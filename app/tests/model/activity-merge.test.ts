@@ -71,3 +71,10 @@ describe('10-28: wallet links and revokes in Activity', () => {
     expect(walletRow({ ts, kind: 'revoked', wallet: phone, why: 'outside', signature: null }, phone).details).toEqual([WALLET_LINE.outside])
   })
 })
+
+describe("10-28: the Wallet chip", () => {
+  it('keeps top-ups and wallet links/unlinks, nothing else', () => {
+    const merged = mergeRows({ topup: [{ row: row('t', '2026-10-28T03:00:00Z') }], wallet: [{ row: row('w', '2026-10-28T02:00:00Z') }], swap: [{ row: row('s', '2026-10-28T01:00:00Z') }] })
+    expect(filterRows(merged, 'wallet').map((r) => r.row.key)).toEqual(['t', 'w'])
+  })
+})
