@@ -13,9 +13,8 @@ import { DROPPED_NOTHING_SENT, isSessionDropped } from '@/lib/wallet-errors'
 import { useInvalidateMe, useMe } from '@/lib/me'
 import { newlyLinked } from '@/lib/newly-linked'
 import { confirmWithRetries, LINK_NOT_ON_CHAIN_YET } from '@/lib/confirm-retry'
-import { formatWallet } from '@/lib/format'
 import { useSession } from '@/lib/session'
-import { APPROVAL_WARN_BODY, APPROVAL_WARN_TITLE, CAN, CANT, LINK_INTRO, OTHER_WALLET_LINE, phoneUsdcNote } from '@/lib/safety-copy'
+import { APPROVAL_WARN_BODY, APPROVAL_WARN_TITLE, CAN, CANT, CODE_STEPS, LINK_FINISHING, LINK_INTRO, OTHER_WALLET_LINE, phoneUsdcNote } from '@/lib/safety-copy'
 import { TopUpButton } from '@/components/TopUp'
 import { TOPUP, TOPUP_DEFAULT_CENTS } from '@/lib/topup'
 import { FONT, radius, spacing, useTheme } from '@/theme'
@@ -64,8 +63,6 @@ export default function Connect() {
   const [approving, setApproving] = useState(false)
   // 10-28: after the wallet signs, the link is still being checked on chain; the caption says so instead of "Waiting for your wallet"
   const [signed, setSigned] = useState(false)
-  // 10-28 (his ask): this phone's wallet linked; the card says so before Home, the way "Another wallet" does
-  const [phoneLinked, setPhoneLinked] = useState<{ pubkey: string; status: string; dailyCapCents: number } | null>(null)
   const [coding, setCoding] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [toppedUp, setToppedUp] = useState(false)
@@ -90,6 +87,10 @@ export default function Connect() {
     const t = setInterval(() => void refetch(), 4_000)
     return () => clearInterval(t)
   }, [code, linked, refetch])
+  // 10-28 (his note): a wallet linked from the web page sends the app back to the garden too, with the same notice
+  useEffect(() => {
+    if (linked) router.replace({ pathname: '/home', params: { linked: linked.pubkey } })
+  }, [linked])
 
   /** This phone's wallet is the trading wallet: the Seed Vault key approves the delegation for itself. */
   async function linkThisPhone() {
@@ -104,8 +105,8 @@ export default function Connect() {
       setSigned(true)
       await confirmLink(code, session.pubkey, signedTx)
       await invalidate()
-      const fresh = (await refetch()).data
-      setPhoneLinked(fresh?.wallets.find((w) => w.pubkey === session.pubkey && w.status !== 'revoked') ?? { pubkey: session.pubkey, status: 'active', dailyCapCents: t.cap })
+      // 10-28 (his note): back to the garden, where a notice says the wallet linked until he taps OK
+      router.replace({ pathname: '/home', params: { linked: session.pubkey } })
     } catch (e) {
       setError(e instanceof ApiError || e instanceof SignRefused ? e.message : isSessionDropped(e) ? DROPPED_NOTHING_SENT : 'The approval did not go through. Try again.')
     } finally {
@@ -145,47 +146,24 @@ export default function Connect() {
           <TopUpButton compact user={session.pubkey} cents={TOPUP_DEFAULT_CENTS} done={TOPUP.doneLink} onDone={() => setToppedUp(true)} offers={usdc?.topUpCents ?? null} />
         ) : null}
         <ApprovalWarning />
-        {phoneLinked ? (
-          <View style={{ gap: spacing.sm }}>
-            <ThemedText tone="accentText">{`Linked ${formatWallet(phoneLinked)}.`}</ThemedText>
-            <ThemedText tone="secondary">Its swaps now round up into your garden.</ThemedText>
-            <Button title="Done" onPress={() => router.replace('/home')} />
-          </View>
-        ) : (
-          <>
-            <Button title="Approve" loading={approving} onPress={linkThisPhone} />
-            {approving ? (
-              <ThemedText variant="caption" tone="secondary">
-                {signed ? 'Approved. Checking it landed, this can take a few seconds.' : 'Waiting for your wallet.'}
-              </ThemedText>
-            ) : null}
-          </>
-        )}
+        <Button title="Approve" loading={approving} onPress={linkThisPhone} />
+        {approving ? (
+          <ThemedText variant="caption" tone="secondary">
+            {signed ? LINK_FINISHING : 'Waiting for your wallet.'}
+          </ThemedText>
+        ) : null}
       </Card>
       <Card>
         <ThemedText variant="heading">Another wallet</ThemedText>
-        {linked
-          ? null
-          : (
-              <ThemedText tone="secondary" style={{ fontSize: 14, lineHeight: 20 }}>
-                {OTHER_WALLET_LINE}
-              </ThemedText>
-            )}
-        {linked ? (
-          <View style={{ gap: spacing.sm }}>
-            <ThemedText tone="accentText">{`Linked ${formatWallet(linked)}.`}</ThemedText>
-            <ThemedText tone="secondary">Its swaps now round up into your garden.</ThemedText>
-            <Button title="Done" onPress={() => router.replace('/home')} />
-          </View>
-        ) : code ? (
+        <ThemedText tone="secondary" style={{ fontSize: 14, lineHeight: 20 }}>
+          {OTHER_WALLET_LINE}
+        </ThemedText>
+        {code ? (
           <View style={{ gap: spacing.sm }}>
             <ThemedText variant="display" numeric style={{ fontFamily: FONT.displayBold, letterSpacing: 6 }}>
               {code}
             </ThemedText>
-            <ThemedText tone="secondary">
-              On the computer with that wallet, open sprouts.money/link, enter this code and approve. It lasts 15
-              minutes, one wallet.
-            </ThemedText>
+            <ThemedText tone="secondary">{CODE_STEPS}</ThemedText>
             <Button title="Get a new code" kind="quiet" loading={coding} onPress={codeForAnotherWallet} />
           </View>
         ) : (

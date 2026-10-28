@@ -17,11 +17,18 @@ export const CANT: readonly string[] = [
  * 10-27 (WAL-002 store rejection + his note "this is a scary permission that will turn off most people"): the wallet's "unlimited USDC"
  * warning, said right above Approve, before the wallet says it. Same words as api/src/app/safety.tsx ApprovalWarning.
  */
-export const APPROVAL_WARN_TITLE = 'Your wallet will warn about "unlimited USDC"'
-export const APPROVAL_WARN_BODY = "That's expected. The approval goes to Sprouts' on-chain program, which only lets Sprouts take up to $5 a day, into your own garden. Revoke any time."
+export const APPROVAL_WARN_TITLE = 'Your wallet will say "unlimited USDC"'
+export const APPROVAL_WARN_BODY = "That's normal. Sprouts' on-chain program caps it at $5 a day, only into your garden. You can revoke it any time."
 
 /** Under "Another wallet" (his note 10-22: make clear more than one wallet can be linked). Its balance is not read here. */
-export const OTHER_WALLET_LINE = 'Link as many as you like. Each wallet pays from its own USDC.'
+export const OTHER_WALLET_LINE = 'Link as many as you like. Each wallet plants from its own USDC.'
+/** 10-28: under the code. Plain text, no link: the other wallet lives on a computer, so a tap here would open a browser with no wallet. */
+export const CODE_STEPS = 'On a computer with that wallet, go to sprouts.money/link and enter this code. It works once, for 15 minutes.'
+/** 10-28: after the wallet signs, while the link is confirmed on chain. */
+export const LINK_FINISHING = 'Approved. Finishing the link (a few seconds).'
+/** 10-28 (his note): Home's notice after a link, until OK. */
+export const LINKED_TITLE = (short: string) => `Linked ${short}`
+export const LINKED_LINE = 'Its swaps now round up into your garden.'
 
 /**
  * The note under "This phone's wallet" when its USDC is below one planting (the threshold), or null: no note when the balance is
