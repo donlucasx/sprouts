@@ -13,6 +13,8 @@ describe('safety copy (mirrors api/src/app/safety.tsx)', () => {
     expect(web.LINK_INTRO).toBe(LINK_INTRO)
     expect(web.CAN).toEqual(CAN)
     expect(web.CANT).toEqual(CANT)
+    expect(web.APPROVAL_WARN_TITLE).toBe(APPROVAL_WARN_TITLE)
+    expect(web.APPROVAL_WARN_BODY).toBe(APPROVAL_WARN_BODY)
   })
 })
 

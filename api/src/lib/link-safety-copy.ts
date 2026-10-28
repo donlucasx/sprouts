@@ -12,3 +12,7 @@ export const CANT: readonly string[] = [
   "Can't send your money anywhere else, even if our server is hacked",
   "Can't touch other tokens or sell your garden",
 ];
+
+/** The wallet's "unlimited USDC" warning, said before the wallet says it (10-27; shortened 10-28 so the title fits one line on the Seeker). */
+export const APPROVAL_WARN_TITLE = 'Your wallet will say "unlimited USDC"';
+export const APPROVAL_WARN_BODY = "That's normal. Sprouts' on-chain program caps it at $5 a day, only into your garden. You can revoke it any time.";

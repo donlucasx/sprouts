@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AppState, View, Pressable, RefreshControl, Image, useWindowDimensions } from 'react-native'
-import { Link, Redirect, router, useFocusEffect } from 'expo-router'
+import { Link, Redirect, router, useFocusEffect, useLocalSearchParams } from 'expo-router'
 import { MaterialCommunityIcons } from '@expo/vector-icons'
 import { useMe, useInvalidateMe, toGardenInput } from '@/lib/me'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -47,7 +47,8 @@ import { MoveCard } from '@/components/MoveCard'
 import { termsNeeded, termsSummary } from '@/lib/terms'
 import { arrivalLine, formatSkr, formatAsOf } from '@/lib/format'
 import { useSession } from '@/lib/session'
-import { gardenTotals, pauseState, pausedOnlyForNoUsdc, stoppedNotice, usdcNotice, coinRows, valueBlock, walletsLine, lastPlantingLine, staleLine, type CoinRow } from '@/lib/me-state'
+import { LINKED_LINE, LINKED_TITLE } from '@/lib/safety-copy'
+import { PHONE_WALLET, gardenTotals, pauseState, pausedOnlyForNoUsdc, stoppedNotice, usdcNotice, coinRows, valueBlock, walletsLine, lastPlantingLine, staleLine, type CoinRow } from '@/lib/me-state'
 import { FONT, radius, spacing, TARGET, useTheme } from '@/theme'
 
 /** R562: each row of Home's coin list leads with the coin's official round logo (lib/coin-icons), Phantom style. */
@@ -80,6 +81,8 @@ export default function Home() {
   const { colors, dark } = useTheme()
   const { data: me, stale, fresh, refetch, asOf, loading, unauthorized, errorStatus } = useMe()
   const { data: activity } = useQuery(activityQuery)
+  // 10-28 (his note): Link a wallet sends the app here with `linked`; a quiet notice says so until OK clears the param
+  const { linked } = useLocalSearchParams<{ linked?: string }>()
   // the low-USDC notification's pace (usdc-watch): saved whenever Home measures it, for the background task, which reads no Activity
   useEffect(() => {
     if (me && activity) writeLastAvg(avgDailyRoundupCents(activity.swaps, me.user.pubkey, new Date()))
@@ -310,6 +313,18 @@ export default function Home() {
       {/* 10-27 (his note on the Saga: the no-USDC line "does not read like an error now- it should stand out a bit more (not on red
           though)... a simple top up button that once clicked it opens up the different amounts"): one amber notice, a title that says
           what stops, the lines, and one Top up button that opens the amounts */}
+      {linked ? (
+        <View style={{ backgroundColor: colors.surface, borderColor: colors.accent, borderWidth: 1, borderRadius: radius.lg, borderCurve: 'continuous', padding: spacing.md, gap: spacing.sm }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+            <MaterialCommunityIcons name="check-circle" size={20} color={colors.accentText} />
+            <ThemedText variant="heading" style={{ flex: 1, color: colors.accentText }}>
+              {LINKED_TITLE(linked === me.user.pubkey ? `your ${PHONE_WALLET}` : `${linked.slice(0, 4)}...${linked.slice(-4)}`)}
+            </ThemedText>
+          </View>
+          <ThemedText style={{ fontSize: 14, lineHeight: 20 }}>{LINKED_LINE}</ThemedText>
+          <Button title="OK" kind="quiet" onPress={() => router.setParams({ linked: undefined })} style={{ alignSelf: 'flex-start' }} />
+        </View>
+      ) : null}
       {notice ? (
         <View style={{ backgroundColor: colors.warningSurface, borderColor: colors.warning, borderWidth: 1, borderRadius: radius.lg, borderCurve: 'continuous', padding: spacing.md, gap: spacing.sm }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>

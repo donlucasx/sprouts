@@ -1,4 +1,4 @@
-import { CAN, CANT, LINK_INTRO } from "@/lib/link-safety-copy";
+import { APPROVAL_WARN_BODY, APPROVAL_WARN_TITLE, CAN, CANT, LINK_INTRO } from "@/lib/link-safety-copy";
 
 /** The leash program, for the OtterSec verified-build link. */
 const PROGRAM = "GyBmDLN72kg6xwAnZfj9c7fjeaJ3GvhkHNhFns83f8f7";
@@ -39,11 +39,8 @@ export function Safety({ ink = "#2B2622", muted = "#7A746B", leaf = "#1E6B44", r
 export function ApprovalWarning({ ink, attention }: { ink: string; attention: string }) {
   return (
     <div style={{ border: `1.5px solid ${attention}`, borderRadius: 14, padding: "12px 16px", maxWidth: 420, margin: "0 auto 14px", textAlign: "left" }}>
-      <p style={{ margin: 0, fontWeight: 600, color: attention }}>Your wallet will warn about &quot;unlimited USDC&quot;</p>
-      <p style={{ margin: "4px 0 0", fontSize: 15, color: ink }}>
-        That&apos;s expected. The approval goes to Sprouts&apos; on-chain program, which only lets Sprouts take up to $5 a day, into your own
-        garden. Revoke any time.
-      </p>
+      <p style={{ margin: 0, fontWeight: 600, color: attention }}>{APPROVAL_WARN_TITLE}</p>
+      <p style={{ margin: "4px 0 0", fontSize: 15, color: ink }}>{APPROVAL_WARN_BODY}</p>
     </div>
   );
 }
