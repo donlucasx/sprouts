@@ -11,7 +11,7 @@ import { ApiError } from '@/lib/api'
 import { useMe, useInvalidateMe, useApplyRules } from '@/lib/me'
 import { coinColor } from '@/lib/coin-colors'
 import { activityQuery } from '@/lib/activity-query'
-import { filterRows, foundRow, groupByDay, KIND_FILTERS, KIND_TAG, lendWithdrawalRow, mergeRows, moveRow, plantingRow, rowTime, spokenLabel, splitRow, swapRow, topUpRow, visibleRows, withdrawalRow, type ActivityKind, type ActivityRow } from '@/model/activity'
+import { filterRows, foundRow, groupByDay, KIND_FILTERS, KIND_TAG, lendWithdrawalRow, mergeRows, moveRow, plantingRow, rowTime, spokenLabel, splitRow, swapRow, topUpRow, visibleRows, walletNamer, withdrawalRow, type ActivityKind, type ActivityRow } from '@/model/activity'
 import { undoSplit } from '@/lib/manager-api'
 import { radius, spacing, TARGET, useTheme } from '@/theme'
 
@@ -146,7 +146,8 @@ export default function Activity() {
   }
   const plantings = a ? a.plantings.flatMap((p) => { const r = plantingRow(p); return r ? [{ row: r }] : [] }) : []
   const splits = a ? a.splits.map((x, i) => ({ row: splitRow(x, i) })) : []
-  const swaps = a ? a.swaps.map((x) => ({ row: swapRow(x) })) : []
+  const name = me ? walletNamer(me.wallets, me.user.pubkey) : null
+  const swaps = a ? a.swaps.map((x) => ({ row: swapRow(x, name) })) : []
   const withdrawals = a
     ? [
         ...a.withdrawals.map((w) => ({ row: withdrawalRow(w, skrUsd, me?.basket?.id === w.id ? me.basket.readyAt : undefined), walletAccount: true })),
@@ -155,7 +156,7 @@ export default function Activity() {
     : []
   const moves = a?.moves ? a.moves.flatMap((m) => { const r = moveRow(m); return r ? [{ row: r }] : [] }) : []
   const found = a?.found ? a.found.map((f) => ({ row: foundRow(f) })) : []
-  const topUps = a?.topUps ? a.topUps.map((t) => ({ row: topUpRow(t) })) : []
+  const topUps = a?.topUps ? a.topUps.map((t) => ({ row: topUpRow(t, name !== null) })) : []
   const all = mergeRows({ plant: plantings, split: splits, swap: swaps, withdraw: withdrawals, move: moves, found, topup: topUps })
   const rows = filterRows(all, filter)
   const { shown, hidden } = visibleRows(rows, more, 25)

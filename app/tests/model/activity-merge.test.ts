@@ -38,3 +38,23 @@ describe('a top-up row', () => {
     expect(filterRows(merged, 'swap').map((r) => r.row.key)).toEqual(['s1'])
   })
 })
+
+describe('10-28: which wallet a row came from, only with 2+ wallets linked', () => {
+  const phone = 'PHONEaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaZZ'
+  const other = 'FdPpbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbYjB6'
+  const swap = { signature: 'sw', ts: '2026-10-28T10:00:00Z', usdSizeCents: 1050, roundupCents: 50, plantingId: null }
+  it('one linked wallet (or one live, one revoked): no name, rows read as before', async () => {
+    const { walletNamer, swapRow, topUpRow, TOPUP_NOTE } = await import('@/model/activity')
+    expect(walletNamer([{ pubkey: phone, status: 'active' }, { pubkey: other, status: 'revoked' }], phone)).toBeNull()
+    expect(swapRow({ ...swap, walletPubkey: other }, null).details).toEqual(['Change $0.50, waiting to be planted.'])
+    expect(topUpRow({ ts: swap.ts, signature: 't', usdcRaw: '5000000' }, false).details).toEqual([TOPUP_NOTE])
+  })
+  it('two linked wallets: swaps name their wallet, top-ups name the Seed Vault wallet', async () => {
+    const { walletNamer, swapRow, topUpRow } = await import('@/model/activity')
+    const name = walletNamer([{ pubkey: phone, status: 'active' }, { pubkey: other, status: 'paused' }], phone)
+    expect(swapRow({ ...swap, walletPubkey: other }, name).details).toEqual(['Change $0.50, waiting to be planted.', 'In FdPp...YjB6.'])
+    expect(swapRow({ ...swap, walletPubkey: phone }, name).details).toEqual(['Change $0.50, waiting to be planted.', 'In your Seed Vault wallet.'])
+    expect(swapRow({ ...swap, roundupCents: 0, walletPubkey: other }, name).details).toEqual(['No spare change on a whole-dollar swap.', 'In FdPp...YjB6.'])
+    expect(topUpRow({ ts: swap.ts, signature: 't', usdcRaw: '5000000' }, true).details).toEqual(['From SOL in your Seed Vault wallet. No Sprouts fee.'])
+  })
+})
