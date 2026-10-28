@@ -1,0 +1,22 @@
+Sprouts
+Copyright 2026 donlucas (sprouts.money)
+
+Artwork and brand
+The garden artwork, plant and coin illustrations, splash and sign-in art,
+the Sprouts name, the Sprouts logo, and all other files under app/assets/
+and api/public/ are all rights reserved. No license to them is granted by
+any LICENSE file in this repository.
+
+Earlier app/LICENSE
+Until 2026-10-28, app/LICENSE was an unmodified copy of the Apache License
+2.0 that came with the expo-kit-wallet starter template the app was
+scaffolded from. It was retained in error. It was never intended to apply
+to the artwork, the brand assets, or any code written for Sprouts, and no
+rights in those materials were granted under it.
+
+Third-party material
+Portions of app/ are derived from the expo-kit-wallet starter template
+(Apache License 2.0). Files under app/.agents/ and app/.claude/ include
+third-party content, such as Solana Mobile's agent skills, under their
+original licenses. Third-party dependencies are governed by their own
+licenses. None of this material is relicensed by this repository.

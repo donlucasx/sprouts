@@ -50,3 +50,7 @@ Install the APK on the Seeker from the EAS build page (`app/BUILDS.md` lists eve
 ## Spikes
 
 See `api/spikes/RESULTS.md` for the three day-one proofs: staking into another user's position with only the payer's signature, Jupiter quote and swap-instructions with a free key, and one real ten-cent planting end to end.
+
+## License
+
+The leash program (`leash/`) is Apache-2.0. The app and API code (`app/`, `api/`) are FSL-1.1-ALv2: free to read, run and review, not to compete with Sprouts, and each release becomes Apache-2.0 after two years. The artwork and brand are all rights reserved. Details in [LICENSE.md](LICENSE.md) and [NOTICE](NOTICE).
