@@ -105,6 +105,25 @@ export function topUpRow(t: TopUp, named = false): ActivityRow {
   return { key: `tu-${t.signature}`, ts: t.ts, label: `Added ${formatUsd(Number(BigInt(t.usdcRaw) / 10_000n))} of USDC`, amount: null, details: [named ? TOPUP_NOTE_NAMED : TOPUP_NOTE], signature: t.signature }
 }
 
+/**
+ * 10-28 (his note: "revoked wallets should appear on the activity tab"): a wallet linked or revoked, always named (the row is about the
+ * wallet); a revoke says why, and one the user signed opens its transaction.
+ */
+type WalletEvent = NonNullable<ActivityResponse['wallets']>[number]
+export const WALLET_LINE = {
+  linked: 'Its swaps round up into your garden.',
+  user: "You revoked Sprouts' approval. Nothing in your garden moved.",
+  approval: 'Its USDC approval was removed in the wallet.',
+  outside: 'It was unlinked outside the app.',
+} as const
+export function walletRow(e: WalletEvent, phone: string): ActivityRow {
+  const name = e.wallet === phone ? `your ${PHONE_WALLET}` : `${e.wallet.slice(0, 4)}...${e.wallet.slice(-4)}`
+  const base = { key: `w-${e.kind}-${e.wallet}-${e.ts}`, ts: e.ts, amount: null, signature: e.signature }
+  if (e.kind === 'linked') return { ...base, label: `Linked ${name}`, details: [WALLET_LINE.linked] }
+  if (e.why === 'user') return { ...base, label: `Unlinked ${name}`, details: [WALLET_LINE.user] }
+  return { ...base, label: `Stopped planting from ${name}`, details: [e.why === 'approval' ? WALLET_LINE.approval : WALLET_LINE.outside] }
+}
+
 /** R278: what the Yield Manager found; shown, never routed to. */
 export const FOUND_NOTE = 'Not used: Sprouts lends only on Kamino and Jupiter.'
 export function foundRow(f: FoundVenue): ActivityRow {
@@ -174,7 +193,7 @@ export function visibleRows<T>(rows: T[], open: boolean, limit = 5): { shown: T[
 }
 
 /** R450 (10-08): Activity as ONE list, newest first, each row tagged with its kind; the chips filter by kind. */
-export type ActivityKind = 'plant' | 'swap' | 'withdraw' | 'split' | 'move' | 'found' | 'topup'
+export type ActivityKind = 'plant' | 'swap' | 'withdraw' | 'split' | 'move' | 'found' | 'topup' | 'wallet'
 export type TaggedRow = { kind: ActivityKind; row: ActivityRow; walletAccount?: boolean }
 export const KIND_FILTERS: { value: 'all' | ActivityKind; label: string }[] = [
   { value: 'all', label: 'All' },
@@ -184,7 +203,7 @@ export const KIND_FILTERS: { value: 'all' | ActivityKind; label: string }[] = [
   { value: 'split', label: 'Split' },
 ]
 /** R480: the tag on each row, spelled out so no legend is needed (the colour comes from the screen); a split the AI made carries "AI". */
-export const KIND_TAG: Record<ActivityKind, string> = { plant: 'Plant', swap: 'Swap', withdraw: 'Withdraw', split: 'Split', move: 'Move', found: 'Found', topup: 'Top up' }
+export const KIND_TAG: Record<ActivityKind, string> = { plant: 'Plant', swap: 'Swap', withdraw: 'Withdraw', split: 'Split', move: 'Move', found: 'Found', topup: 'Top up', wallet: 'Wallet' }
 
 export function mergeRows(groups: Partial<Record<ActivityKind, { row: ActivityRow; walletAccount?: boolean }[]>>): TaggedRow[] {
   const all: TaggedRow[] = []

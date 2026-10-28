@@ -142,4 +142,6 @@ export type ActivityResponse = {
   found?: FoundVenue[];
   /** 10-27: the Add USDC top-ups that landed (usdcRaw: USDC base units, exactly what arrived); absent from an older API. */
   topUps?: { ts: string; signature: string; usdcRaw: string }[];
+  /** 10-28: links and revokes; absent from an older API. `why` on a revoke: the user, the USDC approval removed, or unlinked outside. */
+  wallets?: { ts: string; kind: 'linked' | 'revoked'; wallet: string; why: 'user' | 'approval' | 'outside' | null; signature: string | null }[];
 };
