@@ -96,7 +96,7 @@
       "favicon": "./assets/images/favicon.png",
       "output": "static"
     },
-    "version": "0.1.5",
+    "version": "0.1.6",
     "extra": {
       "router": {},
       "eas": {

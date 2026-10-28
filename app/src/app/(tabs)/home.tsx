@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { View, Pressable, RefreshControl, Image, useWindowDimensions } from 'react-native'
+import { AppState, View, Pressable, RefreshControl, Image, useWindowDimensions } from 'react-native'
 import { Link, Redirect, router, useFocusEffect } from 'expo-router'
 import { MaterialCommunityIcons } from '@expo/vector-icons'
 import { useMe, useInvalidateMe, toGardenInput } from '@/lib/me'
@@ -47,7 +47,7 @@ import { MoveCard } from '@/components/MoveCard'
 import { termsNeeded, termsSummary } from '@/lib/terms'
 import { arrivalLine, formatSkr, formatAsOf } from '@/lib/format'
 import { useSession } from '@/lib/session'
-import { gardenTotals, pauseState, pausedOnlyForNoUsdc, usdcNotice, coinRows, valueBlock, walletsLine, lastPlantingLine, staleLine, type CoinRow } from '@/lib/me-state'
+import { gardenTotals, pauseState, pausedOnlyForNoUsdc, stoppedNotice, usdcNotice, coinRows, valueBlock, walletsLine, lastPlantingLine, staleLine, type CoinRow } from '@/lib/me-state'
 import { FONT, radius, spacing, TARGET, useTheme } from '@/theme'
 
 /** R562: each row of Home's coin list leads with the coin's official round logo (lib/coin-icons), Phantom style. */
@@ -157,15 +157,26 @@ export default function Home() {
   }, [scene, screenW])
   // Coming back to Home reads again: a wallet linked on the web, a planting, a withdrawal show without a pull-down. Leaving it
   // forgets a failed watering and the greyed can's hint (audits/watering-ux, finding 10).
+  // 10-27 (his device note: "it did not know I had drained all the USDC. I had to force close the app"): coming back to the APP, not
+  // only to the tab (returning from the wallet app or another app keeps Home focused), reads the pot and the wallet's USDC again.
+  useEffect(() => {
+    const s = AppState.addEventListener('change', (st) => {
+      if (st !== 'active') return
+      void refetch()
+      void queryClient.invalidateQueries({ queryKey: ['me-usdc'] })
+    })
+    return () => s.remove()
+  }, [refetch, queryClient])
   useFocusEffect(
     useCallback(() => {
       void refetch()
+      void queryClient.invalidateQueries({ queryKey: ['me-usdc'] })
       setLanded((n) => n + 1)
       return () => {
         setFailed(false)
         setNudged(false)
       }
-    }, [refetch]),
+    }, [refetch, queryClient]),
   )
 
   /**
@@ -225,6 +236,7 @@ export default function Home() {
   const usdcCents = usdcRead?.usdcRaw != null ? Number(BigInt(usdcRead.usdcRaw) / 10_000n) : null
   const low = topUp.phoneCents === null ? lowUsdcLine(usdcCents, avg) : null
   const notice = usdcNotice(me, { usdcCents, low: low !== null })
+  const stopped = stoppedNotice(me)
   // R96, R184 and R186: the one line and the can decided together, so they always agree; the can is in colour only while a bud waits.
   // R186: the Next planting row draws inside the garden (directly under it, the can at its bar's end). R199: the line rides in that
   // row too, tucked into the paper under the bar beside the can (WatcherLine's `tuck`).
@@ -312,6 +324,22 @@ export default function Home() {
             </ThemedText>
           ))}
           {notice.topUp ? <TopUpButton compact user={me.user.pubkey} cents={topUp.phoneCents ?? 500} done={TOPUP.done} avgDailyCents={avg} offers={usdcRead?.topUpCents ?? null} /> : null}
+        </View>
+      ) : null}
+      {stopped ? (
+        <View style={{ backgroundColor: colors.warningSurface, borderColor: colors.warning, borderWidth: 1, borderRadius: radius.lg, borderCurve: 'continuous', padding: spacing.md, gap: spacing.sm }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+            <MaterialCommunityIcons name="link-variant-off" size={20} color={colors.warning} />
+            <ThemedText variant="heading" style={{ flex: 1, color: colors.warning }}>
+              {stopped.title}
+            </ThemedText>
+          </View>
+          {stopped.lines.map((line) => (
+            <ThemedText key={line} style={{ fontSize: 14, lineHeight: 20 }}>
+              {line}
+            </ThemedText>
+          ))}
+          <Button title={stopped.button} onPress={() => router.push('/connect')} />
         </View>
       ) : null}
       {pause.shown && !pause.on && !pausedOnlyForNoUsdc(me.wallets) ? (
