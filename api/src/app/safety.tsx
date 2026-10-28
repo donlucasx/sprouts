@@ -1,56 +1,14 @@
 import { CAN, CANT, LINK_INTRO } from "@/lib/link-safety-copy";
 
-/**
- * His ask 10-22 ("simple yet informative", a short take on the app's About Sprouts questions): what Sprouts can and can't do with a
- * linked wallet, shown before anyone signs. Facts from app/src/lib/settings-copy.ts (PRECISE_GUARANTEE, ADMIN_KEY_LINE), relink.ts
- * (PUBLIC_GUARANTEE) and the README's verified-build line; change them there first. Used on the front page and on /link.
- */
+/** The leash program, for the OtterSec verified-build link. */
 const PROGRAM = "GyBmDLN72kg6xwAnZfj9c7fjeaJ3GvhkHNhFns83f8f7";
 
-export function Safety({ id, ink = "#2B2622", muted = "#7A746B", leaf = "#1E6B44", rule = "#E6DFD2" }: { id?: string; ink?: string; muted?: string; leaf?: string; rule?: string }) {
-  const h = { fontSize: 13, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase" as const, color: leaf, margin: "0 0 6px" };
-  const ul = { margin: 0, paddingLeft: 18, display: "grid", gap: 6 };
-  const a = { color: leaf };
-  return (
-    <section id={id} style={{ width: "100%", maxWidth: 440, textAlign: "left", fontSize: 15, lineHeight: 1.5, color: ink, display: "grid", gap: 18 }}>
-      <h2 style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-0.01em", margin: 0, textAlign: "center" }}>What Sprouts can and can&apos;t do</h2>
-      <div style={{ border: `1.5px solid ${rule}`, borderRadius: 16, padding: "16px 18px", background: "#fff", display: "grid", gap: 14 }}>
-        <div>
-          <p style={h}>Sprouts can</p>
-          <ul style={ul}>
-            <li>Plant up to $5 of USDC a day from each linked wallet, only into your own savings.</li>
-          </ul>
-        </div>
-        <div>
-          <p style={h}>Sprouts can&apos;t</p>
-          <ul style={ul}>
-            <li>Send your money anywhere else. Our on-chain program blocks it.</li>
-            <li>Take more than $5 a day, even if our server is hacked.</li>
-            <li>Touch other tokens, or sell what&apos;s in your garden.</li>
-          </ul>
-        </div>
-      </div>
-      <div>
-        <p style={h}>Before you link</p>
-        <ul style={ul}>
-          <li>Keep a few dollars of USDC in the wallet. Round-ups are paid from it.</li>
-          <li>Revoke any time in the app or at <a href="/revoke" style={a}>sprouts.money/revoke</a>.</li>
-        </ul>
-      </div>
-      {/* 10-27 (his note): centred */}
-      <p style={{ fontSize: 13, color: muted, margin: 0, textAlign: "center" }}>
-        <a href="https://github.com/donlucasx/sprouts" style={a}>Open source</a> and{" "}
-        <a href={`https://verify.osec.io/status/${PROGRAM}`} style={a}>verified by OtterSec</a>.
-      </p>
-    </section>
-  );
-}
-
 /**
- * His ask 10-28: the disclosure under the code box on /link, in the app's Link a wallet copy and format (a line, then one card of
- * checks and crosses). The longer Safety box stays on /faqs.
+ * What Sprouts can and can't do with a linked wallet, on /link (under the code box) and /faqs. His asks 10-28: the app's Link a wallet
+ * copy and format (a line, then one card of checks and crosses), and "match it so the messaging is always the same", so the lines live
+ * in lib/link-safety-copy.ts and the app's test checks they match. Was a longer box (his ask 10-22).
  */
-export function LinkSafety({ ink = "#2B2622", muted = "#7A746B", leaf = "#1E6B44", rule = "#E6DFD2" }: { ink?: string; muted?: string; leaf?: string; rule?: string }) {
+export function Safety({ ink = "#2B2622", muted = "#7A746B", leaf = "#1E6B44", rule = "#E6DFD2" }: { ink?: string; muted?: string; leaf?: string; rule?: string }) {
   const a = { color: leaf };
   const mark = (ok: boolean, text: string) => (
     <li key={text} style={{ display: "flex", gap: 10 }}>
