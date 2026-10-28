@@ -4,7 +4,7 @@ import { Albert_Sans, Outfit } from "next/font/google";
 import { call } from "../call";
 import { useWallets, WalletButtons } from "../wallet-picker";
 import { connectWith, signWith, type StdWallet } from "@/lib/wallet-choice";
-import { ApprovalWarning, Safety } from "../safety";
+import { ApprovalWarning, LinkSafety } from "../safety";
 import { SiteFooter, SiteHeader } from "../site-chrome";
 
 /** 10-16 (his note "too much text, simplify, and brand the page"): the splash's paper, ink and Outfit, the deck's leaf green and Albert Sans. */
@@ -153,7 +153,8 @@ export default function LinkPage() {
         {state === "done" && usdcNote ? <p className="lk-usdc">{usdcNote}</p> : null}
 
         {/* his ask 10-22: the boundaries open, before any wallet is asked (was a collapsed details) */}
-        <div style={{ marginTop: 28 }}><Safety ink={ink} muted={muted} leaf={leaf} rule={rule} /></div>
+        {/* his ask 10-28: the app's Link a wallet copy and format */}
+        <div style={{ marginTop: 28, width: "100%" }}><LinkSafety ink={ink} muted={muted} leaf={leaf} rule={rule} /></div>
       </div>
       <SiteFooter />
     </main>
