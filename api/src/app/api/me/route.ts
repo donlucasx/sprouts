@@ -113,8 +113,10 @@ export async function GET(request: Request) {
   };
   // 10-27: a wallet Sprouts stopped on its own (its USDC approval gone, or its delegation gone outside the app) says so, so Home can ask
   // for a re-link; one the user revoked in the app or on sprouts.money/revoke ("by: user") stays quiet. The newest revoke of each wallet.
+  // 10-27 (his Seeker on 0.1.6, wallet 9ZKi: an old puller link, revoked 10-07, shown as "unlinked outside the app"): a puller link
+  // stopped planting at go-live (R297) and a re-link makes a new leash link, so its revoke is history and stays quiet too.
   const stoppedOf = (w: (typeof wallets)[number]): "approval" | "outside" | null => {
-    if (w.status !== "revoked") return null;
+    if (w.status !== "revoked" || w.linkModel !== "leash") return null;
     const e = revokeEvents.find((x) => x.walletPubkey === w.pubkey);
     const by = (e?.detail as { by?: unknown } | null)?.by;
     if (!e || by === "user") return null;
