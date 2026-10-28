@@ -47,6 +47,7 @@ export default function Settings() {
   const [proNote, setProNote] = useState(false)
   const [taxError, setTaxError] = useState<string | null>(null)
   const { data: me } = useMe()
+  const liveWallets = (me?.wallets ?? []).filter((w) => w.status !== 'revoked')
   const { session, setSession } = useSession()
   // The kit's cached wallet authorization goes with the session: a stale token is declined by Solflare (-1) on the next sign-in or transaction (10-01).
   const { disconnect } = useMobileWallet()
@@ -177,16 +178,16 @@ export default function Settings() {
       </Card>
       <Card>
         <ThemedText variant="heading">Linked wallets</ThemedText>
-        {me && me.wallets.length === 0 ? <ThemedText tone="secondary">No wallet linked yet.</ThemedText> : null}
-        {me?.wallets.map((w) => (
+        {/* 10-28 (his note: an old revoked wallet clutters the list): revoked wallets are hidden; a stopped one has Home's re-link card,
+            and its plantings stay in Activity */}
+        {me && liveWallets.length === 0 ? <ThemedText tone="secondary">No wallet linked yet.</ThemedText> : null}
+        {liveWallets.map((w) => (
           <View key={w.pubkey} style={{ gap: spacing.sm, paddingVertical: spacing.xs }}>
             <ThemedText numeric>{formatWallet(w)}</ThemedText>
-            {w.status !== 'revoked' ? (
-              <View style={{ flexDirection: 'row', gap: spacing.sm }}>
-                <Button title={w.status === 'paused' ? 'Resume' : 'Pause'} accessibilityLabel={`${w.status === 'paused' ? 'Resume' : 'Pause'} wallet ${w.pubkey.slice(0, 4)}...${w.pubkey.slice(-4)}`} kind="quiet" loading={walletBusy} onPress={() => pauseOrResume(w)} />
-                <Button title="Revoke" accessibilityLabel={`Revoke wallet ${w.pubkey.slice(0, 4)}...${w.pubkey.slice(-4)}`} kind="danger" loading={walletBusy} onPress={() => revoke(w.pubkey)} />
-              </View>
-            ) : null}
+            <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+              <Button title={w.status === 'paused' ? 'Resume' : 'Pause'} accessibilityLabel={`${w.status === 'paused' ? 'Resume' : 'Pause'} wallet ${w.pubkey.slice(0, 4)}...${w.pubkey.slice(-4)}`} kind="quiet" loading={walletBusy} onPress={() => pauseOrResume(w)} />
+              <Button title="Revoke" accessibilityLabel={`Revoke wallet ${w.pubkey.slice(0, 4)}...${w.pubkey.slice(-4)}`} kind="danger" loading={walletBusy} onPress={() => revoke(w.pubkey)} />
+            </View>
           </View>
         ))}
         <ThemedText variant="caption" tone="secondary">
