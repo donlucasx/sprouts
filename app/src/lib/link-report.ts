@@ -5,13 +5,14 @@ import { isSessionDropped, isWalletDeclined } from './wallet-errors'
 /**
  * 10-31 (his "add logging for failed sign-ins and links"): the server never hears about a link that stops in the wallet (the 10-30
  * sweep: two Seeker owners fetched the approval and stopped, with no trace). The app reports where it stopped and what it saw to
- * POST /api/link/report, best effort. An API answer is not reported: the route that gave it already recorded it.
+ * POST /api/link/report, best effort. An API answer is not reported: the route that gave it already recorded it (status 0, no answer, is).
  */
 export type LinkStep = 'new' | 'approval' | 'sign' | 'confirm'
 export type LinkFailure = { step: LinkStep; reason: 'declined' | 'dropped' | 'refused' | 'other'; error: string; wallet?: string }
 
 export function linkFailure(step: LinkStep, e: unknown, wallet?: string): LinkFailure | null {
-  if (e instanceof ApiError) return null
+  // An API answer is the route's to record; status 0 is no answer at all (api.ts: the request may never have arrived), so it is reported (Kimi MED-2).
+  if (e instanceof ApiError && e.status !== 0) return null
   const reason = isSessionDropped(e) ? 'dropped' : isWalletDeclined(e) ? 'declined' : e instanceof SignRefused ? 'refused' : 'other'
   const error = (e instanceof Error ? `${e.name}: ${e.message}` : String(e)).slice(0, 200)
   return { step, reason, error, ...(wallet ? { wallet } : {}) }

@@ -1,5 +1,5 @@
 import { getRepo } from "@/db/repo";
-import { errorText } from "./redact";
+import { errorText, redact } from "./redact";
 
 /**
  * 10-31 (his "add logging for failed sign-ins and links"): the 10-30 sweep found Seeker owners holding USDC who never linked, and a
@@ -29,7 +29,8 @@ export function withFailureLog<A extends unknown[]>(kind: Kind, step: string, wh
       throw e;
     }
     if (res.status >= 400 && res.status !== 429) {
-      const error = String(((await res.clone().json().catch(() => ({}))) as { error?: unknown }).error ?? "");
+      // Kimi LOW-2: a body's text is redacted like a throw's, in case a route ever quotes an upstream error.
+      const error = redact(String(((await res.clone().json().catch(() => ({}))) as { error?: unknown }).error ?? ""));
       if (!(res.status === 400 && error === "Bad request.")) await recordFailure(kind, step, { status: res.status, error }, () => who(copy, { status: res.status, error }, ...rest));
     }
     return res;

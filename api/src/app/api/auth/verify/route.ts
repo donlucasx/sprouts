@@ -11,6 +11,7 @@ import { readPosition, sharePrice } from "@/lib/staking";
 import { address } from "@solana/kit";
 import { TERMS_VERSION } from "@/lib/terms";
 import { addressOrNull, withFailureLog } from "@/lib/failure-log";
+import { clientIp, rateLimited } from "@/lib/auth-guard";
 
 export const runtime = "nodejs";
 
@@ -31,6 +32,8 @@ const Body = z.object({
  * Every entitlement decision happens here, never on the phone.
  */
 async function verify(request: Request) {
+  // 10-31 (Kimi MED-1): a failed verify now writes an event, so an anonymous loop is slowed here like the nonce route (a 429 is not recorded).
+  if (rateLimited(`verify:${clientIp(request)}`, 20)) return NextResponse.json({ error: "Too many requests. Try again in a minute." }, { status: 429 });
   const parsed = Body.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Bad request." }, { status: 400 });
   const { input, output } = parsed.data;
@@ -81,7 +84,8 @@ async function verify(request: Request) {
  */
 async function signInWho(req: Request, f: { status: number; error: string }) {
   const claimed = addressOrNull(((await req.json().catch(() => null)) as { output?: { address?: unknown } } | null)?.output?.address);
-  const verified = f.status === 401 ? f.error !== "The signature did not verify." : f.status === 403 || f.status === 409;
+  // Kimi LOW-1: a 401 counts as verified only on the nonce-expired text, so a reworded message fails safe (anonymous), never open.
+  const verified = f.status === 401 ? f.error === "This sign-in request expired. Try again." : f.status === 403 || f.status === 409;
   const known = verified && claimed !== null && (await (await getRepo()).getUser(claimed)) !== null;
   return known ? { userPubkey: claimed, walletPubkey: null } : { userPubkey: null, walletPubkey: claimed };
 }
