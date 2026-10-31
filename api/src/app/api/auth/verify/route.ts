@@ -10,6 +10,7 @@ import { issueSession } from "@/lib/session";
 import { readPosition, sharePrice } from "@/lib/staking";
 import { address } from "@solana/kit";
 import { TERMS_VERSION } from "@/lib/terms";
+import { addressOrNull, withFailureLog } from "@/lib/failure-log";
 
 export const runtime = "nodejs";
 
@@ -29,7 +30,7 @@ const Body = z.object({
  * Step two of sign-in: verify the signature, consume the nonce, require a Genesis Token (Seeker or Saga, R86), register the phone, issue a session.
  * Every entitlement decision happens here, never on the phone.
  */
-export async function POST(request: Request) {
+async function verify(request: Request) {
   const parsed = Body.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Bad request." }, { status: 400 });
   const { input, output } = parsed.data;
@@ -73,3 +74,11 @@ export async function POST(request: Request) {
   // One live session per wallet per device (R84): the device is the client's own installation id (review I5), never the Genesis mint.
   return NextResponse.json({ token: await issueSession(output.address, parsed.data.device ?? "unnamed"), skrName, sgtMint: genesis.mint });
 }
+
+/** 10-31: who a failed sign-in was. The address is someone's only once the signature verified: before that it is only claimed. */
+async function signInWho(req: Request, f: { status: number; error: string }) {
+  const claimed = addressOrNull(((await req.json().catch(() => null)) as { output?: { address?: unknown } } | null)?.output?.address);
+  const verified = f.status === 401 ? f.error !== "The signature did not verify." : f.status === 403 || f.status === 409;
+  return verified ? { userPubkey: claimed, walletPubkey: null } : { userPubkey: null, walletPubkey: claimed };
+}
+export const POST = withFailureLog("signin_failed", "verify", signInWho, verify);
