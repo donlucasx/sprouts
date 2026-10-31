@@ -3,6 +3,7 @@ import {
   createKeyPairSignerFromPrivateKeyBytes, createSolanaRpcSubscriptions, createTransactionMessage, getTransactionEncoder, pipe,
   sendAndConfirmTransactionFactory, setTransactionMessageFeePayerSigner, setTransactionMessageLifetimeUsingBlockhash,
   signTransactionMessageWithSigners, type Address, type Blockhash, type Instruction, type TransactionSigner,
+  getSignatureFromTransaction, isSolanaError, SOLANA_ERROR__JSON_RPC__SERVER_ERROR_SEND_TRANSACTION_PREFLIGHT_FAILURE, type Signature,
 } from "@solana/kit";
 import { getSetComputeUnitLimitInstruction, getSetComputeUnitPriceInstruction } from "@solana-program/compute-budget";
 import { PublicKey, type Signer, type TransactionInstruction } from "@solana/web3.js";
@@ -226,11 +227,48 @@ function message(payer: TransactionSigner, ixs: Instruction[], lifetime: { block
 /** The serialized size of an unsigned v0 tx (every signature slot counts its 64 bytes). */
 const sizeOf = (payer: TransactionSigner, ixs: Instruction[]) => getTransactionEncoder().encode(compileTransaction(message(payer, ixs, SIZING_LIFETIME))).length;
 
-/** Sends the pre-txs in order and waits for each (a later one needs the earlier one's account). */
-export async function sendPriceTxs(txs: SignedTx[]): Promise<void> {
+/**
+ * A refused preflight is retried this many times, waiting PREFLIGHT_WAIT_MS x the attempt between tries (1 + 2 + 3 s at most, inside
+ * FRESH_MARGIN_S; a price that still ages out is refused by postedPriceRefusal and the leash, so a slow retry skips, never mis-prices).
+ * Measured 10-29 (BTDG, SKR): pre-tx 1 confirmed, then the node that simulated pre-tx 2 had not seen it yet and found the encoded VAA
+ * still System-owned (receiver WrongVaaOwner 6013): a lagging read, not a bad tx, so the same signed tx is sent again.
+ */
+export const PREFLIGHT_RETRIES = 3;
+export const PREFLIGHT_WAIT_MS = 1_000;
+
+export type PriceTxDeps = {
+  send: (tx: SignedTx) => Promise<void>;
+  /** True when the signature already landed without an error (confirmed or finalized): a resend would only fail as AlreadyProcessed. */
+  landed: (sig: Signature) => Promise<boolean>;
+  sleep: (ms: number) => Promise<void>;
+};
+
+function livePriceTxDeps(): PriceTxDeps {
   const send = sendAndConfirmTransactionFactory({ rpc: rpc(), rpcSubscriptions: createSolanaRpcSubscriptions(config().heliusRpcUrl.replace("https://", "wss://")) });
+  return {
+    send: async (tx) => { assertIsTransactionWithBlockhashLifetime(tx); await send(tx, { commitment: "confirmed" }); },
+    landed: async (sig) => {
+      const s = (await rpc().getSignatureStatuses([sig]).send()).value[0];
+      return !!s && s.err === null && (s.confirmationStatus === "confirmed" || s.confirmationStatus === "finalized");
+    },
+    sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
+  };
+}
+
+/** Sends the pre-txs in order and waits for each (a later one needs the earlier one's account). Only a refused preflight is retried:
+ *  any other failure (an expired blockhash, a tx that landed with an error, a timeout) throws at once, as before. */
+export async function sendPriceTxs(txs: SignedTx[], deps: PriceTxDeps = livePriceTxDeps()): Promise<void> {
   for (const tx of txs) {
-    assertIsTransactionWithBlockhashLifetime(tx);
-    await send(tx, { commitment: "confirmed" });
+    for (let attempt = 1; ; attempt++) {
+      try {
+        await deps.send(tx);
+        break;
+      } catch (e) {
+        if (!isSolanaError(e, SOLANA_ERROR__JSON_RPC__SERVER_ERROR_SEND_TRANSACTION_PREFLIGHT_FAILURE)) throw e;
+        if (await deps.landed(getSignatureFromTransaction(tx))) break;
+        if (attempt > PREFLIGHT_RETRIES) throw e;
+        await deps.sleep(PREFLIGHT_WAIT_MS * attempt);
+      }
+    }
   }
 }
