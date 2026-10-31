@@ -199,7 +199,7 @@ export async function getRepo(): Promise<Repo> {
   if (forTests) return forTests;
   if (!live) {
     const { SupabaseRepo } = await import("./supabase");
-    const { alertFounder, founderAlertFor } = await import("@/lib/founder-alert");
+    const { alertAllowed, alertFounder, founderAlertFor } = await import("@/lib/founder-alert");
     const repo = new SupabaseRepo();
     // 10-26: every event write that someone should act on (a pause, a revoke, a failed planting, a stopped run) also reaches the
     // founder's webhook, here at the one place they are all written. After the write, and never failing it.
@@ -207,7 +207,7 @@ export async function getRepo(): Promise<Repo> {
     repo.addEvent = async (e) => {
       await write(e);
       const text = founderAlertFor(e);
-      if (text) await alertFounder(text);
+      if (text && alertAllowed(e)) await alertFounder(text);
     };
     live = repo;
   }

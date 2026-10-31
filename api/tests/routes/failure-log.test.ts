@@ -16,7 +16,7 @@ import { POST as newCode } from "@/app/api/link/new/route";
 import { POST as confirm } from "@/app/api/link/confirm/route";
 import { POST as report } from "@/app/api/link/report/route";
 import { recordFailure, withFailureLog } from "@/lib/failure-log";
-import { founderAlertFor } from "@/lib/founder-alert";
+import { alertAllowed, founderAlertFor } from "@/lib/founder-alert";
 
 let user: KeyPairSigner;
 const b64 = (b: Uint8Array) => Buffer.from(b).toString("base64");
@@ -49,13 +49,22 @@ beforeEach(() => {
 const kinds = () => repo.events.map((e) => e.kind);
 
 describe("signin_failed", () => {
-  it("a wallet with no Genesis Token: recorded against the verified address, and alerted", async () => {
+  it("a stranger with no Genesis Token: recorded, but anonymous (a fresh key signs for free), so no alert", async () => {
     genesisMock.mockImplementation(async () => null);
     const res = await verify(json("http://x/api/auth/verify", await signIn(repo)));
     expect(res.status).toBe(403);
     const e = repo.events.find((x) => x.kind === "signin_failed")!;
-    expect(e).toMatchObject({ userPubkey: user.address, walletPubkey: null, detail: { step: "verify", status: 403 } });
+    expect(e).toMatchObject({ userPubkey: null, walletPubkey: user.address, detail: { step: "verify", status: 403 } });
     expect((e.detail as { error: string }).error).toMatch(/Genesis Token/);
+    expect(founderAlertFor(e)).toBeNull();
+  });
+
+  it("a REGISTERED user whose Genesis Token is gone: tied to them and alerted", async () => {
+    expect((await verify(json("http://x/api/auth/verify", await signIn(repo)))).status).toBe(200);
+    genesisMock.mockImplementation(async () => null);
+    expect((await verify(json("http://x/api/auth/verify", await signIn(repo)))).status).toBe(403);
+    const e = repo.events.find((x) => x.kind === "signin_failed")!;
+    expect(e).toMatchObject({ userPubkey: user.address, walletPubkey: null });
     expect(founderAlertFor(e)).toMatch(/^Sign-in failed/);
   });
 
@@ -108,7 +117,17 @@ describe("POST /api/link/report (the app's own view of a failed link)", () => {
     const token = await issueSession("U2222222222222222222222222222222", "M");
     const res = await report(json("http://x/api/link/report", { step: "sign", reason: "dropped", error: "CancellationException", wallet: WALLET }, { authorization: `Bearer ${token}` }));
     expect(res.status).toBe(200);
-    expect(repo.events.find((x) => x.kind === "link_failed")).toMatchObject({ userPubkey: "U2222222222222222222222222222222", walletPubkey: WALLET, detail: { step: "sign", from: "app", error: "dropped: CancellationException" } });
+    const e = repo.events.find((x) => x.kind === "link_failed")!;
+    expect(e).toMatchObject({ userPubkey: "U2222222222222222222222222222222", walletPubkey: WALLET, detail: { step: "sign", from: "app", reason: "dropped", error: "CancellationException" } });
+    expect(founderAlertFor(e)).toBe("Link stopped in the app at sign: wallet 4wiD...EbJ1 (user U222...2222): dropped");
+  });
+
+  it("the app's own text never reaches the alert, whatever it says", async () => {
+    const token = await issueSession("U4444444444444444444444444444444", "M");
+    await report(json("http://x/api/link/report", { step: "sign", reason: "other", error: "@everyone free SOL https://evil.example" }, { authorization: `Bearer ${token}` }));
+    const e = repo.events.find((x) => x.kind === "link_failed")!;
+    expect((e.detail as { error: string }).error).toContain("@everyone");
+    expect(founderAlertFor(e)).not.toMatch(/everyone|evil/);
   });
 
   it("not signed in, or a bad body: nothing recorded", async () => {
@@ -133,5 +152,17 @@ describe("the wrapper never changes the answer", () => {
     const h = withFailureLog("link_failed", "t", async () => ({ userPubkey: "U", walletPubkey: null }), async () => new Response(JSON.stringify({ error: "Too many requests." }), { status: 429 }));
     await h(new Request("http://x", { method: "POST", body: "{}" }));
     expect(kinds()).toEqual([]);
+  });
+});
+
+describe("alertAllowed: a caller cannot flood the webhook", () => {
+  it("one sign-in or link failure alert per user per kind per 10 minutes; other kinds always pass", () => {
+    const e = { kind: "link_failed" as const, userPubkey: "UTHROTTLE" };
+    expect(alertAllowed(e, 1_000_000)).toBe(true);
+    expect(alertAllowed(e, 1_000_000 + 9 * 60_000)).toBe(false);
+    expect(alertAllowed({ kind: "signin_failed", userPubkey: "UTHROTTLE" }, 1_000_000 + 60_000)).toBe(true);
+    expect(alertAllowed(e, 1_000_000 + 10 * 60_000)).toBe(true);
+    expect(alertAllowed({ kind: "pull_failed", userPubkey: "UTHROTTLE" }, 1_000_000)).toBe(true);
+    expect(alertAllowed({ kind: "pull_failed", userPubkey: "UTHROTTLE" }, 1_000_001)).toBe(true);
   });
 });

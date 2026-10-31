@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 /** What the app saw, in its own words: the step it stopped at and the error it showed (or the wallet's). Short on purpose. */
 const Body = z.object({
   step: z.enum(["new", "approval", "sign", "confirm"]),
-  reason: z.enum(["declined", "dropped", "refused", "api", "other"]),
+  reason: z.enum(["declined", "dropped", "refused", "other"]),   // app/src/lib/link-report.ts; an API answer is never reported
   error: z.string().max(200),
   wallet: z.string().max(44).optional(),
 });
@@ -25,6 +25,7 @@ export async function POST(request: Request) {
   const parsed = Body.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Bad request." }, { status: 400 });
   const { step, reason, error, wallet } = parsed.data;
-  await recordFailure("link_failed", step, { status: 0, error: `${reason}: ${error}`, from: "app" }, async () => ({ userPubkey: session.pubkey, walletPubkey: addressOrNull(wallet) }));
+  // The error text is the app's (client-written): stored for reading, never put in an alert (founder-alert.ts sends step and reason only).
+  await recordFailure("link_failed", step, { status: 0, error, reason, from: "app" }, async () => ({ userPubkey: session.pubkey, walletPubkey: addressOrNull(wallet) }));
   return NextResponse.json({ ok: true });
 }
