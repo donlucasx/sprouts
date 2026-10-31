@@ -37,10 +37,10 @@ export function withFailureLog<A extends unknown[]>(kind: Kind, step: string, wh
 }
 
 /** Writes one failure event; never throws (the request's own answer stands). */
-export async function recordFailure(kind: Kind, step: string, f: { status: number; error: string; from?: string }, who: () => Promise<FailureWho>): Promise<void> {
+export async function recordFailure(kind: Kind, step: string, f: { status: number; error: string; from?: string; reason?: string }, who: () => Promise<FailureWho>): Promise<void> {
   try {
     const w = await who();
-    await (await getRepo()).addEvent({ kind, userPubkey: w.userPubkey, walletPubkey: w.walletPubkey, detail: { step, status: f.status, error: f.error.slice(0, 200), ...(f.from ? { from: f.from } : {}) } });
+    await (await getRepo()).addEvent({ kind, userPubkey: w.userPubkey, walletPubkey: w.walletPubkey, detail: { step, status: f.status, error: f.error.slice(0, 200), ...(f.from ? { from: f.from } : {}), ...(f.reason ? { reason: f.reason } : {}) } });
   } catch (e) {
     console.error(`${kind} not recorded: ${e instanceof Error ? e.name : "error"}`);
   }

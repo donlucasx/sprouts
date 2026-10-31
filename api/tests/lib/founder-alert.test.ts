@@ -56,7 +56,7 @@ describe("alertFounder", () => {
     vi.stubGlobal("fetch", f);
     vi.stubEnv("ALERT_WEBHOOK_URL", "https://discord.com/api/webhooks/1/abc");
     await alertFounder("Paused");
-    expect(JSON.parse((f.mock.calls[0] as unknown as [string, RequestInit])[1].body as string)).toEqual({ content: "Paused", text: "Paused" });
+    expect(JSON.parse((f.mock.calls[0] as unknown as [string, RequestInit])[1].body as string)).toEqual({ content: "Paused", text: "Paused", allowed_mentions: { parse: [] } });
     vi.stubEnv("ALERT_WEBHOOK_URL", "https://ntfy.sh/some-topic");
     await alertFounder("Paused");
     expect((f.mock.calls[1] as unknown as [string, RequestInit])[1].body).toBe("Paused");

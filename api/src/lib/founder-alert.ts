@@ -17,7 +17,8 @@ export async function alertFounder(text: string): Promise<void> {
       method: "POST",
       headers: { "content-type": ntfy ? "text/plain" : "application/json" },
       // Discord reads `content` (2000 characters at most), Slack reads `text`.
-      body: ntfy ? text : JSON.stringify({ content: text.slice(0, 1900), text }),
+      // allowed_mentions: no @everyone, role or user ping, whatever a line quotes (security review 10-31).
+      body: ntfy ? text : JSON.stringify({ content: text.slice(0, 1900), text, allowed_mentions: { parse: [] } }),
       signal: AbortSignal.timeout(3_000),
     });
     if (!res.ok) console.error(`founder alert not delivered: HTTP ${res.status}`);
@@ -25,6 +26,24 @@ export async function alertFounder(text: string): Promise<void> {
     // The URL carries the webhook's secret: never logged.
     console.error(`founder alert not delivered: ${e instanceof Error ? e.name : "error"}`);
   }
+}
+
+const APP_STEPS = new Set(["new", "approval", "sign", "confirm"]);
+const APP_REASONS = new Set(["declined", "dropped", "refused", "other"]);
+
+/**
+ * 10-31 (security review): a sign-in or link failure is alerted at most once per user per kind in ALERT_WINDOW_MS (per function
+ * instance; the event itself is always written). Every other kind passes: those come from the run, not from a caller.
+ */
+const ALERT_WINDOW_MS = 10 * 60_000;
+const lastAlert = new Map<string, number>();
+export function alertAllowed(e: Pick<EventRow, "kind" | "userPubkey">, now = Date.now()): boolean {
+  if (e.kind !== "signin_failed" && e.kind !== "link_failed") return true;
+  const key = `${e.kind}:${e.userPubkey}`;
+  const last = lastAlert.get(key);
+  if (last !== undefined && now - last < ALERT_WINDOW_MS) return false;
+  lastAlert.set(key, now);
+  return true;
 }
 
 const short = (k: string | null) => (k ? `${k.slice(0, 4)}...${k.slice(-4)}` : "?");
@@ -56,7 +75,10 @@ export function founderAlertFor(e: Omit<EventRow, "id" | "ts">): string | null {
     case "signin_failed":
       return e.userPubkey ? `Sign-in failed: user ${short(e.userPubkey)}: ${String(d.status ?? "?")} ${clip(d.error)}` : null;
     case "link_failed":
-      return e.userPubkey ? `Link failed at ${String(d.step ?? "?")}${d.from === "app" ? " (app)" : ""}: ${who}: ${clip(d.error)}` : null;
+      if (!e.userPubkey) return null;
+      // An app report's text is client-written: only its two enum fields are sent (security review 10-31).
+      if (d.from === "app") return `Link stopped in the app at ${APP_STEPS.has(String(d.step)) ? String(d.step) : "?"}: ${who}: ${APP_REASONS.has(String(d.reason)) ? String(d.reason) : "?"}`;
+      return `Link failed at ${String(d.step ?? "?")}: ${who}: ${clip(d.error)}`;
     case "wallet_linked":
       return d.webhookAdded === false ? `Linked but NOT on the Helius webhook: ${who}. Its swaps are not being counted; add the address by hand.` : null;
     default:

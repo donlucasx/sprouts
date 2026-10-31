@@ -75,10 +75,14 @@ async function verify(request: Request) {
   return NextResponse.json({ token: await issueSession(output.address, parsed.data.device ?? "unnamed"), skrName, sgtMint: genesis.mint });
 }
 
-/** 10-31: who a failed sign-in was. The address is someone's only once the signature verified: before that it is only claimed. */
+/**
+ * 10-31: who a failed sign-in was. The address is someone's only once the signature verified AND it is a registered user: anyone can
+ * make a fresh key and sign (security review), so a stranger's failure (no Genesis Token, say) stays anonymous and is never alerted.
+ */
 async function signInWho(req: Request, f: { status: number; error: string }) {
   const claimed = addressOrNull(((await req.json().catch(() => null)) as { output?: { address?: unknown } } | null)?.output?.address);
   const verified = f.status === 401 ? f.error !== "The signature did not verify." : f.status === 403 || f.status === 409;
-  return verified ? { userPubkey: claimed, walletPubkey: null } : { userPubkey: null, walletPubkey: claimed };
+  const known = verified && claimed !== null && (await (await getRepo()).getUser(claimed)) !== null;
+  return known ? { userPubkey: claimed, walletPubkey: null } : { userPubkey: null, walletPubkey: claimed };
 }
 export const POST = withFailureLog("signin_failed", "verify", signInWho, verify);
