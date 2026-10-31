@@ -5,11 +5,11 @@ import { createSignInPayload, renderSignInMessage } from "@/lib/siws";
 import { issueSession } from "@/lib/session";
 import { generateKeyPairSigner, signBytes, getUtf8Encoder, type KeyPairSigner } from "@solana/kit";
 
-const { genesisMock } = vi.hoisted(() => ({ genesisMock: vi.fn(async (): Promise<unknown> => ({ mint: "GENESIS", kind: "seeker" })) }));
+const { genesisMock, limited } = vi.hoisted(() => ({ genesisMock: vi.fn(async (): Promise<unknown> => ({ mint: "GENESIS", kind: "seeker" })), limited: { on: false } }));
 vi.mock("@/lib/genesis", () => ({ verifyGenesisHolder: vi.fn(), verifyAnyGenesisHolder: (...a: unknown[]) => genesisMock(...(a as [])) }));
 vi.mock("@/lib/skr", () => ({ skrNameOf: vi.fn(async () => null) }));
 vi.mock("@/lib/staking", async (orig) => ({ ...(await orig<object>()), readPosition: vi.fn(async () => ({ shares: 0n, unstakingRaw: 0n, unstakeTs: null })), sharePrice: vi.fn(async () => 1_000_000_000n) }));
-vi.mock("@/lib/auth-guard", async (orig) => ({ ...(await orig<object>()), rateLimited: () => false }));
+vi.mock("@/lib/auth-guard", async (orig) => ({ ...(await orig<object>()), rateLimited: () => limited.on }));
 
 import { POST as verify } from "@/app/api/auth/verify/route";
 import { POST as newCode } from "@/app/api/link/new/route";
@@ -44,6 +44,7 @@ beforeEach(() => {
   repo = new MemoryRepo();
   setRepoForTests(repo);
   genesisMock.mockReset();
+  limited.on = false;
   genesisMock.mockImplementation(async () => ({ mint: "GENESIS", kind: "seeker" }));
 });
 const kinds = () => repo.events.map((e) => e.kind);
@@ -80,6 +81,18 @@ describe("signin_failed", () => {
     expect((await verify(json("http://x/api/auth/verify", { nope: 1 }))).status).toBe(400);
     expect((await verify(json("http://x/api/auth/verify", await signIn(repo)))).status).toBe(200);
     expect(kinds()).not.toContain("signin_failed");
+  });
+
+  it("verify is rate limited (Kimi MED-1), and a 429 writes nothing", async () => {
+    limited.on = true;
+    expect((await verify(json("http://x/api/auth/verify", await signIn(repo, { badSignature: true })))).status).toBe(429);
+    expect(kinds()).not.toContain("signin_failed");
+  });
+
+  it("a registered user's bad signature stays anonymous: only the nonce-expired 401 counts as verified (Kimi LOW-1)", async () => {
+    expect((await verify(json("http://x/api/auth/verify", await signIn(repo)))).status).toBe(200);
+    expect((await verify(json("http://x/api/auth/verify", await signIn(repo, { badSignature: true })))).status).toBe(401);
+    expect(repo.events.find((x) => x.kind === "signin_failed")).toMatchObject({ userPubkey: null, walletPubkey: user.address });
   });
 
   it("a throw is recorded as a 500 and still thrown", async () => {

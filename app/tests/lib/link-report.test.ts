@@ -15,6 +15,8 @@ describe('link failure reports (what the server cannot see)', () => {
 
   it('an API answer is left to the route that gave it, and the error is cut at 200 characters', () => {
     expect(linkFailure('approval', new ApiError(409, 'linked elsewhere'))).toBeNull()
+    // no answer at all (the request may never have reached the server): reported, it is exactly the drop-off nobody else sees
+    expect(linkFailure('confirm', new ApiError(0, 'unanswered'))).toMatchObject({ step: 'confirm', reason: 'other' })
     expect(linkFailure('sign', new Error('y'.repeat(500)))!.error).toHaveLength(200)
   })
 
