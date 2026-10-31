@@ -13,6 +13,7 @@ import { SUBSCRIPTIONS_PROGRAM, USDC_MINT } from "@/lib/constants";
 import { findSubscriptionAuthorityPda } from "@solana/subscriptions";
 import { ASSOCIATED_TOKEN_PROGRAM_ADDRESS, TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
 import { errorText } from "@/lib/redact";
+import { addressOrNull, linkOwner, withFailureLog } from "@/lib/failure-log";
 
 export const runtime = "nodejs";
 export const maxDuration = 60; // the delegation poll (up to 10 s) plus the send
@@ -33,7 +34,7 @@ async function leashDelegationPda(wallet: Address, garden: string, nonce: bigint
 }
 
 /** Links the wallet once its delegation is on chain: consumes the code, records the wallet, adds it to the swap webhook. */
-export async function POST(request: Request) {
+async function confirm(request: Request) {
   // Per caller IP (R207 #7): the confirm can hold a function for up to 10 s, so a loop from one address is slowed here.
   if (rateLimited(`link-confirm:${clientIp(request)}`, 20)) return NextResponse.json({ error: "Too many requests. Try again in a minute." }, { status: 429 });
   const parsed = Body.safeParse(await request.json().catch(() => null));
@@ -119,3 +120,10 @@ export async function POST(request: Request) {
   const user = await repo.getUser(link.userPubkey);
   return NextResponse.json({ linked: true, skrName: user?.skrName ?? null });
 }
+
+/** 10-31: a failed confirm, tied to the code's owner while the code is live. */
+async function confirmWho(req: Request) {
+  const b = (await req.json().catch(() => null)) as { code?: unknown; wallet?: unknown } | null;
+  return { userPubkey: await linkOwner(b?.code), walletPubkey: addressOrNull(b?.wallet) };
+}
+export const POST = withFailureLog("link_failed", "confirm", confirmWho, confirm);

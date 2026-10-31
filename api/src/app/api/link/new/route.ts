@@ -20,6 +20,10 @@ export async function POST(request: Request) {
   const code = newCode();
   const nonce = randomBytes(8).readBigUInt64LE();
   const expiresAt = new Date(Date.now() + FIFTEEN_MINUTES);
-  await (await getRepo()).putLinkCode({ code, userPubkey: session.pubkey, expiresAt, nonce });
+  const repo = await getRepo();
+  await repo.putLinkCode({ code, userPubkey: session.pubkey, expiresAt, nonce });
+  // 10-31: the start of a link, kept past the code's own purge (a day after expiry): with no wallet_linked after it, a drop-off.
+  await repo.addEvent({ userPubkey: session.pubkey, walletPubkey: null, kind: "link_started", detail: { expiresAt: expiresAt.toISOString() } })
+    .catch((e: unknown) => console.error(`link_started not recorded: ${e instanceof Error ? e.name : "error"}`));
   return NextResponse.json({ code, expiresAt: expiresAt.toISOString() });
 }

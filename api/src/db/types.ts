@@ -145,7 +145,10 @@ export type EventKind =
   | "relinked"
   | "terms_accepted"
   | "topup_sent"   // 10-27: written before a top-up is sent, so the swap booking never rounds it up (detail: signature, usdcRaw)
-  | "topped_up";   // 10-27: the top-up landed; Activity's row (detail: signature, usdcRaw, sentAt)
+  | "topped_up"   // 10-27: the top-up landed; Activity's row (detail: signature, usdcRaw, sentAt)
+  | "link_started"   // 10-31: a link code was made (the app's Approve or Another wallet); a link_started with no wallet_linked = a drop-off
+  | "link_failed"   // 10-31: a link route answered a failure or threw, or the app reported one it saw (detail: step, status, error, from)
+  | "signin_failed";   // 10-31: the sign-in verify answered a failure or threw (detail: step, status, error)
 
 export type EventRow = { id: number; userPubkey: string | null; walletPubkey: string | null; ts: Date; kind: EventKind; detail: unknown };
 

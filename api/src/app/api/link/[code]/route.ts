@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { addressOrNull, linkOwner, withFailureLog } from "@/lib/failure-log";
 import { address, createNoopSigner, pipe, createTransactionMessage, setTransactionMessageFeePayerSigner,
   setTransactionMessageLifetimeUsingBlockhash, appendTransactionMessageInstructions, compileTransaction,
   getBase64EncodedWireTransaction, type Address } from "@solana/kit";
@@ -23,7 +24,7 @@ const DAILY_CAP_RAW = 5_000_000n;
  * With no `?wallet=` it answers only `{ owner }`, the preview the page shows before connecting (R207 #5); every answer carries
  * `owner`, so the page can check the approval is for the garden the user confirmed.
  */
-export async function GET(request: Request, ctx: { params: Promise<{ code: string }> }) {
+async function getApproval(request: Request, ctx: { params: Promise<{ code: string }> }) {
   if (rateLimited(`link:${clientIp(request)}`)) return NextResponse.json({ error: "Too many requests. Try again in a minute." }, { status: 429 });
 
   const { code } = await ctx.params;
@@ -104,3 +105,9 @@ function simulationError(err: unknown, logs: readonly string[]): string {
   if (noSol) return "This wallet needs a little SOL first: about 0.01 SOL covers the one-time rent (refunded when you revoke) and the fee. Nothing was signed.";
   return `This approval would fail on chain (${text.slice(0, 120)}), so no wallet was asked to sign it. Try again, or get a new code.`;
 }
+
+/** 10-31: a failed approval fetch, tied to the code's owner while the code is live. */
+async function approvalWho(req: Request, _f: unknown, ctx: { params: Promise<{ code: string }> }) {
+  return { userPubkey: await linkOwner((await ctx.params).code), walletPubkey: addressOrNull(new URL(req.url).searchParams.get("wallet")) };
+}
+export const GET = withFailureLog("link_failed", "approval", approvalWho, getApproval);

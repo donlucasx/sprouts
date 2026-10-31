@@ -14,6 +14,7 @@ import { useInvalidateMe, useMe } from '@/lib/me'
 import { newlyLinked } from '@/lib/newly-linked'
 import { confirmWithRetries, LINK_NOT_ON_CHAIN_YET } from '@/lib/confirm-retry'
 import { useSession } from '@/lib/session'
+import { reportLinkFailure, type LinkFailure, type LinkStep } from '@/lib/link-report'
 import { APPROVAL_WARN_BODY, APPROVAL_WARN_TITLE, CAN, CANT, CODE_STEPS, LINK_FINISHING, LINK_INTRO, OTHER_WALLET_LINE, phoneUsdcNote } from '@/lib/safety-copy'
 import { TopUpButton } from '@/components/TopUp'
 import { TOPUP, TOPUP_DEFAULT_CENTS } from '@/lib/topup'
@@ -98,17 +99,23 @@ export default function Connect() {
     setApproving(true)
     setSigned(false)
     setError(null)
+    let step: LinkStep = 'new'
     try {
       const { code } = await api<{ code: string }>('/api/link/new', { method: 'POST', body: {} })
+      step = 'approval'
       const t = await api<{ transaction: string; cap: number }>(`/api/link/${code}?wallet=${session.pubkey}`)
+      step = 'sign'
       const signedTx = await makeSigner(signTransaction, { kind: 'link', user: session.pubkey })(t.transaction)
       setSigned(true)
+      step = 'confirm'
       await confirmLink(code, session.pubkey, signedTx)
       await invalidate()
       // 10-28 (his note): back to the garden, where a notice says the wallet linked until he taps OK
       router.replace({ pathname: '/home', params: { linked: session.pubkey } })
     } catch (e) {
       setError(e instanceof ApiError || e instanceof SignRefused ? e.message : isSessionDropped(e) ? DROPPED_NOTHING_SENT : 'The approval did not go through. Try again.')
+      // 10-31: where it stopped, for the drop-offs the server cannot see (a wallet closed or cancelled before signing)
+      reportLinkFailure((body: LinkFailure) => api('/api/link/report', { method: 'POST', body }), step, e, session.pubkey)
     } finally {
       setApproving(false)
     }

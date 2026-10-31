@@ -51,6 +51,12 @@ export function founderAlertFor(e: Omit<EventRow, "id" | "ts">): string | null {
       return `Venue move half done (redeemed, not deposited): ${who}. The money is back in the wallet, idle.`;
     case "run_stopped":
       return `Planting run STOPPED after ${String(d.after ?? "?")} build failures in a row (Jupiter or RPC outage?). Last wallet ${short(String(d.lastWallet ?? ""))}.`;
+    // 10-31: only a failure tied to someone real (a verified sign-in, a live link code, a signed-in app) has a userPubkey; the rest
+    // stay in the table unannounced, so an anonymous caller cannot flood the webhook (failure-log.ts).
+    case "signin_failed":
+      return e.userPubkey ? `Sign-in failed: user ${short(e.userPubkey)}: ${String(d.status ?? "?")} ${clip(d.error)}` : null;
+    case "link_failed":
+      return e.userPubkey ? `Link failed at ${String(d.step ?? "?")}${d.from === "app" ? " (app)" : ""}: ${who}: ${clip(d.error)}` : null;
     case "wallet_linked":
       return d.webhookAdded === false ? `Linked but NOT on the Helius webhook: ${who}. Its swaps are not being counted; add the address by hand.` : null;
     default:
