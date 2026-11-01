@@ -366,3 +366,20 @@ describe("stoppedNotice", async () => {
     expect(n.button).toBe("Link wallets")
   })
 })
+
+describe("showLinkPrompt (11-01, his ruling A: the green line only while no wallet is linked)", async () => {
+  const { showLinkPrompt } = await import("@/lib/me-state")
+  const PHONE = "HJCJKRQLV2HVKfe3sFdTF5jjBY1xfWgnK8cLcjH7qnHd", WEB = "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU"
+  const at = (wallets: { pubkey: string; status: string; stopped?: string | null }[]) => ({ user: { pubkey: PHONE }, wallets }) as never
+  it("shows with no wallets, or only wallets the user revoked", () => {
+    expect(showLinkPrompt(at([]))).toBe(true)
+    expect(showLinkPrompt(at([{ pubkey: WEB, status: "revoked", stopped: null }]))).toBe(true)
+  })
+  it("hides once any wallet is linked, active or paused", () => {
+    expect(showLinkPrompt(at([{ pubkey: PHONE, status: "active" }]))).toBe(false)
+    expect(showLinkPrompt(at([{ pubkey: PHONE, status: "paused" }]))).toBe(false)
+  })
+  it("hides when a wallet was stopped: its own amber notice already asks for the re-link", () => {
+    expect(showLinkPrompt(at([{ pubkey: PHONE, status: "revoked", stopped: "approval" }]))).toBe(false)
+  })
+})
