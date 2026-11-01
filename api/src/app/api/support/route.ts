@@ -6,10 +6,10 @@ import { requireSession, rateLimited } from "@/lib/auth-guard";
 
 export const runtime = "nodejs";
 
-export const SUPPORT_TOPICS = ["link", "planting", "withdraw", "idea", "other"] as const;
+const SUPPORT_TOPICS = ["link", "planting", "withdraw", "idea", "other"] as const;
 /** 11-01 (his ruling): replies go by email only, so the email is required. A day's cap keeps the table and the webhook quiet. */
-export const SUPPORT_DAILY_CAP = 5;
-export const SUPPORT_MESSAGE_MAX = 2000;
+const SUPPORT_DAILY_CAP = 5;
+const SUPPORT_MESSAGE_MAX = 2000;
 
 const Body = z.object({
   topic: z.enum(SUPPORT_TOPICS).nullable().optional(),
