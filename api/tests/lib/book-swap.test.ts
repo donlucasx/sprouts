@@ -169,6 +169,54 @@ describe("a swap Helius did not label SWAP", () => {
   });
 });
 
+// 11-01 (sweep): allimanncedric's Titan sell of 94 GKHg on 10-30 (4sBPdcyx…), as Helius parsed it: the token leaves the wallet,
+// the SOL comes back only as the wallet's balance change (Titan unwrapped it in its own account). It was never booked.
+describe("a Titan sell paid in SOL with no transfer to the wallet", () => {
+  const WSOL = "So11111111111111111111111111111111111111112";
+  const GKHG = "GKHgMEMEmintxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";
+  const titan = (over: Partial<HeliusEnhancedTx> = {}): HeliusEnhancedTx => ({
+    signature: "4sBPdcyxF8kdp9FmzMD9sZSfLztavu2EZJppDHLjxm6LpStzXKFdek5j4cN1JTD6taKvSFVBkLFCFtrycd5enNfg",
+    timestamp: 1793362272, type: "SWAP", feePayer: "WALLET", fee: 5001,
+    tokenTransfers: [
+      { fromUserAccount: "D5Yq", toUserAccount: "HHLt", mint: GKHG, tokenAmount: 93.9039852 },
+      { fromUserAccount: "HHLt", toUserAccount: "D5Yq", mint: WSOL, tokenAmount: 0.000139484 },
+      { fromUserAccount: "D5Yq", toUserAccount: "3Xfi", mint: GKHG, tokenAmount: 0.0960148 },
+      { fromUserAccount: "3Xfi", toUserAccount: "D5Yq", mint: WSOL, tokenAmount: 1.45e-7 },
+      { fromUserAccount: "WALLET", toUserAccount: "D5Yq", mint: GKHG, tokenAmount: 94 },
+      { fromUserAccount: "D5Yq", toUserAccount: "2rbM", mint: WSOL, tokenAmount: 0.00000113 },
+    ],
+    nativeTransfers: [],
+    accountData: [{ account: "WALLET", nativeBalanceChange: 133498 }, { account: "D5Yq", nativeBalanceChange: 0 }],
+    ...over,
+  });
+
+  it("reads the SOL received from the wallet's balance change, the fee added back", () => {
+    expect(extractSwapLegs(titan(), "WALLET")).toEqual({ wallet: "WALLET", inMint: GKHG, inAmount: 94, outMint: WSOL, outAmount: 0.000138499 });
+  });
+
+  it("books it", async () => {
+    const repo = await repoWithWallet();
+    const r = await bookSwap({ repo, tx: titan(), priceUsd: prices });
+    expect(r.booked).toBe(true);
+    const [row] = await repo.unplantedSwaps("WALLET");
+    expect([row.inMint, row.outMint]).toEqual([GKHG, WSOL]);
+  });
+
+  it("only for a transaction Helius labels SWAP: a token send that refunds account rent is not a sale", () => {
+    expect(extractSwapLegs(titan({ type: "TRANSFER" }), "WALLET")).toBeNull();
+    expect(extractSwapLegs(titan({ type: "UNKNOWN" }), "WALLET")).toBeNull();
+  });
+
+  it("no SOL gained (or no balance data): still one-sided, not booked", () => {
+    expect(extractSwapLegs(titan({ accountData: [{ account: "WALLET", nativeBalanceChange: -5001 }] }), "WALLET")).toBeNull();
+    expect(extractSwapLegs(titan({ accountData: undefined }), "WALLET")).toBeNull();
+  });
+
+  it("the fee is added back only when this wallet paid it", () => {
+    expect(extractSwapLegs(titan({ feePayer: "RELAYER" }), "WALLET")!.outAmount).toBe(0.000133498);
+  });
+});
+
 // 10-06 (2xYqKn37…, the Seeker's Seed Vault wallet): the wallet app took its fee in the swap, so USDC left the wallet in TWO
 // transfers, 0.01215 (the fee, first) and 1.48785 (the swap). Reading only the first booked a $1.50 swap as 1 cent (99-cent
 // round-up). A leg is every transfer of that coin out of (or into) the wallet, added up.
