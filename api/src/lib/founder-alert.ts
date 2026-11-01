@@ -37,11 +37,13 @@ const APP_REASONS = new Set(["declined", "dropped", "refused", "other"]);
  */
 const ALERT_WINDOW_MS = 10 * 60_000;
 const lastAlert = new Map<string, number>();
+/** 11-01 (security review): a burst of Message us posts can race the route's daily cap; the webhook still gets one a minute per user. */
+const SUPPORT_WINDOW_MS = 60_000;
 export function alertAllowed(e: Pick<EventRow, "kind" | "userPubkey">, now = Date.now()): boolean {
-  if (e.kind !== "signin_failed" && e.kind !== "link_failed") return true;
+  if (e.kind !== "signin_failed" && e.kind !== "link_failed" && e.kind !== "support_message") return true;
   const key = `${e.kind}:${e.userPubkey}`;
   const last = lastAlert.get(key);
-  if (last !== undefined && now - last < ALERT_WINDOW_MS) return false;
+  if (last !== undefined && now - last < (e.kind === "support_message" ? SUPPORT_WINDOW_MS : ALERT_WINDOW_MS)) return false;
   lastAlert.set(key, now);
   return true;
 }
@@ -113,7 +115,8 @@ export function supportAlert(userPubkey: string | null, d: Record<string, unknow
   const ctx = (d.context ?? {}) as { skrName?: unknown; wallets?: { pubkey: string; status: string }[]; recent?: { kind: string; ts: string; step?: unknown }[] };
   const app = (d.app ?? {}) as { version?: unknown; device?: unknown };
   const name = typeof ctx.skrName === "string" ? ctx.skrName.replace(/[^\w.-]/g, "") : null;
-  const msg = String(d.message ?? "").replace(/`/g, "'");
+  // Discord: a fence in the text would end the code block. Slack: <...> is its link and mention markup (<!channel>, <url|text>).
+  const msg = String(d.message ?? "").replace(/`/g, "'").replace(/</g, "\u2039").replace(/>/g, "\u203A");
   const body = msg.length > 1200 ? `${msg.slice(0, 1200)}\n(cut: the full text is in the events table)` : msg;
   const wallets = ctx.wallets?.length ? ctx.wallets.map((w) => `${short(w.pubkey)} ${w.status}`).join(", ") : "none linked";
   const recent = ctx.recent?.length ? ctx.recent.map((r) => `${r.kind}${r.step ? ` (${String(r.step)})` : ""} ${at(r.ts)}`).join(", ") : "nothing";

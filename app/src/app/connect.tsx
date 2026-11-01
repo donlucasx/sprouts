@@ -178,6 +178,8 @@ export default function Connect() {
         )}
       </Card>
       {error ? <ThemedText tone="error">{error}</ThemedText> : null}
+      {/* 11-01 (support draft v1, screen 5): help where the link stops, with the topic picked */}
+      {error ? <Button title="Still stuck? Message us" kind="quiet" onPress={() => router.push('/support?topic=link')} /> : null}
     </Screen>
   )
 }

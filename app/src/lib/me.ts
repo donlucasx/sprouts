@@ -3,9 +3,9 @@ import { api, ApiError, type MeResponse } from "./api";
 import { applyRulesTo, normalizeMe, pickMeState, usableMe, type ManagerExtra } from "./me-state";
 import { refreshWidget } from "./widget-refresh";
 import { recordZeroMarks } from "./zero-marks";
-export { toGardenInput } from "./garden-input";
 
 import { store } from "./store";
+export { toGardenInput } from "./garden-input";
 export { store };
 const KEY = "me.last";
 
