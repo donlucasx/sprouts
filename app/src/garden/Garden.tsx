@@ -8,7 +8,7 @@ import Svg, { G } from "react-native-svg";
 import { PLANT_ORDER, type Scene, type Part, type PlantId } from "@/model/garden";
 import { BASKET, CANVAS, FOOT_Y, FRAME, PLANT_SCALE, basketAt, bedSpan, frameFor, stakeSpots, plantUnder, SIDE_GUTTER, signPlacement } from "@/model/layout";
 import { plantLayouts } from "@/model/scene-to-layout";
-import { SOIL_CLIP_ID } from "@/model/soil-clip";
+import { SOIL_CLIP_ID , frameGround } from "@/model/soil-clip";
 import { diffScenes, gateDiff, sceneKey, NO_CHANGE, type Diff } from "@/lib/scene-diff";
 import { arrivalsOf, openingPlan, openingPlants, releaseGroups, REDUCED_MS } from "@/model/opening";
 import { SWAY, GUST_IDLE, clampZoom, gustDelays, gustGap, gustSpanMs, pinchOffset } from "@/model/motion";
@@ -18,7 +18,6 @@ import { canScale, overlayToCanvas, ROW_GAP } from "@/model/can";
 import { Appear } from "./Strip";
 import { Wind } from "./Wind";
 import { packScene } from "@/model/spread";
-import { frameGround } from "@/model/soil-clip";
 import { Soil, SoilClip, Ring, Seed, Sign, Basket, SpriteAt, SpriteLoadContext, type SpriteLoad } from "./parts";
 
 const MOUNT_FADE_MS = 300;

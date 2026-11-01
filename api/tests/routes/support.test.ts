@@ -7,7 +7,7 @@ const { limited } = vi.hoisted(() => ({ limited: { on: false } }));
 vi.mock("@/lib/auth-guard", async (orig) => ({ ...(await orig<object>()), rateLimited: () => limited.on }));
 
 import { POST as support } from "@/app/api/support/route";
-import { founderAlertFor } from "@/lib/founder-alert";
+import { alertAllowed, founderAlertFor } from "@/lib/founder-alert";
 
 const U = "U5555555555555555555555555555555";
 const WALLET = "4wiD3N7FrBNJSmZUQDkGHM4CsvDrvyvx7G1FApLGEbJ1";
@@ -115,5 +115,17 @@ describe("the Discord post", () => {
     expect(text.match(/```/g)).toHaveLength(2);
     expect(text).toContain("(cut: the full text is in the events table)");
     expect(text.length).toBeLessThan(1900);
+  });
+
+  it("Slack's link and mention markup is broken too", () => {
+    const text = founderAlertFor({ kind: "support_message", userPubkey: U, walletPubkey: null, detail: { message: "<!channel> <https://evil.example|click>", email: "a@b.co" } })!;
+    expect(text).not.toMatch(/[<>]/);
+  });
+
+  it("the webhook gets one post a minute per user; the next minute passes again", () => {
+    const e = { kind: "support_message" as const, userPubkey: "Uburst111111111111111111111111111" };
+    expect(alertAllowed(e, 1_000)).toBe(true);
+    expect(alertAllowed(e, 30_000)).toBe(false);
+    expect(alertAllowed(e, 62_000)).toBe(true);
   });
 });

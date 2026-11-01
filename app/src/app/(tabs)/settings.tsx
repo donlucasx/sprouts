@@ -276,6 +276,14 @@ export default function Settings() {
         ) : null}
         {taxError ? <ThemedText tone="error">{taxError}</ThemedText> : null}
       </Card>
+      <Card>
+        {/* 11-01 (his ask, draft v1): one way to reach the team; replies go by email (the Message us screen asks for it) */}
+        <ThemedText variant="heading">Help</ThemedText>
+        <Button title="Message us" kind="quiet" onPress={() => router.push('/support')} style={{ alignSelf: 'flex-start' }} />
+        <ThemedText variant="caption" tone="secondary">
+          We read every message. Sprouts will never ask for your seed phrase.
+        </ThemedText>
+      </Card>
       <Card style={{ gap: 0 }}>
         {/* R145 and R153: the disclosures as rows that open in place, grouped as About at the end; R300's promise above them, the precise rule inside. */}
         <ThemedText variant="heading">About Sprouts</ThemedText>
@@ -297,7 +305,7 @@ export default function Settings() {
       <Button title="Sign out" kind="quiet" disabled={busy} onPress={() => signOut(false)} />
       <Button title="Sign out of all devices" kind="quiet" disabled={busy} onPress={() => signOut(true)} />
       <ThemedText variant="caption" tone="secondary">
-        Sprouts, built for CLOCK IN. Questions: hello@sprouts.money
+        Sprouts, built for CLOCK IN. hello@sprouts.money
       </ThemedText>
     </Screen>
   )

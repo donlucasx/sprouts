@@ -40,8 +40,6 @@ import { nextPlantingFor } from '@/lib/next-planting'
 import { RelinkCard } from '@/components/RelinkCard'
 import { TopUpButton } from '@/components/TopUp'
 import { BambooFrame } from '@/garden2/BambooFrame'
-/** Canvas px of extra sky above the plants inside the dark-mode bamboo frame (10-27, his note: "more negative space above the plants"). */
-const FRAMED_SKY = 110
 import { TOPUP, topUpOffer } from '@/lib/topup'
 import { MoveCard } from '@/components/MoveCard'
 import { termsNeeded, termsSummary } from '@/lib/terms'
@@ -50,6 +48,8 @@ import { useSession } from '@/lib/session'
 import { LINKED_LINE, LINKED_TITLE } from '@/lib/safety-copy'
 import { PHONE_WALLET, gardenTotals, pauseState, pausedOnlyForNoUsdc, stoppedNotice, usdcNotice, coinRows, valueBlock, walletsLine, lastPlantingLine, staleLine, type CoinRow } from '@/lib/me-state'
 import { FONT, radius, spacing, TARGET, useTheme } from '@/theme'
+/** Canvas px of extra sky above the plants inside the dark-mode bamboo frame (10-27, his note: "more negative space above the plants"). */
+const FRAMED_SKY = 110
 
 /** R562: each row of Home's coin list leads with the coin's official round logo (lib/coin-icons), Phantom style. */
 
