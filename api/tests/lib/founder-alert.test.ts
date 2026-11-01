@@ -62,6 +62,23 @@ describe("alertFounder", () => {
     expect((f.mock.calls[1] as unknown as [string, RequestInit])[1].body).toBe("Paused");
   });
 
+  it("a Message us post mentions the founder on Discord, and only him; other alerts and other hosts never mention", async () => {
+    const f = vi.fn(async () => new Response("ok"));
+    vi.stubGlobal("fetch", f);
+    const body = (i: number) => (f.mock.calls[i] as unknown as [string, RequestInit])[1].body as string;
+    vi.stubEnv("ALERT_WEBHOOK_URL", "https://discord.com/api/webhooks/1/abc");
+    await alertFounder("Message from x", { mention: true });
+    expect(JSON.parse(body(0))).toEqual({ content: "<@459534488825888769> Message from x", text: "Message from x", allowed_mentions: { parse: [], users: ["459534488825888769"] } });
+    await alertFounder("Paused");
+    expect(JSON.parse(body(1)).content).toBe("Paused");
+    vi.stubEnv("ALERT_WEBHOOK_URL", "https://hooks.slack.com/services/x");
+    await alertFounder("Message from x", { mention: true });
+    expect(JSON.parse(body(2))).toMatchObject({ text: "Message from x", allowed_mentions: { parse: [] } });
+    vi.stubEnv("ALERT_WEBHOOK_URL", "https://ntfy.sh/t");
+    await alertFounder("Message from x", { mention: true });
+    expect(body(3)).toBe("Message from x");
+  });
+
   it("never throws and never logs the webhook URL when delivery fails", async () => {
     vi.stubEnv("ALERT_WEBHOOK_URL", "https://discord.com/api/webhooks/1/SECRET");
     vi.stubGlobal("fetch", vi.fn(async () => { throw new TypeError("fetch failed https://discord.com/api/webhooks/1/SECRET"); }));

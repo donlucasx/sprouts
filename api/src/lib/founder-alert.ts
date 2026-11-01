@@ -8,17 +8,25 @@ import { errorText } from "./redact";
  * ntfy.sh topic), so a paused or broken wallet can be followed up by hand while the app has no server push. Unset: nothing is sent.
  * An alert never fails the write or the run it comes from.
  */
-export async function alertFounder(text: string): Promise<void> {
+/** 11-01 (his ask): the founder's Discord user, mentioned on Message us posts so his phone gets a notification. Not a secret. */
+export const FOUNDER_DISCORD_ID = "459534488825888769";
+
+export async function alertFounder(text: string, opts: { mention?: boolean } = {}): Promise<void> {
   const url = process.env.ALERT_WEBHOOK_URL;
   if (!url) return;
   try {
-    const ntfy = new URL(url).hostname.endsWith("ntfy.sh");
+    const host = new URL(url).hostname;
+    const ntfy = host.endsWith("ntfy.sh");
+    // Only Discord understands <@id>; Slack and ntfy get the plain line.
+    const mention = opts.mention && /(^|\.)discord(app)?\.com$/.test(host);
+    const content = (mention ? `<@${FOUNDER_DISCORD_ID}> ${text}` : text).slice(0, 1900);
     const res = await fetch(url, {
       method: "POST",
       headers: { "content-type": ntfy ? "text/plain" : "application/json" },
       // Discord reads `content` (2000 characters at most), Slack reads `text`.
-      // allowed_mentions: no @everyone, role or user ping, whatever a line quotes (security review 10-31).
-      body: ntfy ? text : JSON.stringify({ content: text.slice(0, 1900), text, allowed_mentions: { parse: [] } }),
+      // allowed_mentions: no @everyone, role or user ping, whatever a line quotes (security review 10-31); the one exception is the
+      // founder's own id on a Message us post, named here, so no text inside a message can ping anyone else.
+      body: ntfy ? text : JSON.stringify({ content, text, allowed_mentions: mention ? { parse: [], users: [FOUNDER_DISCORD_ID] } : { parse: [] } }),
       signal: AbortSignal.timeout(3_000),
     });
     if (!res.ok) console.error(`founder alert not delivered: HTTP ${res.status}`);
