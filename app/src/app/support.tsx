@@ -47,7 +47,8 @@ export default function Support() {
       await sendSupport({ topic, message, email })
       setSentTo(email.trim())
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Could not send it just now. Try again.')
+      // 11-01 (his Seeker was offline): Home's generic "didn't answer" line points at Home; here, say what to do. Your text stays put.
+      setError(e instanceof ApiError && e.status !== 0 ? e.message : 'Could not send it. Check your connection and try again. Your message is still here.')
     } finally {
       setBusy(false)
     }
