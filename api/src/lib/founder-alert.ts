@@ -79,6 +79,8 @@ export function founderAlertFor(e: Omit<EventRow, "id" | "ts">): string | null {
       // An app report's text is client-written: only its two enum fields are sent (security review 10-31).
       if (d.from === "app") return `Link stopped in the app at ${APP_STEPS.has(String(d.step)) ? String(d.step) : "?"}: ${who}: ${APP_REASONS.has(String(d.reason)) ? String(d.reason) : "?"}`;
       return `Link failed at ${String(d.step ?? "?")}: ${who}: ${clip(d.error)}`;
+    case "support_message":
+      return supportAlert(e.userPubkey, d);
     case "wallet_linked":
       return d.webhookAdded === false ? `Linked but NOT on the Helius webhook: ${who}. Its swaps are not being counted; add the address by hand.` : null;
     default:
@@ -97,4 +99,30 @@ export async function checkWebhookCoverage(a: { repo: Repo; watched: () => Promi
   const missing = [...active, ...paused].map((w) => w.pubkey).filter((k) => !on.has(k));
   if (missing.length) await (a.alert ?? alertFounder)(`Round-ups NOT being counted: ${missing.length} linked wallet(s) missing from the Helius webhook: ${missing.map((k) => short(k)).join(", ")}. Add them back.`);
   return { missing };
+}
+
+const TOPIC_LABEL: Record<string, string> = { link: "Linking a wallet", planting: "Plantings", withdraw: "Withdrawing", idea: "An idea", other: "Something else" };
+const at = (iso: unknown) => (typeof iso === "string" ? iso.slice(11, 16) : "?");
+
+/**
+ * 11-01: a Message us post. The message is the one alert line that carries client-written text on purpose (reading it is the point),
+ * so it sits inside a code block with any fence in it broken: no markdown, no links, no unfurls; mentions are off for every post
+ * (allowed_mentions). Everything else on the post comes from the server or is cleaned at the route (support/route.ts).
+ */
+export function supportAlert(userPubkey: string | null, d: Record<string, unknown>): string {
+  const ctx = (d.context ?? {}) as { skrName?: unknown; wallets?: { pubkey: string; status: string }[]; recent?: { kind: string; ts: string; step?: unknown }[] };
+  const app = (d.app ?? {}) as { version?: unknown; device?: unknown };
+  const name = typeof ctx.skrName === "string" ? ctx.skrName.replace(/[^\w.-]/g, "") : null;
+  const msg = String(d.message ?? "").replace(/`/g, "'");
+  const body = msg.length > 1200 ? `${msg.slice(0, 1200)}\n(cut: the full text is in the events table)` : msg;
+  const wallets = ctx.wallets?.length ? ctx.wallets.map((w) => `${short(w.pubkey)} ${w.status}`).join(", ") : "none linked";
+  const recent = ctx.recent?.length ? ctx.recent.map((r) => `${r.kind}${r.step ? ` (${String(r.step)})` : ""} ${at(r.ts)}`).join(", ") : "nothing";
+  return [
+    `Message from ${name ?? "no .skr name"} (user ${short(userPubkey)}) | ${TOPIC_LABEL[String(d.topic)] ?? "No topic"}`,
+    "```",
+    body,
+    "```",
+    `Reply to: ${String(d.email ?? "?")} | app ${String(app.version ?? "?")} | ${String(app.device ?? "?")}`,
+    `Wallets: ${wallets} | recent (UTC): ${recent}`,
+  ].join("\n");
 }
