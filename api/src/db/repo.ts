@@ -207,7 +207,7 @@ export async function getRepo(): Promise<Repo> {
     repo.addEvent = async (e) => {
       await write(e);
       const text = founderAlertFor(e);
-      if (text && alertAllowed(e)) await alertFounder(text);
+      if (text && alertAllowed(e)) await alertFounder(text, { mention: e.kind === "support_message" });
     };
     live = repo;
   }
