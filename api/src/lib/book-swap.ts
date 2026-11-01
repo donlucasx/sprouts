@@ -12,6 +12,10 @@ export type HeliusEnhancedTx = {
   feePayer: string;
   tokenTransfers: { fromUserAccount: string; toUserAccount: string; mint: string; tokenAmount: number }[];
   nativeTransfers?: { fromUserAccount: string; toUserAccount: string; amount: number }[]; // lamports
+  /** Lamports the fee payer paid (11-01: added back to the payer's balance change below). */
+  fee?: number;
+  /** Each account's net SOL change in lamports, the fee included for the payer (11-01: Titan's token-to-SOL sells). */
+  accountData?: { account: string; nativeBalanceChange: number }[];
   events?: {
     swap?: {
       nativeInput?: { account: string; amount: string } | null;
@@ -67,9 +71,24 @@ export function extractSwapLegs(tx: HeliusEnhancedTx, wallet: string): SwapLegs 
   const sumOf = (dir: "fromUserAccount" | "toUserAccount", mint: string) =>
     tx.tokenTransfers.filter((t) => t[dir] === wallet && t.mint === mint).reduce((s, t) => s + t.tokenAmount, 0);
   const out = tokenOut ? { mint: tokenOut.mint, amount: sumOf("fromUserAccount", tokenOut.mint) } : nativeOut ? { mint: WSOL, amount: nativeOut.amount / LAMPORTS } : null;
-  const inn = tokenIn ? { mint: tokenIn.mint, amount: sumOf("toUserAccount", tokenIn.mint) } : nativeIn ? { mint: WSOL, amount: nativeIn.amount / LAMPORTS } : null;
+  const inn = tokenIn ? { mint: tokenIn.mint, amount: sumOf("toUserAccount", tokenIn.mint) } : nativeIn ? { mint: WSOL, amount: nativeIn.amount / LAMPORTS } : solGained(tx, wallet);
   if (!out || !inn || out.mint === inn.mint) return null;
   return { wallet, inMint: out.mint, inAmount: out.amount, outMint: inn.mint, outAmount: inn.amount };
+}
+
+/**
+ * 11-01 (sweep: allimanncedric's two Titan sells on 10-30 were never booked): a router that sells a token for SOL can unwrap the
+ * SOL in its own account and pay the wallet with no transfer Helius lists, so the wallet shows a token out and nothing in. The
+ * SOL received is then only in the wallet's balance change (the fee added back when it paid it). Read ONLY when Helius itself
+ * labels the transaction a SWAP: a plain token send that closes an account also gains SOL (the rent refund), and is no sale.
+ * The on-chain re-check (verify-swap.ts) compares this leg with the same lamport delta, so it cannot be inflated past the chain.
+ */
+function solGained(tx: HeliusEnhancedTx, wallet: string): { mint: string; amount: number } | null {
+  if (tx.type !== "SWAP") return null;
+  const change = tx.accountData?.find((a) => a.account === wallet)?.nativeBalanceChange;
+  if (change === undefined) return null;
+  const lamports = change + (tx.feePayer === wallet ? (tx.fee ?? 0) : 0);
+  return lamports > 0 ? { mint: WSOL, amount: lamports / LAMPORTS } : null;
 }
 
 export type BookResult = { booked: true; walletPubkey: string; roundupCents: number } | { booked: false; refused?: string };
