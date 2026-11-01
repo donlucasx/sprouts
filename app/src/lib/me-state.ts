@@ -239,6 +239,15 @@ export function valueBlock(t: GardenTotals, skrStakedRaw: bigint): { big: string
 }
 
 /** Home's one wallets row (R150, in his words): the count of linked wallets, revoked ones aside; null when none is linked. */
+/**
+ * 11-01 (his ruling "A", mock previews/support/home-link-v1.png): Home's one green line above the garden, only while no wallet is
+ * linked (none live, and no stopped one: a stopped wallet has its own re-link notice). It replaces the bottom Linked wallets card.
+ */
+export const LINK_PROMPT = 'Link a wallet to start saving'
+export function showLinkPrompt(me: Pick<MeResponse, 'wallets' | 'user'>): boolean {
+  return walletsLine(me.wallets) === null && stoppedNotice(me) === null
+}
+
 export function walletsLine(wallets: { status: string }[]): string | null {
   const n = wallets.filter((w) => w.status !== 'revoked').length
   return n === 0 ? null : `${n} ${n === 1 ? 'wallet' : 'wallets'} linked`

@@ -46,7 +46,7 @@ import { termsNeeded, termsSummary } from '@/lib/terms'
 import { arrivalLine, formatSkr, formatAsOf } from '@/lib/format'
 import { useSession } from '@/lib/session'
 import { LINKED_LINE, LINKED_TITLE } from '@/lib/safety-copy'
-import { PHONE_WALLET, gardenTotals, pauseState, pausedOnlyForNoUsdc, stoppedNotice, usdcNotice, coinRows, valueBlock, walletsLine, lastPlantingLine, staleLine, type CoinRow } from '@/lib/me-state'
+import { PHONE_WALLET, gardenTotals, pauseState, pausedOnlyForNoUsdc, stoppedNotice, showLinkPrompt, LINK_PROMPT, usdcNotice, coinRows, valueBlock, walletsLine, lastPlantingLine, staleLine, type CoinRow } from '@/lib/me-state'
 import { FONT, radius, spacing, TARGET, useTheme } from '@/theme'
 /** Canvas px of extra sky above the plants inside the dark-mode bamboo frame (10-27, his note: "more negative space above the plants"). */
 const FRAMED_SKY = 110
@@ -240,6 +240,7 @@ export default function Home() {
   const low = topUp.phoneCents === null ? lowUsdcLine(usdcCents, avg) : null
   const notice = usdcNotice(me, { usdcCents, low: low !== null })
   const stopped = stoppedNotice(me)
+  const noWallet = showLinkPrompt(me)
   // R96, R184 and R186: the one line and the can decided together, so they always agree; the can is in colour only while a bud waits.
   // R186: the Next planting row draws inside the garden (directly under it, the can at its bar's end). R199: the line rides in that
   // row too, tucked into the paper under the bar beside the can (WatcherLine's `tuck`).
@@ -385,6 +386,21 @@ export default function Home() {
           ))}
           <Button title="Read and agree" onPress={() => router.push('/terms')} />
         </Card>
+      ) : null}
+      {/* 11-01 (his ruling "A"): with no wallet linked, one green line at the top says what starts the garden; gone once one links */}
+      {noWallet ? (
+        <Pressable
+          onPress={() => router.push('/connect')}
+          accessibilityRole="button"
+          accessibilityLabel={`${LINK_PROMPT}. Opens Link a wallet.`}
+          style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: TARGET, paddingHorizontal: spacing.lg, backgroundColor: colors.accent, borderRadius: radius.lg, borderCurve: 'continuous', opacity: pressed ? 0.8 : 1 })}
+        >
+          <MaterialCommunityIcons name="link-variant" size={20} color={colors.onAccent} />
+          <ThemedText variant="button" style={{ flex: 1, color: colors.onAccent }}>
+            {LINK_PROMPT}
+          </ThemedText>
+          <MaterialCommunityIcons name="chevron-right" size={22} color={colors.onAccent} />
+        </Pressable>
       ) : null}
       {/* R355 (10-05, "Value on top", his pick): the money in one compact block right under the status line, above the garden: the
           whole garden in dollars big with "in your garden" under it, Put in and Earned small on the right (R146, R150's numbers). */}
@@ -605,17 +621,7 @@ export default function Home() {
           <ThemedText style={{ flex: 1 }}>{walletsRow}</ThemedText>
           <MaterialCommunityIcons name="chevron-right" size={22} color={colors.accentText} />
         </Pressable>
-      ) : (
-        <Card>
-          <ThemedText variant="heading">Linked wallets</ThemedText>
-          <ThemedText tone="secondary">
-            No wallet linked yet. Link one and every swap rounds up into your garden.
-          </ThemedText>
-          <Link href="/connect" asChild>
-            <Button title="Link a wallet" kind="quiet" onPress={() => {}} />
-          </Link>
-        </Card>
-      )}
+      ) : null /* 11-01: no wallet linked = the green line at the top (ruling "A"); this bottom card is gone */}
       {me.basket ? (
         <Card>
           <ThemedText>
