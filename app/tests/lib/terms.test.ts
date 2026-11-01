@@ -3,13 +3,13 @@ import { existsSync, readFileSync } from 'node:fs'
 import { TERMS_MD } from '@/lib/terms-text'
 import { TERMS_VERSION, termsAction, termsBlocks, termsNeeded, termsSummary, withAccepted } from '@/lib/terms'
 
-const FINAL = '/Users/lucasgarzoli/Documents/claude/seekerhackathon/docs/legal/2026-10-23-terms.md'
+const FINAL = '/Users/lucasgarzoli/Documents/claude/seekerhackathon/docs/legal/2026-11-01-terms.md'
 
 describe('Terms + Privacy (R283; R365, the text of 10-07)', () => {
   it.skipIf(!existsSync(FINAL))('is the final file, byte for byte (never paraphrased)', () => expect(TERMS_MD).toBe(readFileSync(FINAL, 'utf8')))
   it("the version is the page's own", () => {
-    expect(TERMS_VERSION).toBe('2026-10-23')
-    expect(TERMS_MD).toContain('Version 2026-10-23.')
+    expect(TERMS_VERSION).toBe('2026-11-01')
+    expect(TERMS_MD).toContain('Version 2026-11-01.')
   })
   it('the page: title, headings, paragraphs and bullets, without the "I agree" summary section', () => {
     const b = termsBlocks()
@@ -34,10 +34,10 @@ describe('Terms + Privacy (R283; R365, the text of 10-07)', () => {
   })
   it('offers "agree" only when the API asks for the bundled version; a newer one says update the app', () => {
     expect(termsAction(undefined)).toBe(null)
-    expect(termsAction({ terms: { currentVersion: '2026-10-23', acceptedVersion: '2026-10-23' } })).toBe(null)
-    expect(termsAction({ terms: { currentVersion: '2026-10-23', acceptedVersion: null } })).toBe('agree')
-    expect(termsAction({ terms: { currentVersion: '2026-11-01', acceptedVersion: '2026-10-23' } })).toBe('update')
-    expect(termsAction({ terms: { currentVersion: '2026-11-01', acceptedVersion: null } })).toBe('update')
+    expect(termsAction({ terms: { currentVersion: '2026-11-01', acceptedVersion: '2026-11-01' } })).toBe(null)
+    expect(termsAction({ terms: { currentVersion: '2026-11-01', acceptedVersion: null } })).toBe('agree')
+    expect(termsAction({ terms: { currentVersion: '2026-12-01', acceptedVersion: '2026-11-01' } })).toBe('update')
+    expect(termsAction({ terms: { currentVersion: '2026-12-01', acceptedVersion: null } })).toBe('update')
   })
   it('the accepted version goes into the read at once, and the card drops', () => {
     const me = { terms: { currentVersion: '2026-10-23', acceptedVersion: null } }
