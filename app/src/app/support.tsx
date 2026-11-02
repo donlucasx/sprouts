@@ -1,13 +1,14 @@
 import { useState } from 'react'
 import { Pressable, TextInput, View } from 'react-native'
 import { router, useLocalSearchParams } from 'expo-router'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { MaterialCommunityIcons } from '@expo/vector-icons'
 import { Screen } from '@/components/Screen'
 import { Button } from '@/components/Button'
 import { ThemedText } from '@/components/ThemedText'
 import { Disclosure } from '@/components/Disclosure'
 import { ApiError } from '@/lib/api'
-import { canSend, isTopic, MESSAGE_MAX, readSupportEmail, sendSupport, SUPPORT_TOPICS, type SupportTopic } from '@/lib/support'
+import { canSend, fetchSupportLog, isTopic, logLine, MESSAGE_MAX, readSupportEmail, sendSupport, SUPPORT_LOG_KEY, SUPPORT_TOPICS, type SupportTopic } from '@/lib/support'
 import { radius, spacing, TARGET, useTheme } from '@/theme'
 
 /** What the "Sent with your message" row says: everything attached, in plain words (the API's support route adds the server half). */
@@ -27,6 +28,10 @@ export default function Support() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [sentTo, setSentTo] = useState<string | null>(null)
+  const [sentRef, setSentRef] = useState<string | null>(null)
+  const queryClient = useQueryClient()
+  // 11-01 (his ruling B): the user's own messages with their references; a failed read just hides the list
+  const { data: log } = useQuery({ queryKey: SUPPORT_LOG_KEY, queryFn: fetchSupportLog })
 
   const field = {
     fontFamily: 'AlbertSans_400Regular',
@@ -44,8 +49,9 @@ export default function Support() {
     setBusy(true)
     setError(null)
     try {
-      await sendSupport({ topic, message, email })
+      setSentRef(await sendSupport({ topic, message, email }))
       setSentTo(email.trim())
+      void queryClient.invalidateQueries({ queryKey: SUPPORT_LOG_KEY })
     } catch (e) {
       // 11-01 (his Seeker was offline): Home's generic "didn't answer" line points at Home; here, say what to do. Your text stays put.
       setError(e instanceof ApiError && e.status !== 0 ? e.message : 'Could not send it. Check your connection and try again. Your message is still here.')
@@ -67,6 +73,11 @@ export default function Support() {
           <ThemedText tone="secondary" style={{ textAlign: 'center' }}>
             {`Thanks. We will reply to ${sentTo}, usually within a day.`}
           </ThemedText>
+          {sentRef ? (
+            <ThemedText variant="label" numeric style={{ textAlign: 'center' }}>
+              {`Reference ${sentRef}`}
+            </ThemedText>
+          ) : null}
           <Button title="Done" onPress={() => router.back()} style={{ alignSelf: 'stretch', marginTop: spacing.lg }} />
         </View>
       </Screen>
@@ -155,6 +166,22 @@ export default function Support() {
       <ThemedText variant="caption" tone="secondary">
         Prefer email? Write to hello@sprouts.money.
       </ThemedText>
+      {log && log.length > 0 ? (
+        <View style={{ gap: spacing.sm, marginTop: spacing.md }}>
+          <ThemedText variant="heading">Your messages</ThemedText>
+          {log.map((e, i) => (
+            <View key={`${e.ref ?? ''}${e.ts}`} style={{ gap: 2, paddingTop: i === 0 ? 0 : spacing.sm, borderTopWidth: i === 0 ? 0 : 1, borderTopColor: colors.hairline }}>
+              <ThemedText variant="label" tone="secondary" numeric>
+                {logLine(e)}
+              </ThemedText>
+              <ThemedText numberOfLines={2}>{e.preview}</ThemedText>
+            </View>
+          ))}
+          <ThemedText variant="caption" tone="secondary">
+            Replies come to your email. Quote the reference if you write back.
+          </ThemedText>
+        </View>
+      ) : null}
     </Screen>
   )
 }

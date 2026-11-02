@@ -129,7 +129,7 @@ export function supportAlert(userPubkey: string | null, d: Record<string, unknow
   const wallets = ctx.wallets?.length ? ctx.wallets.map((w) => `${short(w.pubkey)} ${w.status}`).join(", ") : "none linked";
   const recent = ctx.recent?.length ? ctx.recent.map((r) => `${r.kind}${r.step ? ` (${String(r.step)})` : ""} ${at(r.ts)}`).join(", ") : "nothing";
   return [
-    `Message from ${name ?? "no .skr name"} (user ${short(userPubkey)}) | ${TOPIC_LABEL[String(d.topic)] ?? "No topic"}`,
+    `${typeof d.ref === "string" ? `${d.ref} | ` : ""}Message from ${name ?? "no .skr name"} (user ${short(userPubkey)}) | ${TOPIC_LABEL[String(d.topic)] ?? "No topic"}`,
     "```",
     body,
     "```",

@@ -31,7 +31,23 @@ export function appLine(): { version: string; device: string } {
   return { version: Constants.expoConfig?.version ?? "?", device: model ?? Platform.OS };
 }
 
-export async function sendSupport(m: { topic: SupportTopic | null; message: string; email: string }): Promise<void> {
-  await api("/api/support", { method: "POST", body: { topic: m.topic, message: m.message.trim(), email: m.email.trim(), app: appLine() } });
+/** Sends one message; answers its reference (11-01, his ruling A: shown on the sent screen, quoted in the founder's reply). */
+export async function sendSupport(m: { topic: SupportTopic | null; message: string; email: string }): Promise<string | null> {
+  const r = await api<{ ref?: string }>("/api/support", { method: "POST", body: { topic: m.topic, message: m.message.trim(), email: m.email.trim(), app: appLine() } });
   writeSupportEmail(m.email);
+  return typeof r.ref === "string" ? r.ref : null;
+}
+
+/** One row of the user's own log (his ruling B): reference, time, topic, the start of the text. */
+export type SupportLogEntry = { ref: string | null; ts: string; topic: string | null; preview: string };
+export const SUPPORT_LOG_KEY = ["support-log"] as const;
+export async function fetchSupportLog(): Promise<SupportLogEntry[]> {
+  return (await api<{ messages?: SupportLogEntry[] }>("/api/support")).messages ?? [];
+}
+
+/** "S-7K3Q · Nov 1 · Linking a wallet": the log row's first line. */
+export function logLine(e: SupportLogEntry): string {
+  const day = new Date(e.ts).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  const topic = SUPPORT_TOPICS.find((t) => t.value === e.topic)?.label;
+  return [e.ref, day, topic].filter(Boolean).join(" \u00b7 ");
 }
