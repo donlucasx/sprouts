@@ -198,31 +198,31 @@ After `feat/lend-api` is merged, from `build/sprouts/api` (until then the same l
 0. The Seed Vault wallet is linked (prints its wallet row; `wallet row: none` means link it in the app first):
 
 ```
-cd /Users/lucasgarzoli/Documents/claude/seekerhackathon/build/sprouts/api && pnpm tsx --env-file=.env.local spikes/db-peek.ts DjRpjufi1BNBaYXPu5ybGQu9cHhxgpPkHJb1UJbePcTR | head -1
+cd api && pnpm tsx --env-file=.env.local spikes/db-peek.ts DjRpjufi1BNBaYXPu5ybGQu9cHhxgpPkHJb1UJbePcTR | head -1
 ```
 
 1. After Task 22 D1 (the ALT created, its `SPROUTS_ALT=` line in `.env.local`), check it is there (prints 1):
 
 ```
-cd /Users/lucasgarzoli/Documents/claude/seekerhackathon/build/sprouts/api && grep -c '^SPROUTS_ALT=' .env.local
+cd api && grep -c '^SPROUTS_ALT=' .env.local
 ```
 
 2. BEFORE the re-link (D6), every leg unleashed against the Seed Vault wallet's current puller link (its delegation from step 0, `<OLD_PDA>`), now with the real ALT on chain. This is the first time SOL on Jupiter Lend can simulate:
 
 ```
-cd /Users/lucasgarzoli/Documents/claude/seekerhackathon/build/sprouts/api && pnpm tsx --env-file=.env.local scripts/simulate-legs.ts --user DjRpjufi1BNBaYXPu5ybGQu9cHhxgpPkHJb1UJbePcTR --wallet DjRpjufi1BNBaYXPu5ybGQu9cHhxgpPkHJb1UJbePcTR --delegation <OLD_PDA> --pull 1000000 SOL_LEND:jupiter_lend SOL_LEND:kamino_klend USDC_LEND:jupiter_lend USDC_LEND:kamino_klend cbBTC hSOL stORE SKR
+cd api && pnpm tsx --env-file=.env.local scripts/simulate-legs.ts --user DjRpjufi1BNBaYXPu5ybGQu9cHhxgpPkHJb1UJbePcTR --wallet DjRpjufi1BNBaYXPu5ybGQu9cHhxgpPkHJb1UJbePcTR --delegation <OLD_PDA> --pull 1000000 SOL_LEND:jupiter_lend SOL_LEND:kamino_klend USDC_LEND:jupiter_lend USDC_LEND:kamino_klend cbBTC hSOL stORE SKR
 ```
 
 3. After D5-D6 (Config initialised with `--enable 1,2,3,6,7` or `--enable 2,3,6,7`, the Saga's Seed Vault wallet re-linked to the leash in the app), read the NEW delegation PDA (the first line prints `delegation <pda>`; the script may then stop on a missing HELIUS_WEBHOOK_ID, which is fine):
 
 ```
-cd /Users/lucasgarzoli/Documents/claude/seekerhackathon/build/sprouts/api && pnpm tsx --env-file=.env.local spikes/db-peek.ts DjRpjufi1BNBaYXPu5ybGQu9cHhxgpPkHJb1UJbePcTR | head -1
+cd api && pnpm tsx --env-file=.env.local spikes/db-peek.ts DjRpjufi1BNBaYXPu5ybGQu9cHhxgpPkHJb1UJbePcTR | head -1
 ```
 
 4. Leashed, every enabled leg (put the PDA from step 3 in place of `<NEW_PDA>`; list only the legs `leash-admin.ts` enabled: Day 1 = legs 2,3,6,7, plus 1 when stORE's sample passed; leg 3's line is `USDC_LEND:jupiter_lend`). Nothing posts: SKR stays off (no price source, R324) and the priced legs read the sponsored accounts:
 
 ```
-cd /Users/lucasgarzoli/Documents/claude/seekerhackathon/build/sprouts/api && pnpm tsx --env-file=.env.local scripts/simulate-legs.ts --user DjRpjufi1BNBaYXPu5ybGQu9cHhxgpPkHJb1UJbePcTR --wallet DjRpjufi1BNBaYXPu5ybGQu9cHhxgpPkHJb1UJbePcTR --delegation <NEW_PDA> --leashed --pull 1000000 USDC_LEND:kamino_klend USDC_LEND:jupiter_lend cbBTC hSOL stORE
+cd api && pnpm tsx --env-file=.env.local scripts/simulate-legs.ts --user DjRpjufi1BNBaYXPu5ybGQu9cHhxgpPkHJb1UJbePcTR --wallet DjRpjufi1BNBaYXPu5ybGQu9cHhxgpPkHJb1UJbePcTR --delegation <NEW_PDA> --leashed --pull 1000000 USDC_LEND:kamino_klend USDC_LEND:jupiter_lend cbBTC hSOL stORE
 ```
 
 Read each line: `ok=true` passes the leg; `leashError=StalePrice` rerun; `BelowFloor` stop and compare with Task 5's golden vectors; `LegDisabled` the flag is off; `build failed: ... route under floor` means the route's own expected output is under the leash floor (ruling A; see "Ruling A" below), rerun once, then leave that leg disabled. A `jlLeftover=1` on a Jupiter Lend line means set `JL_EXPECTED_LEFTOVER` to `1n` in `src/lib/venues/jlend.ts`. Paste the lines back to Claude: the highest leashed `units=` + 75,000 (the leash's measured 72.6k worst case at 3,000 users; ruling B, 10-04, supersedes the brief's +55k), rounded up to the next 10,000, becomes `PLANTING_CU_LIMIT` (Task 12 Step 4, `## CU limit`).
@@ -230,7 +230,7 @@ Read each line: `ok=true` passes the leg; `leashError=StalePrice` rerun; `BelowF
 5. stORE's Day-1 gate (R339), the S4 price-age sample, read-only, 30 minutes. stORE (leg 1) stays enabled only if `ORE max age` is 55 s or less with `not Full/missing 0` AND its step-4 line is `ok=true`; otherwise turn it off with the exact lines in the leash runbook's C1 (the remaining list is 2,3,6,7 if leg 3 passed). Paste the SOL and ORE gap lines here (Claude's final review, T11 triage: gaps over 55 s skip legs 1, 4, 5, 6):
 
 ```
-cd /Users/lucasgarzoli/Documents/claude/seekerhackathon/build/sprouts/api && pnpm tsx --env-file=.env.local spikes/pyth-ages.ts
+cd api && pnpm tsx --env-file=.env.local spikes/pyth-ages.ts
 ```
 
 6. Posted-price run (SKR, leg 0; `feat/skr-post`, contracts 10 item 15). Needs `feat/skr-post` merged and `PYTH_API_KEY` (the crypto-entitled key) in `.env.local` (and in the Vercel env for the cron). SKR has a price source exactly when that key is set (`skrPriceSource()`, replacing the old `SKR_PRICE_SOURCE` constant); without it SKR behaves as before (no source, skipped). Each SKR planting posts its own price: 2 puller-paid pre-txs (VAA write + Full verify, then `post_update` + the VAA close), then the planting reads the fresh account, then the rent is reclaimed. No user funds move in the pre-txs.
@@ -238,7 +238,7 @@ cd /Users/lucasgarzoli/Documents/claude/seekerhackathon/build/sprouts/api && pnp
 6a. Dry size check, sends NOTHING (the post is built and sized only), any time after the merge:
 
 ```
-cd /Users/lucasgarzoli/Documents/claude/seekerhackathon/build/sprouts/api && pnpm tsx --env-file=.env.local scripts/simulate-legs.ts --user DjRpjufi1BNBaYXPu5ybGQu9cHhxgpPkHJb1UJbePcTR --wallet DjRpjufi1BNBaYXPu5ybGQu9cHhxgpPkHJb1UJbePcTR --delegation <NEW_PDA> --leashed --allow-post --size-only --pull 1000000 SKR
+cd api && pnpm tsx --env-file=.env.local scripts/simulate-legs.ts --user DjRpjufi1BNBaYXPu5ybGQu9cHhxgpPkHJb1UJbePcTR --wallet DjRpjufi1BNBaYXPu5ybGQu9cHhxgpPkHJb1UJbePcTR --delegation <NEW_PDA> --leashed --allow-post --size-only --pull 1000000 SKR
 ```
 
 Expected (measured 10-05 09:00 PDT with the real SPROUTS_ALT, three runs, a random delegation): `mode ... allow-post size-only (posted prices are built and sized, NOT sent)`, then `LEG SKR leashed size=874 locks=40 ok=n/a (built, not simulated) minOut=... floor=... priceTxs=778,842 (built, not sent)`; exit 0.
@@ -246,7 +246,7 @@ Expected (measured 10-05 09:00 PDT with the real SPROUTS_ALT, three runs, a rand
 6b. The posted run. This one SENDS 2 puller-paid price pre-txs and the rent reclaim (about 25,000 lamports net per run, measured on a local validator with the mainnet programs cloned; rent comes back):
 
 ```
-cd /Users/lucasgarzoli/Documents/claude/seekerhackathon/build/sprouts/api && pnpm tsx --env-file=.env.local scripts/simulate-legs.ts --user DjRpjufi1BNBaYXPu5ybGQu9cHhxgpPkHJb1UJbePcTR --wallet DjRpjufi1BNBaYXPu5ybGQu9cHhxgpPkHJb1UJbePcTR --delegation <NEW_PDA> --leashed --allow-post --pull 1000000 SKR
+cd api && pnpm tsx --env-file=.env.local scripts/simulate-legs.ts --user DjRpjufi1BNBaYXPu5ybGQu9cHhxgpPkHJb1UJbePcTR --wallet DjRpjufi1BNBaYXPu5ybGQu9cHhxgpPkHJb1UJbePcTR --delegation <NEW_PDA> --leashed --allow-post --pull 1000000 SKR
 ```
 
 Read the line: `priceTxs=778,842`-sized numbers mean the price posted and landed (a failed post prints `build failed: SKR: posting the price failed: ...` or `the posted price ...`). BEFORE leg 0 is enabled the line ends `ok=false ... leashError=LegDisabled`: that is expected, the post itself worked. After step 7 (the enable) rerun 6b: it must print `ok=true`. `leashError=StalePrice`: rerun once. A `price cleanup failed` line means the reclaim did not land: paste it to Claude (the account holds about 0.002 SOL of rent).
@@ -254,13 +254,13 @@ Read the line: `priceTxs=778,842`-sized numbers mean the price posted and landed
 7. Enable leg 0: the current Day-1 list with 0 added (for example `0,1,2,3,6,7`, or `0,2,3,6,7` if stORE is off). `leash-admin.ts` now accepts leg 0 without the DANGER flag only when it can prove the source: run it with the env file, it first prints `SKR price source OK: Hermes served the SKR feed with PYTH_API_KEY (...)`, and refuses if the key is missing or Hermes refuses it:
 
 ```
-cd /Users/lucasgarzoli/Documents/claude/seekerhackathon/build/sprouts/api && pnpm tsx --env-file=.env.local scripts/leash-admin.ts set --admin ~/.config/solana/sprouts-admin.json --enable 0,1,2,3,6,7
+cd api && pnpm tsx --env-file=.env.local scripts/leash-admin.ts set --admin ~/.config/solana/sprouts-admin.json --enable 0,1,2,3,6,7
 ```
 
 Then the read-only check (`check-config.sh` accepts leg 0 since `feat/skr-post`), with the same list:
 
 ```
-cd /Users/lucasgarzoli/Documents/claude/seekerhackathon/build/sprouts/leash && ./scripts/check-config.sh legs 0,1,2,3,6,7
+cd leash && ./scripts/check-config.sh legs 0,1,2,3,6,7
 ```
 
 Then rerun 6b (`ok=true`). `LEASH_LIVE=1` only after BOTH phones re-link (R339, R352).

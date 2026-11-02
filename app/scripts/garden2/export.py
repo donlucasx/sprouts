@@ -11,7 +11,8 @@ import numpy as np
 from PIL import Image
 
 APP = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-SRC = sys.argv[1] if len(sys.argv) > 1 else "/Users/lucasgarzoli/Documents/claude/seekerhackathon/brand/garden2/app-export"
+PROJECT = os.path.abspath(os.path.join(APP, "..", "..", ".."))   # the project folder that holds build/<repo>/
+SRC = sys.argv[1] if len(sys.argv) > 1 else os.path.join(PROJECT, "brand", "garden2", "app-export")
 OUT = os.path.join(APP, "assets", "garden2")
 CELL = 16   # hit grid cell, canvas px
 HIT_ALPHA = 128   # a pixel counts as plant at this alpha or more

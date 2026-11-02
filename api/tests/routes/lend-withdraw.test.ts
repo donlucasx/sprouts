@@ -235,7 +235,7 @@ describe("Withdraw a lending position (contracts 5.3, R264)", () => {
     res = await call(confirm, { signedTransaction: await sign(all.transaction), asset: "USDC_LEND", venue: "kamino_klend" });
     expect((await res.json()).withdrawn).toMatchObject({ receiptRaw: "1661072", whole: true });
   });
-  const appSign = "/Users/lucasgarzoli/Documents/claude/seekerhackathon/build/sprouts-lend-app/app/src/lib/sign.ts";
+  const appSign = new URL("../../../../sprouts-lend-app/app/src/lib/sign.ts", import.meta.url); // the sibling worktree build/sprouts-lend-app
   // Skipped (shown as skipped in the run) when the app worktree is not on this machine: the vendored copy was then not compared.
   it.skipIf(!existsSync(appSign))("the vendored copy of the app's sign.ts equals the app's file byte for byte, bar the one documented import edit (skipped only when the app worktree sprouts-lend-app is absent)", () => {
     // The vendored header says what was changed: the app's `import { isLend, type LendAsset } from './coins'` is inlined as two lines

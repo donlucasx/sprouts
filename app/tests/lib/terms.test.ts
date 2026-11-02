@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { TERMS_MD } from '@/lib/terms-text'
 import { TERMS_VERSION, termsAction, termsBlocks, termsNeeded, termsSummary, withAccepted } from '@/lib/terms'
 
-const FINAL = '/Users/lucasgarzoli/Documents/claude/seekerhackathon/docs/legal/2026-11-01-terms.md'
+const FINAL = new URL('../../../../../docs/legal/2026-11-01-terms.md', import.meta.url) // the project's docs/legal, outside the repo
 
 describe('Terms + Privacy (R283; R365, the text of 10-07)', () => {
   it.skipIf(!existsSync(FINAL))('is the final file, byte for byte (never paraphrased)', () => expect(TERMS_MD).toBe(readFileSync(FINAL, 'utf8')))

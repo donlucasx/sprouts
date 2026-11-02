@@ -12,7 +12,7 @@ import { LEASH_PROGRAM } from "@/lib/constants";
 
 // The leash track's Task 8 files (leash/config/mainnet-{init,day1}.hex + the encoder-only TEST-VECTOR, 2,976 hex chars each) and the built
 // program's golden instruction payloads (leash/tests/golden/{init_config,set_leg_0..7,config}.hex). Read-only.
-const LEASH_ROOTS = [process.env.LEASH_GOLDEN_DIR && path.resolve(process.env.LEASH_GOLDEN_DIR, "../.."), path.resolve(__dirname, "../../../leash"), "/Users/lucasgarzoli/Documents/claude/seekerhackathon/build/sprouts-leash/leash"].filter(Boolean) as string[];
+const LEASH_ROOTS = [process.env.LEASH_GOLDEN_DIR && path.resolve(process.env.LEASH_GOLDEN_DIR, "../.."), path.resolve(__dirname, "../../../leash"), path.resolve(__dirname, "../../../../sprouts-leash/leash")].filter(Boolean) as string[];
 const leashRoot = LEASH_ROOTS.find((d) => existsSync(path.join(d, "config/mainnet-day1.hex")) && existsSync(path.join(d, "tests/golden/init_config.hex")));
 const hex = (rel: string) => readFileSync(path.join(leashRoot as string, rel), "utf8").trim();
 const ADMIN = address("GrHSwzYpgiFzuTpwR6539NpNXktXNEUfVU9UYvHdDKLY");

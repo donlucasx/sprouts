@@ -7,8 +7,9 @@ import json, os, subprocess, sys
 from PIL import Image, ImageDraw, ImageFont
 
 APP = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-OUT = sys.argv[1] if len(sys.argv) > 1 else "/Users/lucasgarzoli/Documents/claude/seekerhackathon/previews/garden-app"
-EXPORT = "/Users/lucasgarzoli/Documents/claude/seekerhackathon/brand/garden2/app-export/layout.json"
+PROJECT = os.path.abspath(os.path.join(APP, "..", "..", ".."))   # the project folder that holds build/<repo>/
+OUT = sys.argv[1] if len(sys.argv) > 1 else os.path.join(PROJECT, "previews", "garden-app")
+EXPORT = os.path.join(PROJECT, "brand", "garden2", "app-export", "layout.json")
 A = os.path.join(APP, "assets", "garden2")
 DPR, PHONE, GUTTER, RADIUS = 3, 360, 20, 16
 LIGHT_BG, DARK_BG = (255, 252, 246), (14, 26, 20)   # theme/tokens.ts background, light and dark
