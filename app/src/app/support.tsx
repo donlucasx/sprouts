@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Pressable, TextInput, View } from 'react-native'
 import { router, useLocalSearchParams } from 'expo-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -30,6 +30,8 @@ export default function Support() {
   const [sentTo, setSentTo] = useState<string | null>(null)
   const [sentRef, setSentRef] = useState<string | null>(null)
   const queryClient = useQueryClient()
+  // 11-02: Send's bottom edge in the scroll's content, so the keyboard stops there, not at the message list's end
+  const sendBottom = useRef<number | null>(null)
   // 11-01 (his ruling B): the user's own messages with their references; a failed read just hides the list
   const { data: log } = useQuery({ queryKey: SUPPORT_LOG_KEY, queryFn: fetchSupportLog })
 
@@ -85,7 +87,7 @@ export default function Support() {
   }
 
   return (
-    <Screen back title="Message us" keyboard>
+    <Screen back title="Message us" keyboard keyboardAnchor={() => sendBottom.current}>
       <ThemedText tone="secondary">Tell us what happened. We reply by email, usually within a day.</ThemedText>
 
       <ThemedText variant="label">What is it about?</ThemedText>
@@ -158,7 +160,9 @@ export default function Support() {
       </View>
 
       {error ? <ThemedText tone="error">{error}</ThemedText> : null}
-      <Button title="Send" loading={busy} disabled={!canSend(message, email)} onPress={send} />
+      <View onLayout={(e) => (sendBottom.current = e.nativeEvent.layout.y + e.nativeEvent.layout.height)}>
+        <Button title="Send" loading={busy} disabled={!canSend(message, email)} onPress={send} />
+      </View>
       <ThemedText variant="caption" tone="secondary">
         Sprouts will never ask for your seed phrase or ask you to sign anything by email.
       </ThemedText>

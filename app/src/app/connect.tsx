@@ -32,6 +32,16 @@ function confirmLink(code: string, wallet: string, signedTransaction: string) {
   })
 }
 
+/** The error under the button that caused it, and (11-01, support draft v1 screen 5) help right there, with the topic picked. */
+function LinkError({ error }: { error: string }) {
+  return (
+    <>
+      <ThemedText tone="error">{error}</ThemedText>
+      <Button title="Still stuck? Message us" kind="quiet" onPress={() => router.push('/support?topic=link')} style={{ alignSelf: 'flex-start' }} />
+    </>
+  )
+}
+
 /** 10-27 (WAL-002): the wallet's "unlimited USDC" warning, said right above Approve so it is expected, not a surprise. */
 function ApprovalWarning() {
   const { colors } = useTheme()
@@ -67,6 +77,8 @@ export default function Connect() {
   const [signed, setSigned] = useState(false)
   const [coding, setCoding] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // 11-02 (his device note: the error sat at the page's foot, "Still stuck" out of sight): which card the error belongs under
+  const [errorFrom, setErrorFrom] = useState<'phone' | 'code'>('phone')
   const [toppedUp, setToppedUp] = useState(false)
   const { data: me, refetch } = useMe()
   const [before, setBefore] = useState<string[]>([])
@@ -114,6 +126,7 @@ export default function Connect() {
       // 10-28 (his note): back to the garden, where a notice says the wallet linked until he taps OK
       router.replace({ pathname: '/home', params: { linked: session.pubkey } })
     } catch (e) {
+      setErrorFrom('phone')
       setError(e instanceof ApiError || e instanceof SignRefused ? e.message : isSessionDropped(e) ? DROPPED_NOTHING_SENT : 'The approval did not go through. Try again.')
       // 10-31: where it stopped, for the drop-offs the server cannot see (a wallet closed or cancelled before signing)
       reportLinkFailure((body: LinkFailure) => api('/api/link/report', { method: 'POST', body }), step, e, session.pubkey)
@@ -129,6 +142,7 @@ export default function Connect() {
       setBefore((me?.wallets ?? []).filter((w) => w.status !== 'revoked').map((w) => w.pubkey))
       setCode((await api<{ code: string }>('/api/link/new', { method: 'POST', body: {} })).code)
     } catch (e) {
+      setErrorFrom('code')
       setError(e instanceof ApiError ? e.message : 'Could not make a code. Try again.')
     } finally {
       setCoding(false)
@@ -160,6 +174,7 @@ export default function Connect() {
             {signed ? LINK_FINISHING : 'Waiting for your wallet.'}
           </ThemedText>
         ) : null}
+        {error && errorFrom === 'phone' ? <LinkError error={error} /> : null}
       </Card>
       <Card>
         <ThemedText variant="heading">Another wallet</ThemedText>
@@ -177,10 +192,8 @@ export default function Connect() {
         ) : (
           <Button title="Get a code" kind="quiet" loading={coding} onPress={codeForAnotherWallet} />
         )}
+        {error && errorFrom === 'code' ? <LinkError error={error} /> : null}
       </Card>
-      {error ? <ThemedText tone="error">{error}</ThemedText> : null}
-      {/* 11-01 (support draft v1, screen 5): help where the link stops, with the topic picked */}
-      {error ? <Button title="Still stuck? Message us" kind="quiet" onPress={() => router.push('/support?topic=link')} /> : null}
     </Screen>
   )
 }
