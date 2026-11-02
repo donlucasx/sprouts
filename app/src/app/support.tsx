@@ -74,7 +74,7 @@ export default function Support() {
   }
 
   return (
-    <Screen back title="Message us">
+    <Screen back title="Message us" keyboard>
       <ThemedText tone="secondary">Tell us what happened. We reply by email, usually within a day.</ThemedText>
 
       <ThemedText variant="label">What is it about?</ThemedText>
@@ -150,6 +150,10 @@ export default function Support() {
       <Button title="Send" loading={busy} disabled={!canSend(message, email)} onPress={send} />
       <ThemedText variant="caption" tone="secondary">
         Sprouts will never ask for your seed phrase or ask you to sign anything by email.
+      </ThemedText>
+      {/* 11-01 (his note: the Settings footer email goes, "ensure the email can be found elsewhere relevant"): here, beside the form */}
+      <ThemedText variant="caption" tone="secondary">
+        Prefer email? Write to hello@sprouts.money.
       </ThemedText>
     </Screen>
   )
