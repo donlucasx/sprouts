@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Keyboard, Pressable, ScrollView, View, type RefreshControlProps } from 'react-native'
+import { Dimensions, Keyboard, Pressable, ScrollView, View, type RefreshControlProps } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { MaterialCommunityIcons } from '@expo/vector-icons'
 import { router } from 'expo-router'
@@ -22,6 +22,7 @@ export function Screen({
   refreshControl,
   footer,
   keyboard = false,
+  keyboardAnchor,
 }: PropsWithChildren<{
   scroll?: boolean
   back?: boolean
@@ -34,6 +35,8 @@ export function Screen({
   /** 11-01 (his device note on Message us: the keyboard covered Send and the page would not drag): edge-to-edge Android draws the
    *  keyboard OVER the screen, so the scroll gains the keyboard's height at its foot while it is open, and brings the end into view. */
   keyboard?: boolean
+  /** 11-02 (his note: with a message list below, the end is past Send): the content y the keyboard's top should sit at (Send's bottom). */
+  keyboardAnchor?: () => number | null
 }>) {
   const insets = useSafeAreaInsets()
   const { colors } = useTheme()
@@ -43,7 +46,10 @@ export function Screen({
     if (!keyboard) return
     const show = Keyboard.addListener('keyboardDidShow', (e) => {
       setKb(e.endCoordinates.height)
-      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50)
+      const anchor = keyboardAnchor?.()
+      // The visible band is the window above the keyboard, under the status bar; the anchor's bottom goes to that band's foot.
+      const band = Dimensions.get('window').height - e.endCoordinates.height - insets.top
+      setTimeout(() => (anchor != null ? scrollRef.current?.scrollTo({ y: Math.max(0, anchor - band + spacing.lg), animated: true }) : scrollRef.current?.scrollToEnd({ animated: true })), 50)
     })
     const hide = Keyboard.addListener('keyboardDidHide', () => setKb(0))
     return () => {
