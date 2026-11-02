@@ -1,4 +1,5 @@
-import { Pressable, ScrollView, View, type RefreshControlProps } from 'react-native'
+import { useEffect, useRef, useState } from 'react'
+import { Keyboard, Pressable, ScrollView, View, type RefreshControlProps } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { MaterialCommunityIcons } from '@expo/vector-icons'
 import { router } from 'expo-router'
@@ -20,6 +21,7 @@ export function Screen({
   inset = 'both',
   refreshControl,
   footer,
+  keyboard = false,
 }: PropsWithChildren<{
   scroll?: boolean
   back?: boolean
@@ -29,9 +31,26 @@ export function Screen({
   inset?: 'both' | 'top'
   refreshControl?: ReactElement<RefreshControlProps>
   footer?: ReactElement | null
+  /** 11-01 (his device note on Message us: the keyboard covered Send and the page would not drag): edge-to-edge Android draws the
+   *  keyboard OVER the screen, so the scroll gains the keyboard's height at its foot while it is open, and brings the end into view. */
+  keyboard?: boolean
 }>) {
   const insets = useSafeAreaInsets()
   const { colors } = useTheme()
+  const [kb, setKb] = useState(0)
+  const scrollRef = useRef<ScrollView>(null)
+  useEffect(() => {
+    if (!keyboard) return
+    const show = Keyboard.addListener('keyboardDidShow', (e) => {
+      setKb(e.endCoordinates.height)
+      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50)
+    })
+    const hide = Keyboard.addListener('keyboardDidHide', () => setKb(0))
+    return () => {
+      show.remove()
+      hide.remove()
+    }
+  }, [keyboard])
   const goBack = () => (onBack ? onBack() : router.canGoBack() ? router.back() : router.replace('/home'))
   const body = (
     <View
@@ -39,7 +58,7 @@ export function Screen({
         flex: scroll ? undefined : 1,
         paddingHorizontal: spacing.edge,
         paddingTop: spacing.lg,
-        paddingBottom: (inset === 'both' ? insets.bottom : 0) + spacing.edge,
+        paddingBottom: (inset === 'both' ? insets.bottom : 0) + spacing.edge + kb,
         gap: spacing.lg,
       }}
     >
@@ -73,7 +92,7 @@ export function Screen({
     // The status bar's band is part of the frame, in the ground colour, so scrolling content passes under it never over it (his device note, 10-02).
     <View style={{ flex: 1, backgroundColor: colors.background, paddingTop: insets.top }}>
       {scroll ? (
-        <ScrollView keyboardShouldPersistTaps="handled" refreshControl={refreshControl}>
+        <ScrollView ref={scrollRef} keyboardShouldPersistTaps="handled" refreshControl={refreshControl}>
           {body}
         </ScrollView>
       ) : (
