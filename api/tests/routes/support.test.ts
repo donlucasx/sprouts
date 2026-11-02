@@ -6,7 +6,7 @@ import { issueSession } from "@/lib/session";
 const { limited } = vi.hoisted(() => ({ limited: { on: false } }));
 vi.mock("@/lib/auth-guard", async (orig) => ({ ...(await orig<object>()), rateLimited: () => limited.on }));
 
-import { POST as support } from "@/app/api/support/route";
+import { POST as support, GET as supportLog } from "@/app/api/support/route";
 import { alertAllowed, founderAlertFor } from "@/lib/founder-alert";
 
 const U = "U5555555555555555555555555555555";
@@ -81,6 +81,36 @@ describe("POST /api/support", () => {
   it("the app line keeps plain characters only", async () => {
     await post({ ...ok, app: { version: "0.1.8`@everyone", device: "Seeker <b>" } }, token);
     expect(messages()[0].detail).toMatchObject({ app: { version: "0.1.8everyone", device: "Seeker b" } });
+  });
+});
+
+describe("references and the user's log (11-01, his rulings A and B)", () => {
+  const log = async (t?: string) => supportLog(new Request("http://x/api/support", { headers: t ? { authorization: `Bearer ${t}` } : {} }));
+
+  it("each message gets a short reference: returned, stored, and first on the Discord post", async () => {
+    const res = await post(ok, token);
+    const { ref } = (await res.json()) as { ref: string };
+    expect(ref).toMatch(/^S-[2-9A-HJKMNP-Z]{4}$/);
+    const [m] = messages();
+    expect((m.detail as { ref: string }).ref).toBe(ref);
+    expect(founderAlertFor(m)!.startsWith(`${ref} | Message from`)).toBe(true);
+  });
+
+  it("the log: the user's own messages, newest first, reference, time, topic and the start of the text only", async () => {
+    await post({ ...ok, message: "first" }, token);
+    await post({ ...ok, topic: null, message: "second " + "y".repeat(300) }, token);
+    const other = await issueSession("U6666666666666666666666666666666", "M");
+    await post({ ...ok, message: "someone else" }, other);
+    const body = (await (await log(token)).json()) as { messages: { ref: string; ts: string; topic: string | null; preview: string }[] };
+    expect(body.messages.map((m) => m.preview.slice(0, 6))).toEqual(["second", "first"]);
+    expect(body.messages[0].preview).toHaveLength(140);
+    expect(body.messages[0].topic).toBeNull();
+    expect(body.messages[1].topic).toBe("link");
+    expect(Object.keys(body.messages[0]).sort()).toEqual(["preview", "ref", "topic", "ts"]);
+  });
+
+  it("signed out: 401", async () => {
+    expect((await log()).status).toBe(401);
   });
 });
 

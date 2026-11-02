@@ -6,7 +6,7 @@ vi.mock('@/lib/store', () => ({ store: { getString: (k: string) => kv.get(k), se
 vi.mock('expo-constants', () => ({ default: { expoConfig: { version: '0.1.8' } } }))
 vi.mock('react-native', () => ({ Platform: { OS: 'android', constants: { Model: 'Seeker' } } }))
 
-import { canSend, isTopic, looksLikeEmail, readSupportEmail, sendSupport } from '@/lib/support'
+import { canSend, fetchSupportLog, isTopic, logLine, looksLikeEmail, readSupportEmail, sendSupport } from '@/lib/support'
 
 beforeEach(() => kv.clear())
 afterEach(() => vi.unstubAllGlobals())
@@ -31,7 +31,9 @@ describe('Message us', () => {
     const fetchMock = vi.fn(async (_u: string, _i?: RequestInit) => new Response('{"ok":true}', { status: 200 }))
     vi.stubGlobal('fetch', fetchMock)
     expect(readSupportEmail()).toBe('')
-    await sendSupport({ topic: 'link', message: '  nothing happened  ', email: ' mo@proton.me ' })
+    const fetchRef = fetchMock
+    fetchRef.mockImplementationOnce(async () => new Response('{"ok":true,"ref":"S-7K3Q"}', { status: 200 }))
+    expect(await sendSupport({ topic: 'link', message: '  nothing happened  ', email: ' mo@proton.me ' })).toBe('S-7K3Q')
     const [url, init] = fetchMock.mock.calls[0]
     expect(url).toMatch(/\/api\/support$/)
     expect(JSON.parse(String(init?.body))).toEqual({ topic: 'link', message: 'nothing happened', email: 'mo@proton.me', app: { version: '0.1.8', device: 'Seeker' } })
@@ -42,5 +44,18 @@ describe('Message us', () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('{"error":"You have sent 5 messages today."}', { status: 429 })))
     await expect(sendSupport({ topic: null, message: 'x', email: 'a@b.co' })).rejects.toThrow(/5 messages today/)
     expect(readSupportEmail()).toBe('')
+  })
+
+  it('the log: the API rows as they come, an older server (no GET) just has none', async () => {
+    const rows = [{ ref: 'S-7K3Q', ts: '2026-11-01T22:56:53Z', topic: 'link', preview: 'Phantom opened' }]
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ messages: rows }), { status: 200 })))
+    expect(await fetchSupportLog()).toEqual(rows)
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 200 })))
+    expect(await fetchSupportLog()).toEqual([])
+  })
+
+  it("a log row's first line: reference, day, topic; a message from before references just skips it", () => {
+    expect(logLine({ ref: 'S-7K3Q', ts: '2026-11-01T20:00:00Z', topic: 'link', preview: '' })).toBe('S-7K3Q \u00b7 Nov 1 \u00b7 Linking a wallet')
+    expect(logLine({ ref: null, ts: '2026-11-01T20:00:00Z', topic: null, preview: '' })).toBe('Nov 1')
   })
 })
