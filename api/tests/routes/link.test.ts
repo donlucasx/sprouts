@@ -35,11 +35,11 @@ vi.mock("@/lib/helius", () => ({ heliusAddAddress: vi.fn(async () => undefined) 
 // The per-address limiter has its own tests; these exercise the link flow, which now makes more requests than one window allows.
 vi.mock("@/lib/auth-guard", async (orig) => ({ ...(await orig<object>()), rateLimited: () => false }));
 vi.mock("@/lib/puller", () => ({ pullerSigner: vi.fn(async () => ({ address: "4wiD3N7FrBNJSmZUQDkGHM4CsvDrvyvx7G1FApLGEbJ1" })) }));
-const { simulateMock } = vi.hoisted(() => ({ simulateMock: vi.fn(async () => ({ value: { err: null as unknown, logs: [] as string[] } })) }));
+const { simulateMock, sendMock } = vi.hoisted(() => ({ simulateMock: vi.fn(async () => ({ value: { err: null as unknown, logs: [] as string[] } })), sendMock: vi.fn(async (): Promise<string> => "sig") }));
 vi.mock("@/lib/rpc", () => ({
   rpc: () => ({
     getLatestBlockhash: () => ({ send: async () => ({ value: { blockhash: "GHtXQBsoZHVnNFa9YevAzFr17DJjgHXk3ycTKD5xD3Zi", lastValidBlockHeight: 1n } }) }),
-    sendTransaction: () => ({ send: async () => "sig" }),
+    sendTransaction: () => ({ send: sendMock }),
     simulateTransaction: () => ({ send: simulateMock }),
   }),
 }));
@@ -334,6 +334,47 @@ describe("link flow", () => {
     expect(await repo.peekLinkCode(c.code)).not.toBeNull();
     const { chainRead } = (await import("@/lib/subscriptions")) as unknown as { chainRead: (p?: unknown) => Promise<unknown> };
     (readDelegation as unknown as { mockImplementation: (v: unknown) => void }).mockImplementation(chainRead);
+  });
+
+  // 11-01 (Kimi MED, hapybuda.skr): the send's reason was only logged and lost; the user was told to sign what they had signed.
+  it("a posted approval the network refused: the 409 keeps the retry's stem, says why, and the link_failed event stores it", async () => {
+    const { readDelegation, chainRead } = (await import("@/lib/subscriptions")) as unknown as { readDelegation: { mockResolvedValue: (v: unknown) => void; mockImplementation: (v: unknown) => void }; chainRead: unknown };
+    readDelegation.mockResolvedValue({ exists: false, amountPerPeriodRaw: 0n, pulledInPeriodRaw: 0n, periodStartTs: 0n, periodLengthS: 0n });
+    sendMock.mockRejectedValueOnce(Object.assign(new Error("Solana error #-32002; Decode this error by running `npx @solana/errors decode -- -32002`"), {
+      context: { err: "BlockhashNotFound", __serverMessage: "Transaction simulation failed: Blockhash not found", logs: [] },
+    }));
+    const c = await mintCode(repo);
+    const t = await (await getTx(new Request(`http://x/api/link/${c.code}?wallet=${WALLET}`), { params: Promise.resolve({ code: c.code }) })).json();
+    const signed = getBase64EncodedWireTransaction(await signTransaction([walletKeyPair.keyPair], getTransactionDecoder().decode(getBase64Encoder().encode(t.transaction))));
+    const r = await confirm(new Request("http://x/api/link/confirm", { method: "POST", body: JSON.stringify({ code: c.code, wallet: WALLET, signedTransaction: signed, waitMs: 0 }) }));
+    expect(r.status).toBe(409);
+    const error = (await r.json()).error as string;
+    expect(error).toBe("No delegation found: the network did not accept the approval (BlockhashNotFound; Transaction simulation failed: Blockhash not found). Nothing was linked. Try again.");
+    expect(error.startsWith("No delegation found")).toBe(true);
+    const e = repo.events.find((x) => x.kind === "link_failed")!;
+    expect((e.detail as { error: string }).error).toContain("BlockhashNotFound");
+    readDelegation.mockImplementation(chainRead);
+  });
+
+  it("a posted approval that sent but is not on chain yet: says so, and that trying again is safe", async () => {
+    const { readDelegation, chainRead } = (await import("@/lib/subscriptions")) as unknown as { readDelegation: { mockResolvedValue: (v: unknown) => void; mockImplementation: (v: unknown) => void }; chainRead: unknown };
+    readDelegation.mockResolvedValue({ exists: false, amountPerPeriodRaw: 0n, pulledInPeriodRaw: 0n, periodStartTs: 0n, periodLengthS: 0n });
+    const c = await mintCode(repo);
+    const t = await (await getTx(new Request(`http://x/api/link/${c.code}?wallet=${WALLET}`), { params: Promise.resolve({ code: c.code }) })).json();
+    const signed = getBase64EncodedWireTransaction(await signTransaction([walletKeyPair.keyPair], getTransactionDecoder().decode(getBase64Encoder().encode(t.transaction))));
+    const r = await confirm(new Request("http://x/api/link/confirm", { method: "POST", body: JSON.stringify({ code: c.code, wallet: WALLET, signedTransaction: signed, waitMs: 0 }) }));
+    expect(r.status).toBe(409);
+    expect((await r.json()).error).toBe("No delegation found yet: your approval was sent but is not on chain. Trying again is safe.");
+    readDelegation.mockImplementation(chainRead);
+  });
+
+  it("a re-posted approval that already landed links normally (the send's 'already processed' is not a failure)", async () => {
+    sendMock.mockRejectedValueOnce(Object.assign(new Error("Solana error #-32002"), { context: { err: "AlreadyProcessed", logs: [] } }));
+    const c = await mintCode(repo);
+    const t = await (await getTx(new Request(`http://x/api/link/${c.code}?wallet=${WALLET}`), { params: Promise.resolve({ code: c.code }) })).json();
+    const signed = getBase64EncodedWireTransaction(await signTransaction([walletKeyPair.keyPair], getTransactionDecoder().decode(getBase64Encoder().encode(t.transaction))));
+    const r = await confirm(new Request("http://x/api/link/confirm", { method: "POST", body: JSON.stringify({ code: c.code, wallet: WALLET, signedTransaction: signed }) }));
+    expect(r.status).toBe(200);
   });
 
   it("K-M4: confirm reads the delegation's terms back (amount, period, expiry, mint, authority, delegator, delegatee) and fails closed", async () => {

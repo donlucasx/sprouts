@@ -23,10 +23,11 @@ import { FONT, radius, spacing, useTheme } from '@/theme'
 /**
  * Confirms the link; when the delegation is late on chain the same code is confirmed again (no new signature, no new code), so a late
  * approval never leaves a stray delegation behind a fresh one (review I7). The retry loop lives in confirm-retry.ts (T9 shares it).
+ * 11-01 (Kimi MED, hapybuda.skr: one tap, five 409s, no approval ever on chain): every attempt re-posts the SAME signed approval, as
+ * the re-link card already does (relink.ts). A first send the network lost is sent again; one that landed is simply already processed.
  */
 function confirmLink(code: string, wallet: string, signedTransaction: string) {
-  // after the first send the approval is out; only the delegation read is pending
-  return confirmWithRetries((attempt) => api('/api/link/confirm', { method: 'POST', body: attempt === 0 ? { code, wallet, signedTransaction } : { code, wallet } }), {
+  return confirmWithRetries(() => api('/api/link/confirm', { method: 'POST', body: { code, wallet, signedTransaction } }), {
     notOnChainYet: LINK_NOT_ON_CHAIN_YET,
   })
 }

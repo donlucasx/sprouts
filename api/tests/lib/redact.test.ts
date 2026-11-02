@@ -34,3 +34,19 @@ describe("redact (K-M10): an error string that can carry HELIUS_RPC_URL never re
     expect(JSON.stringify(err, Object.getOwnPropertyNames(err as object))).not.toContain("FAKEKEY");
   });
 });
+
+describe("sendFailureText (11-01, Kimi MED: a refused link approval says why)", async () => {
+  const { sendFailureText } = await import("@/lib/redact");
+  it("reads the reason from a kit error's context, not its bare production message", () => {
+    const e = Object.assign(new Error("Solana error #-32002; Decode this error by running ..."), {
+      context: { err: { InstructionError: [2, { Custom: 1 }] }, logs: ["Program X invoke [1]", "Program log: Error: insufficient funds", "Program X failed"] },
+    });
+    expect(sendFailureText(e)).toBe('{"InstructionError":[2,{"Custom":1}]}; Program log: Error: insufficient funds');
+  });
+  it("redacts a key and stays short", () => {
+    const e = new Error(`fetch failed https://rpc.example/?api-key=SECRETSECRET ${"x".repeat(300)}`);
+    const t = sendFailureText(e);
+    expect(t).not.toContain("SECRETSECRET");
+    expect(t.length).toBeLessThanOrEqual(140);
+  });
+});

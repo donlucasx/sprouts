@@ -12,7 +12,7 @@ import { rpc } from "@/lib/rpc";
 import { SUBSCRIPTIONS_PROGRAM, USDC_MINT } from "@/lib/constants";
 import { findSubscriptionAuthorityPda } from "@solana/subscriptions";
 import { ASSOCIATED_TOKEN_PROGRAM_ADDRESS, TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
-import { errorText } from "@/lib/redact";
+import { errorText, sendFailureText } from "@/lib/redact";
 import { addressOrNull, linkOwner, withFailureLog } from "@/lib/failure-log";
 
 export const runtime = "nodejs";
@@ -57,6 +57,7 @@ async function confirm(request: Request) {
     return NextResponse.json({ error: "This wallet is linked to another Seeker. Revoke it there first." }, { status: 409 });
   }
 
+  let sendError: string | null = null;
   // The phone's own wallet posts the signed approval here [A3]: it must be this wallet's own approval for this delegation, then the API sends it.
   if (parsed.data.signedTransaction) {
     let posted;
@@ -81,12 +82,23 @@ async function confirm(request: Request) {
       await rpc().sendTransaction(posted.wire as Base64EncodedWireTransaction, { encoding: "base64", preflightCommitment: "confirmed" }).send();
     } catch (e) {
       // A lost answer is not a lost approval (review I3): the delegation poll below decides, and the app retries confirm with the same code.
-      console.error(`link confirm: send answered with an error for ${wallet}: ${e instanceof Error ? e.message : String(e)}`);
+      // 11-01 (Kimi MED, hapybuda.skr): the reason was only logged, and Vercel keeps logs about an hour; it now rides the 409 below, so the
+      // link_failed event (failure-log.ts) and the founder's alert carry it. An "already processed" here is the app's re-post of a landed approval.
+      sendError = sendFailureText(e);
+      console.error(`link confirm: send answered with an error for ${wallet}: ${sendError}`);
     }
   }
 
   const delegation = await waitForDelegation(address(link.delegationPda), parsed.data.waitMs ?? 10_000);
-  if (!delegation.exists) return NextResponse.json({ error: "No delegation found for this wallet yet. Sign the approval first." }, { status: 409 });
+  // Every answer below keeps the stem "No delegation found" the app's retry matches (app/src/lib/confirm-retry.ts LINK_NOT_ON_CHAIN_YET).
+  if (!delegation.exists) {
+    const error = sendError
+      ? `No delegation found: the network did not accept the approval (${sendError}). Nothing was linked. Try again.`
+      : parsed.data.signedTransaction
+        ? "No delegation found yet: your approval was sent but is not on chain. Trying again is safe."
+        : "No delegation found for this wallet yet. Sign the approval first.";
+    return NextResponse.json({ error }, { status: 409 });
+  }
   // K-M4 (like relink/confirm): the chain must show the terms the link page built: this wallet as delegator, a delegatee that derives
   // the bound PDA, $5 a day, a one-day period, no expiry, on USDC, under this wallet's USDC subscription authority. Anything else
   // records nothing and leaves the code unburned (fails closed).

@@ -40,3 +40,23 @@ export function redactError(e: unknown): Error {
 const safeJson = (v: unknown): string => {
   try { return JSON.stringify(v ?? null, (_k, x) => (typeof x === "bigint" ? x.toString() : x)) ?? "null"; } catch { return "null"; }
 };
+
+/**
+ * 11-01 (Kimi MED, hapybuda.skr's link): a failed sendTransaction, short and redacted, for a 409 and its stored event. In production a
+ * kit SolanaError's message is only "Solana error #-32002; Decode this error..." (the 10-29 incident), so the reason is read from its
+ * context: the transaction error (`err`, e.g. {"InstructionError":[2,{"Custom":1}]} or "BlockhashNotFound"), the server's message, and
+ * the last program log line. At most 140 characters.
+ */
+export function sendFailureText(e: unknown): string {
+  const ctx = (e as { context?: Record<string, unknown> } | null)?.context;
+  const parts: string[] = [];
+  if (ctx) {
+    if (ctx.err !== undefined && ctx.err !== null) parts.push(typeof ctx.err === "string" ? ctx.err : safeJson(ctx.err));
+    if (typeof ctx.__serverMessage === "string") parts.push(ctx.__serverMessage);
+    const logs = Array.isArray(ctx.logs) ? (ctx.logs as unknown[]).filter((l): l is string => typeof l === "string") : [];
+    const last = [...logs].reverse().find((l) => /error|failed|insufficient/i.test(l)) ?? logs[logs.length - 1];
+    if (last) parts.push(last);
+  }
+  const text = parts.length ? parts.join("; ") : errorText(e);
+  return redact(text).replace(/\s+/g, " ").slice(0, 140);
+}
