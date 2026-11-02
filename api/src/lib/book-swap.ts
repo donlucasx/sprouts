@@ -82,6 +82,9 @@ export function extractSwapLegs(tx: HeliusEnhancedTx, wallet: string): SwapLegs 
  * SOL received is then only in the wallet's balance change (the fee added back when it paid it). Read ONLY when Helius itself
  * labels the transaction a SWAP: a plain token send that closes an account also gains SOL (the rent refund), and is no sale.
  * The on-chain re-check (verify-swap.ts) compares this leg with the same lamport delta, so it cannot be inflated past the chain.
+ * Known bounds (Kimi 11-01, LOW): a SWAP that also closes accounts in the wallet's favour adds their rent (~0.002 SOL each) to this
+ * leg, a round-up at most cents too high from the user's own USDC. The mirror (a BUY whose SOL spend shows only as a balance change)
+ * is not handled: a wallet's SOL can only leave by a listed system transfer, and no such swap has been seen.
  */
 function solGained(tx: HeliusEnhancedTx, wallet: string): { mint: string; amount: number } | null {
   if (tx.type !== "SWAP") return null;

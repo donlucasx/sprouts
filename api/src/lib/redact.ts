@@ -54,7 +54,9 @@ export function sendFailureText(e: unknown): string {
     if (ctx.err !== undefined && ctx.err !== null) parts.push(typeof ctx.err === "string" ? ctx.err : safeJson(ctx.err));
     if (typeof ctx.__serverMessage === "string") parts.push(ctx.__serverMessage);
     const logs = Array.isArray(ctx.logs) ? (ctx.logs as unknown[]).filter((l): l is string => typeof l === "string") : [];
-    const last = [...logs].reverse().find((l) => /error|failed|insufficient/i.test(l)) ?? logs[logs.length - 1];
+    // The line that names the problem ("Error: insufficient funds") beats the program's closing "failed" line, which beats the last line.
+    const back = [...logs].reverse();
+    const last = back.find((l) => /error:|insufficient/i.test(l)) ?? back.find((l) => /failed/i.test(l)) ?? logs[logs.length - 1];
     if (last) parts.push(last);
   }
   const text = parts.length ? parts.join("; ") : errorText(e);
