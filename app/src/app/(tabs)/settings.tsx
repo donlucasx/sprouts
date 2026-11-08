@@ -195,7 +195,7 @@ export default function Settings() {
         {/* 11-08 his ruling: the server checks each wallet's own USDC (plant-run.ts), so say it where the wallets are listed */}
         {liveWallets.length > 0 ? (
           <ThemedText variant="caption" tone="secondary">
-            Keep USDC in each wallet. Each one plants its round-ups from its own USDC.
+            Each wallet needs its own USDC to plant.
           </ThemedText>
         ) : null}
         {liveWallets.map((w) => (
