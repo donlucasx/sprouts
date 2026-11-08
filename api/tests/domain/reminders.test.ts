@@ -47,18 +47,16 @@ describe("reminderFor", () => {
     expect(reminderFor(p(2 * D))).toBeNull();
     const r1 = reminderFor(p(3 * D))!;
     expect(r1.kind).toBe("usdc_waiting");
-    expect(r1.id.endsWith("-1")).toBe(true);
-    expect(r1.id.startsWith("usdc-AbCd-")).toBe(true);
+    expect(r1.id).toBe(`usdc-AbCd-${ago(3 * D).toISOString().slice(0, 10)}-1`);
     expect(r1.route).toBe("/home");
     expect(r1.title).toBe("Your round-ups are still waiting");
     expect(r1.body).toBe("Add USDC to your wallet and plantings start again by themselves.");
-    expect(reminderFor(p(7 * D))!.id.endsWith("-2")).toBe(true);
+    expect(reminderFor(p(7 * D))!.id).toBe(`usdc-AbCd-${ago(7 * D).toISOString().slice(0, 10)}-2`);
   });
 
   it("A5 uses the oldest paused wallet", () => {
     const r = reminderFor(facts({ pausedNoUsdcSince: [{ wallet: "NEWWxxxx", since: ago(4 * D) }, { wallet: "OLDDxxxx", since: ago(7 * D) }] }))!;
-    expect(r.id.startsWith("usdc-OLDD-")).toBe(true);
-    expect(r.id.endsWith("-2")).toBe(true);
+    expect(r.id).toBe(`usdc-OLDD-${ago(7 * D).toISOString().slice(0, 10)}-2`);
   });
 
   it("a new pause gets new ids", () => {
@@ -114,11 +112,20 @@ describe("reminderFor", () => {
     expect(reminderFor(facts({ lastLinkFailAt: ago(20 * H) }))).toBeNull();
   });
 
-  it("relink beats link_new for a user whose only wallet was stopped 8 days ago", () => {
+  it("relink for a user whose only wallet Sprouts stopped 8 days ago", () => {
     const since = ago(8 * D);
     const r = reminderFor(facts({ walletsEver: 1, activeWallets: 0, lastSwapAt: null, firstActiveLinkAt: null, signedUpAt: ago(30 * D), stoppedSince: [{ wallet: "WxYzWxYz", since }] }))!;
     expect(r.kind).toBe("relink");
     expect(r.id).toBe(`relink-WxYz-${since.toISOString().slice(0, 10)}`);
+  });
+
+  it("usdc_waiting wins over relink when both apply", () => {
+    const r = reminderFor(facts({
+      activeWallets: 0,
+      pausedNoUsdcSince: [{ wallet: "AbCdEfGh", since: ago(4 * D) }],
+      stoppedSince: [{ wallet: "WxYzWxYz", since: ago(8 * D) }],
+    }))!;
+    expect(r.kind).toBe("usdc_waiting");
   });
 
   it("priority: one reminder when several apply", () => {
