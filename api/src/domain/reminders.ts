@@ -19,6 +19,8 @@ export type ReminderFacts = {
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
+const LINK_UNFINISHED_MIN_MS = 18 * HOUR;
+const LINK_UNFINISHED_MAX_MS = 7 * DAY; // after this A9 falls through, so A1-A3 stay reachable
 
 // Copy: submission/release-0.1.9-copy.md section A (verbatim).
 const A1 = { title: "Your garden is ready to plant", body: "Link a wallet and your swaps start rounding up. It takes about 30 seconds." };
@@ -37,7 +39,13 @@ export function reminderFor(f: ReminderFacts): Reminder | null {
   const now = f.now.getTime();
   const age = (d: Date) => now - d.getTime();
 
-  if (f.lastLinkFailAt && age(f.lastLinkFailAt) >= 18 * HOUR && !f.lastLinkAttemptAfterFail && f.activeWallets === 0) {
+  if (
+    f.lastLinkFailAt &&
+    age(f.lastLinkFailAt) >= LINK_UNFINISHED_MIN_MS &&
+    age(f.lastLinkFailAt) <= LINK_UNFINISHED_MAX_MS &&
+    !f.lastLinkAttemptAfterFail &&
+    f.activeWallets === 0
+  ) {
     return { id: `unfinished-${dayOf(f.lastLinkFailAt)}`, kind: "link_unfinished", ...A9, route: "/connect" };
   }
 

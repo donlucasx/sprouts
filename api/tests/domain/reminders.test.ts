@@ -93,6 +93,7 @@ describe("reminderFor", () => {
 
   it("A9 the day after a failed link, unless the user tried again or linked", () => {
     const failAt = ago(20 * H);
+    // 22 h so A1 (day 1) has not fired yet; otherwise the null assertions below would see nolink-1.
     const base = noWallet({ lastLinkFailAt: failAt, signedUpAt: ago(22 * H) });
     const r = reminderFor(base)!;
     expect(r.kind).toBe("link_unfinished");
@@ -101,6 +102,23 @@ describe("reminderFor", () => {
     expect(r.title).toBe("Linking didn't finish");
     expect(reminderFor({ ...base, lastLinkAttemptAfterFail: true })).toBeNull();
     expect(reminderFor({ ...base, lastLinkFailAt: ago(2 * H), signedUpAt: ago(2 * H) })).toBeNull();
+  });
+
+  it("A9 stops after 7 days and falls through to link_new", () => {
+    const r = reminderFor(noWallet({ signedUpAt: ago(30 * D), lastLinkFailAt: ago(8 * D) }))!;
+    expect(r.kind).toBe("link_new");
+    expect(r.id).toBe("nolink-7");
+  });
+
+  it("A9 is suppressed when the user has an active wallet", () => {
+    expect(reminderFor(facts({ lastLinkFailAt: ago(20 * H) }))).toBeNull();
+  });
+
+  it("relink beats link_new for a user whose only wallet was stopped 8 days ago", () => {
+    const since = ago(8 * D);
+    const r = reminderFor(facts({ walletsEver: 1, activeWallets: 0, lastSwapAt: null, firstActiveLinkAt: null, signedUpAt: ago(30 * D), stoppedSince: [{ wallet: "WxYzWxYz", since }] }))!;
+    expect(r.kind).toBe("relink");
+    expect(r.id).toBe(`relink-WxYz-${since.toISOString().slice(0, 10)}`);
   });
 
   it("priority: one reminder when several apply", () => {
