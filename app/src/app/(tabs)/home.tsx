@@ -38,6 +38,8 @@ import { NextPlanting, roomUnderBar } from '@/components/NextPlanting'
 import { canSlot } from '@/model/can'
 import { nextPlantingFor } from '@/lib/next-planting'
 import { RelinkCard } from '@/components/RelinkCard'
+import { QuestionCard } from '@/components/QuestionCard'
+import { cardsFor, countHomeVisit, dismiss, homeVisits, readDismissed } from '@/lib/feedback'
 import { TopUpButton } from '@/components/TopUp'
 import { BambooFrame } from '@/garden2/BambooFrame'
 import { TOPUP, topUpOffer } from '@/lib/topup'
@@ -81,6 +83,9 @@ export default function Home() {
   const { colors, dark } = useTheme()
   const { data: me, stale, fresh, refetch, asOf, loading, unauthorized, errorStatus } = useMe()
   const { data: activity } = useQuery(activityQuery)
+  // 0.1.9: dismissed cards and the visit count live in the store; one visit = one focus of Home (the focus effect below)
+  const [dismissed, setDismissed] = useState(readDismissed)
+  const [visits, setVisits] = useState(homeVisits)
   // 10-28 (his note): Link a wallet sends the app here with `linked`; a quiet notice says so until OK clears the param
   const { linked } = useLocalSearchParams<{ linked?: string }>()
   // the low-USDC notification's pace (usdc-watch): saved whenever Home measures it, for the background task, which reads no Activity
@@ -175,6 +180,8 @@ export default function Home() {
       void refetch()
       void queryClient.invalidateQueries({ queryKey: ['me-usdc'] })
       setLanded((n) => n + 1)
+      countHomeVisit()
+      setVisits(homeVisits())
       return () => {
         setFailed(false)
         setNudged(false)
@@ -378,6 +385,32 @@ export default function Home() {
         </Pressable>
       ) : null}
       <RelinkCard me={me} />
+      {(() => {
+        const { message, ask } = cardsFor(me ?? null, dismissed, visits)
+        const close = (id: string) => {
+          dismiss(id)
+          setDismissed(readDismissed())
+        }
+        return (
+          <>
+            {message ? (
+              <Card>
+                <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm }}>
+                  <ThemedText variant="heading" style={{ flex: 1 }}>
+                    {message.heading}
+                  </ThemedText>
+                  <Pressable onPress={() => close(message.id)} accessibilityRole="button" accessibilityLabel="Dismiss this message" hitSlop={12}>
+                    <MaterialCommunityIcons name="close" size={20} color={colors.textSecondary} />
+                  </Pressable>
+                </View>
+                <ThemedText tone="secondary">{message.body}</ThemedText>
+                <Button title="Message us" onPress={() => router.push('/support')} />
+              </Card>
+            ) : null}
+            {ask ? <QuestionCard key={ask.ref} question={ask.question} ref={ask.ref} onDone={() => close(ask.ref)} /> : null}
+          </>
+        )
+      })()}
       {termsNeeded(me) ? (
         <Card>
           <ThemedText variant="heading">Terms and Privacy</ThemedText>
