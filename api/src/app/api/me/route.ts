@@ -126,13 +126,13 @@ export async function GET(request: Request) {
   };
   // 0.1.9: at most one reminder (the phone shows it by its own local clock), the one-time note, and at most one question.
   const now = new Date();
-  const reminder = reminderFor(reminderFactsFrom(reminderInputs, user, wallets, now));
-  const ask = askFor({
+  const reminder = reminderInputs.ok ? reminderFor(reminderFactsFrom(reminderInputs, user, wallets, now)) : null;
+  const ask = !reminderInputs.ok ? null : askFor({
     walletsEver: wallets.length,
     withdrawals: withdrawals.filter((x) => x.cancelSignature === null).length,
     removedWallets: reminderInputs.events.filter((e) => e.kind === "revoke_seen" && e.walletPubkey && (e.detail as { by?: unknown } | null)?.by === "user").map((e) => ({ wallet: e.walletPubkey!, at: e.ts })),
-    answered: reminderInputs.events.flatMap((e) => {
-      if (e.kind !== "feedback_answer") return [];
+    now,
+    answered: reminderInputs.answers.flatMap((e) => {
       const d = e.detail as { question?: unknown; ref?: unknown } | null;
       return typeof d?.question === "string" && typeof d.ref === "string" ? [{ question: d.question, ref: d.ref }] : [];
     }),

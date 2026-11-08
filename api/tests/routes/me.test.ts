@@ -200,6 +200,19 @@ describe("GET /api/me", () => {
     expect(body.ask).toBeNull();
   });
 
+  it("still answers 200 with reminder null and ask null when the reminder reads throw", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const real = repo.listEvents.bind(repo);
+    repo.listEvents = async (u, kinds, limit) => { if (kinds.includes("link_started")) throw new Error("boom"); return real(u, kinds, limit); };
+    const res = await me(new Request("http://x/api/me", bearer(await issueSession(U, "M"))));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.reminder).toBeNull();
+    expect(body.ask).toBeNull();
+    expect(body.message.id).toBe("lucas-2026-11");
+    log.mockRestore();
+  });
+
   it("POST /api/auth/signout-all ends the other device's session too", async () => {
     const phone = await issueSession(U, "M");
     const other = await issueSession(U, "M2");
