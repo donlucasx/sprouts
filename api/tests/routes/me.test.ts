@@ -181,6 +181,25 @@ describe("GET /api/me", () => {
     expect(body.wallets[0].pause).toEqual({ reason: "user" });
   });
 
+  // 0.1.9: the reminder, the one-time note, the one question and the Terms date ride on /api/me.
+  it("carries reminder, message, ask and terms.acceptedAt", async () => {
+    const token = await issueSession(U, "M");
+    let body = await (await me(new Request("http://x/api/me", bearer(token)))).json();
+    expect(body.reminder).toBeNull(); // linked, swapping, nothing waiting
+    expect(body.message).toEqual({ id: "lucas-2026-11", heading: "From Lucas", body: expect.any(String), action: "message_us" });
+    expect(body.ask).toBeNull();
+    expect(body.terms.acceptedAt).toBeNull();
+    const at = new Date("2026-11-01T09:00:00Z");
+    await repo.setTermsAccepted(U, "v-test", at);
+    await repo.addEvent({ userPubkey: U, walletPubkey: "W", kind: "revoke_seen", detail: { signature: "x", by: "user" } });
+    body = await (await me(new Request("http://x/api/me", bearer(token)))).json();
+    expect(body.terms.acceptedAt).toBe(at.toISOString());
+    expect(body.ask).toEqual({ question: "wallet_removed", ref: `W:${new Date().toISOString().slice(0, 10)}` });
+    await repo.addEvent({ userPubkey: U, walletPubkey: null, kind: "feedback_answer", detail: { question: "wallet_removed", ref: body.ask.ref } });
+    body = await (await me(new Request("http://x/api/me", bearer(token)))).json();
+    expect(body.ask).toBeNull();
+  });
+
   it("POST /api/auth/signout-all ends the other device's session too", async () => {
     const phone = await issueSession(U, "M");
     const other = await issueSession(U, "M2");
