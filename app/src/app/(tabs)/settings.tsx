@@ -192,6 +192,12 @@ export default function Settings() {
         {/* 10-28 (his note: an old revoked wallet clutters the list): revoked wallets are hidden; a stopped one has Home's re-link card,
             and its plantings stay in Activity */}
         {me && liveWallets.length === 0 ? <ThemedText tone="secondary">No wallet linked yet.</ThemedText> : null}
+        {/* 11-08 his ruling: the server checks each wallet's own USDC (plant-run.ts), so say it where the wallets are listed */}
+        {liveWallets.length > 0 ? (
+          <ThemedText variant="caption" tone="secondary">
+            Keep USDC in each wallet. Each one plants its round-ups from its own USDC.
+          </ThemedText>
+        ) : null}
         {liveWallets.map((w) => (
           <View key={w.pubkey} style={{ gap: spacing.sm, paddingVertical: spacing.xs }}>
             <ThemedText numeric>{formatWallet(w)}</ThemedText>
