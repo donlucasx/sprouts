@@ -1,5 +1,6 @@
 import { api, type MeResponse } from "./api";
 import { store } from "./store";
+import { localDay } from "./reminders";
 
 export type Question = "link_failed" | "wallet_removed" | "brought_you";
 
@@ -61,7 +62,14 @@ export function dismiss(id: string): void {
 }
 
 export const homeVisits = (): number => store.getNumber(VISITS) ?? 0;
-export const countHomeVisit = (): void => store.set(VISITS, homeVisits() + 1);
+const VISIT_DAY = "feedback.homeVisitDay";
+/** A visit counts at most once per local day, so "after their second visit" means a second day, not a tab switch. */
+export function countHomeVisit(now: Date = new Date()): void {
+  const day = localDay(now);
+  if (store.getString(VISIT_DAY) === day) return;
+  store.set(VISIT_DAY, day);
+  store.set(VISITS, homeVisits() + 1);
+}
 
 /** What Home shows: the message until dismissed; the ask unless its ref was dismissed, and "brought_you" only from the second visit. */
 export function cardsFor(
@@ -69,8 +77,11 @@ export function cardsFor(
   dismissed: string[],
   visits: number,
 ): { message: MeResponse["message"] | null; ask: MeResponse["ask"] | null } {
-  const message = me?.message && !dismissed.includes(me.message.id) ? me.message : null;
+  // Shape-checked: a newer server value or a bad cached read must never reach the card (QuestionCard would read undefined.title).
+  const m = me?.message;
+  const message = m && typeof m.id === "string" && typeof m.heading === "string" && typeof m.body === "string" && !dismissed.includes(m.id) ? m : null;
   const a = me?.ask;
-  const ask = a && !dismissed.includes(a.ref) && (a.question !== "brought_you" || visits >= 2) ? a : null;
+  const known = !!a && typeof a.question === "string" && a.question in QUESTIONS && typeof a.ref === "string";
+  const ask = a && known && !dismissed.includes(a.ref) && (a.question !== "brought_you" || visits >= 2) ? a : null;
   return { message, ask };
 }
