@@ -30,6 +30,11 @@ describe('cardsFor (0.1.9 Task 5)', () => {
     expect(cardsFor({ ask: removed }, [removed.ref], 5).ask).toBeNull()
     expect(cardsFor({ ask: brought }, ['brought_you'], 5).ask).toBeNull()
   })
+  it('drops an unknown question or a malformed message instead of crashing the card', () => {
+    expect(cardsFor({ ask: { question: 'x', ref: 'r' } as never }, [], 9).ask).toBeNull()
+    expect(cardsFor({ ask: { question: 'wallet_removed' } as never }, [], 9).ask).toBeNull()
+    expect(cardsFor({ message: {} as never }, [], 9).message).toBeNull()
+  })
   it('null or an old me (fields absent) gives no cards', () => {
     expect(cardsFor(null, [], 9)).toEqual({ message: null, ask: null })
     expect(cardsFor({}, [], 9)).toEqual({ message: null, ask: null })
@@ -50,10 +55,12 @@ describe('local state', () => {
     mem.set('feedback.dismissed', '{nope')
     expect(readDismissed()).toEqual([])
   })
-  it('counts home visits', () => {
+  it('counts a home visit at most once per local day', () => {
     expect(homeVisits()).toBe(0)
-    countHomeVisit()
-    countHomeVisit()
+    countHomeVisit(new Date(2026, 10, 8, 9))
+    countHomeVisit(new Date(2026, 10, 8, 21))
+    expect(homeVisits()).toBe(1)
+    countHomeVisit(new Date(2026, 10, 9, 8))
     expect(homeVisits()).toBe(2)
   })
 })
