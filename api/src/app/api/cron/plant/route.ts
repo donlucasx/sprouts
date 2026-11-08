@@ -29,6 +29,17 @@ export const runtime = "nodejs";
 export const maxDuration = 300;
 /** The moves step reads no position past this many ms from the run's start (the planting's own cutoff is 240 s). */
 const MOVES_DEADLINE_MS = 150_000;
+/** 11-07 run lock: a claimed run not finished after this long died (the route's limit is 300 s), so its day can be claimed again. */
+const RUN_STALE_MS = 6 * 60_000;
+
+/** The run's record is best effort: failing to write it never fails the run (its outcome is already decided). */
+async function finishRun(repo: Repo, day: string, ok: boolean, record: unknown) {
+  try {
+    await repo.finishCronRun(day, ok, json(record), new Date());
+  } catch (e) {
+    console.error(`cron: run record failed: ${errorText(e)}`);
+  }
+}
 
 /** The real reads behind the snapshot (spec 5.2): account bytes, the two share prices, the epoch, Jupiter's prices and a $2 quote; lending legs from today's venue rows (contracts 4). */
 function realCoinReads(repo: Repo, now: Date): CoinReads {
@@ -68,9 +79,17 @@ export async function GET(request: Request) {
   if (!cronAuthorized(request.headers.get("authorization"))) return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   // Review M1: the planting run starts no new wallet past 240 s from here, so the crank, the reconcile and the cleanup always run.
   const startedMs = Date.now();
+  let run: { repo: Repo; day: string } | null = null;
   try {
     const repo = await getRepo();
     const now = new Date();
+    // 11-07 (R2-2): one run at a time. A second trigger while today's run is going stops here, before it reads or moves anything.
+    const day = dayOf(now);
+    if (!(await repo.claimCronRun(day, now, new Date(now.getTime() - RUN_STALE_MS)))) {
+      console.log(`cron: ${day} is already running, this trigger stopped`);
+      return NextResponse.json({ error: "Another run is going." }, { status: 409 });
+    }
+    run = { repo, day };
     // The Yield Manager's steps before the planting run (spec 6.1): snapshot the venues, then the coins (its lending legs read today's
     // venue rows), decide each stop's split, apply to users, propose moves. Budgets: decide 90 s (DECIDE_BUDGET_MS); the moves step
     // reads no position past 150 s from the start; planting starts no new wallet past 240 s; the whole route has 300 s.
@@ -118,10 +137,13 @@ export async function GET(request: Request) {
     // Review M8: expired and settled cards are logged too, so a move stuck in flight shows in the log.
     const movesLine = moves ? `${moves.proposed.length} (expired ${moves.expired.length}, settled ${moves.settled.length ? moves.settled.join(" ") : 0})` : movesOn ? "failed" : "off";
     console.log(`cron: venues ${summary.venues ?? "failed"}, coins ${summary.coins ?? "failed"}, splits ${summary.splits ? summary.splits.map((s) => `${s.stop}${s.fallback ? `(${s.fallback})` : ""}`).join(" ") : "failed"}, applied ${summary.applied ?? "failed"}, moves ${movesLine}, planted ${planting.planted.length}, skipped ${planting.skipped.length}, cranked ${withdrawals.cranked.length}, failed ${withdrawals.failed.length}, closed ${withdrawals.skipped.length}, reconciled ${reconciled ? `${reconciled.adjusted.length} (skipped ${reconciled.skipped.length}, deferred ${reconciled.deferred.length})` : "failed"}, off webhook ${coverage ? coverage.missing.length : "failed"}`);
-    return NextResponse.json(json({ ...summary, planting, withdrawals, reconciled }));
+    const record = { ...summary, planting, withdrawals, reconciled, seconds: Math.round((Date.now() - startedMs) / 1000) };
+    await finishRun(repo, day, true, record);
+    return NextResponse.json(json(record));
   } catch (e) {
     const message = errorText(e);   // K-M10: never the RPC URL's key, in the log or the body
     console.error(`cron failed: ${message}`);
+    if (run) await finishRun(run.repo, run.day, false, { error: message.slice(0, 500), seconds: Math.round((Date.now() - startedMs) / 1000) });
     await alertFounder(`Daily cron FAILED: ${message.slice(0, 300)}`);
     return NextResponse.json({ error: `Cron failed: ${message}` }, { status: 500 });
   }

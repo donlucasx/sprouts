@@ -69,6 +69,19 @@ export class MemoryRepo implements Repo {
 
   async keepalive() {}
 
+  /** 0010's claim_cron_run: a finished or stale row can be claimed again, a running one cannot. */
+  cronRuns = new Map<string, { startedAt: Date; finishedAt: Date | null; ok: boolean | null; summary: unknown }>();
+  async claimCronRun(day: string, now: Date, staleBefore: Date) {
+    const r = this.cronRuns.get(day);
+    if (r && r.finishedAt === null && r.startedAt >= staleBefore) return false;
+    this.cronRuns.set(day, { startedAt: now, finishedAt: null, ok: null, summary: null });
+    return true;
+  }
+  async finishCronRun(day: string, ok: boolean, summary: unknown, now: Date) {
+    const r = this.cronRuns.get(day);
+    if (r) Object.assign(r, { finishedAt: now, ok, summary });
+  }
+
   async getRules(userPubkey: string): Promise<T.RulesRow> {
     // Mirrors the schema: rules.user_pubkey references users, so a first read for an unknown user fails (as it did in production).
     if (!this.users.has(userPubkey) && !this.rules.has(userPubkey)) throw new Error(`insert or update on table "rules" violates foreign key constraint "rules_user_pubkey_fkey" (${userPubkey})`);

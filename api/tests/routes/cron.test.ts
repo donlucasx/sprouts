@@ -193,4 +193,47 @@ describe("cron route", () => {
     expect(cleanup).toHaveBeenCalled();
     expect(keepalive).toHaveBeenCalled();
   });
+
+  describe("11-07 run lock and run record (0010)", () => {
+    const get = () => GET(new Request("http://x/api/cron/plant", { headers: { authorization: `Bearer ${SECRET}` } }));
+    const today = () => dayOf(new Date());
+
+    it("a trigger while today's run is still going answers 409 and plants nothing", async () => {
+      await repo.claimCronRun(today(), new Date(), new Date(Date.now() - 60_000));   // a run that started just now, not finished
+      const res = await get();
+      expect(res.status).toBe(409);
+      expect(order).toEqual([]);   // no venues, coins, decide, apply, plant
+    });
+
+    it("a run that finished leaves its record (ok, summary, seconds), and a later trigger may run again", async () => {
+      expect((await get()).status).toBe(200);
+      const r = repo.cronRuns.get(today());
+      expect(r?.ok).toBe(true);
+      expect(r?.finishedAt).not.toBeNull();
+      expect(r?.summary).toMatchObject({ applied: 1, planting: expect.anything(), seconds: expect.any(Number) });
+      order.length = 0;
+      expect((await get()).status).toBe(200);
+      expect(order).toContain("plant");
+    });
+
+    it("a run that died (claimed over 6 minutes ago, never finished) does not hold the lock", async () => {
+      repo.cronRuns.set(today(), { startedAt: new Date(Date.now() - 7 * 60_000), finishedAt: null, ok: null, summary: null });
+      expect((await get()).status).toBe(200);
+      expect(repo.cronRuns.get(today())?.ok).toBe(true);
+    });
+
+    it("a failed run records ok false with its error, and frees the day", async () => {
+      vi.spyOn(repo, "cleanupExpired").mockRejectedValueOnce(new Error("db down"));
+      expect((await get()).status).toBe(500);
+      const r = repo.cronRuns.get(today());
+      expect(r?.ok).toBe(false);
+      expect(r?.summary).toMatchObject({ error: expect.stringContaining("db down") });
+      expect((await get()).status).toBe(200);
+    });
+
+    it("a record that cannot be written never fails the run", async () => {
+      vi.spyOn(repo, "finishCronRun").mockRejectedValueOnce(new Error("no table"));
+      expect((await get()).status).toBe(200);
+    });
+  });
 });

@@ -109,6 +109,17 @@ export class SupabaseRepo implements Repo {
     return data ? walletRow(data as Row) : null;
   }
 
+  async claimCronRun(day: string, now: Date, staleBefore: Date) {
+    const { data, error } = await this.db.rpc("claim_cron_run", { p_day: day, p_now: now.toISOString(), p_stale_before: staleBefore.toISOString() });
+    if (error) throw new Error(error.message);
+    return data === true;
+  }
+
+  async finishCronRun(day: string, ok: boolean, summary: unknown, now: Date) {
+    const { error } = await this.db.from("cron_runs").update({ finished_at: now.toISOString(), ok, summary }).eq("day", day);
+    if (error) throw new Error(error.message);
+  }
+
   async keepalive() {
     const { error } = await this.db.from("users").select("*", { head: true, count: "exact" });
     if (error) throw new Error(error.message);

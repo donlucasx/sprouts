@@ -47,3 +47,6 @@ spikes/keys/
 
 # R499 repair: row backups written before deletes (production data)
 spikes/repair-r499-backup-*.json
+
+# Local ops scripts that read production data (user keys and names): never in the public repo
+spikes/ops/
