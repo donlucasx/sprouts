@@ -63,7 +63,6 @@ export function noticesFor(before: MeResponse | null, me: MeResponse, on: (k: No
   const stopped = (w: MeResponse["wallets"][number] | undefined) => w?.status === "revoked" && !!w.stopped;
   for (const w of me.wallets ?? []) {
     if (!stopped(w) || stopped((before.wallets ?? []).find((b) => b.pubkey === w.pubkey))) continue;
-    const mine = w.pubkey === me.user?.pubkey, short = `${w.pubkey.slice(0, 4)}...${w.pubkey.slice(-4)}`;
     out.push({ kind: "paused", title: "Sprouts stopped planting from your wallet", body: "Open Sprouts to link it again." });
   }
   return out.filter((n) => on(n.kind));

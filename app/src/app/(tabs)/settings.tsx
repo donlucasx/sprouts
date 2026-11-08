@@ -213,7 +213,7 @@ export default function Settings() {
         {removedRef ? (
           <QuestionCard
             question="wallet_removed"
-            ref={removedRef}
+            askRef={removedRef}
             onDone={() => {
               dismiss(removedRef)
               setRemovedRef(null)
