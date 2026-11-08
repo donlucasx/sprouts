@@ -1,6 +1,14 @@
 import { dayOf } from "./day";
 
 export type AskQuestion = "wallet_removed" | "brought_you";
+/** The answers each question accepts: the values the app sends to POST /api/feedback, and the route's allow-list. */
+export const FEEDBACK_OPTIONS = {
+  link_failed: ["backed_out", "closed_itself", "warning_worried", "other"],
+  wallet_removed: ["testing", "approval", "not_planting", "need_usdc", "other"],
+  brought_you: ["skr_staking", "roundups", "looking", "other"],
+} as const;
+export type FeedbackQuestion = keyof typeof FEEDBACK_OPTIONS;
+
 export type Ask = { question: AskQuestion; ref: string };
 
 /** The ref of a wallet_removed ask: the wallet and the UTC day of its revoke. The app echoes it back unchanged and never reads it. */
