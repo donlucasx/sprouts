@@ -96,8 +96,8 @@ describe("noticesFor (R161)", () => {
     const active = at([{ pubkey: PHONE, status: "active" }, { pubkey: WEB, status: "active" }]);
     const stopped = at([{ pubkey: PHONE, status: "revoked", stopped: "approval" }, { pubkey: WEB, status: "revoked", stopped: "outside" }]);
     expect(noticesFor(active, stopped, all)).toEqual([
-      { kind: "paused", title: "Sprouts stopped planting from your Seed Vault wallet", body: "Open Sprouts to link it again." },
-      { kind: "paused", title: "Sprouts stopped planting from 7xKX...gAsU", body: "Open Sprouts to link it again." },
+      { kind: "paused", title: "Sprouts stopped planting from your wallet", body: "Open Sprouts to link it again." },
+      { kind: "paused", title: "Sprouts stopped planting from your wallet", body: "Open Sprouts to link it again." },
     ]);
     expect(noticesFor(stopped, stopped, all)).toEqual([]);
     expect(noticesFor(active, at([{ pubkey: PHONE, status: "revoked", stopped: null }]), all)).toEqual([]);

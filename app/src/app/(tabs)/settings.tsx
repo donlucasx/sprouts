@@ -39,7 +39,12 @@ const NOTICES: [NoticeKind, string][] = [
   ['manager', 'Tell me when the manager moves my split'],
   ['limit', 'Tell me when the daily limit is reached'],
   ['paused', 'Tell me when a wallet runs out of USDC'],
+  ['reminders', 'Reminders'],
 ]
+/** Copy F: a switch's second line, where it has one. */
+const NOTICE_SUBLINE: Partial<Record<NoticeKind, string>> = {
+  reminders: 'Nudges when your garden needs something, at most one a day.',
+}
 
 export default function Settings() {
   const [taxBusy, setTaxBusy] = useState(false)
@@ -222,9 +227,10 @@ export default function Settings() {
         {NOTICES.map(([kind, label]) => (
           <View key={kind} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.xs }}>
             {/* The switch carries the label; the text is hidden from the screen reader so it is not read twice. */}
-            <ThemedText style={{ flex: 1 }} importantForAccessibility="no" accessibilityElementsHidden>
-              {label}
-            </ThemedText>
+            <View style={{ flex: 1 }} importantForAccessibility="no" accessibilityElementsHidden>
+              <ThemedText>{label}</ThemedText>
+              {NOTICE_SUBLINE[kind] ? <ThemedText variant="caption">{NOTICE_SUBLINE[kind]}</ThemedText> : null}
+            </View>
             <Switch
               {...toggle}
               value={notifyOn[kind]}
@@ -232,7 +238,7 @@ export default function Settings() {
                 writeNotify(kind, on)
                 setNotifyOn((s) => ({ ...s, [kind]: on }))
               }}
-              accessibilityLabel={label}
+              accessibilityLabel={NOTICE_SUBLINE[kind] ? `${label}. ${NOTICE_SUBLINE[kind]}` : label}
             />
           </View>
         ))}
