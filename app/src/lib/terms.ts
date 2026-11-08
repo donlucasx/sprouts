@@ -35,3 +35,19 @@ export function termsAction(me: Pick<MeResponse, "terms"> | null | undefined): "
 export function withAccepted<T extends { terms?: MeResponse["terms"] }>(me: T, version: string): T {
   return me.terms ? { ...me, terms: { ...me.terms, acceptedVersion: version } } : me;
 }
+
+/** Signing in records the acceptance on the server (/api/auth/verify), so the saved last read must agree: the same user's read is stamped accepted now; another user's (or none) gives null and the caller clears it. */
+export function stampSignIn(last: MeResponse | null, pubkey: string): MeResponse | null {
+  if (!last || last.user.pubkey !== pubkey) return null;
+  const stamped = withAccepted(last, TERMS_VERSION);
+  return stamped.terms ? { ...stamped, terms: { ...stamped.terms, acceptedAt: new Date().toISOString() } } : stamped;
+}
+
+/** "You agreed to these Terms on Nov 7, 2026." when nothing is owed and the API gave a date; the date is in the phone's zone unless one is passed (tests). */
+export function agreedLine(me: Pick<MeResponse, "terms"> | null | undefined, timeZone?: string): string | null {
+  const at = me?.terms?.acceptedAt;
+  if (!at || termsNeeded(me)) return null;
+  const d = new Date(at);
+  if (Number.isNaN(d.getTime())) return null;
+  return `You agreed to these Terms on ${d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone })}.`;
+}

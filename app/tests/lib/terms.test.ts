@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { existsSync, readFileSync } from 'node:fs'
 import { TERMS_MD } from '@/lib/terms-text'
-import { TERMS_VERSION, termsAction, termsBlocks, termsNeeded, termsSummary, withAccepted } from '@/lib/terms'
+import { TERMS_VERSION, termsAction, termsBlocks, termsNeeded, termsSummary, withAccepted, stampSignIn, agreedLine } from '@/lib/terms'
 
 const FINAL = new URL('../../../../../docs/legal/2026-11-01-terms.md', import.meta.url) // the project's docs/legal, outside the repo
 
@@ -46,5 +46,34 @@ describe('Terms + Privacy (R283; R365, the text of 10-07)', () => {
     expect(termsNeeded(after)).toBe(false)
     expect(me.terms.acceptedVersion).toBe(null)
     expect(withAccepted({}, '2026-10-23')).toEqual({})
+  })
+})
+
+describe('after sign-in (0.1.9, 11-07: no stale Terms card)', () => {
+  const owed = (pubkey: string) => ({ user: { pubkey }, terms: { currentVersion: '2026-11-01', acceptedVersion: null as string | null, acceptedAt: null as string | null } }) as never
+  it('same user: the saved read is stamped accepted now', () => {
+    const out = stampSignIn(owed('A'), 'A') as unknown as { terms: { currentVersion: string; acceptedVersion: string; acceptedAt: string } }
+    expect(termsNeeded(out)).toBe(false)
+    expect(out.terms.acceptedVersion).toBe(TERMS_VERSION)
+    expect(Math.abs(Date.now() - Date.parse(out.terms.acceptedAt))).toBeLessThan(5000)
+  })
+  it('another user, or no saved read: null', () => {
+    expect(stampSignIn(owed('A'), 'B')).toBeNull()
+    expect(stampSignIn(null, 'A')).toBeNull()
+  })
+  it('a read without terms (older API) is returned as is for the same user', () => {
+    const last = { user: { pubkey: 'A' } } as never
+    expect(stampSignIn(last, 'A')).toBe(last)
+  })
+  const accepted = { terms: { currentVersion: '2026-11-01', acceptedVersion: '2026-11-01', acceptedAt: '2026-11-08T02:35:03Z' } }
+  it('the agreed line, in the phone zone given', () => {
+    expect(agreedLine(accepted, 'America/Los_Angeles')).toBe('You agreed to these Terms on Nov 7, 2026.')
+    expect(agreedLine(accepted, 'UTC')).toBe('You agreed to these Terms on Nov 8, 2026.')
+  })
+  it('no line when owed, when acceptedAt is missing, or without terms', () => {
+    expect(agreedLine({ terms: { ...accepted.terms, acceptedVersion: null } }, 'UTC')).toBeNull()
+    expect(agreedLine({ terms: { ...accepted.terms, acceptedAt: null } }, 'UTC')).toBeNull()
+    expect(agreedLine({ terms: { currentVersion: 'x', acceptedVersion: 'x' } }, 'UTC')).toBeNull()
+    expect(agreedLine(null, 'UTC')).toBeNull()
   })
 })
