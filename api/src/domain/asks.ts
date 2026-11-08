@@ -9,6 +9,9 @@ export const FEEDBACK_OPTIONS = {
 } as const;
 export type FeedbackQuestion = keyof typeof FEEDBACK_OPTIONS;
 
+/** A user revoke older than this is no longer asked about. */
+export const REMOVED_ASK_WINDOW_MS = 14 * 24 * 3_600_000;
+
 export type Ask = { question: AskQuestion; ref: string };
 
 /** The ref of a wallet_removed ask: the wallet and the UTC day of its revoke. The app echoes it back unchanged and never reads it. */
@@ -23,10 +26,13 @@ export function askFor(a: {
   withdrawals: number;
   removedWallets: { wallet: string; at: Date }[];
   answered: { question: string; ref: string }[];
+  now?: Date;
 }): Ask | null {
   const done = (question: AskQuestion, ref: string) => a.answered.some((x) => x.question === question && x.ref === ref);
 
-  const removed = [...a.removedWallets]
+  const now = (a.now ?? new Date()).getTime();
+  const removed = a.removedWallets
+    .filter((r) => now - r.at.getTime() <= REMOVED_ASK_WINDOW_MS)
     .sort((p, q) => q.at.getTime() - p.at.getTime())
     .map((r) => removedRef(r.wallet, r.at))
     .find((ref) => !done("wallet_removed", ref));

@@ -30,4 +30,11 @@ describe("askFor", () => {
     expect(askFor({ ...base, withdrawals: 1 })).toBeNull();
     expect(askFor({ ...base, walletsEver: 0 })).toBeNull();
   });
+  it("asks about a user revoke only within 14 days", () => {
+    const now = new Date("2026-11-20T10:00:00Z");
+    const old = { wallet: W, at: new Date("2026-11-05T09:00:00Z") }; // 15 days
+    expect(askFor({ ...base, removedWallets: [old], now })).toBeNull();
+    expect(askFor({ ...base, walletsEver: 0, withdrawals: 1, removedWallets: [old], now })?.question).toBe("brought_you");
+    expect(askFor({ ...base, removedWallets: [{ wallet: W, at: new Date("2026-11-07T10:00:00Z") }], now })?.question).toBe("wallet_removed");
+  });
 });

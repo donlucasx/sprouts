@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { reminderFactsFor } from "@/lib/reminder-facts";
+import { describe, it, expect, vi } from "vitest";
+import { reminderFactsFor, readReminderInputs } from "@/lib/reminder-facts";
 import type { EventRow, EventKind, UserRow, WalletRow } from "@/db/types";
 import type { Repo } from "@/db/repo";
 
@@ -23,10 +23,10 @@ const repoOf = (events: EventRow[], swaps: { ts: Date }[] = []) => {
 };
 
 describe("reminderFactsFor", () => {
-  it("one listEvents call; counts wallets and finds the first active link and the last swap", async () => {
+  it("two listEvents calls (window + answers); counts wallets and finds the first active link and the last swap", async () => {
     const { repo, calls } = repoOf([], [{ ts: h(5) }]);
     const f = await reminderFactsFor(repo, user, [wallet("A", "active", { createdAt: h(30) }), wallet("B", "active", { createdAt: h(60) }), wallet("C", "revoked")], now);
-    expect(calls.listEvents).toBe(1);
+    expect(calls.listEvents).toBe(2); // the 200-row window and the answers
     expect(f.walletsEver).toBe(3);
     expect(f.activeWallets).toBe(2);
     expect(f.firstActiveLinkAt).toEqual(h(60));
@@ -71,5 +71,28 @@ describe("reminderFactsFor", () => {
     const f = await reminderFactsFor(repoOf([]).repo, user, [], now);
     expect(f.lastLinkFailAt).toBeNull();
     expect(f.lastLinkAttemptAfterFail).toBe(false);
+  });
+});
+
+describe("readReminderInputs", () => {
+  it("answers are their own read: 200+ link events do not push an old answer out", async () => {
+    const answer = ev("feedback_answer", 5000, null, { question: "wallet_removed", ref: "W:2026-01-01" });
+    const flood = Array.from({ length: 250 }, (_, i) => ev("link_started", 1 + i / 100));
+    const { repo, calls } = repoOf([answer, ...flood]);
+    const r = await readReminderInputs(repo, user);
+    expect(calls.listEvents).toBe(2);
+    expect(r.events).toHaveLength(200);
+    expect(r.events.some((e) => e.kind === "feedback_answer")).toBe(false);
+    expect(r.answers).toEqual([answer]);
+    expect(r.ok).toBe(true);
+  });
+
+  it("fails soft: a throwing read answers empty and logs one line", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const repo = { listEvents: async () => { throw new Error("db down"); }, listSwaps: async () => [] } as unknown as Repo;
+    const r = await readReminderInputs(repo, user);
+    expect(r).toEqual({ events: [], answers: [], lastSwapAt: null, ok: false });
+    expect(log).toHaveBeenCalledTimes(1);
+    log.mockRestore();
   });
 });

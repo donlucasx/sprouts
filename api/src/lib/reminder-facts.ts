@@ -4,8 +4,9 @@ import { pauseCauseOf, PAUSE_EVENT_KINDS } from "@/domain/pause-cause";
 import type { ReminderFacts } from "@/domain/reminders";
 
 /** One read answers the reminder facts and the ask (events newest first). */
-export const REMINDER_EVENT_KINDS: EventKind[] = ["paused_no_usdc", "resumed", "paused_by_user", "revoke_seen", "link_failed", "link_started", "wallet_linked", "feedback_answer"];
+export const REMINDER_EVENT_KINDS: EventKind[] = ["paused_no_usdc", "resumed", "paused_by_user", "revoke_seen", "link_failed", "link_started", "wallet_linked"];
 export const REMINDER_EVENT_LIMIT = 200;
+const ANSWER_LIMIT = 50;
 
 /**
  * A wallet Sprouts stopped on its own (its USDC approval gone, or its delegation gone outside the app): "approval" or "outside". A revoke
@@ -19,12 +20,25 @@ export function stoppedCauseOf(w: Pick<WalletRow, "pubkey" | "status" | "linkMod
   return { cause: by === "token_revoke" ? "approval" : "outside", at: e.ts };
 }
 
-export type ReminderInputs = { events: EventRow[]; lastSwapAt: Date | null };
+export type ReminderInputs = { events: EventRow[]; answers: EventRow[]; lastSwapAt: Date | null; /** false: the reads failed, so neither a reminder nor an ask is made */ ok: boolean };
+const EMPTY_INPUTS: ReminderInputs = { events: [], answers: [], lastSwapAt: null, ok: false };
 
-/** The two reads, for a caller that runs them inside its own Promise.all. */
-export function readReminderInputs(repo: Repo, user: UserRow): Promise<ReminderInputs> {
-  return Promise.all([repo.listEvents(user.seedVaultPubkey, REMINDER_EVENT_KINDS, REMINDER_EVENT_LIMIT), repo.listSwaps(user.seedVaultPubkey, 1)])
-    .then(([events, swaps]) => ({ events, lastSwapAt: swaps[0]?.ts ?? null }));
+/**
+ * The reads, for a caller that runs them inside its own Promise.all. Answers are their own read so a chatty user's 200-row window never
+ * pushes one out (it would be asked again). The reminder and the ask are extras: on any error this logs one line and answers empty, and /api/me still answers.
+ */
+export async function readReminderInputs(repo: Repo, user: UserRow): Promise<ReminderInputs> {
+  try {
+    const [events, answers, swaps] = await Promise.all([
+      repo.listEvents(user.seedVaultPubkey, REMINDER_EVENT_KINDS, REMINDER_EVENT_LIMIT),
+      repo.listEvents(user.seedVaultPubkey, ["feedback_answer"], ANSWER_LIMIT),
+      repo.listSwaps(user.seedVaultPubkey, 1),
+    ]);
+    return { events, answers, lastSwapAt: swaps[0]?.ts ?? null, ok: true };
+  } catch (e) {
+    console.error(`/api/me: the reminder facts could not be read (${e instanceof Error ? e.message : String(e)})`);
+    return EMPTY_INPUTS;
+  }
 }
 
 export function reminderFactsFrom(inputs: ReminderInputs, user: UserRow, wallets: WalletRow[], now: Date): ReminderFacts {
