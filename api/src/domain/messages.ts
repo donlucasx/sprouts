@@ -4,6 +4,6 @@ export type InAppMessage = { id: string; heading: string; body: string; action: 
 export const CURRENT_MESSAGE: InAppMessage = {
   id: "lucas-2026-11",
   heading: "From Lucas",
-  body: "Thanks for trying Sprouts. If anything didn't work or felt confusing, tell me. I read every message.",
+  body: "You're one of the first people using Sprouts. If you have any questions, ideas or feedback, please reach out!",
   action: "message_us",
 };

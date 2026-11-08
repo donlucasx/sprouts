@@ -80,8 +80,20 @@ export function cardsFor(
   // Shape-checked: a newer server value or a bad cached read must never reach the card (QuestionCard would read undefined.title).
   const m = me?.message;
   const message = m && typeof m.id === "string" && typeof m.heading === "string" && typeof m.body === "string" && !dismissed.includes(m.id) ? m : null;
-  const a = me?.ask;
-  const known = !!a && typeof a.question === "string" && Object.prototype.hasOwnProperty.call(QUESTIONS, a.question) && typeof a.ref === "string";
-  const ask = a && known && !dismissed.includes(a.ref) && (a.question !== "brought_you" || visits >= 2) ? a : null;
+  // 11-08 (his device note: "From Lucas" and a question together = "too cluttered"): Home shows one card. The removed-wallet
+  // question lives in Settings under Linked wallets (removedAskFor); "What brought you?" waits until From Lucas is closed.
+  const a = validAsk(me?.ask, dismissed);
+  const ask = !message && a && a.question === "brought_you" && visits >= 2 ? a : null;
   return { message, ask };
+}
+
+/** Settings > Linked wallets: the server's "why did you remove it?" for a wallet removed anywhere (in the app or on the web). */
+export function removedAskFor(me: Pick<MeResponse, "ask"> | null, dismissed: string[]): MeResponse["ask"] | null {
+  const a = validAsk(me?.ask, dismissed);
+  return a && a.question === "wallet_removed" ? a : null;
+}
+
+function validAsk(a: MeResponse["ask"] | undefined, dismissed: string[]): MeResponse["ask"] | null {
+  const known = !!a && typeof a.question === "string" && Object.prototype.hasOwnProperty.call(QUESTIONS, a.question) && typeof a.ref === "string";
+  return a && known && !dismissed.includes(a.ref) ? a : null;
 }
