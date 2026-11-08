@@ -192,6 +192,10 @@ describe("GET /api/me", () => {
     const at = new Date("2026-11-01T09:00:00Z");
     await repo.setTermsAccepted(U, "v-test", at);
     await repo.addEvent({ userPubkey: U, walletPubkey: "W", kind: "revoke_seen", detail: { signature: "x", by: "user" } });
+    // A removal that is undone by a re-link is never asked about (his 11-08 device check); W is still linked here.
+    body = await (await me(new Request("http://x/api/me", bearer(token)))).json();
+    expect(body.ask).toBeNull();
+    await repo.setWalletStatus("W", "revoked"); // what the real revoke path does
     body = await (await me(new Request("http://x/api/me", bearer(token)))).json();
     expect(body.terms.acceptedAt).toBe(at.toISOString());
     expect(body.ask).toEqual({ question: "wallet_removed", ref: `W:${new Date().toISOString().slice(0, 10)}` });

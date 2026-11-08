@@ -3,7 +3,8 @@ import { askFor, removedRef } from "@/domain/asks";
 
 const W = "WALLETPUBKEYAAAA";
 const at = new Date("2026-11-05T10:00:00Z");
-const base = { walletsEver: 1, withdrawals: 0, removedWallets: [] as { wallet: string; at: Date }[], answered: [] as { question: string; ref: string }[] };
+// A fixed clock: without it the removals above age past the 14-day window on 11-19 and these tests start failing.
+const base = { walletsEver: 1, withdrawals: 0, removedWallets: [] as { wallet: string; at: Date }[], linkedNow: [] as string[], answered: [] as { question: string; ref: string }[], now: new Date("2026-11-08T00:00:00Z") };
 
 describe("askFor", () => {
   it("asks about a wallet the user removed, until it is answered with the same ref", () => {
@@ -11,6 +12,11 @@ describe("askFor", () => {
     expect(askFor(a)).toEqual({ question: "wallet_removed", ref: `${W}:2026-11-05` });
     expect(removedRef(W, at)).toBe(`${W}:2026-11-05`);
     expect(askFor({ ...a, answered: [{ question: "wallet_removed", ref: removedRef(W, at) }] })).toBeNull();
+  });
+  it("never asks about a removed wallet that is linked again (his 11-08 device check: removed and re-linked a minute later, asked anyway)", () => {
+    const a = { ...base, removedWallets: [{ wallet: W, at }] };
+    expect(askFor({ ...a, linkedNow: [W] })).toBeNull();
+    expect(askFor({ ...a, linkedNow: ["OTHERWALLET"] })?.ref).toBe(`${W}:2026-11-05`);
   });
   it("asks about the newest unanswered removal", () => {
     const newer = new Date("2026-11-07T10:00:00Z");
