@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Text, View } from 'react-native'
 import { Redirect, router } from 'expo-router'
 import { useMobileWallet } from '@wallet-ui/react-native-kit'
@@ -26,9 +26,18 @@ export default function Welcome() {
 
 /** The screen itself, apart from the redirect, so a dev build can preview it signed in (src/app/dev-welcome.tsx). */
 export function WelcomeView() {
-  const { setSession } = useSession()
+  const { session, setSession } = useSession()
   const [busy, setBusy] = useState(false)
   const { signIn, disconnect } = useMobileWallet()
+  // Clear the kit's stored authorization when this screen mounts signed out, NOT in the press handler: the kit's signIn is a useCallback
+  // that captured authToken at render time, so a disconnect() inside onPress clears the store but the captured signIn still sends the old
+  // token (Solflare declines it: -1). Cleared here, the component re-renders with authToken undefined before the user taps, so signIn
+  // sends no token and persists the fresh authorization (one wallet screen when linking). Welcome only renders this signed out; the guard
+  // covers the dev preview route, which renders it signed in.
+  useEffect(() => {
+    if (!session) disconnect().catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per mount: disconnect changes with the token it just cleared
+  }, [])
   const [error, setError] = useState<string | null>(null)
   const { colors } = useTheme()
   return (
@@ -64,18 +73,15 @@ export function WelcomeView() {
               setBusy(true)
               setError(null)
               try {
-                // One wallet screen when linking: sign in through the kit's own signIn so the fresh authorization is saved and the link
-                // reuses it (no Connect sheet before the Transaction sheet). Clear the stored token FIRST: the kit's signIn then sends none,
-                // the same token-free authorize as freshWalletSignIn (reauth.ts), because Solflare declined a stale token (-1; the Saga, 10-01)
-                // and declined the kit's same-session token-free retry (the Saga, 09-29). The in-app re-auth (settings) still uses freshWalletSignIn.
-                await disconnect().catch(() => {})
-                const session = await signInWithSeeker(signIn)
+                // The kit's own signIn (not freshWalletSignIn, reauth.ts) so the fresh authorization is saved and the link reuses it. The
+                // stored token was cleared on mount (above), so this signIn sends none, as freshWalletSignIn did (the Saga, 09-29 and 10-01).
+                const next = await signInWithSeeker(signIn)
                 // The server recorded the Terms at sign-in: stamp the saved last read to match (the same user), or forget it (another user), so Home
                 // never shows a Terms card for an acceptance already made (11-07). setSession clears the query cache itself.
-                const stamped = stampSignIn(readLastMe(), session.pubkey)
+                const stamped = stampSignIn(readLastMe(), next.pubkey)
                 if (stamped) writeLastMe(stamped)
                 else clearLastMe()
-                await setSession(session)
+                await setSession(next)
                 // Home either way (the redirect above does it too; the dev preview route has no redirect: 10-08, 'back on the sign in screen')
                 router.replace('/home')
               } catch (e) {
