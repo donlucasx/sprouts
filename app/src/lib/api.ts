@@ -119,7 +119,11 @@ export type MeResponse = {
   positionsRead?: "ok" | "failed";
   lendSigns?: Partial<Record<LendAsset, LendSign | null>>;
   relink?: { needed: boolean; wallets: { pubkey: string; via: "app" | "link_page" }[] };
-  terms?: { currentVersion: string; acceptedVersion: string | null };
+  terms?: { currentVersion: string; acceptedVersion: string | null; acceptedAt?: string | null };
+  /** 0.1.9 (API tasks 1-3), all absent from an older API: the one-time note, at most one question, and the server-chosen reminder. */
+  message?: { id: string; heading: string; body: string; action: "message_us" } | null;
+  ask?: { question: "wallet_removed" | "brought_you"; ref: string } | null;
+  reminder?: { id: string; kind: "link_new" | "usdc_waiting" | "relink" | "idle" | "link_unfinished"; title: string; body: string; route: "/connect" | "/home" } | null;
   moveProposal?: MoveProposal | null;
 };
 

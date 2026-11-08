@@ -9,6 +9,7 @@ import { lowUsdcNotice, noticesFor } from "./notices";
 import { readLastAvg, readWasLow, writeWasLow } from "./usdc-watch";
 import { readNotify } from "./prefs";
 import { coalesce } from "./coalesce";
+import { reminderToShow, readReminderState, recordReminderShown } from "./reminders";
 
 const TASK = "sprouts-refresh";
 
@@ -26,6 +27,12 @@ TaskManager.defineTask(TASK, coalesce(async () => {
     const low = lowUsdcNotice(usdcCents, readLastAvg(), readWasLow(), phone?.status === "paused" || !phone);
     if (low.notice && readNotify(low.notice.kind)) await notify(low.notice.title, low.notice.body);
     writeWasLow(low.low);
+    // 0.1.9: the server's reminder, at most one a local day, never 8 PM to 9 AM, behind its own switch
+    const r = reminderToShow(me.reminder, { ...readReminderState(), now: new Date(), on: readNotify("reminders") });
+    if (r) {
+      await notify(r.title, r.body, r.route);
+      recordReminderShown(r.id, new Date());
+    }
     await refreshWidget(me);
     return BackgroundTask.BackgroundTaskResult.Success;
   } catch {

@@ -14,7 +14,7 @@ export function plantingNotice(
 }
 
 /** R161: the notices, each behind its own switch in Settings > Notifications ("paused": 10-22, the run paused a wallet for want of USDC). */
-export type NoticeKind = "plantings" | "withdrawals" | "manager" | "limit" | "paused";
+export type NoticeKind = "plantings" | "withdrawals" | "manager" | "limit" | "paused" | "reminders";
 export type Notice = { kind: NoticeKind; title: string; body: string };
 
 /** "60% SKR, 40% stORE": the coins with a share, in the app's coin order. */
@@ -64,7 +64,7 @@ export function noticesFor(before: MeResponse | null, me: MeResponse, on: (k: No
   for (const w of me.wallets ?? []) {
     if (!stopped(w) || stopped((before.wallets ?? []).find((b) => b.pubkey === w.pubkey))) continue;
     const mine = w.pubkey === me.user?.pubkey, short = `${w.pubkey.slice(0, 4)}...${w.pubkey.slice(-4)}`;
-    out.push({ kind: "paused", title: `Sprouts stopped planting from ${mine ? "your Seed Vault wallet" : short}`, body: "Open Sprouts to link it again." });
+    out.push({ kind: "paused", title: "Sprouts stopped planting from your wallet", body: "Open Sprouts to link it again." });
   }
   return out.filter((n) => on(n.kind));
 }

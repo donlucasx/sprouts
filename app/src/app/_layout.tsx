@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Appearance, AppState } from 'react-native'
-import { Stack } from 'expo-router'
+import { Stack, useRouter } from 'expo-router'
+import * as Notifications from 'expo-notifications'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { StatusBar } from 'expo-status-bar'
 import * as SplashScreen from 'expo-splash-screen'
@@ -17,6 +18,7 @@ import { askNotificationPermissionOnce } from '@/lib/notify'
 import { useTheme } from '@/theme'
 import { Splash } from '@/components/Splash'
 import { readAppearance } from '@/lib/prefs'
+import { routeForNotification } from '@/lib/reminders'
 import { schemeFor } from '@/theme/appearance'
 
 // Only Mobile Wallet Adapter's plumbing touches this endpoint; every read the app shows comes from the API.
@@ -41,6 +43,22 @@ function holdAppearance() {
 function startSignedIn() {
   registerBackgroundRefresh().catch(() => {})
   askNotificationPermissionOnce().catch(() => {})
+}
+
+/** A tap on a reminder opens its screen. Mounted only while signed in, so a signed-out tap goes nowhere; each response is acted on once. */
+function NotificationTaps() {
+  const router = useRouter()
+  const response = Notifications.useLastNotificationResponse()
+  const handled = useRef<string | null>(null)
+  useEffect(() => {
+    if (!response) return
+    const id = response.notification.request.identifier
+    if (handled.current === id) return
+    handled.current = id
+    const route = routeForNotification(response.notification.request.content.data)
+    if (route) router.push(route)
+  }, [response, router])
+  return null
 }
 
 export default function Layout() {
@@ -93,6 +111,7 @@ export default function Layout() {
       <QueryClientProvider client={queryClient}>
         <MobileWalletProvider cluster={cluster} identity={identity}>
           <SessionContext.Provider value={{ session, setSession }}>
+            {session ? <NotificationTaps /> : null}
             <StatusBar style={dark ? 'light' : 'dark'} />
             <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }} />
             <Splash />

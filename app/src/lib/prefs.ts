@@ -11,6 +11,7 @@ const NOTIFY_KEY: Record<NoticeKind, string> = {
   manager: 'prefs.notifyManager',
   limit: 'prefs.notifyLimit',
   paused: 'prefs.notifyPaused',
+  reminders: 'prefs.notifyReminders',
 }
 
 export function readAppearance(): Appearance {
