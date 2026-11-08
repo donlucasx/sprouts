@@ -75,3 +75,17 @@ describe('routeForNotification', () => {
     expect(routeForNotification({})).toBeNull()
   })
 })
+
+import { tapDecision } from '@/lib/reminders'
+describe('tapDecision', () => {
+  it('acts on a new response once, only when signed in', () => {
+    expect(tapDecision('a', null, true)).toEqual({ handled: 'a', go: true })
+    expect(tapDecision('a', 'a', true)).toEqual({ handled: 'a', go: false })
+  })
+  it('a response seen signed out is spent: sign-in does not replay it', () => {
+    const seen = tapDecision('a', null, false)
+    expect(seen).toEqual({ handled: 'a', go: false })
+    expect(tapDecision('a', seen.handled, true).go).toBe(false)
+    expect(tapDecision('b', seen.handled, true).go).toBe(true)
+  })
+})

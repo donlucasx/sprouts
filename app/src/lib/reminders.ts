@@ -49,3 +49,9 @@ export function routeForNotification(data: unknown): '/connect' | '/home' | null
   const route = (data as { route?: unknown } | null | undefined)?.route
   return route === '/connect' || route === '/home' ? route : null
 }
+
+/** Which notification response to act on: each id once, and one seen while signed out is spent (a later sign-in must not replay it). */
+export function tapDecision(id: string, lastHandled: string | null, signedIn: boolean): { handled: string | null; go: boolean } {
+  if (id === lastHandled) return { handled: lastHandled, go: false }
+  return { handled: id, go: signedIn }
+}

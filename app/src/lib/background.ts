@@ -14,7 +14,7 @@ import { reminderToShow, readReminderState, recordReminderShown } from "./remind
 const TASK = "sprouts-refresh";
 
 /** Every 60 minutes or so (perf 10-08: was 15; each read costs ~7 RPC reads per user) (Android decides): read the pot; say what changed since the last read (R161: plantings, a delivered withdrawal, the manager's move, the daily limit, a wallet paused for want of USDC) and refresh the widget. */
-TaskManager.defineTask(TASK, coalesce(async () => {
+export async function runRefresh() {
   try {
     const before = readLastMe();
     const me = normalizeMe(await api<MeResponse>("/api/me"));
@@ -27,18 +27,23 @@ TaskManager.defineTask(TASK, coalesce(async () => {
     const low = lowUsdcNotice(usdcCents, readLastAvg(), readWasLow(), phone?.status === "paused" || !phone);
     if (low.notice && readNotify(low.notice.kind)) await notify(low.notice.title, low.notice.body);
     writeWasLow(low.low);
-    // 0.1.9: the server's reminder, at most one a local day, never 8 PM to 9 AM, behind its own switch
-    const r = reminderToShow(me.reminder, { ...readReminderState(), now: new Date(), on: readNotify("reminders") });
-    if (r) {
-      await notify(r.title, r.body, r.route);
-      recordReminderShown(r.id, new Date());
-    }
     await refreshWidget(me);
+    // 0.1.9: the server's reminder, at most one a local day, never 8 PM to 9 AM, behind its own switch. Last, and on its own:
+    // a failed reminder must not skip the widget or fail the task.
+    try {
+      const r = reminderToShow(me.reminder, { ...readReminderState(), now: new Date(), on: readNotify("reminders") });
+      if (r) {
+        await notify(r.title, r.body, r.route);
+        recordReminderShown(r.id, new Date());
+      }
+    } catch {}
     return BackgroundTask.BackgroundTaskResult.Success;
   } catch {
     return BackgroundTask.BackgroundTaskResult.Failed;
   }
-}));
+}
+
+TaskManager.defineTask(TASK, coalesce(runRefresh));
 
 export async function registerBackgroundRefresh() {
   await BackgroundTask.registerTaskAsync(TASK, { minimumInterval: 60 });
