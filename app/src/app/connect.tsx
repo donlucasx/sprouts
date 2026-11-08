@@ -8,8 +8,9 @@ import { Button } from '@/components/Button'
 import { Card } from '@/components/Card'
 import { ThemedText } from '@/components/ThemedText'
 import { api, ApiError } from '@/lib/api'
-import { makeSigner, SignRefused } from '@/lib/sign'
-import { DROPPED_NOTHING_SENT, isSessionDropped } from '@/lib/wallet-errors'
+import { makeSigner } from '@/lib/sign'
+import { linkErrorView } from '@/lib/link-error'
+import { QuestionCard } from '@/components/QuestionCard'
 import { useInvalidateMe, useMe } from '@/lib/me'
 import { newlyLinked } from '@/lib/newly-linked'
 import { confirmWithRetries, LINK_NOT_ON_CHAIN_YET } from '@/lib/confirm-retry'
@@ -33,9 +34,10 @@ function confirmLink(code: string, wallet: string, signedTransaction: string) {
 }
 
 /** The error under the button that caused it, and (11-01, support draft v1 screen 5) help right there, with the topic picked. */
-function LinkError({ error }: { error: string }) {
+function LinkError({ error, title }: { error: string; title?: string }) {
   return (
     <>
+      {title ? <ThemedText variant="heading" tone="error">{title}</ThemedText> : null}
       <ThemedText tone="error">{error}</ThemedText>
       <Button title="Still stuck? Message us" kind="quiet" onPress={() => router.push('/support?topic=link')} style={{ alignSelf: 'flex-start' }} />
     </>
@@ -77,6 +79,11 @@ export default function Connect() {
   const [signed, setSigned] = useState(false)
   const [coding, setCoding] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Copy C: the phone-link error's title, and whether "What happened?" is offered; the question shows at most once per screen visit.
+  const [errorTitle, setErrorTitle] = useState('')
+  const [canAsk, setCanAsk] = useState(false)
+  const [asking, setAsking] = useState(false)
+  const [asked, setAsked] = useState(false)
   // 11-02 (his device note: the error sat at the page's foot, "Still stuck" out of sight): which card the error belongs under
   const [errorFrom, setErrorFrom] = useState<'phone' | 'code'>('phone')
   const [toppedUp, setToppedUp] = useState(false)
@@ -112,6 +119,9 @@ export default function Connect() {
     setApproving(true)
     setSigned(false)
     setError(null)
+    setErrorTitle('')
+    setCanAsk(false)
+    setAsking(false)
     let step: LinkStep = 'new'
     try {
       const { code } = await api<{ code: string }>('/api/link/new', { method: 'POST', body: {} })
@@ -127,7 +137,10 @@ export default function Connect() {
       router.replace({ pathname: '/home', params: { linked: session.pubkey } })
     } catch (e) {
       setErrorFrom('phone')
-      setError(e instanceof ApiError || e instanceof SignRefused ? e.message : isSessionDropped(e) ? DROPPED_NOTHING_SENT : 'The approval did not go through. Try again.')
+      const view = linkErrorView(e)
+      setErrorTitle(view.title)
+      setCanAsk(view.ask)
+      setError(view.body)
       // 10-31: where it stopped, for the drop-offs the server cannot see (a wallet closed or cancelled before signing)
       reportLinkFailure((body: LinkFailure) => api('/api/link/report', { method: 'POST', body }), step, e, session.pubkey)
     } finally {
@@ -174,7 +187,18 @@ export default function Connect() {
             {signed ? LINK_FINISHING : 'Waiting for your wallet.'}
           </ThemedText>
         ) : null}
-        {error && errorFrom === 'phone' ? <LinkError error={error} /> : null}
+        {error && errorFrom === 'phone' ? (
+          <>
+            <LinkError error={error} title={errorTitle} />
+            {canAsk ? (
+              <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+                <Button title="Try again" loading={approving} onPress={linkThisPhone} />
+                {!asked ? <Button title="What happened?" kind="quiet" onPress={() => { setAsking(true); setAsked(true) }} /> : null}
+              </View>
+            ) : null}
+            {asking ? <QuestionCard question="link_failed" onDone={() => setAsking(false)} /> : null}
+          </>
+        ) : null}
       </Card>
       <Card>
         <ThemedText variant="heading">Another wallet</ThemedText>

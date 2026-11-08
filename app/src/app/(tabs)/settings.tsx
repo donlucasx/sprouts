@@ -29,6 +29,8 @@ import { DISCLOSURES, HOW_IT_WORKS, NOT_ADVICE } from '@/lib/settings-copy'
 import { clearTaxFiles, prepareTaxCsv, shareTaxCsv, taxFileFresh, type TaxFile } from '@/lib/tax-export'
 import { notify } from '@/lib/notify'
 import { PUBLIC_GUARANTEE } from '@/lib/relink'
+import { QuestionCard } from '@/components/QuestionCard'
+import { dismiss } from '@/lib/feedback'
 import { spacing, switchColors, useTheme } from '@/theme'
 import { schemeFor, type Appearance as AppearanceChoice } from '@/theme/appearance'
 
@@ -93,6 +95,9 @@ export default function Settings() {
     }
   }
 
+  // Copy D: after a revoke the user made, the removed-wallet question. Its ref is the server's removedRef (`<wallet>:<UTC day>`), so Home's ask for it counts as answered.
+  const [removedRef, setRemovedRef] = useState<string | null>(null)
+
   async function revoke(wallet: string) {
     if (!session) return
     setWalletError(null)
@@ -107,6 +112,7 @@ export default function Settings() {
       if (!t.transaction) throw new ApiError(409, 'Nothing to revoke.')
       const signed = await makeSigner(signTransaction, { kind: 'revoke', user: wallet })(t.transaction)
       await api(`/api/revoke/${wallet}`, { method: 'POST', body: { signedTransaction: signed } })
+      setRemovedRef(`${wallet}:${new Date().toISOString().slice(0, 10)}`)
       await invalidate()
     } catch (e) {
       setWalletError(e instanceof ApiError || e instanceof SignRefused ? e.message : isSessionDropped(e) ? DROPPED_NOTHING_SENT : 'The revoke did not go through. Try again.')
@@ -204,6 +210,16 @@ export default function Settings() {
           </ThemedText>
         ) : null}
         {walletError ? <ThemedText tone="error">{walletError}</ThemedText> : null}
+        {removedRef ? (
+          <QuestionCard
+            question="wallet_removed"
+            ref={removedRef}
+            onDone={() => {
+              dismiss(removedRef)
+              setRemovedRef(null)
+            }}
+          />
+        ) : null}
         <Link href="/connect" asChild>
           <Button title="Link a wallet" kind="quiet" onPress={() => {}} style={{ alignSelf: 'flex-start' }} />
         </Link>
