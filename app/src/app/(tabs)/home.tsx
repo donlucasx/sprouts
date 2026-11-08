@@ -408,7 +408,7 @@ export default function Home() {
                 <Button title="Message us" onPress={() => router.push('/support')} />
               </Card>
             ) : null}
-            {ask ? <QuestionCard key={ask.ref} question={ask.question} ref={ask.ref} onDone={() => close(ask.ref)} /> : null}
+            {ask ? <QuestionCard key={ask.ref} question={ask.question} askRef={ask.ref} onDone={() => close(ask.ref)} /> : null}
           </>
         )
       })()}

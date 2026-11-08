@@ -36,7 +36,7 @@ export function WelcomeView() {
   // covers the dev preview route, which renders it signed in.
   useEffect(() => {
     if (!session) disconnect().catch(() => {})
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per mount: disconnect changes with the token it just cleared
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once per mount on purpose; it is the signIn reference (not disconnect, which is stable) that changes when the token clears
   }, [])
   const [error, setError] = useState<string | null>(null)
   const { colors } = useTheme()

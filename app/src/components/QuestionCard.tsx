@@ -11,7 +11,7 @@ import { radius, spacing, TARGET, useTheme } from '@/theme'
  * `onDone` fires after a successful Send and on Skip; the caller dismisses the card then. A failed Send keeps the card and says so.
  * brought_you has no free text line (copy E).
  */
-export function QuestionCard(p: { question: Question; ref?: string; onDone: () => void }) {
+export function QuestionCard(p: { question: Question; askRef?: string; onDone: () => void }) {
   const { colors } = useTheme()
   const q = QUESTIONS[p.question]
   const [choice, setChoice] = useState<string | null>(null)
@@ -24,7 +24,7 @@ export function QuestionCard(p: { question: Question; ref?: string; onDone: () =
     setBusy(true)
     setError(null)
     try {
-      await sendFeedback(p.question, choice, p.question === 'brought_you' ? undefined : text, p.ref)
+      await sendFeedback(p.question, choice, p.question === 'brought_you' ? undefined : text, p.askRef)
       p.onDone()
     } catch {
       setError('Could not send it. Check your connection and try again.')
@@ -71,7 +71,7 @@ export function QuestionCard(p: { question: Question; ref?: string; onDone: () =
           onChangeText={setText}
           maxLength={TEXT_MAX}
           multiline
-          placeholder="Tell us more (optional)"
+          placeholder="Tell us more"
           placeholderTextColor={colors.textSecondary}
           accessibilityLabel="Tell us more"
           editable={!busy}
