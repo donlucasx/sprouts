@@ -49,10 +49,10 @@ const lastAlert = new Map<string, number>();
 /** 11-01 (security review): a burst of Message us posts can race the route's daily cap; the webhook still gets one a minute per user. */
 const SUPPORT_WINDOW_MS = 60_000;
 export function alertAllowed(e: Pick<EventRow, "kind" | "userPubkey">, now = Date.now()): boolean {
-  if (e.kind !== "signin_failed" && e.kind !== "link_failed" && e.kind !== "support_message") return true;
+  if (e.kind !== "signin_failed" && e.kind !== "link_failed" && e.kind !== "support_message" && e.kind !== "feedback_answer") return true;
   const key = `${e.kind}:${e.userPubkey}`;
   const last = lastAlert.get(key);
-  if (last !== undefined && now - last < (e.kind === "support_message" ? SUPPORT_WINDOW_MS : ALERT_WINDOW_MS)) return false;
+  if (last !== undefined && now - last < (e.kind === "support_message" || e.kind === "feedback_answer" ? SUPPORT_WINDOW_MS : ALERT_WINDOW_MS)) return false;
   lastAlert.set(key, now);
   return true;
 }

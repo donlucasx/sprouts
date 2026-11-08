@@ -8,7 +8,7 @@ vi.mock("@/lib/auth-guard", async (orig) => ({ ...(await orig<object>()), rateLi
 
 import { POST as feedback } from "@/app/api/feedback/route";
 import { FEEDBACK_OPTIONS, askFor, removedRef } from "@/domain/asks";
-import { founderAlertFor } from "@/lib/founder-alert";
+import { alertAllowed, founderAlertFor } from "@/lib/founder-alert";
 
 const U = "U5555555555555555555555555555555";
 const WALLET = "4wiD3N7FrBNJSmZUQDkGHM4CsvDrvyvx7G1FApLGEbJ1";
@@ -116,5 +116,14 @@ describe("founder alert for feedback_answer", () => {
     const line = founderAlertFor({ kind: "feedback_answer", userPubkey: U, walletPubkey: null, detail: { question: "<!channel>", choice: "x".repeat(300) } });
     expect(line).not.toContain("channel");
     expect(line!.length).toBeLessThan(200);
+  });
+
+  it("the webhook gets one answer alert a minute per user; another user is not held back", () => {
+    const a = { kind: "feedback_answer" as const, userPubkey: "Uburst111111111111111111111111111" };
+    const b = { kind: "feedback_answer" as const, userPubkey: "Uother111111111111111111111111111" };
+    expect(alertAllowed(a, 1_000)).toBe(true);
+    expect(alertAllowed(a, 30_000)).toBe(false);
+    expect(alertAllowed(b, 30_000)).toBe(true);
+    expect(alertAllowed(a, 62_000)).toBe(true);
   });
 });
