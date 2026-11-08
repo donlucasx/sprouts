@@ -149,6 +149,7 @@ export type EventKind =
   | "link_started"   // 10-31: a link code was made (the app's Approve or Another wallet); a link_started with no wallet_linked = a drop-off
   | "link_failed"   // 10-31: a link route answered a failure or threw, or the app reported one it saw (detail: step, status, error, from)
   | "signin_failed"   // 10-31: the sign-in verify answered a failure or threw (detail: step, status, error)
+  | "feedback_answer"   // 0.1.9: an answer to an in-app question (detail: question, ref, answer); /api/me asks each ref once
   | "support_message";   // 11-01: Settings > Message us (detail: topic, message, email, app, context); replies go by email
 
 export type EventRow = { id: number; userPubkey: string | null; walletPubkey: string | null; ts: Date; kind: EventKind; detail: unknown };

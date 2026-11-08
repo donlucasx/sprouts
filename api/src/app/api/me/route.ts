@@ -24,6 +24,10 @@ import { dayOf } from "@/domain/day";
 import { pauseCauseOf, PAUSE_EVENT_KINDS } from "@/domain/pause-cause";
 import { NETWORK_FEE_CENTS } from "@/lib/plant-run";
 import { plantThresholdFor } from "@/domain/threshold";
+import { reminderFor } from "@/domain/reminders";
+import { CURRENT_MESSAGE } from "@/domain/messages";
+import { askFor } from "@/domain/asks";
+import { readReminderInputs, reminderFactsFrom, stoppedCauseOf } from "@/lib/reminder-facts";
 
 export const runtime = "nodejs";
 
@@ -82,7 +86,7 @@ export async function GET(request: Request) {
   // Contracts 5.2: legsEnabled is null for a user with no leashed wallet; [] when the leash config cannot be read (nothing is enabled we can show).
   const leashWallets = wallets.filter((w) => w.linkModel === "leash" && w.status !== "revoked");
   // Second wave, at once: the reads that need the wallets, the rules or the stORE basis from the first.
-  const [pending, capLeft, splitRow, leashCfg, storeRedeem, pauseEvents, revokeEvents] = await Promise.all([
+  const [pending, capLeft, splitRow, leashCfg, storeRedeem, pauseEvents, revokeEvents, reminderInputs] = await Promise.all([
     Promise.all(wallets.map((w) => repo.unplantedSwaps(w.pubkey))).then((r) => r.flat().reduce((s, x) => s + x.roundupCents, 0)),
     // Queue item 12: what the delegation has actually pulled this period, so "left today" is a number the chain backs.
     (async () => {
@@ -103,6 +107,8 @@ export async function GET(request: Request) {
     wallets.some((w) => w.status === "paused") ? repo.listEvents(user.seedVaultPubkey, [...PAUSE_EVENT_KINDS], 200) : Promise.resolve([]),
     // 10-27 (ikeonsol.skr, wallet 2hEw: stopped by the run and hidden, so the app looked unlinked): why each revoked wallet stopped
     wallets.some((w) => w.status === "revoked") ? repo.listEvents(user.seedVaultPubkey, ["revoke_seen"], 50) : Promise.resolve([]),
+    // 0.1.9: the facts the reminder, the ask and the Terms date are built from (one events read, one swap read).
+    readReminderInputs(repo, user),
   ]);
   // A no-USDC pause ends by itself at the next daily run once the wallet holds threshold + network fee (plant-run.ts
   // resumePausedWallets); needCents is what the run wanted to pull when it paused (the round-ups the cap allowed, fee included).
@@ -116,12 +122,21 @@ export async function GET(request: Request) {
   // 10-27 (his Seeker on 0.1.6, wallet 9ZKi: an old puller link, revoked 10-07, shown as "unlinked outside the app"): a puller link
   // stopped planting at go-live (R297) and a re-link makes a new leash link, so its revoke is history and stays quiet too.
   const stoppedOf = (w: (typeof wallets)[number]): "approval" | "outside" | null => {
-    if (w.status !== "revoked" || w.linkModel !== "leash") return null;
-    const e = revokeEvents.find((x) => x.walletPubkey === w.pubkey);
-    const by = (e?.detail as { by?: unknown } | null)?.by;
-    if (!e || by === "user") return null;
-    return by === "token_revoke" ? "approval" : "outside";
+    return stoppedCauseOf(w, revokeEvents)?.cause ?? null; // shared with the A7 reminder (lib/reminder-facts)
   };
+  // 0.1.9: at most one reminder (the phone shows it by its own local clock), the one-time note, and at most one question.
+  const now = new Date();
+  const reminder = reminderFor(reminderFactsFrom(reminderInputs, user, wallets, now));
+  const ask = askFor({
+    walletsEver: wallets.length,
+    withdrawals: withdrawals.filter((x) => x.cancelSignature === null).length,
+    removedWallets: reminderInputs.events.filter((e) => e.kind === "revoke_seen" && e.walletPubkey && (e.detail as { by?: unknown } | null)?.by === "user").map((e) => ({ wallet: e.walletPubkey!, at: e.ts })),
+    answered: reminderInputs.events.flatMap((e) => {
+      if (e.kind !== "feedback_answer") return [];
+      const d = e.detail as { question?: unknown; ref?: unknown } | null;
+      return typeof d?.question === "string" && typeof d.ref === "string" ? [{ question: d.question, ref: d.ref }] : [];
+    }),
+  });
   // R281: a retired coin's planting is history the app hides; Home's rows and receipt come from live legs only.
   const legOf = (id: string) => legs.find((x) => x.plantingId === id);
   const livePlantings = plantings.filter((p) => { const l = legOf(p.id); return !l || COINS[l.asset].live; });
@@ -160,7 +175,8 @@ export async function GET(request: Request) {
       picks, legsEnabled,
     },
     relink: relinkBlock,
-    terms: { currentVersion: TERMS_VERSION, acceptedVersion: user.termsVersion },
+    terms: { currentVersion: TERMS_VERSION, acceptedVersion: user.termsVersion, acceptedAt: user.termsAcceptedAt },
+    reminder, message: CURRENT_MESSAGE, ask,
     moveProposal: open
       ? { id: open.id, ts: open.ts, asset: open.asset, from: open.fromVenue, to: open.toVenue, receiptRaw: open.receiptRaw, valueUsd: open.valueUsd,
           fromAvg7Pct: open.fromAvg7Pct, toAvg7Pct: open.toAvg7Pct, gain30dUsd: open.gain30dUsd, costUsd: open.costUsd,
