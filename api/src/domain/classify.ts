@@ -7,21 +7,25 @@ export const STABLES = new Set([
   "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
 ]);
 
-/** wSOL, wETH (Wormhole), wBTC (Wormhole), SKR, JUP */
+/** wSOL, wETH (Wormhole), wBTC (Wormhole), SKR, JUP, ORE, cbBTC (11-08: the garden's own coins were counted as memecoins) */
 export const MAJORS = new Set([
   "So11111111111111111111111111111111111111112",
   "7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs",
   "3NZ9JMVBmGAqocybic2c7LQCJScmgsAZ6vQqTDzcqmJh",
   "SKRbvo6Gf7GondiT3BbTfuRDPqLWei4j2Qy2NPGZhW3",
   "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN",
+  "oreoU2P8bN6jkk3jbaiVxYnG1dCXcYxwhwyK9jSybcp",
+  "cbbtcf3aa214zXHbiAZQwf4122FBYbraNdFqgw4iMij",
 ]);
 
-/** JitoSOL, mSOL, bSOL, stORE */
+/** JitoSOL, mSOL, bSOL, stORE, hSOL, JupSOL (11-08) */
 export const LSTS = new Set([
   "J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn",
   "mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So",
   "bSo13r4TkiE4KumL71LsHTPpL2euBYLFx6h9HP3piy1",
   "storenSbvkfzircixnaosc5CbzNZVrHJ6S3EKrS1yqR",
+  "he1iusmfkpAdwvxLNGV8Y1iSbj4rUy6yMhEA3fotn9A",
+  "jupSoLaHXQiZZTSfEWMTRRgpnyFm8f6sZdosWBjx93v",
 ]);
 
 export type SwapClass = "stable" | "major" | "LST" | "memecoin";

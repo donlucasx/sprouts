@@ -10,7 +10,11 @@ describe("computeRoundupCents", () => {
     expect(computeRoundupCents(1430, DEFAULT_RULES)).toBe(70);
   });
 
-  it("dust swap of 2 cents rounds up 98 cents", () => expect(computeRoundupCents(2, DEFAULT_RULES)).toBe(98));
+  it("11-08 $1 minimum: a 2-cent dust swap saves nothing (it used to round up 98 cents)", () => expect(computeRoundupCents(2, DEFAULT_RULES)).toBe(0));
+  it("11-08 $1 minimum: 99 cents saves nothing, $1.01 rounds up 99 cents", () => {
+    expect(computeRoundupCents(99, DEFAULT_RULES)).toBe(0);
+    expect(computeRoundupCents(101, DEFAULT_RULES)).toBe(99);
+  });
 
   it("adds 1% on a $150.50 swap: 50 cents round-up plus 150 cents", () => expect(computeRoundupCents(15050, DEFAULT_RULES)).toBe(50 + 150));
 

@@ -35,12 +35,15 @@ export const DEFAULT_RULES: Rules = {
   allocation: { ...SKR_ONLY },
 };
 
+/** 11-08 (his ruling "Min $1 swap"): a swap under $1 is recorded but saves nothing. A $0.01 dust sale rounded up 99c. */
+export const MIN_ROUNDUP_SWAP_CENTS = 100;
+
 /**
- * The change a swap produces: up to the next dollar; a whole-dollar swap has no spare change and saves nothing (R484, his call 10-08),
+ * The change a swap produces (swaps of at least MIN_ROUNDUP_SWAP_CENTS): up to the next dollar; a whole-dollar swap has no spare change and saves nothing (R484, his call 10-08),
  * plus the percentage when the swap is at least the threshold. An unpriced swap (null) produces nothing.
  */
 export function computeRoundupCents(sizeCents: number | null, rules: Rules): number {
-  if (sizeCents === null || sizeCents <= 0) return 0;
+  if (sizeCents === null || sizeCents < MIN_ROUNDUP_SWAP_CENTS) return 0;
   let out = 0;
   if (rules.roundupOn) {
     const remainder = sizeCents % rules.roundupToCents;
