@@ -2,8 +2,6 @@ import { useState } from 'react'
 import { Text, View } from 'react-native'
 import { Redirect, router } from 'expo-router'
 import { useMobileWallet } from '@wallet-ui/react-native-kit'
-import { freshWalletSignIn } from '@/lib/reauth'
-import { identity } from '@/lib/identity'
 import { Screen } from '@/components/Screen'
 import { Button } from '@/components/Button'
 import { ThemedText } from '@/components/ThemedText'
@@ -30,7 +28,7 @@ export default function Welcome() {
 export function WelcomeView() {
   const { setSession } = useSession()
   const [busy, setBusy] = useState(false)
-  const { disconnect } = useMobileWallet()
+  const { signIn, disconnect } = useMobileWallet()
   const [error, setError] = useState<string | null>(null)
   const { colors } = useTheme()
   return (
@@ -66,15 +64,17 @@ export function WelcomeView() {
               setBusy(true)
               setError(null)
               try {
-                // The token-free authorize (reauth.ts): the kit's own signIn sends its saved token, which Solflare declines once it is stale (-1; the Saga, 10-01 after a sign-out).
-                const session = await signInWithSeeker(freshWalletSignIn(identity))
+                // One wallet screen when linking: sign in through the kit's own signIn so the fresh authorization is saved and the link
+                // reuses it (no Connect sheet before the Transaction sheet). Clear the stored token FIRST: the kit's signIn then sends none,
+                // the same token-free authorize as freshWalletSignIn (reauth.ts), because Solflare declined a stale token (-1; the Saga, 10-01)
+                // and declined the kit's same-session token-free retry (the Saga, 09-29). The in-app re-auth (settings) still uses freshWalletSignIn.
+                await disconnect().catch(() => {})
+                const session = await signInWithSeeker(signIn)
                 // The server recorded the Terms at sign-in: stamp the saved last read to match (the same user), or forget it (another user), so Home
                 // never shows a Terms card for an acceptance already made (11-07). setSession clears the query cache itself.
                 const stamped = stampSignIn(readLastMe(), session.pubkey)
                 if (stamped) writeLastMe(stamped)
                 else clearLastMe()
-                // Drop the kit's cached authorization (storage only): the next transaction authorizes afresh instead of reusing a stale token.
-                await disconnect().catch(() => {})
                 await setSession(session)
                 // Home either way (the redirect above does it too; the dev preview route has no redirect: 10-08, 'back on the sign in screen')
                 router.replace('/home')
