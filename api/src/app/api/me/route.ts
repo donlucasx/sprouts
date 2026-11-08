@@ -129,6 +129,7 @@ export async function GET(request: Request) {
   const reminder = reminderInputs.ok ? reminderFor(reminderFactsFrom(reminderInputs, user, wallets, now)) : null;
   const ask = !reminderInputs.ok ? null : askFor({
     walletsEver: wallets.length,
+    linkedNow: wallets.filter((w) => w.status !== "revoked").map((w) => w.pubkey),
     withdrawals: withdrawals.filter((x) => x.cancelSignature === null).length,
     removedWallets: reminderInputs.events.filter((e) => e.kind === "revoke_seen" && e.walletPubkey && (e.detail as { by?: unknown } | null)?.by === "user").map((e) => ({ wallet: e.walletPubkey!, at: e.ts })),
     now,

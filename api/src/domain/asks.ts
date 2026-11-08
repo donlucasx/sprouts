@@ -25,6 +25,8 @@ export function askFor(a: {
   walletsEver: number;
   withdrawals: number;
   removedWallets: { wallet: string; at: Date }[];
+  /** Wallets linked right now (not revoked). A removal of one of these was undone by a re-link and is never asked about. */
+  linkedNow: string[];
   answered: { question: string; ref: string }[];
   now?: Date;
 }): Ask | null {
@@ -32,7 +34,7 @@ export function askFor(a: {
 
   const now = (a.now ?? new Date()).getTime();
   const removed = a.removedWallets
-    .filter((r) => now - r.at.getTime() <= REMOVED_ASK_WINDOW_MS)
+    .filter((r) => now - r.at.getTime() <= REMOVED_ASK_WINDOW_MS && !a.linkedNow.includes(r.wallet))
     .sort((p, q) => q.at.getTime() - p.at.getTime())
     .map((r) => removedRef(r.wallet, r.at))
     .find((ref) => !done("wallet_removed", ref));

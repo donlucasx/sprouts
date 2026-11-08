@@ -93,7 +93,7 @@ describe("POST /api/feedback", () => {
   it("round trip: an answered wallet_removed ref makes askFor stop asking", async () => {
     const at = new Date("2026-11-07T10:00:00Z");
     const ref = removedRef(WALLET, at);
-    const input = (answered: { question: string; ref: string }[]) => ({ walletsEver: 1, withdrawals: 0, removedWallets: [{ wallet: WALLET, at }], answered });
+    const input = (answered: { question: string; ref: string }[]) => ({ walletsEver: 1, withdrawals: 0, removedWallets: [{ wallet: WALLET, at }], linkedNow: [], answered, now: new Date("2026-11-08T00:00:00Z") });
     expect(askFor(input([]))).toEqual({ question: "wallet_removed", ref });
     expect((await post({ question: "wallet_removed", ref, choice: "testing" }, token)).status).toBe(200);
     const answered = answers().map((e) => e.detail as { question: string; ref: string });
