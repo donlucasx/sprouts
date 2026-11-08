@@ -129,6 +129,11 @@ export interface Repo {
   /** One light read so a free-tier database sees traffic every day; needs no user row. */
   keepalive(): Promise<void>;
 
+  /** 11-07 run lock (0010): claims `day`'s run; false while another run of that day is going (not finished, started after `staleBefore`). */
+  claimCronRun(day: string, now: Date, staleBefore: Date): Promise<boolean>;
+  /** The run's record (free Vercel keeps no logs): when it ended, whether it got through, what it did. */
+  finishCronRun(day: string, ok: boolean, summary: unknown, now: Date): Promise<void>;
+
   // The watcher's budget (spec 6): every model call recorded; spend since a moment, calls by one user since a moment.
   addWatcherCall(c: NewWatcherCall): Promise<number>;
   /** A reserved call's real usage, once the model has answered (R207 #6: calls are reserved at an estimate before they run). */
