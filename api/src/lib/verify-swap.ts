@@ -35,9 +35,16 @@ export const AMOUNT_TOLERANCE = 0.01;
 /** ...and a native SOL leg by 0.01 SOL more: the lamport delta also carries the fee, priority fee and token-account rent. */
 export const SOL_SLACK = 0.01;
 
-/** One getTransaction through the app's RPC: confirmed, v0-aware, parsed so balances carry their owners. */
+/**
+ * 11-07: the highest transaction version the swap check reads. Jupiter now sends some swaps as v1 transactions (first seen 10-22);
+ * asked for at most v0, the RPC refuses them ("Transaction version (1) is not supported"), the check threw, and the swap was never
+ * booked (3 of his own swaps missed, 10-22 to 11-08). The kit's types stop at 0, hence the cast; the RPC takes the number as is.
+ */
+export const MAX_TX_VERSION = 1;
+
+/** One getTransaction through the app's RPC: confirmed, v0- and v1-aware, parsed so balances carry their owners. */
 export const fetchTransaction: FetchTx = async (sig) =>
-  (await rpc().getTransaction(toSignature(sig), { encoding: "jsonParsed", maxSupportedTransactionVersion: 0, commitment: "confirmed" }).send()) as unknown as ChainTx | null;
+  (await rpc().getTransaction(toSignature(sig), { encoding: "jsonParsed", maxSupportedTransactionVersion: MAX_TX_VERSION as 0, commitment: "confirmed" }).send()) as unknown as ChainTx | null;
 
 /** The wallet's net change in one mint across the transaction, in whole units (positive: it received). WSOL includes native lamports. */
 function walletDelta(tx: ChainTx, wallet: string, mint: string): number {
