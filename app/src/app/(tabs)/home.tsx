@@ -182,6 +182,7 @@ export default function Home() {
       setLanded((n) => n + 1)
       countHomeVisit()
       setVisits(homeVisits())
+      setDismissed(readDismissed())
       return () => {
         setFailed(false)
         setNudged(false)
