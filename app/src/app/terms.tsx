@@ -8,7 +8,7 @@ import { ThemedText } from '@/components/ThemedText'
 import { api, ApiError, type MeResponse } from '@/lib/api'
 import { useSession } from '@/lib/session'
 import { readLastMe, useMe, writeLastMe } from '@/lib/me'
-import { TERMS_VERSION, termsAction, termsBlocks, termsSummary, withAccepted } from '@/lib/terms'
+import { TERMS_VERSION, agreedLine, termsAction, termsBlocks, termsSummary, withAccepted } from '@/lib/terms'
 import { spacing } from '@/theme'
 
 /** R283: the one plain page (the final text, verbatim), linked from Welcome, Home and Settings. A signed-in user who has not accepted this version agrees here. */
@@ -68,6 +68,7 @@ export default function Terms() {
           {error ? <ThemedText tone="error">{error}</ThemedText> : null}
         </Card>
       ) : null}
+      {action === null && session !== null && agreedLine(me) ? <ThemedText variant="caption" tone="secondary">{agreedLine(me)}</ThemedText> : null}
     </Screen>
   )
 }

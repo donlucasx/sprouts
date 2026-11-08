@@ -314,6 +314,7 @@ export default function Settings() {
         </ThemedText>
         {/* R452: three lines on how it works before the questions */}
         <ThemedText style={{ marginBottom: spacing.sm }}>{HOW_IT_WORKS}</ThemedText>
+        <ThemedText style={{ marginBottom: spacing.sm }}>{`Swaps under $1 are counted but don't round up.`}</ThemedText>
         {DISCLOSURES.map(([h, p], i) => (
           <Disclosure key={h} title={h} first={i === 0}>
             {p}

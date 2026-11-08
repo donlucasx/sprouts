@@ -16,6 +16,11 @@ export function readLastMe(): MeResponse | null {
   return usable ? normalizeMe(usable) : null;
 }
 
+/** Forgets the saved last read (a different user signed in: their phone must not show the previous user's garden). */
+export function clearLastMe() {
+  store.remove(KEY);
+}
+
 export function writeLastMe(me: MeResponse) {
   store.set(KEY, JSON.stringify(me));
   recordZeroMarks(me);   // R360: a coin seen at zero now starts again from a seedling at its next planting

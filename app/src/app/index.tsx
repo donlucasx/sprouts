@@ -14,6 +14,8 @@ import { useSession } from '@/lib/session'
 import { signInWithSeeker } from '@/lib/signin'
 import { isSessionDropped, isWalletDeclined, SIGN_IN_DID_NOT_FINISH } from '@/lib/wallet-errors'
 import { ApiError } from '@/lib/api'
+import { clearLastMe, readLastMe, writeLastMe } from '@/lib/me'
+import { stampSignIn } from '@/lib/terms'
 import { spacing, useTheme } from '@/theme'
 
 
@@ -66,6 +68,11 @@ export function WelcomeView() {
               try {
                 // The token-free authorize (reauth.ts): the kit's own signIn sends its saved token, which Solflare declines once it is stale (-1; the Saga, 10-01 after a sign-out).
                 const session = await signInWithSeeker(freshWalletSignIn(identity))
+                // The server recorded the Terms at sign-in: stamp the saved last read to match (the same user), or forget it (another user), so Home
+                // never shows a Terms card for an acceptance already made (11-07). setSession clears the query cache itself.
+                const stamped = stampSignIn(readLastMe(), session.pubkey)
+                if (stamped) writeLastMe(stamped)
+                else clearLastMe()
                 // Drop the kit's cached authorization (storage only): the next transaction authorizes afresh instead of reusing a stale token.
                 await disconnect().catch(() => {})
                 await setSession(session)
