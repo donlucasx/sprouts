@@ -81,7 +81,7 @@ export function cardsFor(
   const m = me?.message;
   const message = m && typeof m.id === "string" && typeof m.heading === "string" && typeof m.body === "string" && !dismissed.includes(m.id) ? m : null;
   const a = me?.ask;
-  const known = !!a && typeof a.question === "string" && a.question in QUESTIONS && typeof a.ref === "string";
+  const known = !!a && typeof a.question === "string" && Object.prototype.hasOwnProperty.call(QUESTIONS, a.question) && typeof a.ref === "string";
   const ask = a && known && !dismissed.includes(a.ref) && (a.question !== "brought_you" || visits >= 2) ? a : null;
   return { message, ask };
 }

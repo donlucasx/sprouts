@@ -32,6 +32,8 @@ describe('cardsFor (0.1.9 Task 5)', () => {
   })
   it('drops an unknown question or a malformed message instead of crashing the card', () => {
     expect(cardsFor({ ask: { question: 'x', ref: 'r' } as never }, [], 9).ask).toBeNull()
+    expect(cardsFor({ ask: { question: 'constructor', ref: 'r' } as never }, [], 9).ask).toBeNull()
+    expect(cardsFor({ ask: { question: 'toString', ref: 'r' } as never }, [], 9).ask).toBeNull()
     expect(cardsFor({ ask: { question: 'wallet_removed' } as never }, [], 9).ask).toBeNull()
     expect(cardsFor({ message: {} as never }, [], 9).message).toBeNull()
   })
