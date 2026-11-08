@@ -10,7 +10,7 @@ vi.mock('@/lib/store', () => ({
   },
 }))
 vi.mock('@/lib/api', () => ({ api: post }))
-import { QUESTIONS, cardsFor, countHomeVisit, dismiss, homeVisits, readDismissed, sendFeedback } from '@/lib/feedback'
+import { QUESTIONS, cardsFor, removedAskFor, countHomeVisit, dismiss, homeVisits, readDismissed, sendFeedback } from '@/lib/feedback'
 
 const msg = { id: 'm1', heading: 'From Lucas', body: 'Thanks', action: 'message_us' as const }
 const removed = { question: 'wallet_removed' as const, ref: 'W:2026-11-01' }
@@ -21,13 +21,23 @@ describe('cardsFor (0.1.9 Task 5)', () => {
     expect(cardsFor({ message: msg }, [], 1).message).toEqual(msg)
     expect(cardsFor({ message: msg }, ['m1'], 1).message).toBeNull()
   })
-  it('brought_you waits for the second visit; wallet_removed shows at once', () => {
+  it('brought_you waits for the second visit', () => {
     expect(cardsFor({ ask: brought }, [], 1).ask).toBeNull()
     expect(cardsFor({ ask: brought }, [], 2).ask).toEqual(brought)
-    expect(cardsFor({ ask: removed }, [], 1).ask).toEqual(removed)
+  })
+  it('Home shows one card: From Lucas first, brought_you only once it is closed (his 11-08 note: two cards = too cluttered)', () => {
+    expect(cardsFor({ message: msg, ask: brought }, [], 5)).toEqual({ message: msg, ask: null })
+    expect(cardsFor({ message: msg, ask: brought }, ['m1'], 5)).toEqual({ message: null, ask: brought })
+  })
+  it('wallet_removed never shows on Home; Settings shows it under Linked wallets (his 11-08 ruling)', () => {
+    expect(cardsFor({ ask: removed }, [], 5).ask).toBeNull()
+    expect(removedAskFor({ ask: removed }, [])).toEqual(removed)
+    expect(removedAskFor({ ask: removed }, [removed.ref])).toBeNull()
+    expect(removedAskFor({ ask: brought }, [])).toBeNull()
+    expect(removedAskFor(null, [])).toBeNull()
+    expect(removedAskFor({ ask: { question: 'wallet_removed' } as never }, [])).toBeNull()
   })
   it('hides a dismissed ask ref', () => {
-    expect(cardsFor({ ask: removed }, [removed.ref], 5).ask).toBeNull()
     expect(cardsFor({ ask: brought }, ['brought_you'], 5).ask).toBeNull()
   })
   it('drops an unknown question or a malformed message instead of crashing the card', () => {

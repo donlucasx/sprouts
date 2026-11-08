@@ -30,7 +30,7 @@ import { clearTaxFiles, prepareTaxCsv, shareTaxCsv, taxFileFresh, type TaxFile }
 import { notify } from '@/lib/notify'
 import { PUBLIC_GUARANTEE } from '@/lib/relink'
 import { QuestionCard } from '@/components/QuestionCard'
-import { dismiss } from '@/lib/feedback'
+import { dismiss, readDismissed, removedAskFor } from '@/lib/feedback'
 import { spacing, switchColors, useTheme } from '@/theme'
 import { schemeFor, type Appearance as AppearanceChoice } from '@/theme/appearance'
 
@@ -97,6 +97,9 @@ export default function Settings() {
 
   // Copy D: after a revoke the user made, the removed-wallet question. Its ref is the server's removedRef (`<wallet>:<UTC day>`), so Home's ask for it counts as answered.
   const [removedRef, setRemovedRef] = useState<string | null>(null)
+  // 11-08 his ruling: the server's ask (a wallet removed anywhere, e.g. sprouts.money/revoke) shows here too, not on Home
+  const [, setAnswered] = useState(0)
+  const shownRemovedRef = removedRef ?? removedAskFor(me ?? null, readDismissed())?.ref ?? null
 
   async function revoke(wallet: string) {
     if (!session) return
@@ -216,13 +219,15 @@ export default function Settings() {
           </ThemedText>
         ) : null}
         {walletError ? <ThemedText tone="error">{walletError}</ThemedText> : null}
-        {removedRef ? (
+        {shownRemovedRef ? (
           <QuestionCard
+            key={shownRemovedRef}
             question="wallet_removed"
-            askRef={removedRef}
+            askRef={shownRemovedRef}
             onDone={() => {
-              dismiss(removedRef)
+              dismiss(shownRemovedRef)
               setRemovedRef(null)
+              setAnswered((n) => n + 1)
             }}
           />
         ) : null}

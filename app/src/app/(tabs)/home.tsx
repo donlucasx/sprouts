@@ -405,7 +405,7 @@ export default function Home() {
                   </Pressable>
                 </View>
                 <ThemedText tone="secondary">{message.body}</ThemedText>
-                <Button title="Message us" onPress={() => router.push('/support')} />
+                <Button title="Message Lucas" onPress={() => router.push('/support')} />
               </Card>
             ) : null}
             {ask ? <QuestionCard key={ask.ref} question={ask.question} askRef={ask.ref} onDone={() => close(ask.ref)} /> : null}
