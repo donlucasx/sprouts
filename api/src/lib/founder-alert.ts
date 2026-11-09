@@ -1,3 +1,4 @@
+import { z } from "zod";
 import type { EventRow } from "@/db/types";
 import type { Repo } from "@/db/repo";
 import { errorText } from "./redact";
@@ -98,7 +99,9 @@ export function founderAlertFor(e: Omit<EventRow, "id" | "ts">): string | null {
       const q = String(d.question);
       const options: readonly string[] = Object.hasOwn(FEEDBACK_OPTIONS, q) ? FEEDBACK_OPTIONS[q as FeedbackQuestion] : [];
       const choice = options.includes(String(d.choice)) ? String(d.choice) : "?";
-      return `Answer to "${options.length ? q : "?"}": ${choice}, ${typeof d.text === "string" ? d.text.length : 0} characters of text.`;
+      // 11-08: an email the user left for a reply, re-checked here (written by the route, read back from the table) so only a plain address reaches the post.
+      const email = typeof d.email === "string" && z.string().email().max(254).safeParse(d.email).success ? d.email : null;
+      return `Answer to "${options.length ? q : "?"}": ${choice}, ${typeof d.text === "string" ? d.text.length : 0} characters of text.${email ? ` Reply to: ${email}` : ""}`;
     }
     case "wallet_linked":
       return d.webhookAdded === false ? `Linked but NOT on the Helius webhook: ${who}. Its swaps are not being counted; add the address by hand.` : null;

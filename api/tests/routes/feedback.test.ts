@@ -126,4 +126,16 @@ describe("founder alert for feedback_answer", () => {
     expect(alertAllowed(b, 30_000)).toBe(true);
     expect(alertAllowed(a, 62_000)).toBe(true);
   });
+
+  it("an optional email for a reply is stored and named in the alert (his 11-08 ask); a bad one is refused, nothing stored", async () => {
+    expect((await post({ question: "link_failed", choice: "other", text: "help", email: " a.b+c@example.com " }, token)).status).toBe(200);
+    expect(answers()[0].detail).toMatchObject({ question: "link_failed", choice: "other", text: "help", email: "a.b+c@example.com" });
+    const line = founderAlertFor({ kind: "feedback_answer", userPubkey: U, walletPubkey: null, detail: answers()[0].detail });
+    expect(line).toContain("Reply to: a.b+c@example.com");
+    expect((await post({ question: "link_failed", choice: "other", email: "not an email" }, token)).status).toBe(400);
+    expect((await post({ question: "link_failed", choice: "other", email: "<@123>@x.com" }, token)).status).toBe(400);
+    expect(answers()).toHaveLength(1);
+    // no email: the alert says nothing about one
+    expect(founderAlertFor({ kind: "feedback_answer", userPubkey: U, walletPubkey: null, detail: { question: "link_failed", choice: "other" } })).not.toContain("Reply to");
+  });
 });
