@@ -4,6 +4,8 @@ import { Card } from './Card'
 import { Button } from './Button'
 import { ThemedText } from './ThemedText'
 import { QUESTIONS, TEXT_MAX, sendFeedback, type Question } from '@/lib/feedback'
+import { SUPPORT_LOG_KEY } from '@/lib/support'
+import { useQueryClient } from '@tanstack/react-query'
 import { radius, spacing, TARGET, useTheme } from '@/theme'
 
 /**
@@ -13,6 +15,8 @@ import { radius, spacing, TARGET, useTheme } from '@/theme'
  */
 /** 11-08 (his note: no confirmation on screen): how long "Message sent" stays before the card closes itself. */
 export const SENT_SHOWN_MS = 2500
+/** Longer when it shows a reference, so there is time to read it (it is also listed in Help). */
+export const SENT_WITH_REF_MS = 4000
 
 export function QuestionCard(p: { question: Question; askRef?: string; onDone: () => void }) {
   const { colors } = useTheme()
@@ -22,6 +26,9 @@ export function QuestionCard(p: { question: Question; askRef?: string; onDone: (
   // 11-08 (his ask): an optional email so Lucas can reply; without one an answer has no way back to the user
   const [email, setEmail] = useState('')
   const [sent, setSent] = useState(false)
+  // 11-08 (his ask): the answer's reference, shown under "Message sent" and listed in Settings > Help > Message us
+  const [sentRef, setSentRef] = useState<string | null>(null)
+  const queryClient = useQueryClient()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -30,8 +37,10 @@ export function QuestionCard(p: { question: Question; askRef?: string; onDone: (
     setBusy(true)
     setError(null)
     try {
-      await sendFeedback(p.question, choice, p.question === 'brought_you' ? undefined : text, p.askRef, p.question === 'brought_you' ? undefined : email)
+      const ref = await sendFeedback(p.question, choice, p.question === 'brought_you' ? undefined : text, p.askRef, p.question === 'brought_you' ? undefined : email)
+      setSentRef(ref)
       setSent(true)
+      if (ref) void queryClient.invalidateQueries({ queryKey: SUPPORT_LOG_KEY })
     } catch {
       setError('Could not send it. Check your connection and try again.')
     } finally {
@@ -44,14 +53,19 @@ export function QuestionCard(p: { question: Question; askRef?: string; onDone: (
   doneRef.current = p.onDone
   useEffect(() => {
     if (!sent) return
-    const t = setTimeout(() => doneRef.current(), SENT_SHOWN_MS)
+    const t = setTimeout(() => doneRef.current(), sentRef ? SENT_WITH_REF_MS : SENT_SHOWN_MS)
     return () => clearTimeout(t)
-  }, [sent])
+  }, [sent, sentRef])
 
   if (sent) {
     return (
       <Card>
         <ThemedText variant="heading">Message sent</ThemedText>
+        {sentRef ? (
+          <ThemedText tone="secondary" numeric>
+            Reference {sentRef}
+          </ThemedText>
+        ) : null}
       </Card>
     )
   }

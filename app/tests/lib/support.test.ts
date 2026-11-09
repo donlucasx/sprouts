@@ -6,7 +6,7 @@ vi.mock('@/lib/store', () => ({ store: { getString: (k: string) => kv.get(k), se
 vi.mock('expo-constants', () => ({ default: { expoConfig: { version: '0.1.8' } } }))
 vi.mock('react-native', () => ({ Platform: { OS: 'android', constants: { Model: 'Seeker' } } }))
 
-import { canSend, fetchSupportLog, isTopic, logLine, looksLikeEmail, readSupportEmail, sendSupport } from '@/lib/support'
+import { canSend, fetchSupportLog, isTopic, logLine, looksLikeEmail, previewOf, readSupportEmail, sendSupport } from '@/lib/support'
 
 beforeEach(() => kv.clear())
 afterEach(() => vi.unstubAllGlobals())
@@ -57,5 +57,11 @@ describe('Message us', () => {
   it("a log row's first line: reference, day, topic; a message from before references just skips it", () => {
     expect(logLine({ ref: 'S-7K3Q', ts: '2026-11-01T20:00:00Z', topic: 'link', preview: '' })).toBe('S-7K3Q \u00b7 Nov 1 \u00b7 Linking a wallet')
     expect(logLine({ ref: null, ts: '2026-11-01T20:00:00Z', topic: null, preview: '' })).toBe('Nov 1')
+    // 11-08: an answer with a reference reads by its question, and its choice stands in for an empty note
+    const answer = { ref: 'S-ABCD', ts: '2026-11-08T20:00:00Z', topic: 'link_failed', preview: '', choice: 'warning_worried' }
+    expect(logLine(answer)).toBe('S-ABCD \u00b7 Nov 8 \u00b7 What happened?')
+    expect(previewOf(answer)).toBe('The approval warning worried me')
+    expect(previewOf({ ...answer, preview: 'the warning' })).toBe('The approval warning worried me: the warning')
+    expect(previewOf({ ref: 'S-7K3Q', ts: '2026-11-01T20:00:00Z', topic: 'link', preview: 'hi' })).toBe('hi')
   })
 })
