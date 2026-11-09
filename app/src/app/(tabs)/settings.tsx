@@ -204,6 +204,12 @@ export default function Settings() {
         {liveWallets.map((w) => (
           <View key={w.pubkey} style={{ gap: spacing.sm, paddingVertical: spacing.xs }}>
             <ThemedText numeric>{formatWallet(w)}</ThemedText>
+            {/* 11-08 his note: the phone's own wallet says so, subtly (it is the wallet the user signs in with) */}
+            {w.pubkey === me?.user.pubkey ? (
+              <ThemedText variant="caption" tone="secondary">
+                Seed Vault wallet
+              </ThemedText>
+            ) : null}
             <View style={{ flexDirection: 'row', gap: spacing.sm }}>
               <Button title={w.status === 'paused' ? 'Resume' : 'Pause'} accessibilityLabel={`${w.status === 'paused' ? 'Resume' : 'Pause'} wallet ${w.pubkey.slice(0, 4)}...${w.pubkey.slice(-4)}`} kind="quiet" loading={walletBusy} onPress={() => pauseOrResume(w)} />
               <Button title="Revoke" accessibilityLabel={`Revoke wallet ${w.pubkey.slice(0, 4)}...${w.pubkey.slice(-4)}`} kind="danger" loading={walletBusy} onPress={() => revoke(w.pubkey)} />
