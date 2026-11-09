@@ -91,6 +91,12 @@ describe('sendFeedback', () => {
     await sendFeedback('link_failed', 'other', 'x', undefined, '   ')
     expect(post.mock.calls[1][1].body).toEqual({ question: 'link_failed', choice: 'other', text: 'x' })
   })
+  it('returns the message reference when the server gives one, else null (11-08)', async () => {
+    post.mockResolvedValueOnce({ ok: true, ref: 'S-ABCD' })
+    expect(await sendFeedback('link_failed', 'other', 'x', undefined)).toBe('S-ABCD')
+    post.mockResolvedValueOnce({ ok: true })
+    expect(await sendFeedback('link_failed', 'other', '', undefined)).toBeNull()
+  })
   it('omits empty text and absent ref', async () => {
     post.mockResolvedValue({})
     await sendFeedback('link_failed', 'other', '  ', undefined)

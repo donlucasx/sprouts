@@ -2,6 +2,7 @@ import { Platform } from "react-native";
 import Constants from "expo-constants";
 import { api } from "./api";
 import { store } from "./store";
+import { QUESTIONS, type Question } from "./feedback";
 
 /** 11-01: Settings > Message us. The topics as the API knows them (api/src/app/api/support/route.ts), in the order they show. */
 export const SUPPORT_TOPICS = [
@@ -39,7 +40,11 @@ export async function sendSupport(m: { topic: SupportTopic | null; message: stri
 }
 
 /** One row of the user's own log (his ruling B): reference, time, topic, the start of the text. */
-export type SupportLogEntry = { ref: string | null; ts: string; topic: string | null; preview: string };
+/** 11-08: an answer to a question (topic = the question, choice = the picked option) can be a row too. */
+export type SupportLogEntry = { ref: string | null; ts: string; topic: string | null; preview: string; choice?: string | null };
+
+const asQuestion = (t: string | null): (typeof QUESTIONS)[Question] | null =>
+  t !== null && Object.prototype.hasOwnProperty.call(QUESTIONS, t) ? QUESTIONS[t as Question] : null;
 export const SUPPORT_LOG_KEY = ["support-log"] as const;
 export async function fetchSupportLog(): Promise<SupportLogEntry[]> {
   return (await api<{ messages?: SupportLogEntry[] }>("/api/support")).messages ?? [];
@@ -48,6 +53,13 @@ export async function fetchSupportLog(): Promise<SupportLogEntry[]> {
 /** "S-7K3Q · Nov 1 · Linking a wallet": the log row's first line. */
 export function logLine(e: SupportLogEntry): string {
   const day = new Date(e.ts).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-  const topic = SUPPORT_TOPICS.find((t) => t.value === e.topic)?.label;
+  const topic = SUPPORT_TOPICS.find((t) => t.value === e.topic)?.label ?? asQuestion(e.topic)?.title;
   return [e.ref, day, topic].filter(Boolean).join(" \u00b7 ");
+}
+
+/** The row's text: the message, or for an answer its picked option, then the note if one was written. */
+export function previewOf(e: SupportLogEntry): string {
+  const picked = asQuestion(e.topic)?.options.find((o) => o.value === e.choice)?.label;
+  if (!picked) return e.preview;
+  return e.preview ? `${picked}: ${e.preview}` : picked;
 }

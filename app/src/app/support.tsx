@@ -8,7 +8,7 @@ import { Button } from '@/components/Button'
 import { ThemedText } from '@/components/ThemedText'
 import { Disclosure } from '@/components/Disclosure'
 import { ApiError } from '@/lib/api'
-import { canSend, fetchSupportLog, isTopic, logLine, MESSAGE_MAX, readSupportEmail, sendSupport, SUPPORT_LOG_KEY, SUPPORT_TOPICS, type SupportTopic } from '@/lib/support'
+import { canSend, fetchSupportLog, isTopic, logLine, MESSAGE_MAX, previewOf, readSupportEmail, sendSupport, SUPPORT_LOG_KEY, SUPPORT_TOPICS, type SupportTopic } from '@/lib/support'
 import { radius, spacing, TARGET, useTheme } from '@/theme'
 
 /** What the "Sent with your message" row says: everything attached, in plain words (the API's support route adds the server half). */
@@ -178,7 +178,7 @@ export default function Support() {
               <ThemedText variant="label" tone="secondary" numeric>
                 {logLine(e)}
               </ThemedText>
-              <ThemedText numberOfLines={2}>{e.preview}</ThemedText>
+              <ThemedText numberOfLines={2}>{previewOf(e)}</ThemedText>
             </View>
           ))}
           <ThemedText variant="caption" tone="secondary">
