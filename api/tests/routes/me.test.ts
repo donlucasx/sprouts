@@ -186,7 +186,7 @@ describe("GET /api/me", () => {
     const token = await issueSession(U, "M");
     let body = await (await me(new Request("http://x/api/me", bearer(token)))).json();
     expect(body.reminder).toBeNull(); // linked, swapping, nothing waiting
-    expect(body.message).toEqual({ id: "lucas-2026-11", heading: "From Lucas", body: expect.any(String), action: "message_us" });
+    expect(body.message).toEqual({ id: "lucas-2026-11-b", heading: "From Lucas", body: expect.any(String), action: "message_us" });
     expect(body.ask).toBeNull();
     expect(body.terms.acceptedAt).toBeNull();
     const at = new Date("2026-11-01T09:00:00Z");
@@ -213,7 +213,7 @@ describe("GET /api/me", () => {
     const body = await res.json();
     expect(body.reminder).toBeNull();
     expect(body.ask).toBeNull();
-    expect(body.message.id).toBe("lucas-2026-11");
+    expect(body.message.id).toBe("lucas-2026-11-b");
     log.mockRestore();
   });
 
