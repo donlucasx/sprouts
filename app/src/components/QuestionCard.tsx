@@ -11,7 +11,7 @@ import { radius, spacing, TARGET, useTheme } from '@/theme'
  * `onDone` fires after a successful Send and on Skip; the caller dismisses the card then. A failed Send keeps the card and says so.
  * brought_you has no free text line (copy E).
  */
-export function QuestionCard(p: { question: Question; askRef?: string; onDone: () => void }) {
+export function QuestionCard(p: { question: Question; askRef?: string; onDone: () => void; onMessageUs?: () => void }) {
   const { colors } = useTheme()
   const q = QUESTIONS[p.question]
   const [choice, setChoice] = useState<string | null>(null)
@@ -95,6 +95,8 @@ export function QuestionCard(p: { question: Question; askRef?: string; onDone: (
         <Button title="Send" onPress={() => void send()} disabled={!choice} loading={busy} style={{ flex: 1 }} />
         <Button title="Skip" kind="quiet" onPress={p.onDone} disabled={busy} />
       </View>
+      {/* 11-08 (link screen): a way to a real conversation, plain "Message us" (his note: not "Want a reply?") */}
+      {p.onMessageUs ? <Button title="Message us" kind="quiet" onPress={p.onMessageUs} disabled={busy} style={{ alignSelf: 'flex-start' }} /> : null}
     </Card>
   )
 }
