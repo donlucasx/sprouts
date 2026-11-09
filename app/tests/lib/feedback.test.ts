@@ -84,6 +84,13 @@ describe('sendFeedback', () => {
     await sendFeedback('wallet_removed', 'testing', '  hi ', 'W:2026-11-01')
     expect(post).toHaveBeenCalledWith('/api/feedback', { method: 'POST', body: { question: 'wallet_removed', ref: 'W:2026-11-01', choice: 'testing', text: 'hi' } })
   })
+  it('sends a trimmed email for a reply when one is given, and none when blank (his 11-08 ask)', async () => {
+    post.mockResolvedValue({})
+    await sendFeedback('link_failed', 'other', 'x', undefined, ' me@example.com ')
+    expect(post.mock.calls[0][1].body).toEqual({ question: 'link_failed', choice: 'other', text: 'x', email: 'me@example.com' })
+    await sendFeedback('link_failed', 'other', 'x', undefined, '   ')
+    expect(post.mock.calls[1][1].body).toEqual({ question: 'link_failed', choice: 'other', text: 'x' })
+  })
   it('omits empty text and absent ref', async () => {
     post.mockResolvedValue({})
     await sendFeedback('link_failed', 'other', '  ', undefined)

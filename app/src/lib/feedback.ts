@@ -39,9 +39,10 @@ export const QUESTIONS: Record<Question, { title: string; options: { value: stri
 export const TEXT_MAX = 500;
 
 /** Posts one answer. Throws on failure so the card stays; the caller shows the one-line error. */
-export async function sendFeedback(q: Question, choice: string, text: string | undefined, ref?: string): Promise<void> {
+export async function sendFeedback(q: Question, choice: string, text: string | undefined, ref?: string, email?: string): Promise<void> {
   const t = text?.trim();
-  await api("/api/feedback", { method: "POST", body: { question: q, ...(ref ? { ref } : {}), choice, ...(t ? { text: t } : {}) } });
+  const e = email?.trim();
+  await api("/api/feedback", { method: "POST", body: { question: q, ...(ref ? { ref } : {}), choice, ...(t ? { text: t } : {}), ...(e ? { email: e } : {}) } });
 }
 
 const DISMISSED = "feedback.dismissed";

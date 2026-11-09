@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Pressable, TextInput, View } from 'react-native'
 import { Card } from './Card'
 import { Button } from './Button'
@@ -11,11 +11,17 @@ import { radius, spacing, TARGET, useTheme } from '@/theme'
  * `onDone` fires after a successful Send and on Skip; the caller dismisses the card then. A failed Send keeps the card and says so.
  * brought_you has no free text line (copy E).
  */
-export function QuestionCard(p: { question: Question; askRef?: string; onDone: () => void; onMessageUs?: () => void }) {
+/** 11-08 (his note: no confirmation on screen): how long "Message sent" stays before the card closes itself. */
+export const SENT_SHOWN_MS = 2500
+
+export function QuestionCard(p: { question: Question; askRef?: string; onDone: () => void }) {
   const { colors } = useTheme()
   const q = QUESTIONS[p.question]
   const [choice, setChoice] = useState<string | null>(null)
   const [text, setText] = useState('')
+  // 11-08 (his ask): an optional email so Lucas can reply; without one an answer has no way back to the user
+  const [email, setEmail] = useState('')
+  const [sent, setSent] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -24,13 +30,30 @@ export function QuestionCard(p: { question: Question; askRef?: string; onDone: (
     setBusy(true)
     setError(null)
     try {
-      await sendFeedback(p.question, choice, p.question === 'brought_you' ? undefined : text, p.askRef)
-      p.onDone()
+      await sendFeedback(p.question, choice, p.question === 'brought_you' ? undefined : text, p.askRef, p.question === 'brought_you' ? undefined : email)
+      setSent(true)
     } catch {
       setError('Could not send it. Check your connection and try again.')
     } finally {
       setBusy(false)
     }
+  }
+
+  // Callers pass a new onDone each render (Home re-renders often); the timer reads the latest through a ref so it starts once.
+  const doneRef = useRef(p.onDone)
+  doneRef.current = p.onDone
+  useEffect(() => {
+    if (!sent) return
+    const t = setTimeout(() => doneRef.current(), SENT_SHOWN_MS)
+    return () => clearTimeout(t)
+  }, [sent])
+
+  if (sent) {
+    return (
+      <Card>
+        <ThemedText variant="heading">Message sent</ThemedText>
+      </Card>
+    )
   }
 
   return (
@@ -90,13 +113,36 @@ export function QuestionCard(p: { question: Question; askRef?: string; onDone: (
           }}
         />
       ) : null}
+      {p.question !== 'brought_you' ? (
+        <TextInput
+          value={email}
+          onChangeText={setEmail}
+          maxLength={254}
+          placeholder="Your email, if you'd like a reply"
+          placeholderTextColor={colors.textSecondary}
+          accessibilityLabel="Your email, if you'd like a reply"
+          editable={!busy}
+          keyboardType="email-address"
+          autoCapitalize="none"
+          autoCorrect={false}
+          style={{
+            fontFamily: 'AlbertSans_400Regular',
+            fontSize: 16,
+            color: colors.text,
+            backgroundColor: colors.background,
+            borderWidth: 1,
+            borderColor: colors.hairline,
+            borderRadius: radius.md,
+            padding: spacing.md,
+            minHeight: TARGET,
+          }}
+        />
+      ) : null}
       {error ? <ThemedText style={{ color: colors.error }}>{error}</ThemedText> : null}
       <View style={{ flexDirection: 'row', gap: spacing.sm }}>
         <Button title="Send" onPress={() => void send()} disabled={!choice} loading={busy} style={{ flex: 1 }} />
         <Button title="Skip" kind="quiet" onPress={p.onDone} disabled={busy} />
       </View>
-      {/* 11-08 (link screen): a way to a real conversation, plain "Message us" (his note: not "Want a reply?") */}
-      {p.onMessageUs ? <Button title="Message us" kind="quiet" onPress={p.onMessageUs} disabled={busy} style={{ alignSelf: 'flex-start' }} /> : null}
     </Card>
   )
 }
