@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { View } from 'react-native'
 import { router } from 'expo-router'
@@ -86,6 +86,8 @@ export default function Connect() {
   const [asked, setAsked] = useState(false)
   // 11-08: failures of this phone's link on this screen visit; help shows from the second (showStillStuck)
   const [failures, setFailures] = useState(0)
+  // 11-08 (his note: the keyboard covered the What happened? box): the card's bottom in the scroll, where the keyboard stops
+  const askBottom = useRef<number | null>(null)
   // 11-02 (his device note: the error sat at the page's foot, "Still stuck" out of sight): which card the error belongs under
   const [errorFrom, setErrorFrom] = useState<'phone' | 'code'>('phone')
   const [toppedUp, setToppedUp] = useState(false)
@@ -166,12 +168,13 @@ export default function Connect() {
   }
 
   return (
-    <Screen back title="Link a wallet">
+    <Screen back title="Link a wallet" keyboard keyboardAnchor={() => askBottom.current}>
       <ThemedText>{LINK_INTRO}</ThemedText>
       <Card>
         {CAN.map((l) => <Mark key={l} ok text={l} />)}
         {CANT.map((l) => <Mark key={l} ok={false} text={l} />)}
       </Card>
+      <View onLayout={(e) => (askBottom.current = e.nativeEvent.layout.y + e.nativeEvent.layout.height)}>
       <Card>
         <ThemedText variant="heading">{"This phone's wallet"}</ThemedText>
         {usdcNote ? (
@@ -199,10 +202,11 @@ export default function Connect() {
             {canAsk && showStillStuck(failures) && !asked ? (
               <Button title="Still stuck? Tell us what happened" kind="quiet" onPress={() => { setAsking(true); setAsked(true) }} style={{ alignSelf: 'flex-start' }} />
             ) : null}
-            {asking ? <QuestionCard question="link_failed" onDone={() => setAsking(false)} onMessageUs={() => router.push('/support?topic=link')} /> : null}
+            {asking ? <QuestionCard question="link_failed" onDone={() => setAsking(false)} /> : null}
           </>
         ) : null}
       </Card>
+      </View>
       <Card>
         <ThemedText variant="heading">Another wallet</ThemedText>
         <ThemedText tone="secondary" style={{ fontSize: 14, lineHeight: 20 }}>

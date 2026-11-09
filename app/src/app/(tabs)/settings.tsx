@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Appearance, AppState, Switch, View } from 'react-native'
 import { Link, router } from 'expo-router'
 import { Screen } from '@/components/Screen'
@@ -97,6 +97,8 @@ export default function Settings() {
 
   // Copy D: after a revoke the user made, the removed-wallet question. Its ref is the server's removedRef (`<wallet>:<UTC day>`), so Home's ask for it counts as answered.
   const [removedRef, setRemovedRef] = useState<string | null>(null)
+  // 11-08 (his note: the keyboard covered the What happened? box): the card's bottom in the scroll, where the keyboard stops
+  const walletsBottom = useRef<number | null>(null)
   // 11-08 his ruling: the server's ask (a wallet removed anywhere, e.g. sprouts.money/revoke) shows here too, not on Home
   const [, setAnswered] = useState(0)
   const shownRemovedRef = removedRef ?? removedAskFor(me ?? null, readDismissed())?.ref ?? null
@@ -148,7 +150,7 @@ export default function Settings() {
   }
 
   return (
-    <Screen inset="top" title="Settings">
+    <Screen inset="top" title="Settings" keyboard keyboardAnchor={() => walletsBottom.current}>
       <Card>
         {/* R462: the wallet that signs in is the Seed Vault */}
         <ThemedText variant="heading">Your Seed Vault</ThemedText>
@@ -190,6 +192,7 @@ export default function Settings() {
           Coming soon: add money to your garden anytime.
         </ThemedText>
       </Card>
+      <View onLayout={(e) => (walletsBottom.current = e.nativeEvent.layout.y + e.nativeEvent.layout.height)}>
       <Card>
         <ThemedText variant="heading">Linked wallets</ThemedText>
         {/* 10-28 (his note: an old revoked wallet clutters the list): revoked wallets are hidden; a stopped one has Home's re-link card,
@@ -241,6 +244,7 @@ export default function Settings() {
           <Button title="Link a wallet" kind="quiet" onPress={() => {}} style={{ alignSelf: 'flex-start' }} />
         </Link>
       </Card>
+      </View>
       <Card>
         <ThemedText variant="heading">Appearance</ThemedText>
         <TwoWay
