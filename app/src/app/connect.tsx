@@ -9,7 +9,7 @@ import { Card } from '@/components/Card'
 import { ThemedText } from '@/components/ThemedText'
 import { api, ApiError } from '@/lib/api'
 import { makeSigner } from '@/lib/sign'
-import { linkErrorView } from '@/lib/link-error'
+import { linkErrorView, showStillStuck } from '@/lib/link-error'
 import { QuestionCard } from '@/components/QuestionCard'
 import { useInvalidateMe, useMe } from '@/lib/me'
 import { newlyLinked } from '@/lib/newly-linked'
@@ -34,12 +34,12 @@ function confirmLink(code: string, wallet: string, signedTransaction: string) {
 }
 
 /** The error under the button that caused it, and (11-01, support draft v1 screen 5) help right there, with the topic picked. */
-function LinkError({ error, title }: { error: string; title?: string }) {
+function LinkError({ error, title, help = true }: { error: string; title?: string; help?: boolean }) {
   return (
     <>
       {title ? <ThemedText variant="heading" tone="error">{title}</ThemedText> : null}
       <ThemedText tone="error">{error}</ThemedText>
-      <Button title="Still stuck? Message us" kind="quiet" onPress={() => router.push('/support?topic=link')} style={{ alignSelf: 'flex-start' }} />
+      {help ? <Button title="Still stuck? Message us" kind="quiet" onPress={() => router.push('/support?topic=link')} style={{ alignSelf: 'flex-start' }} /> : null}
     </>
   )
 }
@@ -84,6 +84,8 @@ export default function Connect() {
   const [canAsk, setCanAsk] = useState(false)
   const [asking, setAsking] = useState(false)
   const [asked, setAsked] = useState(false)
+  // 11-08: failures of this phone's link on this screen visit; help shows from the second (showStillStuck)
+  const [failures, setFailures] = useState(0)
   // 11-02 (his device note: the error sat at the page's foot, "Still stuck" out of sight): which card the error belongs under
   const [errorFrom, setErrorFrom] = useState<'phone' | 'code'>('phone')
   const [toppedUp, setToppedUp] = useState(false)
@@ -137,6 +139,7 @@ export default function Connect() {
       router.replace({ pathname: '/home', params: { linked: session.pubkey } })
     } catch (e) {
       setErrorFrom('phone')
+      setFailures((n) => n + 1)
       const view = linkErrorView(e)
       setErrorTitle(view.title)
       setCanAsk(view.ask)
@@ -189,14 +192,14 @@ export default function Connect() {
         ) : null}
         {error && errorFrom === 'phone' ? (
           <>
-            <LinkError error={error} title={errorTitle} />
-            {canAsk ? (
-              <View style={{ flexDirection: 'row', gap: spacing.sm }}>
-                <Button title="Try again" loading={approving} onPress={linkThisPhone} />
-                {!asked ? <Button title="What happened?" kind="quiet" onPress={() => { setAsking(true); setAsked(true) }} /> : null}
-              </View>
+            {/* 11-08 (his Saga note): one help line, from the second failure. A wallet that closed opens What happened? in place
+                (with Message us inside); any other error keeps "Still stuck? Message us". */}
+            <LinkError error={error} title={errorTitle} help={!canAsk && showStillStuck(failures)} />
+            {canAsk ? <Button title="Try again" loading={approving} onPress={linkThisPhone} style={{ alignSelf: 'flex-start' }} /> : null}
+            {canAsk && showStillStuck(failures) && !asked ? (
+              <Button title="Still stuck? Tell us what happened" kind="quiet" onPress={() => { setAsking(true); setAsked(true) }} style={{ alignSelf: 'flex-start' }} />
             ) : null}
-            {asking ? <QuestionCard question="link_failed" onDone={() => setAsking(false)} /> : null}
+            {asking ? <QuestionCard question="link_failed" onDone={() => setAsking(false)} onMessageUs={() => router.push('/support?topic=link')} /> : null}
           </>
         ) : null}
       </Card>

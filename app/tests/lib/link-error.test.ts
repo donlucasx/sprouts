@@ -3,7 +3,7 @@ import { describe, it, expect, vi } from 'vitest'
 vi.mock('@/lib/session', () => ({ loadSession: async () => null }))
 import { ApiError } from '@/lib/api'
 import { SignRefused } from '@/lib/sign'
-import { linkErrorView } from '@/lib/link-error'
+import { showStillStuck, linkErrorView } from '@/lib/link-error'
 
 const CLOSED = { title: 'Seed Vault closed before approving', body: 'Nothing was sent. Tap Try again and press Approve on the next screen.', ask: true }
 
@@ -21,5 +21,14 @@ describe('linkErrorView (copy C)', () => {
   it('anything else keeps today\'s text', () => {
     expect(linkErrorView(new Error('boom'))).toEqual({ title: '', body: 'The approval did not go through. Try again.', ask: false })
     expect(linkErrorView('x')).toEqual({ title: '', body: 'The approval did not go through. Try again.', ask: false })
+  })
+})
+
+describe('showStillStuck (his 11-08 Saga note)', () => {
+  it('stays hidden after the first failure and shows from the second', () => {
+    expect(showStillStuck(0)).toBe(false)
+    expect(showStillStuck(1)).toBe(false)
+    expect(showStillStuck(2)).toBe(true)
+    expect(showStillStuck(5)).toBe(true)
   })
 })
