@@ -15,6 +15,8 @@ const Body = z.object({
   ref: z.string().max(120).optional(),
   choice: z.string().max(40),
   text: z.string().trim().max(500).optional(),
+  // 11-08 (his ask): an optional email for a reply, validated like Message us's (support/route.ts); an empty field is no email.
+  email: z.preprocess((v) => (typeof v === "string" && v.trim() === "" ? undefined : v), z.string().trim().max(254).email().optional()),
 });
 
 /**
@@ -30,7 +32,7 @@ export async function POST(request: Request) {
     const pickIssue = parsed.error.issues.some((i) => i.path[0] === "choice" || i.path[0] === "question");
     return NextResponse.json({ error: pickIssue ? "Pick one of the answers." : "Bad request." }, { status: 400 });
   }
-  const { question, ref, choice, text } = parsed.data;
+  const { question, ref, choice, text, email } = parsed.data;
   if (!(FEEDBACK_OPTIONS[question] as readonly string[]).includes(choice)) return NextResponse.json({ error: "Pick one of the answers." }, { status: 400 });
   const repo = await getRepo();
   const dayAgo = Date.now() - 24 * 3600_000;
@@ -38,6 +40,6 @@ export async function POST(request: Request) {
   if (sent.filter((e) => e.ts.getTime() > dayAgo).length >= FEEDBACK_DAILY_CAP) {
     return NextResponse.json({ error: "That is enough answers for today. Thank you." }, { status: 429 });
   }
-  await repo.addEvent({ kind: "feedback_answer", userPubkey: session.pubkey, walletPubkey: null, detail: { question, ref, choice, text } });
+  await repo.addEvent({ kind: "feedback_answer", userPubkey: session.pubkey, walletPubkey: null, detail: { question, ref, choice, text, ...(email ? { email } : {}) } });
   return NextResponse.json({ ok: true });
 }
