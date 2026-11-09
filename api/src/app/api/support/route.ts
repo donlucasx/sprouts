@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { randomInt } from "node:crypto";
+import { isSupportRef, newSupportRef } from "@/lib/support-ref";
 import { z } from "zod";
 import { getRepo } from "@/db/repo";
 import type { EventKind } from "@/db/types";
@@ -22,9 +22,6 @@ const Body = z.object({
 
 /** The failures worth seeing beside a message: the last few, newest first. */
 const RECENT: EventKind[] = ["link_started", "link_failed", "signin_failed", "pull_failed", "withdraw_failed", "withdraw_skipped", "leg_skipped", "paused_no_usdc"];
-/** 11-01 (his ruling A): a short reference per message, "S-" and 4 characters with no look-alikes (no 0/O, 1/I/L), for his email subject. */
-const REF_CHARS = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
-const newRef = () => `S-${Array.from({ length: 4 }, () => REF_CHARS[randomInt(REF_CHARS.length)]).join("")}`;
 /** How many of the user's own messages the app's log shows (his ruling B), and how much of each. */
 const LOG_SIZE = 10;
 const LOG_PREVIEW = 140;
@@ -49,7 +46,7 @@ export async function POST(request: Request) {
   }
   const [user, wallets, recent] = await Promise.all([repo.getUser(session.pubkey), repo.listWalletsOf(session.pubkey), repo.listEvents(session.pubkey, RECENT, 3)]);
   const { topic, message, email, app } = parsed.data;
-  const ref = newRef();
+  const ref = newSupportRef();
   await repo.addEvent({
     kind: "support_message",
     userPubkey: session.pubkey,
@@ -78,15 +75,21 @@ export async function POST(request: Request) {
 export async function GET(request: Request) {
   const session = await requireSession(request);
   if (session instanceof NextResponse) return session;
-  const rows = await (await getRepo()).listEvents(session.pubkey, ["support_message"], LOG_SIZE);
-  const messages = rows.map((e) => {
+  // 11-08 (his ask): the answers that carry a reference (a note or an email) sit in the same list, by their question and choice.
+  const rows = await (await getRepo()).listEvents(session.pubkey, ["support_message", "feedback_answer"], LOG_SIZE * 3);
+  const messages = rows.flatMap((e) => {
+    if (e.kind === "feedback_answer") {
+      const f = (e.detail ?? {}) as { messageRef?: unknown; question?: unknown; choice?: unknown; text?: unknown };
+      if (!isSupportRef(f.messageRef)) return [];
+      return [{ ref: f.messageRef, ts: e.ts.toISOString(), topic: typeof f.question === "string" ? f.question : null, preview: String(f.text ?? "").slice(0, LOG_PREVIEW), choice: typeof f.choice === "string" ? f.choice : null }];
+    }
     const d = (e.detail ?? {}) as { ref?: unknown; topic?: unknown; message?: unknown };
-    return {
+    return [{
       ref: typeof d.ref === "string" ? d.ref : null,
       ts: e.ts.toISOString(),
       topic: typeof d.topic === "string" ? d.topic : null,
       preview: String(d.message ?? "").slice(0, LOG_PREVIEW),
-    };
-  });
+    }];
+  }).slice(0, LOG_SIZE);
   return NextResponse.json({ messages });
 }

@@ -109,6 +109,15 @@ describe("references and the user's log (11-01, his rulings A and B)", () => {
     expect(Object.keys(body.messages[0]).sort()).toEqual(["preview", "ref", "topic", "ts"]);
   });
 
+  it("the log also lists the user's What happened? / Before you go answers that carry a reference (his 11-08 ask), newest first, with their choice", async () => {
+    await post({ ...ok, message: "first" }, token);
+    await repo.addEvent({ kind: "feedback_answer", userPubkey: U, walletPubkey: null, detail: { question: "link_failed", choice: "warning_worried", text: "the warning", messageRef: "S-ABCD" } });
+    await repo.addEvent({ kind: "feedback_answer", userPubkey: U, walletPubkey: null, detail: { question: "brought_you", choice: "looking" } });
+    const body = (await (await log(token)).json()) as { messages: { ref: string; topic: string | null; preview: string; choice?: string }[] };
+    expect(body.messages.map((m) => m.ref)).toEqual(["S-ABCD", expect.stringMatching(/^S-/)]);
+    expect(body.messages[0]).toMatchObject({ topic: "link_failed", preview: "the warning", choice: "warning_worried" });
+  });
+
   it("signed out: 401", async () => {
     expect((await log()).status).toBe(401);
   });
