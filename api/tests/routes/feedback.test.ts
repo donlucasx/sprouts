@@ -56,7 +56,7 @@ describe("POST /api/feedback", () => {
   it("200 writes exactly one feedback_answer with the detail", async () => {
     const res = await post({ question: "wallet_removed", ref: "abc:2026-11-08", choice: "approval", text: "  it asked twice  " }, token);
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true });
+    expect(await res.json()).toEqual({ ok: true, ref: expect.stringMatching(/^S-/) }); // a note makes it a message (11-08)
     expect(answers()).toHaveLength(1);
     expect(answers()[0]).toMatchObject({ userPubkey: U, walletPubkey: null, detail: { question: "wallet_removed", ref: "abc:2026-11-08", choice: "approval", text: "it asked twice" } });
   });
@@ -138,4 +138,18 @@ describe("founder alert for feedback_answer", () => {
     // no email: the alert says nothing about one
     expect(founderAlertFor({ kind: "feedback_answer", userPubkey: U, walletPubkey: null, detail: { question: "link_failed", choice: "other" } })).not.toContain("Reply to");
   });
+
+  it("an answer with a note or an email gets a message reference (his 11-08 ask): returned, stored, first on the post; a one-tap answer gets none", async () => {
+    const res = await post({ question: "link_failed", choice: "other", text: "stuck" }, token);
+    const { ref } = (await res.json()) as { ref: string };
+    expect(ref).toMatch(/^S-[2-9A-HJKMNP-Z]{4}$/);
+    expect((answers()[0].detail as { messageRef: string }).messageRef).toBe(ref);
+    expect(founderAlertFor({ kind: "feedback_answer", userPubkey: U, walletPubkey: null, detail: answers()[0].detail })!.startsWith(`${ref} | `)).toBe(true);
+    const r2 = (await (await post({ question: "link_failed", choice: "backed_out", email: "a@b.co" }, token)).json()) as { ref?: string };
+    expect(r2.ref).toMatch(/^S-/);
+    const r3 = (await (await post({ question: "brought_you", choice: "looking" }, token)).json()) as { ref?: string };
+    expect(r3.ref).toBeUndefined();
+    expect((answers()[2].detail as { messageRef?: string }).messageRef).toBeUndefined();
+  });
 });
+

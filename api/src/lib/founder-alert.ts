@@ -3,6 +3,7 @@ import type { EventRow } from "@/db/types";
 import type { Repo } from "@/db/repo";
 import { errorText } from "./redact";
 import { FEEDBACK_OPTIONS, type FeedbackQuestion } from "@/domain/asks";
+import { isSupportRef } from "./support-ref";
 
 /**
  * 10-26 (Kimi user-comms A, build order 2-3): the events a user would want someone to act on, and the run's ALERT lines, reached
@@ -101,7 +102,7 @@ export function founderAlertFor(e: Omit<EventRow, "id" | "ts">): string | null {
       const choice = options.includes(String(d.choice)) ? String(d.choice) : "?";
       // 11-08: an email the user left for a reply, re-checked here (written by the route, read back from the table) so only a plain address reaches the post.
       const email = typeof d.email === "string" && z.string().email().max(254).safeParse(d.email).success ? d.email : null;
-      return `Answer to "${options.length ? q : "?"}": ${choice}, ${typeof d.text === "string" ? d.text.length : 0} characters of text.${email ? ` Reply to: ${email}` : ""}`;
+      return `${isSupportRef(d.messageRef) ? `${d.messageRef} | ` : ""}Answer to "${options.length ? q : "?"}": ${choice}, ${typeof d.text === "string" ? d.text.length : 0} characters of text.${email ? ` Reply to: ${email}` : ""}`;
     }
     case "wallet_linked":
       return d.webhookAdded === false ? `Linked but NOT on the Helius webhook: ${who}. Its swaps are not being counted; add the address by hand.` : null;

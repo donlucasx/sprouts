@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getRepo } from "@/db/repo";
 import { requireSession, rateLimited } from "@/lib/auth-guard";
 import { FEEDBACK_OPTIONS } from "@/domain/asks";
+import { newSupportRef } from "@/lib/support-ref";
 
 export const runtime = "nodejs";
 
@@ -40,6 +41,8 @@ export async function POST(request: Request) {
   if (sent.filter((e) => e.ts.getTime() > dayAgo).length >= FEEDBACK_DAILY_CAP) {
     return NextResponse.json({ error: "That is enough answers for today. Thank you." }, { status: 429 });
   }
-  await repo.addEvent({ kind: "feedback_answer", userPubkey: session.pubkey, walletPubkey: null, detail: { question, ref, choice, text, ...(email ? { email } : {}) } });
-  return NextResponse.json({ ok: true });
+  // 11-08 (his ask): an answer that carries a note or an email is a message: it gets a reference like Message us and shows in Help.
+  const messageRef = text || email ? newSupportRef() : undefined;
+  await repo.addEvent({ kind: "feedback_answer", userPubkey: session.pubkey, walletPubkey: null, detail: { question, ref, choice, text, ...(email ? { email } : {}), ...(messageRef ? { messageRef } : {}) } });
+  return NextResponse.json({ ok: true, ...(messageRef ? { ref: messageRef } : {}) });
 }
