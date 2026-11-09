@@ -19,7 +19,8 @@ export async function alertFounder(text: string, opts: { mention?: boolean } = {
     const host = new URL(url).hostname;
     const ntfy = host.endsWith("ntfy.sh");
     // Only Discord understands <@id>; Slack and ntfy get the plain line.
-    const mention = opts.mention && /(^|\.)discord(app)?\.com$/.test(host);
+    // 11-08 (his ask: "every/any important message should tag me"): every alert pings him unless a caller opts out.
+    const mention = (opts.mention ?? true) && /(^|\.)discord(app)?\.com$/.test(host);
     const content = (mention ? `<@${FOUNDER_DISCORD_ID}> ${text}` : text).slice(0, 1900);
     const res = await fetch(url, {
       method: "POST",

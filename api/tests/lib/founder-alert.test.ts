@@ -55,14 +55,14 @@ describe("alertFounder", () => {
     const f = vi.fn(async () => new Response("ok"));
     vi.stubGlobal("fetch", f);
     vi.stubEnv("ALERT_WEBHOOK_URL", "https://discord.com/api/webhooks/1/abc");
-    await alertFounder("Paused");
+    await alertFounder("Paused", { mention: false });
     expect(JSON.parse((f.mock.calls[0] as unknown as [string, RequestInit])[1].body as string)).toEqual({ content: "Paused", text: "Paused", allowed_mentions: { parse: [] } });
     vi.stubEnv("ALERT_WEBHOOK_URL", "https://ntfy.sh/some-topic");
     await alertFounder("Paused");
     expect((f.mock.calls[1] as unknown as [string, RequestInit])[1].body).toBe("Paused");
   });
 
-  it("a Message us post mentions the founder on Discord, and only him; other alerts and other hosts never mention", async () => {
+  it("every alert mentions the founder on Discord, and only him (his 11-08 ask: 'every/any important message should tag me'); other hosts never mention", async () => {
     const f = vi.fn(async () => new Response("ok"));
     vi.stubGlobal("fetch", f);
     const body = (i: number) => (f.mock.calls[i] as unknown as [string, RequestInit])[1].body as string;
@@ -70,7 +70,7 @@ describe("alertFounder", () => {
     await alertFounder("Message from x", { mention: true });
     expect(JSON.parse(body(0))).toEqual({ content: "<@459534488825888769> Message from x", text: "Message from x", allowed_mentions: { parse: [], users: ["459534488825888769"] } });
     await alertFounder("Paused");
-    expect(JSON.parse(body(1)).content).toBe("Paused");
+    expect(JSON.parse(body(1))).toEqual({ content: "<@459534488825888769> Paused", text: "Paused", allowed_mentions: { parse: [], users: ["459534488825888769"] } });
     vi.stubEnv("ALERT_WEBHOOK_URL", "https://hooks.slack.com/services/x");
     await alertFounder("Message from x", { mention: true });
     expect(JSON.parse(body(2))).toMatchObject({ text: "Message from x", allowed_mentions: { parse: [] } });
