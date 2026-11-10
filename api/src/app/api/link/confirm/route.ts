@@ -119,7 +119,7 @@ async function confirm(request: Request) {
   let webhookAdded = true;
   try {
     // 11-10: every known linked wallet rides along, so one a racing link's write dropped is put back now, not at the daily pass.
-    const known = await Promise.all([repo.listActiveWallets(), repo.listPausedWallets()]).then(([a, p]) => [...a, ...p].map((w) => w.pubkey), () => [] as string[]);
+    const known = await Promise.all([repo.listActiveWallets(), repo.listPausedWallets()]).then(([a, p]) => [...a, ...p].map((w) => w.pubkey), (e) => { console.error(`link confirm: known-wallet read failed, adding only the new wallet: ${errorText(e)}`); return [] as string[]; });
     await heliusAddAddress(config().heliusWebhookId, wallet, known);
   } catch (e) {
     webhookAdded = false;

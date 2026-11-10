@@ -84,6 +84,20 @@ describe("heliusAddAddress", () => {
     }
   });
 
+  it("does not throw when the new wallet is watched but another known one is still off (logs instead)", async () => {
+    fakeHelius(["A"], (h) => { h.accountAddresses = h.accountAddresses.filter((k) => k !== "K"); });   // K keeps getting dropped
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.useFakeTimers({ toFake: ["setTimeout"] });
+    try {
+      const p = heliusAddAddress("WH", "B", ["K"]);
+      await vi.runAllTimersAsync();
+      await expect(p).resolves.toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(err).toHaveBeenCalledWith(expect.stringContaining("1 known wallet(s) still off"));
+  });
+
   it("puts back a known wallet a racing write dropped, alongside the new one", async () => {
     const { hook } = fakeHelius(["A"]);   // "K" is linked in the database but was dropped from the list
     vi.useFakeTimers({ toFake: ["setTimeout"] });
