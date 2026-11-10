@@ -118,7 +118,9 @@ async function confirm(request: Request) {
   // The webhook add comes first so the wallet row can carry its outcome; a Helius failure never fails the link (repair pass later).
   let webhookAdded = true;
   try {
-    await heliusAddAddress(config().heliusWebhookId, wallet);
+    // 11-10: every known linked wallet rides along, so one a racing link's write dropped is put back now, not at the daily pass.
+    const known = await Promise.all([repo.listActiveWallets(), repo.listPausedWallets()]).then(([a, p]) => [...a, ...p].map((w) => w.pubkey), () => [] as string[]);
+    await heliusAddAddress(config().heliusWebhookId, wallet, known);
   } catch (e) {
     webhookAdded = false;
     console.error(`helius add address failed for ${wallet}: ${errorText(e)}`);   // residual O3: the webhook URL carries HELIUS_API_KEY
