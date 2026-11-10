@@ -116,12 +116,31 @@ export function founderAlertFor(e: Omit<EventRow, "id" | "ts">): string | null {
  * replaces the whole address list on every update, so one bad write could drop them all). Once a day the cron compares the list
  * with every wallet that is not revoked (a paused one still tallies its round-ups) and alerts on any that are missing.
  */
-export async function checkWebhookCoverage(a: { repo: Repo; watched: () => Promise<string[]>; alert?: (text: string) => Promise<void> }): Promise<{ missing: string[] }> {
+/**
+ * 11-10: `repair` (the cron passes heliusEnsureAddresses) re-adds the missing wallets and returns the ones still off. Swaps a
+ * wallet made while off the webhook were never booked, so a repaired gap still alerts: someone may want to look at its swaps.
+ * A throwing repair counts as nothing repaired.
+ */
+export async function checkWebhookCoverage(a: { repo: Repo; watched: () => Promise<string[]>; repair?: (missing: string[]) => Promise<string[]>; alert?: (text: string) => Promise<void> }): Promise<{ missing: string[]; repaired: string[] }> {
   const [watched, active, paused] = await Promise.all([a.watched(), a.repo.listActiveWallets(), a.repo.listPausedWallets()]);
   const on = new Set(watched);
   const missing = [...active, ...paused].map((w) => w.pubkey).filter((k) => !on.has(k));
-  if (missing.length) await (a.alert ?? alertFounder)(`Round-ups NOT being counted: ${missing.length} linked wallet(s) missing from the Helius webhook: ${missing.map((k) => short(k)).join(", ")}. Add them back.`);
-  return { missing };
+  if (!missing.length) return { missing, repaired: [] };
+  let still = missing;
+  if (a.repair) {
+    try {
+      const left = new Set(await a.repair(missing));
+      still = missing.filter((k) => left.has(k));
+    } catch (e) {
+      console.error(`webhook coverage: repair failed: ${errorText(e)}`);
+    }
+  }
+  const repaired = missing.filter((k) => !still.includes(k));
+  const parts: string[] = [];
+  if (repaired.length) parts.push(`Re-added ${repaired.length} linked wallet(s) to the Helius webhook: ${repaired.map((k) => short(k)).join(", ")}. Swaps they made while off it were not counted.`);
+  if (still.length) parts.push(`Round-ups NOT being counted: ${still.length} linked wallet(s) missing from the Helius webhook: ${still.map((k) => short(k)).join(", ")}. Add them back.`);
+  await (a.alert ?? alertFounder)(parts.join(" "));
+  return { missing: still, repaired };
 }
 
 const TOPIC_LABEL: Record<string, string> = { link: "Linking a wallet", planting: "Plantings", withdraw: "Withdrawing", idea: "An idea", other: "Something else" };

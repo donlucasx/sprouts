@@ -22,7 +22,7 @@ import { dayOf } from "@/domain/day";
 import { isAutoVenue } from "@/domain/venues";
 import { USDC_MINT } from "@/lib/constants";
 import { alertFounder, checkWebhookCoverage } from "@/lib/founder-alert";
-import { heliusWebhookAddresses } from "@/lib/helius";
+import { heliusEnsureAddresses, heliusWebhookAddresses } from "@/lib/helius";
 import { config } from "@/lib/config";
 
 export const runtime = "nodejs";
@@ -128,7 +128,7 @@ export async function GET(request: Request) {
     // final status call); as a step, a throw is logged and the cleanup and the keepalive still run (round 2, R2-1).
     const reconciled = (await step("reconcile", () => reconcileOwnStakes({ repo, now: new Date(), deadlineMs: startedMs + 275_000, chain: { readPosition: (u) => readPosition(address(u), "finalized"), sharePrice, finalized: signaturesFinalized } })));
     // 10-26: every linked wallet still on the swap webhook (founder alert when not).
-    const coverage = await step("webhook coverage", () => checkWebhookCoverage({ repo, watched: () => heliusWebhookAddresses(config().heliusWebhookId) }));
+    const coverage = await step("webhook coverage", () => checkWebhookCoverage({ repo, watched: () => heliusWebhookAddresses(config().heliusWebhookId), repair: (missing) => heliusEnsureAddresses(config().heliusWebhookId, missing, { tries: 2, settleMs: 500 }) }));   // short: the reconcile may run to 275 s of the 300
     await repo.cleanupExpired();
     // The first production run (2026-09-28) planted and then answered 500 here: reading rules for a made-up user violates the
     // rules -> users foreign key. The keepalive is now a read that needs no row.

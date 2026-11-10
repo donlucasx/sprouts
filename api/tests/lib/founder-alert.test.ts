@@ -107,4 +107,36 @@ describe("checkWebhookCoverage", () => {
     expect((await checkWebhookCoverage({ repo, watched: async () => ["watched1111", "activeMissing", "pausedMissing"], alert })).missing).toEqual([]);
     expect(alert).not.toHaveBeenCalled();
   });
+
+  it("11-10: repairs what it can, and the alert says which were re-added and which are still off", async () => {
+    const { MemoryRepo } = await import("@/db/memory");
+    const { checkWebhookCoverage } = await import("@/lib/founder-alert");
+    const repo = new MemoryRepo();
+    const add = (pubkey: string) => repo.addWallet({ pubkey, userPubkey: U, delegationPda: "P", dailyCapCents: 500, webhookAdded: true });
+    await add("watched1111"); await add("fixedAAAA"); await add("stuckBBBB");
+    const alert = vi.fn(async () => {});
+    const repair = vi.fn(async (missing: string[]) => missing.filter((k) => k === "stuckBBBB"));
+    const r = await checkWebhookCoverage({ repo, watched: async () => ["watched1111"], repair, alert });
+    expect(repair).toHaveBeenCalledWith(expect.arrayContaining(["fixedAAAA", "stuckBBBB"]));
+    expect(r).toEqual({ missing: ["stuckBBBB"], repaired: ["fixedAAAA"] });
+    const text = (alert.mock.calls[0] as unknown as [string])[0];
+    expect(text).toContain("Re-added 1 linked wallet(s)");
+    expect(text).toContain("were not counted");
+    expect(text).toContain("NOT being counted: 1 linked wallet(s)");
+  });
+
+  it("11-10: a full repair still alerts (the gap's swaps were missed); a throwing repair counts as none", async () => {
+    const { MemoryRepo } = await import("@/db/memory");
+    const { checkWebhookCoverage } = await import("@/lib/founder-alert");
+    const repo = new MemoryRepo();
+    await repo.addWallet({ pubkey: "goneCCCC", userPubkey: U, delegationPda: "P", dailyCapCents: 500, webhookAdded: true });
+    const alert = vi.fn(async () => {});
+    const ok = await checkWebhookCoverage({ repo, watched: async () => [], repair: async () => [], alert });
+    expect(ok).toEqual({ missing: [], repaired: ["goneCCCC"] });
+    expect((alert.mock.calls[0] as unknown as [string])[0]).not.toContain("NOT being counted");
+    alert.mockClear();
+    const bad = await checkWebhookCoverage({ repo, watched: async () => [], repair: async () => { throw new Error("helius down"); }, alert });
+    expect(bad).toEqual({ missing: ["goneCCCC"], repaired: [] });
+    expect((alert.mock.calls[0] as unknown as [string])[0]).toContain("NOT being counted: 1 linked wallet(s)");
+  });
 });
