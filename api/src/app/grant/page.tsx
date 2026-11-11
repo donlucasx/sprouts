@@ -1,3 +1,4 @@
+import { GrantLockup } from "../grant-lockup";
 import type { Metadata } from "next";
 import { Outfit, Albert_Sans } from "next/font/google";
 import { SiteFooter, SiteHeader } from "../site-chrome";
@@ -292,7 +293,7 @@ export default function GrantDeck() {
       <Slide n={1} art>
         <video className="cover-sprout" src="/deck/sprout.mp4" poster="/deck/sprout.webp" autoPlay muted loop playsInline preload="metadata" aria-label="A sprout swaying, from the app's first screen" />
         <img className="cover-sprout poster" src="/deck/sprout.webp" alt="" />
-        <img className="cover-lockup" src="/deck/lockup-ink.png" alt="Sprouts" style={{ width: "calc(var(--u)*16)", height: "auto" }} />
+        <GrantLockup className="cover-lockup" horizontal />
       </Slide>
 
       {/* 02 Hook */}
