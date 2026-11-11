@@ -443,19 +443,19 @@ export default function GrantDeck() {
         <img className="tree" src="/deck/tree.png" alt="" />
       </Slide>
 
-      {/* G1 Traction (grant deck only): production DB read-only 11-02 + Publishing Portal 10-30; honest about test wallets */}
+      {/* G1 Traction (grant deck only): production DB read-only 11-11 18:14 UTC, outside users only (our 2 test users excluded); CLOCK IN 1st place 11-10 */}
       <Slide n={9} chip="Live since Oct 14">
         <div className="grow">
-          <h2 className="h2s">Live in the dApp Store, <span className="mk">on version 0.1.8.</span></h2>
+          <h2 className="h2s">1st place in CLOCK IN, <span className="mk">live on version 0.1.9.</span></h2>
           <div className="stats">
-            <div className="stat"><strong>29</strong><span>people signed in with a Genesis Token since launch.</span></div>
-            <div className="stat"><strong>61</strong><span>swaps rounded up since launch.</span></div>
-            <div className="stat"><strong>32</strong><span>plantings through the leash program. Most from our own test wallets, 3 from outside users.</span></div>
-            <div className="stat"><strong>34</strong><span>installs in the week to Oct 30. Rated 4.0 from 4 reviews.</span></div>
+            <div className="stat"><strong>76</strong><span>people signed in with a Genesis Token, 34 of them this week.</span></div>
+            <div className="stat"><strong>12</strong><span>linked a Seed Vault wallet. 7 are linked today.</span></div>
+            <div className="stat"><strong>125</strong><span>swaps ($1,653) rounded up for $70.33.</span></div>
+            <div className="stat"><strong>6</strong><span>plantings ($15.07) through the leash program into staked SKR, stORE, hSOL and lending.</span></div>
           </div>
-          <p className="sub">Most new users stop between signing in and linking a wallet. 0.1.8 added link retries, clearer errors and in-app support for that step. The grant pays to close that gap.</p>
+          <p className="sub">Sprouts won the $30,000 grand prize in CLOCK IN on Nov 10. Most new users still stop between signing in and linking a wallet, so 0.1.8 and 0.1.9 added link retries, clearer errors, reminders and in-app support for that step. The grant pays to close that gap.</p>
         </div>
-        <p className="note">Sources: Sprouts production database (Nov 2, 2026) and the Solana dApp Publishing Portal (Oct 30, 2026).</p>
+        <p className="note">Source: Sprouts production database, Nov 11, 2026. Outside users only; our own test wallets are excluded.</p>
       </Slide>
 
       {/* 09 Market (R-D3: market data, not our DB) */}
@@ -496,26 +496,26 @@ export default function GrantDeck() {
         </div>
       </Slide>
 
-      {/* G2 The grant (grant deck only): budget + milestones, his rulings 11-02 (security $5K kept, perk $4K kept, realistic targets) */}
+      {/* G2 The grant (grant deck only): his rulings 11-11: $10K base + optional $5K second payment; devices cut (CLOCK IN 1st includes Seekers); perk = reward after a first planting; milestones 30 / 150 */}
       <Slide n={12} chip="The grant">
         <div className="grow" style={{ justifyContent: "flex-start", marginTop: "calc(var(--u)*1.6)" }}>
-          <h2 className="h2s">$15,000, paid <span className="mk">by milestone.</span></h2>
+          <h2 className="h2s">$10,000, paid <span className="mk">by milestone.</span></h2>
           <div className="twocol">
             <div>
               <h3>Budget</h3>
               <table className="tbl"><tbody>
-                <tr><td>$5,000</td><td>Independent security review of the leash program, and a Squads multisig for its upgrade key.</td></tr>
-                <tr><td>$4,000</td><td>Seeker owner perk: seeds each owner&apos;s first planting with SKR, one claim per Genesis Token. Every dollar buys and stakes SKR.</td></tr>
-                <tr><td>$5,000</td><td>Founder build time for 3 months: the linking funnel, the open-source package, releases.</td></tr>
-                <tr><td>$1,000</td><td>Test devices and RPC overage.</td></tr>
+                <tr><td>$7,000</td><td>Founder build time for 3 months: the linking funnel, the open-source package, releases.</td></tr>
+                <tr><td>$2,000</td><td>First-planting reward: after a Seeker owner&apos;s first planting runs, Sprouts tops it up with staked SKR. One per Genesis Token. Every dollar buys and stakes SKR.</td></tr>
+                <tr><td>$1,000</td><td>RPC overage as users grow.</td></tr>
+                <tr><td>+$5,000</td><td>Optional second payment: an independent security review of the leash program, and a Squads multisig for its upgrade key.</td></tr>
               </tbody></table>
             </div>
             <div>
               <h3>Milestones</h3>
               <table className="tbl"><tbody>
-                <tr><td>4 weeks</td><td>Fix the link-to-first-planting step and ship the Seeker-only perk. 15 outside wallets with a confirmed planting (today: 2).</td></tr>
-                <tr><td>8 weeks</td><td>Round-up detector and leash client published as an Apache-2.0 package any Seeker app can use. Leash upgrade key on a Squads multisig.</td></tr>
-                <tr><td>12 weeks</td><td>75 outside wallets planting. A public page showing the SKR bought and staked through Sprouts.</td></tr>
+                <tr><td>4 weeks</td><td>Fix the link-to-first-planting step and ship the first-planting reward. 30 outside wallets with a confirmed planting (today: 4).</td></tr>
+                <tr><td>8 weeks</td><td>Round-up detector and leash client published as an Apache-2.0 package any Seeker app can use. With the second payment: the security review, and the leash upgrade key on a Squads multisig.</td></tr>
+                <tr><td>12 weeks</td><td>150 outside wallets planting. A public page showing the SKR bought and staked through Sprouts.</td></tr>
               </tbody></table>
             </div>
           </div>
