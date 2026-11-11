@@ -203,7 +203,7 @@ const CSS = `
   letter-spacing:-.035em; font-size:calc(var(--u)*5.6); color:var(--leaf); margin:0; }
 .deck .links a { color:inherit; text-decoration:none; }
 .deck .on-art .links { max-width:calc(var(--u)*56); }
-.deck #s13 .links { position:absolute; left:0; right:0; bottom:calc(var(--u)*3.4); max-width:none; justify-content:center; }   /* his note 10-12: the three links centred at the foot of the page */
+.deck #s14 .links { position:absolute; left:0; right:0; bottom:calc(var(--u)*3.4); max-width:none; justify-content:center; }   /* his note 10-12: the three links centred at the foot of the page */
 .deck .example { position:absolute; z-index:2; font-size:calc(var(--u)*1.05); font-weight:600; color:var(--muted); background:var(--paper); border:1px solid var(--rule); border-radius:999px; padding:calc(var(--u)*.25) calc(var(--u)*.9); }
 .deck .tbl { width:100%; border-collapse:collapse; font-size:calc(var(--u)*1.35); }
 .deck .tbl td { border-top:1px solid var(--rule); padding:calc(var(--u)*.8) calc(var(--u)*1) calc(var(--u)*.8) 0; vertical-align:top; line-height:1.35; }
@@ -253,7 +253,7 @@ const CSS = `
   .deck #s11 .rows { max-width:none; } .deck #s11 .row { grid-template-columns:1fr; gap:6px; } .deck #s11 .plants { grid-template-columns:auto repeat(4, minmax(0, 1fr)); grid-template-rows:auto; width:100%; margin-left:0; margin-top:36px; right:auto; column-gap:6px; } .deck #s11 .plants .pnote { grid-column:1; grid-row:1; align-self:center; justify-self:start; margin:0 4px 0 0; white-space:nowrap; font-size:11px; } .deck #s11 .plants .pnote br { display:none; } .deck #s11 .plants figure { grid-row:1; } .deck #s11 .plants figure > img { height:56px; }   /* his note 10-12: caption on one line left of the art, more room above */
   .deck #s3 .grow { order:0; } .deck #s3 .sprout { order:1; height:140px; margin-top:72px; } .deck #s3 .note { order:2; margin-top:-12px; }   /* R-D76: room to grow */
   .deck .stagew .stake b { font-size:11px; }
-  .deck #s13 .links { position:static; justify-content:center; order:3; } .deck #s13 .chip { order:0; } .deck #s13 .who { order:1; } .deck #s13 .grow { order:2; } .deck #s13 .in { gap:18px; }
+  .deck #s14 .links { position:static; justify-content:center; order:3; } .deck #s14 .chip { order:0; } .deck #s14 .who { order:1; } .deck #s14 .grow { order:2; } .deck #s14 .in { gap:18px; }
 }
 @page { size:1920px 1080px; margin:0; }
 @media print {
@@ -454,7 +454,7 @@ export default function GrantDeck() {
             <div className="stat"><strong>125</strong><span>swaps ($1,653) rounded up for $70.33.</span></div>
             <div className="stat"><strong>6</strong><span>plantings ($15.07) through the leash program into staked SKR, stORE, hSOL and lending.</span></div>
           </div>
-          <p className="sub">Sprouts won the $30,000 grand prize in CLOCK IN on Nov 10. Most new users still stop between signing in and linking a wallet, so 0.1.8 and 0.1.9 added link retries, clearer errors, reminders and in-app support for that step. The grant pays to close that gap.</p>
+          <p className="sub">Sprouts won the $30,000 grand prize in CLOCK IN on Nov 10. Today one founder runs the app, the API and the on-chain program on free tiers. The grant makes Sprouts safe for every Seeker owner: an independent audit and a multisig on the program, monitoring that doesn&apos;t depend on one person, and a smoother path from sign-in to first planting.</p>
         </div>
         <p className="note">Source: Sprouts production database, Nov 11, 2026. Outside users only; our own test wallets are excluded.</p>
       </Slide>
@@ -497,8 +497,21 @@ export default function GrantDeck() {
         </div>
       </Slide>
 
+      {/* G3 What it takes (grant deck only, 11-11 his ask): the scaling needs, submission/scaling-needs-2026-11-11.md */}
+      <Slide n={12} chip="What it takes">
+        <div className="grow">
+          <h2 className="h2s">From a one-person beta <span className="mk">to every Seeker.</span></h2>
+          <div className="beats" style={{ gridTemplateColumns: "repeat(4, 1fr)" }}>
+            <div className="beat"><strong>Security</strong><span>The leash holds a spending approval over user USDC. Today it has two AI reviews and one upgrade key on one laptop. It needs an independent audit and a Squads multisig.</span></div>
+            <div className="beat"><strong>SKR price</strong><span>Free SKR prices from Pyth end Dec 31. Without a price feed, SKR can&apos;t be planted. A sponsored feed or our own price signers keeps it running.</span></div>
+            <div className="beat"><strong>Infrastructure</strong><span>Everything runs on free tiers, shared with another project, with no database backups. Paid hosting, backups and automatic monitoring carry thousands of users.</span></div>
+            <div className="beat"><strong>First planting</strong><span>76 people signed in, 12 linked a wallet. Linking and funding a wallet with USDC are where new users stop, and the biggest lever for growth.</span></div>
+          </div>
+        </div>
+      </Slide>
+
       {/* G2 The grant (grant deck only): his rulings 11-11: $10K base + optional $5K second payment; devices cut (CLOCK IN 1st includes Seekers); perk = reward after a first planting; milestones 30 / 150 */}
-      <Slide n={12} chip="The grant">
+      <Slide n={13} chip="The grant">
         <div className="grow" style={{ justifyContent: "flex-start", marginTop: "calc(var(--u)*1.6)" }}>
           <h2 className="h2s">$10,000, paid <span className="mk">by milestone.</span></h2>
           <div className="twocol">
@@ -507,7 +520,7 @@ export default function GrantDeck() {
               <table className="tbl"><tbody>
                 <tr><td>$7,000</td><td>Founder build time for 3 months: the linking funnel, the open-source package, releases.</td></tr>
                 <tr><td>$2,000</td><td>First-planting reward: after a Seeker owner&apos;s first planting runs, Sprouts tops it up with staked SKR. One per Genesis Token. Every dollar buys and stakes SKR.</td></tr>
-                <tr><td>$1,000</td><td>RPC overage as users grow.</td></tr>
+                <tr><td>$1,000</td><td>Paid hosting and database with daily backups (Vercel Pro, Supabase Pro) for the grant period.</td></tr>
                 <tr><td>+$5,000</td><td>Optional second payment: an independent security review of the leash program, and a Squads multisig for its upgrade key.</td></tr>
               </tbody></table>
             </div>
@@ -524,7 +537,7 @@ export default function GrantDeck() {
       </Slide>
 
       {/* 11 Founder + links (R-D66: renamed from Team, his bio lightly edited); R-D19 live line; R-D28 his Validators pfp #14 */}
-      <Slide n={13} chip="Founder" art>
+      <Slide n={14} chip="Founder" art>
         <div className="grow founder">
           <h2>Built by <span className="mk">donlucas.</span></h2>
           <p className="sub">
@@ -551,7 +564,7 @@ export default function GrantDeck() {
 
       {/* 12 Thank you (R-D71/R-D74, his pick 12b1): the whole garden grown, on extended paper sky, full width and placed by its crown
           line so the trees rise toward the line without touching it; the line oversized with the painted marker; the lockup in the sky */}
-      <Slide n={14} art>
+      <Slide n={15} art>
         <p className="ebt"><span className="mk">Thank you.</span></p>
         <img className="eb" src="/deck/garden-end-sky.webp" alt="The whole Sprouts garden, fully grown" />
         <img className="eb-m" src="/deck/garden-end-mobile.webp" alt="" />
