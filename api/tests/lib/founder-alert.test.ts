@@ -89,6 +89,95 @@ describe("alertFounder", () => {
   });
 });
 
+describe("11-11 channels and cards", () => {
+  const sent = (f: ReturnType<typeof vi.fn>, i = 0) => {
+    const [url, init] = f.mock.calls[i] as unknown as [string, RequestInit];
+    return { url, body: JSON.parse(init.body as string) };
+  };
+  const hooks = () => {
+    vi.stubEnv("ALERT_WEBHOOK_URL", "https://discord.com/api/webhooks/0/old");
+    vi.stubEnv("ALERT_WEBHOOK_SUPPORT", "https://discord.com/api/webhooks/1/sup");
+    vi.stubEnv("ALERT_WEBHOOK_FRICTION", "https://discord.com/api/webhooks/2/fri");
+    vi.stubEnv("ALERT_WEBHOOK_OPS", "https://discord.com/api/webhooks/3/ops");
+  };
+
+  it("routes each kind to its channel: support, friction, ops", async () => {
+    const { founderCardFor } = await import("@/lib/founder-alert");
+    const ch = (kind: Parameters<typeof founderCardFor>[0]["kind"], detail: unknown = {}) => founderCardFor({ ...ev(kind, detail) })?.channel;
+    expect(ch("support_message", { message: "help", email: "a@b.co" })).toBe("support");
+    expect(ch("feedback_answer", { question: "link_failed", choice: "other", text: "it hung" })).toBe("support");
+    expect(ch("feedback_answer", { question: "link_failed", choice: "other" })).toBe("friction");
+    expect(ch("link_failed", { step: "confirm", error: "x" })).toBe("friction");
+    expect(ch("signin_failed", { status: 403, error: "x" })).toBe("friction");
+    expect(ch("paused_no_usdc", { needCents: 50 })).toBe("friction");
+    expect(ch("revoke_seen", { by: "user" })).toBe("friction");
+    for (const kind of ["pull_failed", "withdraw_failed", "move_failed", "run_stopped"] as const) expect(ch(kind, { err: "e" }), kind).toBe("ops");
+    expect(ch("wallet_linked", { webhookAdded: false })).toBe("ops");
+    expect(founderCardFor(ev("split_changed", {}))).toBeNull();
+  });
+
+  it("a card carries a plain title, who it is about (clean .skr name), and the next step", async () => {
+    const { founderCardFor } = await import("@/lib/founder-alert");
+    const c = founderCardFor(ev("link_failed", { step: "confirm", error: "no delegation" }), { skrName: "alice.skr<@1>" })!;
+    expect(c.title).toBe("Wallet link failed");
+    expect(c.fields).toEqual([["User", "alice.skr1"], ["Wallet", `${W.slice(0, 4)}...${W.slice(-4)}`]]);
+    expect(c.todo).toMatch(/retry/);
+    expect(c.text).toContain("Link failed at confirm");
+  });
+
+  it("sends each card to its own channel's webhook as a Discord embed; support and ops ping him, friction does not", async () => {
+    const { alertFounder } = await import("@/lib/founder-alert");
+    hooks();
+    const f = vi.fn(async () => new Response("ok"));
+    vi.stubGlobal("fetch", f);
+    await alertFounder({ channel: "support", title: "New message", text: "hi" });
+    await alertFounder({ channel: "friction", title: "Wallet link failed", text: "x", todo: "Nothing yet" });
+    await alertFounder({ channel: "ops", title: "Planting failed", text: "y" });
+    expect(sent(f, 0).url).toContain("/1/sup");
+    expect(sent(f, 1).url).toContain("/2/fri");
+    expect(sent(f, 2).url).toContain("/3/ops");
+    expect(sent(f, 0).body.content).toBe("<@459534488825888769>");
+    expect(sent(f, 1).body.content).toBe("");
+    expect(sent(f, 1).body.allowed_mentions).toEqual({ parse: [] });
+    expect(sent(f, 2).body.allowed_mentions).toEqual({ parse: [], users: ["459534488825888769"] });
+    expect(sent(f, 1).body.embeds[0]).toMatchObject({ title: "🧗 Wallet link failed", description: "x", footer: { text: "What to do: Nothing yet" } });
+  });
+
+  it("without its own webhook a card falls back to the old feed, the channel named in the title", async () => {
+    const { alertFounder } = await import("@/lib/founder-alert");
+    vi.stubEnv("ALERT_WEBHOOK_URL", "https://discord.com/api/webhooks/0/old");
+    vi.stubEnv("ALERT_WEBHOOK_FRICTION", "");
+    const f = vi.fn(async () => new Response("ok"));
+    vi.stubGlobal("fetch", f);
+    await alertFounder({ channel: "friction", title: "Sign-in failed", text: "x" });
+    expect(sent(f).url).toContain("/0/old");
+    expect(sent(f).body.embeds[0].title).toBe("🧗 [friction] Sign-in failed");
+  });
+
+  it("a user's message stays fenced in the card and can ping nobody else", async () => {
+    const { alertFounder, founderCardFor } = await import("@/lib/founder-alert");
+    hooks();
+    const f = vi.fn(async () => new Response("ok"));
+    vi.stubGlobal("fetch", f);
+    await alertFounder(founderCardFor({ kind: "support_message", userPubkey: U, walletPubkey: null, detail: { message: "@everyone <@123> [x](https://evil.example)", email: "a@b.co", ref: "S-ABCD" } })!);
+    const b = sent(f).body;
+    expect(b.embeds[0].title).toBe("💬 New message (S-ABCD)");
+    expect(b.embeds[0].description).toContain("```");
+    expect(b.allowed_mentions).toEqual({ parse: [], users: ["459534488825888769"] });
+  });
+
+  it("Slack and ntfy get the card as plain lines", async () => {
+    const { alertFounder, cardText } = await import("@/lib/founder-alert");
+    const card = { channel: "ops" as const, title: "Planting failed", text: "boom", fields: [["Wallet", "abcd...wxyz"]] as [string, string][], todo: "Retried next run" };
+    expect(cardText(card)).toBe("Planting failed\nboom\nWallet: abcd...wxyz\nWhat to do: Retried next run");
+    vi.stubEnv("ALERT_WEBHOOK_OPS", "https://ntfy.sh/t");
+    const f = vi.fn(async () => new Response("ok"));
+    vi.stubGlobal("fetch", f);
+    await alertFounder(card);
+    expect((f.mock.calls[0] as unknown as [string, RequestInit])[1].body).toBe(cardText(card));
+  });
+});
+
 describe("checkWebhookCoverage", () => {
   it("alerts on active and paused wallets the webhook does not watch, never on revoked ones", async () => {
     const { MemoryRepo } = await import("@/db/memory");

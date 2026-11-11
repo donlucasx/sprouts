@@ -144,7 +144,7 @@ export async function GET(request: Request) {
     const message = errorText(e);   // K-M10: never the RPC URL's key, in the log or the body
     console.error(`cron failed: ${message}`);
     if (run) await finishRun(run.repo, run.day, false, { error: message.slice(0, 500), seconds: Math.round((Date.now() - startedMs) / 1000) });
-    await alertFounder(`Daily cron FAILED: ${message.slice(0, 300)}`);
+    await alertFounder({ channel: "ops", title: "Daily job failed", text: message.slice(0, 300), todo: "Check the Vercel logs for /api/cron/plant; nothing was planted today until it is re-run" });
     return NextResponse.json({ error: `Cron failed: ${message}` }, { status: 500 });
   }
 }

@@ -14,23 +14,88 @@ import { isSupportRef } from "./support-ref";
 /** 11-01 (his ask): the founder's Discord user, mentioned on Message us posts so his phone gets a notification. Not a secret. */
 export const FOUNDER_DISCORD_ID = "459534488825888769";
 
-export async function alertFounder(text: string, opts: { mention?: boolean } = {}): Promise<void> {
-  const url = process.env.ALERT_WEBHOOK_URL;
+/**
+ * 11-11 (his ask: "categorize the alerts and divide them in channels, update the format/wording to ensure its clear what they
+ * are"). Three Discord channels by what he has to do:
+ *   support  - a person wrote to us: reply                                   (ALERT_WEBHOOK_SUPPORT, pings him)
+ *   friction - someone got stuck or stopped: read daily, reach out to some   (ALERT_WEBHOOK_FRICTION, no ping: Claude's call)
+ *   ops      - money or the daily job is involved: act now                   (ALERT_WEBHOOK_OPS, pings him)
+ * A channel without its own webhook falls back to ALERT_WEBHOOK_URL (the old single feed), its title prefixed with the channel,
+ * so nothing is lost while the new webhooks are being set up. On Discord an alert is a card (title, what happened, who, what to do,
+ * colour by channel); Slack and ntfy get the same card as plain lines.
+ */
+export type AlertChannel = "support" | "friction" | "ops";
+export type AlertCard = {
+  channel: AlertChannel;
+  /** Plain words, e.g. "Wallet link failed". */
+  title: string;
+  /** What happened, in one or two lines (may hold a code block of client text: see supportAlert). */
+  text: string;
+  /** Who it is about: label + value, e.g. ["User", "alice.skr"]. Server-written values only. */
+  fields?: [string, string][];
+  /** The next step for him, e.g. "Nothing yet: most people retry". */
+  todo?: string;
+  mention?: boolean;
+};
+const CHANNEL_ENV: Record<AlertChannel, string> = { support: "ALERT_WEBHOOK_SUPPORT", friction: "ALERT_WEBHOOK_FRICTION", ops: "ALERT_WEBHOOK_OPS" };
+const CHANNEL_ICON: Record<AlertChannel, string> = { support: "💬", friction: "🧗", ops: "🚨" };
+const CHANNEL_COLOR: Record<AlertChannel, number> = { support: 0x2e8b57, friction: 0xe0a030, ops: 0xd64545 };
+const CHANNEL_PINGS: Record<AlertChannel, boolean> = { support: true, friction: false, ops: true };
+
+/** The card as plain lines (Slack, ntfy, logs, tests). */
+export function cardText(c: AlertCard): string {
+  return [
+    c.title,
+    c.text,
+    ...(c.fields?.length ? [c.fields.map(([k, v]) => `${k}: ${v}`).join(" | ")] : []),
+    ...(c.todo ? [`What to do: ${c.todo}`] : []),
+  ].join("\n");
+}
+
+export async function alertFounder(input: string | AlertCard, opts: { mention?: boolean } = {}): Promise<void> {
+  // A bare line (older callers) is an ops alert sent as before: one plain message.
+  const card = typeof input === "string" ? null : input;
+  const channel: AlertChannel = card?.channel ?? "ops";
+  const own = process.env[CHANNEL_ENV[channel]];
+  const url = own || process.env.ALERT_WEBHOOK_URL;
   if (!url) return;
+  const text = card ? cardText(card) : (input as string);
   try {
     const host = new URL(url).hostname;
     const ntfy = host.endsWith("ntfy.sh");
+    const discord = /(^|\.)discord(app)?\.com$/.test(host);
     // Only Discord understands <@id>; Slack and ntfy get the plain line.
-    // 11-08 (his ask: "every/any important message should tag me"): every alert pings him unless a caller opts out.
-    const mention = (opts.mention ?? true) && /(^|\.)discord(app)?\.com$/.test(host);
-    const content = (mention ? `<@${FOUNDER_DISCORD_ID}> ${text}` : text).slice(0, 1900);
+    // 11-08 (his ask: "every/any important message should tag me"); 11-11: per channel (support + ops ping, friction does not).
+    const mention = (opts.mention ?? card?.mention ?? (card ? CHANNEL_PINGS[channel] : true)) && discord;
+    const ping = mention ? `<@${FOUNDER_DISCORD_ID}>` : "";
+    // allowed_mentions: no @everyone, role or user ping, whatever a line quotes (security review 10-31); the one exception is the
+    // founder's own id, named here, so no text inside a message can ping anyone else.
+    const allowed = mention ? { parse: [], users: [FOUNDER_DISCORD_ID] } : { parse: [] };
+    let body: string;
+    if (ntfy) body = text;
+    else if (card && discord) {
+      const prefix = own ? "" : `[${channel}] `;   // on the shared fallback feed the channel is named in the title
+      body = JSON.stringify({
+        content: ping,
+        embeds: [{
+          title: `${CHANNEL_ICON[channel]} ${prefix}${card.title}`.slice(0, 250),
+          description: card.text.slice(0, 3900),
+          color: CHANNEL_COLOR[channel],
+          ...(card.fields?.length ? { fields: card.fields.slice(0, 10).map(([name, value]) => ({ name: name.slice(0, 250), value: (value || "?").slice(0, 1000), inline: true })) } : {}),
+          ...(card.todo ? { footer: { text: `What to do: ${card.todo}`.slice(0, 2000) } } : {}),
+        }],
+        text,
+        allowed_mentions: allowed,
+      });
+    } else {
+      // Discord reads `content` (2000 characters at most), Slack reads `text`.
+      const content = (ping ? `${ping} ${text}` : text).slice(0, 1900);
+      body = JSON.stringify({ content, text, allowed_mentions: allowed });
+    }
     const res = await fetch(url, {
       method: "POST",
       headers: { "content-type": ntfy ? "text/plain" : "application/json" },
-      // Discord reads `content` (2000 characters at most), Slack reads `text`.
-      // allowed_mentions: no @everyone, role or user ping, whatever a line quotes (security review 10-31); the one exception is the
-      // founder's own id on a Message us post, named here, so no text inside a message can ping anyone else.
-      body: ntfy ? text : JSON.stringify({ content, text, allowed_mentions: mention ? { parse: [], users: [FOUNDER_DISCORD_ID] } : { parse: [] } }),
+      body,
       signal: AbortSignal.timeout(3_000),
     });
     if (!res.ok) console.error(`founder alert not delivered: HTTP ${res.status}`);
@@ -112,6 +177,52 @@ export function founderAlertFor(e: Omit<EventRow, "id" | "ts">): string | null {
 }
 
 /**
+ * 11-11: the card for an event: which channel, a plain title, who it is about, and the next step. The text is founderAlertFor's
+ * line (unchanged, so its cleaning of client-written fields still holds). `skrName` comes from the users table (server-written).
+ */
+export function founderCardFor(e: Omit<EventRow, "id" | "ts">, extra: { skrName?: string | null } = {}): AlertCard | null {
+  const text = founderAlertFor(e);
+  if (!text) return null;
+  const d = (e.detail ?? {}) as Record<string, unknown>;
+  const name = typeof extra.skrName === "string" ? extra.skrName.replace(/[^\w.-]/g, "") : null;
+  const fields: [string, string][] = [["User", name ?? short(e.userPubkey)]];
+  if (e.walletPubkey) fields.push(["Wallet", short(e.walletPubkey)]);
+  const card = (channel: AlertChannel, title: string, todo: string): AlertCard => ({ channel, title, text, fields, todo });
+  switch (e.kind) {
+    case "support_message":
+      return { channel: "support", title: `New message${typeof d.ref === "string" ? ` (${d.ref})` : ""}`, text, todo: typeof d.email === "string" ? "Reply by email (address below)" : "No email left: reach out by their .skr name on X or Discord, or answer in the next release note" };
+    case "feedback_answer": {
+      const wrote = (typeof d.text === "string" && d.text.length > 0) || typeof d.email === "string";
+      return wrote
+        ? card("support", `Question answered with a note${isSupportRef(d.messageRef) ? ` (${d.messageRef})` : ""}`, typeof d.email === "string" ? "Read the note in Help > messages; reply by email" : "Read the note (feedback-peek); no email left")
+        : card("friction", "Question answered", "Nothing: it counts toward what to fix next");
+    }
+    case "link_failed":
+      return card("friction", "Wallet link failed", "Nothing yet: most people retry. If the same user fails again, reach out");
+    case "signin_failed":
+      return card("friction", "Sign-in failed", "Nothing yet; reach out if it repeats");
+    case "paused_no_usdc":
+      return card("friction", "Paused: no USDC in the wallet", "Nothing: plantings resume once they add USDC, and the app reminds them");
+    case "revoke_seen":
+      return d.by === "token_revoke"
+        ? card("friction", "Wallet lost its USDC approval", "Ask them to re-link the wallet in the app")
+        : card("friction", "Wallet removed outside the app", "Nothing: the app asks them why on their next open");
+    case "wallet_linked":
+      return card("ops", "Wallet linked but not on the watch list", "The daily job re-adds it; check its swaps since the link");
+    case "pull_failed":
+      return card("ops", "Planting failed", "Retried next run. If it repeats for this wallet, look at the error");
+    case "withdraw_failed":
+      return card("ops", "SKR withdrawal failed", "Retried next run. If it repeats, check the stake account");
+    case "move_failed":
+      return card("ops", "Venue move half done", "The money is idle in their wallet: finish the move or let the next run plant it");
+    case "run_stopped":
+      return card("ops", "Planting run stopped", "Likely a Jupiter or RPC outage: check status, then re-run or wait for tomorrow");
+    default:
+      return card("ops", e.kind, "Check the events table");
+  }
+}
+
+/**
  * 10-26: a linked wallet the Helius webhook does not watch has its swaps never booked, and nothing else would say so (Helius
  * replaces the whole address list on every update, so one bad write could drop them all). Once a day the cron compares the list
  * with every wallet that is not revoked (a paused one still tallies its round-ups) and alerts on any that are missing.
@@ -139,7 +250,12 @@ export async function checkWebhookCoverage(a: { repo: Repo; watched: () => Promi
   const parts: string[] = [];
   if (repaired.length) parts.push(`Re-added ${repaired.length} linked wallet(s) to the Helius webhook: ${repaired.map((k) => short(k)).join(", ")}. Swaps they made while off it were not counted.`);
   if (still.length) parts.push(`Round-ups NOT being counted: ${still.length} linked wallet(s) missing from the Helius webhook: ${still.map((k) => short(k)).join(", ")}. Add them back.`);
-  await (a.alert ?? alertFounder)(parts.join(" "));
+  await (a.alert ?? ((text: string) => alertFounder({
+    channel: "ops",
+    title: still.length ? "Swaps not being counted (watch list)" : "Wallets put back on the watch list",
+    text,
+    todo: still.length ? "Add the listed wallets to the Helius webhook by hand" : "Check their swaps during the gap; nothing was booked while they were off",
+  })))(parts.join(" "));
   return { missing: still, repaired };
 }
 
