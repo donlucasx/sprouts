@@ -204,15 +204,18 @@ export async function getRepo(): Promise<Repo> {
   if (forTests) return forTests;
   if (!live) {
     const { SupabaseRepo } = await import("./supabase");
-    const { alertAllowed, alertFounder, founderAlertFor } = await import("@/lib/founder-alert");
+    const { alertAllowed, alertFounder, founderCardFor } = await import("@/lib/founder-alert");
     const repo = new SupabaseRepo();
     // 10-26: every event write that someone should act on (a pause, a revoke, a failed planting, a stopped run) also reaches the
     // founder's webhook, here at the one place they are all written. After the write, and never failing it.
     const write = repo.addEvent.bind(repo);
     repo.addEvent = async (e) => {
       await write(e);
-      const text = founderAlertFor(e);
-      if (text && alertAllowed(e)) await alertFounder(text);
+      const probe = founderCardFor(e);
+      if (!probe || !alertAllowed(e)) return;
+      // 11-11: the card names the user by their .skr name (one read, only for an alert that will be sent; a failed read keeps the short key).
+      const skrName = e.userPubkey ? (await repo.getUser(e.userPubkey).catch(() => null))?.skrName ?? null : null;
+      await alertFounder(founderCardFor(e, { skrName }) ?? probe);
     };
     live = repo;
   }

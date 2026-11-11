@@ -468,7 +468,7 @@ const GUARD_REFUSAL = /fell by|under the minimum|still holds|(Planting|Jupiter r
 function alertIfGuard(w: WalletRow, asset: LiveAsset, err: string) {
   if (!GUARD_REFUSAL.test(err)) return;
   console.error(`ALERT: guard refusal on ${asset} for ${w.pubkey}: ${err}`);
-  void alertFounder(`ALERT: guard refusal on ${asset} for ${w.pubkey}: ${err.slice(0, 300)}`);
+  void alertFounder({ channel: "ops", title: `Safety check refused a ${asset} planting`, text: err.slice(0, 300), fields: [["Wallet", w.pubkey]], todo: "A money guard said no: could be a bad price or a bug. Look before the next run" });
 }
 
 /**
@@ -722,7 +722,7 @@ async function plantOneOrThrow(a: RunArgs, w: WalletRow, ctx: RunCtx): Promise<P
     if (isLendAsset(failed)) {
       const line = `ALERT: lending leg ${failed} skipped for ${w.pubkey}${retriedVenue.has(failed) ? " on both venues" : ""}; the planting waits for the next run: ${err}`;
       console.error(line);
-      void alertFounder(line.slice(0, 500));
+      void alertFounder({ channel: "ops", title: `Lending planting skipped (${failed})`, text: line.slice(0, 500), fields: [["Wallet", w.pubkey]], todo: "Waits for the next run. If it repeats, check the lending venue" });
     }
     // Review M4: a leashed user never falls back to SKR while leg 0 has no price source (no PYTH_API_KEY, R324): it would be skipped there anyway.
     if (isLendAsset(failed) || disabled.includes("SKR") || (leashed && !skrPriceSource())) {
@@ -754,7 +754,7 @@ async function plantOneOrThrow(a: RunArgs, w: WalletRow, ctx: RunCtx): Promise<P
       if (repeat) {
         const line = `ALERT: leash SettleMismatch (6007) again for ${w.pubkey} on ${leg}: the receipt keeps moving between build and pull`;
         console.error(line);
-        void alertFounder(line);
+        void alertFounder({ channel: "ops", title: "Leash price kept moving (repeat)", text: line, fields: [["Wallet", w.pubkey]], todo: "Skipped again for this wallet: look at the leg's quote and slippage" });
       }
       await discard(r.built);
       await legSkipped(a, w, leg, "leash SettleMismatch (6007) after one rebuild", { leashError: "SettleMismatch", alert: repeat });
