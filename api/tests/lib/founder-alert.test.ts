@@ -125,6 +125,16 @@ describe("11-11 channels and cards", () => {
     expect(c.text).toContain("Link failed at confirm");
   });
 
+  it("an app-side link stop is named by what the wallet reported, not 'failed' (his 11-11 test: he backed out)", async () => {
+    const { founderCardFor } = await import("@/lib/founder-alert");
+    const t = (reason: string) => founderCardFor(ev("link_failed", { from: "app", step: "sign", reason }))!.title;
+    expect(t("dropped")).toBe("Link stopped: wallet popup closed");
+    expect(t("declined")).toBe("Link cancelled in the wallet");
+    expect(t("refused")).toBe("Link refused by the wallet");
+    expect(t("other")).toBe("Link stopped in the app");
+    expect(founderCardFor(ev("link_failed", { step: "confirm", error: "x" }))!.title).toBe("Wallet link failed");
+  });
+
   it("sends each card to its own channel's webhook as a Discord embed; support and ops ping him, friction does not", async () => {
     const { alertFounder } = await import("@/lib/founder-alert");
     hooks();

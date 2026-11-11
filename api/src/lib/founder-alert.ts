@@ -190,7 +190,7 @@ export function founderCardFor(e: Omit<EventRow, "id" | "ts">, extra: { skrName?
   const card = (channel: AlertChannel, title: string, todo: string): AlertCard => ({ channel, title, text, fields, todo });
   switch (e.kind) {
     case "support_message":
-      return { channel: "support", title: `New message${typeof d.ref === "string" ? ` (${d.ref})` : ""}`, text, todo: typeof d.email === "string" ? "Reply by email (address below)" : "No email left: reach out by their .skr name on X or Discord, or answer in the next release note" };
+      return { channel: "support", title: `New message${typeof d.ref === "string" ? ` (${d.ref})` : ""}`, text, todo: typeof d.email === "string" ? "Reply by email (the address on the Reply to line)" : "No email left: reach out by their .skr name on X or Discord, or answer in the next release note" };
     case "feedback_answer": {
       const wrote = (typeof d.text === "string" && d.text.length > 0) || typeof d.email === "string";
       return wrote
@@ -198,6 +198,14 @@ export function founderCardFor(e: Omit<EventRow, "id" | "ts">, extra: { skrName?
         : card("friction", "Question answered", "Nothing: it counts toward what to fix next");
     }
     case "link_failed":
+      // 11-11 (his test: "linking did not technically failed I backed off and didnt click on approve"): an app-side stop is named by
+      // what the wallet reported; "failed" is kept for a server-side error (no delegation, wrong terms, a send error).
+      if (d.from === "app") {
+        if (d.reason === "dropped") return card("friction", "Link stopped: wallet popup closed", "Nothing: they backed out or the popup closed. Reach out if it repeats");
+        if (d.reason === "declined") return card("friction", "Link cancelled in the wallet", "Nothing: they said no to the approval. Reach out if it repeats");
+        if (d.reason === "refused") return card("friction", "Link refused by the wallet", "Check the wallet app; reach out if it repeats");
+        return card("friction", "Link stopped in the app", "Nothing yet; reach out if it repeats");
+      }
       return card("friction", "Wallet link failed", "Nothing yet: most people retry. If the same user fails again, reach out");
     case "signin_failed":
       return card("friction", "Sign-in failed", "Nothing yet; reach out if it repeats");
