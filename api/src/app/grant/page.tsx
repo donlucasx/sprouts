@@ -465,13 +465,13 @@ export default function GrantDeck() {
           <div className="stats">
             <div className="stat"><strong>120k</strong><span>Seekers activated, each with the dApp Store built in.</span></div>
             <div className="stat"><strong>$380</strong><span>a year saved by the top quarter of active traders.</span></div>
-            <div className="stat"><strong>42M SKR</strong><span>bought a year if 1 in 10 owners joins.</span></div>
+            <div className="stat"><strong>$720k</strong><span>of SKR bought and staked a year if 1 in 10 owners joins.</span></div>
             <div className="stat"><strong>$2.9M</strong><span>a year saved on Seeker if 1 in 10 owners joins.</span></div>
           </div>
           <p className="sub">For new owners, Sprouts is a first app worth opening every day.</p>
         </div>
         <img className="sand-lines" src="/deck/sand-lines.webp" alt="" />
-        <p className="note">Sources: Dune, Genesis activations (Aug 2026); our on-chain samples of 163 recently active SKR stakers (75th percentile $32 a month) and 46 recently activated Seekers that swapped (median $20 a month), round-up to $1 plus 1% of swaps over $100 (Sept 2026). $2.9M = 12,000 owners at $20 a month; 42M SKR = $720k a year at $0.017 (Jupiter, Oct 12), the 25% of every round-up always staked in SKR, a floor.</p>
+        <p className="note">Sources: Dune, Genesis activations (Aug 2026); our on-chain samples of 163 recently active SKR stakers (75th percentile $32 a month) and 46 recently activated Seekers that swapped (median $20 a month), round-up to $1 plus 1% of swaps over $100 (Sept 2026). $2.9M = 12,000 owners at $20 a month; $720k = the 25% of every round-up always staked in SKR, a floor.</p>
       </Slide>
 
       {/* 10 Business: Seeker and Solana Mobile only (R-D4); Pro = manager + auto-lending + tax pack (R446c); docs/reports/2026-10-09-business-model-analysis.md */}
@@ -532,7 +532,7 @@ export default function GrantDeck() {
             won Eclipse&apos;s hackathon infrastructure track and grew through partnerships across the ecosystem.
           </p>
           <p className="sub">
-            He also built xscapes, a thinking screen for terminal agents, and has a video game in development.
+            This year he brought Validators to Solana, where almost 300 long-time holders are active. He also built xscapes and has a game in development.
           </p>
           <p className="sub">Built with Claude Code (the app, the API and the on-chain leash), and Midjourney for the garden.</p>
           <p className="sub"><b>Live on Solana mainnet.</b></p>
