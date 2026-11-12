@@ -76,7 +76,9 @@ export default function LinkPage() {
       const done = await call<{ skrName: string | null }>("/api/link/confirm", {
         method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ code: c, wallet, signedTransaction: signed }),
       });
-      setMessage(`Linked${done.skrName ? ` to ${done.skrName}'s garden` : ""}, up to $${(t.cap / 100).toFixed(0)} a day.${t.revokes ? " The old approval was revoked." : ""} To link another wallet, get a new code in the app.`);
+      // 11-12 (his note): name the wallet that was linked, and say the page can be closed.
+      const short = `${wallet.slice(0, 4)}...${wallet.slice(-4)}`;
+      setMessage(`Your ${short} wallet is linked${done.skrName ? ` to ${done.skrName}'s garden` : ""}, up to $${(t.cap / 100).toFixed(0)} a day.${t.revokes ? " The old approval was revoked." : ""} You can close this page. To link another wallet, get a new code in the Sprouts app.`);
       setUsdcNote(shortOfUsdc(t.usdcRaw, t.usdcNeedCents));
       setState("done");
     } catch (e) {
@@ -143,9 +145,10 @@ export default function LinkPage() {
           </>
         )}
 
-        {leash ? (
+        {/* 11-12 (his note "I wouldnt know what to do w this info"): only while the wallet is asked, and said as an optional check */}
+        {leash && state !== "done" ? (
           <p className="lk-note">
-            Your wallet should name this Sprouts program:<br />
+            Want to double-check? Your wallet&apos;s approval should name this Sprouts program:<br />
             <code style={{ wordBreak: "break-all" }}>{leash}</code>
           </p>
         ) : null}
@@ -154,7 +157,7 @@ export default function LinkPage() {
 
         {/* his ask 10-22: the boundaries open, before any wallet is asked (was a collapsed details) */}
         {/* his ask 10-28: the app's Link a wallet copy and format */}
-        <div style={{ marginTop: 28, width: "100%" }}><Safety ink={ink} muted={muted} leaf={leaf} rule={rule} /></div>
+        <div style={{ marginTop: 28, width: "100%" }}><Safety ink={ink} muted={muted} leaf={leaf} rule={rule} intro={false} heading="What Sprouts can and can't do" /></div>
       </div>
       <SiteFooter />
     </main>
