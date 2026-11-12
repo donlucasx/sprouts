@@ -34,6 +34,12 @@ export const TIME_SLACK_S = 2;
 export const AMOUNT_TOLERANCE = 0.01;
 /** ...and a native SOL leg by 0.01 SOL more: the lamport delta also carries the fee, priority fee and token-account rent. */
 export const SOL_SLACK = 0.01;
+/**
+ * 11-12: a token that keeps a fee on every transfer (Token-2022 transfer fee; PreStocks' tokenized shares keep 1%) arrives
+ * short of the amount Helius lists, so a real $1 buy was refused as "more than the wallet received" (7FsS.., nd6W8v73 and
+ * 3KGhya4G). An out-leg up to 10% above what arrived is booked AT what arrived (never more); beyond that it is still refused.
+ */
+export const MAX_RECEIVE_SHORTFALL = 0.1;
 
 /**
  * 11-07: the highest transaction version the swap check reads. Jupiter now sends some swaps as v1 transactions (first seen 10-22);
@@ -60,12 +66,13 @@ function walletDelta(tx: ChainTx, wallet: string, mint: string): number {
 }
 
 /**
- * Null when the chain agrees with the event, else the reason it is refused. Agreement means: the transaction exists and succeeded,
+ * Null when the chain agrees with the event, corrected legs when the wallet received a little less than the event says (a
+ * transfer fee, MAX_RECEIVE_SHORTFALL), else the reason it is refused. Agreement means: the transaction exists and succeeded,
  * the linked wallet SIGNED it (a wallet merely receiving a transfer is not its swap), its block time is the event's and is recent,
  * and neither booked leg is larger than the wallet's own balance change in that mint (the wallet lost the in-leg, gained the
  * out-leg). Only "larger" is refused: an inflated amount is what moves money (the 1% rule has no ceiling); a smaller one cannot.
  */
-export function checkSwapOnChain(chain: ChainTx | null, a: { wallet: string; legs: SwapLegs; timestamp: number; nowS: number }): string | null {
+export function checkSwapOnChain(chain: ChainTx | null, a: { wallet: string; legs: SwapLegs; timestamp: number; nowS: number }): string | SwapLegs | null {
   if (!chain || !chain.meta) return "not found on chain";
   if (chain.meta.err !== null && chain.meta.err !== undefined) return "failed on chain";
   if (!chain.transaction.message.accountKeys.some((k) => k.pubkey === a.wallet && k.signer)) return "the wallet did not sign it";
@@ -77,8 +84,9 @@ export function checkSwapOnChain(chain: ChainTx | null, a: { wallet: string; leg
   const spent = -walletDelta(chain, a.wallet, a.legs.inMint);
   if (!fits(a.legs.inAmount, spent, a.legs.inMint)) return `the in-leg ${a.legs.inAmount} is more than the wallet spent (${spent})`;
   const got = walletDelta(chain, a.wallet, a.legs.outMint);
-  if (!fits(a.legs.outAmount, got, a.legs.outMint)) return `the out-leg ${a.legs.outAmount} is more than the wallet received (${got})`;
-  return null;
+  if (fits(a.legs.outAmount, got, a.legs.outMint)) return null;
+  if (got > 0 && a.legs.outAmount <= got * (1 + MAX_RECEIVE_SHORTFALL)) return { ...a.legs, outAmount: got };
+  return `the out-leg ${a.legs.outAmount} is more than the wallet received (${got})`;
 }
 
 /**
@@ -87,7 +95,7 @@ export function checkSwapOnChain(chain: ChainTx | null, a: { wallet: string; leg
  */
 export function onChainVerifier(fetchTx: FetchTx = fetchTransaction, opts: { now?: () => number; retryMs?: number } = {}) {
   const now = opts.now ?? (() => Math.floor(Date.now() / 1000));
-  return async (a: { signature: string; wallet: string; legs: SwapLegs; timestamp: number }): Promise<string | null> => {
+  return async (a: { signature: string; wallet: string; legs: SwapLegs; timestamp: number }): Promise<string | SwapLegs | null> => {
     let chain: ChainTx | null;
     try {
       chain = await fetchTx(a.signature);

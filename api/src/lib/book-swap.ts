@@ -62,8 +62,17 @@ export function extractSwapLegs(tx: HeliusEnhancedTx, wallet: string): SwapLegs 
   // (a SOL wrap), is not a swap.
   const natives = tx.nativeTransfers ?? [];
   const largest = (xs: { amount: number }[]) => xs.reduce<{ amount: number } | null>((best, t) => (best && best.amount >= t.amount ? best : t), null);
-  const tokenOut = tx.tokenTransfers.find((t) => t.fromUserAccount === wallet);
-  const tokenIn = [...tx.tokenTransfers].reverse().find((t) => t.toUserAccount === wallet);
+  // 11-12 (7FsS.., 3KGhya4G): a route can send the wallet's wSOL out and straight back (a wrap for the hop), listed BEFORE the
+  // real USDC leg; reading the first transfer out booked 0.012 SOL as the swap's in-leg. A coin whose transfers in and out of the
+  // wallet cancel is no leg: the coin is the first transfer out (last in) among coins the wallet lost (gained) on balance.
+  const net = new Map<string, number>();
+  for (const t of tx.tokenTransfers) {
+    if (t.fromUserAccount === wallet) net.set(t.mint, (net.get(t.mint) ?? 0) - t.tokenAmount);
+    if (t.toUserAccount === wallet) net.set(t.mint, (net.get(t.mint) ?? 0) + t.tokenAmount);
+  }
+  const moved = (mint: string, sign: 1 | -1) => sign * (net.get(mint) ?? 0) > 1e-9;
+  const tokenOut = tx.tokenTransfers.find((t) => t.fromUserAccount === wallet && moved(t.mint, -1));
+  const tokenIn = [...tx.tokenTransfers].reverse().find((t) => t.toUserAccount === wallet && moved(t.mint, 1));
   const nativeOut = largest(natives.filter((t) => t.fromUserAccount === wallet));
   const nativeIn = largest(natives.filter((t) => t.toUserAccount === wallet));
   // The coin is the first transfer out (last in); the amount is every transfer of that coin out of (into) the wallet, added up,
@@ -96,8 +105,11 @@ function solGained(tx: HeliusEnhancedTx, wallet: string): { mint: string; amount
 
 export type BookResult = { booked: true; walletPubkey: string; roundupCents: number } | { booked: false; refused?: string };
 
-/** The on-chain re-check (lib/verify-swap, R207 #8): null when the chain agrees, else the reason the swap is refused. */
-export type SwapVerifier = (a: { signature: string; wallet: string; legs: SwapLegs; timestamp: number }) => Promise<string | null>;
+/**
+ * The on-chain re-check (lib/verify-swap, R207 #8): null when the chain agrees, corrected legs when the wallet received slightly
+ * less (a token's transfer fee; the swap is booked at what arrived), else the reason the swap is refused.
+ */
+export type SwapVerifier = (a: { signature: string; wallet: string; legs: SwapLegs; timestamp: number }) => Promise<string | SwapLegs | null>;
 
 /**
  * Book one swap for the first known, non-revoked wallet among its parties: size it, class it, compute the round-up, insert once.
@@ -119,15 +131,16 @@ export async function bookSwap(a: { repo: Repo; tx: HeliusEnhancedTx; priceUsd: 
     if (!pubkey) continue;
     const wallet = await a.repo.getWallet(pubkey);
     if (!wallet || wallet.status === "revoked") continue;
-    const legs = extractSwapLegs(a.tx, pubkey);
+    let legs = extractSwapLegs(a.tx, pubkey);
     if (!legs) continue;
     // 10-27: a Sprouts top-up (marked before it was sent) is the user adding USDC, not a swap to round up. Checked before the
     // on-chain verify (no RPC call spent on it) and skipped quietly, not as a refusal (Kimi F3). Only this wallet's own mark counts:
     // a posted top-up's signature is not verified by the API, so a mark carrying another wallet's swap must not skip that swap.
     if ((await a.repo.topUpKinds(a.tx.signature, pubkey)).length > 0) return { booked: false };
     if (a.verify) {
-      const refused = await a.verify({ signature: a.tx.signature, wallet: pubkey, legs, timestamp: a.tx.timestamp });
-      if (refused) return { booked: false, refused };
+      const verdict = await a.verify({ signature: a.tx.signature, wallet: pubkey, legs, timestamp: a.tx.timestamp });
+      if (typeof verdict === "string") return { booked: false, refused: verdict };
+      if (verdict) legs = verdict;
     }
     const rules = rulesRowToRules(await a.repo.getRules(wallet.userPubkey));
     const size = await usdSizeCents(legs, a.priceUsd);
