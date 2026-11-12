@@ -96,7 +96,7 @@ const TOOL = {
       roundupOn: { type: "boolean", description: "Round every swap up to the next dollar." },
       pctOn: { type: "boolean", description: "Add a percentage of big swaps." },
       pctBps: { type: "integer", description: "That percentage in basis points: 100 is 1%. 0 to 500." },
-      pctThresholdCents: { type: "integer", description: "A swap is big from this size, in cents. 1000 to 100000." },
+      pctThresholdCents: { type: "integer", description: "A swap is big from this size, in cents. 100 to 100000." },
       plantThresholdCents: { type: "integer", description: "Plant when the change reaches this, in cents. 50 to 2000." },
       plantMaxDays: { type: "integer", description: "Plant at least every this many days. 1 to 30." },
       dailyCapCents: { type: "integer", description: "The daily limit, in cents. 100 to 500." },

@@ -334,6 +334,20 @@ describe("a route that sends the wallet's wSOL out and back", () => {
     expect(extractSwapLegs(tx, "WALLET")).toEqual({ wallet: "WALLET", inMint: USDC, inAmount: 1, outMint: SHARE, outAmount: 0.002655009 });
   });
 
+  it("a wSOL hop that comes back 2 lamports short is still no leg (Kimi 11-12)", () => {
+    const short = { ...tx, tokenTransfers: tx.tokenTransfers.map((t, i) => (i === 4 ? { ...t, tokenAmount: 0.012152639 } : t)) };
+    expect(extractSwapLegs(short, "WALLET")).toMatchObject({ inMint: USDC, inAmount: 1, outMint: SHARE });
+  });
+
+  it("a coin sent out and partly back counts only what the wallet lost", () => {
+    const partial: HeliusEnhancedTx = { ...tx, tokenTransfers: [
+      { fromUserAccount: "WALLET", toUserAccount: "POOL", mint: USDC, tokenAmount: 5 },
+      { fromUserAccount: "POOL", toUserAccount: "WALLET", mint: USDC, tokenAmount: 1.5 },
+      { fromUserAccount: "POOL", toUserAccount: "WALLET", mint: SHARE, tokenAmount: 0.01 },
+    ] };
+    expect(extractSwapLegs(partial, "WALLET")).toMatchObject({ inMint: USDC, inAmount: 3.5, outMint: SHARE, outAmount: 0.01 });
+  });
+
   it("books it as a $1 swap", async () => {
     const repo = await repoWithWallet();
     const r = await bookSwap({ repo, tx, priceUsd: async () => null });

@@ -17,8 +17,9 @@ export async function usdSizeCents(legs: SwapLegs, priceUsd: PriceLookup): Promi
     { mint: legs.inMint, amount: legs.inAmount },
     { mint: legs.outMint, amount: legs.outAmount },
   ].filter((c) => Number.isFinite(c.amount) && c.amount >= 0);
-  const stable = candidates.find((c) => STABLES.has(c.mint));
-  if (stable) return Math.round(stable.amount * 100);
+  // Kimi 11-12: a stable-to-stable swap is sized by the SMALLER leg, so a depegged stable (hyUSD at $0.95) never sizes it up.
+  const stables = candidates.filter((c) => STABLES.has(c.mint));
+  if (stables.length > 0) return Math.round(Math.min(...stables.map((c) => c.amount)) * 100);
   const ordered = [...candidates.filter((c) => c.mint === WSOL), ...candidates.filter((c) => c.mint !== WSOL)];
   for (const leg of ordered) {
     const price = await priceUsd(leg.mint);
