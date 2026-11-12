@@ -68,7 +68,7 @@ const plain = (n: number) => String(n);
 const BOUNDS: Record<Numeric, { min: number; max: number; step: number; label: string; fmt: (n: number) => string }> = {
   dailyCapCents: { min: 100, max: 500, step: 100, label: "The daily limit", fmt: usd },
   plantThresholdCents: { min: 50, max: 2_000, step: 50, label: "Plant at", fmt: usd },
-  pctThresholdCents: { min: 1_000, max: 100_000, step: 1_000, label: "The big-swap size", fmt: usd },
+  pctThresholdCents: { min: 100, max: 100_000, step: 100, label: "The big-swap size", fmt: usd },
   pctBps: { min: 0, max: 500, step: 25, label: "The big-swap rate, in hundredths of a percent,", fmt: plain },
   plantMaxDays: { min: 1, max: 30, step: 1, label: "The wait between plantings, in days,", fmt: plain },
   oreShare: { min: 0, max: 50, step: 10, label: "ORE's share", fmt: plain },

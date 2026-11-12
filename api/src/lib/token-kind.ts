@@ -27,7 +27,7 @@ export async function stockMints(mints: string[], fetchImpl: Fetch = fetch, rpcU
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "getAssetBatch", params: { ids: ask } }),
-        signal: AbortSignal.timeout(3_000),
+        signal: AbortSignal.timeout(1_500), // inside the webhook's booking: a label never holds a swap up for long
       });
       const body = (await res.json()) as { result?: ({ id: string; content?: { metadata?: { name?: string; symbol?: string } } } | null)[] };
       for (const a of body.result ?? []) if (a?.id) cache.set(a.id, isStockName(a.content?.metadata?.name, a.content?.metadata?.symbol));

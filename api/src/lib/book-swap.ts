@@ -79,8 +79,9 @@ export function extractSwapLegs(tx: HeliusEnhancedTx, wallet: string): SwapLegs 
   // so a fee the wallet app takes in the same coin counts as spent (10-06, 2xYqKn37…).
   const sumOf = (dir: "fromUserAccount" | "toUserAccount", mint: string) =>
     tx.tokenTransfers.filter((t) => t[dir] === wallet && t.mint === mint).reduce((s, t) => s + t.tokenAmount, 0);
-  const out = tokenOut ? { mint: tokenOut.mint, amount: sumOf("fromUserAccount", tokenOut.mint) } : nativeOut ? { mint: WSOL, amount: nativeOut.amount / LAMPORTS } : null;
-  const inn = tokenIn ? { mint: tokenIn.mint, amount: sumOf("toUserAccount", tokenIn.mint) } : nativeIn ? { mint: WSOL, amount: nativeIn.amount / LAMPORTS } : solGained(tx, wallet);
+  // The amount is what the wallet lost (gained) on balance in that coin; with no transfer back it is the sum of its transfers out.
+  const out = tokenOut ? { mint: tokenOut.mint, amount: Math.min(sumOf("fromUserAccount", tokenOut.mint), -(net.get(tokenOut.mint) ?? 0)) } : nativeOut ? { mint: WSOL, amount: nativeOut.amount / LAMPORTS } : null;
+  const inn = tokenIn ? { mint: tokenIn.mint, amount: Math.min(sumOf("toUserAccount", tokenIn.mint), net.get(tokenIn.mint) ?? 0) } : nativeIn ? { mint: WSOL, amount: nativeIn.amount / LAMPORTS } : solGained(tx, wallet);
   if (!out || !inn || out.mint === inn.mint) return null;
   return { wallet, inMint: out.mint, inAmount: out.amount, outMint: inn.mint, outAmount: inn.amount };
 }

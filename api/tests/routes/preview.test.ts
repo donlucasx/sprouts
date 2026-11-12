@@ -8,9 +8,10 @@ vi.mock("@/lib/preview", async (orig) => ({ ...(await orig<object>()), walletSwa
 import { GET } from "@/app/api/me/preview/route";
 
 let auth: Record<string, string>;
+let repo: MemoryRepo;
 beforeAll(async () => {
   process.env.APP_ORIGIN ??= "https://sprouts.money";
-  const repo = new MemoryRepo();
+  repo = new MemoryRepo();
   await repo.upsertUser({ seedVaultPubkey: "U", sgtMint: "M", skrName: null });
   setRepoForTests(repo);
   auth = { authorization: `Bearer ${await issueSession("U", "test-device")}` };
@@ -27,6 +28,15 @@ describe("GET /api/me/preview", () => {
     expect(r.status).toBe(200);
     expect(await r.json()).toEqual({ days: 30, swaps: 2, savedCents: 83, perSwapSavedCents: 103, partial: false });
     expect(walletSwapsMock.mock.calls[0][0]).toBe("U");
+  });
+
+  it("a user with a linked wallet is refused before any history is read", async () => {
+    await repo.upsertUser({ seedVaultPubkey: "L", sgtMint: "M2", skrName: null });
+    await repo.addWallet({ pubkey: "L", userPubkey: "L", delegationPda: "D", dailyCapCents: 500 });
+    const before = walletSwapsMock.mock.calls.length;
+    const r = await GET(new Request("http://x/api/me/preview", { headers: { authorization: `Bearer ${await issueSession("L", "test-device")}` } }));
+    expect(r.status).toBe(409);
+    expect(walletSwapsMock.mock.calls.length).toBe(before);
   });
 
   it("a history that cannot be read is a 503, not a wrong zero", async () => {

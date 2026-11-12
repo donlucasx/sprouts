@@ -22,6 +22,8 @@ describe("previewTotals", () => {
     const swaps = [{ day: "d1", sizeCents: 117 }, { day: "d1", sizeCents: 100 }, { day: "d2", sizeCents: 100 }];
     expect(previewTotals(swaps, DEFAULT_RULES)).toMatchObject({ swaps: 3, savedCents: 83, perSwapSavedCents: 83 + 10 + 10 + 10 });
     const many = Array.from({ length: 100 }, () => ({ day: "d1", sizeCents: 101 }));
+    // the cap holds with the new rules on too
+    expect(previewTotals(many, { ...DEFAULT_RULES, perSwapOn: true, perSwapCents: 25, smallOn: true }).savedCents).toBe(DEFAULT_RULES.dailyCapCents);
     expect(previewTotals(many, DEFAULT_RULES).savedCents).toBe(DEFAULT_RULES.dailyCapCents);
   });
 });
@@ -36,17 +38,23 @@ describe("walletSwaps", () => {
     expect(f).toHaveBeenCalledTimes(1);
   });
 
+  it("a short page is the whole history: one read, no empty second call", async () => {
+    const f = pages([buy("a", NOW - 100, 1.17)]);
+    expect((await walletSwaps("W", { fetchPage: f, priceUsd: price, nowS: NOW })).partial).toBe(false);
+    expect(f).toHaveBeenCalledTimes(1);
+  });
+
   it("leaves out transactions another account paid for (an airdrop or someone else's swap)", async () => {
     const r = await walletSwaps("W", { fetchPage: pages([buy("x", NOW - 10, 3.5, "SOMEONE")]), priceUsd: price, nowS: NOW });
     expect(r.swaps).toEqual([]);
   });
 
   it("pages with `before` and says partial when the page limit is reached", async () => {
-    const full = (p: number) => [buy(`p${p}`, NOW - 1000 * (p + 1), 2.5)];
+    const full = (p: number) => Array.from({ length: 100 }, (_, i) => buy(`p${p}-${i}`, NOW - 1000 * (p + 1) - i, 2.5));
     const f = vi.fn(async (_w: string, _before: string | undefined) => full(0));
     const r = await walletSwaps("W", { fetchPage: f, priceUsd: price, nowS: NOW });
     expect(f).toHaveBeenCalledTimes(PREVIEW_MAX_PAGES);
-    expect(f.mock.calls[1][1]).toBe("p0");
+    expect(f.mock.calls[1][1]).toBe("p0-99");
     expect(r.partial).toBe(true);
   });
 });
