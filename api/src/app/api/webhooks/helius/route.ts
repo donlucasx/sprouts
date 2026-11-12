@@ -6,6 +6,7 @@ import { bookSwap, type HeliusEnhancedTx } from "@/lib/book-swap";
 import { priceUsd } from "@/lib/jupiter";
 import { pullerSigner } from "@/lib/puller";
 import { onChainVerifier } from "@/lib/verify-swap";
+import { stockMints } from "@/lib/token-kind";
 import type { PriceLookup } from "@/domain/sizing";
 
 export const runtime = "nodejs";
@@ -39,7 +40,7 @@ export async function POST(request: Request) {
     const verify = onChainVerifier();
     for (const tx of items) {
       try {
-        const r = await bookSwap({ repo, tx, priceUsd: boundedPrice, ignoreFeePayer: puller, verify });
+        const r = await bookSwap({ repo, tx, priceUsd: boundedPrice, ignoreFeePayer: puller, verify, stockMints });
         if (r.booked) console.log(`booked ${tx.signature} for ${r.walletPubkey}: ${r.roundupCents} cents`);
         else if (r.refused) console.error(`webhook item refused ${tx.signature}: ${r.refused}`);
       } catch (e) {
