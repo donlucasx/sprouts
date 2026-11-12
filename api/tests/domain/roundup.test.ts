@@ -29,4 +29,40 @@ describe("computeRoundupCents", () => {
   it("null size (unpriced): zero", () => expect(computeRoundupCents(null, DEFAULT_RULES)).toBe(0));
 
   it("zero size: zero", () => expect(computeRoundupCents(0, DEFAULT_RULES)).toBe(0));
+
+  // 11-12 (his rulings): two opt-in rules, both off by default, so nothing changes for anyone until they switch one on.
+  it("new rules are off by default: a $1.00 DCA buy still saves nothing", () => {
+    expect(DEFAULT_RULES.smallOn).toBe(false);
+    expect(DEFAULT_RULES.perSwapOn).toBe(false);
+    expect(DEFAULT_RULES.perSwapCents).toBe(10);
+    expect(computeRoundupCents(100, DEFAULT_RULES)).toBe(0);
+  });
+
+  it("add to every swap: a $1.00 buy saves the set amount (5, 10 or 25 cents)", () => {
+    expect(computeRoundupCents(100, { ...DEFAULT_RULES, perSwapOn: true, perSwapCents: 10 })).toBe(10);
+    expect(computeRoundupCents(100, { ...DEFAULT_RULES, perSwapOn: true, perSwapCents: 25 })).toBe(25);
+  });
+
+  it("add to every swap stacks with the round-up and the 1%", () => {
+    expect(computeRoundupCents(117, { ...DEFAULT_RULES, perSwapOn: true, perSwapCents: 5 })).toBe(83 + 5);
+    expect(computeRoundupCents(15050, { ...DEFAULT_RULES, perSwapOn: true, perSwapCents: 10 })).toBe(50 + 150 + 10);
+  });
+
+  it("under $1 off: a 40-cent swap saves nothing, even with add-to-every-swap on", () => {
+    expect(computeRoundupCents(40, { ...DEFAULT_RULES, perSwapOn: true })).toBe(0);
+  });
+
+  it("under $1 on: a 40-cent swap rounds up 60 cents (plus the set amount when that is on)", () => {
+    expect(computeRoundupCents(40, { ...DEFAULT_RULES, smallOn: true })).toBe(60);
+    expect(computeRoundupCents(40, { ...DEFAULT_RULES, smallOn: true, perSwapOn: true, perSwapCents: 10 })).toBe(70);
+  });
+
+  it("under $1 on: swaps under 10 cents are dust and never count", () => {
+    expect(computeRoundupCents(9, { ...DEFAULT_RULES, smallOn: true, perSwapOn: true })).toBe(0);
+    expect(computeRoundupCents(10, { ...DEFAULT_RULES, smallOn: true })).toBe(90);
+  });
+
+  it("the 1% can start from $1: a $1.00 swap adds 1 cent", () => {
+    expect(computeRoundupCents(100, { ...DEFAULT_RULES, pctThresholdCents: 100 })).toBe(1);
+  });
 });
