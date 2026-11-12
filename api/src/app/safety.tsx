@@ -20,7 +20,7 @@ export function Safety({ ink = "#2B2622", muted = "#7A746B", leaf = "#1E6B44", r
     <section style={{ width: "100%", maxWidth: 440, textAlign: "left", fontSize: 15, lineHeight: 1.5, color: ink, display: "grid", gap: 14 }}>
       {/* off inside the /faqs permissions answer, where "How does it work?" already says it */}
       {/* 11-12 (his note): /link says what the card is with a heading instead of the intro line */}
-      {heading ? <p style={{ margin: 0, fontWeight: 600 }}>{heading}</p> : null}
+      {heading ? <p style={{ margin: 0, fontWeight: 600, textAlign: "center" }}>{heading}</p> : null}
       {intro ? <p style={{ margin: 0 }}>{LINK_INTRO}</p> : null}
       <ul style={{ listStyle: "none", margin: 0, border: `1.5px solid ${rule}`, borderRadius: 16, padding: "16px 18px", background: "#fff", display: "grid", gap: 10 }}>
         {CAN.map((l) => mark(true, l))}
