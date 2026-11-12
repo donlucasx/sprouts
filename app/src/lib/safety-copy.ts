@@ -35,6 +35,19 @@ export const LINKED_LINE = 'Its swaps now round up into your garden.'
  * enough or could not be read (the static point above still says it). `usdcRaw` is the balance in USDC base units (6 decimals).
  * Never blocks linking.
  */
+/** About what an approval costs in SOL: the one-time rent (refunded on revoke) and the fee; the API's own no-SOL error says the same. */
+export const LINK_SOL_LAMPORTS = 10_000_000n
+
+/**
+ * 0.1.10 (link failures 11-12: 5 of 31 were wallets with no SOL): the note under "This phone's wallet" when it holds less than about
+ * 0.01 SOL, said BEFORE the approval instead of after it fails. Null when it has enough or the balance could not be read. Never blocks.
+ */
+export function phoneSolNote(solLamports: string | null | undefined): string | null {
+  if (solLamports == null || !/^\d+$/.test(solLamports)) return null
+  if (BigInt(solLamports) >= LINK_SOL_LAMPORTS) return null
+  return 'This wallet needs about 0.01 SOL to approve. It covers a one-time deposit, refunded when you revoke, and the network fee. Add a little SOL first.'
+}
+
 export function phoneUsdcNote(usdcRaw: string | null | undefined, thresholdCents: number): string | null {
   if (usdcRaw == null || !/^\d+$/.test(usdcRaw)) return null
   const cents = Number(BigInt(usdcRaw) / 10_000n)

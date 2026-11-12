@@ -16,7 +16,7 @@ import { newlyLinked } from '@/lib/newly-linked'
 import { confirmWithRetries, LINK_NOT_ON_CHAIN_YET } from '@/lib/confirm-retry'
 import { useSession } from '@/lib/session'
 import { reportLinkFailure, type LinkFailure, type LinkStep } from '@/lib/link-report'
-import { APPROVAL_WARN_BODY, APPROVAL_WARN_TITLE, CAN, CANT, CODE_STEPS, LINK_FINISHING, LINK_INTRO, OTHER_WALLET_LINE, phoneUsdcNote } from '@/lib/safety-copy'
+import { APPROVAL_WARN_BODY, APPROVAL_WARN_TITLE, CAN, CANT, CODE_STEPS, LINK_FINISHING, LINK_INTRO, OTHER_WALLET_LINE, phoneSolNote, phoneUsdcNote } from '@/lib/safety-copy'
 import { TopUpButton } from '@/components/TopUp'
 import { TOPUP, TOPUP_DEFAULT_CENTS } from '@/lib/topup'
 import { FONT, radius, spacing, useTheme } from '@/theme'
@@ -99,12 +99,13 @@ export default function Connect() {
   // is no note: the "before you link" point says it anyway.
   const { data: usdc } = useQuery({
     queryKey: ['me-usdc', session?.pubkey],
-    queryFn: () => api<{ usdcRaw: string | null; topUpCents?: number[] | null }>('/api/me/usdc'),
+    queryFn: () => api<{ usdcRaw: string | null; topUpCents?: number[] | null; solLamports?: string | null }>('/api/me/usdc'),
     enabled: !!session,
     retry: false,
     staleTime: 30_000,
   })
   const usdcNote = phoneUsdcNote(usdc?.usdcRaw, me?.rules.plantThresholdCents ?? 200)
+  const solNote = phoneSolNote(usdc?.solLamports)
 
   // While a code is on screen, look for the wallet the web page links (the Saga, 2026-09-29: the app never noticed).
   useEffect(() => {
@@ -185,6 +186,12 @@ export default function Connect() {
         {/* 10-22: the note's own fix, one tap; it stays mounted after a top-up so its confirmation shows once the note has gone */}
         {session && (usdcNote || toppedUp) ? (
           <TopUpButton compact user={session.pubkey} cents={TOPUP_DEFAULT_CENTS} done={TOPUP.doneLink} onDone={() => setToppedUp(true)} offers={usdc?.topUpCents ?? null} />
+        ) : null}
+        {/* 0.1.10: no SOL for the rent and fee is said before the approval, not after it fails */}
+        {solNote ? (
+          <ThemedText tone="attention" style={{ fontSize: 14, lineHeight: 20 }}>
+            {solNote}
+          </ThemedText>
         ) : null}
         <ApprovalWarning />
         <Button title="Approve" loading={approving} onPress={linkThisPhone} />

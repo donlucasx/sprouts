@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { CAN, CANT, LINK_INTRO, APPROVAL_WARN_TITLE, APPROVAL_WARN_BODY, OTHER_WALLET_LINE, phoneUsdcNote } from '../../src/lib/safety-copy'
+import { CAN, CANT, LINK_INTRO, APPROVAL_WARN_TITLE, APPROVAL_WARN_BODY, OTHER_WALLET_LINE, phoneUsdcNote, phoneSolNote } from '../../src/lib/safety-copy'
 import * as web from '../../../api/src/lib/link-safety-copy'
 
 describe('safety copy (mirrors api/src/app/safety.tsx)', () => {
@@ -31,5 +31,18 @@ describe('phoneUsdcNote', () => {
     expect(phoneUsdcNote(null, 200)).toBeNull()
     expect(phoneUsdcNote(undefined, 200)).toBeNull()
     expect(phoneUsdcNote('garbage', 200)).toBeNull()
+  })
+})
+
+describe('phoneSolNote (0.1.10)', () => {
+  it('says so before the approval when the wallet has under 0.01 SOL', () => {
+    expect(phoneSolNote('0')).toMatch(/^This wallet needs about 0\.01 SOL to approve\./)
+    expect(phoneSolNote('9999999')).not.toBeNull()
+  })
+  it('no note with 0.01 SOL or more, or when the balance could not be read', () => {
+    expect(phoneSolNote('10000000')).toBeNull()
+    expect(phoneSolNote(null)).toBeNull()
+    expect(phoneSolNote(undefined)).toBeNull()
+    expect(phoneSolNote('abc')).toBeNull()
   })
 })
