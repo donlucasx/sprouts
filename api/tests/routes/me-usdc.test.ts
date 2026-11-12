@@ -25,7 +25,7 @@ describe("GET /api/me/usdc", () => {
     vi.mocked(readUsdcBalanceRaw).mockResolvedValueOnce(2_050_000n);
     const res = await get(await issueSession(U, "M"));
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ usdcRaw: "2050000", topUpCents: [500, 1_000] });
+    expect(await res.json()).toMatchObject({ usdcRaw: "2050000", topUpCents: [500, 1_000] });
     expect(vi.mocked(readUsdcBalanceRaw)).toHaveBeenCalledWith(U);
   });
 
@@ -41,6 +41,14 @@ describe("GET /api/me/usdc", () => {
     expect((await (await get(await issueSession(U, "M"))).json()).topUpCents).toEqual([]);
     solLamports.v = null;
     expect((await (await get(await issueSession(U, "M"))).json()).topUpCents).toBeNull();
+    solLamports.v = 70_000_000n;
+  });
+
+  it('0.1.10: answers the SOL in lamports for the no-SOL note, null when it cannot be read', async () => {
+    solLamports.v = 1_000n;
+    expect((await (await get(await issueSession(U, 'M'))).json()).solLamports).toBe('1000');
+    solLamports.v = null;
+    expect((await (await get(await issueSession(U, 'M'))).json()).solLamports).toBeNull();
     solLamports.v = 70_000_000n;
   });
 

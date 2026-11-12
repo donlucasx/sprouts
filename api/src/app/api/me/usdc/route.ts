@@ -30,5 +30,7 @@ export async function GET(request: Request) {
     Promise.resolve().then(() => priceUsd(WSOL_MINT)).catch(() => null),
   ]);
   const topUpCents = sol !== null && solUsd !== null ? affordableTopUps(sol, solUsd) : null;
-  return NextResponse.json({ usdcRaw: usdc, topUpCents });
+  // 0.1.10: the wallet's SOL in lamports (null when unread), so Link a wallet can say BEFORE the approval that it needs a little SOL
+  // (5 of 31 failed links 10-14 to 11-12 were wallets with no SOL for the rent and fee).
+  return NextResponse.json({ usdcRaw: usdc, topUpCents, solLamports: sol === null ? null : sol.toString() });
 }
