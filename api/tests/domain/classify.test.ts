@@ -18,6 +18,12 @@ describe("classifySwap", () => {
     expect(classifySwap(legs(WSOL, "he1iusmfkpAdwvxLNGV8Y1iSbj4rUy6yMhEA3fotn9A"))).toBe("LST");
     expect(classifySwap(legs(WSOL, "jupSoLaHXQiZZTSfEWMTRRgpnyFm8f6sZdosWBjx93v"))).toBe("LST");
   });
+  it("11-12: a tokenized share is stock; hyUSD, USD1 and USDG are stables", () => {
+    expect(classifySwap(legs(USDC, "NVDA"), new Set(["NVDA"]))).toBe("stock");
+    expect(classifySwap(legs("NVDA", "Unknown111"), new Set(["NVDA"]))).toBe("memecoin");
+    expect(classifySwap(legs("5YMkXAYccHSGnHn9nob9xEvv6Pvka9DZWH7nTbotTu9E", USDC))).toBe("stable");
+    expect(classifySwap(legs("USD1ttGY1N17NEEHLmELoaybftRBUSErhqYiQzvEmuB", "2u1tszSeqZ3qBWF3uNGPFc8TzMk2tdiwknnRMWGWjGWH"))).toBe("stable");
+  });
   it("anything unknown is memecoin", () => expect(classifySwap(legs(USDC, BONK))).toBe("memecoin"));
   it("SOL to unknown is memecoin", () => expect(classifySwap(legs(WSOL, "Unknown111"))).toBe("memecoin"));
 });

@@ -117,7 +117,7 @@ export type SwapVerifier = (a: { signature: string; wallet: string; legs: SwapLe
  * With `verify` (the webhook always passes it, R207 #8), the swap is re-read from chain before it is booked; the check runs only
  * once a known wallet with two legs is found, so an event Sprouts would ignore anyway costs no RPC call.
  */
-export async function bookSwap(a: { repo: Repo; tx: HeliusEnhancedTx; priceUsd: PriceLookup; ignoreFeePayer?: string; verify?: SwapVerifier }): Promise<BookResult> {
+export async function bookSwap(a: { repo: Repo; tx: HeliusEnhancedTx; priceUsd: PriceLookup; ignoreFeePayer?: string; verify?: SwapVerifier; stockMints?: (mints: string[]) => Promise<ReadonlySet<string>> }): Promise<BookResult> {
   // Not gated on Helius's type: a swap through a router Helius does not know arrives as INITIALIZE_ACCOUNT or UNKNOWN (09-30);
   // the legs decide, and one-sided transfers never have two.
   if (a.ignoreFeePayer && a.tx.feePayer === a.ignoreFeePayer) return { booked: false };
@@ -148,7 +148,7 @@ export async function bookSwap(a: { repo: Repo; tx: HeliusEnhancedTx; priceUsd: 
     const booked = await a.repo.insertSwap({
       signature: a.tx.signature, walletPubkey: pubkey, ts: new Date(a.tx.timestamp * 1000),
       inMint: legs.inMint, inAmount: legs.inAmount, outMint: legs.outMint, outAmount: legs.outAmount,
-      usdSizeCents: size, class: classifySwap(legs), roundupCents,
+      usdSizeCents: size, class: classifySwap(legs, a.stockMints ? await a.stockMints([legs.inMint, legs.outMint]) : undefined), roundupCents,
     });
     return booked ? { booked: true, walletPubkey: pubkey, roundupCents } : { booked: false };
   }
