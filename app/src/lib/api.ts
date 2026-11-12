@@ -112,6 +112,8 @@ export type MeResponse = {
   rules: {
     roundupOn: boolean; roundupToCents: number; pctOn: boolean; pctBps: number; pctThresholdCents: number; plantThresholdCents: number; plantMaxDays: number; dailyCapCents: number;
     managed: boolean; stop: Stop; pins: Pins; allocation: Split;
+    /** 0.1.10: absent from an older API (normalizeMe fills false, false, 10). */
+    smallOn: boolean; perSwapOn: boolean; perSwapCents: number;
   };
   // contracts 5.2, Track A: absent from the API on main a6d6f32
   positions?: LendingPosition[];
@@ -149,3 +151,6 @@ export type ActivityResponse = {
   /** 10-28: links and revokes; absent from an older API. `why` on a revoke: the user, the USDC approval removed, or unlinked outside. */
   wallets?: { ts: string; kind: 'linked' | 'revoked'; wallet: string; why: 'user' | 'approval' | 'outside' | null; signature: string | null }[];
 };
+
+/** 0.1.10 (API GET /api/me/preview): what the signed-in wallet's last 30 days of swaps would have saved. Read from the chain. */
+export type PreviewResponse = { days: number; swaps: number; savedCents: number; perSwapSavedCents: number; partial: boolean }

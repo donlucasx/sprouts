@@ -88,6 +88,45 @@ function Chip({ label, open, onPress }: { label: string; open: boolean; onPress:
   )
 }
 
+/** 0.1.10: a small set of choices shown side by side, the picked one outlined (the add-to-every-swap amount, the 1% start). */
+function OptionChips<T extends number>({ options, value, format, onChange, label }: { options: readonly T[]; value: number; format: (v: T) => string; onChange: (v: T) => void; label: string }) {
+  const { colors } = useTheme()
+  return (
+    <View accessibilityRole="radiogroup" accessibilityLabel={label} style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: -spacing.xs }}>
+      {options.map((o) => {
+        const on = o === value
+        return (
+          <Pressable
+            key={o}
+            onPress={() => onChange(o)}
+            accessibilityRole="radio"
+            accessibilityState={{ selected: on }}
+            accessibilityLabel={`${label} ${format(o)}`}
+            style={{
+              minHeight: TARGET,
+              minWidth: TARGET,
+              alignItems: 'center',
+              justifyContent: 'center',
+              paddingHorizontal: spacing.sm + 2,
+              borderRadius: radius.full,
+              borderWidth: 1,
+              borderColor: on ? colors.accent : colors.hairline,
+              backgroundColor: on ? colors.surface : 'transparent',
+            }}
+          >
+            <ThemedText tone={on ? undefined : 'secondary'}>{format(o)}</ThemedText>
+          </Pressable>
+        )
+      })}
+    </View>
+  )
+}
+
+/** 0.1.10 (his rulings 11-12): the amounts "Add to every swap" offers, and where the 1% can start. */
+const PER_SWAP_OPTIONS = [5, 10, 25] as const
+const PCT_START_OPTIONS = [100, 1_000, 10_000] as const
+const cents = (c: number) => `${c}\u00a2`
+
 export default function Rules() {
   const { data: me } = useMe()
   const { colors } = useTheme()
@@ -306,6 +345,33 @@ export default function Rules() {
         <ThemedText variant="caption" tone="secondary" style={{ marginTop: -spacing.sm }}>
           A $3.40 swap saves $0.60.
         </ThemedText>
+        {/* 0.1.10 (his rulings 11-12): swaps under $1 count when this is on; under 10 cents never does (dust) */}
+        <Row label="Round up swaps under $1">
+          <Switch
+            {...toggle}
+            value={r.smallOn}
+            onValueChange={(v) => edit({ smallOn: v })}
+            accessibilityLabel="Round up swaps under $1"
+          />
+        </Row>
+        <ThemedText variant="caption" tone="secondary" style={{ marginTop: -spacing.sm }}>
+          {`A $0.40 swap saves $0.60. Swaps under ${cents(10)} don't count.`}
+        </ThemedText>
+        {/* 0.1.10: a set amount on every swap, for small regular buys in whole dollars (a daily DCA saves nothing by rounding) */}
+        <Row label={`Add ${cents(r.perSwapCents)} to every swap`}>
+          <Switch
+            {...toggle}
+            value={r.perSwapOn}
+            onValueChange={(v) => edit({ perSwapOn: v })}
+            accessibilityLabel="Add an amount to every swap"
+          />
+        </Row>
+        {r.perSwapOn ? (
+          <OptionChips options={PER_SWAP_OPTIONS} value={r.perSwapCents} format={cents} onChange={(v) => edit({ perSwapCents: v })} label="Add to every swap" />
+        ) : null}
+        <ThemedText variant="caption" tone="secondary" style={{ marginTop: r.perSwapOn ? 0 : -spacing.sm }}>
+          {`For small, regular buys: 20 swaps a day at ${cents(10)} saves $2.`}
+        </ThemedText>
         <Row label={`Add 1% of swaps over ${chipUsd(r.pctThresholdCents)}`}>
           <Switch
             {...toggle}
@@ -314,6 +380,9 @@ export default function Rules() {
             accessibilityLabel="Add 1% of larger swaps"
           />
         </Row>
+        {r.pctOn ? (
+          <OptionChips options={PCT_START_OPTIONS} value={r.pctThresholdCents} format={chipUsd} onChange={(v) => edit({ pctThresholdCents: v })} label="Add 1% of swaps over" />
+        ) : null}
         {/* The limit as a chip; a tap opens the stepper under it. R466: the planting amount left Rules (the saved value stands). */}
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }}>
           <Chip

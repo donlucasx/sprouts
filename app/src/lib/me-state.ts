@@ -271,8 +271,29 @@ export function normalizeMe(me: MeResponse): MeResponse {
     ...me,
     holdings: me.holdings.filter((h) => !isRetired(h.asset)),
     manager: { ...me.manager, stopSplit: liveSplit(me.manager.stopSplit), pins: livePins(me.manager.pins) },
-    rules: { ...me.rules, allocation: liveSplit(me.rules.allocation), pins: livePins(me.rules.pins) },
+    rules: {
+      ...me.rules,
+      allocation: liveSplit(me.rules.allocation),
+      pins: livePins(me.rules.pins),
+      // 0.1.10: an API before the new round-up choices sends none of them; they read as off.
+      smallOn: me.rules.smallOn ?? false,
+      perSwapOn: me.rules.perSwapOn ?? false,
+      perSwapCents: me.rules.perSwapCents ?? 10,
+    },
     nextPlanting: { ...me.nextPlanting, asset: isRetired(me.nextPlanting.asset) ? 'SKR' : me.nextPlanting.asset },
     lastReceipt: me.lastReceipt && isRetired(me.lastReceipt.asset) ? null : me.lastReceipt,
   }
+}
+
+/**
+ * 0.1.10 (his ruling "Last 30 days total"): Home's line for a user with no wallet linked, from their own last 30 days of swaps.
+ * Null when there is nothing worth saying (no swaps, or nothing they would have saved either way): Home then shows the plain prompt.
+ * Whole-dollar buys save nothing by rounding up, so they are told what "Add 10c to every swap" would have saved instead.
+ */
+export function previewLine(p: { swaps: number; savedCents: number; perSwapSavedCents: number } | null | undefined): string | null {
+  if (!p || p.swaps === 0) return null
+  const usd = (c: number) => `$${(c / 100).toFixed(2)}`
+  if (p.savedCents > 0) return `Your swaps from the last 30 days would have saved ${usd(p.savedCents)}.`
+  if (p.perSwapSavedCents > 0) return `Your swaps from the last 30 days were whole dollars. With "Add 10\u00a2 to every swap" in Rules, they would have saved ${usd(p.perSwapSavedCents)}.`
+  return null
 }
