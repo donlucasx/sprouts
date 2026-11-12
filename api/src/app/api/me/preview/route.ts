@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireSession } from "@/lib/auth-guard";
+import { rateLimited, requireSession } from "@/lib/auth-guard";
 import { getRepo } from "@/db/repo";
 import { rulesRowToRules } from "@/db/types";
 import { priceUsd } from "@/lib/jupiter";
@@ -20,6 +20,9 @@ const boundedPrice: PriceLookup = (mint) =>
 export async function GET(request: Request) {
   const session = await requireSession(request);
   if (session instanceof NextResponse) return session;
+  // Up to 5 history pages per read share the Helius quota the swap webhook needs: 3 reads a minute per user (the app also
+  // keeps the answer for 12 hours).
+  if (rateLimited(`preview:${session.pubkey}`, 3)) return NextResponse.json({ error: "Too many requests. Try again in a minute." }, { status: 429 });
   const repo = await getRepo();
   const rules = rulesRowToRules(await repo.getRules(session.pubkey));
   try {

@@ -33,4 +33,12 @@ describe("GET /api/me/preview", () => {
     walletSwapsMock.mockRejectedValueOnce(new Error("history 429"));
     expect((await GET(new Request("http://x/api/me/preview", { headers: auth }))).status).toBe(503);
   });
+  it("a fourth read in a minute is refused before the history is read", async () => {
+    walletSwapsMock.mockResolvedValue({ swaps: [], partial: false });
+    const before = walletSwapsMock.mock.calls.length;
+    const codes = [];
+    for (let i = 0; i < 4; i++) codes.push((await GET(new Request("http://x/api/me/preview", { headers: { authorization: auth.authorization } }))).status);
+    expect(codes.at(-1)).toBe(429);
+    expect(walletSwapsMock.mock.calls.length - before).toBeLessThanOrEqual(3);
+  });
 });
