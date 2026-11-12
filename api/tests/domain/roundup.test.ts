@@ -62,6 +62,11 @@ describe("computeRoundupCents", () => {
     expect(computeRoundupCents(10, { ...DEFAULT_RULES, smallOn: true })).toBe(90);
   });
 
+  it("combos: under-$1 + 25c on a 99c swap; 1% from $1 with round-up off", () => {
+    expect(computeRoundupCents(99, { ...DEFAULT_RULES, smallOn: true, perSwapOn: true, perSwapCents: 25 })).toBe(1 + 25);
+    expect(computeRoundupCents(250, { ...DEFAULT_RULES, roundupOn: false, pctThresholdCents: 100 })).toBe(2);
+  });
+
   it("the 1% can start from $1: a $1.00 swap adds 1 cent", () => {
     expect(computeRoundupCents(100, { ...DEFAULT_RULES, pctThresholdCents: 100 })).toBe(1);
   });

@@ -11,6 +11,7 @@ import { dayOf } from "@/domain/day";
 export const PREVIEW_DAYS = 30;
 /** At most this many pages of 100 transactions are read (Helius credits; a busier wallet is summed over what was read). */
 export const PREVIEW_MAX_PAGES = 5;
+export const PREVIEW_PAGE_SIZE = 100;
 /** At most this many distinct non-stable coins are priced; swaps with no stable or SOL leg past that are left out. */
 export const PREVIEW_MAX_PRICED = 15;
 /** The comparison shown when the wallet's swaps are whole dollars: "add 10 cents to every swap". */
@@ -46,7 +47,7 @@ export const heliusPage: FetchPage = async (wallet, before) => {
   const key = new URL(config().heliusRpcUrl).searchParams.get("api-key");
   const url = new URL(`https://api.helius.xyz/v0/addresses/${wallet}/transactions`);
   url.searchParams.set("api-key", key ?? "");
-  url.searchParams.set("limit", "100");
+  url.searchParams.set("limit", String(PREVIEW_PAGE_SIZE));
   if (before) url.searchParams.set("before", before);
   // Helius answers 429 when several reads land at once (seen 11-12 on the free plan): two more tries, 1 s then 2 s apart.
   for (let attempt = 0; ; attempt++) {
@@ -81,6 +82,8 @@ export async function walletSwaps(wallet: string, a: { fetchPage: FetchPage; pri
       const size = await usdSizeCents(legs, price);
       if (size !== null) swaps.push({ day: dayOf(new Date(tx.timestamp * 1000)), sizeCents: size });
     }
+    // A short page is the wallet's whole history: no further read (review 11-12: it cost an extra call returning []).
+    if (txs.length < PREVIEW_PAGE_SIZE) return { swaps, partial: false };
     before = txs[txs.length - 1].signature;
   }
   return { swaps, partial: true };

@@ -24,6 +24,8 @@ export async function GET(request: Request) {
   // keeps the answer for 12 hours).
   if (rateLimited(`preview:${session.pubkey}`, 3)) return NextResponse.json({ error: "Too many requests. Try again in a minute." }, { status: 429 });
   const repo = await getRepo();
+  // Only for a user with no wallet linked (Home asks only then; review 11-12: the route must not read history for anyone else).
+  if ((await repo.listWalletsOf(session.pubkey)).some((w) => w.status !== "revoked")) return NextResponse.json({ error: "Only for a user with no wallet linked." }, { status: 409 });
   const rules = rulesRowToRules(await repo.getRules(session.pubkey));
   try {
     const { swaps, partial } = await walletSwaps(session.pubkey, { fetchPage: heliusPage, priceUsd: boundedPrice, nowS: Math.floor(Date.now() / 1000) });
