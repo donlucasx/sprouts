@@ -310,3 +310,46 @@ describe("a top-up mark is trusted only for its own wallet (10-27 security revie
     expect((await bookSwap({ repo, tx: orderEngine, priceUsd: async () => 1 })).booked).toBe(true);
   });
 });
+
+// 11-12 (a $1 buy of a tokenized share, 3KGhya4G): the route wraps the wallet's SOL for a hop and sends it straight back, and
+// those wSOL transfers are listed BEFORE the real USDC leg. Shape copied from the chain; addresses replaced.
+describe("a route that sends the wallet's wSOL out and back", () => {
+  const USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  const WSOL = "So11111111111111111111111111111111111111112";
+  const SHARE = "SHARE111111111111111111111111111111111111111";
+  const tx: HeliusEnhancedTx = {
+    signature: "ROUNDTRIP", timestamp: 1794488319, type: "INITIALIZE_ACCOUNT", feePayer: "WALLET",
+    tokenTransfers: [
+      { fromUserAccount: "WALLET", toUserAccount: "POOL_A", mint: WSOL, tokenAmount: 0.012152641 },
+      { fromUserAccount: "WALLET", toUserAccount: "APP", mint: USDC, tokenAmount: 0.002 },
+      { fromUserAccount: "APP", toUserAccount: "APP_FEES", mint: USDC, tokenAmount: 0.002 },
+      { fromUserAccount: "WALLET", toUserAccount: "POOL_B", mint: USDC, tokenAmount: 0.998 },
+      { fromUserAccount: "POOL_B", toUserAccount: "WALLET", mint: WSOL, tokenAmount: 0.012152641 },
+      { fromUserAccount: "POOL_A", toUserAccount: "WALLET", mint: SHARE, tokenAmount: 0.002655009 },
+    ],
+    nativeTransfers: [{ fromUserAccount: "WALLET", toUserAccount: "RENT", amount: 1488440 }],
+  };
+
+  it("reads USDC in and the share out; the wSOL that went out and back is no leg", () => {
+    expect(extractSwapLegs(tx, "WALLET")).toEqual({ wallet: "WALLET", inMint: USDC, inAmount: 1, outMint: SHARE, outAmount: 0.002655009 });
+  });
+
+  it("books it as a $1 swap", async () => {
+    const repo = await repoWithWallet();
+    const r = await bookSwap({ repo, tx, priceUsd: async () => null });
+    expect(r.booked).toBe(true);
+    const [s] = await repo.unplantedSwaps("WALLET");
+    expect(s.usdSizeCents).toBe(100);
+    expect(s.inMint).toBe(USDC);
+  });
+});
+
+describe("a verifier that corrects the out-leg (a transfer-fee token arrived short)", () => {
+  it("books the corrected amount, not the event's", async () => {
+    const repo = await repoWithWallet();
+    const r = await bookSwap({ repo, tx: fixture, priceUsd: prices, verify: async (a) => ({ ...a.legs, outAmount: 51480 }) });
+    expect(r.booked).toBe(true);
+    const [s] = await repo.unplantedSwaps("WALLET");
+    expect(s.outAmount).toBe(51480);
+  });
+});

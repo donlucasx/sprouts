@@ -65,6 +65,17 @@ describe("checkSwapOnChain", () => {
     expect(check(chainTx(), { legs: { ...legs, outAmount: 5_200_050 } })).toMatch(/out-leg .* more than the wallet received/);
   });
 
+  it("books a transfer-fee token at what arrived: 1% short is corrected, not refused (11-12, nd6W8v73)", () => {
+    // BONK arrives 1% short of the event's 52,000.5 (a token that keeps 1% of every transfer).
+    const short = chainTx({ meta: { ...chainTx().meta!, postTokenBalances: [bal(2, USDC, "WALLET", "3830000", 6), bal(3, BONK, "WALLET", "5148049500", 5)] } });
+    expect(check(short)).toEqual({ ...legs, outAmount: 51480.495 });
+  });
+
+  it("still refuses an out-leg more than 10% above what arrived", () => {
+    const short = chainTx({ meta: { ...chainTx().meta!, postTokenBalances: [bal(2, USDC, "WALLET", "3830000", 6), bal(3, BONK, "WALLET", "4700000000", 5)] } });
+    expect(check(short)).toMatch(/out-leg .* more than the wallet received/);
+  });
+
   it("refuses legs in a mint the wallet's balances never moved", () => {
     expect(check(chainTx(), { legs: { ...legs, outMint: WSOL, outAmount: 5 } })).toMatch(/out-leg/);
   });
