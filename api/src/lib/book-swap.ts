@@ -70,7 +70,8 @@ export function extractSwapLegs(tx: HeliusEnhancedTx, wallet: string): SwapLegs 
     if (t.fromUserAccount === wallet) net.set(t.mint, (net.get(t.mint) ?? 0) - t.tokenAmount);
     if (t.toUserAccount === wallet) net.set(t.mint, (net.get(t.mint) ?? 0) + t.tokenAmount);
   }
-  const moved = (mint: string, sign: 1 | -1) => sign * (net.get(mint) ?? 0) > 1e-9;
+  // Kimi 11-12: a wSOL hop that comes back a few lamports short is still a round trip; under 0.000001 SOL is dust, not a leg.
+  const moved = (mint: string, sign: 1 | -1) => sign * (net.get(mint) ?? 0) > (mint === WSOL ? 1e-6 : 1e-9);
   const tokenOut = tx.tokenTransfers.find((t) => t.fromUserAccount === wallet && moved(t.mint, -1));
   const tokenIn = [...tx.tokenTransfers].reverse().find((t) => t.toUserAccount === wallet && moved(t.mint, 1));
   const nativeOut = largest(natives.filter((t) => t.fromUserAccount === wallet));

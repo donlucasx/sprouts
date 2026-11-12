@@ -394,6 +394,9 @@ describe('previewLine (0.1.10)', () => {
       'Your swaps from the last 30 days were whole dollars. With "Add 10¢ to every swap" in Rules, they would have saved $2.60.',
     )
   })
+  it('a partly read (busy) wallet says "at least"', () => {
+    expect(previewLine({ swaps: 400, savedCents: 2500, perSwapSavedCents: 6500, partial: true })).toBe('Your swaps from the last 30 days would have saved at least $25.00.')
+  })
   it('no swaps, no answer, or nothing either way: no line', () => {
     expect(previewLine({ swaps: 0, savedCents: 0, perSwapSavedCents: 0 })).toBeNull()
     expect(previewLine(null)).toBeNull()

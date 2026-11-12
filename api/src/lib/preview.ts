@@ -49,12 +49,13 @@ export const heliusPage: FetchPage = async (wallet, before) => {
   url.searchParams.set("api-key", key ?? "");
   url.searchParams.set("limit", String(PREVIEW_PAGE_SIZE));
   if (before) url.searchParams.set("before", before);
-  // Helius answers 429 when several reads land at once (seen 11-12 on the free plan): two more tries, 1 s then 2 s apart.
+  // Helius answers 429 when several reads land at once (seen 11-12 on the free plan): one more try after 1 s. Each read gets 2.5 s,
+  // so 5 pages with a retry each stay under the route's 30 s (Kimi 11-12).
   for (let attempt = 0; ; attempt++) {
-    const res = await fetch(url, { signal: AbortSignal.timeout(8_000) });
+    const res = await fetch(url, { signal: AbortSignal.timeout(2_500) });
     if (res.ok) return (await res.json()) as HeliusEnhancedTx[];
-    if (res.status !== 429 || attempt >= 2) throw new Error(`history ${res.status}`);
-    await new Promise((r) => setTimeout(r, 1_000 * (attempt + 1)));
+    if (res.status !== 429 || attempt >= 1) throw new Error(`history ${res.status}`);
+    await new Promise((r) => setTimeout(r, 1_000));
   }
 };
 

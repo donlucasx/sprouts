@@ -32,3 +32,11 @@ describe("usdSizeCents", () => {
     expect(await usdSizeCents({ wallet: "w", inMint: USDC, inAmount: 0.005, outMint: BONK, outAmount: 1 }, prices)).toBe(1);
   });
 });
+
+describe("Kimi 11-12: stable-to-stable", () => {
+  it("is sized by the smaller leg, so a depegged stable never sizes it up", async () => {
+    const hyUSD = "5YMkXAYccHSGnHn9nob9xEvv6Pvka9DZWH7nTbotTu9E";
+    const USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+    expect(await usdSizeCents({ wallet: "w", inMint: hyUSD, inAmount: 1000, outMint: USDC, outAmount: 950 }, async () => null)).toBe(95_000);
+  });
+});

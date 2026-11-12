@@ -290,9 +290,10 @@ export function normalizeMe(me: MeResponse): MeResponse {
  * Null when there is nothing worth saying (no swaps, or nothing they would have saved either way): Home then shows the plain prompt.
  * Whole-dollar buys save nothing by rounding up, so they are told what "Add 10c to every swap" would have saved instead.
  */
-export function previewLine(p: { swaps: number; savedCents: number; perSwapSavedCents: number } | null | undefined): string | null {
+export function previewLine(p: { swaps: number; savedCents: number; perSwapSavedCents: number; partial?: boolean } | null | undefined): string | null {
   if (!p || p.swaps === 0) return null
-  const usd = (c: number) => `$${(c / 100).toFixed(2)}`
+  // Kimi 11-12: a busy wallet is read only in part (its newest 500 transactions), so the total is a floor.
+  const usd = (c: number) => `${p.partial ? 'at least ' : ''}$${(c / 100).toFixed(2)}`
   if (p.savedCents > 0) return `Your swaps from the last 30 days would have saved ${usd(p.savedCents)}.`
   if (p.perSwapSavedCents > 0) return `Your swaps from the last 30 days were whole dollars. With "Add 10\u00a2 to every swap" in Rules, they would have saved ${usd(p.perSwapSavedCents)}.`
   return null

@@ -101,7 +101,14 @@ export async function PUT(request: Request) {
     const allocation = effectiveSplit({ managed: nextManaged, stop: nextStop, pins, stopSplit });
     Object.assign(patch, { managed: nextManaged, stop: nextStop, pins, pinsByUndo, allocation });
   }
-  const saved = await repo.saveRules(session.pubkey, patch);
+  let saved: RulesRow;
+  try {
+    saved = await repo.saveRules(session.pubkey, patch);
+  } catch (e) {
+    // Kimi 11-12: a new rule saved before migration 0012 reaches the database fails here; a clean answer, not a 500.
+    console.error(`/api/rules: the save failed (${e instanceof Error ? e.message : String(e)})`);
+    return NextResponse.json({ error: "Your rules could not be saved right now. Try again in a minute." }, { status: 503 });
+  }
   // The event follows the save, so a failed save never leaves a change in Activity that did not happen.
   if (patch.allocation && (!sameSplit(patch.allocation, current.allocation) || patch.managed !== current.managed || patch.stop !== current.stop)) {
     await repo.addEvent({ userPubkey: session.pubkey, walletPubkey: null, kind: "split_changed", detail: { by: "you", from: current.allocation, to: patch.allocation, stop: patch.stop, managed: patch.managed, managedWas: current.managed, day: dayOf(new Date()) } });
