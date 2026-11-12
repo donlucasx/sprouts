@@ -177,3 +177,17 @@ describe("rules, wallets, revoke", () => {
     expect((await repo.getWallet(W))?.status).toBe("revoked");
   });
 });
+
+describe("11-12: the new round-up choices", () => {
+  it("saves under-$1, add-to-every-swap and its amount, and a $1 start for the 1%", async () => {
+    const r = await put({ smallOn: true, perSwapOn: true, perSwapCents: 25, pctThresholdCents: 100 });
+    expect(r.status).toBe(200);
+    expect(await r.json()).toMatchObject({ smallOn: true, perSwapOn: true, perSwapCents: 25, pctThresholdCents: 100 });
+  });
+
+  it("refuses an amount it does not offer, and a 1% start under $1", async () => {
+    expect((await put({ perSwapCents: 7 })).status).toBe(400);
+    expect((await put({ perSwapCents: 100 })).status).toBe(400);
+    expect((await put({ pctThresholdCents: 50 })).status).toBe(400);
+  });
+});

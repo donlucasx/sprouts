@@ -6,7 +6,7 @@ import type { Rules } from "@/domain/roundup";
 // Spec 6, the watcher's first feature: a rule typed in plain English is compiled to the rules' numbers and shown back for
 // confirmation; nothing changes until the user saves. The model is injected: these tests never call the network.
 const current: Rules = {
-  roundupOn: true, roundupToCents: 100, pctOn: true, pctBps: 100, pctThresholdCents: 10_000,
+  roundupOn: true, roundupToCents: 100, pctOn: true, pctBps: 100, pctThresholdCents: 10_000, smallOn: false, perSwapOn: false, perSwapCents: 10,
   plantThresholdCents: 200, plantMaxDays: 7, dailyCapCents: 500, managed: false, stop: "balanced", pins: {},
   allocation: { SKR: 100, stORE: 0, hSOL: 0, USDC_LEND: 0, SOL_LEND: 0, cbBTC: 0 },
 };

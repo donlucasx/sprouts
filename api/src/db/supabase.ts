@@ -79,6 +79,9 @@ export class SupabaseRepo implements Repo {
     if (patch.pctOn !== undefined) update.pct_on = patch.pctOn;
     if (patch.pctBps !== undefined) update.pct_bps = patch.pctBps;
     if (patch.pctThresholdCents !== undefined) update.pct_threshold_cents = patch.pctThresholdCents;
+    if (patch.smallOn !== undefined) update.small_on = patch.smallOn;
+    if (patch.perSwapOn !== undefined) update.per_swap_on = patch.perSwapOn;
+    if (patch.perSwapCents !== undefined) update.per_swap_cents = patch.perSwapCents;
     if (patch.plantThresholdCents !== undefined) update.plant_threshold_cents = patch.plantThresholdCents;
     if (patch.plantMaxDays !== undefined) update.plant_max_days = patch.plantMaxDays;
     if (patch.dailyCapCents !== undefined) update.daily_cap_cents = patch.dailyCapCents;
@@ -596,7 +599,11 @@ function userRow(r: Row): T.UserRow {
 export function rulesRow(r: Row): T.RulesRow {
   return {
     userPubkey: String(r.user_pubkey), roundupOn: Boolean(r.roundup_on), roundupToCents: Number(r.roundup_to_cents), pctOn: Boolean(r.pct_on), pctBps: Number(r.pct_bps),
-    pctThresholdCents: Number(r.pct_threshold_cents), plantThresholdCents: Number(r.plant_threshold_cents), plantMaxDays: Number(r.plant_max_days),
+    pctThresholdCents: Number(r.pct_threshold_cents),
+    // 11-12 (migration 0012): read with defaults, so this code also runs against a database the migration has not reached yet.
+    smallOn: r.small_on === undefined ? false : Boolean(r.small_on), perSwapOn: r.per_swap_on === undefined ? false : Boolean(r.per_swap_on),
+    perSwapCents: r.per_swap_cents === undefined || r.per_swap_cents === null ? 10 : Number(r.per_swap_cents),
+    plantThresholdCents: Number(r.plant_threshold_cents), plantMaxDays: Number(r.plant_max_days),
     dailyCapCents: Number(r.daily_cap_cents),
     managed: Boolean(r.managed), stop: (r.stop as Stop) ?? "balanced", pins: { ...((r.pins as Record<string, number> | null) ?? {}) },
     allocation: toSplit(r.allocation as Record<string, number> | null),
