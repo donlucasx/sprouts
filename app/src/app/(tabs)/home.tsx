@@ -25,7 +25,7 @@ import { plantLayouts } from '@/model/scene-to-layout'
 import { watcherLine } from '@/model/watcher'
 import { Garden } from '@/garden/Garden'
 import { COIN_FULL_NAME, COIN_LOGO } from '@/lib/coin-icons'
-import type { LendingPosition, MeResponse } from '@/lib/api'
+import type { LendingPosition, MeResponse, PreviewResponse } from '@/lib/api'
 import { earnedLabel } from '@/lib/coin-sheet'
 import { CoinSheet } from '@/components/CoinSheet'
 import { Screen } from '@/components/Screen'
@@ -48,7 +48,7 @@ import { termsNeeded, termsSummary } from '@/lib/terms'
 import { arrivalLine, formatSkr, formatAsOf } from '@/lib/format'
 import { useSession } from '@/lib/session'
 import { LINKED_LINE, LINKED_TITLE } from '@/lib/safety-copy'
-import { PHONE_WALLET, gardenTotals, pauseState, pausedOnlyForNoUsdc, stoppedNotice, showLinkPrompt, LINK_PROMPT, usdcNotice, coinRows, valueBlock, walletsLine, lastPlantingLine, staleLine, type CoinRow } from '@/lib/me-state'
+import { PHONE_WALLET, gardenTotals, pauseState, pausedOnlyForNoUsdc, stoppedNotice, showLinkPrompt, LINK_PROMPT, previewLine, usdcNotice, coinRows, valueBlock, walletsLine, lastPlantingLine, staleLine, type CoinRow } from '@/lib/me-state'
 import { FONT, radius, spacing, TARGET, useTheme } from '@/theme'
 /** Canvas px of extra sky above the plants inside the dark-mode bamboo frame (10-27, his note: "more negative space above the plants"). */
 const FRAMED_SKY = 110
@@ -93,6 +93,15 @@ export default function Home() {
     if (me && activity) writeLastAvg(avgDailyRoundupCents(activity.swaps, me.user.pubkey, new Date()))
   }, [me, activity])
   const { data: usdcRead } = useQuery({ queryKey: ['me-usdc', me?.user.pubkey], queryFn: () => api<{ usdcRaw: string | null; topUpCents?: number[] | null }>('/api/me/usdc'), enabled: !!me, retry: false, staleTime: 60_000 })
+  // 0.1.10 (his ruling "Last 30 days total"): with no wallet linked, what their own swaps would have saved. Read once per 12 hours;
+  // a failed read shows nothing extra (the plain prompt stays).
+  const { data: preview } = useQuery({
+    queryKey: ['me-preview', me?.user.pubkey],
+    queryFn: () => api<PreviewResponse>('/api/me/preview'),
+    enabled: !!me && showLinkPrompt(me),
+    retry: false,
+    staleTime: 12 * 60 * 60_000,
+  })
   const invalidate = useInvalidateMe()
   const [failed, setFailed] = useState(false)
   const [nudged, setNudged] = useState(false)
@@ -422,6 +431,11 @@ export default function Home() {
         </Card>
       ) : null}
       {/* 11-01 (his ruling "A"): with no wallet linked, one green line at the top says what starts the garden; gone once one links */}
+      {noWallet && previewLine(preview) ? (
+        <ThemedText accessibilityRole="text" style={{ marginBottom: -spacing.xs }}>
+          {previewLine(preview)}
+        </ThemedText>
+      ) : null}
       {noWallet ? (
         <Pressable
           onPress={() => router.push('/connect')}

@@ -14,6 +14,7 @@ import {
   valueBlock,
   walletsLine,
   lastPlantingLine,
+  previewLine,
 } from '@/lib/me-state'
 import type { MeResponse } from '@/lib/api'
 const cached = { pot: { asOf: '2026-09-28T16:00:00Z' }, holdings: [], manager: { why: null }, rules: { allocation: {} } } as never
@@ -381,5 +382,21 @@ describe("showLinkPrompt (11-01, his ruling A: the green line only while no wall
   })
   it("hides when a wallet was stopped: its own amber notice already asks for the re-link", () => {
     expect(showLinkPrompt(at([{ pubkey: PHONE, status: "revoked", stopped: "approval" }]))).toBe(false)
+  })
+})
+
+describe('previewLine (0.1.10)', () => {
+  it('says what the last 30 days would have saved', () => {
+    expect(previewLine({ swaps: 12, savedCents: 3972, perSwapSavedCents: 4594 })).toBe('Your swaps from the last 30 days would have saved $39.72.')
+  })
+  it('whole-dollar buys: points at "Add 10c to every swap"', () => {
+    expect(previewLine({ swaps: 26, savedCents: 0, perSwapSavedCents: 260 })).toBe(
+      'Your swaps from the last 30 days were whole dollars. With "Add 10¢ to every swap" in Rules, they would have saved $2.60.',
+    )
+  })
+  it('no swaps, no answer, or nothing either way: no line', () => {
+    expect(previewLine({ swaps: 0, savedCents: 0, perSwapSavedCents: 0 })).toBeNull()
+    expect(previewLine(null)).toBeNull()
+    expect(previewLine(undefined)).toBeNull()
   })
 })
