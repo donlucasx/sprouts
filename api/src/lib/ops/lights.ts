@@ -93,3 +93,99 @@ export function moneyOpsLight(input: { now: Date; failures: FailureInput[]; olde
   }
   return mk("green", pending === null ? "no failures in 7 d, no withdrawal pending" : `no failures in 7 d, oldest withdrawal pending ${ageText(pending)}`);
 }
+
+// ---- Infra lights ----
+
+/** Ruling R2: Pyth sponsored-feed access ends here; the Prices light shows the countdown. */
+export const PYTH_ACCESS_ENDS = new Date("2026-12-31T23:59:59Z");
+
+export function swapWatchingLight(input: { linked: string[]; onWebhook: string[] }): Light {
+  const mk = (state: LightState, fact: string): Light => ({ key: "swapWatching", label: "Swap watching", state, fact });
+  const linked = [...new Set(input.linked)];
+  if (linked.length === 0) return mk("info", "no linked wallets to watch");
+  const watched = new Set(input.onWebhook);
+  const missing = linked.filter((w) => !watched.has(w)).length; // count only, never addresses
+  if (missing > 0) return mk("red", `${missing} linked wallet${missing === 1 ? "" : "s"} not watched`);
+  return mk("green", `all ${linked.length} linked wallet${linked.length === 1 ? "" : "s"} on the webhook`);
+}
+
+export function swapsArrivingLight(input: { now: Date; linkedCount: number; lastSwapAt: Date | null; unpriced24h: number }): Light {
+  const mk = (state: LightState, fact: string): Light => ({ key: "swapsArriving", label: "Swaps arriving", state, fact });
+  const { now, linkedCount, lastSwapAt, unpriced24h } = input;
+  if (linkedCount === 0) return mk("info", "no linked wallets, so no swaps expected");
+  if (!lastSwapAt) return mk("red", `no swap ever recorded with ${linkedCount} linked`);
+  const age = now.getTime() - lastSwapAt.getTime();
+  if (age < 0) return mk("unknown", "latest swap time is in the future (clock skew?)");
+  const fact = `last swap ${ageText(age)} ago, ${unpriced24h} unpriced in 24 h`;
+  if (age > 72 * HOUR) return mk("red", fact);
+  if (age > 24 * HOUR || unpriced24h > 0) return mk("amber", fact);
+  return mk("green", fact);
+}
+
+const PRICE_RED_MS = 15 * MIN;
+const PRICE_AHEAD_MS = 60_000; // publish time may run slightly ahead of our clock
+
+export function pricesLight(input: {
+  now: Date;
+  feeds: { name: "SOL" | "cbBTC" | "ORE"; publishTime: Date; maxAgeS: number }[];
+  skr: "ok" | "failed" | "no-key";
+  accessEnds: Date;
+}): Light {
+  const { now, feeds, skr, accessEnds } = input;
+  const days = Math.max(0, Math.ceil((accessEnds.getTime() - now.getTime()) / DAY));
+  const countdown = `${days} days of Pyth access left`;
+  const mk = (state: LightState, fact: string): Light => ({ key: "prices", label: "Prices", state, fact: `${fact}; ${countdown}` });
+
+  const red: string[] = [];
+  const amber: string[] = [];
+  const unknown: string[] = [];
+  for (const f of feeds) {
+    let age = now.getTime() - f.publishTime.getTime();
+    if (age < 0) {
+      if (age < -PRICE_AHEAD_MS) { unknown.push(`${f.name} publish time is in the future`); continue; }
+      age = 0;
+    }
+    if (age > PRICE_RED_MS) red.push(`${f.name} ${ageText(age)} old`);
+    else if (age > f.maxAgeS * 1000) amber.push(`${f.name} ${ageText(age)} old`);
+  }
+  if (skr === "failed") red.push("SKR fetch failed");
+  const skrNote = skr === "no-key" ? "SKR deferred (no PYTH_API_KEY)" : null;
+  const withNote = (parts: string[]) => [...parts, ...(skrNote ? [skrNote] : [])].join("; ");
+
+  if (red.length) return mk("red", withNote(red));
+  if (feeds.length === 0) return mk("unknown", withNote(["no push feeds were checked"]));
+  if (unknown.length) return mk("unknown", withNote(unknown));
+  if (amber.length) return mk("amber", withNote(amber));
+  const ok = `${feeds.map((f) => f.name).join(", ")} fresh`;
+  return mk("green", skr === "ok" ? `${ok}, SKR ok` : withNote([ok]));
+}
+
+const LAMPORTS_PER_SOL = 1_000_000_000n;
+
+export function gasLight(input: { lamports: bigint }): Light {
+  const { lamports } = input;
+  const shown = (Number(lamports) / 1e9).toFixed(3);
+  const fact = `puller holds ${shown} SOL`;
+  const mk = (state: LightState): Light => ({ key: "gas", label: "Gas", state, fact });
+  if (lamports > LAMPORTS_PER_SOL / 2n) return mk("green");
+  if (lamports >= LAMPORTS_PER_SOL / 10n) return mk("amber");
+  return mk("red");
+}
+
+export function programLight(input: { enabled: boolean[]; expected: boolean[]; leashLive: boolean }): Light {
+  const { enabled, expected, leashLive } = input;
+  const live = `LEASH_LIVE=${leashLive}`;
+  const mk = (state: LightState, fact: string): Light => ({ key: "program", label: "Program", state, fact });
+  if (expected.length === 0) return mk("unknown", `no expected legs to compare, ${live}`);
+  if (enabled.length !== expected.length) return mk("red", `${enabled.length} legs read, ${expected.length} expected, ${live}`);
+  const differ = expected.flatMap((e, i) => (enabled[i] !== e ? [i + 1] : []));
+  if (differ.length) return mk("red", `leg ${differ.join(", ")} differ${differ.length === 1 ? "s" : ""} from expected, ${live}`);
+  return mk("green", `all ${expected.length} legs match, ${live}`);
+}
+
+export function supportLight(input: { now: Date; count7d: number; newestAt: Date | null }): Light {
+  const { now, count7d, newestAt } = input;
+  const plural = `${count7d} support message${count7d === 1 ? "" : "s"} in 7 d`;
+  const fact = count7d === 0 ? plural : newestAt ? `${plural}, newest ${ageText(now.getTime() - newestAt.getTime())} ago` : plural;
+  return { key: "support", label: "Support", state: "info", fact };
+}
