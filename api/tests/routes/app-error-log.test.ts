@@ -2,8 +2,8 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { MemoryRepo } from "@/db/memory";
 import { setRepoForTests } from "@/db/repo";
 import { issueSession } from "@/lib/session";
-import { withAppErrorLog } from "@/lib/failure-log";
-import { founderAlertFor, alertAllowed } from "@/lib/founder-alert";
+import { withAppErrorLog, withFailureLog, LOG_WAIT_MS } from "@/lib/failure-log";
+import { founderAlertFor, founderCardFor, alertAllowed } from "@/lib/founder-alert";
 
 const USER = "4wiD3N7FrBNJSmZUQDkGHM4CsvDrvyvx7G1FApLGEbJ1";
 let repo: MemoryRepo;
@@ -60,4 +60,20 @@ describe("withAppErrorLog", () => {
     expect(alertAllowed(e, 1_000)).toBe(true);
     expect(alertAllowed(e, 2_000)).toBe(false);
   });
+
+  it("founder card has a plain title and next step", () => {
+    const e = { kind: "app_error" as const, userPubkey: USER, walletPubkey: null, detail: { step: "pause", status: 500, error: "boom" } };
+    expect(founderCardFor(e)).toMatchObject({ channel: "ops", title: "App error on a money route", todo: expect.stringContaining("App errors light") });
+  });
+
+  it("a hung logger delays the answer by the bound at most (app_error and the sign-in/link wrapper)", async () => {
+    repo.addEvent = () => new Promise(() => {});
+    const t0 = Date.now();
+    const res = await withAppErrorLog("pause", async () => Response.json({ error: "x" }, { status: 500 }))(post());
+    expect(res.status).toBe(500);
+    await expect(withAppErrorLog("pause", async () => { throw new Error("y"); })(post())).rejects.toThrow("y");
+    const res2 = await withFailureLog("link_failed", "confirm", async () => ({ userPubkey: null, walletPubkey: null }), async (_r: Request) => Response.json({ error: "no" }, { status: 409 }))(post());
+    expect(res2.status).toBe(409);
+    expect(Date.now() - t0).toBeLessThan(3 * LOG_WAIT_MS + 1500);
+  }, 30_000);
 });

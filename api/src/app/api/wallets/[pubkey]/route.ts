@@ -3,13 +3,14 @@ import { z } from "zod";
 import { getRepo } from "@/db/repo";
 import { requireSession } from "@/lib/auth-guard";
 import { ReauthSchema, verifyReauth } from "@/lib/reauth";
+import { withAppErrorLog } from "@/lib/failure-log";
 
 export const runtime = "nodejs";
 
 const Body = z.object({ action: z.enum(["pause", "resume"]), reauth: ReauthSchema.optional() });
 
 /** Pause or resume one of the user's linked wallets. Resume asks the Seeker for a fresh sign-in (R84); a revoked wallet links again instead [A20]. */
-export async function POST(request: Request, ctx: { params: Promise<{ pubkey: string }> }) {
+async function postHandler(request: Request, ctx: { params: Promise<{ pubkey: string }> }) {
   const session = await requireSession(request);
   if (session instanceof NextResponse) return session;
   const { pubkey } = await ctx.params;
@@ -29,3 +30,4 @@ export async function POST(request: Request, ctx: { params: Promise<{ pubkey: st
   await repo.setWalletStatus(pubkey, status);
   return NextResponse.json({ pubkey, status });
 }
+export const POST = withAppErrorLog("wallets", postHandler);

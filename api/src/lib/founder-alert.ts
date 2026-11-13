@@ -237,6 +237,8 @@ export function founderCardFor(e: Omit<EventRow, "id" | "ts">, extra: { skrName?
       return card("ops", "Venue move half done", "The money is idle in their wallet: finish the move or let the next run plant it");
     case "remainder_unrecorded":
       return card("ops", "Leftover change not recorded", "Nothing yet: the daily job retries it for 14 days. If Money ops still shows it open after the next run, look at the planting's transaction");
+    case "app_error":
+      return card("ops", "App error on a money route", "Open the ops dashboard, App errors light. If it is on a withdrawal, look at it today");
     case "run_stopped":
       return card("ops", "Planting run stopped", "Likely a Jupiter or RPC outage: check status, then re-run or wait for tomorrow");
     default:

@@ -19,6 +19,15 @@ type WhoFn<A extends unknown[]> = (req: Request, failure: { status: number; erro
 /** A base58 Solana address as typed (32 to 44 characters): anything else is not stored. */
 export const addressOrNull = (v: unknown): string | null => (typeof v === "string" && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(v) ? v : null);
 
+/** How long a failing request waits for its own failure log (the who lookup, the write, the founder webhook) before answering anyway. */
+export const LOG_WAIT_MS = 2_000;
+/** Waits for `p` at most LOG_WAIT_MS; `p` keeps running in the background (recordFailure never throws). */
+async function boundedLog(p: Promise<void>): Promise<void> {
+  let t: ReturnType<typeof setTimeout> | undefined;
+  await Promise.race([p, new Promise<void>((resolve) => { t = setTimeout(resolve, LOG_WAIT_MS); })]);
+  clearTimeout(t);
+}
+
 export function withFailureLog<A extends unknown[]>(kind: Kind, step: string, who: WhoFn<A>, handler: (req: Request, ...rest: A) => Promise<Response>) {
   return async (req: Request, ...rest: A): Promise<Response> => {
     const copy = req.clone();
@@ -26,13 +35,13 @@ export function withFailureLog<A extends unknown[]>(kind: Kind, step: string, wh
     try {
       res = await handler(req, ...rest);
     } catch (e) {
-      await recordFailure(kind, step, { status: 500, error: errorText(e) }, () => who(copy, { status: 500, error: errorText(e) }, ...rest));
+      await boundedLog(recordFailure(kind, step, { status: 500, error: errorText(e) }, () => who(copy, { status: 500, error: errorText(e) }, ...rest)));
       throw e;
     }
     if (res.status >= 400 && res.status !== 429) {
       // Kimi LOW-2: a body's text is redacted like a throw's, in case a route ever quotes an upstream error.
       const error = redact(String(((await res.clone().json().catch(() => ({}))) as { error?: unknown }).error ?? ""));
-      if (!(res.status === 400 && error === "Bad request.")) await recordFailure(kind, step, { status: res.status, error }, () => who(copy, { status: res.status, error }, ...rest));
+      if (!(res.status === 400 && error === "Bad request.")) await boundedLog(recordFailure(kind, step, { status: res.status, error }, () => who(copy, { status: res.status, error }, ...rest)));
     }
     return res;
   };
@@ -42,7 +51,7 @@ export function withFailureLog<A extends unknown[]>(kind: Kind, step: string, wh
  * Money routes (withdraw, lend withdraw, topup, moves, relink, rules, pause, revoke): only what becomes a 5xx is written, as
  * `app_error`. A refusal (400, 401, 403, 409, 429) is the route working, so it is not recorded. Stores the step name, the status and
  * the redacted error text (200 characters), plus the signed-in user's key, never a body, header, token, email or name. The throw is
- * rethrown and a 5xx answer returned unchanged; a failed write never fails the request.
+ * rethrown and a 5xx answer returned unchanged; a failed write never fails the request, and a hung one delays the answer by LOG_WAIT_MS at most.
  */
 export function withAppErrorLog<A extends unknown[]>(step: string, handler: (req: Request, ...rest: A) => Promise<Response>, who?: WhoFn<A>) {
   const sessionWho = async (req: Request): Promise<FailureWho> => {
@@ -59,12 +68,12 @@ export function withAppErrorLog<A extends unknown[]>(step: string, handler: (req
       res = await handler(req, ...rest);
     } catch (e) {
       const f = { status: 500, error: errorText(e) };
-      await recordFailure("app_error", step, f, whoOf(f));
+      await boundedLog(recordFailure("app_error", step, f, whoOf(f)));
       throw e;
     }
     if (res.status >= 500) {
       const error = redact(String(((await res.clone().json().catch(() => ({}))) as { error?: unknown }).error ?? ""));
-      await recordFailure("app_error", step, { status: res.status, error }, whoOf({ status: res.status, error }));
+      await boundedLog(recordFailure("app_error", step, { status: res.status, error }, whoOf({ status: res.status, error })));
     }
     return res;
   };
