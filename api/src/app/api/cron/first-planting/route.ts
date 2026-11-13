@@ -27,10 +27,10 @@ export async function GET(request: Request) {
     const reasons: Record<string, number> = {};
     for (const s of skipped) reasons[s.reason] = (reasons[s.reason] ?? 0) + 1;
     console.log(`cron (first plantings): planted ${planted.length}, skipped ${skipped.length}`);
-    // Heartbeat for the ops dashboard's "First planting" light: one event per completed run, even with 0 planted. Counts only (public log
+    // Heartbeat for the ops dashboard's "First planting" light: one event per completed run, even with 0 planted. Counts and the fixed reason strings only (public log
     // rule). A run that threw writes none (the light going stale is the signal). A failed write is logged and never changes the answer.
     try {
-      await repo.addEvent({ kind: "first_planting_run", userPubkey: null, walletPubkey: null, detail: { planted: planted.length, skipped: skipped.length } });
+      await repo.addEvent({ kind: "first_planting_run", userPubkey: null, walletPubkey: null, detail: { planted: planted.length, skipped: skipped.length, reasons } });
     } catch (e) {
       console.error(`cron (first plantings) heartbeat not written: ${errorText(e)}`);
     }

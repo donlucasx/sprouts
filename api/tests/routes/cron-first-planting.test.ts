@@ -81,13 +81,19 @@ describe("GET /api/cron/first-planting (owner 10-22)", () => {
       await get();
       const b = await beats();
       expect(b).toHaveLength(1);
-      expect(b[0]).toMatchObject({ userPubkey: null, walletPubkey: null, detail: { planted: 1, skipped: 2 } });
+      expect(b[0]).toMatchObject({ userPubkey: null, walletPubkey: null, detail: { planted: 1, skipped: 2, reasons: { "no usdc": 2 } } });
       expect(JSON.stringify(b[0].detail)).not.toMatch(/Wallet|Sig/);
+    });
+
+    it("the heartbeat detail carries the reasons map", async () => {
+      result.skipped = [{ wallet: "WalletB", reason: "send unknown" }, { wallet: "WalletC", reason: "no usdc" }, { wallet: "WalletD", reason: "no usdc" }];
+      await get();
+      expect((await beats())[0].detail).toEqual({ planted: 0, skipped: 3, reasons: { "send unknown": 1, "no usdc": 2 } });
     });
 
     it("writes one even when nothing was planted", async () => {
       await get();
-      expect((await beats())[0].detail).toEqual({ planted: 0, skipped: 0 });
+      expect((await beats())[0].detail).toEqual({ planted: 0, skipped: 0, reasons: {} });
     });
 
     it("writes none when unauthorized or when the run throws", async () => {

@@ -66,12 +66,16 @@ export function dailyRunLight(input: { now: Date; latest: CronRunInput | null; m
   return mk("green", `finished ${ageText(since)} ago, all steps ok`);
 }
 
-export function firstPlantingLight(input: { now: Date; lastRunAt: Date | null }): Light {
+export function firstPlantingLight(input: { now: Date; lastRunAt: Date | null; reasons?: Record<string, number> }): Light {
   const mk = (state: LightState, fact: string): Light => ({ key: "firstPlanting", label: "First planting", state, fact });
   if (!input.lastRunAt) return mk("red", "no hourly run recorded");
   const age = input.now.getTime() - input.lastRunAt.getTime();
   const fact = `last ran ${ageText(age)} ago`;
-  if (age < 2 * HOUR) return mk("green", fact);
+  if (age < 2 * HOUR) {
+    const bad = Object.entries(input.reasons ?? {}).filter(([r]) => !BENIGN_SKIP_REASONS.includes(r));
+    if (bad.length) return mk("amber", `${fact}; skipped for ${bad.map(([r, n]) => `"${r}" x${n}`).join(", ")}`);
+    return mk("green", fact);
+  }
   if (age <= 6 * HOUR) return mk("amber", fact);
   return mk("red", fact);
 }

@@ -16,7 +16,7 @@ function healthy(over: Partial<OpsSources> = {}): OpsSources & { calls: Record<s
   const wrap = <T,>(name: string, v: () => Promise<T>) => () => { calls[name] = (calls[name] ?? 0) + 1; return v(); };
   const base: OpsSources = {
     cronLatest: wrap("cronLatest", async () => ({ day: "2026-11-12", startedAt: new Date(NOW.getTime() - 3_600_000), finishedAt: new Date(NOW.getTime() - 3_500_000), ok: true, summary: { venues: [], coins: [], splits: [], applied: [], moves: [], planting: {}, withdrawals: {}, reconciled: {} } })),
-    firstPlantingLast: wrap("firstPlantingLast", async () => new Date(NOW.getTime() - 600_000)),
+    firstPlantingLast: wrap("firstPlantingLast", async () => ({ at: new Date(NOW.getTime() - 600_000), reasons: {} })),
     failures: wrap("failures", async () => []),
     oldestPendingWithdrawalAt: wrap("oldestPendingWithdrawalAt", async () => null),
     linkedWallets: wrap("linkedWallets", async () => [W1, W2]),
@@ -143,7 +143,7 @@ describe("gatherOps robustness", () => {
   it("garbage source data makes that light unknown, not a rejection", async () => {
     const bad = healthy({
       cronLatest: async () => ({ day: "d", startedAt: new Date("nope"), finishedAt: { getTime: () => { throw new Error("x"); } } as unknown as Date, ok: true, summary: null }),
-      firstPlantingLast: async () => ({}) as unknown as Date,
+      firstPlantingLast: async () => ({ at: {}, reasons: {} }) as unknown as { at: Date; reasons: Record<string, number> },
       feeds: async () => null as unknown as [],
     });
     const s = await gatherOps({ sources: bad, now: NOW, flags });

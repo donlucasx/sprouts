@@ -121,6 +121,14 @@ describe("firstPlantingLight", () => {
   it("amber at 3 h", () => expect(l(3 * H)).toBe("amber"));
   it("red at 7 h", () => expect(l(7 * H)).toBe("red"));
   it("red when never", () => expect(l(null)).toBe("red"));
+  const r = (reasons?: Record<string, number>) => firstPlantingLight({ now: NOW, lastRunAt: ago(1 * H), reasons });
+  it("amber when the last run skipped for a non-benign reason", () => {
+    const x = r({ "send unknown": 1 });
+    expect(x.state).toBe("amber");
+    expect(x.fact).toContain("send unknown");
+  });
+  it("green when the last run skipped only benign reasons", () => expect(r({ "no usdc": 3 }).state).toBe("green"));
+  it("old heartbeat without reasons still works", () => expect(r(undefined).state).toBe("green"));
 });
 
 describe("moneyOpsLight", () => {

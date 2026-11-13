@@ -13,9 +13,11 @@ Set these in Vercel, production, on the sprouts-api project. Generate each value
 | `OPS_PASSWORD` | The login password for /ops. Changing it logs out every session. |
 | `OPS_SECRET` | Signs the login cookie. Rotating it also logs everyone out. |
 | `OPS_TOKEN` | Bearer token for /api/ops/health. |
-| `OPS_EXCLUDE_WALLETS` | Comma-separated wallet keys to leave out of the numbers. For each test device, list BOTH its seed-vault key AND its linked wallet keys, because swaps only carry the wallet key. |
+| `OPS_EXCLUDE_WALLETS` | Comma-separated wallet keys to leave out of the numbers AND the lights (Swap watching, Swaps arriving, Money ops, Support). For each test device, list BOTH its seed-vault key AND its linked wallet keys, because swaps only carry the wallet key. |
 
-If the variable a route needs is unset, that route answers 404.
+If the variable a route needs is unset, that route answers 404: with the env unset, /ops shows the login form, the login POST answers 404, and /api/ops/health answers 404.
+
+`/api/ops/health` caches its answer for 60 s. Add `?fresh=1` to bypass the cache.
 
 Sessions last 7 days. Login is limited to 5 tries per hour per IP (counted per server instance).
 

@@ -38,7 +38,7 @@ export type OpsNumbers = {
 
 export interface OpsSources {
   cronLatest(): Promise<CronRunInput | null>;
-  firstPlantingLast(): Promise<Date | null>;
+  firstPlantingLast(): Promise<{ at: Date; reasons: Record<string, number> } | null>;
   failures(sinceIso: string): Promise<FailureInput[]>;
   oldestPendingWithdrawalAt(): Promise<Date | null>;
   linkedWallets(): Promise<string[]>;
@@ -134,8 +134,15 @@ export function realOpsSources(): OpsSources {
     },
 
     async firstPlantingLast() {
-      const [r] = await rows(db().from("events").select("ts").eq("kind", "first_planting_run").order("ts", { ascending: false }).limit(1));
-      return r ? date(r.ts) : null;
+      const [r] = await rows(db().from("events").select("ts, reasons:detail->reasons").eq("kind", "first_planting_run").order("ts", { ascending: false }).limit(1));
+      const at = r ? date(r.ts) : null;
+      if (!r || !at) return null;
+      const raw = r.reasons;
+      const reasons: Record<string, number> = {};
+      if (raw !== null && typeof raw === "object" && !Array.isArray(raw)) {
+        for (const [k, n] of Object.entries(raw as Record<string, unknown>)) if (typeof n === "number" && Number.isFinite(n)) reasons[k] = n;
+      }
+      return { at, reasons };
     },
 
     async failures(sinceIso) {

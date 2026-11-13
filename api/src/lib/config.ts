@@ -16,9 +16,9 @@ export type Config = {
   pythApiKey: string | undefined;
   /** Ops dashboard (11-12): comma-separated test wallets / seed-vault keys left out of every ops count and list. */
   opsExcludeWallets: string | undefined;
-  /** Ops dashboard: bearer token for /api/ops/health; unset means that route answers 404. */
+  /** Ops dashboard: bearer token for /api/ops/health; unset means /api/ops/health answers 404. */
   opsToken: string | undefined;
-  /** Ops dashboard: password for the /ops page; unset means the page answers 404. */
+  /** Ops dashboard: password for the /ops page; unset means /ops shows the login form and the login POST answers 404. */
   opsPassword: string | undefined;
   /** Ops dashboard: HMAC key for the /ops session cookie; unset means no cookie verifies. */
   opsSecret: string | undefined;

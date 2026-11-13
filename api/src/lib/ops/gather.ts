@@ -85,7 +85,7 @@ async function gather(sources: OpsSources, now: Date, flags: { movesEnabled: boo
 
   const lights: Light[] = [
     light("dailyRun", "Daily run", [cron], () => dailyRunLight({ now, latest: v(cron), movesEnabled: flags.movesEnabled })),
-    light("firstPlanting", "First planting", [first], () => firstPlantingLight({ now, lastRunAt: v(first) })),
+    light("firstPlanting", "First planting", [first], () => firstPlantingLight({ now, lastRunAt: v(first)?.at ?? null, reasons: v(first)?.reasons })),
     light("swapWatching", "Swap watching", [linked, webhook], () => swapWatchingLight({ linked: v(linked), onWebhook: v(webhook) })),
     light("swapsArriving", "Swaps arriving", [linked, swaps], () => swapsArrivingLight({ now, linkedCount: new Set(v(linked)).size, lastSwapAt: v(swaps).lastSwapAt, unpriced24h: v(swaps).unpriced })),
     light("prices", "Prices", [feeds, skr], () => pricesLight({ now, feeds: v(feeds), skr: v(skr), accessEnds: PYTH_ACCESS_ENDS })),
