@@ -40,7 +40,7 @@ function withTimeout<T>(p: () => Promise<T>, ms: number): Promise<Settled<T>> {
 
 let cache: { at: number; snap: OpsSnapshot } | null = null;
 let inflight: Promise<OpsSnapshot> | null = null;
-let lastNumbers: { numbers: OpsNumbers; at: string } | null = null;
+let lastNumbers: { numbers: OpsNumbers; at: string; ms: number } | null = null;
 
 export function resetOpsCacheForTests(): void {
   cache = null;
@@ -75,36 +75,28 @@ async function gather(sources: OpsSources, now: Date, flags: { movesEnabled: boo
   const unknown = (key: LightKey, label: string, failed: string[]): Light => ({ key, label, state: "unknown", fact: `could not check: ${failed.join(", ")}` });
   const failedOf = (...xs: { name: string; r: { ok: boolean } }[]) => xs.filter((x) => !x.r.ok).map((x) => x.name);
 
-  const lights: Light[] = [];
-  // Order here is LightKey order; each light is unknown if ANY of its sources failed.
-  if (cron.r.ok) lights.push(dailyRunLight({ now, latest: cron.r.value, movesEnabled: flags.movesEnabled }));
-  else lights.push(unknown("dailyRun", "Daily run", ["cronLatest"]));
+  // Order here is LightKey order; each light is unknown if ANY of its sources failed, or if building it throws on odd data.
+  const light = (key: LightKey, label: string, srcs: { name: string; r: { ok: boolean } }[], build: () => Light): Light => {
+    const failed = failedOf(...srcs);
+    if (failed.length) return unknown(key, label, failed);
+    try { return build(); } catch { return unknown(key, label, srcs.map((x) => x.name)); }
+  };
+  const v = <T,>(x: { r: Settled<T> }): T => (x.r as { ok: true; value: T }).value;
 
-  if (first.r.ok) lights.push(firstPlantingLight({ now, lastRunAt: first.r.value }));
-  else lights.push(unknown("firstPlanting", "First planting", ["firstPlantingLast"]));
+  const lights: Light[] = [
+    light("dailyRun", "Daily run", [cron], () => dailyRunLight({ now, latest: v(cron), movesEnabled: flags.movesEnabled })),
+    light("firstPlanting", "First planting", [first], () => firstPlantingLight({ now, lastRunAt: v(first) })),
+    light("swapWatching", "Swap watching", [linked, webhook], () => swapWatchingLight({ linked: v(linked), onWebhook: v(webhook) })),
+    light("swapsArriving", "Swaps arriving", [linked, swaps], () => swapsArrivingLight({ now, linkedCount: new Set(v(linked)).size, lastSwapAt: v(swaps).lastSwapAt, unpriced24h: v(swaps).unpriced })),
+    light("prices", "Prices", [feeds, skr], () => pricesLight({ now, feeds: v(feeds), skr: v(skr), accessEnds: PYTH_ACCESS_ENDS })),
+    light("gas", "Gas", [gas], () => gasLight({ lamports: v(gas) })),
+    light("moneyOps", "Money ops", [failures, pending], () => moneyOpsLight({ now, failures: v(failures), oldestPendingWithdrawalAt: v(pending) })),
+    light("program", "Program", [legs], () => programLight({ enabled: v(legs), expected: [...EXPECTED_LEGS_ENABLED], leashLive: flags.leashLive, names: LEG_NAMES })),
+    light("support", "Support", [support], () => supportLight({ now, count7d: v(support).count, newestAt: v(support).newestAt })),
+  ];
 
-  if (linked.r.ok && webhook.r.ok) lights.push(swapWatchingLight({ linked: linked.r.value, onWebhook: webhook.r.value }));
-  else lights.push(unknown("swapWatching", "Swap watching", failedOf(linked, webhook)));
-
-  if (linked.r.ok && swaps.r.ok) lights.push(swapsArrivingLight({ now, linkedCount: new Set(linked.r.value).size, lastSwapAt: swaps.r.value.lastSwapAt, unpriced24h: swaps.r.value.unpriced }));
-  else lights.push(unknown("swapsArriving", "Swaps arriving", failedOf(linked, swaps)));
-
-  if (feeds.r.ok && skr.r.ok) lights.push(pricesLight({ now, feeds: feeds.r.value, skr: skr.r.value, accessEnds: PYTH_ACCESS_ENDS }));
-  else lights.push(unknown("prices", "Prices", failedOf(feeds, skr)));
-
-  if (gas.r.ok) lights.push(gasLight({ lamports: gas.r.value }));
-  else lights.push(unknown("gas", "Gas", ["pullerLamports"]));
-
-  if (failures.r.ok && pending.r.ok) lights.push(moneyOpsLight({ now, failures: failures.r.value, oldestPendingWithdrawalAt: pending.r.value }));
-  else lights.push(unknown("moneyOps", "Money ops", failedOf(failures, pending)));
-
-  if (legs.r.ok) lights.push(programLight({ enabled: legs.r.value, expected: [...EXPECTED_LEGS_ENABLED], leashLive: flags.leashLive, names: LEG_NAMES }));
-  else lights.push(unknown("program", "Program", ["legsEnabled"]));
-
-  if (support.r.ok) lights.push(supportLight({ now, count7d: support.r.value.count, newestAt: support.r.value.newestAt }));
-  else lights.push(unknown("support", "Support", ["support"]));
-
-  if (nums.r.ok) lastNumbers = { numbers: nums.r.value, at: now.toISOString() };
+  // Overlapping runs: only a newer run may replace the last good numbers.
+  if (nums.r.ok && (!lastNumbers || now.getTime() > lastNumbers.ms)) lastNumbers = { numbers: nums.r.value, at: now.toISOString(), ms: now.getTime() };
 
   return {
     at: now.toISOString(),
@@ -126,7 +118,7 @@ export async function gatherOps(opts: GatherOpts = {}): Promise<OpsSnapshot> {
   const sources = opts.sources ?? realOpsSources();
   const flags = opts.flags ?? { movesEnabled: movesEnabled(), leashLive: leashLive() };
   const run = gather(sources, now, flags).then((snap) => {
-    cache = { at: now.getTime(), snap };
+    if (!cache || now.getTime() >= cache.at) cache = { at: now.getTime(), snap };
     return snap;
   });
   const tracked = run.finally(() => { if (inflight === tracked) inflight = null; });

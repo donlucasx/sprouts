@@ -139,6 +139,48 @@ describe("gatherOps", () => {
   });
 });
 
+describe("gatherOps robustness", () => {
+  it("garbage source data makes that light unknown, not a rejection", async () => {
+    const bad = healthy({
+      cronLatest: async () => ({ day: "d", startedAt: new Date("nope"), finishedAt: { getTime: () => { throw new Error("x"); } } as unknown as Date, ok: true, summary: null }),
+      firstPlantingLast: async () => ({}) as unknown as Date,
+      feeds: async () => null as unknown as [],
+    });
+    const s = await gatherOps({ sources: bad, now: NOW, flags });
+    const by = Object.fromEntries(s.lights.map((l) => [l.key, l]));
+    expect(by.dailyRun.state).toBe("unknown");
+    expect(by.prices.state).toBe("unknown");
+    expect(s.lights).toHaveLength(9);
+    expect(by.gas.state).toBe("green");
+  });
+
+  it("an older overlapping run cannot overwrite newer cache or numbers", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    const slow = healthy({ numbers: async () => { await gate; return numbers(1); } });
+    const fast = healthy({ numbers: async () => numbers(2) });
+    const older = gatherOps({ sources: slow, now: NOW, flags });
+    const newer = await gatherOps({ sources: fast, now: new Date(NOW.getTime() + 30_000), flags, fresh: true });
+    release();
+    await older;
+    const again = await gatherOps({ sources: fast, now: new Date(NOW.getTime() + 31_000), flags });
+    expect(again).toBe(newer);
+    const failNums = healthy({ numbers: async () => { throw new Error("x"); } });
+    const after = await gatherOps({ sources: failNums, now: new Date(NOW.getTime() + 200_000), flags, fresh: true });
+    expect(after.numbers?.funnel.all.signIns).toBe(2);
+    expect(after.numbersAt).toBe(new Date(NOW.getTime() + 30_000).toISOString());
+  });
+
+  it("redaction strips a full key that really lands in a fact", async () => {
+    const full = "4Nd1mYQzvgKQuYkVyiN8JSgSkYWwZZaZ5fXhqHzG4eXq";
+    const src = healthy({ cronLatest: async () => ({ day: "d", startedAt: new Date(NOW.getTime() - 3_600_000), finishedAt: new Date(NOW.getTime() - 3_500_000), ok: true, summary: { planting: { skipped: [{ reason: full }] } } }) });
+    const s = await gatherOps({ sources: src, now: NOW, flags });
+    const l = s.lights.find((x) => x.key === "dailyRun")!;
+    expect(l.fact).toContain("skipped: 4Nd1…eXq");
+    expect(l.fact).not.toContain(full);
+  });
+});
+
 describe("programLight names", () => {
   it("uses names when given", () => {
     const l = programLight({ enabled: [true, false], expected: [true, true], leashLive: true, names: ["SKR", "stORE"] });
