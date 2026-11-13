@@ -58,6 +58,19 @@ describe("dailyRunLight", () => {
   it("red: ok false", () => {
     expect(light(run({ ok: false }, { error: "boom" })).state).toBe("red");
   });
+  it("red: finished with ok null", () => {
+    expect(light(run({ ok: null })).state).toBe("red");
+  });
+  it("amber: ok true but summary null", () => {
+    const l = light(run({ summary: null }));
+    expect(l.state).toBe("amber");
+    expect(l.fact).toBe("run finished but recorded no summary");
+  });
+  it("red, not running: ok false with no finishedAt, 3 min old", () => {
+    const l = light(run({ startedAt: ago(3 * 60_000), finishedAt: null, ok: false }));
+    expect(l.state).toBe("red");
+    expect(l.fact).not.toContain("running");
+  });
   it("red: started 11 min ago and not finished", () => {
     expect(light(run({ startedAt: ago(11 * 60_000), finishedAt: null, ok: null })).state).toBe("red");
   });

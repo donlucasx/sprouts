@@ -31,15 +31,17 @@ export function dailyRunLight(input: { now: Date; latest: CronRunInput | null; m
   const mk = (state: LightState, fact: string): Light => ({ key: "dailyRun", label: "Daily run", state, fact });
   if (!latest) return mk("red", "no daily run recorded");
 
+  if (latest.ok === false) return mk("red", "last run failed");
   if (!latest.finishedAt) {
     const running = now.getTime() - latest.startedAt.getTime();
     return running > 10 * MIN ? mk("red", `started ${ageText(running)} ago and never finished`) : mk("amber", `running for ${ageText(running)}`);
   }
   const since = now.getTime() - latest.finishedAt.getTime();
   if (since > 26 * HOUR) return mk("red", `last run finished ${ageText(since)} ago`);
-  if (latest.ok === false) return mk("red", "last run failed");
+  if (latest.ok !== true) return mk("red", "last run finished without ok = true");
+  if (latest.summary === null) return mk("amber", "run finished but recorded no summary");
 
-  const s = latest.summary ?? {};
+  const s = latest.summary;
   // Red: null coverage or withdrawals.
   const redNull = (["coverage", "withdrawals"] as const).filter((k) => s[k] === null);
   if (redNull.length) return mk("red", `step failed: ${redNull.join(", ")}`);
