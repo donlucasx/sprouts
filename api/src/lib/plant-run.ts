@@ -588,7 +588,11 @@ async function plantOneOrThrow(a: RunArgs, w: WalletRow, ctx: RunCtx): Promise<P
   // the list was read) ends the first-planting threshold for the rest, and a first-only run then leaves them to the daily run.
   const hasPlanted = await userHasPlanted(a.repo, w.userPubkey);
   if (a.only === "first" && hasPlanted) return { wallet: w.pubkey, reason: "not first" };
-  const swaps = await a.repo.unplantedSwaps(w.pubkey);
+  // Round 3 (review): a swap with a part on a still-`sent` planting is not taken today (no whole claim, no new part): if that planting
+  // failed after a whole claim of the rest, its part would never be pulled. It waits for the planting to confirm or fail.
+  const listed = await a.repo.unplantedSwaps(w.pubkey);
+  const swaps = listed.filter((s) => !s.partInFlight);
+  if (swaps.length === 0 && listed.length > 0) return { wallet: w.pubkey, reason: "part in flight" };
   // Cap carry round 2 (0013): every amount below is what each round-up still OWES (a round-up pulled in parts owes the rest); the
   // 7-day rule keeps the swap's own time.
   const pending = swaps.reduce((sum, s) => sum + s.owedCents, 0);
@@ -739,12 +743,14 @@ async function plantOneOrThrow(a: RunArgs, w: WalletRow, ctx: RunCtx): Promise<P
   if (!target) return { wallet: w.pubkey, reason: "no leg enabled" };
   // R336 follow-up: with USDC lending disabled and every enabled leg at its stop max, the rest of the split is left unpulled. One leg
   // takes each planting, so "unpulled" is the pull itself: only the target's share of the change is pulled (the USDC stays in the
-  // wallet; the round-ups this planting selected, by the cap and balance bounds above, are all claimed by it, and a part keeps its
-  // full cents: overweighting the capped legs later would be wrong). The venue check above used the larger amount (the stricter 60% test); both are already bounded by the
+  // wallet; the round-ups this planting selected, by the cap and balance bounds above, are all claimed by it: overweighting the capped
+  // legs later would be wrong. A part is the exception: it records only the share pulled, below). The venue check above used the larger amount (the stricter 60% test); both are already bounded by the
   // cap and the USDC balance.
   const share = ASSETS.reduce((sum, leg) => sum + target[leg], 0);
   if (share < 100 - 1e-9) {
     amount = plantAmountCents({ pendingCents: Math.floor((covered * share) / 100), capLeftCents: left, feeCents: NETWORK_FEE_CENTS, minCents: forced ? 0 : threshold });
+    // Round 3 (review): a part records what is actually pulled for its swap (the share), never the whole day; the rest stays owed.
+    if (part && amount.pullCents > 0) part = { ...part, cents: amount.changeCents };
     if (amount.pullCents === 0) return { wallet: w.pubkey, reason: "below threshold" };
     pullRaw = BigInt(amount.pullCents) * USDC_PER_CENT;
   }
@@ -921,8 +927,14 @@ async function plantOneOrThrow(a: RunArgs, w: WalletRow, ctx: RunCtx): Promise<P
   const owedNow = async (): Promise<boolean> => {
     const took = part ? [...claim, part.swap] : claim;
     if (took.length === 0) return true;
-    const parts = await a.repo.swapPartsCents(took.map((s) => s.signature), planting.id).catch(() => null);
-    return parts !== null && took.every((s) => s.roundupCents - (parts.get(s.signature) ?? 0) === s.owedCents);
+    const parts = await a.repo.partsBySwap(took.map((s) => s.signature), planting.id).catch(() => null);
+    if (parts === null || !took.every((s) => s.roundupCents - (parts.get(s.signature)?.cents ?? 0) === s.owedCents && !parts.get(s.signature)?.inFlight)) return false;
+    if (!part) return true;
+    // Round 3 (review): a part leaves its swap unclaimed, so a run that claimed it whole meanwhile (another cap read) shows only as the
+    // swap missing from the unplanted list: the swap must still be listed and owe exactly what it owed less this part.
+    const still = await a.repo.unplantedSwaps(w.pubkey).catch(() => null);
+    const mine = still?.find((s) => s.signature === part!.swap.signature);
+    return !!mine && mine.owedCents === part.swap.owedCents - part.cents;
   };
   if (claimed !== claim.length || !(await owedNow())) {
     // Another run got there first: give back whatever this one took and let that run finish.

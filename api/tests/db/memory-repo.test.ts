@@ -311,9 +311,12 @@ describe("MemoryRepo swap parts", () => {
     const a = await r.insertPlanting({ ...base, signature: "a", status: "sent", swapParts: [{ signature: "x", cents: 300 }] }, []);
     const b = await r.insertPlanting({ ...base, signature: "b", status: "confirmed", swapParts: [{ signature: "x", cents: 200 }] }, []);
     expect((await r.unplantedSwaps("W"))[0].owedCents).toBe(500);
-    expect(await r.swapPartsCents(["x"], a.id)).toEqual(new Map([["x", 200]]));   // excluding planting a
+    expect(await r.partsBySwap(["x"], a.id)).toEqual(new Map([["x", { cents: 200, inFlight: false }]]));   // excluding planting a
+    expect(await r.partsBySwap(["x"])).toEqual(new Map([["x", { cents: 500, inFlight: true }]]));            // a is still sent
+    expect((await r.unplantedSwaps("W"))[0].partInFlight).toBe(true);
     await r.setPlantingStatus(a.id, "failed");
     expect((await r.unplantedSwaps("W"))[0].owedCents).toBe(800);
+    expect((await r.unplantedSwaps("W"))[0].partInFlight).toBe(false);
     await r.insertPlanting({ ...base, signature: "c", status: "sent", swapParts: [{ signature: "x", cents: 800 }] }, []);
     expect(await r.unplantedSwaps("W")).toEqual([]);   // nothing owed: not pending
     void b;

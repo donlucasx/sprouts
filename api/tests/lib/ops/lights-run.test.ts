@@ -24,7 +24,7 @@ const light = (latest: CronRunInput | null, movesEnabled = true, now = NOW) => d
 
 describe("BENIGN_SKIP_REASONS", () => {
   it("is the exact list", () => {
-    expect([...BENIGN_SKIP_REASONS]).toEqual(["no usdc", "paused", "below threshold", "cap reached", "revoked", "relink needed", "not first"]);
+    expect([...BENIGN_SKIP_REASONS]).toEqual(["no usdc", "paused", "below threshold", "cap reached", "revoked", "relink needed", "not first", "part in flight"]);
   });
 });
 

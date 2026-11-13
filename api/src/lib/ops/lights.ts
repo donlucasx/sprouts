@@ -23,7 +23,7 @@ const maker = (key: LightKey) => (state: LightState, fact: string, action?: stri
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 /** Skip reasons `plant-run.ts` emits that need no attention (confirmed against its `reason:` literals). */
-export const BENIGN_SKIP_REASONS: readonly string[] = ["no usdc", "paused", "below threshold", "cap reached", "revoked", "relink needed", "not first"];
+export const BENIGN_SKIP_REASONS: readonly string[] = ["no usdc", "paused", "below threshold", "cap reached", "revoked", "relink needed", "not first", "part in flight"];
 
 const MIN = 60_000;
 const HOUR = 3_600_000;

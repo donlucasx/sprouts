@@ -2148,6 +2148,61 @@ describe("cap carry: round-ups past the daily cap wait for the next days (owner 
     expect(await owed(repo)).toEqual([1000]);
   });
 
+  // Round 3 (review): a part racing a whole claim of the same swap. Run A sees a $5 cap (the 600 is oversized: a part), run B a $10
+  // cap (the 600 fits: a whole claim); both read the swap before either writes. Exactly one pulls.
+  it("a part racing a whole claim of the same swap (different caps): exactly one pulls", async () => {
+    const repo = await seeded([], {});
+    await repo.saveRules("U", { dailyCapCents: 1000 });
+    const w = (await repo.getWallet("W"))!;
+    w.dailyCapCents = 1000;
+    await repo.insertSwap({ signature: "S", walletPubkey: "W", ts: new Date(NOW.getTime() - 3_600_000), inMint: "a", inAmount: 1, outMint: "b", outAmount: 1, usdSizeCents: 60_000, class: "major", roundupCents: 600 });
+    // A reads S, then waits (its balance read) until B has claimed S whole and sent; only then does A write its part.
+    let bSent!: () => void;
+    const gate = new Promise<void>((r) => { bSent = r; });
+    const capA = fakeChain({ readDelegation: async () => DELEGATION, usdcBalanceRaw: async () => { await gate; return 50_000_000n; } });   // $5
+    const capB = fakeChain({ readDelegation: async () => ({ ...DELEGATION, amountPerPeriodRaw: 10_000_000n }), sendPlanting: async () => { bSent(); } });   // $10
+    const [a, b] = await Promise.all([runPlanting({ repo, now: NOW, chain: capA }), runPlanting({ repo, now: NOW, chain: capB })]);
+    expect(b.planted.length).toBe(1);
+    expect(a.planted.length).toBe(0);
+    expect(a.skipped[0].reason).toBe("claimed elsewhere");
+    const live = [...repo.plantings.values()].filter((p) => p.status !== "failed");
+    expect(live.length).toBe(1);
+    // Whoever won, the cents pulled for S plus what S still owes is exactly 600: never more.
+    const owes = (await owed(repo))[0] ?? 0;
+    expect(live[0].usdcPulledCents + owes).toBe(600);
+  });
+
+  // Round 3 (review): a whole claim while a part of the same swap is still `sent` would lose that part if its planting then failed.
+  it("a swap with a part on a `sent` planting is not claimed whole: it waits; confirmed, the rest is claimed", async () => {
+    const repo = await queued([1000]);
+    const pending = fakeChain({ sendPlanting: async () => { throw new Error("websocket closed"); }, signatureStatus: async () => "pending" });
+    await runPlanting({ repo, now: NOW, chain: pending });
+    const p1 = lastPlanting(repo);
+    expect(p1.status).toBe("sent");
+    expect(await owed(repo)).toEqual([500]);
+    const r2 = await runPlanting({ repo, now: new Date(NOW.getTime() + 60_000), chain: pending });
+    expect(r2.planted).toEqual([]);
+    expect(r2.skipped[0].reason).toBe("part in flight");
+    expect(claimedBy(repo, lastPlanting(repo).id)).toEqual([]);
+    await repo.setPlantingStatus(p1.id, "confirmed");
+    const r3 = await runPlanting({ repo, now: new Date(NOW.getTime() + 120_000), chain: fakeChain() });
+    expect(r3.planted[0].pullCents).toBe(500);
+    expect(claimedBy(repo, lastPlanting(repo).id)).toEqual([1000]);
+    expect(await waiting(repo)).toEqual([]);
+  });
+
+  it("a swap with a part on a `sent` planting that then fails: the full owed amount is pulled again", async () => {
+    const repo = await queued([1000]);
+    await runPlanting({ repo, now: NOW, chain: fakeChain({ sendPlanting: async () => { throw new Error("websocket closed"); }, signatureStatus: async () => "pending" }) });
+    const p1 = lastPlanting(repo);
+    await repo.setPlantingStatus(p1.id, "failed");
+    expect(await owed(repo)).toEqual([1000]);
+    const r = await runPlanting({ repo, now: new Date(NOW.getTime() + 60_000), chain: fakeChain() });
+    expect(r.planted[0].pullCents).toBe(500);
+    expect(partsOf(repo, lastPlanting(repo).id)).toEqual([["q0", 500]]);
+    expect(await owed(repo)).toEqual([500]);
+  });
+
   it("two overlapping runs on an oversized round-up record one part", async () => {
     const repo = await queued([1000]);
     const chain = fakeChain({ sendPlanting: async () => { await new Promise((r) => setTimeout(r, 5)); } });
@@ -2221,6 +2276,17 @@ describe("cap carry: round-ups past the daily cap wait for the next days (owner 
     expect(r2.planted[0].pullCents).toBe(500);
     expect(partsOf(repo, [...repo.plantings.values()][0].id)).toEqual([["q0", 500]]);
     expect(await owed(repo)).toEqual([500, 5]);
+  });
+
+  // Round 3 (review): under a share < 100 a part records what was pulled for it, never the whole day.
+  it("share under 100 with an oversized round-up: the part records the share actually pulled; the rest is still owed", async () => {
+    const repo = await queued([1000]);
+    await repo.setWalletLink("W", { delegationPda: "D", linkModel: "leash" });
+    await repo.saveRules("U", { plantThresholdCents: 100, stop: "careful", allocation: { SKR: 60, stORE: 0, USDC_LEND: 10, SOL_LEND: 0, hSOL: 10, cbBTC: 20 } });
+    const r = await runPlanting({ repo, now: NOW, chain: fakeChain({ readLeashConfig: async () => leashCfg([6, 7]) }) });
+    expect(r.planted[0].pullCents).toBe(225);   // 45% of the 500 day
+    expect(partsOf(repo, lastPlanting(repo).id)).toEqual([["q0", 225]]);
+    expect(await owed(repo)).toEqual([775]);
   });
 
   it("share under 100: a share too small for any planting skips and claims nothing", async () => {

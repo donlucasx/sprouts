@@ -159,17 +159,18 @@ export class MemoryRepo implements Repo {
 
   async unplantedSwaps(walletPubkey: string) {
     const mine = [...this.swaps.values()].filter((s) => s.walletPubkey === walletPubkey && s.plantingId === null).sort((a, b) => a.ts.getTime() - b.ts.getTime());
-    const parts = await this.swapPartsCents(mine.map((s) => s.signature));
-    return mine.map((s) => ({ ...s, owedCents: s.roundupCents - (parts.get(s.signature) ?? 0) })).filter((s) => !parts.has(s.signature) || s.owedCents > 0);   // a swap paid off in parts is not pending; a zero round-up still is, as before
+    const parts = await this.partsBySwap(mine.map((s) => s.signature));
+    return mine.map((s) => ({ ...s, owedCents: s.roundupCents - (parts.get(s.signature)?.cents ?? 0), partInFlight: parts.get(s.signature)?.inFlight ?? false })).filter((s) => !parts.has(s.signature) || s.owedCents > 0);   // a swap paid off in parts is not pending; a zero round-up still is, as before
   }
 
-  async swapPartsCents(signatures: string[], excludePlantingId?: string) {
+  async partsBySwap(signatures: string[], excludePlantingId?: string) {
     const want = new Set(signatures);
-    const out = new Map<string, number>();
+    const out = new Map<string, { cents: number; inFlight: boolean }>();
     for (const x of this.swapParts) {
       const status = this.plantings.get(x.plantingId)?.status;
       if (!want.has(x.signature) || x.plantingId === excludePlantingId || (status !== "sent" && status !== "confirmed")) continue;
-      out.set(x.signature, (out.get(x.signature) ?? 0) + x.cents);
+      const was = out.get(x.signature);
+      out.set(x.signature, { cents: (was?.cents ?? 0) + x.cents, inFlight: (was?.inFlight ?? false) || status === "sent" });
     }
     return out;
   }

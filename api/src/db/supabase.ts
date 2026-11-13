@@ -164,21 +164,25 @@ export class SupabaseRepo implements Repo {
   async unplantedSwaps(walletPubkey: string) {
     const swaps = await this.many(this.db.from("swaps").select().eq("wallet_pubkey", walletPubkey).is("planting_id", null).order("ts"), swapRow);
     // Cap carry round 2 (0013): a failed read throws (the run's "build failed"); never a planting from round-ups read without their parts.
-    const parts = await this.swapPartsCents(swaps.map((s) => s.signature));
-    return swaps.map((s) => ({ ...s, owedCents: s.roundupCents - (parts.get(s.signature) ?? 0) })).filter((s) => !parts.has(s.signature) || s.owedCents > 0);   // a swap paid off in parts is not pending; a zero round-up still is, as before
+    const parts = await this.partsBySwap(swaps.map((s) => s.signature));
+    return swaps.map((s) => ({ ...s, owedCents: s.roundupCents - (parts.get(s.signature)?.cents ?? 0), partInFlight: parts.get(s.signature)?.inFlight ?? false })).filter((s) => !parts.has(s.signature) || s.owedCents > 0);   // a swap paid off in parts is not pending; a zero round-up still is, as before
   }
 
   /** swap_parts of sent or confirmed plantings (a failed planting's part gives the cents back), by signature; chunked like plantingLegsFor. */
-  async swapPartsCents(signatures: string[], excludePlantingId?: string) {
+  async partsBySwap(signatures: string[], excludePlantingId?: string) {
     const sigs = [...new Set(signatures)];
     const chunks: string[][] = [];
     for (let i = 0; i < sigs.length; i += 100) chunks.push(sigs.slice(i, i + 100));
     const rows = (await Promise.all(chunks.map((c) => this.many(
       this.db.from("swap_parts").select("planting_id, signature, cents, plantings!inner(status)").in("signature", c).in("plantings.status", ["sent", "confirmed"]),
-      (r) => ({ plantingId: String(r.planting_id), signature: String(r.signature), cents: Number(r.cents) }),
+      (r) => ({ plantingId: String(r.planting_id), signature: String(r.signature), cents: Number(r.cents), status: String((r.plantings as { status?: unknown } | null)?.status ?? "") }),
     )))).flat();
-    const out = new Map<string, number>();
-    for (const r of rows) if (r.plantingId !== excludePlantingId) out.set(r.signature, (out.get(r.signature) ?? 0) + r.cents);
+    const out = new Map<string, { cents: number; inFlight: boolean }>();
+    for (const r of rows) {
+      if (r.plantingId === excludePlantingId) continue;
+      const was = out.get(r.signature);
+      out.set(r.signature, { cents: (was?.cents ?? 0) + r.cents, inFlight: (was?.inFlight ?? false) || r.status === "sent" });
+    }
     return out;
   }
 

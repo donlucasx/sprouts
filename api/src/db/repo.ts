@@ -62,8 +62,11 @@ export interface Repo {
   insertSwap(s: Omit<T.SwapRow, "plantingId" | "createdAt">): Promise<boolean>;
   /** Oldest first, each with what it still owes (round-up minus parts of sent or confirmed plantings); a swap its parts paid off is left out. */
   unplantedSwaps(walletPubkey: string): Promise<T.PendingSwapRow[]>;
-  /** Cap carry round 2: the cents of each swap's parts on sent or confirmed plantings, leaving out one planting (the caller's own). */
-  swapPartsCents(signatures: string[], excludePlantingId?: string): Promise<Map<string, number>>;
+  /**
+   * Cap carry round 2/3: each swap's parts on sent or confirmed plantings, leaving out one planting (the caller's own): their cents, and
+   * whether any sits on a `sent` planting (in flight: if it fails, its cents are owed again).
+   */
+  partsBySwap(signatures: string[], excludePlantingId?: string): Promise<Map<string, { cents: number; inFlight: boolean }>>;
   /** Across the user's wallets, newest first. */
   listSwaps(userPubkey: string, limit: number): Promise<T.SwapRow[]>;
   /** Claims the swaps for a planting in one conditional statement (only unclaimed ones); returns how many were claimed. */
