@@ -1869,3 +1869,181 @@ describe("first planting (owner 10-22): 50 cents for a user who never planted; t
     expect((await repo.getWallet("W"))!.status).toBe("active");
   });
 });
+
+// Audit F1 (11-13): a remainder the booking could not record was only a console line (Vercel Hobby keeps logs an hour) and nothing
+// retried it, so that user's change stayed with the puller for good. Now every failure path writes one `remainder_unrecorded` event
+// (enum detail only, no error text), and the daily run retries NULL remainders of the last 14 days, written once.
+import { retryUnrecordedRemainders, REMAINDER_RETRY_MAX } from "@/lib/plant-run";
+
+describe("unrecorded remainders are loud and retried (audit F1)", () => {
+  const lendOnly = { SKR: 0, stORE: 0, USDC_LEND: 100, SOL_LEND: 0, hSOL: 0, cbBTC: 0 };
+  const solOnly = { ...lendOnly, USDC_LEND: 0, SOL_LEND: 100 };
+  const remainderEvents = (repo: MemoryRepo) => repo.events.filter((e) => e.kind === "remainder_unrecorded");
+  const plantings = (repo: MemoryRepo) => [...repo.plantings.values()].sort((a, b) => a.ts.getTime() - b.ts.getTime());
+  const quiet = () => vi.spyOn(console, "error").mockImplementation(() => {});
+  const addSwaps = async (repo: MemoryRepo, tag: string, at: Date) => {
+    for (const [i, c] of [83, 62, 70].entries()) await repo.insertSwap({ signature: `${tag}${i}`, walletPubkey: "W", ts: new Date(at.getTime() - 3_600_000), inMint: "a", inAmount: 1, outMint: "b", outAmount: 1, usdSizeCents: 100, class: "major", roundupCents: c });
+  };
+  /** An SKR planting whose remainder read failed: confirmed, skr_surplus_raw NULL. */
+  const skrMissing = async (repo?: MemoryRepo, now = NOW, tag = "x") => {
+    const r = repo ?? (await seeded([83, 62, 70]));
+    if (!repo) await storeOff(r); else await addSwaps(r, tag, now);
+    await runPlanting({ repo: r, now, chain: fakeChain({ pullerSkrChangeRaw: async () => { throw new Error("rpc down: https://rpc.example/?api-key=SECRET"); } }) });
+    return r;
+  };
+  const solMissing = async () => {
+    const repo = await seeded([83, 62, 70]);
+    await seedVenues(repo);
+    await repo.saveRules("U", { allocation: solOnly });
+    await runPlanting({ repo, now: NOW, chain: fakeChain({ pullerCarryChangeRaw: async () => { throw new Error("rpc down SECRET"); } }) });
+    return repo;
+  };
+
+  it("SKR read failed: one event, user and wallet set, enum detail, no error text", async () => {
+    const e = quiet();
+    const repo = await skrMissing();
+    e.mockRestore();
+    const p = plantings(repo)[0];
+    expect(p).toMatchObject({ status: "confirmed", skrSurplusRaw: null });
+    const ev = remainderEvents(repo);
+    expect(ev).toHaveLength(1);
+    expect(ev[0]).toMatchObject({ userPubkey: "U", walletPubkey: "W", detail: { plantingId: p.id, kind: "SKR", reason: "read_failed" } });
+    expect(Object.keys(ev[0].detail as object).sort()).toEqual(["kind", "plantingId", "reason"]);
+    expect(JSON.stringify(ev[0].detail)).not.toMatch(/rpc|SECRET|api-key/);
+  });
+
+  it("SKR below zero: one event with reason below_zero", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await storeOff(repo);
+    const e = quiet();
+    await runPlanting({ repo, now: NOW, chain: fakeChain({ pullerSkrChangeRaw: async () => -5n }) });
+    e.mockRestore();
+    expect(remainderEvents(repo).map((x) => x.detail)).toEqual([{ plantingId: plantings(repo)[0].id, kind: "SKR", reason: "below_zero" }]);
+  });
+
+  it("WSOL read failed: one event with kind WSOL, no error text", async () => {
+    const e = quiet();
+    const repo = await solMissing();
+    e.mockRestore();
+    const ev = remainderEvents(repo);
+    expect(ev.map((x) => x.detail)).toEqual([{ plantingId: plantings(repo)[0].id, kind: "WSOL", reason: "read_failed" }]);
+    expect(ev[0]).toMatchObject({ userPubkey: "U", walletPubkey: "W" });
+    expect(JSON.stringify(ev[0].detail)).not.toContain("SECRET");
+  });
+
+  it("USDC below zero: one event with kind USDC", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await seedVenues(repo);
+    await repo.saveRules("U", { allocation: lendOnly });
+    const e = quiet();
+    await runPlanting({ repo, now: NOW, chain: fakeChain({ pullerCarryChangeRaw: async () => -1n }) });
+    e.mockRestore();
+    expect(remainderEvents(repo).map((x) => x.detail)).toEqual([{ plantingId: plantings(repo)[0].id, kind: "USDC", reason: "below_zero" }]);
+  });
+
+  it("the legs read failed twice (the silent .catch): one event with kind legs", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await storeOff(repo);
+    const spy = vi.spyOn(repo, "plantingLegs").mockRejectedValue(new Error("db down SECRET"));
+    const e = quiet();
+    await runPlanting({ repo, now: NOW, chain: fakeChain() });
+    e.mockRestore();
+    spy.mockRestore();
+    const ev = remainderEvents(repo);
+    expect(ev.map((x) => x.detail)).toEqual([{ plantingId: plantings(repo)[0].id, kind: "legs", reason: "legs_read_failed" }]);
+    expect(JSON.stringify(ev[0].detail)).not.toContain("SECRET");
+  });
+
+  it("a recorded remainder writes no event", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await storeOff(repo);
+    await runPlanting({ repo, now: NOW, chain: fakeChain({ pullerSkrChangeRaw: async () => 500n }) });
+    expect(remainderEvents(repo)).toHaveLength(0);
+  });
+
+  it("a throwing event write never breaks the booking: the planting is confirmed and planted, the carry recorder still runs", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await storeOff(repo);
+    const spy = vi.spyOn(repo, "addEvent").mockRejectedValue(new Error("events insert failed"));
+    const e = quiet();
+    const r = await runPlanting({ repo, now: NOW, chain: fakeChain({ pullerSkrChangeRaw: async () => { throw new Error("rpc down"); } }) });
+    e.mockRestore();
+    spy.mockRestore();
+    expect(r.planted).toHaveLength(1);
+    expect(r.skipped).toEqual([]);
+    expect(plantings(repo)[0].status).toBe("confirmed");
+  });
+
+  it("retry: records a NULL SKR remainder once, and a second retry never adds it twice", async () => {
+    const e = quiet();
+    const repo = await skrMissing();
+    e.mockRestore();
+    const later = new Date(NOW.getTime() + 86_400_000);
+    let reads = 0;
+    const r1 = await retryUnrecordedRemainders({ repo, now: later, deadlineMs: Date.now() + 60_000, chain: fakeChain({ pullerSkrChangeRaw: async () => { reads++; return 500n; } }) });
+    expect(r1).toEqual({ retried: 1, recorded: 1, still_missing: 0, deferred: 0 });
+    expect(plantings(repo)[0].skrSurplusRaw).toBe(500n);
+    const r2 = await retryUnrecordedRemainders({ repo, now: later, deadlineMs: Date.now() + 60_000, chain: fakeChain({ pullerSkrChangeRaw: async () => { reads++; return 900n; } }) });
+    expect(r2).toEqual({ retried: 0, recorded: 0, still_missing: 0, deferred: 0 });
+    expect(reads).toBe(1);
+    expect(plantings(repo)[0].skrSurplusRaw).toBe(500n);
+    expect(await repo.skrCreditRaw("U")).toBe(500n);
+    expect(remainderEvents(repo)).toHaveLength(1);   // the retry writes no new event; the first one resolves on Money ops
+  });
+
+  it("retry: records a NULL WSOL remainder once (carry row created), never twice", async () => {
+    const e = quiet();
+    const repo = await solMissing();
+    e.mockRestore();
+    const later = new Date(NOW.getTime() + 86_400_000);
+    const r1 = await retryUnrecordedRemainders({ repo, now: later, deadlineMs: Date.now() + 60_000, chain: fakeChain({ pullerCarryChangeRaw: async () => 777n }) });
+    expect(r1).toEqual({ retried: 1, recorded: 1, still_missing: 0, deferred: 0 });
+    const r2 = await retryUnrecordedRemainders({ repo, now: later, deadlineMs: Date.now() + 60_000, chain: fakeChain({ pullerCarryChangeRaw: async () => 999n }) });
+    expect(r2.retried).toBe(0);
+    expect(await repo.carryCreditRaw("U", "WSOL")).toBe(777n);
+  });
+
+  it("retry: a read that fails again stays missing and writes no event", async () => {
+    const e = quiet();
+    const repo = await skrMissing();
+    const r = await retryUnrecordedRemainders({ repo, now: NOW, deadlineMs: Date.now() + 60_000, chain: fakeChain({ pullerSkrChangeRaw: async () => { throw new Error("still down"); } }) });
+    e.mockRestore();
+    expect(r).toEqual({ retried: 1, recorded: 0, still_missing: 1, deferred: 0 });
+    expect(remainderEvents(repo)).toHaveLength(1);
+  });
+
+  it("retry: respects its cap, oldest first; the rest wait", async () => {
+    const e = quiet();
+    const repo = await skrMissing();
+    const d2 = new Date(NOW.getTime() + 86_400_000), d3 = new Date(NOW.getTime() + 2 * 86_400_000);
+    await skrMissing(repo, d2, "b");
+    await skrMissing(repo, d3, "c");
+    e.mockRestore();
+    expect(plantings(repo).filter((p) => p.skrSurplusRaw === null)).toHaveLength(3);
+    const r = await retryUnrecordedRemainders({ repo, now: d3, max: 2, deadlineMs: Date.now() + 60_000, chain: fakeChain({ pullerSkrChangeRaw: async () => 10n }) });
+    expect(r).toEqual({ retried: 2, recorded: 2, still_missing: 0, deferred: 1 });
+    expect(plantings(repo).map((p) => p.skrSurplusRaw)).toEqual([10n, 10n, null]);
+    expect(REMAINDER_RETRY_MAX).toBe(20);
+  });
+
+  it("retry: past its cutoff it reads nothing from the chain", async () => {
+    const e = quiet();
+    const repo = await skrMissing();
+    e.mockRestore();
+    let reads = 0;
+    const r = await retryUnrecordedRemainders({ repo, now: NOW, deadlineMs: Date.now() - 1, chain: fakeChain({ pullerSkrChangeRaw: async () => { reads++; return 10n; } }) });
+    expect(r).toEqual({ retried: 0, recorded: 0, still_missing: 0, deferred: 1 });
+    expect(reads).toBe(0);
+  });
+
+  it("retry: only the last 14 days, only with a signature", async () => {
+    const e = quiet();
+    const repo = await skrMissing();
+    e.mockRestore();
+    const r = await retryUnrecordedRemainders({ repo, now: new Date(NOW.getTime() + 15 * 86_400_000), deadlineMs: Date.now() + 60_000, chain: fakeChain({ pullerSkrChangeRaw: async () => 10n }) });
+    expect(r.retried).toBe(0);
+    const p = plantings(repo)[0];
+    repo.plantings.set(p.id, { ...p, signature: null });
+    expect((await retryUnrecordedRemainders({ repo, now: NOW, deadlineMs: Date.now() + 60_000, chain: fakeChain({ pullerSkrChangeRaw: async () => 10n }) })).retried).toBe(0);
+  });
+});

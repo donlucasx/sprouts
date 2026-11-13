@@ -1,6 +1,6 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import type { Repo, NewPlanting, NewWithdrawal, NewWatcherCall } from "./repo";
-import { checkLegVenues } from "./repo";
+import type { Repo, NewPlanting, NewWithdrawal, NewWatcherCall, RemainderKind } from "./repo";
+import { checkLegVenues, remainderKindsOf } from "./repo";
 import type * as T from "./types";
 import type { Asset, LiveAsset, LendAsset, Stop } from "@/domain/coins";
 import type { Venue } from "@/domain/venues";
@@ -445,6 +445,25 @@ export class SupabaseRepo implements Repo {
     const { data, error } = await this.db.rpc("carry_credit", { p_user: userPubkey, p_kind: kind });
     if (error) throw new Error(error.message);
     return BigInt(String(data ?? 0));
+  }
+  /** Audit F1: one read (paged past PostgREST's 1000-row cap) of the window's confirmed plantings with their legs and carry rows. */
+  async listUnrecordedRemainders(since: Date) {
+    const PAGE = 1000;
+    const out: { planting: T.PlantingRow; legs: T.PlantingLegRow[]; kind: RemainderKind }[] = [];
+    for (let from = 0; ; from += PAGE) {
+      const got = await this.many(this.db.from("plantings").select("*, planting_legs(*), carry(kind, surplus_raw)").eq("status", "confirmed")
+        .not("signature", "is", null).gte("ts", since.toISOString()).order("ts").order("id").range(from, from + PAGE - 1), (r) => r);
+      for (const r of got) {
+        const planting = plantingRow(r);
+        const legs = ((r.planting_legs as Row[] | null) ?? []).map(legRow);
+        const carry = (r.carry as Row[] | null) ?? [];
+        for (const kind of remainderKindsOf(legs)) {
+          const missing = kind === "SKR" ? planting.skrSurplusRaw === null : !carry.some((c) => c.kind === kind && c.surplus_raw !== null && c.surplus_raw !== undefined);
+          if (missing) out.push({ planting, legs, kind });
+        }
+      }
+      if (got.length < PAGE) return out;
+    }
   }
   async setPlantingSurplus(plantingId: string, kind: "WSOL" | "USDC", surplusRaw: bigint) {
     const { data, error } = await this.db.from("carry").update({ surplus_raw: surplusRaw.toString() }).eq("planting_id", plantingId).eq("kind", kind).is("surplus_raw", null).select("planting_id");

@@ -30,7 +30,7 @@ const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
 
 export type CronRunInput = { day: string; startedAt: Date; finishedAt: Date | null; ok: boolean | null; summary: Record<string, unknown> | null };
-export type FailureInput = { kind: "pull_failed" | "withdraw_failed" | "move_failed" | "run_stopped"; ts: Date; resolved: boolean };
+export type FailureInput = { kind: "pull_failed" | "withdraw_failed" | "move_failed" | "run_stopped" | "remainder_unrecorded"; ts: Date; resolved: boolean };
 
 /** Plain words for a duration ("14 minutes", "26 hours", "1 day"). Thresholds are unchanged from the old min/h/d text. */
 function ageText(ms: number): string {
@@ -43,7 +43,8 @@ const asObj = (v: unknown): Record<string, unknown> | null => (v !== null && typ
 const lenOf = (v: unknown): number => (Array.isArray(v) ? v.length : 0);
 
 /** Summary sections that are null when a cron step threw. Absent (undefined) means not recorded: no effect (R3). */
-const SECTIONS = ["venues", "coins", "splits", "applied", "moves", "planting", "withdrawals", "reconciled", "coverage"] as const;
+// Audit F1: `remainders` (the retry of unrecorded leftover change) is one too; its still-missing count is Money ops' to show, not this light's.
+const SECTIONS = ["venues", "coins", "splits", "applied", "moves", "planting", "withdrawals", "reconciled", "coverage", "remainders"] as const;
 
 export function dailyRunLight(input: { now: Date; latest: CronRunInput | null; movesEnabled: boolean }): Light {
   const { now, latest, movesEnabled } = input;
@@ -111,6 +112,7 @@ const FAILURE_WORDS: Record<FailureInput["kind"], string> = {
   withdraw_failed: "a withdrawal failed",
   move_failed: "a coin move failed",
   run_stopped: "the daily job stopped early",
+  remainder_unrecorded: "a user's leftover change wasn't recorded",
 };
 
 export function moneyOpsLight(input: { now: Date; failures: FailureInput[]; oldestPendingWithdrawalAt: Date | null }): Light {

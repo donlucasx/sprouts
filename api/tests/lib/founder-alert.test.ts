@@ -239,3 +239,22 @@ describe("checkWebhookCoverage", () => {
     expect((alert.mock.calls[0] as unknown as [string])[0]).toContain("NOT being counted: 1 linked wallet(s)");
   });
 });
+
+describe("remainder_unrecorded card (audit F1)", () => {
+  it("goes to the ops channel with enum fields only", async () => {
+    const { founderCardFor } = await import("@/lib/founder-alert");
+    const c = founderCardFor(ev("remainder_unrecorded", { plantingId: "11111111-2222-3333-4444-555555555555", kind: "SKR", reason: "read_failed", err: "rpc https://x/?api-key=SECRET" }))!;
+    expect(c.channel).toBe("ops");
+    expect(c.title).toBe("Leftover change not recorded");
+    expect(c.text).toContain("SKR");
+    expect(c.text).toContain("could not be read");
+    expect(c.text).toContain("11111111");
+    expect(c.text).not.toContain("SECRET");
+    expect(c.todo).toBeTruthy();
+  });
+  it("unknown enum values are not echoed", () => {
+    const line = founderAlertFor(ev("remainder_unrecorded", { plantingId: "<@1>", kind: "<@everyone>", reason: "x".repeat(50) }))!;
+    expect(line).not.toContain("<@");
+    expect(line).not.toContain("xxxxx");
+  });
+});

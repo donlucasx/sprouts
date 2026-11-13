@@ -194,3 +194,21 @@ describe("moneyOpsLight", () => {
   it("green: pending withdrawal 59 h", () => expect(m([], 59 * H).state).toBe("green"));
   it("red: pending withdrawal 61 h", () => expect(m([], 61 * H).state).toBe("red"));
 });
+
+describe("audit F1: leftover change not recorded", () => {
+  it("Money ops names the new kind in plain English", () => {
+    const l = moneyOpsLight({ now: NOW, failures: [{ kind: "remainder_unrecorded", ts: ago(H), resolved: false }], oldestPendingWithdrawalAt: null });
+    expect(l.state).toBe("red");
+    expect(l.fact).toContain("a user's leftover change wasn't recorded");
+  });
+  it("a resolved one this week counts as fixed", () => {
+    const l = moneyOpsLight({ now: NOW, failures: [{ kind: "remainder_unrecorded", ts: ago(2 * D), resolved: true }], oldestPendingWithdrawalAt: null });
+    expect(l).toMatchObject({ state: "amber", fact: "1 failure this week, 0 still open" });
+  });
+  it("daily run: a remainders summary is fine; a null one (the step threw) is a failed part", () => {
+    expect(light(run({}, goodSummary({ remainders: { retried: 2, recorded: 1, still_missing: 1, deferred: 0 } }))).state).toBe("green");
+    const l = light(run({}, goodSummary({ remainders: null })));
+    expect(l.state).toBe("amber");
+    expect(l.fact).toContain("remainders");
+  });
+});

@@ -3,7 +3,7 @@ import { address } from "@solana/kit";
 import { getRepo, type Repo } from "@/db/repo";
 import { errorText } from "@/lib/redact";
 import { rpc } from "@/lib/rpc";
-import { runPlanting } from "@/lib/plant-run";
+import { retryUnrecordedRemainders, runPlanting } from "@/lib/plant-run";
 import { cronAuthorized, realPlantingChain } from "@/lib/cron-run";
 import { runWithdrawCrank } from "@/lib/withdraw-run";
 import { readPosition, crankWithdraw, sharePrice } from "@/lib/staking";
@@ -31,9 +31,15 @@ export const maxDuration = 300;
 const MOVES_DEADLINE_MS = 150_000;
 /**
  * 11-13: the withdrawal crank starts no new withdrawal past this many ms, so a started one's send and confirm have ~50 s before the
- * 300 s kill. The ladder: planting starts no wallet past 240 s, the crank none past 250 s, the reconcile none past 275 s; 300 s kill.
+ * 300 s kill. The ladder: planting starts no wallet past 240 s, the crank none past 250 s, the remainder retry none past 260 s, the
+ * reconcile none past 275 s; 300 s kill.
  */
 const WITHDRAW_DEADLINE_MS = 250_000;
+/**
+ * Audit F1: the retry of unrecorded remainders (after the crank, before the reconcile) starts no new read past this many ms. At most
+ * 20 reads of one transaction each; one in flight at 260 s ends well before the reconcile's own 275 s stop and the 300 s kill.
+ */
+const REMAINDERS_DEADLINE_MS = 260_000;
 /** 11-07 run lock: a claimed run not finished after this long died (the route's limit is 300 s), so its day can be claimed again. */
 const RUN_STALE_MS = 6 * 60_000;
 
@@ -98,7 +104,7 @@ export async function GET(request: Request) {
     // The Yield Manager's steps before the planting run (spec 6.1): snapshot the venues, then the coins (its lending legs read today's
     // venue rows), decide each stop's split, apply to users, propose moves. Budgets: decide 90 s (DECIDE_BUDGET_MS); the moves step
     // reads no position past 150 s from the start; planting starts no new wallet past 240 s, the crank none past 250 s, the
-    // reconcile none past 275 s; the whole route has 300 s.
+    // remainder retry none past 260 s, the reconcile none past 275 s; the whole route has 300 s.
     // realVenueReads() is built inside each step, so a missing JUPITER_API_KEY or RPC fails that step loudly in the log, not the run.
     const venues = await step("venues", () => snapshotVenues({ repo, now, reads: realVenueReads() }));
     const coins = await step("snapshot", () => snapshotCoins({ repo, now, reads: realCoinReads(repo, now) }));
@@ -127,9 +133,12 @@ export async function GET(request: Request) {
         },
       });
     });
-    const planting = await runPlanting({ repo, now, chain: realPlantingChain(), deadlineMs: startedMs + 240_000 });
+    const chain = realPlantingChain();
+    const planting = await runPlanting({ repo, now, chain, deadlineMs: startedMs + 240_000 });
     // 11-13: the crank starts no new withdrawal past 250 s (the 429 retry can stretch the run); the rest wait for the next run.
     const withdrawals = await runWithdrawCrank({ repo, now, deadlineMs: startedMs + WITHDRAW_DEADLINE_MS, chain: { readPosition: (u) => readPosition(address(u)), crankWithdraw: (u) => crankWithdraw(address(u)) } });
+    // Audit F1: leftover change a booking could not record (an SKR or WSOL/USDC surplus still NULL), retried for 14 days, written once.
+    const remainders = await step("remainders", () => retryUnrecordedRemainders({ repo, now, chain, deadlineMs: startedMs + REMAINDERS_DEADLINE_MS }));
     // R61: stakes and unstakes the Seed Vault made from its own wallet, found by comparing the chain's share count with the ledger's.
     // R499 F4: the reconcile stops starting users 25 s before the route's 300 s limit (the last one may still spend ~10 s on its
     // final status call); as a step, a throw is logged and the cleanup and the keepalive still run (round 2, R2-1).
@@ -143,8 +152,8 @@ export async function GET(request: Request) {
     const summary = { coins: coins ? coins.filter((c) => c.ok).length : null, splits: splits ? splits.map((s) => ({ stop: s.stop, fallback: s.fallback })) : null, applied: applied ? applied.changed.length : null, venues: venues ? venues.filter((v) => v.ok).length : null, moves: moves ? moves.proposed.length : null };
     // Review M8: expired and settled cards are logged too, so a move stuck in flight shows in the log.
     const movesLine = moves ? `${moves.proposed.length} (expired ${moves.expired.length}, settled ${moves.settled.length ? moves.settled.join(" ") : 0})` : movesOn ? "failed" : "off";
-    console.log(`cron: venues ${summary.venues ?? "failed"}, coins ${summary.coins ?? "failed"}, splits ${summary.splits ? summary.splits.map((s) => `${s.stop}${s.fallback ? `(${s.fallback})` : ""}`).join(" ") : "failed"}, applied ${summary.applied ?? "failed"}, moves ${movesLine}, planted ${planting.planted.length}, skipped ${planting.skipped.length}, cranked ${withdrawals.cranked.length}, failed ${withdrawals.failed.length}, closed ${withdrawals.skipped.length}, deferred ${withdrawals.deferred.length}, reconciled ${reconciled ? `${reconciled.adjusted.length} (skipped ${reconciled.skipped.length}, deferred ${reconciled.deferred.length})` : "failed"}, off webhook ${coverage ? `${coverage.missing.length} (re-added ${coverage.repaired.length})` : "failed"}`);
-    const record = { ...summary, planting, withdrawals, reconciled, seconds: Math.round((Date.now() - startedMs) / 1000) };
+    console.log(`cron: venues ${summary.venues ?? "failed"}, coins ${summary.coins ?? "failed"}, splits ${summary.splits ? summary.splits.map((s) => `${s.stop}${s.fallback ? `(${s.fallback})` : ""}`).join(" ") : "failed"}, applied ${summary.applied ?? "failed"}, moves ${movesLine}, planted ${planting.planted.length}, skipped ${planting.skipped.length}, cranked ${withdrawals.cranked.length}, failed ${withdrawals.failed.length}, closed ${withdrawals.skipped.length}, deferred ${withdrawals.deferred.length}, reconciled ${reconciled ? `${reconciled.adjusted.length} (skipped ${reconciled.skipped.length}, deferred ${reconciled.deferred.length})` : "failed"}, off webhook ${coverage ? `${coverage.missing.length} (re-added ${coverage.repaired.length})` : "failed"}, remainders ${remainders ? `${remainders.recorded} recorded of ${remainders.retried} retried (still missing ${remainders.still_missing}, deferred ${remainders.deferred})` : "failed"}`);
+    const record = { ...summary, planting, withdrawals, remainders, reconciled, seconds: Math.round((Date.now() - startedMs) / 1000) };
     await finishRun(repo, day, true, record);
     return NextResponse.json(json(record));
   } catch (e) {

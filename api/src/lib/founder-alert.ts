@@ -126,6 +126,8 @@ export function alertAllowed(e: Pick<EventRow, "kind" | "userPubkey">, now = Dat
   return true;
 }
 
+const REMAINDER_KINDS: ReadonlySet<string> = new Set(["SKR", "WSOL", "USDC", "legs"]);
+const REMAINDER_REASONS: Record<string, string> = { read_failed: "its amount could not be read from the chain", below_zero: "it came out below zero", write_failed: "the database write failed", legs_read_failed: "its legs could not be read" };
 const short = (k: string | null) => (k ? `${k.slice(0, 4)}...${k.slice(-4)}` : "?");
 const clip = (v: unknown) => errorText(v).slice(0, 160);
 
@@ -148,6 +150,13 @@ export function founderAlertFor(e: Omit<EventRow, "id" | "ts">): string | null {
       return `SKR withdrawal failed (retried next run): user ${short(e.userPubkey)}: ${clip(d.err)}`;
     case "move_failed":
       return `Venue move half done (redeemed, not deposited): ${who}. The money is back in the wallet, idle.`;
+    case "remainder_unrecorded": {
+      // Audit F1: enum fields only, each checked against its allow-list (no error text ever reaches the card).
+      const kind = REMAINDER_KINDS.has(String(d.kind)) ? String(d.kind) : "?";
+      const why = REMAINDER_REASONS[String(d.reason)] ?? "?";
+      const id = typeof d.plantingId === "string" && /^[0-9a-f-]{8,36}$/i.test(d.plantingId) ? d.plantingId : "?";
+      return `Leftover change (${kind === "legs" ? "which coin unknown" : kind}) not recorded: ${who}, planting ${id}: ${why}. It stays in the shared puller account until the daily job records it.`;
+    }
     case "run_stopped":
       return `Planting run STOPPED after ${String(d.after ?? "?")} build failures in a row (Jupiter or RPC outage?). Last wallet ${short(String(d.lastWallet ?? ""))}.`;
     // 10-31: only a failure tied to someone real (a verified sign-in, a live link code, a signed-in app) has a userPubkey; the rest
@@ -224,6 +233,8 @@ export function founderCardFor(e: Omit<EventRow, "id" | "ts">, extra: { skrName?
       return card("ops", "SKR withdrawal failed", "Retried next run. If it repeats, check the stake account");
     case "move_failed":
       return card("ops", "Venue move half done", "The money is idle in their wallet: finish the move or let the next run plant it");
+    case "remainder_unrecorded":
+      return card("ops", "Leftover change not recorded", "Nothing yet: the daily job retries it for 14 days. If Money ops still shows it open after the next run, look at the planting's transaction");
     case "run_stopped":
       return card("ops", "Planting run stopped", "Likely a Jupiter or RPC outage: check status, then re-run or wait for tomorrow");
     default:

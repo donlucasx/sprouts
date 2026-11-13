@@ -23,7 +23,8 @@ vi.mock("@/lib/venues/rates", () => ({ snapshotVenues: venuesMock, scoutYields: 
 vi.mock("@/lib/moves", async (orig) => ({ ...(await orig<object>()), proposeMoves: movesMock }));
 vi.mock("@/lib/plant-run", async (orig) => {
   const actual = await orig<typeof import("@/lib/plant-run")>();
-  return { ...actual, runPlanting: vi.fn(async (a: Parameters<typeof actual.runPlanting>[0]) => { order.push("plant"); return actual.runPlanting(a); }) };
+  return { ...actual, runPlanting: vi.fn(async (a: Parameters<typeof actual.runPlanting>[0]) => { order.push("plant"); return actual.runPlanting(a); }),
+    retryUnrecordedRemainders: vi.fn(async (a: Parameters<typeof actual.retryUnrecordedRemainders>[0]) => { order.push("remainders"); return actual.retryUnrecordedRemainders(a); }) };
 });
 vi.mock("@/lib/coin-data", () => ({ snapshotCoins: snapshotMock, IMPACT_LIMIT_PCT: 1 }));
 vi.mock("@/lib/split-run", () => ({ decideSplits: decideMock, applyToUsers: applyMock }));
@@ -66,6 +67,26 @@ describe("cron route", () => {
     expect(body.reconciled).toEqual({ adjusted: [], skipped: [], deferred: [] });
   });
 
+  it("audit F1: retries unrecorded remainders after the crank with its own 260 s cutoff, and reports them in the run record", async () => {
+    const { retryUnrecordedRemainders } = await import("@/lib/plant-run");
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    // A confirmed SKR planting with its surplus still NULL: the route's real chain read fails here (rpc mocked), so it stays missing.
+    await repo.upsertUser({ seedVaultPubkey: "U", sgtMint: "M", skrName: null });
+    await repo.addWallet({ pubkey: "W", userPubkey: "U", delegationPda: "D", dailyCapCents: 500 });
+    const p = await repo.insertPlanting({ userPubkey: "U", walletPubkey: "W", signature: "sigR", usdcPulledCents: 200, networkFeeCents: 0, status: "sent", aiLine: null, ts: new Date() },
+      [{ asset: "SKR", usdcInCents: 200, amountOutRaw: 1n, staked: true, feeAmountRaw: 0n, feeCents: 0, rateAtPlanting: null, venue: null }]);
+    await repo.setPlantingStatus(p.id, "confirmed");
+    const started = Date.now();
+    const res = await get();
+    err.mockRestore();
+    const body = (await res.json()) as { remainders: unknown };
+    expect(body.remainders).toEqual({ retried: 1, recorded: 0, still_missing: 1, deferred: 0 });
+    const arg = vi.mocked(retryUnrecordedRemainders).mock.calls.at(-1)![0];
+    expect(arg.deadlineMs - started).toBeGreaterThanOrEqual(259_000);
+    expect(arg.deadlineMs - started).toBeLessThanOrEqual(261_000);
+    expect(repo.cronRuns.get(dayOf(new Date()))!.summary).toMatchObject({ remainders: { retried: 1, still_missing: 1 } });
+  });
+
   it("runs the snapshot, the decision and the apply before planting, and reports them", async () => {
     const res = await GET(new Request("http://x/api/cron/plant", { headers: { authorization: `Bearer ${SECRET}` } }));
     expect(res.status).toBe(200);
@@ -85,7 +106,7 @@ describe("cron route", () => {
   it("runs venues, coins, decide, apply, moves, then plant, and reports venues and moves (MOVES_ENABLED=true)", async () => {
     process.env.MOVES_ENABLED = "true";
     const res = await get();
-    expect(order).toEqual(["venues", "coins", "decide", "apply", "moves", "plant"]);
+    expect(order).toEqual(["venues", "coins", "decide", "apply", "moves", "plant", "remainders"]);
     const body = (await res.json()) as { venues: number; moves: number };
     expect(body.venues).toBe(1);
     expect(body.moves).toBe(1);
@@ -97,7 +118,7 @@ describe("cron route", () => {
       order.length = 0;
       const log = vi.spyOn(console, "log").mockImplementation(() => {});
       const body = (await (await get()).json()) as { moves: number | null };
-      expect(order).toEqual(["venues", "coins", "decide", "apply", "plant"]);
+      expect(order).toEqual(["venues", "coins", "decide", "apply", "plant", "remainders"]);
       expect(body.moves).toBeNull();
       expect(log.mock.calls.map((c) => String(c[0])).join("\n")).toContain("moves off,");
       log.mockRestore();

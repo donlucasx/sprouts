@@ -1,5 +1,5 @@
-import type { Repo, NewPlanting, NewWithdrawal, NewWatcherCall } from "./repo";
-import { checkLegVenues } from "./repo";
+import type { Repo, NewPlanting, NewWithdrawal, NewWatcherCall, RemainderKind } from "./repo";
+import { checkLegVenues, remainderKindsOf } from "./repo";
 import type * as T from "./types";
 import type { LiveAsset, LendAsset, Stop } from "@/domain/coins";
 import type { Venue } from "@/domain/venues";
@@ -397,6 +397,18 @@ export class MemoryRepo implements Repo {
       if (status === "confirmed" || status === "sent") credit -= c.carryInRaw;
     }
     return credit;
+  }
+  async listUnrecordedRemainders(since: Date) {
+    const out: { planting: T.PlantingRow; legs: T.PlantingLegRow[]; kind: RemainderKind }[] = [];
+    const ps = [...this.plantings.values()].filter((p) => p.status === "confirmed" && p.signature && p.ts >= since).sort((a, b) => a.ts.getTime() - b.ts.getTime());
+    for (const p of ps) {
+      const legs = this.legs.filter((l) => l.plantingId === p.id);
+      for (const kind of remainderKindsOf(legs)) {
+        const missing = kind === "SKR" ? p.skrSurplusRaw === null : !this.carry.some((c) => c.plantingId === p.id && c.kind === kind && c.surplusRaw !== null);
+        if (missing) out.push({ planting: { ...p }, legs, kind });
+      }
+    }
+    return out;
   }
   async setPlantingSurplus(plantingId: string, kind: "WSOL" | "USDC", surplusRaw: bigint) {
     const row = this.carry.find((c) => c.plantingId === plantingId && c.kind === kind);

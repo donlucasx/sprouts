@@ -18,6 +18,17 @@ export function checkLegVenues(legs: readonly { asset: string; venue: string | n
   }
 }
 
+/** The pooled remainders a planting's legs leave with the puller (R207 #2, R295): SKR on an SKR leg; WSOL or USDC by its first leg. */
+export type RemainderKind = "SKR" | "WSOL" | "USDC";
+export function remainderKindsOf(legs: readonly { asset: string }[]): RemainderKind[] {
+  const out: RemainderKind[] = [];
+  if (legs.some((l) => l.asset === "SKR")) out.push("SKR");
+  const first = legs[0]?.asset;
+  if (first === "SOL_LEND") out.push("WSOL");
+  else if (first === "USDC_LEND") out.push("USDC");
+  return out;
+}
+
 export type NewWatcherCall = Omit<T.WatcherCallRow, "id" | "ts"> & { ts?: Date };
 export type NewWithdrawal = { userPubkey: string; asset: Asset; source: T.WithdrawalSource; unstakeSignature: string | null; sharesUnstaked: bigint; amountRaw: bigint; principalRaw: bigint };
 
@@ -187,6 +198,11 @@ export interface Repo {
   plantingCarry(plantingId: string): Promise<Partial<Record<"WSOL" | "USDC", bigint>>>;
   /** Written once per (planting, kind); creates the row when the planting carried nothing in. */
   setPlantingSurplus(plantingId: string, kind: Exclude<T.CarryKind, "SKR">, surplusRaw: bigint): Promise<void>;
+  /**
+   * Audit F1: confirmed plantings since `since` with a signature whose remainder (by remainderKindsOf) is still unrecorded: SKR with
+   * skr_surplus_raw NULL, WSOL/USDC with no carry row of that kind holding a surplus. One entry per (planting, kind), oldest first.
+   */
+  listUnrecordedRemainders(since: Date): Promise<{ planting: T.PlantingRow; legs: T.PlantingLegRow[]; kind: RemainderKind }[]>;
   // links and terms
   setWalletLink(pubkey: string, l: { delegationPda: string; linkModel: T.LinkModel; dailyCapCents?: number }): Promise<void>;   // the cap refreshed from the new delegation on a re-link
   setTermsAccepted(userPubkey: string, version: string, at: Date): Promise<void>;

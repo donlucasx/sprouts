@@ -1,6 +1,6 @@
 import type { Address } from "@solana/kit";
 import { pauseCauseOf, PAUSE_EVENT_KINDS } from "@/domain/pause-cause";
-import type { Repo } from "@/db/repo";
+import type { RemainderKind, Repo } from "@/db/repo";
 import type { CarryKind, PlantingLegRow, PlantingRow, VenueDayRow, WalletRow } from "@/db/types";
 import { rulesRowToRules } from "@/db/types";
 import { alertFounder } from "./founder-alert";
@@ -283,10 +283,73 @@ async function bookConfirmed(repo: Repo, chain: Chain, p: PlantingRow, outBefore
   } finally {
     // Review M9: the row is `confirmed` now, so the reconciler never books it again: the carry it drew stays debited, and its
     // surplus must be credited even when a step above threw (each recorder catches its own errors).
-    const l = legs ?? (await repo.plantingLegs(p.id).catch(() => [] as PlantingLegRow[]));
-    await recordSkrSurplus(repo, chain, p, l);
-    await recordCarrySurplus(repo, chain, p, l);
+    // Audit F1: a remainder that could not be recorded is an event (and an ops card), not only a log line Vercel keeps an hour; the
+    // daily run retries it (retryUnrecordedRemainders).
+    let l = legs;
+    if (!l) {
+      try {
+        l = await repo.plantingLegs(p.id);
+      } catch (e) {
+        console.error(`planting ${p.id}: its legs could not be read (${message(e)}); no remainder recorded, the daily run retries it`);
+        await noteUnrecorded(repo, p, "legs", "legs_read_failed");
+        l = [];
+      }
+    }
+    const skr = await recordSkrSurplus(repo, chain, p, l);
+    if (isFailure(skr)) await noteUnrecorded(repo, p, "SKR", skr);
+    const carry = await recordCarrySurplus(repo, chain, p, l);
+    if (isFailure(carry.outcome) && carry.kind) await noteUnrecorded(repo, p, carry.kind, carry.outcome);
   }
+}
+
+/** What a remainder recorder did: wrote it (or found it written), had nothing to record, or failed in one of three named ways. */
+type RecordOutcome = "recorded" | "none" | RemainderFailure;
+type RemainderFailure = "read_failed" | "below_zero" | "write_failed";
+const isFailure = (o: RecordOutcome): o is RemainderFailure => o !== "recorded" && o !== "none";
+
+/**
+ * Audit F1: one `remainder_unrecorded` event per failure, enum detail only (the repo is public and founder cards never carry
+ * exception text). Best effort: a failed event write is logged and never interrupts the booking.
+ */
+async function noteUnrecorded(repo: Repo, p: PlantingRow, kind: RemainderKind | "legs", reason: RemainderFailure | "legs_read_failed") {
+  try {
+    await repo.addEvent({ userPubkey: p.userPubkey, walletPubkey: p.walletPubkey, kind: "remainder_unrecorded", detail: { plantingId: p.id, kind, reason } });
+  } catch (e) {
+    console.error(`planting ${p.id}: the remainder_unrecorded event (${kind}, ${reason}) could not be written (${message(e)})`);
+  }
+}
+
+/** Audit F1: how far back the daily run retries an unrecorded remainder, and how many it retries per run. */
+export const REMAINDER_RETRY_DAYS = 14;
+export const REMAINDER_RETRY_MAX = 20;
+export type RemainderRetry = { retried: number; recorded: number; still_missing: number; deferred: number };
+
+/**
+ * Audit F1: the daily run's second chance for a remainder the booking could not record. Confirmed plantings of the last 14 days
+ * with a signature whose SKR or WSOL/USDC surplus is still NULL go through the same recorder again, oldest first, at most `max`,
+ * none started past `deadlineMs`. Written once holds: only NULL rows are selected and both setters write only over NULL. A retry
+ * that fails again writes no new event (the first one stays open on Money ops until the surplus is set). `deferred`: left for
+ * the next run (over the cap or past the cutoff).
+ */
+export async function retryUnrecordedRemainders(a: { repo: Repo; now: Date; chain: Pick<Chain, "pullerSkrChangeRaw" | "pullerCarryChangeRaw">; deadlineMs: number; max?: number }): Promise<RemainderRetry> {
+  const max = a.max ?? REMAINDER_RETRY_MAX;
+  const due = await a.repo.listUnrecordedRemainders(new Date(a.now.getTime() - REMAINDER_RETRY_DAYS * 86_400_000));
+  const out: RemainderRetry = { retried: 0, recorded: 0, still_missing: 0, deferred: 0 };
+  for (const [i, r] of due.entries()) {
+    if (i >= max || Date.now() >= a.deadlineMs) {
+      out.deferred = due.length - i;
+      break;
+    }
+    out.retried++;
+    const outcome = r.kind === "SKR"
+      ? await recordSkrSurplus(a.repo, a.chain, r.planting, r.legs)
+      : (await recordCarrySurplus(a.repo, a.chain, r.planting, r.legs)).outcome;
+    if (outcome === "recorded") {
+      out.recorded++;
+      console.error(`planting ${r.planting.id}: the ${r.kind} remainder was recorded on retry`);
+    } else out.still_missing++;
+  }
+  return out;
 }
 
 /**
@@ -295,19 +358,27 @@ async function bookConfirmed(repo: Repo, chain: Chain, p: PlantingRow, outBefore
  * confirmation only, once (a second booking cannot add it twice); the carry drawn is the planting's own row, so a rebuild before
  * the send never counts twice.
  */
-async function recordCarrySurplus(repo: Repo, chain: Chain, p: PlantingRow, legs: PlantingLegRow[]) {
+async function recordCarrySurplus(repo: Repo, chain: Pick<Chain, "pullerCarryChangeRaw">, p: PlantingRow, legs: PlantingLegRow[]): Promise<{ kind: "WSOL" | "USDC" | null; outcome: RecordOutcome }> {
   const asset = legs[0]?.asset;
   const kind = asset === "SOL_LEND" ? "WSOL" : asset === "USDC_LEND" ? "USDC" : null;
-  if (!p.signature || !kind) return;
+  if (!p.signature || !kind) return { kind, outcome: "none" };
+  let surplus: bigint;
   try {
-    const surplus = (await chain.pullerCarryChangeRaw(p.signature, kind)) + ((await repo.plantingCarry(p.id))[kind] ?? 0n);
-    if (surplus < 0n) {
-      console.error(`planting ${p.id}: ${kind} surplus ${surplus} is below zero; nothing carried`);
-      return;
-    }
-    await repo.setPlantingSurplus(p.id, kind, surplus);
+    surplus = (await chain.pullerCarryChangeRaw(p.signature, kind)) + ((await repo.plantingCarry(p.id))[kind] ?? 0n);
   } catch (e) {
-    console.error(`planting ${p.id}: the ${kind} remainder could not be read (${message(e)}); it is not carried`);
+    console.error(`planting ${p.id}: the ${kind} remainder could not be read (${message(e)}); it is not carried yet`);
+    return { kind, outcome: "read_failed" };
+  }
+  if (surplus < 0n) {
+    console.error(`planting ${p.id}: ${kind} surplus ${surplus} is below zero; nothing carried`);
+    return { kind, outcome: "below_zero" };
+  }
+  try {
+    await repo.setPlantingSurplus(p.id, kind, surplus);
+    return { kind, outcome: "recorded" };
+  } catch (e) {
+    console.error(`planting ${p.id}: the ${kind} remainder could not be written (${message(e)}); it is not carried yet`);
+    return { kind, outcome: "write_failed" };
   }
 }
 
@@ -316,20 +387,28 @@ async function recordCarrySurplus(repo: Repo, chain: Chain, p: PlantingRow, legs
  * delivered above the minimum stays in the puller's account. It is recorded against THIS planting, hence this user, as
  * surplus = the puller's SKR change in this transaction + the carry its stake drew, and the user's next SKR stake adds it. Read from
  * the transaction by signature, so concurrent plantings of other users in the same account do not mix in; written once (a second
- * booking cannot add it twice). A failed read leaves it unrecorded and says so: the remainder then stays with the puller, never
- * with another user.
+ * booking cannot add it twice). A failed read leaves it unrecorded and says so (an event, audit F1); the daily run retries it, and
+ * meanwhile the remainder stays with the puller, never with another user.
  */
-async function recordSkrSurplus(repo: Repo, chain: Chain, p: PlantingRow, legs: PlantingLegRow[]) {
-  if (!p.signature || !legs.some((l) => l.asset === "SKR")) return;
+async function recordSkrSurplus(repo: Repo, chain: Pick<Chain, "pullerSkrChangeRaw">, p: PlantingRow, legs: PlantingLegRow[]): Promise<RecordOutcome> {
+  if (!p.signature || !legs.some((l) => l.asset === "SKR")) return "none";
+  let surplus: bigint;
   try {
-    const surplus = (await chain.pullerSkrChangeRaw(p.signature)) + p.skrCarryInRaw;
-    if (surplus < 0n) {
-      console.error(`planting ${p.id}: SKR surplus ${surplus} is below zero (the swap delivered under the minimum?); nothing carried`);
-      return;
-    }
-    await repo.setPlantingSkrSurplus(p.id, surplus);
+    surplus = (await chain.pullerSkrChangeRaw(p.signature)) + p.skrCarryInRaw;
   } catch (e) {
-    console.error(`planting ${p.id}: the SKR remainder could not be read (${message(e)}); it is not carried`);
+    console.error(`planting ${p.id}: the SKR remainder could not be read (${message(e)}); it is not carried yet`);
+    return "read_failed";
+  }
+  if (surplus < 0n) {
+    console.error(`planting ${p.id}: SKR surplus ${surplus} is below zero (the swap delivered under the minimum?); nothing carried`);
+    return "below_zero";
+  }
+  try {
+    await repo.setPlantingSkrSurplus(p.id, surplus);
+    return "recorded";
+  } catch (e) {
+    console.error(`planting ${p.id}: the SKR remainder could not be written (${message(e)}); it is not carried yet`);
+    return "write_failed";
   }
 }
 

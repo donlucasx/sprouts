@@ -2,7 +2,7 @@
 // Each method throws on failure; the caller (Task 5) wraps them with timeouts and a cache and turns a throw into "unknown".
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { config } from "@/lib/config";
-import { getRepo } from "@/db/repo";
+import { getRepo, remainderKindsOf } from "@/db/repo";
 import { heliusWebhookAddresses } from "@/lib/helius";
 import { readPriceAccount, fetchHermesUpdate } from "@/lib/pyth";
 import { readLeashConfig, LEG_SPEC, LEASH_LEG } from "@/lib/leash";
@@ -95,6 +95,22 @@ const FEEDS = [
   { name: "ORE", account: PYTH_ACCOUNT.ORE, leg: LEASH_LEG.stORE },
 ] as const;
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export type RemainderSeen = { skrRecorded: Set<string>; carryRecorded: Set<string>; legsOf: Map<string, string[]> };
+
+/**
+ * Audit F1: a `remainder_unrecorded` event is resolved once its planting's surplus is set: SKR on the planting row, WSOL/USDC on
+ * its carry row. A `legs` event (the booking never learnt which) is resolved when every remainder the legs owe is set, or none is owed.
+ */
+export function remainderResolved(e: { plantingId: string | null; kind: string }, s: RemainderSeen): boolean {
+  if (!e.plantingId) return false;
+  const done = (k: string) => (k === "SKR" ? s.skrRecorded.has(e.plantingId!) : s.carryRecorded.has(`${e.plantingId}:${k}`));
+  if (e.kind === "SKR" || e.kind === "WSOL" || e.kind === "USDC") return done(e.kind);
+  const legs = s.legsOf.get(e.plantingId);
+  if (e.kind === "legs") return !!legs && remainderKindsOf(legs.map((asset) => ({ asset }))).every(done);
+  return false;
+}
+
 export function realOpsSources(): OpsSources {
   let client: SupabaseClient | null = null;
   // Built like SupabaseRepo's constructor (service key, no session); one client, safe for concurrent reads.
@@ -149,10 +165,11 @@ export function realOpsSources(): OpsSources {
 
     async failures(sinceIso) {
       const skip = ex();
-      // One query for the candidate events (all four kinds), then one per resolution check: never one query per event.
+      // One query for the candidate events (all five kinds), then one per resolution check: never one query per event.
       const events = (await allRows((a, b) => db().from("events")
-        .select("id, ts, kind, user_pubkey, wallet_pubkey, withdrawal:detail->>withdrawal")   // only the withdrawal id from detail, never err text
-        .in("kind", ["pull_failed", "withdraw_failed", "move_failed", "run_stopped"]).gte("ts", sinceIso).order("id").range(a, b)))
+        // Only enum or id fields from detail (the withdrawal id; a remainder's planting id and kind), never err text.
+        .select("id, ts, kind, user_pubkey, wallet_pubkey, withdrawal:detail->>withdrawal, planting:detail->>plantingId, rkind:detail->>kind")
+        .in("kind", ["pull_failed", "withdraw_failed", "move_failed", "run_stopped", "remainder_unrecorded"]).gte("ts", sinceIso).order("id").range(a, b)))
         .filter((e) => !isExcluded(skip, e.user_pubkey, e.wallet_pubkey));
       const of = (k: string) => events.filter((e) => e.kind === k);
       const pulls = of("pull_failed");
@@ -189,6 +206,19 @@ export function realOpsSources(): OpsSources {
         }
       }
 
+      // remainder_unrecorded (audit F1): resolved when that planting's surplus is no longer NULL (one read of those plantings).
+      const remainders = of("remainder_unrecorded");
+      const rIds = [...new Set(remainders.map((e) => str(e.planting)).filter((x): x is string => !!x && UUID.test(x)))];
+      const seen: RemainderSeen = { skrRecorded: new Set(), carryRecorded: new Set(), legsOf: new Map() };
+      for (let i = 0; i < rIds.length; i += 100) {
+        for (const p of await rows(db().from("plantings").select("id, skr_surplus_raw, planting_legs(asset), carry(kind, surplus_raw)").in("id", rIds.slice(i, i + 100)))) {
+          const id = String(p.id);
+          if (p.skr_surplus_raw != null) seen.skrRecorded.add(id);
+          for (const c of (p.carry as Row[] | null) ?? []) if (c.surplus_raw != null) seen.carryRecorded.add(`${id}:${String(c.kind)}`);
+          seen.legsOf.set(id, ((p.planting_legs as Row[] | null) ?? []).map((l) => String(l.asset)));
+        }
+      }
+
       // run_stopped: resolved when a daily run finished ok after it.
       let lastOkRun = -Infinity;
       if (stops.length) {
@@ -204,6 +234,7 @@ export function realOpsSources(): OpsSources {
           kind === "pull_failed" ? (plantedAt.get(String(e.wallet_pubkey)) ?? -Infinity) > t
           : kind === "withdraw_failed" ? closed.has(String(e.withdrawal))
           : kind === "move_failed" ? (movedAt.get(String(e.user_pubkey)) ?? -Infinity) > t
+          : kind === "remainder_unrecorded" ? remainderResolved({ plantingId: str(e.planting), kind: String(e.rkind) }, seen)
           : lastOkRun > t;
         return { kind, ts, resolved };
       });
