@@ -56,7 +56,7 @@ describe("amountsAddUp source (mocked client)", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ claimedCents: 500, pulledCents: 500, legsCents: 500 });
   });
-  it("reads past the 1000-row page limit (legs of 1200 plantings are all counted)", async () => {
+  it("pages the plantings read past the 1000-row limit (1200 plantings, all counted)", async () => {
     reset();
     const ids = Array.from({ length: 1200 }, (_, i) => `p${String(i).padStart(4, "0")}`);
     tables.plantings = ids.map((id) => plant(id, 215));
