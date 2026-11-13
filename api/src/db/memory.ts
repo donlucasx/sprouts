@@ -400,7 +400,7 @@ export class MemoryRepo implements Repo {
   }
   async listUnrecordedRemainders(since: Date) {
     const out: { planting: T.PlantingRow; legs: T.PlantingLegRow[]; kind: RemainderKind }[] = [];
-    const ps = [...this.plantings.values()].filter((p) => p.status === "confirmed" && p.signature && p.ts >= since).sort((a, b) => a.ts.getTime() - b.ts.getTime());
+    const ps = [...this.plantings.values()].filter((p) => p.status === "confirmed" && p.signature && p.ts >= since).sort((a, b) => b.ts.getTime() - a.ts.getTime());
     for (const p of ps) {
       const legs = this.legs.filter((l) => l.plantingId === p.id);
       for (const kind of remainderKindsOf(legs)) {

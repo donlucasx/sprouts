@@ -326,7 +326,8 @@ export type RemainderRetry = { retried: number; recorded: number; still_missing:
 
 /**
  * Audit F1: the daily run's second chance for a remainder the booking could not record. Confirmed plantings of the last 14 days
- * with a signature whose SKR or WSOL/USDC surplus is still NULL go through the same recorder again, oldest first, at most `max`,
+ * with a signature whose SKR or WSOL/USDC surplus is still NULL go through the same recorder again, newest first (old rows that keep
+ * failing never crowd out fresh recoverable ones), at most `max`,
  * none started past `deadlineMs`. Written once holds: only NULL rows are selected and both setters write only over NULL. A retry
  * that fails again writes no new event (the first one stays open on Money ops until the surplus is set). `deferred`: left for
  * the next run (over the cap or past the cutoff).

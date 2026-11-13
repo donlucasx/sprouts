@@ -120,8 +120,8 @@ describe("gatherOps", () => {
     });
     await gatherOps({ sources: s, now: NOW, flags });
     expect(seen.swap).toBe(new Date(NOW.getTime() - 86_400_000).toISOString());
-    expect(seen.fail).toBe(new Date(NOW.getTime() - 7 * 86_400_000).toISOString());
-    expect(seen.support).toBe(seen.fail);
+    expect(seen.fail).toBe(new Date(NOW.getTime() - 14 * 86_400_000).toISOString());   // audit F1: the remainder retry window
+    expect(seen.support).toBe(new Date(NOW.getTime() - 7 * 86_400_000).toISOString());
     expect(seen.numbers).toBe(NOW.toISOString());
   });
 

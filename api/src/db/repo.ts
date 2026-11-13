@@ -200,7 +200,7 @@ export interface Repo {
   setPlantingSurplus(plantingId: string, kind: Exclude<T.CarryKind, "SKR">, surplusRaw: bigint): Promise<void>;
   /**
    * Audit F1: confirmed plantings since `since` with a signature whose remainder (by remainderKindsOf) is still unrecorded: SKR with
-   * skr_surplus_raw NULL, WSOL/USDC with no carry row of that kind holding a surplus. One entry per (planting, kind), oldest first.
+   * skr_surplus_raw NULL, WSOL/USDC with no carry row of that kind holding a surplus. One entry per (planting, kind), newest first.
    */
   listUnrecordedRemainders(since: Date): Promise<{ planting: T.PlantingRow; legs: T.PlantingLegRow[]; kind: RemainderKind }[]>;
   // links and terms

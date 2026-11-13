@@ -205,6 +205,12 @@ describe("audit F1: leftover change not recorded", () => {
     const l = moneyOpsLight({ now: NOW, failures: [{ kind: "remainder_unrecorded", ts: ago(2 * D), resolved: true }], oldestPendingWithdrawalAt: null });
     expect(l).toMatchObject({ state: "amber", fact: "1 failure this week, 0 still open" });
   });
+  it("an open one stays in view for 14 days (the retry window); other kinds still drop out after 7", () => {
+    const f = (kind: "remainder_unrecorded" | "pull_failed", age: number) => ({ kind, ts: ago(age), resolved: false });
+    expect(moneyOpsLight({ now: NOW, failures: [f("remainder_unrecorded", 10 * D)], oldestPendingWithdrawalAt: null })).toMatchObject({ state: "amber", fact: "1 failure in the last 14 days, 1 still open" });
+    expect(moneyOpsLight({ now: NOW, failures: [f("pull_failed", 10 * D)], oldestPendingWithdrawalAt: null }).state).toBe("green");
+    expect(moneyOpsLight({ now: NOW, failures: [f("remainder_unrecorded", 15 * D)], oldestPendingWithdrawalAt: null }).state).toBe("green");
+  });
   it("daily run: a remainders summary is fine; a null one (the step threw) is a failed part", () => {
     expect(light(run({}, goodSummary({ remainders: { retried: 2, recorded: 1, still_missing: 1, deferred: 0 } }))).state).toBe("green");
     const l = light(run({}, goodSummary({ remainders: null })));

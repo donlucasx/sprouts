@@ -2012,7 +2012,7 @@ describe("unrecorded remainders are loud and retried (audit F1)", () => {
     expect(remainderEvents(repo)).toHaveLength(1);
   });
 
-  it("retry: respects its cap, oldest first; the rest wait", async () => {
+  it("retry: respects its cap, newest first; the oldest wait", async () => {
     const e = quiet();
     const repo = await skrMissing();
     const d2 = new Date(NOW.getTime() + 86_400_000), d3 = new Date(NOW.getTime() + 2 * 86_400_000);
@@ -2022,7 +2022,7 @@ describe("unrecorded remainders are loud and retried (audit F1)", () => {
     expect(plantings(repo).filter((p) => p.skrSurplusRaw === null)).toHaveLength(3);
     const r = await retryUnrecordedRemainders({ repo, now: d3, max: 2, deadlineMs: Date.now() + 60_000, chain: fakeChain({ pullerSkrChangeRaw: async () => 10n }) });
     expect(r).toEqual({ retried: 2, recorded: 2, still_missing: 0, deferred: 1 });
-    expect(plantings(repo).map((p) => p.skrSurplusRaw)).toEqual([10n, 10n, null]);
+    expect(plantings(repo).map((p) => p.skrSurplusRaw)).toEqual([null, 10n, 10n]);
     expect(REMAINDER_RETRY_MAX).toBe(20);
   });
 

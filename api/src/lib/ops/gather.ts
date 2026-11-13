@@ -59,7 +59,8 @@ async function gather(sources: OpsSources, now: Date, flags: { movesEnabled: boo
   const [cron, first, failures, pending, linked, webhook, swaps, feeds, skr, gas, legs, support, nums] = await Promise.all([
     T("cronLatest", () => sources.cronLatest()),
     T("firstPlantingLast", () => sources.firstPlantingLast()),
-    T("failures", () => sources.failures(since7d)),
+    // Audit F1: 14 days back, the remainder retry window; moneyOpsLight keeps the other kinds to 7.
+    T("failures", () => sources.failures(new Date(now.getTime() - 14 * DAY).toISOString())),
     T("oldestPendingWithdrawalAt", () => sources.oldestPendingWithdrawalAt()),
     T("linkedWallets", () => sources.linkedWallets()),
     T("webhookAddresses", () => sources.webhookAddresses()),

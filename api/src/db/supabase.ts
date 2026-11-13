@@ -452,7 +452,7 @@ export class SupabaseRepo implements Repo {
     const out: { planting: T.PlantingRow; legs: T.PlantingLegRow[]; kind: RemainderKind }[] = [];
     for (let from = 0; ; from += PAGE) {
       const got = await this.many(this.db.from("plantings").select("*, planting_legs(*), carry(kind, surplus_raw)").eq("status", "confirmed")
-        .not("signature", "is", null).gte("ts", since.toISOString()).order("ts").order("id").range(from, from + PAGE - 1), (r) => r);
+        .not("signature", "is", null).gte("ts", since.toISOString()).order("ts", { ascending: false }).order("id", { ascending: false }).range(from, from + PAGE - 1), (r) => r);
       for (const r of got) {
         const planting = plantingRow(r);
         const legs = ((r.planting_legs as Row[] | null) ?? []).map(legRow);

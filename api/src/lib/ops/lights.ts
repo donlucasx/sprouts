@@ -118,7 +118,10 @@ const FAILURE_WORDS: Record<FailureInput["kind"], string> = {
 export function moneyOpsLight(input: { now: Date; failures: FailureInput[]; oldestPendingWithdrawalAt: Date | null }): Light {
   const { now } = input;
   const mk = maker("moneyOps");
-  const recent = input.failures.filter((f) => now.getTime() - f.ts.getTime() <= 7 * DAY);
+  // Audit F1: an unrecorded remainder stays in view for its 14-day retry window; every other kind for 7 days.
+  const windowOf = (k: FailureInput["kind"]) => (k === "remainder_unrecorded" ? 14 : 7) * DAY;
+  const recent = input.failures.filter((f) => now.getTime() - f.ts.getTime() <= windowOf(f.kind));
+  const span = recent.some((f) => now.getTime() - f.ts.getTime() > 7 * DAY) ? "in the last 14 days" : "this week";
   const last24 = recent.filter((f) => now.getTime() - f.ts.getTime() < DAY);
   const pending = input.oldestPendingWithdrawalAt ? now.getTime() - input.oldestPendingWithdrawalAt.getTime() : null;
 
@@ -126,7 +129,7 @@ export function moneyOpsLight(input: { now: Date; failures: FailureInput[]; olde
   if (pending !== null && pending > PENDING_LIMIT_MS) return mk("red", `One withdrawal has been waiting ${ageText(pending)} (it should finish within 60 hours)`, "Ask Claude to look at it today.");
   if (recent.length) {
     const open = recent.filter((f) => !f.resolved).length;
-    return mk("amber", `${plural(recent.length, "failure")} this week, ${open} still open`, open ? "Ask Claude about the open ones." : "Nothing, all of them were fixed.");
+    return mk("amber", `${plural(recent.length, "failure")} ${span}, ${open} still open`, open ? "Ask Claude about the open ones." : "Nothing, all of them were fixed.");
   }
   return mk("green", pending === null ? "No failures in 7 days, nothing waiting" : `No failures in 7 days; one withdrawal in progress (${ageText(pending)} so far, normal)`);
 }
