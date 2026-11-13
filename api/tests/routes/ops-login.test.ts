@@ -42,6 +42,15 @@ describe("POST /api/ops/login", () => {
     expect((await post({ nope: 1 })).status).toBe(401);
   });
 
+  it("400 on a non-JSON content type, without spending the rate limit", async () => {
+    for (let i = 0; i < 8; i++) {
+      const r = await POST(new Request("http://x/api/ops/login", { method: "POST", headers: { "x-real-ip": ip, "content-type": "text/plain" }, body: JSON.stringify({ password: PW }) }));
+      expect(r.status).toBe(400);
+      expect(await r.json()).toEqual({ error: "Bad request." });
+    }
+    expect((await post({ password: PW })).status).toBe(204);
+  });
+
   it("401 on a wrong password, with no cookie", async () => {
     const r = await post({ password: "wrong" });
     expect(r.status).toBe(401);
@@ -54,8 +63,8 @@ describe("POST /api/ops/login", () => {
     expect(r.status).toBe(204);
     const c = r.headers.get("set-cookie") ?? "";
     expect(c).toMatch(/^sprouts_ops=\d+\.[0-9a-f]{64};/);
-    for (const a of ["HttpOnly", "Secure", "SameSite=strict", "Path=/", "Max-Age=2592000"]) expect(c.toLowerCase()).toContain(a.toLowerCase());
-    expect(c).not.toMatch(/domain=/i);
+    expect(c).toContain("; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=604800");
+    expect(c).not.toContain("Domain=");
     const value = c.split(";")[0].slice("sprouts_ops=".length);
     expect(verifyOpsCookie(value, Date.now())).toBe(true);
   });

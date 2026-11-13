@@ -11,6 +11,8 @@ const ATTRS = "HttpOnly; Secure; SameSite=Strict; Path=/";
 export async function POST(req: Request): Promise<Response> {
   const c = config();
   if (!c.opsPassword || !c.opsSecret) return Response.json({ error: "Not found." }, { status: 404 });
+  // Before the rate limit: a cross-site text/plain form post must not burn the 5-an-hour budget.
+  if (!(req.headers.get("content-type") ?? "").toLowerCase().startsWith("application/json")) return Response.json({ error: "Bad request." }, { status: 400 });
   if (rateLimited(`ops-login:${clientIp(req)}`, 5, 3_600_000)) return Response.json({ error: "Too many tries. Wait an hour." }, { status: 429 });
   let password = "";
   try {

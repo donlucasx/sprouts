@@ -105,14 +105,14 @@ function Dashboard({ snap }: { snap: OpsSnapshot }) {
           <div className="scroll">
             <table>
               <thead><tr><th>When</th><th>Wallet</th><th className="n">Amount</th><th>Status</th></tr></thead>
-              <tbody>{n.recentSwaps.map((r, i) => <tr key={i}><td>{utc(r.at)}</td><td>{r.wallet}</td><td className="n">{usd(r.usdCents)}</td><td>{r.status}</td></tr>)}</tbody>
+              <tbody>{n.recentSwaps.length === 0 ? <tr><td colSpan={4}>None</td></tr> : n.recentSwaps.map((r, i) => <tr key={i}><td>{utc(r.at)}</td><td>{r.wallet}</td><td className="n">{usd(r.usdCents)}</td><td>{r.status}</td></tr>)}</tbody>
             </table>
           </div>
           <h2>Recent plantings</h2>
           <div className="scroll">
             <table>
               <thead><tr><th>When</th><th>Wallet</th><th>Coin</th><th className="n">Amount</th><th>Status</th></tr></thead>
-              <tbody>{n.recentPlantings.map((r, i) => <tr key={i}><td>{utc(r.at)}</td><td>{r.wallet}</td><td>{r.coin}</td><td className="n">{usd(r.usdCents)}</td><td>{r.status}</td></tr>)}</tbody>
+              <tbody>{n.recentPlantings.length === 0 ? <tr><td colSpan={5}>None</td></tr> : n.recentPlantings.map((r, i) => <tr key={i}><td>{utc(r.at)}</td><td>{r.wallet}</td><td>{r.coin}</td><td className="n">{usd(r.usdCents)}</td><td>{r.status}</td></tr>)}</tbody>
             </table>
           </div>
         </>

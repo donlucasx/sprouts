@@ -17,7 +17,7 @@ afterEach(() => {
 describe("ops auth", () => {
   it("constants", () => {
     expect(OPS_COOKIE).toBe("sprouts_ops");
-    expect(OPS_COOKIE_MAX_AGE_S).toBe(30 * 24 * 3600);
+    expect(OPS_COOKIE_MAX_AGE_S).toBe(7 * 24 * 3600);
   });
   it("token: unset is false, right is true, wrong or wrong length or null is false", () => {
     expect(opsTokenOk("Bearer tok-for-tests")).toBe(true);
@@ -52,6 +52,15 @@ describe("ops auth", () => {
       expect(verifyOpsCookie(v, 1)).toBe(false);
     }
   });
+  it("a cookie signed under one password fails after the password changes; unset password verifies false", () => {
+    const c = signOpsCookie(9_999_999);
+    expect(verifyOpsCookie(c, 1)).toBe(true);
+    process.env.OPS_PASSWORD = "another-password";
+    expect(verifyOpsCookie(c, 1)).toBe(false);
+    delete process.env.OPS_PASSWORD;
+    expect(verifyOpsCookie(c, 1)).toBe(false);
+  });
+
   it("unset OPS_SECRET: verify false, sign throws or yields nothing valid", () => {
     const c = signOpsCookie(9_999_999);
     delete process.env.OPS_SECRET;
