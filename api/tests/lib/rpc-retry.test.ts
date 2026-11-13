@@ -67,6 +67,19 @@ describe("rpc transport: HTTP 429 is retried (11-13: an SKR price post and a wit
     expect(leaks(err)).toBe(false);
   });
 
+  it("jitter is a 0.5x-1.5x multiplier on each base delay", async () => {
+    for (const [r, want] of [[0, [250, 500, 1_000]], [0.999, [750, 1_499, 2_998]]] as const) {
+      vi.resetModules();
+      stubFetch(tooMany);
+      vi.stubEnv("HELIUS_RPC_URL", FAKE);
+      const mod = await import("@/lib/rpc");
+      const sleeps: number[] = [];
+      const rpc = createSolanaRpcFromTransport(mod.rpcTransport(FAKE, { sleep: async (ms) => { sleeps.push(ms); }, random: () => r }));
+      await rpc.getSlot().send().catch(() => null);
+      expect(sleeps).toEqual(want);
+    }
+  });
+
   it("honors Retry-After in seconds, capped at 2 s", async () => {
     const f = stubFetch(() => tooMany({ "retry-after": "1" }), () => tooMany({ "retry-after": "60" }), ok);
     const { rpc, sleeps } = await setup();

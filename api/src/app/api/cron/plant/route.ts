@@ -29,7 +29,11 @@ export const runtime = "nodejs";
 export const maxDuration = 300;
 /** The moves step reads no position past this many ms from the run's start (the planting's own cutoff is 240 s). */
 const MOVES_DEADLINE_MS = 150_000;
-const WITHDRAW_DEADLINE_MS = 270_000;
+/**
+ * 11-13: the withdrawal crank starts no new withdrawal past this many ms, so a started one's send and confirm have ~50 s before the
+ * 300 s kill. The ladder: planting starts no wallet past 240 s, the crank none past 250 s, the reconcile none past 275 s; 300 s kill.
+ */
+const WITHDRAW_DEADLINE_MS = 250_000;
 /** 11-07 run lock: a claimed run not finished after this long died (the route's limit is 300 s), so its day can be claimed again. */
 const RUN_STALE_MS = 6 * 60_000;
 
@@ -93,7 +97,8 @@ export async function GET(request: Request) {
     run = { repo, day };
     // The Yield Manager's steps before the planting run (spec 6.1): snapshot the venues, then the coins (its lending legs read today's
     // venue rows), decide each stop's split, apply to users, propose moves. Budgets: decide 90 s (DECIDE_BUDGET_MS); the moves step
-    // reads no position past 150 s from the start; planting starts no new wallet past 240 s; the whole route has 300 s.
+    // reads no position past 150 s from the start; planting starts no new wallet past 240 s, the crank none past 250 s, the
+    // reconcile none past 275 s; the whole route has 300 s.
     // realVenueReads() is built inside each step, so a missing JUPITER_API_KEY or RPC fails that step loudly in the log, not the run.
     const venues = await step("venues", () => snapshotVenues({ repo, now, reads: realVenueReads() }));
     const coins = await step("snapshot", () => snapshotCoins({ repo, now, reads: realCoinReads(repo, now) }));
@@ -123,7 +128,7 @@ export async function GET(request: Request) {
       });
     });
     const planting = await runPlanting({ repo, now, chain: realPlantingChain(), deadlineMs: startedMs + 240_000 });
-    // 11-13: the crank starts no new withdrawal past 270 s (the 429 retry can stretch the run); the rest wait for the next run.
+    // 11-13: the crank starts no new withdrawal past 250 s (the 429 retry can stretch the run); the rest wait for the next run.
     const withdrawals = await runWithdrawCrank({ repo, now, deadlineMs: startedMs + WITHDRAW_DEADLINE_MS, chain: { readPosition: (u) => readPosition(address(u)), crankWithdraw: (u) => crankWithdraw(address(u)) } });
     // R61: stakes and unstakes the Seed Vault made from its own wallet, found by comparing the chain's share count with the ledger's.
     // R499 F4: the reconcile stops starting users 25 s before the route's 300 s limit (the last one may still spend ~10 s on its
