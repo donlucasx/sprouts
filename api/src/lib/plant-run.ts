@@ -7,7 +7,7 @@ import { alertFounder } from "./founder-alert";
 import { pickAsset, type Asset } from "@/domain/allocation";
 import { ASSETS, COINS, LEND_ASSETS, isLendAsset, type LendAsset, type LiveAsset } from "@/domain/coins";
 import { addDays, dayOf } from "@/domain/day";
-import { capLeftCents, plantAmountCents } from "@/domain/cap";
+import { capLeftCents, coveredOldestFirst, plantAmountCents } from "@/domain/cap";
 import { plantThresholdFor } from "@/domain/threshold";
 import { floorFor, redistributeDisabled, withStoreFloor } from "@/domain/split";
 import { lendingUsdByProtocol } from "./user-routing";
@@ -648,18 +648,29 @@ async function plantOneOrThrow(a: RunArgs, w: WalletRow, ctx: RunCtx): Promise<P
   // unplanted and plant on a later run, after a top-up. The pull (their sum + the fee) never exceeds the balance. With nothing that
   // reaches the minimum covered: a balance under threshold + fee pauses (the resume ends it at threshold + fee, so the two
   // converge); a balance at or above it (one round-up bigger than the balance) waits active, since the resume would undo a pause.
-  // A cap-bounded planting keeps its own rule: it claims every pending round-up (the cap is the user's own daily limit).
+  // Cap carry (owner 11-13, "Carry it to the next days"): a planting bounded by the cap left claims the same way, the round-ups its
+  // pull covers, whole, oldest first; the rest stay unplanted and plant on the following days, never more than the cap a day. (Before,
+  // it claimed every pending round-up and the part past the cap was marked planted but never moved.) Edge: a round-up bigger than the
+  // whole cap would never fit, so when the OLDEST is one it is claimed alone and the cap left is pulled; its excess is never pulled
+  // (rare: a 1% round-up over $5 needs a $500+ swap). Everything behind it waits. The 7-day minimum of zero is read from the claimed
+  // round-ups, as below. Under the cap nothing changes: every pending round-up is claimed.
+  const isOld = (s: { ts: Date }) => a.now.getTime() - s.ts.getTime() >= rules.plantMaxDays * 86_400_000;
   let claim = swaps;
   let covered = pending;
+  if (amount.changeCents < pending) {
+    ({ claim, covered } = coveredOldestFirst(swaps, left - NETWORK_FEE_CENTS, cap - NETWORK_FEE_CENTS));
+    forced = claim.some(isOld);
+    amount = plantAmountCents({ pendingCents: covered, capLeftCents: left, feeCents: NETWORK_FEE_CENTS, minCents: forced ? 0 : threshold });
+    if (amount.pullCents === 0) return { wallet: w.pubkey, reason: "below threshold" };
+  }
+  // The balance bound is read from the full list with the stricter of the two bounds (the balance is under this pull, so under the
+  // cap left): one selection, never a second rounding of the cap's.
   const balanceCents = Number((await a.chain.usdcBalanceRaw(w.pubkey)) / USDC_PER_CENT);
   if (balanceCents < amount.pullCents) {
     const wanted = amount.pullCents;
     left = Math.min(left, balanceCents);
-    const room = left - NETWORK_FEE_CENTS;
-    claim = [];
-    covered = 0;
-    for (const s of swaps) if (covered + s.roundupCents <= room) { claim.push(s); covered += s.roundupCents; }
-    forced = claim.some((s) => a.now.getTime() - s.ts.getTime() >= rules.plantMaxDays * 86_400_000);
+    ({ claim, covered } = coveredOldestFirst(swaps, left - NETWORK_FEE_CENTS));
+    forced = claim.some(isOld);
     amount = plantAmountCents({ pendingCents: covered, capLeftCents: left, feeCents: NETWORK_FEE_CENTS, minCents: forced ? 0 : threshold });
     if (amount.pullCents === 0) {
       if (balanceCents >= threshold + NETWORK_FEE_CENTS) return { wallet: w.pubkey, reason: "no usdc" };
@@ -721,11 +732,16 @@ async function plantOneOrThrow(a: RunArgs, w: WalletRow, ctx: RunCtx): Promise<P
   const target = redistributeDisabled(floored, disabled, rules.stop);
   if (!target) return { wallet: w.pubkey, reason: "no leg enabled" };
   // R336 follow-up: with USDC lending disabled and every enabled leg at its stop max, the rest of the split is left unpulled. One leg
-  // takes each planting, so "unpulled" is the pull itself: only the target's share of the change is pulled (the USDC stays in the
-  // wallet; the round-ups are all claimed by this planting). The venue check above used the larger amount (the stricter 60% test); both are already bounded by the cap and the USDC balance.
+  // takes each planting, so "unpulled" is the pull itself: only the target's share of the change is pulled. Cap carry (owner 11-13):
+  // it claims only the round-ups that share covers, whole, oldest first; the rest wait for a later planting. An oldest round-up bigger
+  // than the share is claimed alone with the share pulled (else it would block the queue). The venue check above used the larger
+  // amount (the stricter 60% test); both are already bounded by the cap and the USDC balance.
   const share = ASSETS.reduce((sum, leg) => sum + target[leg], 0);
   if (share < 100 - 1e-9) {
-    amount = plantAmountCents({ pendingCents: Math.floor((covered * share) / 100), capLeftCents: left, feeCents: NETWORK_FEE_CENTS, minCents: forced ? 0 : threshold });
+    const room = Math.floor((covered * share) / 100);
+    ({ claim, covered } = coveredOldestFirst(claim, room, room));
+    forced = claim.some(isOld);
+    amount = plantAmountCents({ pendingCents: covered, capLeftCents: left, feeCents: NETWORK_FEE_CENTS, minCents: forced ? 0 : threshold });
     if (amount.pullCents === 0) return { wallet: w.pubkey, reason: "below threshold" };
     pullRaw = BigInt(amount.pullCents) * USDC_PER_CENT;
   }
