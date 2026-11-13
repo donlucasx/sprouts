@@ -29,7 +29,7 @@ const sha = (x: string) => createHash("sha256").update(x).digest("hex");
 // The password hash is part of the MAC input, so changing OPS_PASSWORD revokes every issued cookie.
 const mac = (secret: string, password: string, exp: string) => createHmac("sha256", secret).update(`${exp}.${sha(password)}`).digest("hex");
 
-/** `"<expMs>.<hex hmac-sha256(OPS_SECRET, expMs)>"`. Throws when OPS_SECRET or OPS_PASSWORD is unset (the login route checks first). */
+/** `"<expMs>.<hex hmac-sha256(OPS_SECRET, `<expMs>.<sha256(OPS_PASSWORD)>`)>"`: the MAC covers the expiry AND a hash of OPS_PASSWORD, so changing the password invalidates cookies. Throws when OPS_SECRET or OPS_PASSWORD is unset (the login route checks first). */
 export function signOpsCookie(expMs: number): string {
   const secret = config().opsSecret;
   if (!secret) throw new Error("OPS_SECRET is not set");
