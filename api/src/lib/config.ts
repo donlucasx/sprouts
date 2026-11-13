@@ -16,6 +16,12 @@ export type Config = {
   pythApiKey: string | undefined;
   /** Ops dashboard (11-12): comma-separated test wallets / seed-vault keys left out of every ops count and list. */
   opsExcludeWallets: string | undefined;
+  /** Ops dashboard: bearer token for /api/ops/health; unset means that route answers 404. */
+  opsToken: string | undefined;
+  /** Ops dashboard: password for the /ops page; unset means the page answers 404. */
+  opsPassword: string | undefined;
+  /** Ops dashboard: HMAC key for the /ops session cookie; unset means no cookie verifies. */
+  opsSecret: string | undefined;
 };
 
 const MAP: Record<keyof Config, string> = {
@@ -33,10 +39,13 @@ const MAP: Record<keyof Config, string> = {
   anthropicApiKey: "ANTHROPIC_API_KEY",
   pythApiKey: "PYTH_API_KEY",
   opsExcludeWallets: "OPS_EXCLUDE_WALLETS",
+  opsToken: "OPS_TOKEN",
+  opsPassword: "OPS_PASSWORD",
+  opsSecret: "OPS_SECRET",
 };
 
 /** Settings that may be absent: reading one returns undefined instead of throwing. */
-const OPTIONAL: ReadonlySet<keyof Config> = new Set(["pythApiKey", "opsExcludeWallets"]);
+const OPTIONAL: ReadonlySet<keyof Config> = new Set(["pythApiKey", "opsExcludeWallets", "opsToken", "opsPassword", "opsSecret"]);
 
 let cached: Config | null = null;
 
