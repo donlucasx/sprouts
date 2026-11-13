@@ -133,6 +133,11 @@ describe("gatherOps", () => {
     expect(l.fact).not.toMatch(/\bleg \d/);
   });
 
+  it("liveOff follows the leashLive flag", async () => {
+    expect((await gatherOps({ sources: healthy(), now: NOW, flags, fresh: true })).liveOff).toBe(false);
+    expect((await gatherOps({ sources: healthy(), now: NOW, flags: { ...flags, leashLive: false }, fresh: true })).liveOff).toBe(true);
+  });
+
   it("numbers carry now.{linkedNow,active7d}; funnel windows do not", async () => {
     const s = await gatherOps({ sources: healthy(), now: NOW, flags });
     expect(s.numbers!.now).toEqual({ linkedNow: 2, active7d: 1 });

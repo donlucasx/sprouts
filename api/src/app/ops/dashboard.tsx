@@ -79,6 +79,7 @@ export function Dashboard({ snap, nowMs }: { snap: OpsSnapshot; nowMs: number })
         </div>
       )}
       {v.fine.length ? <p className="fine">{v.attention.length ? "Everything else is fine" : "Fine"}: {v.fine.map((l) => lower(l.label)).join(", ")}.</p> : null}
+      {snap.liveOff ? <p className="sub2">The live savings switch is off.</p> : null}
       {support ? <p className="sub2">{support.fact}.</p> : null}
 
       <h2>How Sprouts is doing (last 7 days)</h2>
@@ -112,7 +113,7 @@ export function Dashboard({ snap, nowMs }: { snap: OpsSnapshot; nowMs: number })
             </tbody></table>
             <h3>Over time</h3>
             <div className="scroll"><table>
-              <thead><tr><th></th><th className="n">Today</th><th className="n">7 days</th><th className="n">All time</th></tr></thead>
+              <thead><tr><th></th><th className="n">Last 24 h</th><th className="n">7 days</th><th className="n">All time</th></tr></thead>
               <tbody>
                 {([["New users", "signIns"], ["Started linking", "triedLink"], ["Finished linking", "linkedEver"]] as const).map(([label, k]) => (
                   <tr key={k}><td>{label}</td><td className="n">{n.funnel.d1[k]}</td><td className="n">{n.funnel.d7[k]}</td><td className="n">{n.funnel.all[k]}</td></tr>
@@ -128,7 +129,7 @@ export function Dashboard({ snap, nowMs }: { snap: OpsSnapshot; nowMs: number })
               <tr><td>Swaps</td><td className="n">{n.activity7d.swaps}</td></tr>
               <tr><td>Swapped</td><td className="n">{usd(n.activity7d.usdSwappedCents)}</td></tr>
               <tr><td>Round-ups</td><td className="n">{usd(n.activity7d.roundupCents)}</td></tr>
-              <tr><td>Fees (0.5% of savings)</td><td className="n">{usd(n.activity7d.feeCents)}</td></tr>
+              <tr><td>Sprouts fees collected</td><td className="n">{usd(n.activity7d.feeCents)}</td></tr>
             </tbody></table>
             <h3>By coin, 7 days</h3>
             {Object.keys(n.activity7d.byCoin).length === 0 ? <p>None</p> : (

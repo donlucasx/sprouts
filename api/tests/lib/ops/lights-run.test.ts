@@ -88,9 +88,32 @@ describe("dailyRunLight", () => {
   it("green: reconciled.adjusted is routine, and rides on the green fact", () => {
     const l = light(run({}, goodSummary({ reconciled: { adjusted: ["v", "w"], skipped: [], deferred: [] } })));
     expect(l.state).toBe("green");
-    expect(l.fact).toBe("Ran 59 min ago, everything fine (routine cleanup corrected 2 saved amounts)");
+    expect(l.fact).toBe("Ran 59 minutes ago, everything fine (routine cleanup corrected 2 saved amounts)");
     expect(l.action).toBeUndefined();
     expect(light(run({}, goodSummary({ reconciled: { adjusted: ["v"], skipped: [], deferred: [] } }))).fact).toContain("corrected 1 saved amount)");
+  });
+  it("failed last run says 'last', not 'yesterday'", () => {
+    expect(light(run({ ok: false }, { error: "boom" })).fact).toBe("The last daily job failed");
+  });
+  it("durations are written in words, singular for 1", () => {
+    expect(light(run({ startedAt: ago(5 * 60_000), finishedAt: null, ok: null })).fact).toBe("The daily job is running now (5 minutes so far)");
+    expect(light(run({ startedAt: ago(60_000), finishedAt: null, ok: null })).fact).toBe("The daily job is running now (1 minute so far)");
+    expect(light(run({ startedAt: ago(11 * 60_000), finishedAt: null, ok: null })).fact).toBe("The daily job started 11 minutes ago and got stuck");
+    expect(light(run({ finishedAt: ago(27 * H) })).fact).toBe("The daily job has not run for 27 hours");
+    expect(light(run({ finishedAt: ago(3 * D) })).fact).toBe("The daily job has not run for 3 days");
+    expect(light(run({ finishedAt: ago(2 * D) })).fact).toBe("The daily job has not run for 2 days");
+    expect(firstPlantingLight({ now: NOW, lastRunAt: ago(1 * H) }).fact).toBe("Ran 1 hour ago, new users get their first saving");
+    expect(moneyOpsLight({ now: NOW, failures: [], oldestPendingWithdrawalAt: ago(14 * D) }).fact).toContain("14 days");
+  });
+  it("combined amber reasons give ONE action, the most urgent (today beats it-fixed-itself)", () => {
+    const l = light(run({}, goodSummary({ coverage: { missing: ["a"], repaired: ["a"] }, withdrawals: { cranked: [], failed: [{}], skipped: [] } })));
+    expect(l.state).toBe("amber");
+    expect(l.fact).toContain("withdrawal failed");
+    expect(l.fact).toContain("re-added");
+    expect(l.action).toBe("Ask Claude to check them today.");
+    expect(l.action).not.toMatch(/fixed itself/);
+    const only = light(run({}, goodSummary({ coverage: { missing: ["a"], repaired: ["a"] } })));
+    expect(only.action).toBe("Nothing, it fixed itself. Ask Claude if it repeats.");
   });
   it("amber stays amber with adjusted present, and the fact leaves reconcile out", () => {
     const l = light(run({}, goodSummary({ reconciled: { adjusted: ["v"] }, coverage: { missing: ["a"], repaired: ["a"] } })));

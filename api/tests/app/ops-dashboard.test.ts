@@ -26,6 +26,7 @@ const snap = (over: Partial<OpsSnapshot> = {}): OpsSnapshot => ({
   },
   numbersAt: AT,
   blindSpots: ["one blind spot"],
+  liveOff: false,
   ...over,
 });
 const html = (s: OpsSnapshot) => renderToStaticMarkup(createElement(Dashboard, { snap: s, nowMs: NOW }));
@@ -52,13 +53,19 @@ describe("ops Dashboard markup", () => {
   it("has the four folds, with Pyth countdown and plain link-problem names inside them", () => {
     const h = html(snap());
     expect(h.match(/<details>/g)).toHaveLength(4);
-    for (const t of ["All 5 system checks", "Full numbers", "Recent swaps and savings", "What this page can&#x27;t see", "Started linking", "Finished linking", "gave up in the app", "approval step failed", "Fees (0.5% of savings)", "Free price data ends in 49 days (Dec 31)"]) expect(h).toContain(t);
+    for (const t of ["All 5 system checks", "Full numbers", "Recent swaps and savings", "What this page can&#x27;t see", "Started linking", "Finished linking", "wallet connection dropped", "approval step failed", "Sprouts fees collected", "Last 24 h", "Free price data ends in 49 days (Dec 31)"]) expect(h).toContain(t);
   });
   it("shows no wallet at all, and never the old jargon", () => {
     const h = html(snap());
     expect(h).not.toContain("Wallet</th>");
     expect(h).not.toMatch(/Fake…|[1-9A-HJ-NP-Za-km-z]{32,44}/);
     expect(h).not.toMatch(/Signed in|Tried to link|Linked ever|Active 7 d|Plantings/);
+  });
+  it("live switch off: note under the fine line on the main view; absent when on", () => {
+    const off = html(snap({ liveOff: true }));
+    expect(off).toContain("The live savings switch is off.");
+    expect(off.indexOf("The live savings switch is off.")).toBeGreaterThan(off.indexOf("Everything else is fine"));
+    expect(html(snap())).not.toContain("live savings switch");
   });
   it("null numbers degrade to a message", () => {
     expect(html(snap({ numbers: null, numbersAt: null }))).toContain("Numbers unavailable");

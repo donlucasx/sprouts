@@ -5,7 +5,7 @@ import { leashLive } from "@/lib/leash";
 import { EXPECTED_LEGS_ENABLED, shortWallet, realOpsSources, type OpsSources, type OpsNumbers } from "./sources";
 import { dailyRunLight, firstPlantingLight, moneyOpsLight, swapWatchingLight, swapsArrivingLight, pricesLight, gasLight, programLight, supportLight, PYTH_ACCESS_ENDS, LIGHT_LABELS, type Light, type LightKey } from "./lights";
 
-export type OpsSnapshot = { at: string; lights: Light[]; numbers: OpsNumbers | null; numbersAt: string | null; blindSpots: string[] };
+export type OpsSnapshot = { at: string; lights: Light[]; numbers: OpsNumbers | null; numbersAt: string | null; blindSpots: string[]; liveOff: boolean };
 
 export type GatherOpts = { sources?: OpsSources; now?: Date; fresh?: boolean; flags?: { movesEnabled: boolean; leashLive: boolean } };
 
@@ -108,6 +108,7 @@ async function gather(sources: OpsSources, now: Date, flags: { movesEnabled: boo
     numbers: lastNumbers?.numbers ?? null,
     numbersAt: lastNumbers?.at ?? null,
     blindSpots: [...BLIND_SPOTS],
+    liveOff: !flags.leashLive,
   };
 }
 

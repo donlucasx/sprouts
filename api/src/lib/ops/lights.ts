@@ -32,10 +32,11 @@ const DAY = 24 * HOUR;
 export type CronRunInput = { day: string; startedAt: Date; finishedAt: Date | null; ok: boolean | null; summary: Record<string, unknown> | null };
 export type FailureInput = { kind: "pull_failed" | "withdraw_failed" | "move_failed" | "run_stopped"; ts: Date; resolved: boolean };
 
+/** Plain words for a duration ("14 minutes", "26 hours", "1 day"). Thresholds are unchanged from the old min/h/d text. */
 function ageText(ms: number): string {
-  if (ms < HOUR) return `${Math.max(0, Math.round(ms / MIN))} min`;
-  if (ms < 2 * DAY) return `${Math.round(ms / HOUR)} h`;
-  return `${Math.round(ms / DAY)} d`;
+  if (ms < HOUR) return plural(Math.max(0, Math.round(ms / MIN)), "minute");
+  if (ms < 2 * DAY) return plural(Math.round(ms / HOUR), "hour");
+  return plural(Math.round(ms / DAY), "day");
 }
 
 const asObj = (v: unknown): Record<string, unknown> | null => (v !== null && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null);
@@ -50,7 +51,7 @@ export function dailyRunLight(input: { now: Date; latest: CronRunInput | null; m
   const ASK = "Ask Claude to check the daily job.";
   if (!latest) return mk("red", "The daily job has never run", ASK);
 
-  if (latest.ok === false) return mk("red", "Yesterday's daily job failed", ASK);
+  if (latest.ok === false) return mk("red", "The last daily job failed", ASK);
   if (!latest.finishedAt) {
     const running = now.getTime() - latest.startedAt.getTime();
     return running > 10 * MIN
@@ -67,21 +68,22 @@ export function dailyRunLight(input: { now: Date; latest: CronRunInput | null; m
   const redNull = (["coverage", "withdrawals"] as const).filter((k) => s[k] === null);
   if (redNull.length) return mk("red", `A required part failed: ${redNull.map((k) => (k === "withdrawals" ? "withdrawal handling" : "the wallet-watcher check")).join(" and ")}`, ASK);
 
-  const amber: { fact: string; action: string }[] = [];
+  // urgency: a higher number wins the single Do line when several amber reasons combine (no contradictory advice).
+  const amber: { fact: string; action: string; urgency: number }[] = [];
   const failedSteps = SECTIONS.filter((k) => k !== "coverage" && k !== "withdrawals" && s[k] === null && !(k === "moves" && !movesEnabled));
-  if (failedSteps.length) amber.push({ fact: `${failedSteps.length === 1 ? "One part" : "Some parts"} of the job failed (${failedSteps.join(", ")}); the rest ran`, action: "Ask Claude what this part does." });
+  if (failedSteps.length) amber.push({ fact: `${failedSteps.length === 1 ? "One part" : "Some parts"} of the job failed (${failedSteps.join(", ")}); the rest ran`, action: "Ask Claude what this part does.", urgency: 1 });
 
   const skippedRaw = asObj(s.planting)?.skipped;
   const skipped = Array.isArray(skippedRaw) ? skippedRaw : [];
   const bad = [...new Set(skipped.map((e) => String(asObj(e)?.reason ?? "unknown")).filter((r) => !BENIGN_SKIP_REASONS.includes(r)))];
-  if (bad.length) amber.push({ fact: `Some users were skipped: ${bad.join(", ")}`, action: "Ask Claude if this keeps showing up." });
+  if (bad.length) amber.push({ fact: `Some users were skipped: ${bad.join(", ")}`, action: "Ask Claude if this keeps showing up.", urgency: 1 });
 
   const failedW = lenOf(asObj(s.withdrawals)?.failed);
-  if (failedW) amber.push({ fact: `${plural(failedW, "withdrawal")} failed in the last run`, action: "Ask Claude to check them today." });
+  if (failedW) amber.push({ fact: `${plural(failedW, "withdrawal")} failed in the last run`, action: "Ask Claude to check them today.", urgency: 2 });
   const repaired = lenOf(asObj(s.coverage)?.repaired);
-  if (repaired) amber.push({ fact: `${plural(repaired, "wallet")} fell off the swap watcher and ${repaired === 1 ? "was" : "were"} re-added`, action: "Nothing, it fixed itself. Ask Claude if it repeats." });
+  if (repaired) amber.push({ fact: `${plural(repaired, "wallet")} fell off the swap watcher and ${repaired === 1 ? "was" : "were"} re-added`, action: "Nothing, it fixed itself. Ask Claude if it repeats.", urgency: 0 });
 
-  if (amber.length) return mk("amber", amber.map((a) => a.fact).join("; "), [...new Set(amber.map((a) => a.action))].join(" "));
+  if (amber.length) return mk("amber", amber.map((a) => a.fact).join("; "), amber.reduce((best, a) => (a.urgency > best.urgency ? a : best)).action);
   // reconciled.adjusted is routine (14-27 a day in production): it never turns the light amber, it only rides on the green fact.
   const adjusted = lenOf(asObj(s.reconciled)?.adjusted);
   const note = adjusted ? ` (routine cleanup corrected ${plural(adjusted, "saved amount")})` : "";
@@ -209,7 +211,7 @@ export function gasLight(input: { lamports: bigint }): Light {
   const shown = (Number(lamports) / 1e9).toFixed(3);
   const fact = `The wallet that pays network fees holds ${shown} SOL`;
   const mk = maker("gas");
-  if (lamports > LAMPORTS_PER_SOL / 2n) return mk("green", `${fact} (enough for thousands of savings)`);
+  if (lamports > LAMPORTS_PER_SOL / 2n) return mk("green", fact);
   if (lamports >= LAMPORTS_PER_SOL / 10n) return mk("amber", fact, "Top it up soon; ask Claude how.");
   return mk("red", fact, "Savings will fail until it is topped up. Ask Claude today.");
 }

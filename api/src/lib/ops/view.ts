@@ -34,13 +34,11 @@ export const hhmmUtc = (iso: string) => `${iso.slice(11, 16)} UTC`;
 
 const LINK_FAILURE_NAMES: Record<string, string> = {
   "app:declined": "declined in the app",
-  "app:dropped": "gave up in the app",
-  "app:refused": "refused in the app",
+  "app:dropped": "wallet connection dropped",
+  "app:refused": "blocked by Sprouts' safety check",
   "app:other": "other problem in the app",
   "app:?": "unknown problem in the app",
-  "server:new": "setup step failed",
   "server:approval": "approval step failed",
-  "server:sign": "signing step failed",
   "server:confirm": "confirmation failed",
   "server:?": "unknown step failed",
 };

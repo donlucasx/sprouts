@@ -24,6 +24,7 @@ const snap: OpsSnapshot = {
   },
   numbersAt: "2026-11-12T00:00:00.000Z",
   blindSpots: ["one blind spot"],
+  liveOff: false,
 };
 
 beforeEach(() => {

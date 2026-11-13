@@ -31,7 +31,10 @@ describe("helpers", () => {
     expect(relativeAgo("2026-11-12T11:59:50Z", now)).toBe("just now");
   });
   it("link failure keys get plain names, never the raw key", () => {
-    expect(linkFailureName("app:dropped")).toBe("gave up in the app");
+    expect(linkFailureName("app:dropped")).toBe("wallet connection dropped");
+    expect(linkFailureName("app:refused")).toBe("blocked by Sprouts' safety check");
+    expect(linkFailureName("server:new")).toBe("other step failed");
+    expect(linkFailureName("server:sign")).toBe("other step failed");
     expect(linkFailureName("server:approval")).toBe("approval step failed");
     expect(linkFailureName("server:weird")).not.toContain("weird");
   });

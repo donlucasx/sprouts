@@ -60,7 +60,7 @@ describe("swapsArrivingLight", () => {
     expect(r.action).toBeTruthy();
   });
   it("red keeps its state with unpriced", () => expect(l({ lastSwapAt: ago(80 * H), unpriced24h: 2 }).state).toBe("red"));
-  it("green fact has no unpriced noise", () => expect(l({}).fact).toBe("Last swap 2 h ago"));
+  it("green fact has no unpriced noise", () => expect(l({}).fact).toBe("Last swap 2 hours ago"));
   it("future swap timestamp is unknown, not fresh", () => expect(l({ lastSwapAt: new Date(NOW.getTime() + H) }).state).toBe("unknown"));
 });
 
@@ -126,6 +126,7 @@ describe("gasLight", () => {
   it("red 0.05", () => expect(g(0.05).state).toBe("red"));
   it("fact shows the balance", () => {
     expect(g(0.3).fact).toBe("The wallet that pays network fees holds 0.300 SOL");
+    expect(g(0.6).fact).toBe("The wallet that pays network fees holds 0.600 SOL");
     expect(g(0.3).label).toBe("Network fee wallet");
   });
 });
@@ -168,6 +169,6 @@ describe("supportLight", () => {
     const f = supportLight({ now: NOW, count7d: 3, newestAt: ago(5 * H) }).fact;
     expect(f).toContain("3");
     expect(f).toContain("5 h");
-    expect(f).toBe("3 support messages this week, newest 5 h ago");
+    expect(f).toBe("3 support messages this week, newest 5 hours ago");
   });
 });
