@@ -172,14 +172,18 @@ export function gasLight(input: { lamports: bigint }): Light {
   return mk("red");
 }
 
-export function programLight(input: { enabled: boolean[]; expected: boolean[]; leashLive: boolean }): Light {
-  const { enabled, expected, leashLive } = input;
+/** `names` (optional) labels each leg by index; without it the fact says "leg N" (1-based). */
+export function programLight(input: { enabled: boolean[]; expected: boolean[]; leashLive: boolean; names?: string[] }): Light {
+  const { enabled, expected, leashLive, names } = input;
   const live = `LEASH_LIVE=${leashLive}`;
   const mk = (state: LightState, fact: string): Light => ({ key: "program", label: "Program", state, fact });
   if (expected.length === 0) return mk("unknown", `no expected legs to compare, ${live}`);
   if (enabled.length !== expected.length) return mk("red", `${enabled.length} legs read, ${expected.length} expected, ${live}`);
-  const differ = expected.flatMap((e, i) => (enabled[i] !== e ? [i + 1] : []));
-  if (differ.length) return mk("red", `leg ${differ.join(", ")} differ${differ.length === 1 ? "s" : ""} from expected, ${live}`);
+  const differ = expected.flatMap((e, i) => (enabled[i] !== e ? [i] : []));
+  if (differ.length) {
+    const who = names ? differ.map((i) => names[i] ?? `leg ${i + 1}`).join(", ") : `leg ${differ.map((i) => i + 1).join(", ")}`;
+    return mk("red", `${who} differ${differ.length === 1 ? "s" : ""} from expected, ${live}`);
+  }
   return mk("green", `all ${expected.length} legs match, ${live}`);
 }
 
