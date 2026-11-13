@@ -471,10 +471,12 @@ describe("runPlanting", () => {
   });
 
   it("counts what the chain already pulled this period against the cap", async () => {
-    const repo = await seeded([1000]);
+    // Cap carry (11-13): round-ups that fit a day (a single $10 one now waits for a full day, see "cap carry" below).
+    const repo = await seeded([125, 125, 125]);
     const periodStart = BigInt(Math.floor(NOW.getTime() / 1000) - 3600);
     const r = await runPlanting({ repo, now: NOW, chain: fakeChain({ readDelegation: async () => ({ ...DELEGATION, pulledInPeriodRaw: 2_500_000n, periodStartTs: periodStart }) }) });
     expect(r.planted[0].pullCents).toBe(250);
+    expect((await repo.unplantedSwaps("W")).length).toBe(1);
   });
 
   it("when the cap left is below the threshold, nothing is planted and the change waits", async () => {
@@ -1082,11 +1084,9 @@ describe("venues, the leash and the carry in the run (contracts 3.2-3.4)", () =>
     await repo.saveRules("U", { stop: "careful", allocation: { SKR: 60, stORE: 0, USDC_LEND: 10, SOL_LEND: 0, hSOL: 10, cbBTC: 20 } });
     const builds: BuildArgs[] = [];
     const r = await runPlanting({ repo, now: NOW, chain: recording(builds, { readLeashConfig: async () => leashCfg([6, 7]) }) });
-    // Careful maxes hSOL 15 + cbBTC 30 = 45%: 202 cents of change at most, not 450; cap carry (11-13): the whole round-ups that
-    // fit, one 150, are pulled and claimed, the other two wait.
-    expect(builds[0]).toMatchObject({ asset: "cbBTC", leashed: true, pullRaw: 1_500_000n });
-    expect(r.planted[0]).toMatchObject({ pullCents: 150 });
-    expect((await repo.unplantedSwaps("W")).length).toBe(2);
+    // Careful maxes hSOL 15 + cbBTC 30 = 45%: 202 cents of change pulled, not 450.
+    expect(builds[0]).toMatchObject({ asset: "cbBTC", leashed: true, pullRaw: 2_020_000n });
+    expect(r.planted[0]).toMatchObject({ pullCents: 202 });
   });
 
   it("a leashed planting bounded by the USDC balance builds with the bounded pull: the leash's floor and settle read that pullRaw", async () => {
@@ -1108,12 +1108,11 @@ describe("venues, the leash and the carry in the run (contracts 3.2-3.4)", () =>
     await repo.setWalletLink("W", { delegationPda: "D", linkModel: "leash" });
     await repo.saveRules("U", { plantThresholdCents: 100, stop: "careful", allocation: { SKR: 60, stORE: 0, USDC_LEND: 10, SOL_LEND: 0, hSOL: 10, cbBTC: 20 } });
     const builds: BuildArgs[] = [];
-    // $3.10 covers two round-ups (300); 45% of 300 is 135. The third round-up waits. Cap carry (11-13): no whole 150 fits in 135, so
-    // the oldest is claimed alone with 135 pulled (else it blocks the queue); the second waits too.
+    // $3.10 covers two round-ups (300); 45% of 300 is 135. The third round-up waits.
     const r = await runPlanting({ repo, now: NOW, chain: recording(builds, { usdcBalanceRaw: async () => 3_100_000n, readLeashConfig: async () => leashCfg([6, 7]) }) });
     expect(builds[0]).toMatchObject({ asset: "cbBTC", leashed: true, pullRaw: 1_350_000n });
     expect(r.planted[0]).toMatchObject({ pullCents: 135 });
-    expect((await repo.unplantedSwaps("W")).length).toBe(2);
+    expect((await repo.unplantedSwaps("W")).length).toBe(1);
   });
 
   it("a leashed user's USDC goes to Jupiter Lend when only its leash leg is enabled (the Day-1 fallback venue)", async () => {
@@ -2134,16 +2133,31 @@ describe("cap carry: round-ups past the daily cap wait for the next days (owner 
     expect(await waiting(skipped)).toEqual([300, 100, 300]);
   });
 
-  it("share under 100 (R336): pulls the share, claims only the whole round-ups it covers; the rest wait", async () => {
-    const repo = await queued([150, 150, 150]);
+  it("share under 100 (R336) under a binding cap: the cap picks the round-ups, the share of them is pulled, all of them claimed; the rest wait", async () => {
+    const repo = await queued([300, 150, 300, 200]);   // 950 pending, cap 500
     await repo.setWalletLink("W", { delegationPda: "D", linkModel: "leash" });
-    await repo.saveRules("U", { stop: "careful", allocation: { SKR: 60, stORE: 0, USDC_LEND: 10, SOL_LEND: 0, hSOL: 10, cbBTC: 20 } });
+    await repo.saveRules("U", { plantThresholdCents: 100, stop: "careful", allocation: { SKR: 60, stORE: 0, USDC_LEND: 10, SOL_LEND: 0, hSOL: 10, cbBTC: 20 } });
     const builds: BuildArgs[] = [];
     const r = await runPlanting({ repo, now: NOW, chain: recording(builds, { readLeashConfig: async () => leashCfg([6, 7]) }) });
-    // 45% of 450 is 202: one 150 fits whole; the other two wait.
-    expect(builds[0]).toMatchObject({ asset: "cbBTC", pullRaw: 1_500_000n });
-    expect(r.planted[0]).toMatchObject({ pullCents: 150 });
-    expect(await waiting(repo)).toEqual([150, 150]);
+    // The cap selects 300 + 150 (450; the next 300 would pass 500, the 200 too); 45% of 450 is 202, pulled; the 450 claimed, the
+    // unpulled share left in the wallet (R336). The 300 and the 200 wait for the next day.
+    expect(builds[0]).toMatchObject({ asset: "cbBTC", pullRaw: 2_020_000n });
+    expect(r.planted[0]).toMatchObject({ pullCents: 202 });
+    expect(claimedBy(repo, [...repo.plantings.values()][0].id)).toEqual([300, 150]);
+    expect(await waiting(repo)).toEqual([300, 200]);
+  });
+
+  it("an oversized oldest round-up waits for a full day: 490 of 500 already pulled, the old $10 claims nothing today, then goes alone", async () => {
+    const repo = await queued([1000, 5], { old: [0] });   // forced: the 1000 is 8 days old
+    const periodStart = BigInt(Math.floor(NOW.getTime() / 1000) - 3600);
+    const r1 = await runPlanting({ repo, now: NOW, chain: fakeChain({ readDelegation: async () => ({ ...DELEGATION, pulledInPeriodRaw: 4_900_000n, periodStartTs: periodStart }) }) });
+    expect(r1.planted).toEqual([]);
+    expect(r1.skipped[0].reason).toBe("cap reached");
+    expect(await waiting(repo)).toEqual([1000, 5]);   // the 5 behind it does not jump ahead
+    const r2 = await runPlanting({ repo, now: new Date(NOW.getTime() + DAY), chain: fakeChain() });   // a fresh period
+    expect(r2.planted[0].pullCents).toBe(500);
+    expect(claimedBy(repo, [...repo.plantings.values()][0].id)).toEqual([1000]);
+    expect(await waiting(repo)).toEqual([5]);
   });
 
   it("share under 100: a share too small for any planting skips and claims nothing", async () => {

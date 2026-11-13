@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { capLeftCents, plantAmountCents } from "@/domain/cap";
+import { capCarryClaim, capLeftCents, plantAmountCents } from "@/domain/cap";
 
 describe("cap", () => {
   it("cap left is cap minus pulled, never negative", () => {
@@ -25,5 +25,31 @@ describe("cap", () => {
 
   it("forced (7-day rule) ignores the minimum but not the cap", () => {
     expect(plantAmountCents({ pendingCents: 140, capLeftCents: 500, feeCents: 3, minCents: 0 })).toEqual({ pullCents: 143, changeCents: 140 });
+  });
+});
+
+// Cap carry (owner 11-13) with a nonzero network fee: plant-run's NETWORK_FEE_CENTS is a module constant (0 today) read inside the
+// same module, so the run cannot be stubbed to a fee; the run's selection is this function, called with that constant.
+describe("capCarryClaim with a fee", () => {
+  const sw = (...c: number[]) => c.map((roundupCents, i) => ({ id: i, roundupCents }));
+  const ids = (r: { claim: { id: number }[] }) => r.claim.map((s) => s.id);
+
+  it("fits round-ups in the cap left minus the fee, oldest first, skipping one that does not fit", () => {
+    const r = capCarryClaim(sw(200, 200, 97, 1), { capCents: 500, capLeftCents: 500, feeCents: 3 });
+    expect(ids(r)).toEqual([0, 1, 2]);   // 497 of change: 200 + 200 + 97; the 1 would pass it
+    expect(r.covered).toBe(497);
+    expect(plantAmountCents({ pendingCents: r.covered, capLeftCents: 500, feeCents: 3, minCents: 200 })).toEqual({ pullCents: 500, changeCents: 497 });
+    expect(ids(capCarryClaim(sw(200, 200, 98, 1), { capCents: 500, capLeftCents: 500, feeCents: 3 }))).toEqual([0, 1, 3]);   // 98 passes 497
+    expect(ids(capCarryClaim(sw(200, 200, 98), { capCents: 500, capLeftCents: 300, feeCents: 3 }))).toEqual([0]);   // 297 left after the fee
+  });
+
+  it("an oldest round-up bigger than cap - fee goes alone covering cap - fee on a full day only", () => {
+    const full = capCarryClaim(sw(498, 10), { capCents: 500, capLeftCents: 500, feeCents: 3 });
+    expect(ids(full)).toEqual([0]);
+    expect(full.covered).toBe(497);
+    expect(plantAmountCents({ pendingCents: full.covered, capLeftCents: 500, feeCents: 3, minCents: 0 })).toEqual({ pullCents: 500, changeCents: 497 });
+    expect(capCarryClaim(sw(498, 10), { capCents: 500, capLeftCents: 499, feeCents: 3 })).toEqual({ claim: [], covered: 0 });
+    expect(ids(capCarryClaim(sw(497, 10), { capCents: 500, capLeftCents: 500, feeCents: 3 }))).toEqual([0]);   // exactly a day: fits, not oversized
+    expect(capCarryClaim(sw(497, 10), { capCents: 500, capLeftCents: 500, feeCents: 3 }).covered).toBe(497);
   });
 });
