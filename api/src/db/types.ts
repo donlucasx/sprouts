@@ -119,6 +119,7 @@ export type WatcherCallRow = { id: number; ts: Date; userPubkey: string | null; 
 
 export type EventKind =
   | "wallet_linked"
+  | "first_planting_run"   // 11-12: one heartbeat per completed hourly first-planting run (detail: planted, skipped counts); the ops dashboard reads the latest
   | "over_cap_rejected"
   | "revoke_seen"
   | "pull_failed"

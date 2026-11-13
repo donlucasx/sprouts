@@ -16,6 +16,7 @@ vi.mock("@/lib/plant-run", async (orig) => ({ ...(await orig<object>()), runPlan
 
 import { GET } from "@/app/api/cron/first-planting/route";
 import { runPlanting } from "@/lib/plant-run";
+import { founderAlertFor, founderCardFor } from "@/lib/founder-alert";
 import { reconcileOwnStakes } from "@/lib/reconcile";
 import { snapshotCoins } from "@/lib/coin-data";
 import { decideSplits, applyToUsers } from "@/lib/split-run";
@@ -69,5 +70,49 @@ describe("GET /api/cron/first-planting (owner 10-22)", () => {
     const res = await get();
     expect(res.status).toBe(500);
     expect(await res.text()).not.toContain("WalletA");
+  });
+
+  describe("heartbeat event (ops dashboard)", () => {
+    const beats = async () => repo.events.filter((e) => e.kind === "first_planting_run");
+
+    it("an authorized run writes exactly one first_planting_run event with counts only", async () => {
+      result.planted = [{ wallet: "WalletA", asset: "SKR", pullCents: 60, signature: "SigA" }];
+      result.skipped = [{ wallet: "WalletB", reason: "no usdc" }, { wallet: "WalletC", reason: "no usdc" }];
+      await get();
+      const b = await beats();
+      expect(b).toHaveLength(1);
+      expect(b[0]).toMatchObject({ userPubkey: null, walletPubkey: null, detail: { planted: 1, skipped: 2 } });
+      expect(JSON.stringify(b[0].detail)).not.toMatch(/Wallet|Sig/);
+    });
+
+    it("writes one even when nothing was planted", async () => {
+      await get();
+      expect((await beats())[0].detail).toEqual({ planted: 0, skipped: 0 });
+    });
+
+    it("writes none when unauthorized or when the run throws", async () => {
+      await get(null);
+      await get("Bearer nope");
+      vi.mocked(runPlanting).mockRejectedValueOnce(new Error("boom"));
+      await get();
+      expect(await beats()).toHaveLength(0);
+    });
+
+    it("a failing heartbeat write is logged and never changes the response", async () => {
+      result.planted = [{ wallet: "WalletA", asset: "SKR", pullCents: 60, signature: "SigA" }];
+      vi.spyOn(repo, "addEvent").mockRejectedValueOnce(new Error("db down"));
+      const err = vi.spyOn(console, "error").mockImplementation(() => {});
+      const res = await get();
+      expect(res.status).toBe(200);
+      expect(await res.json()).toMatchObject({ planted: 1, skipped: 0 });
+      expect(err).toHaveBeenCalled();
+      err.mockRestore();
+    });
+
+    it("raises no founder alert or card", () => {
+      const e = { kind: "first_planting_run" as const, userPubkey: null, walletPubkey: null, detail: { planted: 1, skipped: 0 } };
+      expect(founderAlertFor(e)).toBeNull();
+      expect(founderCardFor(e)).toBeNull();
+    });
   });
 });
