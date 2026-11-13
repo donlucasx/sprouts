@@ -151,7 +151,8 @@ export interface Repo {
   /** 11-07 run lock (0010): claims `day`'s run; false while another run of that day is going (not finished, started after `staleBefore`). */
   claimCronRun(day: string, now: Date, staleBefore: Date): Promise<boolean>;
   /** The run's record (free Vercel keeps no logs): when it ended, whether it got through, what it did. */
-  finishCronRun(day: string, ok: boolean, summary: unknown, now: Date): Promise<void>;
+  /** `startedAt` is the `now` this invocation claimed with: a run that outlived its claim (day re-claimed) cannot finish the newer run's row. */
+  finishCronRun(day: string, ok: boolean, summary: unknown, now: Date, startedAt: Date): Promise<void>;
 
   // The watcher's budget (spec 6): every model call recorded; spend since a moment, calls by one user since a moment.
   addWatcherCall(c: NewWatcherCall): Promise<number>;

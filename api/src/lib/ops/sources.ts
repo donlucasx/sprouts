@@ -208,6 +208,14 @@ export function realOpsSources(): OpsSources {
         .select("id, ts, kind, user_pubkey, wallet_pubkey, withdrawal:detail->>withdrawal, planting:detail->>plantingId, rkind:detail->>kind")
         .in("kind", ["pull_failed", "withdraw_failed", "move_failed", "run_stopped", "remainder_unrecorded"]).gte("ts", sinceIso).order("id").range(a, b)))
         .filter((e) => !isExcluded(skip, e.user_pubkey, e.wallet_pubkey));
+      // Kimi M3: remainder events older than the window are read too; the resolution check below drops the resolved ones, so an
+      // unrecorded remainder never ages out of the Money-ops light.
+      const olderRemainders = (await allRows((a, b) => db().from("events")
+        .select("id, ts, kind, user_pubkey, wallet_pubkey, withdrawal:detail->>withdrawal, planting:detail->>plantingId, rkind:detail->>kind")
+        .eq("kind", "remainder_unrecorded").lt("ts", sinceIso).order("id").range(a, b)))
+        .filter((e) => !isExcluded(skip, e.user_pubkey, e.wallet_pubkey));
+      const older = new Set(olderRemainders.map((e) => e.id));
+      events.push(...olderRemainders);
       const of = (k: string) => events.filter((e) => e.kind === k);
       const pulls = of("pull_failed");
       const withdraws = of("withdraw_failed");
@@ -263,7 +271,7 @@ export function realOpsSources(): OpsSources {
         if (r) lastOkRun = new Date(String(r.finished_at)).getTime();
       }
 
-      return events.map((e): FailureInput => {
+      return events.flatMap((e): FailureInput[] => {
         const kind = e.kind as FailureInput["kind"];
         const ts = new Date(String(e.ts));
         const t = ts.getTime();
@@ -273,7 +281,8 @@ export function realOpsSources(): OpsSources {
           : kind === "move_failed" ? (movedAt.get(String(e.user_pubkey)) ?? -Infinity) > t
           : kind === "remainder_unrecorded" ? remainderResolved({ plantingId: str(e.planting), kind: String(e.rkind) }, seen)
           : lastOkRun > t;
-        return { kind, ts, resolved };
+        // An older remainder is kept only while it is still open.
+        return older.has(e.id) && resolved ? [] : [{ kind, ts, resolved }];
       });
     },
 

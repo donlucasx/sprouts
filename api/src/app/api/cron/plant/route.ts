@@ -44,9 +44,9 @@ const REMAINDERS_DEADLINE_MS = 260_000;
 const RUN_STALE_MS = 6 * 60_000;
 
 /** The run's record is best effort: failing to write it never fails the run (its outcome is already decided). */
-async function finishRun(repo: Repo, day: string, ok: boolean, record: unknown) {
+async function finishRun(repo: Repo, day: string, startedAt: Date, ok: boolean, record: unknown) {
   try {
-    await repo.finishCronRun(day, ok, json(record), new Date());
+    await repo.finishCronRun(day, ok, json(record), new Date(), startedAt);
   } catch (e) {
     console.error(`cron: run record failed: ${errorText(e)}`);
   }
@@ -90,7 +90,7 @@ export async function GET(request: Request) {
   if (!cronAuthorized(request.headers.get("authorization"))) return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   // Review M1: the planting run starts no new wallet past 240 s from here, so the crank, the reconcile and the cleanup always run.
   const startedMs = Date.now();
-  let run: { repo: Repo; day: string } | null = null;
+  let run: { repo: Repo; day: string; startedAt: Date } | null = null;
   try {
     const repo = await getRepo();
     const now = new Date();
@@ -100,7 +100,7 @@ export async function GET(request: Request) {
       console.log(`cron: ${day} is already running, this trigger stopped`);
       return NextResponse.json({ error: "Another run is going." }, { status: 409 });
     }
-    run = { repo, day };
+    run = { repo, day, startedAt: now };
     // The Yield Manager's steps before the planting run (spec 6.1): snapshot the venues, then the coins (its lending legs read today's
     // venue rows), decide each stop's split, apply to users, propose moves. Budgets: decide 90 s (DECIDE_BUDGET_MS); the moves step
     // reads no position past 150 s from the start; planting starts no new wallet past 240 s, the crank none past 250 s, the
@@ -136,7 +136,8 @@ export async function GET(request: Request) {
     const chain = realPlantingChain();
     const planting = await runPlanting({ repo, now, chain, deadlineMs: startedMs + 240_000 });
     // 11-13: the crank starts no new withdrawal past 250 s (the 429 retry can stretch the run); the rest wait for the next run.
-    const withdrawals = await runWithdrawCrank({ repo, now, deadlineMs: startedMs + WITHDRAW_DEADLINE_MS, chain: { readPosition: (u) => readPosition(address(u)), crankWithdraw: (u) => crankWithdraw(address(u)) } });
+    // Kimi M4: a step, so a throw is logged and the run goes on (null in the record; the ops light reads it as red).
+    const withdrawals = await step("withdrawals", () => runWithdrawCrank({ repo, now, deadlineMs: startedMs + WITHDRAW_DEADLINE_MS, chain: { readPosition: (u) => readPosition(address(u)), crankWithdraw: (u) => crankWithdraw(address(u)) } }));
     // Audit F1: leftover change a booking could not record (an SKR or WSOL/USDC surplus still NULL), retried for 14 days, written once.
     const remainders = await step("remainders", () => retryUnrecordedRemainders({ repo, now, chain, deadlineMs: startedMs + REMAINDERS_DEADLINE_MS }));
     // R61: stakes and unstakes the Seed Vault made from its own wallet, found by comparing the chain's share count with the ledger's.
@@ -152,14 +153,15 @@ export async function GET(request: Request) {
     const summary = { coins: coins ? coins.filter((c) => c.ok).length : null, splits: splits ? splits.map((s) => ({ stop: s.stop, fallback: s.fallback })) : null, applied: applied ? applied.changed.length : null, venues: venues ? venues.filter((v) => v.ok).length : null, moves: moves ? moves.proposed.length : null };
     // Review M8: expired and settled cards are logged too, so a move stuck in flight shows in the log.
     const movesLine = moves ? `${moves.proposed.length} (expired ${moves.expired.length}, settled ${moves.settled.length ? moves.settled.join(" ") : 0})` : movesOn ? "failed" : "off";
-    console.log(`cron: venues ${summary.venues ?? "failed"}, coins ${summary.coins ?? "failed"}, splits ${summary.splits ? summary.splits.map((s) => `${s.stop}${s.fallback ? `(${s.fallback})` : ""}`).join(" ") : "failed"}, applied ${summary.applied ?? "failed"}, moves ${movesLine}, planted ${planting.planted.length}, skipped ${planting.skipped.length}, cranked ${withdrawals.cranked.length}, failed ${withdrawals.failed.length}, closed ${withdrawals.skipped.length}, deferred ${withdrawals.deferred.length}, reconciled ${reconciled ? `${reconciled.adjusted.length} (skipped ${reconciled.skipped.length}, deferred ${reconciled.deferred.length})` : "failed"}, off webhook ${coverage ? `${coverage.missing.length} (re-added ${coverage.repaired.length})` : "failed"}, remainders ${remainders ? `${remainders.recorded} recorded of ${remainders.retried} retried (still missing ${remainders.still_missing}, deferred ${remainders.deferred})` : "failed"}`);
-    const record = { ...summary, planting, withdrawals, remainders, reconciled, seconds: Math.round((Date.now() - startedMs) / 1000) };
-    await finishRun(repo, day, true, record);
+    console.log(`cron: venues ${summary.venues ?? "failed"}, coins ${summary.coins ?? "failed"}, splits ${summary.splits ? summary.splits.map((s) => `${s.stop}${s.fallback ? `(${s.fallback})` : ""}`).join(" ") : "failed"}, applied ${summary.applied ?? "failed"}, moves ${movesLine}, planted ${planting.planted.length}, skipped ${planting.skipped.length}, ${withdrawals ? `cranked ${withdrawals.cranked.length}, failed ${withdrawals.failed.length}, closed ${withdrawals.skipped.length}, deferred ${withdrawals.deferred.length}` : "withdrawals failed"}, reconciled ${reconciled ? `${reconciled.adjusted.length} (skipped ${reconciled.skipped.length}, deferred ${reconciled.deferred.length})` : "failed"}, off webhook ${coverage ? `${coverage.missing.length} (re-added ${coverage.repaired.length})` : "failed"}, remainders ${remainders ? `${remainders.recorded} recorded of ${remainders.retried} retried (still missing ${remainders.still_missing}, deferred ${remainders.deferred})` : "failed"}`);
+    // Kimi H2: coverage is recorded (null when its step failed) so the Daily-job light's coverage rules can fire.
+    const record = { ...summary, planting, withdrawals, remainders, reconciled, coverage, seconds: Math.round((Date.now() - startedMs) / 1000) };
+    await finishRun(repo, day, now, true, record);
     return NextResponse.json(json(record));
   } catch (e) {
     const message = errorText(e);   // K-M10: never the RPC URL's key, in the log or the body
     console.error(`cron failed: ${message}`);
-    if (run) await finishRun(run.repo, run.day, false, { error: message.slice(0, 500), seconds: Math.round((Date.now() - startedMs) / 1000) });
+    if (run) await finishRun(run.repo, run.day, run.startedAt, false, { error: message.slice(0, 500), seconds: Math.round((Date.now() - startedMs) / 1000) });
     await alertFounder({ channel: "ops", title: "Daily job failed", text: message.slice(0, 300), todo: "Check the Vercel logs for /api/cron/plant; nothing was planted today until it is re-run" });
     return NextResponse.json({ error: `Cron failed: ${message}` }, { status: 500 });
   }

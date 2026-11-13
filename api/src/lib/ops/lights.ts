@@ -86,6 +86,11 @@ export function dailyRunLight(input: { now: Date; latest: CronRunInput | null; m
   const repaired = lenOf(asObj(s.coverage)?.repaired);
   if (repaired) amber.push({ fact: `${plural(repaired, "wallet")} fell off the swap watcher and ${repaired === 1 ? "was" : "were"} re-added`, action: "Nothing, it fixed itself. Ask Claude if it repeats.", urgency: 0 });
 
+  // Kimi L5: work the run ran out of time for is retried tomorrow; say how much (an array of ids or a plain count, per section).
+  const countOf = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) ? Math.max(0, v) : lenOf(v));
+  const deferred = countOf(asObj(s.reconciled)?.deferred) + countOf(asObj(s.withdrawals)?.deferred) + countOf(asObj(s.remainders)?.deferred);
+  if (deferred > 0) amber.push({ fact: `${plural(deferred, "item")} ${deferred === 1 ? "was" : "were"} left for tomorrow (the job ran out of time)`, action: "Nothing if it clears tomorrow. Ask Claude if it repeats.", urgency: 1 });
+
   if (amber.length) return mk("amber", amber.map((a) => a.fact).join("; "), amber.reduce((best, a) => (a.urgency > best.urgency ? a : best)).action);
   // reconciled.adjusted is routine (14-27 a day in production): it never turns the light amber, it only rides on the green fact.
   const adjusted = lenOf(asObj(s.reconciled)?.adjusted);
@@ -98,6 +103,7 @@ export function firstPlantingLight(input: { now: Date; lastRunAt: Date | null; r
   const RESTART = "Ask Claude to check the hourly job.";
   if (!input.lastRunAt) return mk("red", "No hourly run recorded since the last deploy", "Nothing yet if you just deployed; it runs every hour. Ask Claude if it is still red in 2 hours.");
   const age = input.now.getTime() - input.lastRunAt.getTime();
+  if (age < 0) return mk("unknown", "The newest hourly run's timestamp looks wrong", "Ask Claude.");
   if (age < 2 * HOUR) {
     const bad = Object.entries(input.reasons ?? {}).filter(([r]) => !BENIGN_SKIP_REASONS.includes(r));
     if (bad.length) return mk("amber", `Ran ${ageText(age)} ago, but skipped some users: ${bad.map(([r, n]) => `${r} (${n})`).join(", ")}`, "Ask Claude what this reason means.");
@@ -121,9 +127,11 @@ export function moneyOpsLight(input: { now: Date; failures: FailureInput[]; olde
   const { now } = input;
   const mk = maker("moneyOps");
   // Audit F1: an unrecorded remainder stays in view for its 14-day retry window; every other kind for 7 days.
+  // Kimi M3: and an UNRESOLVED remainder stays in view however old (the retry gave up at 14 days, the money is still unrecorded).
   const windowOf = (k: FailureInput["kind"]) => (k === "remainder_unrecorded" ? 14 : 7) * DAY;
-  const recent = input.failures.filter((f) => now.getTime() - f.ts.getTime() <= windowOf(f.kind));
-  const span = recent.some((f) => now.getTime() - f.ts.getTime() > 7 * DAY) ? "in the last 14 days" : "this week";
+  const recent = input.failures.filter((f) => now.getTime() - f.ts.getTime() <= windowOf(f.kind) || (f.kind === "remainder_unrecorded" && !f.resolved));
+  const span = recent.some((f) => now.getTime() - f.ts.getTime() > 14 * DAY) ? "including some older than 14 days"
+    : recent.some((f) => now.getTime() - f.ts.getTime() > 7 * DAY) ? "in the last 14 days" : "this week";
   const last24 = recent.filter((f) => now.getTime() - f.ts.getTime() < DAY);
   const pending = input.oldestPendingWithdrawalAt ? now.getTime() - input.oldestPendingWithdrawalAt.getTime() : null;
 

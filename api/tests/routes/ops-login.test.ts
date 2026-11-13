@@ -74,6 +74,17 @@ describe("POST /api/ops/login", () => {
     const r = await post({ password: PW });
     expect(r.status).toBe(429);
   });
+
+  it("kimi L6: successful logins are never throttled; only failures count", async () => {
+    for (let i = 0; i < 8; i++) expect((await post({ password: PW })).status).toBe(204);
+    for (let i = 0; i < 5; i++) expect((await post({ password: "wrong" })).status).toBe(401);
+    expect((await post({ password: "wrong" })).status).toBe(429);
+  });
+  it("kimi L6: four failures then a success still logs in", async () => {
+    for (let i = 0; i < 4; i++) expect((await post({ password: "wrong" })).status).toBe(401);
+    expect((await post({ password: PW })).status).toBe(204);
+    expect((await post({ password: "wrong" })).status).toBe(401);
+  });
 });
 
 describe("DELETE /api/ops/login", () => {

@@ -1,3 +1,4 @@
+import { after } from "next/server";
 import { getRepo } from "@/db/repo";
 import { errorText, redact } from "./redact";
 import { readSession } from "./session";
@@ -21,8 +22,17 @@ export const addressOrNull = (v: unknown): string | null => (typeof v === "strin
 
 /** How long a failing request waits for its own failure log (the who lookup, the write, the founder webhook) before answering anyway. */
 export const LOG_WAIT_MS = 2_000;
-/** Waits for `p` at most LOG_WAIT_MS; `p` keeps running in the background (recordFailure never throws). */
+/**
+ * Waits for `p` at most LOG_WAIT_MS. Kimi M2: a write that loses the race used to float on after the response, where Vercel may freeze
+ * the function; it is handed to `after()` so the platform keeps the invocation alive until it finishes (recordFailure never throws).
+ * Outside a request scope (tests, scripts) `after` throws and the old behavior stands.
+ */
 async function boundedLog(p: Promise<void>): Promise<void> {
+  try {
+    after(p);
+  } catch {
+    // no request scope: `p` simply keeps running
+  }
   let t: ReturnType<typeof setTimeout> | undefined;
   await Promise.race([p, new Promise<void>((resolve) => { t = setTimeout(resolve, LOG_WAIT_MS); })]);
   clearTimeout(t);

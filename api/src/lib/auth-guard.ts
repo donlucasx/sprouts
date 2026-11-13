@@ -27,6 +27,13 @@ export function clientIp(request: Request): string {
 
 const buckets = new Map<string, { tokens: number; at: number }>();
 
+/** True when `key`'s bucket has no whole token left (a peek: it spends nothing). Same refill as rateLimited. */
+export function rateExhausted(key: string, limit = 10, windowMs = 60_000): boolean {
+  const b = buckets.get(key);
+  if (!b) return false;
+  return Math.min(limit, b.tokens + ((Date.now() - b.at) / windowMs) * limit) < 1;
+}
+
 /**
  * A small per-key token bucket for the public routes: `limit` calls per `windowMs`. In-memory and PER INSTANCE (security R207 #7,
  * accepted for the beta): Vercel may run several instances, so the real ceiling is `limit` times the warm instances, and a cold

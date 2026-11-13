@@ -78,9 +78,9 @@ export class MemoryRepo implements Repo {
     this.cronRuns.set(day, { startedAt: now, finishedAt: null, ok: null, summary: null });
     return true;
   }
-  async finishCronRun(day: string, ok: boolean, summary: unknown, now: Date) {
+  async finishCronRun(day: string, ok: boolean, summary: unknown, now: Date, startedAt: Date) {
     const r = this.cronRuns.get(day);
-    if (r) Object.assign(r, { finishedAt: now, ok, summary });
+    if (r && r.startedAt.getTime() === startedAt.getTime()) Object.assign(r, { finishedAt: now, ok, summary });
   }
 
   async getRules(userPubkey: string): Promise<T.RulesRow> {

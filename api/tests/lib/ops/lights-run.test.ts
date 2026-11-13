@@ -42,7 +42,7 @@ describe("dailyRunLight", () => {
   it("red: coverage null", () => {
     expect(light(run({}, goodSummary({ coverage: null }))).state).toBe("red");
   });
-  it("green: coverage key absent (R3, the cron never persists it)", () => {
+  it("green: coverage key absent (a row written before the cron recorded it: no opinion, only null is red)", () => {
     const s = goodSummary();
     delete s.coverage;
     expect(light(run({}, s)).state).toBe("green");
@@ -209,12 +209,38 @@ describe("audit F1: leftover change not recorded", () => {
     const f = (kind: "remainder_unrecorded" | "pull_failed", age: number) => ({ kind, ts: ago(age), resolved: false });
     expect(moneyOpsLight({ now: NOW, failures: [f("remainder_unrecorded", 10 * D)], oldestPendingWithdrawalAt: null })).toMatchObject({ state: "amber", fact: "1 failure in the last 14 days, 1 still open" });
     expect(moneyOpsLight({ now: NOW, failures: [f("pull_failed", 10 * D)], oldestPendingWithdrawalAt: null }).state).toBe("green");
-    expect(moneyOpsLight({ now: NOW, failures: [f("remainder_unrecorded", 15 * D)], oldestPendingWithdrawalAt: null }).state).toBe("green");
+    expect(moneyOpsLight({ now: NOW, failures: [{ ...f("remainder_unrecorded", 15 * D), resolved: true }], oldestPendingWithdrawalAt: null }).state).toBe("green");
+  });
+  it("M3: an unresolved one never ages out, however old (amber at least)", () => {
+    const l = moneyOpsLight({ now: NOW, failures: [{ kind: "remainder_unrecorded", ts: ago(40 * D), resolved: false }], oldestPendingWithdrawalAt: null });
+    expect(l.state).toBe("amber");
+    expect(l.fact).toContain("1 still open");
+    expect(l.fact).toContain("older than 14 days");
   });
   it("daily run: a remainders summary is fine; a null one (the step threw) is a failed part", () => {
     expect(light(run({}, goodSummary({ remainders: { retried: 2, recorded: 1, still_missing: 1, deferred: 0 } }))).state).toBe("green");
     const l = light(run({}, goodSummary({ remainders: null })));
     expect(l.state).toBe("amber");
     expect(l.fact).toContain("remainders");
+  });
+});
+
+describe("kimi L1: first planting future timestamp", () => {
+  it("a last-run time ahead of now is unknown, not green", () => {
+    const l = firstPlantingLight({ now: NOW, lastRunAt: new Date(NOW.getTime() + 5 * H) });
+    expect(l.state).toBe("unknown");
+    expect(l.action).toBeTruthy();
+  });
+});
+
+describe("kimi L5: deferred counts reach the daily-run light", () => {
+  it("amber when any of the three is above zero, saying how many are left for tomorrow", () => {
+    const l = light(run({}, goodSummary({ reconciled: { adjusted: [], skipped: [], deferred: ["a", "b"] }, withdrawals: { cranked: [], failed: [], skipped: [], deferred: ["w"] }, remainders: { retried: 3, recorded: 0, still_missing: 0, deferred: 4 } })));
+    expect(l.state).toBe("amber");
+    expect(l.fact).toContain("7 items were left for tomorrow");
+  });
+  it("one item reads in the singular; zero everywhere stays green", () => {
+    expect(light(run({}, goodSummary({ withdrawals: { cranked: [], failed: [], skipped: [], deferred: ["w"] } }))).fact).toContain("1 item was left for tomorrow");
+    expect(light(run({}, goodSummary({ withdrawals: { cranked: [], failed: [], skipped: [], deferred: [] }, remainders: { retried: 0, recorded: 0, still_missing: 0, deferred: 0 } }))).state).toBe("green");
   });
 });

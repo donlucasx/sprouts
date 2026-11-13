@@ -5,6 +5,11 @@ import { dayOf } from "@/domain/day";
 
 vi.mock("@/lib/rpc", () => ({ rpc: () => ({}) }));
 vi.mock("@/lib/staking", () => ({ readPosition: vi.fn(), crankWithdraw: vi.fn(), sharePrice: vi.fn(async () => 1_146_000_000n) }));
+const { crankMock } = vi.hoisted(() => ({ crankMock: { fail: false } }));
+vi.mock("@/lib/withdraw-run", async (orig) => {
+  const actual = await orig<typeof import("@/lib/withdraw-run")>();
+  return { ...actual, runWithdrawCrank: vi.fn(async (a: Parameters<typeof actual.runWithdrawCrank>[0]) => { if (crankMock.fail) throw new Error("crank blew up"); return actual.runWithdrawCrank(a); }) };
+});
 vi.mock("@/lib/reconcile", () => ({ reconcileOwnStakes: vi.fn(async () => ({ adjusted: [], skipped: [], deferred: [] })) }));
 vi.mock("@/lib/planting", () => ({ buildPlantingTx: vi.fn(), simulatePlanting: vi.fn(), sendPlanting: vi.fn(), signatureStatus: vi.fn() }));
 vi.mock("@/lib/subscriptions", () => ({ readDelegation: vi.fn(), usdcAta: vi.fn() }));
@@ -252,7 +257,34 @@ describe("cron route", () => {
       expect((await get()).status).toBe(200);
     });
 
-    it("a record that cannot be written never fails the run", async () => {
+    it("kimi H2: the run record carries coverage (null when that step failed), so the light's rules can fire", async () => {
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = await get();
+    err.mockRestore();
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(Object.prototype.hasOwnProperty.call(body, "coverage")).toBe(true);
+    expect(body.coverage).toBeNull();   // the test env has no Helius webhook: the step fails, which is recorded as null (red on the light)
+    expect(Object.prototype.hasOwnProperty.call(repo.cronRuns.get(dayOf(new Date()))!.summary as object, "coverage")).toBe(true);
+  });
+
+  it("kimi M4: a throw in the withdrawal crank is a failed step (null), not a dead run: the rest still runs and the record is written", async () => {
+    crankMock.fail = true;
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const res = await get();
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as Record<string, unknown>;
+      expect(body.withdrawals).toBeNull();
+      expect(order).toContain("remainders");
+      expect(repo.cronRuns.get(dayOf(new Date()))?.ok).toBe(true);
+    } finally {
+      crankMock.fail = false;
+      err.mockRestore();
+    }
+  });
+
+  it("a record that cannot be written never fails the run", async () => {
       vi.spyOn(repo, "finishCronRun").mockRejectedValueOnce(new Error("no table"));
       expect((await get()).status).toBe(200);
     });

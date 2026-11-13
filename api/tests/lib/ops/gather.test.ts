@@ -106,6 +106,17 @@ describe("gatherOps", () => {
     expect(second.at).toBe(later.toISOString());
   });
 
+  it("kimi L2: last good numbers expire after 1 h (unavailable, not stale)", async () => {
+    let n = 0;
+    const src = healthy({ numbers: async () => { if (n++ > 0) throw new Error("x"); return numbers(7); } });
+    await gatherOps({ sources: src, now: NOW, flags });
+    const within = await gatherOps({ sources: src, now: new Date(NOW.getTime() + 59 * 60_000), flags, fresh: true });
+    expect(within.numbers).not.toBeNull();
+    const after = await gatherOps({ sources: src, now: new Date(NOW.getTime() + 61 * 60_000), flags, fresh: true });
+    expect(after.numbers).toBeNull();
+    expect(after.numbersAt).toBeNull();
+  });
+
   it("numbers failing with no previous numbers gives null", async () => {
     const s = await gatherOps({ sources: healthy({ numbers: async () => { throw new Error("x"); } }), now: NOW, flags });
     expect(s.numbers).toBeNull();

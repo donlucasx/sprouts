@@ -40,6 +40,7 @@ function withTimeout<T>(p: () => Promise<T>, ms: number): Promise<Settled<T>> {
 
 let cache: { at: number; snap: OpsSnapshot } | null = null;
 let inflight: Promise<OpsSnapshot> | null = null;
+const NUMBERS_MAX_AGE_MS = 3_600_000;
 let lastNumbers: { numbers: OpsNumbers; at: string; ms: number } | null = null;
 
 export function resetOpsCacheForTests(): void {
@@ -106,6 +107,9 @@ async function gather(sources: OpsSources, now: Date, flags: { movesEnabled: boo
 
   // Overlapping runs: only a newer run may replace the last good numbers.
   if (nums.r.ok && (!lastNumbers || now.getTime() > lastNumbers.ms)) lastNumbers = { numbers: nums.r.value, at: now.toISOString(), ms: now.getTime() };
+
+  // Kimi L2: last good numbers older than an hour are unavailable, not stale.
+  if (lastNumbers && now.getTime() - lastNumbers.ms > NUMBERS_MAX_AGE_MS) lastNumbers = null;
 
   return {
     at: now.toISOString(),

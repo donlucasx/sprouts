@@ -542,6 +542,18 @@ describe("runPlanting", () => {
     expect((await repo.unplantedSwaps("W")).length).toBe(3);
   });
 
+  it("kimi M4: one sent planting whose status read throws is skipped (retried next run); the others are still reconciled", async () => {
+    const repo = new MemoryRepo();
+    const mk = async (sig: string) => (await repo.insertPlanting({ userPubkey: "U", walletPubkey: "W", signature: sig, usdcPulledCents: 100, networkFeeCents: 0, status: "sent", aiLine: null, ts: new Date(NOW.getTime() - 40 * 60_000) }, [])).id;
+    const bad = await mk("bad"), good = await mk("good");
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    const chain = fakeChain({ signatureStatus: async (sig: string) => { if (sig === "bad") throw new Error("rpc 500"); return "failed"; } });
+    await expect(runPlanting({ repo, now: NOW, chain })).resolves.toBeDefined();
+    err.mockRestore();
+    expect(repo.plantings.get(bad)!.status).toBe("sent");
+    expect(repo.plantings.get(good)!.status).toBe("failed");
+  });
+
   // Review I1: one wallet's Jupiter or build error must not abort everyone's day.
   it("one wallet's build error is recorded and the next wallet still plants", async () => {
     const repo = await seeded([83, 62, 70]);

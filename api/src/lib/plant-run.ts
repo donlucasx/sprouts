@@ -257,14 +257,19 @@ export async function firstPlantingWallets(repo: Repo, wallets: WalletRow[]): Pr
 async function reconcileSentPlantings(a: { repo: Repo; now: Date; chain: Chain }) {
   for (const p of await a.repo.listSentPlantings(new Date(a.now.getTime() - RECONCILE_AFTER_MS))) {
     if (!p.signature) continue;
-    const status = await a.chain.signatureStatus(p.signature);
-    if (status === "confirmed") {
-      await bookConfirmed(a.repo, a.chain, p);
-      console.error(`planting ${p.id} for ${p.walletPubkey} reconciled: confirmed on chain (${p.signature})`);
-    } else if (status === "failed" || a.now.getTime() - p.ts.getTime() >= GIVE_UP_AFTER_MS) {
-      await a.repo.setPlantingStatus(p.id, "failed");
-      await a.repo.releaseSwaps(p.id);
-      console.error(`planting ${p.id} for ${p.walletPubkey} reconciled: ${status === "failed" ? "failed on chain" : "never landed"}; round-ups released`);
+    // Kimi M4: one planting's throw (a status read, a booking write) skips that planting, which stays `sent` and is retried next run.
+    try {
+      const status = await a.chain.signatureStatus(p.signature);
+      if (status === "confirmed") {
+        await bookConfirmed(a.repo, a.chain, p);
+        console.error(`planting ${p.id} for ${p.walletPubkey} reconciled: confirmed on chain (${p.signature})`);
+      } else if (status === "failed" || a.now.getTime() - p.ts.getTime() >= GIVE_UP_AFTER_MS) {
+        await a.repo.setPlantingStatus(p.id, "failed");
+        await a.repo.releaseSwaps(p.id);
+        console.error(`planting ${p.id} for ${p.walletPubkey} reconciled: ${status === "failed" ? "failed on chain" : "never landed"}; round-ups released`);
+      }
+    } catch (e) {
+      console.error(`planting ${p.id} for ${p.walletPubkey}: reconcile failed (${message(e)}); skipped, retried next run`);
     }
   }
 }

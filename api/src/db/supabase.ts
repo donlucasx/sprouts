@@ -118,8 +118,8 @@ export class SupabaseRepo implements Repo {
     return data === true;
   }
 
-  async finishCronRun(day: string, ok: boolean, summary: unknown, now: Date) {
-    const { error } = await this.db.from("cron_runs").update({ finished_at: now.toISOString(), ok, summary }).eq("day", day);
+  async finishCronRun(day: string, ok: boolean, summary: unknown, now: Date, startedAt: Date) {
+    const { error } = await this.db.from("cron_runs").update({ finished_at: now.toISOString(), ok, summary }).eq("day", day).eq("started_at", startedAt.toISOString());
     if (error) throw new Error(error.message);
   }
 
