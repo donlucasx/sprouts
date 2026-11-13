@@ -16,7 +16,7 @@ export function rpc(): Rpc<SolanaRpcApi> {
 /** Waits between 429 retries: about 0.5 s, 1 s, 2 s. */
 export const RETRY_DELAYS_MS = [500, 1_000, 2_000] as const;
 /** A Retry-After header longer than this is cut to it, so one request never parks a cron run for long. */
-export const RETRY_AFTER_CAP_MS = 5_000;
+export const RETRY_AFTER_CAP_MS = 2_000;
 
 export type RetryOptions = { sleep?: (ms: number) => Promise<void>; random?: () => number };
 
@@ -36,7 +36,7 @@ export function rpcTransport(url: string, opts: RetryOptions = {}): RpcTransport
  * 11-13: the Helius free plan answers HTTP 429 when the daily run's reads and sends bunch up (that day one SKR price post and one
  * withdrawal crank failed and waited a day). kit reports it as SolanaError SOLANA_ERROR__RPC__TRANSPORT_HTTP_ERROR (8100002) with
  * context.statusCode 429 and context.headers (the response's Headers). Such a request is tried again up to 3 times, after about
- * 0.5 s, 1 s and 2 s (+-10% jitter), or after the server's Retry-After (at most 5 s). Any other error throws at once, unchanged.
+ * 0.5 s, 1 s and 2 s (+-10% jitter), or after the server's Retry-After (at most 2 s). Any other error throws at once, unchanged.
  *
  * Retrying a 429'd sendTransaction is safe: the node rejected the request before reading it, so nothing was forwarded; and if a
  * copy ever did land, a resend of the same signed bytes carries the same signature, which the network dedupes (one transaction).

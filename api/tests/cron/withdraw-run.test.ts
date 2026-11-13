@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { MemoryRepo } from "@/db/memory";
 import type { WithdrawalRow } from "@/db/types";
 import { runWithdrawCrank } from "@/lib/withdraw-run";
@@ -77,5 +77,42 @@ describe("runWithdrawCrank", () => {
     expect(r.cranked).toEqual([]);
     expect(r.skipped).toEqual([]);
     expect(repo.withdrawals.get("a")!.skippedAt).toBeNull();
+  });
+
+  // 11-13: the 429 retry can stretch a run; the crank starts no new withdrawal past the run's deadline (the route's 300 s kill).
+  it("past the deadline: starts none (no chain call, no event) and reports every due row as deferred", async () => {
+    const repo = new MemoryRepo();
+    repo.withdrawals.set("a", row({ id: "a", userPubkey: "U1", hoursAgo: 49 }));
+    repo.withdrawals.set("b", row({ id: "b", userPubkey: "U2", hoursAgo: 50 }));
+    let reads = 0;
+    const cranked: string[] = [];
+    const chain = { ...chainWith(1n, 50, async (user) => { cranked.push(user); return "sig"; }), readPosition: async () => { reads++; return chainWith(1n, 50, async () => "x").readPosition(); } };
+    const r = await runWithdrawCrank({ repo, now: NOW, chain, deadlineMs: Date.now() - 1 });
+    expect(r).toEqual({ cranked: [], failed: [], skipped: [], deferred: ["a", "b"] });
+    expect(reads).toBe(0);
+    expect(cranked).toEqual([]);
+    expect(repo.events).toEqual([]);
+    expect(repo.withdrawals.get("a")!.withdrawSignature).toBeNull();
+  });
+
+  it("the deadline passing mid-run: the started withdrawal finishes, the rest are deferred", async () => {
+    const repo = new MemoryRepo();
+    repo.withdrawals.set("a", row({ id: "a", userPubkey: "U1", hoursAgo: 49 }));
+    repo.withdrawals.set("b", row({ id: "b", userPubkey: "U2", hoursAgo: 50 }));
+    const t0 = Date.now();
+    let clock = t0;
+    const spy = vi.spyOn(Date, "now").mockImplementation(() => clock);
+    const chain = chainWith(1n, 50, async () => { clock = t0 + 10_000; return "sig"; });   // the first crank uses up the time
+    const r = await runWithdrawCrank({ repo, now: NOW, chain, deadlineMs: t0 + 5_000 }).finally(() => spy.mockRestore());
+    expect(r.cranked).toHaveLength(1);
+    expect(r.deferred).toHaveLength(1);
+    expect([...r.cranked, ...r.deferred].sort()).toEqual(["a", "b"]);
+  });
+
+  it("before the deadline: unchanged, nothing deferred", async () => {
+    const repo = new MemoryRepo();
+    repo.withdrawals.set("a", row({ id: "a", userPubkey: "U1", hoursAgo: 49 }));
+    const r = await runWithdrawCrank({ repo, now: NOW, chain: chainWith(1n, 50, async () => "sig"), deadlineMs: Date.now() + 60_000 });
+    expect(r).toEqual({ cranked: ["a"], failed: [], skipped: [], deferred: [] });
   });
 });

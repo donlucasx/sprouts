@@ -29,6 +29,7 @@ export const runtime = "nodejs";
 export const maxDuration = 300;
 /** The moves step reads no position past this many ms from the run's start (the planting's own cutoff is 240 s). */
 const MOVES_DEADLINE_MS = 150_000;
+const WITHDRAW_DEADLINE_MS = 270_000;
 /** 11-07 run lock: a claimed run not finished after this long died (the route's limit is 300 s), so its day can be claimed again. */
 const RUN_STALE_MS = 6 * 60_000;
 
@@ -122,7 +123,8 @@ export async function GET(request: Request) {
       });
     });
     const planting = await runPlanting({ repo, now, chain: realPlantingChain(), deadlineMs: startedMs + 240_000 });
-    const withdrawals = await runWithdrawCrank({ repo, now, chain: { readPosition: (u) => readPosition(address(u)), crankWithdraw: (u) => crankWithdraw(address(u)) } });
+    // 11-13: the crank starts no new withdrawal past 270 s (the 429 retry can stretch the run); the rest wait for the next run.
+    const withdrawals = await runWithdrawCrank({ repo, now, deadlineMs: startedMs + WITHDRAW_DEADLINE_MS, chain: { readPosition: (u) => readPosition(address(u)), crankWithdraw: (u) => crankWithdraw(address(u)) } });
     // R61: stakes and unstakes the Seed Vault made from its own wallet, found by comparing the chain's share count with the ledger's.
     // R499 F4: the reconcile stops starting users 25 s before the route's 300 s limit (the last one may still spend ~10 s on its
     // final status call); as a step, a throw is logged and the cleanup and the keepalive still run (round 2, R2-1).
@@ -136,7 +138,7 @@ export async function GET(request: Request) {
     const summary = { coins: coins ? coins.filter((c) => c.ok).length : null, splits: splits ? splits.map((s) => ({ stop: s.stop, fallback: s.fallback })) : null, applied: applied ? applied.changed.length : null, venues: venues ? venues.filter((v) => v.ok).length : null, moves: moves ? moves.proposed.length : null };
     // Review M8: expired and settled cards are logged too, so a move stuck in flight shows in the log.
     const movesLine = moves ? `${moves.proposed.length} (expired ${moves.expired.length}, settled ${moves.settled.length ? moves.settled.join(" ") : 0})` : movesOn ? "failed" : "off";
-    console.log(`cron: venues ${summary.venues ?? "failed"}, coins ${summary.coins ?? "failed"}, splits ${summary.splits ? summary.splits.map((s) => `${s.stop}${s.fallback ? `(${s.fallback})` : ""}`).join(" ") : "failed"}, applied ${summary.applied ?? "failed"}, moves ${movesLine}, planted ${planting.planted.length}, skipped ${planting.skipped.length}, cranked ${withdrawals.cranked.length}, failed ${withdrawals.failed.length}, closed ${withdrawals.skipped.length}, reconciled ${reconciled ? `${reconciled.adjusted.length} (skipped ${reconciled.skipped.length}, deferred ${reconciled.deferred.length})` : "failed"}, off webhook ${coverage ? `${coverage.missing.length} (re-added ${coverage.repaired.length})` : "failed"}`);
+    console.log(`cron: venues ${summary.venues ?? "failed"}, coins ${summary.coins ?? "failed"}, splits ${summary.splits ? summary.splits.map((s) => `${s.stop}${s.fallback ? `(${s.fallback})` : ""}`).join(" ") : "failed"}, applied ${summary.applied ?? "failed"}, moves ${movesLine}, planted ${planting.planted.length}, skipped ${planting.skipped.length}, cranked ${withdrawals.cranked.length}, failed ${withdrawals.failed.length}, closed ${withdrawals.skipped.length}, deferred ${withdrawals.deferred.length}, reconciled ${reconciled ? `${reconciled.adjusted.length} (skipped ${reconciled.skipped.length}, deferred ${reconciled.deferred.length})` : "failed"}, off webhook ${coverage ? `${coverage.missing.length} (re-added ${coverage.repaired.length})` : "failed"}`);
     const record = { ...summary, planting, withdrawals, reconciled, seconds: Math.round((Date.now() - startedMs) / 1000) };
     await finishRun(repo, day, true, record);
     return NextResponse.json(json(record));

@@ -67,12 +67,12 @@ describe("rpc transport: HTTP 429 is retried (11-13: an SKR price post and a wit
     expect(leaks(err)).toBe(false);
   });
 
-  it("honors Retry-After in seconds, capped at 5 s", async () => {
-    const f = stubFetch(() => tooMany({ "retry-after": "2" }), () => tooMany({ "retry-after": "60" }), ok);
+  it("honors Retry-After in seconds, capped at 2 s", async () => {
+    const f = stubFetch(() => tooMany({ "retry-after": "1" }), () => tooMany({ "retry-after": "60" }), ok);
     const { rpc, sleeps } = await setup();
     await expect(rpc.getSlot().send()).resolves.toBe(4242n);
     expect(f).toHaveBeenCalledTimes(3);
-    expect(sleeps).toEqual([2_000, 5_000]);
+    expect(sleeps).toEqual([1_000, 2_000]);
   });
 
   it("isHttp429 reads a real kit SolanaError's code and statusCode, not its message", async () => {
