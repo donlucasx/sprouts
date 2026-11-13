@@ -44,4 +44,14 @@ describe("addUpRows", () => {
   it("the id is the short form only", () => {
     expect(addUpRows({ plantings: [P("11111111-2222-3333-4444-555555555555", 515)], ...none }, new Set())[0].id).toBe("1111…555");
   });
+  it("a part arriving in both reads (own and other) is counted once: part by A, whole claim of the rest by B", () => {
+    const partA = { planting_id: "AAAAAAAAAA1", signature: "big", cents: 1000 };
+    const rows = addUpRows({
+      plantings: [P("AAAAAAAAAA1", 1015), P("BBBBBBBBBB2", 515)],
+      swaps: [{ planting_id: "BBBBBBBBBB2", signature: "big", roundup_cents: 1500 }],
+      parts: [partA, { ...partA }],
+      legs: [{ planting_id: "AAAAAAAAAA1", usdc_in_cents: 1000 }, { planting_id: "BBBBBBBBBB2", usdc_in_cents: 500 }],
+    }, new Set());
+    expect(rows.map((r) => [r.claimedCents, r.pulledCents])).toEqual([[1000, 1000], [500, 500]]);
+  });
 });

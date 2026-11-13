@@ -12,7 +12,7 @@ describe("amountsAddUpLight", () => {
   });
   it("red when round-ups claimed are more than pulled; names the count and the biggest gap in dollars", () => {
     const l = amountsAddUpLight({ rows: [row(), row({ claimedCents: 2200, pulledCents: 500, legsCents: 500 }), row({ claimedCents: 700 })] });
-    expect(l).toMatchObject({ state: "red", fact: "2 savings don't add up, biggest gap $17.00", action: "Ask Claude to check them today." });
+    expect(l).toMatchObject({ state: "red", fact: "2 savings don't add up, biggest gap $17.00", action: "Ask Claude to check them today. A saving held back on purpose (a savings option at its limit) can also show here." });
   });
   it("singular wording and cents in the gap", () => {
     expect(amountsAddUpLight({ rows: [row({ claimedCents: 2231, pulledCents: 500, legsCents: 500 })] }).fact).toBe("1 saving doesn't add up, biggest gap $17.31");

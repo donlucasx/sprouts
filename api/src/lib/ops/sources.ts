@@ -134,13 +134,15 @@ type AddUpInput = {
  */
 export function addUpRows(i: AddUpInput, skip: Set<string>): AddUpRow[] {
   const num = (v: unknown) => Number(v ?? 0);
+  // A part of an in-window planting arrives in both reads: one part is counted once (planting + swap is its key).
+  const parts = [...new Map(i.parts.map((x) => [`${x.planting_id}|${x.signature}`, x])).values()];
   return i.plantings.filter((p) => !isExcluded(skip, p.user_pubkey, p.wallet_pubkey)).map((p) => {
     const id = String(p.id);
     const mine = i.swaps.filter((s) => s.planting_id === id);
     const claimedSigs = new Set(mine.map((s) => String(s.signature)));
     let claimed = 0;
-    for (const s of mine) claimed += num(s.roundup_cents) - i.parts.filter((x) => x.signature === s.signature && x.planting_id !== id).reduce((t, x) => t + num(x.cents), 0);
-    for (const x of i.parts) if (x.planting_id === id && !claimedSigs.has(String(x.signature))) claimed += num(x.cents);
+    for (const s of mine) claimed += num(s.roundup_cents) - parts.filter((x) => x.signature === s.signature && x.planting_id !== id).reduce((t, x) => t + num(x.cents), 0);
+    for (const x of parts) if (x.planting_id === id && !claimedSigs.has(String(x.signature))) claimed += num(x.cents);
     const legs = i.legs.filter((l) => l.planting_id === id);
     return { id: shortWallet(id), claimedCents: claimed, pulledCents: num(p.usdc_pulled_cents) - num(p.network_fee_cents), legsCents: legs.reduce((t, l) => t + num(l.usdc_in_cents), 0), legCount: legs.length };
   });
@@ -342,14 +344,21 @@ export function realOpsSources(): OpsSources {
       const plantings = await allRows((a, b) => db().from("plantings").select("id, user_pubkey, wallet_pubkey, usdc_pulled_cents, network_fee_cents").eq("status", "confirmed").gte("ts", sinceIso).order("ts").order("id").range(a, b));
       const ids = plantings.filter((p) => !isExcluded(skip, p.user_pubkey, p.wallet_pubkey)).map((p) => String(p.id));
       const chunk = (xs: string[]) => Array.from({ length: Math.ceil(xs.length / 100) }, (_, k) => xs.slice(k * 100, k * 100 + 100));
-      const many = async (qs: Result[]): Promise<Row[]> => (await Promise.all(qs.map(rows))).flat();
+      // Every chunk is read page by page (a single read stops at the server's row cap), in a stable order.
+      const many = async (table: string, cols: string, by: string, ids: string[], order: string[], status = false): Promise<Row[]> =>
+        (await Promise.all(chunk(ids).map((c) => allRows((x, y) => {
+          let q = db().from(table).select(cols).in(by, c);
+          if (status) q = q.in("plantings.status", ["sent", "confirmed"]);
+          for (const o of order) q = q.order(o);
+          return q.range(x, y);
+        })))).flat();
       const [swaps, ownParts, legs] = await Promise.all([
-        many(chunk(ids).map((c) => db().from("swaps").select("planting_id, signature, roundup_cents").in("planting_id", c))),
-        many(chunk(ids).map((c) => db().from("swap_parts").select("planting_id, signature, cents").in("planting_id", c))),
-        many(chunk(ids).map((c) => db().from("planting_legs").select("planting_id, usdc_in_cents").in("planting_id", c))),
+        many("swaps", "planting_id, signature, roundup_cents", "planting_id", ids, ["signature"]),
+        many("swap_parts", "planting_id, signature, cents", "planting_id", ids, ["planting_id", "signature"]),
+        many("planting_legs", "planting_id, usdc_in_cents", "planting_id", ids, ["planting_id", "asset"]),
       ]);
       // Parts other plantings (sent or confirmed; a failed one gives its cents back) pulled of the swaps these plantings claimed.
-      const otherParts = await many(chunk([...new Set(swaps.map((s) => String(s.signature)))]).map((c) => db().from("swap_parts").select("planting_id, signature, cents, plantings!inner(status)").in("signature", c).in("plantings.status", ["sent", "confirmed"])));
+      const otherParts = await many("swap_parts", "planting_id, signature, cents, plantings!inner(status)", "signature", [...new Set(swaps.map((s) => String(s.signature)))], ["planting_id", "signature"], true);
       return addUpRows({ plantings, swaps, parts: [...ownParts, ...otherParts], legs }, skip);
     },
 

@@ -175,7 +175,7 @@ export function amountsAddUpLight(input: { rows: AddUpRow[] }): Light {
     return { red: over > 1 || legsOff, amber: over < -1, gap: Math.max(over > 1 ? over : 0, legsOff ? legGap : 0, over < -1 ? -over : 0) };
   });
   const red = gaps.filter((g) => g.red);
-  if (red.length) return mk("red", `${red.length} ${red.length === 1 ? "saving doesn't" : "savings don't"} add up, biggest gap ${dollars(Math.max(...red.map((g) => g.gap)))}`, "Ask Claude to check them today.");
+  if (red.length) return mk("red", `${red.length} ${red.length === 1 ? "saving doesn't" : "savings don't"} add up, biggest gap ${dollars(Math.max(...red.map((g) => g.gap)))}`, "Ask Claude to check them today. A saving held back on purpose (a savings option at its limit) can also show here.");
   const amber = gaps.filter((g) => g.amber);
   if (amber.length) return mk("amber", `${plural(amber.length, "saving")} pulled more than ${amber.length === 1 ? "its" : "their"} round-ups, biggest gap ${dollars(Math.max(...amber.map((g) => g.gap)))}`, "Ask Claude to check them today.");
   return mk("green", "Every saving in the last 30 days pulled what its round-ups say");
