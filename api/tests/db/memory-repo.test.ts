@@ -300,3 +300,26 @@ describe("insertPlanting: the leg-venue guard and the half-write compensation (A
     }
   });
 });
+
+// Cap carry round 2 (owner 11-13): swap_parts. A swap's owed amount is its round-up minus the parts of sent or confirmed plantings.
+describe("MemoryRepo swap parts", () => {
+  it("unplantedSwaps carries owedCents: sent and confirmed parts count, failed ones do not; a part insert error fails the planting", async () => {
+    const r = new MemoryRepo();
+    await r.insertSwap({ signature: "x", walletPubkey: "W", ts: new Date(), inMint: "a", inAmount: 1, outMint: "b", outAmount: 1, usdSizeCents: 1, class: "major", roundupCents: 1000 });
+    const base = { userPubkey: "U", walletPubkey: "W", usdcPulledCents: 300, networkFeeCents: 0, aiLine: null };
+    expect((await r.unplantedSwaps("W"))[0].owedCents).toBe(1000);
+    const a = await r.insertPlanting({ ...base, signature: "a", status: "sent", swapParts: [{ signature: "x", cents: 300 }] }, []);
+    const b = await r.insertPlanting({ ...base, signature: "b", status: "confirmed", swapParts: [{ signature: "x", cents: 200 }] }, []);
+    expect((await r.unplantedSwaps("W"))[0].owedCents).toBe(500);
+    expect(await r.swapPartsCents(["x"], a.id)).toEqual(new Map([["x", 200]]));   // excluding planting a
+    await r.setPlantingStatus(a.id, "failed");
+    expect((await r.unplantedSwaps("W"))[0].owedCents).toBe(800);
+    await r.insertPlanting({ ...base, signature: "c", status: "sent", swapParts: [{ signature: "x", cents: 800 }] }, []);
+    expect(await r.unplantedSwaps("W")).toEqual([]);   // nothing owed: not pending
+    void b;
+    r.insertFault = "parts";
+    const r2 = r;
+    await expect(r2.insertPlanting({ ...base, signature: "d", status: "sent", swapParts: [{ signature: "x", cents: 1 }] }, [])).rejects.toThrow(/insert failed/);
+    expect([...r2.plantings.values()].at(-1)!.status).toBe("failed");
+  });
+});

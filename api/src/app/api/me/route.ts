@@ -87,7 +87,7 @@ export async function GET(request: Request) {
   const leashWallets = wallets.filter((w) => w.linkModel === "leash" && w.status !== "revoked");
   // Second wave, at once: the reads that need the wallets, the rules or the stORE basis from the first.
   const [pending, capLeft, splitRow, leashCfg, storeRedeem, pauseEvents, revokeEvents, reminderInputs] = await Promise.all([
-    Promise.all(wallets.map((w) => repo.unplantedSwaps(w.pubkey))).then((r) => r.flat().reduce((s, x) => s + x.roundupCents, 0)),
+    Promise.all(wallets.map((w) => repo.unplantedSwaps(w.pubkey))).then((r) => r.flat().reduce((s, x) => s + x.owedCents, 0)),
     // Queue item 12: what the delegation has actually pulled this period, so "left today" is a number the chain backs.
     (async () => {
       if (!ledgerWallet) return capLeftCents(rules.dailyCapCents, 0);

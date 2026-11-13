@@ -55,6 +55,12 @@ export type SwapRow = {
   createdAt: Date;
 };
 
+/**
+ * Cap carry round 2 (owner 11-13): an unplanted swap with what it still owes, its round-up minus the swap_parts (0013) of its sent or
+ * confirmed plantings. A round-up bigger than a day's cap is pulled in parts; the planting that pulls the rest claims the swap.
+ */
+export type PendingSwapRow = SwapRow & { owedCents: number };
+
 export type PlantingStatus = "sent" | "confirmed" | "failed";
 
 export type PlantingRow = {

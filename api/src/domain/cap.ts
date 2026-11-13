@@ -15,22 +15,25 @@ export function plantAmountCents(a: { pendingCents: number; capLeftCents: number
   return { pullCents: change + a.feeCents, changeCents: change };
 }
 
-/** The round-ups a pull with room for `roomCents` of change covers: whole, oldest first (the list is oldest first); one that does not fit is skipped and waits for a later planting (R361). */
-export function coveredOldestFirst<T extends { roundupCents: number }>(swaps: T[], roomCents: number): { claim: T[]; covered: number } {
+/** The round-ups a pull with room for `roomCents` of change covers: whole (what each still owes), oldest first (the list is oldest first); one that does not fit is skipped and waits for a later planting (R361). */
+export function coveredOldestFirst<T extends { owedCents: number }>(swaps: T[], roomCents: number): { claim: T[]; covered: number } {
   const claim: T[] = [];
   let covered = 0;
-  for (const s of swaps) if (covered + s.roundupCents <= roomCents) { claim.push(s); covered += s.roundupCents; }
+  for (const s of swaps) if (covered + s.owedCents <= roomCents) { claim.push(s); covered += s.owedCents; }
   return { claim, covered };
 }
 
 /**
- * Cap carry (owner 11-13): what a planting bounded by the cap claims. The round-ups the cap left covers after the fee, whole, oldest
- * first; the rest wait for the following days. Edge: an OLDEST round-up bigger than a whole day (cap - fee) never fits, so it is
- * claimed alone and covers the whole day, its excess never pulled; only on a full day (cap left = cap), else nothing is claimed today
- * (nothing behind it jumps ahead, so it cannot be starved) and it goes alone on the next fresh day.
+ * Cap carry (owner 11-13): what a planting bounded by the cap claims. The round-ups the cap left covers after the fee, whole (what
+ * each still owes), oldest first; the rest wait for the following days. Round 2: an OLDEST round-up owing more than a whole day
+ * (cap - fee) never fits, so on a full day (cap left = cap) the planting pulls a PART of it, cap - fee, and claims nothing: the swap
+ * stays pending and owes the rest (nothing is lost). On a day the cap is partly used nothing is taken (nothing behind it jumps ahead,
+ * so it cannot be starved); it gets its part on the next fresh day.
  */
-export function capCarryClaim<T extends { roundupCents: number }>(swaps: T[], a: { capCents: number; capLeftCents: number; feeCents: number }): { claim: T[]; covered: number } {
+export function capCarryClaim<T extends { owedCents: number }>(swaps: T[], a: { capCents: number; capLeftCents: number; feeCents: number }): { claim: T[]; covered: number; part: { swap: T; cents: number } | null } {
   const day = a.capCents - a.feeCents;
-  if (swaps.length > 0 && swaps[0].roundupCents > day) return a.capLeftCents >= a.capCents && day > 0 ? { claim: [swaps[0]], covered: day } : { claim: [], covered: 0 };
-  return coveredOldestFirst(swaps, a.capLeftCents - a.feeCents);
+  if (swaps.length > 0 && swaps[0].owedCents > day) {
+    return a.capLeftCents >= a.capCents && day > 0 ? { claim: [], covered: day, part: { swap: swaps[0], cents: day } } : { claim: [], covered: 0, part: null };
+  }
+  return { ...coveredOldestFirst(swaps, a.capLeftCents - a.feeCents), part: null };
 }

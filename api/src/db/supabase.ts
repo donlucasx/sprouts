@@ -162,7 +162,24 @@ export class SupabaseRepo implements Repo {
   }
 
   async unplantedSwaps(walletPubkey: string) {
-    return this.many(this.db.from("swaps").select().eq("wallet_pubkey", walletPubkey).is("planting_id", null).order("ts"), swapRow);
+    const swaps = await this.many(this.db.from("swaps").select().eq("wallet_pubkey", walletPubkey).is("planting_id", null).order("ts"), swapRow);
+    // Cap carry round 2 (0013): a failed read throws (the run's "build failed"); never a planting from round-ups read without their parts.
+    const parts = await this.swapPartsCents(swaps.map((s) => s.signature));
+    return swaps.map((s) => ({ ...s, owedCents: s.roundupCents - (parts.get(s.signature) ?? 0) })).filter((s) => !parts.has(s.signature) || s.owedCents > 0);   // a swap paid off in parts is not pending; a zero round-up still is, as before
+  }
+
+  /** swap_parts of sent or confirmed plantings (a failed planting's part gives the cents back), by signature; chunked like plantingLegsFor. */
+  async swapPartsCents(signatures: string[], excludePlantingId?: string) {
+    const sigs = [...new Set(signatures)];
+    const chunks: string[][] = [];
+    for (let i = 0; i < sigs.length; i += 100) chunks.push(sigs.slice(i, i + 100));
+    const rows = (await Promise.all(chunks.map((c) => this.many(
+      this.db.from("swap_parts").select("planting_id, signature, cents, plantings!inner(status)").in("signature", c).in("plantings.status", ["sent", "confirmed"]),
+      (r) => ({ plantingId: String(r.planting_id), signature: String(r.signature), cents: Number(r.cents) }),
+    )))).flat();
+    const out = new Map<string, number>();
+    for (const r of rows) if (r.plantingId !== excludePlantingId) out.set(r.signature, (out.get(r.signature) ?? 0) + r.cents);
+    return out;
   }
 
   async listSwaps(userPubkey: string, limit: number) {
@@ -234,6 +251,11 @@ export class SupabaseRepo implements Repo {
       const carry = (Object.entries(p.carryIn ?? {}) as [string, bigint][]).filter(([, v]) => v > 0n);
       if (carry.length) {
         const { error } = await this.db.from("carry").insert(carry.map(([kind, v]) => ({ planting_id: row.id, user_pubkey: p.userPubkey, kind, carry_in_raw: v.toString() })));
+        if (error) throw new Error(error.message);
+      }
+      // Cap carry round 2 (0013): sent only when there is a part, so a planting without one never depends on the table.
+      if (p.swapParts?.length) {
+        const { error } = await this.db.from("swap_parts").insert(p.swapParts.map((x) => ({ planting_id: row.id, signature: x.signature, cents: x.cents })));
         if (error) throw new Error(error.message);
       }
     } catch (e) {

@@ -56,6 +56,17 @@ describe("GET /api/me", () => {
     expect(body.wallets[0].status).toBe("active");
   });
 
+  // Cap carry round 2 (owner 11-13): a round-up pulled in parts shows only what it still owes.
+  it("the next planting's pending amount is what the round-ups still owe: a part of a sent or confirmed planting is taken off", async () => {
+    await repo.insertSwap({ signature: "big", walletPubkey: "W", ts: new Date(), inMint: "a", inAmount: 1, outMint: "b", outAmount: 1, usdSizeCents: 100_000, class: "major", roundupCents: 1000 });
+    const part = await repo.insertPlanting({ userPubkey: U, walletPubkey: "W", signature: "sig-part", usdcPulledCents: 500, networkFeeCents: 0, status: "confirmed", aiLine: null, swapParts: [{ signature: "big", cents: 500 }] },
+      [{ asset: "SKR", usdcInCents: 500, amountOutRaw: 1n, staked: true, feeAmountRaw: 0n, feeCents: 0, rateAtPlanting: null, venue: null }]);
+    const read = async () => (await (await me(new Request("http://x/api/me", bearer(await issueSession(U, "M"))))).json()).nextPlanting.pendingCents;
+    expect(await read()).toBe(20 + 500);
+    await repo.setPlantingStatus(part.id, "failed");
+    expect(await read()).toBe(20 + 1000);
+  });
+
   // First planting (owner 10-22, domain/threshold.ts): Home's bar and the resume point use the threshold the run will use.
   // 10-27 (user-c.skr, wallet 2hEw): a wallet Sprouts stopped on its own says why, so Home can ask for a re-link; a user's revoke is quiet
   it("a revoked wallet carries why Sprouts stopped it: the USDC approval, outside the app, or nothing when the user revoked it", async () => {

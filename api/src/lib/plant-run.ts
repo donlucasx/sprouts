@@ -589,7 +589,9 @@ async function plantOneOrThrow(a: RunArgs, w: WalletRow, ctx: RunCtx): Promise<P
   const hasPlanted = await userHasPlanted(a.repo, w.userPubkey);
   if (a.only === "first" && hasPlanted) return { wallet: w.pubkey, reason: "not first" };
   const swaps = await a.repo.unplantedSwaps(w.pubkey);
-  const pending = swaps.reduce((sum, s) => sum + s.roundupCents, 0);
+  // Cap carry round 2 (0013): every amount below is what each round-up still OWES (a round-up pulled in parts owes the rest); the
+  // 7-day rule keeps the swap's own time.
+  const pending = swaps.reduce((sum, s) => sum + s.owedCents, 0);
   const rules = rulesRowToRules(await a.repo.getRules(w.userPubkey));
   const threshold = plantThresholdFor({ ruleCents: rules.plantThresholdCents, hasPlanted });
   const oldestMs = swaps.length ? Math.min(...swaps.map((s) => s.ts.getTime())) : a.now.getTime();
@@ -651,18 +653,20 @@ async function plantOneOrThrow(a: RunArgs, w: WalletRow, ctx: RunCtx): Promise<P
   // Cap carry (owner 11-13, "Carry it to the next days"): a planting bounded by the cap left claims the same way, the round-ups its
   // pull covers, whole, oldest first; the rest stay unplanted and plant on the following days, never more than the cap a day. (Before,
   // it claimed every pending round-up and the part past the cap was marked planted but never moved.) Edge: a round-up bigger than the
-  // whole cap would never fit, so when the OLDEST is one it is claimed alone on a full day (cap left = cap) and the cap is pulled; its
-  // excess is never pulled (rare: a 1% round-up over $5 needs a $500+ swap). On a day the cap is partly used it claims nothing ("cap
-  // reached"; nothing behind it jumps ahead) and goes alone the next fresh day. The 7-day minimum of zero is read from the claimed
-  // round-ups, as below. Under the cap nothing changes: every pending round-up is claimed.
+  // whole cap would never fit, so when the OLDEST is one, on a full day (cap left = cap) the cap is pulled as a PART of it (round 2,
+  // owner 11-13: its excess must not be lost): the part is recorded in swap_parts, the swap is not claimed and owes the rest, which
+  // later days pull (in more parts, or claimed whole once it fits). On a day the cap is partly used nothing is taken ("cap reached";
+  // nothing behind it jumps ahead) and it gets its part the next fresh day. The 7-day minimum of zero is read from the claimed round-ups
+  // (and the part's swap), as below. Under the cap nothing changes: every pending round-up is claimed.
   const isOld = (s: { ts: Date }) => a.now.getTime() - s.ts.getTime() >= rules.plantMaxDays * 86_400_000;
   let claim = swaps;
   let covered = pending;
+  let part: { swap: (typeof swaps)[number]; cents: number } | null = null;
   if (amount.changeCents < pending) {
-    ({ claim, covered } = capCarryClaim(swaps, { capCents: cap, capLeftCents: left, feeCents: NETWORK_FEE_CENTS }));
-    forced = claim.some(isOld);
+    ({ claim, covered, part } = capCarryClaim(swaps, { capCents: cap, capLeftCents: left, feeCents: NETWORK_FEE_CENTS }));
+    forced = claim.some(isOld) || (part !== null && isOld(part.swap));
     amount = plantAmountCents({ pendingCents: covered, capLeftCents: left, feeCents: NETWORK_FEE_CENTS, minCents: forced ? 0 : threshold });
-    if (amount.pullCents === 0) return { wallet: w.pubkey, reason: claim.length === 0 ? "cap reached" : "below threshold" };
+    if (amount.pullCents === 0) return { wallet: w.pubkey, reason: claim.length === 0 && !part ? "cap reached" : "below threshold" };
   }
   // The balance bound is read from the full list with the stricter of the two bounds (the balance is under this pull, so under the
   // cap left): one selection, never a second rounding of the cap's.
@@ -671,6 +675,7 @@ async function plantOneOrThrow(a: RunArgs, w: WalletRow, ctx: RunCtx): Promise<P
     const wanted = amount.pullCents;
     left = Math.min(left, balanceCents);
     ({ claim, covered } = coveredOldestFirst(swaps, left - NETWORK_FEE_CENTS));
+    part = null;   // R361 as before: an oversized round-up the balance cannot cover waits (whole) for a top-up
     forced = claim.some(isOld);
     amount = plantAmountCents({ pendingCents: covered, capLeftCents: left, feeCents: NETWORK_FEE_CENTS, minCents: forced ? 0 : threshold });
     if (amount.pullCents === 0) {
@@ -734,8 +739,8 @@ async function plantOneOrThrow(a: RunArgs, w: WalletRow, ctx: RunCtx): Promise<P
   if (!target) return { wallet: w.pubkey, reason: "no leg enabled" };
   // R336 follow-up: with USDC lending disabled and every enabled leg at its stop max, the rest of the split is left unpulled. One leg
   // takes each planting, so "unpulled" is the pull itself: only the target's share of the change is pulled (the USDC stays in the
-  // wallet; the round-ups this planting selected, by the cap and balance bounds above, are all claimed by it: overweighting the capped
-  // legs later would be wrong). The venue check above used the larger amount (the stricter 60% test); both are already bounded by the
+  // wallet; the round-ups this planting selected, by the cap and balance bounds above, are all claimed by it, and a part keeps its
+  // full cents: overweighting the capped legs later would be wrong). The venue check above used the larger amount (the stricter 60% test); both are already bounded by the
   // cap and the USDC balance.
   const share = ASSETS.reduce((sum, leg) => sum + target[leg], 0);
   if (share < 100 - 1e-9) {
@@ -895,7 +900,8 @@ async function plantOneOrThrow(a: RunArgs, w: WalletRow, ctx: RunCtx): Promise<P
   const carryIn = { ...(carry.WSOL ? { WSOL: carry.WSOL } : {}), ...(carry.USDC ? { USDC: carry.USDC } : {}) };
   const planting = await a.repo.insertPlanting(
     { userPubkey: w.userPubkey, walletPubkey: w.pubkey, signature: built.signature, usdcPulledCents: amount.pullCents, networkFeeCents: NETWORK_FEE_CENTS, status: "sent", aiLine: null, sharesBefore, ts: a.now,
-      ...(carry.SKR ? { skrCarryInRaw: carry.SKR } : {}), ...(Object.keys(carryIn).length ? { carryIn } : {}) },
+      ...(carry.SKR ? { skrCarryInRaw: carry.SKR } : {}), ...(Object.keys(carryIn).length ? { carryIn } : {}),
+      ...(part ? { swapParts: [{ signature: part.swap.signature, cents: part.cents }] } : {}) },
     [{ asset, venue, usdcInCents: amount.changeCents, amountOutRaw: built.minOutRaw, staked: asset === "SKR", feeAmountRaw: 0n, feeCents: Math.round((amount.pullCents * COINS[asset].feeBps) / 10_000), rateAtPlanting }],
   );
   // R207 #2: the carry is reserved by the row just written; if another run spent the same remainder meanwhile, the user's credit is
@@ -908,7 +914,17 @@ async function plantOneOrThrow(a: RunArgs, w: WalletRow, ctx: RunCtx): Promise<P
     }
   }
   const claimed = await a.repo.claimSwaps(claim.map((s) => s.signature), planting.id);
-  if (claimed !== claim.length) {
+  // Cap carry round 2: a part does not claim its swap, so the conditional claim cannot stop a second run pulling the same part. The
+  // run checks instead that every round-up it took still owes what it read, counting the parts of every other sent or confirmed
+  // planting (this one's part is already written, so of two racing runs at least the later one sees the other: never both pulled).
+  // A failed read stands down too.
+  const owedNow = async (): Promise<boolean> => {
+    const took = part ? [...claim, part.swap] : claim;
+    if (took.length === 0) return true;
+    const parts = await a.repo.swapPartsCents(took.map((s) => s.signature), planting.id).catch(() => null);
+    return parts !== null && took.every((s) => s.roundupCents - (parts.get(s.signature) ?? 0) === s.owedCents);
+  };
+  if (claimed !== claim.length || !(await owedNow())) {
     // Another run got there first: give back whatever this one took and let that run finish.
     await a.repo.releaseSwaps(planting.id);
     await a.repo.setPlantingStatus(planting.id, "failed");

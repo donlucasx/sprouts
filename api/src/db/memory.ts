@@ -32,6 +32,7 @@ export class MemoryRepo implements Repo {
   foundVenues = new Map<string, T.FoundVenueRow>();
   moves = new Map<string, T.MoveProposalRow>();
   carry: { plantingId: string; userPubkey: string; kind: "WSOL" | "USDC"; carryInRaw: bigint; surplusRaw: bigint | null }[] = [];
+  swapParts: { plantingId: string; signature: string; cents: number }[] = [];
 
   async upsertUser(u: { seedVaultPubkey: string; sgtMint: string; skrName: string | null }) {
     for (const other of this.users.values()) {
@@ -157,7 +158,20 @@ export class MemoryRepo implements Repo {
   }
 
   async unplantedSwaps(walletPubkey: string) {
-    return [...this.swaps.values()].filter((s) => s.walletPubkey === walletPubkey && s.plantingId === null).sort((a, b) => a.ts.getTime() - b.ts.getTime());
+    const mine = [...this.swaps.values()].filter((s) => s.walletPubkey === walletPubkey && s.plantingId === null).sort((a, b) => a.ts.getTime() - b.ts.getTime());
+    const parts = await this.swapPartsCents(mine.map((s) => s.signature));
+    return mine.map((s) => ({ ...s, owedCents: s.roundupCents - (parts.get(s.signature) ?? 0) })).filter((s) => !parts.has(s.signature) || s.owedCents > 0);   // a swap paid off in parts is not pending; a zero round-up still is, as before
+  }
+
+  async swapPartsCents(signatures: string[], excludePlantingId?: string) {
+    const want = new Set(signatures);
+    const out = new Map<string, number>();
+    for (const x of this.swapParts) {
+      const status = this.plantings.get(x.plantingId)?.status;
+      if (!want.has(x.signature) || x.plantingId === excludePlantingId || (status !== "sent" && status !== "confirmed")) continue;
+      out.set(x.signature, (out.get(x.signature) ?? 0) + x.cents);
+    }
+    return out;
   }
 
   async listSwaps(userPubkey: string, limit: number) {
@@ -221,11 +235,11 @@ export class MemoryRepo implements Repo {
   }
 
   /** Test seam (AMEND 10-04 s20, T3 review I3): the next insertPlanting fails after the planting row is written, as a Postgres legs/carry insert error would. One-shot. */
-  insertFault: "legs" | "carry" | null = null;
+  insertFault: "legs" | "carry" | "parts" | null = null;
 
   async insertPlanting(p: NewPlanting, legs: Omit<T.PlantingLegRow, "plantingId">[]): Promise<T.PlantingRow> {
     checkLegVenues(legs);
-    const { sharesBefore = null, ts, carryIn, ...rest } = p;
+    const { sharesBefore = null, ts, carryIn, swapParts, ...rest } = p;
     const row: T.PlantingRow = { ...rest, id: id(), ts: ts ?? new Date(), sharesBefore, sharesAfter: null, sharesMinted: null, skrCarryInRaw: rest.skrCarryInRaw ?? 0n, skrSurplusRaw: null };
     this.plantings.set(row.id, row);
     try {
@@ -233,6 +247,12 @@ export class MemoryRepo implements Repo {
       for (const leg of legs) this.legs.push({ ...leg, plantingId: row.id });
       if (this.insertFault === "carry") throw new Error("carry insert failed (insertFault)");
       for (const [kind, raw] of Object.entries(carryIn ?? {}) as ["WSOL" | "USDC", bigint][]) if (raw > 0n) this.carry.push({ plantingId: row.id, userPubkey: row.userPubkey, kind, carryInRaw: raw, surplusRaw: null });
+      if (this.insertFault === "parts" && swapParts?.length) throw new Error("swap_parts insert failed (insertFault)");
+      for (const x of swapParts ?? []) {
+        if (!(x.cents > 0)) throw new Error("swap_parts cents must be > 0");
+        if (this.swapParts.some((y) => y.plantingId === row.id && y.signature === x.signature)) throw new Error("swap_parts primary key");
+        this.swapParts.push({ plantingId: row.id, signature: x.signature, cents: x.cents });
+      }
     } catch (e) {
       this.insertFault = null;
       await this.setPlantingStatus(row.id, "failed");

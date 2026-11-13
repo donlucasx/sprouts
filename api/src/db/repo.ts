@@ -7,6 +7,8 @@ import type { Venue } from "@/domain/venues";
 /** `ts` is the run's own clock (the reconciliation measures age against it); left out, the store stamps the row itself. */
 export type NewPlanting = Omit<T.PlantingRow, "id" | "ts" | "sharesBefore" | "sharesAfter" | "sharesMinted" | "skrCarryInRaw" | "skrSurplusRaw"> & {
   sharesBefore?: bigint | null; ts?: Date; skrCarryInRaw?: bigint; carryIn?: Partial<Record<Exclude<T.CarryKind, "SKR">, bigint>>;
+  /** Cap carry round 2 (0013): the part of an oversized round-up this planting pulls; the swap itself stays unclaimed. */
+  swapParts?: { signature: string; cents: number }[];
 };
 
 /** AMEND 10-04 s20 (T3 review I3): 0008's planting_legs_venue_iff_lend, checked by both repos before any write of a planting. */
@@ -58,7 +60,10 @@ export interface Repo {
 
   /** False when the signature is already booked. */
   insertSwap(s: Omit<T.SwapRow, "plantingId" | "createdAt">): Promise<boolean>;
-  unplantedSwaps(walletPubkey: string): Promise<T.SwapRow[]>;
+  /** Oldest first, each with what it still owes (round-up minus parts of sent or confirmed plantings); a swap its parts paid off is left out. */
+  unplantedSwaps(walletPubkey: string): Promise<T.PendingSwapRow[]>;
+  /** Cap carry round 2: the cents of each swap's parts on sent or confirmed plantings, leaving out one planting (the caller's own). */
+  swapPartsCents(signatures: string[], excludePlantingId?: string): Promise<Map<string, number>>;
   /** Across the user's wallets, newest first. */
   listSwaps(userPubkey: string, limit: number): Promise<T.SwapRow[]>;
   /** Claims the swaps for a planting in one conditional statement (only unclaimed ones); returns how many were claimed. */

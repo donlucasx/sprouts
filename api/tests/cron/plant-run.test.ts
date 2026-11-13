@@ -609,12 +609,12 @@ describe("runPlanting", () => {
   // Review M1: the user's own daily limit (rules) binds when it is lower than the delegation's.
   it("the user's daily limit in the rules bounds the pull", async () => {
     // $3 a day in the rules against a $5 delegation: the pull is $3. Cap carry (11-13): each $10 round-up is bigger than the whole
-    // $3, so the oldest goes alone (its excess is not pulled) and the second waits for the next day.
+    // $3, so the oldest gets a $3 part and still owes $7; both wait for the next days.
     const repo = await seeded([1000, 1000]);
     await repo.saveRules("U", { dailyCapCents: 300 });
     const r = await runPlanting({ repo, now: NOW, chain: fakeChain() });
     expect(r.planted[0].pullCents).toBe(300);
-    expect((await repo.unplantedSwaps("W")).length).toBe(1);
+    expect((await repo.unplantedSwaps("W")).map((s) => s.owedCents)).toEqual([700, 1000]);
     expect(((await repo.getWallet("W"))!.ledgerCents.SKR ?? 0)).toBe(300);
   });
 
@@ -2067,40 +2067,103 @@ describe("cap carry: round-ups past the daily cap wait for the next days (owner 
     return repo;
   }
   const waiting = async (repo: MemoryRepo) => (await repo.unplantedSwaps("W")).map((s) => s.roundupCents);
+  const owed = async (repo: MemoryRepo) => (await repo.unplantedSwaps("W")).map((s) => s.owedCents);
+  const partsOf = (repo: MemoryRepo, id: string) => repo.swapParts.filter((x) => x.plantingId === id).map((x) => [x.signature, x.cents]);
+  const lastPlanting = (repo: MemoryRepo) => [...repo.plantings.values()].at(-1)!;
   const claimedBy = (repo: MemoryRepo, id: string) => [...repo.swaps.values()].filter((s) => s.plantingId === id).map((s) => s.roundupCents);
 
-  it("$22.31 waiting with a $5 cap: each day claims only the oldest round-ups that fit; the rest wait for the next days", async () => {
+  it("$22.31 waiting with a $5 cap: each day claims only the oldest round-ups that fit; the rest wait; nothing is lost", async () => {
     const repo = await queued([120, 95, 210, 80, 300, 150, 400, 276, 600]);   // 2231 cents
     const pulls: number[] = [];
     for (let d = 0; d < 5; d++) {
       const r = await runPlanting({ repo, now: new Date(NOW.getTime() + d * DAY), chain: fakeChain() });
       pulls.push(r.planted[0].pullCents);
-      const p = [...repo.plantings.values()].at(-1)!;
-      expect(claimedBy(repo, p.id).reduce((s, c) => s + c, 0)).toBe(d === 4 ? 600 : p.usdcPulledCents);   // claimed = pulled, but for the oversized one
+      const p = lastPlanting(repo);
+      expect(claimedBy(repo, p.id).reduce((s, c) => s + c, 0)).toBe(d === 4 ? 0 : p.usdcPulledCents);   // claimed = pulled; day 5 is a part
       if (d === 0) expect(await waiting(repo)).toEqual([80, 300, 150, 400, 276, 600]);
     }
-    // Day 1: 120 + 95 + 210 (80 would pass 500); day 2: 80 + 300; day 3: 150 + 276; day 4: 400; day 5: the 600 alone, the cap pulled.
+    // Day 1: 120 + 95 + 210 (80 would pass 500); day 2: 80 + 300; day 3: 150 + 276; day 4: 400; day 5: a 500 part of the 600.
     expect(pulls).toEqual([425, 380, 426, 400, 500]);
+    expect(partsOf(repo, lastPlanting(repo).id)).toEqual([["q8", 500]]);
+    expect(await owed(repo)).toEqual([100]);
+    // The 100 left is under the $2 threshold: it waits, then the 7-day rule (from the swap's own time) plants it.
+    expect((await runPlanting({ repo, now: new Date(NOW.getTime() + 5 * DAY), chain: fakeChain() })).skipped[0].reason).toBe("below threshold");
+    const last = await runPlanting({ repo, now: new Date(NOW.getTime() + 7 * DAY), chain: fakeChain() });
+    pulls.push(last.planted[0].pullCents);
+    expect(pulls.reduce((s, c) => s + c, 0)).toBe(2231);
     expect(await waiting(repo)).toEqual([]);
     expect(pulls.every((p) => p <= 500)).toBe(true);
   });
 
-  it("a single $10 round-up with a $5 cap is claimed alone with the cap pulled; the queue behind it moves on the next day", async () => {
+  it("a single $10 round-up with a $5 cap: day 1 pulls a $5 part (still owing $5), day 2 pulls the $5 and claims it; nothing lost", async () => {
     const repo = await queued([1000, 100, 100]);
     const r1 = await runPlanting({ repo, now: NOW, chain: fakeChain() });
     expect(r1.planted[0].pullCents).toBe(500);
-    expect(claimedBy(repo, [...repo.plantings.values()][0].id)).toEqual([1000]);
-    expect(await waiting(repo)).toEqual([100, 100]);
+    const p1 = lastPlanting(repo);
+    expect(claimedBy(repo, p1.id)).toEqual([]);
+    expect(partsOf(repo, p1.id)).toEqual([["q0", 500]]);
+    expect(await owed(repo)).toEqual([500, 100, 100]);
     const r2 = await runPlanting({ repo, now: new Date(NOW.getTime() + DAY), chain: fakeChain() });
-    expect(r2.planted[0].pullCents).toBe(200);
+    expect(r2.planted[0].pullCents).toBe(500);
+    expect(claimedBy(repo, lastPlanting(repo).id)).toEqual([1000]);
+    expect(partsOf(repo, lastPlanting(repo).id)).toEqual([]);
+    expect(await owed(repo)).toEqual([100, 100]);
+    const r3 = await runPlanting({ repo, now: new Date(NOW.getTime() + 2 * DAY), chain: fakeChain() });
+    expect(r3.planted[0].pullCents).toBe(200);
+    expect(await waiting(repo)).toEqual([]);
+    expect(Object.values((await repo.getWallet("W"))!.ledgerCents).reduce((a, c) => a + (c ?? 0), 0)).toBe(1200);
+    expect([...repo.plantings.values()].reduce((s, p) => s + p.usdcPulledCents, 0)).toBe(1200);
+  });
+
+  it("$25 at a $5 cap: five days of $5, four parts then the claim; nothing lost", async () => {
+    const repo = await queued([2500]);
+    const pulls: number[] = [];
+    for (let d = 0; d < 5; d++) {
+      expect(await owed(repo)).toEqual([2500 - 500 * d]);
+      pulls.push((await runPlanting({ repo, now: new Date(NOW.getTime() + d * DAY), chain: fakeChain() })).planted[0].pullCents);
+    }
+    expect(pulls).toEqual([500, 500, 500, 500, 500]);
+    expect(repo.swapParts.map((x) => x.cents)).toEqual([500, 500, 500, 500]);
+    expect(claimedBy(repo, lastPlanting(repo).id)).toEqual([2500]);
     expect(await waiting(repo)).toEqual([]);
   });
 
-  it("an oversized round-up behind smaller ones waits its turn, then goes alone", async () => {
+  it("a part whose planting fails on chain no longer counts: the owed amount goes back up and is pulled again", async () => {
+    const repo = await queued([1000]);
+    const r1 = await runPlanting({ repo, now: NOW, chain: fakeChain({ sendPlanting: async () => { throw new Error("blockhash expired"); }, signatureStatus: async () => "failed" }) });
+    expect(r1.skipped[0].reason).toBe("send failed");
+    expect(lastPlanting(repo).status).toBe("failed");
+    expect(await owed(repo)).toEqual([1000]);
+    const r2 = await runPlanting({ repo, now: new Date(NOW.getTime() + DAY), chain: fakeChain() });
+    expect(r2.planted[0].pullCents).toBe(500);
+    expect(await owed(repo)).toEqual([500]);
+  });
+
+  it("a part still `sent` counts (reserved) until it fails", async () => {
+    const repo = await queued([1000]);
+    await runPlanting({ repo, now: NOW, chain: fakeChain({ sendPlanting: async () => { throw new Error("websocket closed"); }, signatureStatus: async () => "pending" }) });
+    expect(lastPlanting(repo).status).toBe("sent");
+    expect(await owed(repo)).toEqual([500]);
+    await repo.setPlantingStatus(lastPlanting(repo).id, "failed");
+    expect(await owed(repo)).toEqual([1000]);
+  });
+
+  it("two overlapping runs on an oversized round-up record one part", async () => {
+    const repo = await queued([1000]);
+    const chain = fakeChain({ sendPlanting: async () => { await new Promise((r) => setTimeout(r, 5)); } });
+    const [a, b] = await Promise.all([runPlanting({ repo, now: NOW, chain }), runPlanting({ repo, now: NOW, chain })]);
+    expect(a.planted.length + b.planted.length).toBeLessThanOrEqual(1);
+    expect(await owed(repo)).toEqual([1000 - 500 * (a.planted.length + b.planted.length)]);
+    expect([...repo.plantings.values()].filter((p) => p.status !== "failed").length).toBe(a.planted.length + b.planted.length);
+  });
+
+  it("an oversized round-up behind smaller ones waits its turn, then is pulled in parts", async () => {
     const repo = await queued([100, 1000, 150]);
     expect((await runPlanting({ repo, now: NOW, chain: fakeChain() })).planted[0].pullCents).toBe(250);
     expect(await waiting(repo)).toEqual([1000]);
     expect((await runPlanting({ repo, now: new Date(NOW.getTime() + DAY), chain: fakeChain() })).planted[0].pullCents).toBe(500);
+    expect(await owed(repo)).toEqual([500]);
+    expect((await runPlanting({ repo, now: new Date(NOW.getTime() + 2 * DAY), chain: fakeChain() })).planted[0].pullCents).toBe(500);
     expect(await waiting(repo)).toEqual([]);
   });
 
@@ -2156,8 +2219,8 @@ describe("cap carry: round-ups past the daily cap wait for the next days (owner 
     expect(await waiting(repo)).toEqual([1000, 5]);   // the 5 behind it does not jump ahead
     const r2 = await runPlanting({ repo, now: new Date(NOW.getTime() + DAY), chain: fakeChain() });   // a fresh period
     expect(r2.planted[0].pullCents).toBe(500);
-    expect(claimedBy(repo, [...repo.plantings.values()][0].id)).toEqual([1000]);
-    expect(await waiting(repo)).toEqual([5]);
+    expect(partsOf(repo, [...repo.plantings.values()][0].id)).toEqual([["q0", 500]]);
+    expect(await owed(repo)).toEqual([500, 5]);
   });
 
   it("share under 100: a share too small for any planting skips and claims nothing", async () => {

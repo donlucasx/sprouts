@@ -40,7 +40,7 @@ export async function GET(request: Request) {
   });
   const coinDays = await latestCoinDays(repo, today);
   const wallets = await repo.listWalletsOf(user.seedVaultPubkey);
-  const pending = (await Promise.all(wallets.map((w) => repo.unplantedSwaps(w.pubkey)))).flat().reduce((s, x) => s + x.roundupCents, 0);
+  const pending = (await Promise.all(wallets.map((w) => repo.unplantedSwaps(w.pubkey)))).flat().reduce((s, x) => s + x.owedCents, 0);
   // Residual O2: a leashed user is shown only venues the leash allows (the run's set), exactly as /api/me.
   const leashed = wallets.some((w) => w.linkModel === "leash" && w.status !== "revoked");
   const leash = leashAllowedFor(leashed, leashed ? await readLeashConfig().catch(() => null) : null);
