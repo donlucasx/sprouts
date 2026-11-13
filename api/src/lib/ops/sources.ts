@@ -9,7 +9,7 @@ import { readLeashConfig, LEG_SPEC, LEASH_LEG } from "@/lib/leash";
 import { rpc } from "@/lib/rpc";
 import { APP_REASONS } from "@/lib/founder-alert";
 import { PYTH_ACCOUNT, PYTH_FEED } from "@/lib/venues/addresses";
-import type { CronRunInput, FailureInput } from "./lights";
+import type { CronRunInput, FailureInput, AddUpRow } from "./lights";
 
 const DAY_MS = 24 * 3_600_000;
 const PAGE = 1000;   // PostgREST's default row cap: every unbounded read pages past it
@@ -54,6 +54,8 @@ export interface OpsSources {
   legsEnabled(): Promise<boolean[]>;
   /** Money-route server errors (`app_error` events) since the time: the route step only, never the error text. */
   appErrors(sinceIso: string): Promise<{ step: string }[]>;
+  /** Confirmed plantings since the time, each with what it claimed, pulled and recorded in legs (cents); short ids only. */
+  amountsAddUp(sinceIso: string): Promise<AddUpRow[]>;
   support(sinceIso: string): Promise<{ count: number; newestAt: Date | null }>;
   numbers(nowIso: string): Promise<OpsNumbers>;
 }
@@ -113,6 +115,35 @@ export function remainderResolved(e: { plantingId: string | null; kind: string }
   const legs = s.legsOf.get(e.plantingId);
   if (e.kind === "legs") return !!legs && remainderKindsOf(legs.map((asset) => ({ asset }))).every(done);
   return false;
+}
+
+type AddUpInput = {
+  plantings: Row[];
+  /** swaps claimed by those plantings (planting_id, signature, roundup_cents). */
+  swaps: Row[];
+  /** swap_parts of those plantings AND of any sent or confirmed planting on the claimed swaps (planting_id, signature, cents). */
+  parts: Row[];
+  /** planting_legs of those plantings (planting_id, usdc_in_cents). */
+  legs: Row[];
+};
+
+/**
+ * Per planting: claimed = its claimed swaps' round-ups, less what OTHER plantings already pulled of them as parts (the planting that
+ * takes the rest owes only the rest), plus its own parts on swaps it did not claim (a part leaves the swap unclaimed); pulled = pulled
+ * minus the network fee; legs = sum of the legs' USDC in. Test wallets (OPS_EXCLUDE_WALLETS) are left out.
+ */
+export function addUpRows(i: AddUpInput, skip: Set<string>): AddUpRow[] {
+  const num = (v: unknown) => Number(v ?? 0);
+  return i.plantings.filter((p) => !isExcluded(skip, p.user_pubkey, p.wallet_pubkey)).map((p) => {
+    const id = String(p.id);
+    const mine = i.swaps.filter((s) => s.planting_id === id);
+    const claimedSigs = new Set(mine.map((s) => String(s.signature)));
+    let claimed = 0;
+    for (const s of mine) claimed += num(s.roundup_cents) - i.parts.filter((x) => x.signature === s.signature && x.planting_id !== id).reduce((t, x) => t + num(x.cents), 0);
+    for (const x of i.parts) if (x.planting_id === id && !claimedSigs.has(String(x.signature))) claimed += num(x.cents);
+    const legs = i.legs.filter((l) => l.planting_id === id);
+    return { id: shortWallet(id), claimedCents: claimed, pulledCents: num(p.usdc_pulled_cents) - num(p.network_fee_cents), legsCents: legs.reduce((t, l) => t + num(l.usdc_in_cents), 0), legCount: legs.length };
+  });
 }
 
 export function realOpsSources(): OpsSources {
@@ -304,6 +335,22 @@ export function realOpsSources(): OpsSources {
       // Only the step: the error text stays in the table.
       const rs = await allRows((a, b) => db().from("events").select("id, user_pubkey, wallet_pubkey, step:detail->>step").eq("kind", "app_error").gte("ts", sinceIso).order("id").range(a, b));
       return rs.filter((r) => !isExcluded(skip, r.user_pubkey, r.wallet_pubkey)).map((r) => ({ step: str(r.step) ?? "?" }));
+    },
+
+    async amountsAddUp(sinceIso) {
+      const skip = ex();
+      const plantings = await allRows((a, b) => db().from("plantings").select("id, user_pubkey, wallet_pubkey, usdc_pulled_cents, network_fee_cents").eq("status", "confirmed").gte("ts", sinceIso).order("ts").order("id").range(a, b));
+      const ids = plantings.filter((p) => !isExcluded(skip, p.user_pubkey, p.wallet_pubkey)).map((p) => String(p.id));
+      const chunk = (xs: string[]) => Array.from({ length: Math.ceil(xs.length / 100) }, (_, k) => xs.slice(k * 100, k * 100 + 100));
+      const many = async (qs: Result[]): Promise<Row[]> => (await Promise.all(qs.map(rows))).flat();
+      const [swaps, ownParts, legs] = await Promise.all([
+        many(chunk(ids).map((c) => db().from("swaps").select("planting_id, signature, roundup_cents").in("planting_id", c))),
+        many(chunk(ids).map((c) => db().from("swap_parts").select("planting_id, signature, cents").in("planting_id", c))),
+        many(chunk(ids).map((c) => db().from("planting_legs").select("planting_id, usdc_in_cents").in("planting_id", c))),
+      ]);
+      // Parts other plantings (sent or confirmed; a failed one gives its cents back) pulled of the swaps these plantings claimed.
+      const otherParts = await many(chunk([...new Set(swaps.map((s) => String(s.signature)))]).map((c) => db().from("swap_parts").select("planting_id, signature, cents, plantings!inner(status)").in("signature", c).in("plantings.status", ["sent", "confirmed"])));
+      return addUpRows({ plantings, swaps, parts: [...ownParts, ...otherParts], legs }, skip);
     },
 
     async support(sinceIso) {

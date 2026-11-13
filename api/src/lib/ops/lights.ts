@@ -1,7 +1,7 @@
 // Ops dashboard lights: one pure function per light (inputs in, { state, fact } out). No I/O, no imports from @/lib.
 
 export type LightState = "green" | "amber" | "red" | "unknown" | "info";
-export type LightKey = "dailyRun" | "firstPlanting" | "swapWatching" | "swapsArriving" | "prices" | "gas" | "moneyOps" | "appErrors" | "program" | "support";
+export type LightKey = "dailyRun" | "firstPlanting" | "swapWatching" | "swapsArriving" | "prices" | "gas" | "moneyOps" | "appErrors" | "amountsAddUp" | "program" | "support";
 /** `action` is the "Do:" line: set on every amber/red/unknown light, never on green or info. */
 export type Light = { key: LightKey; label: string; state: LightState; fact: string; action?: string };
 
@@ -14,6 +14,7 @@ export const LIGHT_LABELS: Record<LightKey, string> = {
   gas: "Network fee wallet",
   moneyOps: "Withdrawals and failures",
   appErrors: "App errors",
+  amountsAddUp: "Amounts add up",
   program: "Savings settings",
   support: "Support inbox",
 };
@@ -151,6 +152,33 @@ export function appErrorsLight(input: { errors: { step: string }[] }): Light {
   const fact = `${plural(n, "app error")} in the last 24 hours (${shown})`;
   const red = n >= 3 || input.errors.some((e) => isWithdrawStep(e.step));
   return mk(red ? "red" : "amber", fact, "Ask Claude to check them today.");
+}
+
+/** One confirmed planting's three amounts, in cents. `id` is already the short form. `pulledCents` is net of the network fee. */
+export type AddUpRow = { id: string; claimedCents: number; pulledCents: number; legsCents: number; legCount: number };
+
+const dollars = (cents: number): string => `$${(cents / 100).toFixed(2)}`;
+
+/**
+ * Confirmed plantings of the last 30 days: (1) the round-ups a planting claimed equal what it pulled (more than 1 cent apart is a
+ * miss: claimed > pulled is red, claimed < pulled amber; a planting row does not record a deliberate partial pull, R336 share < 100,
+ * so that case reads red), (2) its legs add up to what it pulled (the one leg per planting records pull minus the network fee, so
+ * exact; 1 cent of rounding is allowed per extra leg, for older split plantings). Green all add up; red any off; amber only the
+ * claimed < pulled kind.
+ */
+export function amountsAddUpLight(input: { rows: AddUpRow[] }): Light {
+  const mk = maker("amountsAddUp");
+  const gaps = input.rows.map((r) => {
+    const over = r.claimedCents - r.pulledCents;
+    const legGap = Math.abs(r.legsCents - r.pulledCents);
+    const legsOff = legGap > Math.max(1, r.legCount - 1);
+    return { red: over > 1 || legsOff, amber: over < -1, gap: Math.max(over > 1 ? over : 0, legsOff ? legGap : 0, over < -1 ? -over : 0) };
+  });
+  const red = gaps.filter((g) => g.red);
+  if (red.length) return mk("red", `${red.length} ${red.length === 1 ? "saving doesn't" : "savings don't"} add up, biggest gap ${dollars(Math.max(...red.map((g) => g.gap)))}`, "Ask Claude to check them today.");
+  const amber = gaps.filter((g) => g.amber);
+  if (amber.length) return mk("amber", `${plural(amber.length, "saving")} pulled more than ${amber.length === 1 ? "its" : "their"} round-ups, biggest gap ${dollars(Math.max(...amber.map((g) => g.gap)))}`, "Ask Claude to check them today.");
+  return mk("green", "Every saving in the last 30 days pulled what its round-ups say");
 }
 
 // ---- Infra lights ----
