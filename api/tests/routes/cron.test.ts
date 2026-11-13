@@ -5,6 +5,8 @@ import { dayOf } from "@/domain/day";
 
 vi.mock("@/lib/rpc", () => ({ rpc: () => ({}) }));
 vi.mock("@/lib/staking", () => ({ readPosition: vi.fn(), crankWithdraw: vi.fn(), sharePrice: vi.fn(async () => 1_146_000_000n) }));
+const { alertMock } = vi.hoisted(() => ({ alertMock: vi.fn(async (_a: unknown) => {}) }));
+vi.mock("@/lib/founder-alert", async (orig) => ({ ...(await orig<object>()), alertFounder: alertMock }));
 const { crankMock } = vi.hoisted(() => ({ crankMock: { fail: false } }));
 vi.mock("@/lib/withdraw-run", async (orig) => {
   const actual = await orig<typeof import("@/lib/withdraw-run")>();
@@ -276,6 +278,7 @@ describe("cron route", () => {
       expect(res.status).toBe(200);
       const body = (await res.json()) as Record<string, unknown>;
       expect(body.withdrawals).toBeNull();
+      expect(alertMock).toHaveBeenCalledWith(expect.objectContaining({ channel: "ops", title: "Withdrawal crank failed", text: expect.stringContaining("crank blew up") }));
       expect(order).toContain("remainders");
       expect(repo.cronRuns.get(dayOf(new Date()))?.ok).toBe(true);
     } finally {

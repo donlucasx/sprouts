@@ -74,11 +74,12 @@ function realCoinReads(repo: Repo, now: Date): CoinReads {
 }
 
 /** One of the manager's steps: its failure is logged and the day goes on (planting reads whatever the rules hold). */
-async function step<T>(name: string, fn: () => Promise<T>): Promise<T | null> {
+async function step<T>(name: string, fn: () => Promise<T>, onFail?: (e: unknown) => Promise<void>): Promise<T | null> {
   try {
     return await fn();
   } catch (e) {
     console.error(`cron: ${name} failed: ${errorText(e)}`);
+    if (onFail) await onFail(e);
     return null;
   }
 }
@@ -136,8 +137,11 @@ export async function GET(request: Request) {
     const chain = realPlantingChain();
     const planting = await runPlanting({ repo, now, chain, deadlineMs: startedMs + 240_000 });
     // 11-13: the crank starts no new withdrawal past 250 s (the 429 retry can stretch the run); the rest wait for the next run.
-    // Kimi M4: a step, so a throw is logged and the run goes on (null in the record; the ops light reads it as red).
-    const withdrawals = await step("withdrawals", () => runWithdrawCrank({ repo, now, deadlineMs: startedMs + WITHDRAW_DEADLINE_MS, chain: { readPosition: (u) => readPosition(address(u)), crankWithdraw: (u) => crankWithdraw(address(u)) } }));
+    // Kimi M4: the crank is tolerated like a step (the rest of the day still runs; null in the record, red on the ops light), but a
+    // throw there used to fail the run and alert the founder, so it still alerts.
+    const withdrawals = await step("withdrawals", () => runWithdrawCrank({ repo, now, deadlineMs: startedMs + WITHDRAW_DEADLINE_MS, chain: { readPosition: (u) => readPosition(address(u)), crankWithdraw: (u) => crankWithdraw(address(u)) } }), async (e) => {
+      await alertFounder({ channel: "ops", title: "Withdrawal crank failed", text: errorText(e).slice(0, 300), todo: "Check the Vercel logs for /api/cron/plant; no withdrawals were finished today until it is re-run" }).catch(() => {});
+    });
     // Audit F1: leftover change a booking could not record (an SKR or WSOL/USDC surplus still NULL), retried for 14 days, written once.
     const remainders = await step("remainders", () => retryUnrecordedRemainders({ repo, now, chain, deadlineMs: startedMs + REMAINDERS_DEADLINE_MS }));
     // R61: stakes and unstakes the Seed Vault made from its own wallet, found by comparing the chain's share count with the ledger's.

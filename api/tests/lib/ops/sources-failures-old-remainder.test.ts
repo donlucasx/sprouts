@@ -38,6 +38,7 @@ describe("kimi M3: an unresolved remainder event older than the window is still 
     tables.events = [
       { id: 1, ts: "2026-09-01T00:00:00Z", kind: "remainder_unrecorded", user_pubkey: "U", wallet_pubkey: "W", planting: P1, rkind: "SKR" },
       { id: 2, ts: "2026-09-02T00:00:00Z", kind: "remainder_unrecorded", user_pubkey: "U", wallet_pubkey: "W", planting: P2, rkind: "SKR" },
+      { id: 4, ts: "2026-09-04T00:00:00Z", kind: "remainder_unrecorded", user_pubkey: "U", wallet_pubkey: "W", planting: null, rkind: "SKR" },
       { id: 3, ts: "2026-09-03T00:00:00Z", kind: "pull_failed", user_pubkey: "U", wallet_pubkey: "W" },
     ];
     tables.plantings = [{ id: P1, skr_surplus_raw: null, planting_legs: [], carry: [] }, { id: P2, skr_surplus_raw: 5, planting_legs: [], carry: [] }];

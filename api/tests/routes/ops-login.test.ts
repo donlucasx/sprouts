@@ -80,6 +80,11 @@ describe("POST /api/ops/login", () => {
     for (let i = 0; i < 5; i++) expect((await post({ password: "wrong" })).status).toBe(401);
     expect((await post({ password: "wrong" })).status).toBe(429);
   });
+  it("kimi L6: parallel wrong attempts: at most 5 reach the password check", async () => {
+    const rs = await Promise.all(Array.from({ length: 20 }, () => post({ password: "wrong" })));
+    expect(rs.filter((r) => r.status === 401)).toHaveLength(5);
+    expect(rs.filter((r) => r.status === 429)).toHaveLength(15);
+  });
   it("kimi L6: four failures then a success still logs in", async () => {
     for (let i = 0; i < 4; i++) expect((await post({ password: "wrong" })).status).toBe(401);
     expect((await post({ password: PW })).status).toBe(204);

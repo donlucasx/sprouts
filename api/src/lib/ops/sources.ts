@@ -213,7 +213,8 @@ export function realOpsSources(): OpsSources {
       const olderRemainders = (await allRows((a, b) => db().from("events")
         .select("id, ts, kind, user_pubkey, wallet_pubkey, withdrawal:detail->>withdrawal, planting:detail->>plantingId, rkind:detail->>kind")
         .eq("kind", "remainder_unrecorded").lt("ts", sinceIso).order("id").range(a, b)))
-        .filter((e) => !isExcluded(skip, e.user_pubkey, e.wallet_pubkey));
+        // Only an event naming a real planting can ever resolve; one without keeps the plain 14-day window (so it is not read here).
+        .filter((e) => !isExcluded(skip, e.user_pubkey, e.wallet_pubkey) && UUID.test(str(e.planting) ?? ""));
       const older = new Set(olderRemainders.map((e) => e.id));
       events.push(...olderRemainders);
       const of = (k: string) => events.filter((e) => e.kind === k);

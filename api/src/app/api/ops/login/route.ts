@@ -14,13 +14,18 @@ export async function POST(req: Request): Promise<Response> {
   // Before the rate limit: a cross-site text/plain form post must not burn the 5-an-hour budget.
   if (!(req.headers.get("content-type") ?? "").toLowerCase().startsWith("application/json")) return Response.json({ error: "Bad request." }, { status: 400 });
   // Kimi L6: only FAILED tries spend the budget; a right password is never throttled unless 5 wrong ones already used it up.
+  // The body is read FIRST; the check and the spend below have no await between them, so parallel attempts cannot all pass the check.
   const bucket = `ops-login:${clientIp(req)}`;
-  if (rateExhausted(bucket, 5, 3_600_000)) return Response.json({ error: "Too many tries. Wait an hour." }, { status: 429 });
   let password = "";
+  let bad = false;
   try {
     const body = (await req.json()) as { password?: unknown };
     if (typeof body?.password === "string") password = body.password;
   } catch {
+    bad = true;
+  }
+  if (rateExhausted(bucket, 5, 3_600_000)) return Response.json({ error: "Too many tries. Wait an hour." }, { status: 429 });
+  if (bad) {
     rateLimited(bucket, 5, 3_600_000);   // an unparseable body is a failed try too
     return Response.json({ error: "Bad request." }, { status: 400 });
   }
