@@ -9,6 +9,7 @@ import { isLiveAsset, sameSplit, type LiveAsset } from "@/domain/coins";
 import type { Pins } from "@/domain/roundup";
 import { validatePins, floorFor, effectiveSplit, STOP_DEFAULTS, STOP_LABEL, PIN_MAX } from "@/domain/split";
 import { dayOf } from "@/domain/day";
+import { withAppErrorLog } from "@/lib/failure-log";
 
 export const runtime = "nodejs";
 
@@ -43,7 +44,7 @@ const PIN_COPY = (floor: number, stop: string) => ({
 });
 
 /** Saves the user's rules. Raising the daily limit asks the Seeker for a fresh sign-in (R84); everything else is the session's. */
-export async function PUT(request: Request) {
+async function putHandler(request: Request) {
   const session = await requireSession(request);
   if (session instanceof NextResponse) return session;
   const parsed = Body.safeParse(await request.json().catch(() => null));
@@ -115,3 +116,4 @@ export async function PUT(request: Request) {
   }
   return NextResponse.json(rulesRowToRules(saved));
 }
+export const PUT = withAppErrorLog("rules", putHandler);

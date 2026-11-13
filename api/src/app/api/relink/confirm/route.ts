@@ -10,6 +10,7 @@ import { delegationPda, readDelegation, waitForDelegation } from "@/lib/subscrip
 import { leashPda } from "@/lib/leash";
 import { rpc } from "@/lib/rpc";
 import { SUBSCRIPTIONS_PROGRAM, USDC_MINT } from "@/lib/constants";
+import { withAppErrorLog } from "@/lib/failure-log";
 
 export const runtime = "nodejs";
 export const maxDuration = 60; // the delegation poll (up to 10 s) plus the send
@@ -23,7 +24,7 @@ const u64At = (d: Uint8Array, at: number) => new DataView(d.buffer, d.byteOffset
 const i64At = (d: Uint8Array, at: number) => new DataView(d.buffer, d.byteOffset, d.byteLength).getBigInt64(at, true);
 
 /** Contracts 5.5: the create's delegatee must be leashPda(user, user) and its delegator the session wallet; then the delegation must appear. */
-export async function POST(request: Request) {
+async function postHandler(request: Request) {
   const session = await requireSession(request);
   if (session instanceof NextResponse) return session;
   const parsed = Body.safeParse(await request.json().catch(() => null));
@@ -81,3 +82,4 @@ export async function POST(request: Request) {
   await repo.addEvent({ userPubkey: me, walletPubkey: me, kind: "relinked", detail: { delegationPda: pda, oldDelegationPda: old, revoked: oldLive } });
   return NextResponse.json({ relinked: true, linkModel: "leash", delegationPda: pda });
 }
+export const POST = withAppErrorLog("relink/confirm", postHandler);

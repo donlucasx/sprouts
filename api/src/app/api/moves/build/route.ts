@@ -13,6 +13,7 @@ import { carryMoves, IN_FLIGHT, moveBuiltDetail, moveCarriesFor, moveDepositRaw 
 import { COINS, type LendAsset } from "@/domain/coins";
 import { VENUE_SHORT, type AutoVenue } from "@/domain/venues";
 import { dayOf } from "@/domain/day";
+import { withAppErrorLog } from "@/lib/failure-log";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -26,7 +27,7 @@ const rateOf = (venue: AutoVenue, asset: LendAsset) => (venue === "kamino_klend"
  * position's underlyingRaw as /api/me serves it (the app's sign.ts cap). The amounts are recorded (`move_built`): the confirm sends
  * only these, rebuilt by the server, never an amount a client posts.
  */
-export async function POST(request: Request) {
+async function postHandler(request: Request) {
   const session = await requireSession(request);
   if (session instanceof NextResponse) return session;
   const parsed = Body.safeParse(await request.json().catch(() => null));
@@ -81,3 +82,4 @@ export async function POST(request: Request) {
   const brief = `Moves your ${coin} from ${VENUE_SHORT[from]} to ${VENUE_SHORT[to]}: about ${fmt(expectedOutRaw)} ${coin} out, ${fmt(depositRaw)} ${coin} in.`;
   return NextResponse.json(json({ transactions, receiptRaw, depositRaw, brief }));
 }
+export const POST = withAppErrorLog("moves/build", postHandler);

@@ -11,6 +11,7 @@ import { jupiterWithdrawableRaw } from "@/lib/venues/rates";
 import { buildLendWithdraw } from "@/lib/venues/user-builders";
 import { COINS } from "@/domain/coins";
 import { VENUE_NAME } from "@/domain/venues";
+import { withAppErrorLog } from "@/lib/failure-log";
 
 export const runtime = "nodejs";
 // R359: `amountRaw` (optional) is what to take out, in the underlying's raw units (USDC 6 / SOL 9 decimals); absent = the whole position.
@@ -26,7 +27,7 @@ const POOL_FULL = "A venue can pause withdrawals when its pool is fully lent out
  * LEND_MIN_RAW is redeemed too (`all: true`, and the brief says so). receiptRaw is the user's
  * receipt ATA balance read the same way /api/me's positions read it (lib/holdings), so the app's compare with the screen's position holds.
  */
-export async function POST(request: Request) {
+async function postHandler(request: Request) {
   const session = await requireSession(request);
   if (session instanceof NextResponse) return session;
   const parsed = Body.safeParse(await request.json().catch(() => null));
@@ -72,3 +73,4 @@ export async function POST(request: Request) {
   // `receiptRaw` is what this transaction redeems (the whole receipt when `all`), the amount the app's signer checks.
   return NextResponse.json(json({ transaction, receiptRaw: redeemRaw, expectedOutRaw, all, brief }));
 }
+export const POST = withAppErrorLog("lend/withdraw/build", postHandler);

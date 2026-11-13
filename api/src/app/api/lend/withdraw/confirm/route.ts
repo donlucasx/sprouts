@@ -11,6 +11,7 @@ import { klendRate } from "@/lib/venues/klend";
 import { jlendRate } from "@/lib/venues/jlend";
 import { buildLendWithdraw } from "@/lib/venues/user-builders";
 import { KLEND_PROGRAM, JLEND_PROGRAM } from "@/lib/constants";
+import { withAppErrorLog } from "@/lib/failure-log";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -18,7 +19,7 @@ const Body = z.object({ signedTransaction: z.string(), asset: z.enum(["USDC_LEND
 const same = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((x, i) => x === b[i]);
 
 /** Contracts 5.3 (R359: a partial redeem too, up to the receipt held; `whole` records whether it took the position): only the redeem the API would build for this user (rebuilt with the posted amount and compared byte for byte) is sent. */
-export async function POST(request: Request) {
+async function postHandler(request: Request) {
   const session = await requireSession(request);
   if (session instanceof NextResponse) return session;
   const parsed = Body.safeParse(await request.json().catch(() => null));
@@ -81,3 +82,4 @@ export async function POST(request: Request) {
   }
   return NextResponse.json(json({ withdrawn }));
 }
+export const POST = withAppErrorLog("lend/withdraw/confirm", postHandler);

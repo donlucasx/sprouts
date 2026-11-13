@@ -32,6 +32,8 @@ export type OpsNumbers = {
   /** Current-state figures, not per window. */
   now: { linkedNow: number; active7d: number };
   funnel: Record<"d1" | "d7" | "all", { signIns: number; triedLink: number; linkedEver: number }>;
+  /** Sign-in failures (events `signin_failed`) in the last 24 hours; a count only, never the text. */
+  signInFailures24h: number;
   linkFailures7d: Record<string, number>;
   activity7d: { swaps: number; unpriced7d: number; usdSwappedCents: number; roundupCents: number; feeCents: number; byCoin: Record<string, { plantings: number; usdCents: number }> };
   recentSwaps: { at: string; wallet: string; usdCents: number | null; status: string }[];
@@ -50,6 +52,8 @@ export interface OpsSources {
   skrPrice(): Promise<"ok" | "failed" | "no-key">;
   pullerLamports(): Promise<bigint>;
   legsEnabled(): Promise<boolean[]>;
+  /** Money-route server errors (`app_error` events) since the time: the route step only, never the error text. */
+  appErrors(sinceIso: string): Promise<{ step: string }[]>;
   support(sinceIso: string): Promise<{ count: number; newestAt: Date | null }>;
   numbers(nowIso: string): Promise<OpsNumbers>;
 }
@@ -295,6 +299,13 @@ export function realOpsSources(): OpsSources {
       return (await readLeashConfig()).legs.map((l) => l.enabled);
     },
 
+    async appErrors(sinceIso) {
+      const skip = ex();
+      // Only the step: the error text stays in the table.
+      const rs = await allRows((a, b) => db().from("events").select("id, user_pubkey, wallet_pubkey, step:detail->>step").eq("kind", "app_error").gte("ts", sinceIso).order("id").range(a, b));
+      return rs.filter((r) => !isExcluded(skip, r.user_pubkey, r.wallet_pubkey)).map((r) => ({ step: str(r.step) ?? "?" }));
+    },
+
     async support(sinceIso) {
       const skip = ex();
       // Never `detail`: the message text stays in the table.
@@ -320,6 +331,9 @@ export function realOpsSources(): OpsSources {
         return { signIns: s, triedLink: t, linkedEver: l };
       };
       const [fd1, fd7, fall] = await Promise.all([window(d1), window(d7), window(null)]);
+
+      const sf = await allRows((a, b) => db().from("events").select("id, user_pubkey, wallet_pubkey").eq("kind", "signin_failed").gte("ts", d1).order("id").range(a, b));
+      const signInFailures24h = sf.filter((r) => !isExcluded(skip, r.user_pubkey, r.wallet_pubkey)).length;
 
       // Link failures: allow-listed app reasons, else the server step. Only the enum fields are read from detail, never error text.
       const linkFailures7d: Record<string, number> = {};
@@ -373,7 +387,7 @@ export function realOpsSources(): OpsSources {
         return { at: String(r.ts), wallet: shortWallet(String(r.wallet_pubkey)), coin: coins.length ? coins.join("+") : "?", usdCents: Number(r.usdc_pulled_cents), status: String(r.status) };
       });
 
-      return { now: { linkedNow, active7d }, funnel: { d1: fd1, d7: fd7, all: fall }, linkFailures7d, activity7d, recentSwaps, recentPlantings };
+      return { now: { linkedNow, active7d }, funnel: { d1: fd1, d7: fd7, all: fall }, signInFailures24h, linkFailures7d, activity7d, recentSwaps, recentPlantings };
     },
   };
 }

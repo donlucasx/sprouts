@@ -9,7 +9,7 @@ const W2 = "9ZkpRt5HnB2vWcQxM8jLdFg3yUe7aSXoP6qTrN4mKbCw".slice(0, 44);
 const numbers = (n: number): OpsNumbers => ({
   now: { linkedNow: 2, active7d: 1 },
   funnel: { d1: { signIns: n, triedLink: 0, linkedEver: 0 }, d7: { signIns: n, triedLink: 0, linkedEver: 0 }, all: { signIns: n, triedLink: 0, linkedEver: 0 } },
-  linkFailures7d: {}, activity7d: { swaps: 0, unpriced7d: 0, usdSwappedCents: 0, roundupCents: 0, feeCents: 0, byCoin: {} }, recentSwaps: [], recentPlantings: [],
+  signInFailures24h: 0, linkFailures7d: {}, activity7d: { swaps: 0, unpriced7d: 0, usdSwappedCents: 0, roundupCents: 0, feeCents: 0, byCoin: {} }, recentSwaps: [], recentPlantings: [],
 });
 
 function healthy(over: Partial<OpsSources> = {}): OpsSources & { calls: Record<string, number> } {
@@ -27,6 +27,7 @@ function healthy(over: Partial<OpsSources> = {}): OpsSources & { calls: Record<s
     skrPrice: wrap("skrPrice", async () => "ok" as const),
     pullerLamports: wrap("pullerLamports", async () => 2_000_000_000n),
     legsEnabled: wrap("legsEnabled", async () => [true, true, true, true, true, true, true, true]),
+    appErrors: wrap("appErrors", async () => []),
     support: wrap("support", async () => ({ count: 0, newestAt: null })),
     numbers: wrap("numbers", async () => numbers(1)),
   };
@@ -38,9 +39,9 @@ beforeEach(() => resetOpsCacheForTests());
 afterEach(() => vi.useRealTimers());
 
 describe("gatherOps", () => {
-  it("all healthy: 9 lights in key order, none unknown", async () => {
+  it("all healthy: 10 lights in key order, none unknown", async () => {
     const s = await gatherOps({ sources: healthy(), now: NOW, flags });
-    expect(s.lights.map((l) => l.key)).toEqual(["dailyRun", "firstPlanting", "swapWatching", "swapsArriving", "prices", "gas", "moneyOps", "program", "support"]);
+    expect(s.lights.map((l) => l.key)).toEqual(["dailyRun", "firstPlanting", "swapWatching", "swapsArriving", "prices", "gas", "moneyOps", "appErrors", "program", "support"]);
     expect(s.lights.filter((l) => l.state === "unknown")).toEqual([]);
     expect(s.numbers).not.toBeNull();
     expect(s.blindSpots).toHaveLength(4);
@@ -187,7 +188,7 @@ describe("gatherOps robustness", () => {
     const by = Object.fromEntries(s.lights.map((l) => [l.key, l]));
     expect(by.dailyRun.state).toBe("unknown");
     expect(by.prices.state).toBe("unknown");
-    expect(s.lights).toHaveLength(9);
+    expect(s.lights).toHaveLength(10);
     expect(by.gas.state).toBe("green");
   });
 
@@ -222,5 +223,19 @@ describe("programLight names", () => {
   it("uses names when given", () => {
     const l = programLight({ enabled: [true, false], expected: [true, true], leashLive: true, names: ["SKR", "stORE"] });
     expect(l.fact).toBe("Savings option stORE is not in its expected state.");
+  });
+});
+
+describe("appErrors light in gatherOps", () => {
+  beforeEach(() => resetOpsCacheForTests());
+  it("counts errors from the source", async () => {
+    const s = await gatherOps({ sources: healthy({ appErrors: async () => [{ step: "withdraw/confirm" }] }), now: NOW, flags });
+    expect(s.lights.find((l) => l.key === "appErrors")).toMatchObject({ state: "red" });
+  });
+  it("a failing source makes it unknown, never green", async () => {
+    const s = await gatherOps({ sources: healthy({ appErrors: async () => { throw new Error("db down"); } }), now: NOW, flags });
+    const l = s.lights.find((x) => x.key === "appErrors")!;
+    expect(l.state).toBe("unknown");
+    expect(l.fact).toBe("Could not check this (a data source timed out)");
   });
 });

@@ -7,6 +7,7 @@ import { buildRevokeIxs, readDelegation } from "@/lib/subscriptions";
 import { verifyPostedTransaction } from "@/lib/verify-tx";
 import { buildUserTransaction, sendPosted, waitConfirmed, settleUnconfirmed, STILL_WAITING } from "@/lib/user-tx";
 import { SUBSCRIPTIONS_PROGRAM } from "@/lib/constants";
+import { withAppErrorLog, addressOrNull } from "@/lib/failure-log";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -29,7 +30,7 @@ function parseWallet(raw: string): Address | null {
  * wallet. Gating this route on a signed message would cost every revoke a second wallet prompt and hide nothing the chain does
  * not already show, so the route is rate limited per caller IP as well as per wallet, which stops cheap enumeration through it.
  */
-export async function GET(request: Request, ctx: { params: Promise<{ wallet: string }> }) {
+async function getHandler(request: Request, ctx: { params: Promise<{ wallet: string }> }) {
   const { wallet: raw } = await ctx.params;
   const wallet = parseWallet(raw);
   if (!wallet) return NextResponse.json({ error: "That does not look like a Solana address." }, { status: 400 });
@@ -41,7 +42,7 @@ export async function GET(request: Request, ctx: { params: Promise<{ wallet: str
 }
 
 /** Sends the revoke the wallet signed [A3]; once the delegation is gone from the chain, the wallet is marked revoked. */
-export async function POST(request: Request, ctx: { params: Promise<{ wallet: string }> }) {
+async function postHandler(request: Request, ctx: { params: Promise<{ wallet: string }> }) {
   const { wallet: raw } = await ctx.params;
   const wallet = parseWallet(raw);
   if (!wallet) return NextResponse.json({ error: "That does not look like a Solana address." }, { status: 400 });
@@ -80,3 +81,7 @@ export async function POST(request: Request, ctx: { params: Promise<{ wallet: st
   await repo.addEvent({ userPubkey: row.userPubkey, walletPubkey: wallet, kind: "revoke_seen", detail: { signature: posted.signature, by: "user" } });
   return NextResponse.json({ revoked: true });
 }
+/** The wallet in the URL (a public address, as the link failures store), never a caller key. */
+const revokeWho = async (_req: Request, _f: { status: number; error: string }, ctx: { params: Promise<{ wallet: string }> }) => ({ userPubkey: null, walletPubkey: addressOrNull((await ctx.params).wallet) });
+export const GET = withAppErrorLog("revoke", getHandler, revokeWho);
+export const POST = withAppErrorLog("revoke", postHandler, revokeWho);

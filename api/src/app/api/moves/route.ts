@@ -2,11 +2,12 @@ import { NextResponse } from "next/server";
 import { getRepo } from "@/db/repo";
 import { requireSession } from "@/lib/auth-guard";
 import { json } from "@/lib/json";
+import { withAppErrorLog } from "@/lib/failure-log";
 
 export const runtime = "nodejs";
 
 /** Contracts 5.4: the user's open move card (the same shape /api/me serves as moveProposal), or null. */
-export async function GET(request: Request) {
+async function getHandler(request: Request) {
   const session = await requireSession(request);
   if (session instanceof NextResponse) return session;
   const repo = await getRepo();
@@ -22,3 +23,4 @@ export async function GET(request: Request) {
       : null,
   }));
 }
+export const GET = withAppErrorLog("moves", getHandler);

@@ -4,6 +4,7 @@ import { getRepo } from "@/db/repo";
 import { requireSession } from "@/lib/auth-guard";
 import { badRequest } from "@/lib/bad-request";
 import { ReauthSchema, verifyReauth } from "@/lib/reauth";
+import { withAppErrorLog } from "@/lib/failure-log";
 
 export const runtime = "nodejs";
 
@@ -14,7 +15,7 @@ const Body = z.object({ paused: z.boolean(), reauth: ReauthSchema.optional() }).
  * back on, while swaps keep rounding up as waiting change. On asks the Seeker for ONE fresh sign-in (R84) and resumes them all,
  * where the per-wallet route would ask one per wallet (the nonce is single use). A revoked wallet is left alone (it links again).
  */
-export async function POST(request: Request) {
+async function postHandler(request: Request) {
   const session = await requireSession(request);
   if (session instanceof NextResponse) return session;
   const parsed = Body.safeParse(await request.json().catch(() => null));
@@ -42,3 +43,4 @@ export async function POST(request: Request) {
   const wallets = await repo.listWalletsOf(session.pubkey);
   return NextResponse.json({ paused, wallets: wallets.map((w) => ({ pubkey: w.pubkey, status: w.status })) });
 }
+export const POST = withAppErrorLog("pause", postHandler);

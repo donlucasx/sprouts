@@ -12,6 +12,7 @@ import { failMove, finishMove, latestMoveBuild, moveBuiltDetail, recentMoveBuild
 import type { Repo } from "@/db/repo";
 import type { MoveProposalRow } from "@/db/types";
 import { KLEND_PROGRAM, JLEND_PROGRAM } from "@/lib/constants";
+import { withAppErrorLog } from "@/lib/failure-log";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -72,7 +73,7 @@ async function fromState(repo: Repo, id: string, owner: ReturnType<typeof userAd
  * confirm before the deposit is sent. A card in flight takes only the very pair it stored (a retry after a lost answer). A landed
  * redeem with a deposit that can no longer land is the partial outcome, said plainly.
  */
-export async function POST(request: Request) {
+async function postHandler(request: Request) {
   const session = await requireSession(request);
   if (session instanceof NextResponse) return session;
   const parsed = Body.safeParse(await request.json().catch(() => null));
@@ -150,3 +151,4 @@ export async function POST(request: Request) {
   if (!(await finishMove(repo, card, built.receiptRaw))) return fromState(repo, p.id, owner);
   return NextResponse.json(json({ move: { id: p.id, status: "done", redeemSignature: redeem.signature, depositSignature: deposit.signature } }));
 }
+export const POST = withAppErrorLog("moves/confirm", postHandler);

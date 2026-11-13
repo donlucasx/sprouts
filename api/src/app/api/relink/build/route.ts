@@ -8,11 +8,12 @@ import { delegationPda, readDelegation, readSubscriptionAuthority, readUsdcAtaEx
 import { leashPda } from "@/lib/leash";
 import { buildRelink } from "@/lib/venues/user-builders";
 import { rpc } from "@/lib/rpc";
+import { withAppErrorLog } from "@/lib/failure-log";
 
 export const runtime = "nodejs";
 
 /** Contracts 5.5: the Seed Vault wallet re-links in one signature (revoke the puller delegation, create the leash one). Works before go-live too (his test wallet). */
-export async function POST(request: Request) {
+async function postHandler(request: Request) {
   const session = await requireSession(request);
   if (session instanceof NextResponse) return session;
   const repo = await getRepo();
@@ -33,3 +34,4 @@ export async function POST(request: Request) {
   if (sim.value.err) return NextResponse.json({ error: "This re-link would fail on chain, so nothing was asked of your wallet. Try again in a minute." }, { status: 400 });
   return NextResponse.json({ transaction, leashPda: leash, delegationPda: await delegationPda({ delegator: me, delegatee: leash, nonce }), revokes: live ? wallet.delegationPda : null, cap: 500 });
 }
+export const POST = withAppErrorLog("relink/build", postHandler);

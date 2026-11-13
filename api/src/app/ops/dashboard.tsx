@@ -120,6 +120,8 @@ export function Dashboard({ snap, nowMs }: { snap: OpsSnapshot; nowMs: number })
                 ))}
               </tbody>
             </table></div>
+            <h3>Sign-in problems</h3>
+            <table><tbody><tr><td>Failed sign-ins, last 24 h</td><td className="n">{n.signInFailures24h}</td></tr></tbody></table>
             <h3>Link problems, 7 days</h3>
             {Object.keys(n.linkFailures7d).length === 0 ? <p>None</p> : (
               <table><tbody>{Object.entries(n.linkFailures7d).map(([k, c]) => <tr key={k}><td>{linkFailureName(k)}</td><td className="n">{c}</td></tr>)}</tbody></table>

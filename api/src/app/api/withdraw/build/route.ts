@@ -10,6 +10,7 @@ import { planPick } from "@/lib/withdraw";
 import { buildUserTransaction, userAddress } from "@/lib/user-tx";
 import { json } from "@/lib/json";
 import { SKR_MINT } from "@/lib/constants";
+import { withAppErrorLog } from "@/lib/failure-log";
 
 export const runtime = "nodejs";
 
@@ -18,7 +19,7 @@ const COOLDOWN_MS = 172_800_000;
 const when = (d: Date) => d.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", timeZone: "UTC" }) + " UTC";
 
 /** The unstake transaction for the Seed Vault to sign, with the brief: what leaves, what stays, when it arrives (spec 6). */
-export async function POST(request: Request) {
+async function postHandler(request: Request) {
   const session = await requireSession(request);
   if (session instanceof NextResponse) return session;
   const parsed = Body.safeParse(await request.json().catch(() => null));
@@ -49,3 +50,4 @@ export async function POST(request: Request) {
   const transaction = await buildUserTransaction(owner, [ix]);
   return NextResponse.json(json({ transaction, shares: plan.shares, amountRaw: plan.amountRaw, prunes: plan.prunes, brief: plan.brief }));
 }
+export const POST = withAppErrorLog("withdraw/build", postHandler);

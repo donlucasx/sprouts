@@ -1,7 +1,7 @@
 // Ops dashboard lights: one pure function per light (inputs in, { state, fact } out). No I/O, no imports from @/lib.
 
 export type LightState = "green" | "amber" | "red" | "unknown" | "info";
-export type LightKey = "dailyRun" | "firstPlanting" | "swapWatching" | "swapsArriving" | "prices" | "gas" | "moneyOps" | "program" | "support";
+export type LightKey = "dailyRun" | "firstPlanting" | "swapWatching" | "swapsArriving" | "prices" | "gas" | "moneyOps" | "appErrors" | "program" | "support";
 /** `action` is the "Do:" line: set on every amber/red/unknown light, never on green or info. */
 export type Light = { key: LightKey; label: string; state: LightState; fact: string; action?: string };
 
@@ -13,6 +13,7 @@ export const LIGHT_LABELS: Record<LightKey, string> = {
   prices: "Price feeds",
   gas: "Network fee wallet",
   moneyOps: "Withdrawals and failures",
+  appErrors: "App errors",
   program: "Savings settings",
   support: "Support inbox",
 };
@@ -132,6 +133,24 @@ export function moneyOpsLight(input: { now: Date; failures: FailureInput[]; olde
     return mk("amber", `${plural(recent.length, "failure")} ${span}, ${open} still open`, open ? "Ask Claude about the open ones." : "Nothing, all of them were fixed.");
   }
   return mk("green", pending === null ? "No failures in 7 days, nothing waiting" : `No failures in 7 days; one withdrawal in progress (${ageText(pending)} so far, normal)`);
+}
+
+/** Plain words for a route step ("withdraw/confirm" -> "withdraw confirm"; the wallet placeholder is dropped). */
+const stepWords = (step: string): string => step.split("/").filter((p) => !p.startsWith("[")).join(" ");
+
+/** A server error on a withdraw route (including cancel and lend withdraw) is red on its own: that is a user's money in motion. */
+const isWithdrawStep = (step: string): boolean => step.startsWith("withdraw/") || step.startsWith("lend/withdraw/");
+
+/** Unexpected server errors on money routes in the last 24 h (`app_error` events). Green none; amber 1-2; red 3+ or any on a withdraw route. */
+export function appErrorsLight(input: { errors: { step: string }[] }): Light {
+  const mk = maker("appErrors");
+  const n = input.errors.length;
+  if (n === 0) return mk("green", "No app errors on money routes in the last 24 hours");
+  const names = [...new Set(input.errors.map((e) => stepWords(e.step)))];
+  const shown = names.length > 3 ? `${names.slice(0, 3).join(", ")}, and ${names.length - 3} more` : names.join(", ");
+  const fact = `${plural(n, "app error")} in the last 24 hours (${shown})`;
+  const red = n >= 3 || input.errors.some((e) => isWithdrawStep(e.step));
+  return mk(red ? "red" : "amber", fact, "Ask Claude to check them today.");
 }
 
 // ---- Infra lights ----

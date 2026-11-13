@@ -17,7 +17,7 @@ const snap: OpsSnapshot = {
   numbers: {
     now: { linkedNow: 2, active7d: 2 },
     funnel: { d1: { signIns: 1, triedLink: 1, linkedEver: 1 }, d7: { signIns: 2, triedLink: 2, linkedEver: 2 }, all: { signIns: 3, triedLink: 3, linkedEver: 3 } },
-    linkFailures7d: { "no usdc": 1 },
+    signInFailures24h: 4, linkFailures7d: { "no usdc": 1 },
     activity7d: { swaps: 1, unpriced7d: 0, usdSwappedCents: 100, roundupCents: 10, feeCents: 1, byCoin: { SKR: { plantings: 1, usdCents: 10 } } },
     recentSwaps: [{ at: "2026-11-11T00:00:00.000Z", wallet: "7xKX…9ab", usdCents: 100, status: "ok" }],
     recentPlantings: [{ at: "2026-11-11T00:00:00.000Z", wallet: "Fk3q…z2P", coin: "SKR", usdCents: 10, status: "ok" }],

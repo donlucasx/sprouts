@@ -11,6 +11,7 @@ import { SYSTEM_PROGRAM } from "@/lib/constants";
 import { rpc } from "@/lib/rpc";
 import { getRepo } from "@/db/repo";
 import { markTopUpSent, recordTopUpLanded } from "@/lib/topup-record";
+import { withAppErrorLog } from "@/lib/failure-log";
 
 export const runtime = "nodejs";
 export const maxDuration = 60; // the send plus the confirm poll (up to 30 s)
@@ -21,7 +22,7 @@ const Body = z.object({ signedTransaction: z.string() });
  * was signed: SOL to the wallet's own USDC account, nothing else). Then waits for it: 200 { status: "confirmed", usdcRaw }; a failure
  * the chain reports is 400; a blockhash that expired unlanded is 409 (nothing moved); still unknown is 202 { status: "pending" }.
  */
-export async function POST(request: Request) {
+async function postHandler(request: Request) {
   const session = await requireSession(request);
   if (session instanceof NextResponse) return session;
   const parsed = Body.safeParse(await request.json().catch(() => null));
@@ -66,3 +67,4 @@ export async function POST(request: Request) {
   if (status === "expired") return NextResponse.json({ error: TOPUP_CONFIRM.expired }, { status: 409 });
   return NextResponse.json({ status, signature: posted.signature, message: TOPUP_CONFIRM.pending }, { status: 202 });
 }
+export const POST = withAppErrorLog("topup/confirm", postHandler);

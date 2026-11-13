@@ -19,7 +19,7 @@ const snap = (over: Partial<OpsSnapshot> = {}): OpsSnapshot => ({
   numbers: {
     now: { linkedNow: 5, active7d: 3 },
     funnel: { d1: { signIns: 1, triedLink: 1, linkedEver: 0 }, d7: { signIns: 12, triedLink: 6, linkedEver: 4 }, all: { signIns: 40, triedLink: 20, linkedEver: 9 } },
-    linkFailures7d: { "app:dropped": 2, "server:approval": 1 },
+    signInFailures24h: 4, linkFailures7d: { "app:dropped": 2, "server:approval": 1 },
     activity7d: { swaps: 10, unpriced7d: 2, usdSwappedCents: 10000, roundupCents: 500, feeCents: 7, byCoin: { SKR: { plantings: 1, usdCents: 300 }, stORE: { plantings: 1, usdCents: 400 } } },
     recentSwaps: [{ at: "2026-11-12T10:00:00Z", wallet: "Fake…xyz", usdCents: 100, status: "saved at next daily run" }],
     recentPlantings: [{ at: "2026-11-12T09:00:00Z", wallet: "Fake…abc", coin: "SKR", usdCents: 300, status: "confirmed" }],

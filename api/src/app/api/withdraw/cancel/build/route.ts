@@ -4,11 +4,12 @@ import { getRepo } from "@/db/repo";
 import { requireSession } from "@/lib/auth-guard";
 import { buildCancelUnstakeIx } from "@/lib/staking";
 import { buildUserTransaction, userAddress } from "@/lib/user-tx";
+import { withAppErrorLog } from "@/lib/failure-log";
 
 export const runtime = "nodejs";
 
 /** "Put it back": the cancel-unstake transaction for the Seed Vault to sign, while the basket is still ripening. */
-export async function POST(request: Request) {
+async function postHandler(request: Request) {
   const session = await requireSession(request);
   if (session instanceof NextResponse) return session;
   const repo = await getRepo();
@@ -17,3 +18,4 @@ export async function POST(request: Request) {
   const transaction = await buildUserTransaction(owner, [await buildCancelUnstakeIx({ user: createNoopSigner(owner) })]);
   return NextResponse.json({ transaction });
 }
+export const POST = withAppErrorLog("withdraw/cancel/build", postHandler);

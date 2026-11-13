@@ -3,12 +3,13 @@ import { z } from "zod";
 import { getRepo } from "@/db/repo";
 import { requireSession } from "@/lib/auth-guard";
 import { IN_FLIGHT, moveDetail } from "@/lib/moves";
+import { withAppErrorLog } from "@/lib/failure-log";
 
 export const runtime = "nodejs";
 const Body = z.object({ id: z.string().min(1) });
 
 /** Contracts 5.4: the user turns the card down; it closes as dismissed and Activity lists it. */
-export async function POST(request: Request) {
+async function postHandler(request: Request) {
   const session = await requireSession(request);
   if (session instanceof NextResponse) return session;
   const parsed = Body.safeParse(await request.json().catch(() => null));
@@ -31,3 +32,4 @@ export async function POST(request: Request) {
   await repo.addEvent({ userPubkey: user.seedVaultPubkey, walletPubkey: null, kind: "move_dismissed", detail: moveDetail(p, "dismissed") });
   return NextResponse.json({ dismissed: true });
 }
+export const POST = withAppErrorLog("moves/dismiss", postHandler);

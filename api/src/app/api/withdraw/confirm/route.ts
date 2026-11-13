@@ -10,6 +10,7 @@ import { sendPosted, waitConfirmed, settleUnconfirmed, STILL_WAITING, userAddres
 import { json } from "@/lib/json";
 import type { WithdrawalRow } from "@/db/types";
 import { SKR_STAKING_PROGRAM } from "@/lib/constants";
+import { withAppErrorLog } from "@/lib/failure-log";
 
 export const runtime = "nodejs";
 export const maxDuration = 60; // the confirmation poll (up to 30 s) must outlive any platform default
@@ -23,7 +24,7 @@ const same = (a: Uint8Array, b: Uint8Array) => a.length === b.length && a.every(
  * body [A3]; the chain must show the unstake before a row is written; the fruit-first split uses the position as it was before
  * the unstake (the shares it took, added back) [A15].
  */
-export async function POST(request: Request) {
+async function postHandler(request: Request) {
   const session = await requireSession(request);
   if (session instanceof NextResponse) return session;
   const parsed = Body.safeParse(await request.json().catch(() => null));
@@ -80,3 +81,4 @@ function basket(row: WithdrawalRow, chainUnstakeTs: bigint | null) {
   const readyAt = chainUnstakeTs !== null ? new Date(Number(chainUnstakeTs + COOLDOWN_S) * 1000) : new Date(row.unstakeTs.getTime() + Number(COOLDOWN_S) * 1000);
   return NextResponse.json(json({ basket: { id: row.id, asset: "SKR", amountRaw: row.amountRaw, unstakeTs: row.unstakeTs, readyAt, delivered: row.withdrawSignature !== null, deliveredSignature: row.withdrawSignature } }));
 }
+export const POST = withAppErrorLog("withdraw/confirm", postHandler);

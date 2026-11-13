@@ -5,6 +5,7 @@ import { requireSession } from "@/lib/auth-guard";
 import { ASSETS } from "@/domain/coins";
 import type { Pins } from "@/domain/roundup";
 import { dayOf } from "@/domain/day";
+import { withAppErrorLog } from "@/lib/failure-log";
 
 export const runtime = "nodejs";
 
@@ -12,7 +13,7 @@ export const runtime = "nodejs";
  * The undo (spec 4.5, R122): yesterday's split comes back as pins and the Yield Manager turns off, so tomorrow's run cannot redo
  * the change. One level: only the manager's latest change, and only until the user saves anything. Nothing on chain moves.
  */
-export async function POST(request: Request) {
+async function postHandler(request: Request) {
   const session = await requireSession(request);
   if (session instanceof NextResponse) return session;
   const repo = await getRepo();
@@ -28,3 +29,4 @@ export async function POST(request: Request) {
   await repo.addEvent({ userPubkey: session.pubkey, walletPubkey: null, kind: "split_undone", detail: { from: current.allocation, to: prev, day: dayOf(new Date()) } });
   return NextResponse.json(rulesRowToRules(saved));
 }
+export const POST = withAppErrorLog("rules/undo", postHandler);

@@ -7,6 +7,7 @@ import { CANCEL_UNSTAKE_DISCRIMINATOR } from "@/generated/staking";
 import { verifyPostedTransaction } from "@/lib/verify-tx";
 import { sendPosted, waitConfirmed, settleUnconfirmed, STILL_WAITING, userAddress } from "@/lib/user-tx";
 import { SKR_STAKING_PROGRAM } from "@/lib/constants";
+import { withAppErrorLog } from "@/lib/failure-log";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -15,7 +16,7 @@ const Body = z.object({ signedTransaction: z.string() });
 const same = (a: Uint8Array, b: Uint8Array) => a.length === b.length && a.every((x, i) => x === b[i]);
 
 /** Sends the cancel-unstake the Seed Vault signed; once the chain shows nothing unstaking, the basket row is closed as cancelled. */
-export async function POST(request: Request) {
+async function postHandler(request: Request) {
   const session = await requireSession(request);
   if (session instanceof NextResponse) return session;
   const parsed = Body.safeParse(await request.json().catch(() => null));
@@ -53,3 +54,4 @@ export async function POST(request: Request) {
   await repo.setWithdrawalCancelled(pending.id, posted.signature);
   return NextResponse.json({ cancelled: true });
 }
+export const POST = withAppErrorLog("withdraw/cancel/confirm", postHandler);

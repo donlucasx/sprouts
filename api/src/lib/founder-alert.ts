@@ -118,7 +118,7 @@ const lastAlert = new Map<string, number>();
 /** 11-01 (security review): a burst of Message us posts can race the route's daily cap; the webhook still gets one a minute per user. */
 const SUPPORT_WINDOW_MS = 60_000;
 export function alertAllowed(e: Pick<EventRow, "kind" | "userPubkey">, now = Date.now()): boolean {
-  if (e.kind !== "signin_failed" && e.kind !== "link_failed" && e.kind !== "support_message" && e.kind !== "feedback_answer") return true;
+  if (e.kind !== "signin_failed" && e.kind !== "link_failed" && e.kind !== "app_error" && e.kind !== "support_message" && e.kind !== "feedback_answer") return true;
   const key = `${e.kind}:${e.userPubkey}`;
   const last = lastAlert.get(key);
   if (last !== undefined && now - last < (e.kind === "support_message" || e.kind === "feedback_answer" ? SUPPORT_WINDOW_MS : ALERT_WINDOW_MS)) return false;
@@ -163,6 +163,8 @@ export function founderAlertFor(e: Omit<EventRow, "id" | "ts">): string | null {
     // stay in the table unannounced, so an anonymous caller cannot flood the webhook (failure-log.ts).
     case "signin_failed":
       return e.userPubkey ? `Sign-in failed: user ${short(e.userPubkey)}: ${String(d.status ?? "?")} ${clip(d.error)}` : null;
+    case "app_error":
+      return e.userPubkey ? `App error at ${String(d.step ?? "?")}: user ${short(e.userPubkey)}: ${String(d.status ?? "?")} ${clip(d.error)}` : null;
     case "link_failed":
       if (!e.userPubkey) return null;
       // An app report's text is client-written: only its two enum fields are sent (security review 10-31).
