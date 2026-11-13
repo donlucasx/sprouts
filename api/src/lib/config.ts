@@ -14,6 +14,8 @@ export type Config = {
   anthropicApiKey: string;
   /** Optional since R324 (10-04 s20): nothing posts a Pyth price, so nothing reads it but the deferred Hermes path (lib/pyth.ts). */
   pythApiKey: string | undefined;
+  /** Ops dashboard (11-12): comma-separated test wallets / seed-vault keys left out of every ops count and list. */
+  opsExcludeWallets: string | undefined;
 };
 
 const MAP: Record<keyof Config, string> = {
@@ -30,10 +32,11 @@ const MAP: Record<keyof Config, string> = {
   heliusWebhookId: "HELIUS_WEBHOOK_ID",
   anthropicApiKey: "ANTHROPIC_API_KEY",
   pythApiKey: "PYTH_API_KEY",
+  opsExcludeWallets: "OPS_EXCLUDE_WALLETS",
 };
 
 /** Settings that may be absent: reading one returns undefined instead of throwing. */
-const OPTIONAL: ReadonlySet<keyof Config> = new Set(["pythApiKey"]);
+const OPTIONAL: ReadonlySet<keyof Config> = new Set(["pythApiKey", "opsExcludeWallets"]);
 
 let cached: Config | null = null;
 

@@ -106,7 +106,8 @@ export async function alertFounder(input: string | AlertCard, opts: { mention?: 
 }
 
 const APP_STEPS = new Set(["new", "approval", "sign", "confirm"]);
-const APP_REASONS = new Set(["declined", "dropped", "refused", "other"]);
+/** Exported read-only for the ops dashboard's link-failure keys (one allow-list for alerts and ops). */
+export const APP_REASONS: ReadonlySet<string> = new Set(["declined", "dropped", "refused", "other"]);
 
 /**
  * 10-31 (security review): a sign-in or link failure is alerted at most once per user per kind in ALERT_WINDOW_MS (per function
