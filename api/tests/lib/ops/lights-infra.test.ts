@@ -19,14 +19,15 @@ describe("swapWatchingLight", () => {
   it("red: 1 missing, count only, no address", () => {
     const l = swapWatchingLight({ linked: [W(1), W(2)], onWebhook: [W(1)] });
     expect(l.state).toBe("red");
-    expect(l.fact).toBe("1 linked wallet not watched");
+    expect(l.fact).toBe("1 linked wallet is not being watched; its swaps will be missed");
+    expect(l.action).toBe("Ask Claude to re-add them.");
     expect(l.fact).not.toContain("Fake");
   });
   it("red: plural", () => {
-    expect(swapWatchingLight({ linked: [W(1), W(2)], onWebhook: [] }).fact).toBe("2 linked wallets not watched");
+    expect(swapWatchingLight({ linked: [W(1), W(2)], onWebhook: [] }).fact).toBe("2 linked wallets are not being watched; their swaps will be missed");
   });
   it("duplicate linked entries count once", () => {
-    expect(swapWatchingLight({ linked: [W(1), W(1)], onWebhook: [] }).fact).toBe("1 linked wallet not watched");
+    expect(swapWatchingLight({ linked: [W(1), W(1)], onWebhook: [] }).fact).toBe("1 linked wallet is not being watched; its swaps will be missed");
   });
   it("info: nothing linked is not a health claim", () => {
     expect(swapWatchingLight({ linked: [], onWebhook: [] }).state).toBe("info");
@@ -55,10 +56,11 @@ describe("swapsArrivingLight", () => {
   it("amber: unpriced shown with count", () => {
     const r = l({ unpriced24h: 2 });
     expect(r.state).toBe("amber");
-    expect(r.fact).toContain("2 unpriced");
+    expect(r.fact).toContain("2 swaps are missing a dollar value");
+    expect(r.action).toBeTruthy();
   });
   it("red keeps its state with unpriced", () => expect(l({ lastSwapAt: ago(80 * H), unpriced24h: 2 }).state).toBe("red"));
-  it("green fact states unpriced was checked", () => expect(l({}).fact).toContain("0 unpriced"));
+  it("green fact has no unpriced noise", () => expect(l({}).fact).toBe("Last swap 2 h ago"));
   it("future swap timestamp is unknown, not fresh", () => expect(l({ lastSwapAt: new Date(NOW.getTime() + H) }).state).toBe("unknown"));
 });
 
@@ -89,7 +91,7 @@ describe("pricesLight", () => {
   it("skr no-key is not red and the fact does not claim it was checked", () => {
     const r = p([sol(10)], "no-key");
     expect(r.state).not.toBe("red");
-    expect(r.fact).toContain("SKR deferred");
+    expect(r.fact).toContain("SKR price checks are off");
     expect(r.fact).not.toMatch(/SKR ok/);
   });
   it("empty feeds: unknown, never green", () => expect(p([]).state).toBe("unknown"));
@@ -98,11 +100,11 @@ describe("pricesLight", () => {
   it("fact always has the days left", () => {
     const r = p([sol(10)]);
     const days = Math.ceil((PYTH_ACCESS_ENDS.getTime() - NOW.getTime()) / (24 * H));
-    expect(r.fact).toContain(`${days} days of Pyth access left`);
-    expect(p([]).fact).toContain("days of Pyth access left");
-    expect(p([sol(10)], "failed").fact).toContain("days of Pyth access left");
+    expect(r.fact).toContain(`Free price data ends in ${days} days (Dec 31)`);
+    expect(p([]).fact).toContain("Free price data ends in");
+    expect(p([sol(10)], "failed").fact).toContain("Free price data ends in");
   });
-  it("days left floors at 0", () => expect(p([sol(10)], "ok", new Date("2026-01-01T00:00:00Z")).fact).toContain("0 days of Pyth access left"));
+  it("days left floors at 0", () => expect(p([sol(10)], "ok", new Date("2026-01-01T00:00:00Z")).fact).toContain("Free price data ends in 0 days (Jan 1)"));
   it("names the stale feed", () => expect(p([sol(10), ore(960)]).fact).toContain("ORE"));
 });
 
@@ -122,7 +124,10 @@ describe("gasLight", () => {
     expect(gasLight({ lamports: 99_999_999n }).state).toBe("red");
   });
   it("red 0.05", () => expect(g(0.05).state).toBe("red"));
-  it("fact shows the balance", () => expect(g(0.3).fact).toContain("0.300 SOL"));
+  it("fact shows the balance", () => {
+    expect(g(0.3).fact).toBe("The wallet that pays network fees holds 0.300 SOL");
+    expect(g(0.3).label).toBe("Network fee wallet");
+  });
 });
 
 describe("programLight", () => {
@@ -131,20 +136,21 @@ describe("programLight", () => {
     const l = programLight({ enabled: [...e], expected: e, leashLive: true });
     expect(l.state).toBe("green");
     expect(l.key).toBe("program");
-    expect(l.fact).toContain("LEASH_LIVE");
+    expect(l.fact).not.toContain("LEASH");
   });
   it("red when one leg differs, still shows LEASH_LIVE", () => {
     const en = [...e];
     en[3] = false;
     const l = programLight({ enabled: en, expected: e, leashLive: false });
     expect(l.state).toBe("red");
-    expect(l.fact).toContain("LEASH_LIVE");
-    expect(l.fact).toContain("leg 4");
+    expect(l.fact).toContain("option 4");
+    expect(l.fact).toContain("live savings switch is off");
+    expect(l.action).toBeTruthy();
   });
   it("red when lengths differ", () => {
     const l = programLight({ enabled: e.slice(0, 7), expected: e, leashLive: true });
     expect(l.state).toBe("red");
-    expect(l.fact).toContain("LEASH_LIVE");
+    expect(l.fact).toBe("Read 7 settings but expected 8");
   });
   it("unknown when nothing to compare", () => expect(programLight({ enabled: [], expected: [], leashLive: true }).state).toBe("unknown"));
 });
@@ -162,5 +168,6 @@ describe("supportLight", () => {
     const f = supportLight({ now: NOW, count7d: 3, newestAt: ago(5 * H) }).fact;
     expect(f).toContain("3");
     expect(f).toContain("5 h");
+    expect(f).toBe("3 support messages this week, newest 5 h ago");
   });
 });

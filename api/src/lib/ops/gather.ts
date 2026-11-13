@@ -3,7 +3,7 @@
 import { movesEnabled } from "@/lib/moves";
 import { leashLive } from "@/lib/leash";
 import { EXPECTED_LEGS_ENABLED, shortWallet, realOpsSources, type OpsSources, type OpsNumbers } from "./sources";
-import { dailyRunLight, firstPlantingLight, moneyOpsLight, swapWatchingLight, swapsArrivingLight, pricesLight, gasLight, programLight, supportLight, PYTH_ACCESS_ENDS, type Light, type LightKey } from "./lights";
+import { dailyRunLight, firstPlantingLight, moneyOpsLight, swapWatchingLight, swapsArrivingLight, pricesLight, gasLight, programLight, supportLight, PYTH_ACCESS_ENDS, LIGHT_LABELS, type Light, type LightKey } from "./lights";
 
 export type OpsSnapshot = { at: string; lights: Light[]; numbers: OpsNumbers | null; numbersAt: string | null; blindSpots: string[] };
 
@@ -15,10 +15,10 @@ const DAY = 86_400_000;
 
 /** Spec "Known blind spots", one per line. */
 export const BLIND_SPOTS = [
-  "Helius registered but not delivering (caught only by Swaps arriving after 24-72 h)",
-  "one wallet's swaps dropped while others arrive",
-  "the Discord alert pipeline itself failing",
-  "plantings that succeed with a wrong amount",
+  "The swap watcher can be registered but silently not delivering. \"Swaps coming in\" only catches that after 1 to 3 days.",
+  "One wallet's swaps can go missing while other wallets' swaps keep arriving.",
+  "The Discord alerts themselves can fail, and then nothing tells you.",
+  "A saving can succeed but with the wrong amount.",
 ];
 
 /** Leg index to coin, in LEG_SPEC order (api/src/lib/leash.ts). */
@@ -72,27 +72,31 @@ async function gather(sources: OpsSources, now: Date, flags: { movesEnabled: boo
     T("numbers", () => sources.numbers(now.toISOString())),
   ]);
 
-  const unknown = (key: LightKey, label: string, failed: string[]): Light => ({ key, label, state: "unknown", fact: `could not check: ${failed.join(", ")}` });
+  // Source names stay out of the fact (the founder cannot read them); they go to the server log for debugging.
+  const unknown = (key: LightKey, failed: string[]): Light => {
+    console.error(`ops: could not check ${key}: ${failed.join(", ")}`);
+    return { key, label: LIGHT_LABELS[key], state: "unknown", fact: "Could not check this (a data source timed out)", action: "Try Refresh. If it stays grey, ask Claude." };
+  };
   const failedOf = (...xs: { name: string; r: { ok: boolean } }[]) => xs.filter((x) => !x.r.ok).map((x) => x.name);
 
   // Order here is LightKey order; each light is unknown if ANY of its sources failed, or if building it throws on odd data.
-  const light = (key: LightKey, label: string, srcs: { name: string; r: { ok: boolean } }[], build: () => Light): Light => {
+  const light = (key: LightKey, srcs: { name: string; r: { ok: boolean } }[], build: () => Light): Light => {
     const failed = failedOf(...srcs);
-    if (failed.length) return unknown(key, label, failed);
-    try { return build(); } catch { return unknown(key, label, srcs.map((x) => x.name)); }
+    if (failed.length) return unknown(key, failed);
+    try { return build(); } catch { return unknown(key, srcs.map((x) => x.name)); }
   };
   const v = <T,>(x: { r: Settled<T> }): T => (x.r as { ok: true; value: T }).value;
 
   const lights: Light[] = [
-    light("dailyRun", "Daily run", [cron], () => dailyRunLight({ now, latest: v(cron), movesEnabled: flags.movesEnabled })),
-    light("firstPlanting", "First planting", [first], () => firstPlantingLight({ now, lastRunAt: v(first)?.at ?? null, reasons: v(first)?.reasons })),
-    light("swapWatching", "Swap watching", [linked, webhook], () => swapWatchingLight({ linked: v(linked), onWebhook: v(webhook) })),
-    light("swapsArriving", "Swaps arriving", [linked, swaps], () => swapsArrivingLight({ now, linkedCount: new Set(v(linked)).size, lastSwapAt: v(swaps).lastSwapAt, unpriced24h: v(swaps).unpriced })),
-    light("prices", "Prices", [feeds, skr], () => pricesLight({ now, feeds: v(feeds), skr: v(skr), accessEnds: PYTH_ACCESS_ENDS })),
-    light("gas", "Gas", [gas], () => gasLight({ lamports: v(gas) })),
-    light("moneyOps", "Money ops", [failures, pending], () => moneyOpsLight({ now, failures: v(failures), oldestPendingWithdrawalAt: v(pending) })),
-    light("program", "Program", [legs], () => programLight({ enabled: v(legs), expected: [...EXPECTED_LEGS_ENABLED], leashLive: flags.leashLive, names: LEG_NAMES })),
-    light("support", "Support", [support], () => supportLight({ now, count7d: v(support).count, newestAt: v(support).newestAt })),
+    light("dailyRun", [cron], () => dailyRunLight({ now, latest: v(cron), movesEnabled: flags.movesEnabled })),
+    light("firstPlanting", [first], () => firstPlantingLight({ now, lastRunAt: v(first)?.at ?? null, reasons: v(first)?.reasons })),
+    light("swapWatching", [linked, webhook], () => swapWatchingLight({ linked: v(linked), onWebhook: v(webhook) })),
+    light("swapsArriving", [linked, swaps], () => swapsArrivingLight({ now, linkedCount: new Set(v(linked)).size, lastSwapAt: v(swaps).lastSwapAt, unpriced24h: v(swaps).unpriced })),
+    light("prices", [feeds, skr], () => pricesLight({ now, feeds: v(feeds), skr: v(skr), accessEnds: PYTH_ACCESS_ENDS })),
+    light("gas", [gas], () => gasLight({ lamports: v(gas) })),
+    light("moneyOps", [failures, pending], () => moneyOpsLight({ now, failures: v(failures), oldestPendingWithdrawalAt: v(pending) })),
+    light("program", [legs], () => programLight({ enabled: v(legs), expected: [...EXPECTED_LEGS_ENABLED], leashLive: flags.leashLive, names: LEG_NAMES })),
+    light("support", [support], () => supportLight({ now, count7d: v(support).count, newestAt: v(support).newestAt })),
   ];
 
   // Overlapping runs: only a newer run may replace the last good numbers.

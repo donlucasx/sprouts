@@ -2,7 +2,25 @@
 
 export type LightState = "green" | "amber" | "red" | "unknown" | "info";
 export type LightKey = "dailyRun" | "firstPlanting" | "swapWatching" | "swapsArriving" | "prices" | "gas" | "moneyOps" | "program" | "support";
-export type Light = { key: LightKey; label: string; state: LightState; fact: string };
+/** `action` is the "Do:" line: set on every amber/red/unknown light, never on green or info. */
+export type Light = { key: LightKey; label: string; state: LightState; fact: string; action?: string };
+
+export const LIGHT_LABELS: Record<LightKey, string> = {
+  dailyRun: "Daily savings job",
+  firstPlanting: "First savings for new users",
+  swapWatching: "Swap watching",
+  swapsArriving: "Swaps coming in",
+  prices: "Price feeds",
+  gas: "Network fee wallet",
+  moneyOps: "Withdrawals and failures",
+  program: "Savings settings",
+  support: "Support inbox",
+};
+
+/** Builds a light's `mk`: label from LIGHT_LABELS, action attached only when given. */
+const maker = (key: LightKey) => (state: LightState, fact: string, action?: string): Light => ({ key, label: LIGHT_LABELS[key], state, fact, ...(action ? { action } : {}) });
+
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 /** Skip reasons `plant-run.ts` emits that need no attention (confirmed against its `reason:` literals). */
 export const BENIGN_SKIP_REASONS: readonly string[] = ["no usdc", "paused", "below threshold", "cap reached", "revoked", "relink needed", "not first"];
@@ -28,74 +46,85 @@ const SECTIONS = ["venues", "coins", "splits", "applied", "moves", "planting", "
 
 export function dailyRunLight(input: { now: Date; latest: CronRunInput | null; movesEnabled: boolean }): Light {
   const { now, latest, movesEnabled } = input;
-  const mk = (state: LightState, fact: string): Light => ({ key: "dailyRun", label: "Daily run", state, fact });
-  if (!latest) return mk("red", "no daily run recorded");
+  const mk = maker("dailyRun");
+  const ASK = "Ask Claude to check the daily job.";
+  if (!latest) return mk("red", "The daily job has never run", ASK);
 
-  if (latest.ok === false) return mk("red", "last run failed");
+  if (latest.ok === false) return mk("red", "Yesterday's daily job failed", ASK);
   if (!latest.finishedAt) {
     const running = now.getTime() - latest.startedAt.getTime();
-    return running > 10 * MIN ? mk("red", `started ${ageText(running)} ago and never finished`) : mk("amber", `running for ${ageText(running)}`);
+    return running > 10 * MIN
+      ? mk("red", `The daily job started ${ageText(running)} ago and got stuck`, ASK)
+      : mk("amber", `The daily job is running now (${ageText(running)} so far)`, "Nothing. Check again in 10 minutes.");
   }
   const since = now.getTime() - latest.finishedAt.getTime();
-  if (since > 26 * HOUR) return mk("red", `last run finished ${ageText(since)} ago`);
-  if (latest.ok !== true) return mk("red", "last run finished without ok = true");
-  if (latest.summary === null) return mk("amber", "run finished but recorded no summary");
+  if (since > 26 * HOUR) return mk("red", `The daily job has not run for ${ageText(since)}`, ASK);
+  if (latest.ok !== true) return mk("red", "The last daily job did not finish cleanly", ASK);
+  if (latest.summary === null) return mk("amber", "The last run finished but left no report", "Ask Claude; probably harmless.");
 
   const s = latest.summary;
   // Red: null coverage or withdrawals.
   const redNull = (["coverage", "withdrawals"] as const).filter((k) => s[k] === null);
-  if (redNull.length) return mk("red", `step failed: ${redNull.join(", ")}`);
+  if (redNull.length) return mk("red", `A required part failed: ${redNull.map((k) => (k === "withdrawals" ? "withdrawal handling" : "the wallet-watcher check")).join(" and ")}`, ASK);
 
-  const amber: string[] = [];
+  const amber: { fact: string; action: string }[] = [];
   const failedSteps = SECTIONS.filter((k) => k !== "coverage" && k !== "withdrawals" && s[k] === null && !(k === "moves" && !movesEnabled));
-  if (failedSteps.length) amber.push(`step failed: ${failedSteps.join(", ")}`);
+  if (failedSteps.length) amber.push({ fact: `${failedSteps.length === 1 ? "One part" : "Some parts"} of the job failed (${failedSteps.join(", ")}); the rest ran`, action: "Ask Claude what this part does." });
 
   const skippedRaw = asObj(s.planting)?.skipped;
   const skipped = Array.isArray(skippedRaw) ? skippedRaw : [];
   const bad = [...new Set(skipped.map((e) => String(asObj(e)?.reason ?? "unknown")).filter((r) => !BENIGN_SKIP_REASONS.includes(r)))];
-  if (bad.length) amber.push(`skipped: ${bad.join(", ")}`);
+  if (bad.length) amber.push({ fact: `Some users were skipped: ${bad.join(", ")}`, action: "Ask Claude if this keeps showing up." });
 
   const failedW = lenOf(asObj(s.withdrawals)?.failed);
-  if (failedW) amber.push(`${failedW} withdrawal(s) failed`);
-  const adjusted = lenOf(asObj(s.reconciled)?.adjusted);
-  if (adjusted) amber.push(`${adjusted} stake(s) adjusted by reconcile`);
+  if (failedW) amber.push({ fact: `${plural(failedW, "withdrawal")} failed in the last run`, action: "Ask Claude to check them today." });
   const repaired = lenOf(asObj(s.coverage)?.repaired);
-  if (repaired) amber.push(`${repaired} wallet(s) re-added to the webhook`);
+  if (repaired) amber.push({ fact: `${plural(repaired, "wallet")} fell off the swap watcher and ${repaired === 1 ? "was" : "were"} re-added`, action: "Nothing, it fixed itself. Ask Claude if it repeats." });
 
-  if (amber.length) return mk("amber", amber.join("; "));
-  return mk("green", `finished ${ageText(since)} ago, all steps ok`);
+  if (amber.length) return mk("amber", amber.map((a) => a.fact).join("; "), [...new Set(amber.map((a) => a.action))].join(" "));
+  // reconciled.adjusted is routine (14-27 a day in production): it never turns the light amber, it only rides on the green fact.
+  const adjusted = lenOf(asObj(s.reconciled)?.adjusted);
+  const note = adjusted ? ` (routine cleanup corrected ${plural(adjusted, "saved amount")})` : "";
+  return mk("green", `Ran ${ageText(since)} ago, everything fine${note}`);
 }
 
 export function firstPlantingLight(input: { now: Date; lastRunAt: Date | null; reasons?: Record<string, number> }): Light {
-  const mk = (state: LightState, fact: string): Light => ({ key: "firstPlanting", label: "First planting", state, fact });
-  if (!input.lastRunAt) return mk("red", "no hourly run recorded");
+  const mk = maker("firstPlanting");
+  const RESTART = "Ask Claude to check the hourly job.";
+  if (!input.lastRunAt) return mk("red", "No hourly run recorded since the last deploy", "Nothing yet if you just deployed; it runs every hour. Ask Claude if it is still red in 2 hours.");
   const age = input.now.getTime() - input.lastRunAt.getTime();
-  const fact = `last ran ${ageText(age)} ago`;
   if (age < 2 * HOUR) {
     const bad = Object.entries(input.reasons ?? {}).filter(([r]) => !BENIGN_SKIP_REASONS.includes(r));
-    if (bad.length) return mk("amber", `${fact}; skipped for ${bad.map(([r, n]) => `"${r}" x${n}`).join(", ")}`);
-    return mk("green", fact);
+    if (bad.length) return mk("amber", `Ran ${ageText(age)} ago, but skipped some users: ${bad.map(([r, n]) => `${r} (${n})`).join(", ")}`, "Ask Claude what this reason means.");
+    return mk("green", `Ran ${ageText(age)} ago, new users get their first saving`);
   }
-  if (age <= 6 * HOUR) return mk("amber", fact);
-  return mk("red", fact);
+  if (age <= 6 * HOUR) return mk("amber", `Last ran ${ageText(age)} ago; it should run every hour`, "Ask Claude if it is still amber later today.");
+  return mk("red", `Has not run for ${ageText(age)}; new users are not getting their first saving`, RESTART);
 }
 
 const PENDING_LIMIT_MS = 60 * HOUR;
 
+const FAILURE_WORDS: Record<FailureInput["kind"], string> = {
+  pull_failed: "could not collect a round-up",
+  withdraw_failed: "a withdrawal failed",
+  move_failed: "a coin move failed",
+  run_stopped: "the daily job stopped early",
+};
+
 export function moneyOpsLight(input: { now: Date; failures: FailureInput[]; oldestPendingWithdrawalAt: Date | null }): Light {
   const { now } = input;
-  const mk = (state: LightState, fact: string): Light => ({ key: "moneyOps", label: "Money ops", state, fact });
+  const mk = maker("moneyOps");
   const recent = input.failures.filter((f) => now.getTime() - f.ts.getTime() <= 7 * DAY);
   const last24 = recent.filter((f) => now.getTime() - f.ts.getTime() < DAY);
   const pending = input.oldestPendingWithdrawalAt ? now.getTime() - input.oldestPendingWithdrawalAt.getTime() : null;
 
-  if (last24.length) return mk("red", `${last24.length} failure(s) in the last 24 h (${[...new Set(last24.map((f) => f.kind))].join(", ")})`);
-  if (pending !== null && pending > PENDING_LIMIT_MS) return mk("red", `withdrawal pending ${ageText(pending)} (limit 60 h)`);
+  if (last24.length) return mk("red", `${plural(last24.length, "money failure")} in the last 24 hours (${[...new Set(last24.map((f) => FAILURE_WORDS[f.kind] ?? f.kind))].join(", ")})`, "Ask Claude to check today.");
+  if (pending !== null && pending > PENDING_LIMIT_MS) return mk("red", `One withdrawal has been waiting ${ageText(pending)} (it should finish within 60 hours)`, "Ask Claude to look at it today.");
   if (recent.length) {
     const open = recent.filter((f) => !f.resolved).length;
-    return mk("amber", `${recent.length} failure(s) in 7 d, ${open} unresolved`);
+    return mk("amber", `${plural(recent.length, "failure")} this week, ${open} still open`, open ? "Ask Claude about the open ones." : "Nothing, all of them were fixed.");
   }
-  return mk("green", pending === null ? "no failures in 7 d, no withdrawal pending" : `no failures in 7 d, oldest withdrawal pending ${ageText(pending)}`);
+  return mk("green", pending === null ? "No failures in 7 days, nothing waiting" : `No failures in 7 days; one withdrawal in progress (${ageText(pending)} so far, normal)`);
 }
 
 // ---- Infra lights ----
@@ -103,26 +132,34 @@ export function moneyOpsLight(input: { now: Date; failures: FailureInput[]; olde
 /** Ruling R2: Pyth sponsored-feed access ends here; the Prices light shows the countdown. */
 export const PYTH_ACCESS_ENDS = new Date("2026-12-31T23:59:59Z");
 
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
 export function swapWatchingLight(input: { linked: string[]; onWebhook: string[] }): Light {
-  const mk = (state: LightState, fact: string): Light => ({ key: "swapWatching", label: "Swap watching", state, fact });
+  const mk = maker("swapWatching");
   const linked = [...new Set(input.linked)];
-  if (linked.length === 0) return mk("info", "no linked wallets to watch");
+  if (linked.length === 0) return mk("info", "No linked wallets yet, nothing to watch");
   const watched = new Set(input.onWebhook);
   const missing = linked.filter((w) => !watched.has(w)).length; // count only, never addresses
-  if (missing > 0) return mk("red", `${missing} linked wallet${missing === 1 ? "" : "s"} not watched`);
-  return mk("green", `all ${linked.length} linked wallet${linked.length === 1 ? "" : "s"} on the webhook`);
+  if (missing > 0) return mk("red", `${plural(missing, "linked wallet")} ${missing === 1 ? "is" : "are"} not being watched; ${missing === 1 ? "its" : "their"} swaps will be missed`, "Ask Claude to re-add them.");
+  return mk("green", linked.length === 1 ? "The 1 linked wallet is being watched" : `All ${linked.length} linked wallets are being watched`);
 }
 
 export function swapsArrivingLight(input: { now: Date; linkedCount: number; lastSwapAt: Date | null; unpriced24h: number }): Light {
-  const mk = (state: LightState, fact: string): Light => ({ key: "swapsArriving", label: "Swaps arriving", state, fact });
+  const mk = maker("swapsArriving");
   const { now, linkedCount, lastSwapAt, unpriced24h } = input;
-  if (linkedCount === 0) return mk("info", "no linked wallets, so no swaps expected");
-  if (!lastSwapAt) return mk("red", `no swap ever recorded with ${linkedCount} linked`);
+  if (linkedCount === 0) return mk("info", "No linked wallets yet, so no swaps expected");
+  const CHECK = "Ask Claude to check swap detection.";
+  if (!lastSwapAt) return mk("red", `${plural(linkedCount, "wallet")} ${linkedCount === 1 ? "is" : "are"} linked but no swap has ever arrived`, CHECK);
   const age = now.getTime() - lastSwapAt.getTime();
-  if (age < 0) return mk("unknown", "latest swap time is in the future (clock skew?)");
-  const fact = `last swap ${ageText(age)} ago, ${unpriced24h} unpriced in 24 h`;
-  if (age > 72 * HOUR) return mk("red", fact);
-  if (age > 24 * HOUR || unpriced24h > 0) return mk("amber", fact);
+  if (age < 0) return mk("unknown", "The newest swap's timestamp looks wrong", "Ask Claude.");
+  const fact = `Last swap ${ageText(age)} ago${unpriced24h > 0 ? `; ${plural(unpriced24h, "swap")} ${unpriced24h === 1 ? "is" : "are"} missing a dollar value` : ""}`;
+  if (age > 72 * HOUR) return mk("red", fact, CHECK);
+  if (age > 24 * HOUR || unpriced24h > 0) {
+    const actions: string[] = [];
+    if (age > 24 * HOUR) actions.push("Nothing if swaps are simply quiet. Ask Claude if users say they swapped.");
+    if (unpriced24h > 0) actions.push("Ask Claude if swaps keep missing a dollar value.");
+    return mk("amber", fact, actions.join(" "));
+  }
   return mk("green", fact);
 }
 
@@ -137,8 +174,8 @@ export function pricesLight(input: {
 }): Light {
   const { now, feeds, skr, accessEnds } = input;
   const days = Math.max(0, Math.ceil((accessEnds.getTime() - now.getTime()) / DAY));
-  const countdown = `${days} days of Pyth access left`;
-  const mk = (state: LightState, fact: string): Light => ({ key: "prices", label: "Prices", state, fact: `${fact}; ${countdown}` });
+  const countdown = `Free price data ends in ${plural(days, "day")} (${MONTHS[accessEnds.getUTCMonth()]} ${accessEnds.getUTCDate()})`;
+  const mk = (state: LightState, fact: string, action?: string): Light => ({ ...maker("prices")(state, `${fact}; ${countdown}`, action) });
 
   const red: string[] = [];
   const amber: string[] = [];
@@ -146,22 +183,23 @@ export function pricesLight(input: {
   for (const f of feeds) {
     let age = now.getTime() - f.publishTime.getTime();
     if (age < 0) {
-      if (age < -PRICE_AHEAD_MS) { unknown.push(`${f.name} publish time is in the future`); continue; }
+      if (age < -PRICE_AHEAD_MS) { unknown.push("A price timestamp looks wrong"); continue; }
       age = 0;
     }
-    if (age > PRICE_RED_MS) red.push(`${f.name} ${ageText(age)} old`);
-    else if (age > f.maxAgeS * 1000) amber.push(`${f.name} ${ageText(age)} old`);
+    if (age > PRICE_RED_MS) red.push(`The ${f.name} price is ${ageText(age)} old; too stale to save safely`);
+    else if (age > f.maxAgeS * 1000) amber.push(`The ${f.name} price is a few minutes old`);
   }
-  if (skr === "failed") red.push("SKR fetch failed");
-  const skrNote = skr === "no-key" ? "SKR deferred (no PYTH_API_KEY)" : null;
+  if (skr === "failed") red.push("The SKR price could not be fetched");
+  const skrNote = skr === "no-key" ? "SKR price checks are off (no API key set)" : null;
   const withNote = (parts: string[]) => [...parts, ...(skrNote ? [skrNote] : [])].join("; ");
+  const CHECK = "Ask Claude to check the price feeds.";
 
-  if (red.length) return mk("red", withNote(red));
-  if (feeds.length === 0) return mk("unknown", withNote(["no push feeds were checked"]));
-  if (unknown.length) return mk("unknown", withNote(unknown));
-  if (amber.length) return mk("amber", withNote(amber));
-  const ok = `${feeds.map((f) => f.name).join(", ")} fresh`;
-  return mk("green", skr === "ok" ? `${ok}, SKR ok` : withNote([ok]));
+  if (red.length) return mk("red", withNote(red), CHECK);
+  if (feeds.length === 0) return mk("unknown", withNote(["No prices could be checked"]), "Try Refresh; if it stays, ask Claude.");
+  if (unknown.length) return mk("unknown", withNote([...new Set(unknown)]), "Ask Claude.");
+  if (amber.length) return mk("amber", withNote(amber), "Nothing; it usually recovers. Check again in 15 minutes.");
+  const ok = `${feeds.map((f) => f.name).join(", ")}`;
+  return mk("green", skr === "ok" ? `${ok}, SKR all up to date` : withNote([`${ok} all up to date`]));
 }
 
 const LAMPORTS_PER_SOL = 1_000_000_000n;
@@ -169,31 +207,34 @@ const LAMPORTS_PER_SOL = 1_000_000_000n;
 export function gasLight(input: { lamports: bigint }): Light {
   const { lamports } = input;
   const shown = (Number(lamports) / 1e9).toFixed(3);
-  const fact = `puller holds ${shown} SOL`;
-  const mk = (state: LightState): Light => ({ key: "gas", label: "Gas", state, fact });
-  if (lamports > LAMPORTS_PER_SOL / 2n) return mk("green");
-  if (lamports >= LAMPORTS_PER_SOL / 10n) return mk("amber");
-  return mk("red");
+  const fact = `The wallet that pays network fees holds ${shown} SOL`;
+  const mk = maker("gas");
+  if (lamports > LAMPORTS_PER_SOL / 2n) return mk("green", `${fact} (enough for thousands of savings)`);
+  if (lamports >= LAMPORTS_PER_SOL / 10n) return mk("amber", fact, "Top it up soon; ask Claude how.");
+  return mk("red", fact, "Savings will fail until it is topped up. Ask Claude today.");
 }
 
-/** `names` (optional) labels each leg by index; without it the fact says "leg N" (1-based). */
+/** `names` (optional) labels each option by index; without it the fact says "option N" (1-based). */
 export function programLight(input: { enabled: boolean[]; expected: boolean[]; leashLive: boolean; names?: string[] }): Light {
   const { enabled, expected, leashLive, names } = input;
-  const live = `LEASH_LIVE=${leashLive}`;
-  const mk = (state: LightState, fact: string): Light => ({ key: "program", label: "Program", state, fact });
-  if (expected.length === 0) return mk("unknown", `no expected legs to compare, ${live}`);
-  if (enabled.length !== expected.length) return mk("red", `${enabled.length} legs read, ${expected.length} expected, ${live}`);
+  const mk = maker("program");
+  const live = leashLive ? "" : " The live savings switch is off.";
+  if (expected.length === 0) return mk("unknown", "Nothing to compare the settings against", "Ask Claude.");
+  if (enabled.length !== expected.length) return mk("red", `Read ${enabled.length} settings but expected ${expected.length}`, "Ask Claude.");
   const differ = expected.flatMap((e, i) => (enabled[i] !== e ? [i] : []));
   if (differ.length) {
-    const who = names ? differ.map((i) => names[i] ?? `leg ${i + 1}`).join(", ") : `leg ${differ.map((i) => i + 1).join(", ")}`;
-    return mk("red", `${who} differ${differ.length === 1 ? "s" : ""} from expected, ${live}`);
+    const who = differ.map((i) => (names ? names[i] ?? `option ${i + 1}` : `option ${i + 1}`)).join(", ");
+    return mk("red", `${differ.length === 1 ? `Savings option ${who} is` : `Savings options ${who} are`} not in ${differ.length === 1 ? "its" : "their"} expected state.${live}`, "Ask Claude. Do not change anything yourself.");
   }
-  return mk("green", `all ${expected.length} legs match, ${live}`);
+  const allOn = expected.every(Boolean);
+  const fact = `All ${expected.length} savings options ${allOn ? "are on, as expected" : "match what is expected"}`;
+  // A live switch that is off is worth saying, but it is not one of the 8 options, so the light stays green.
+  return mk("green", leashLive ? fact : `${fact}.${live}`);
 }
 
 export function supportLight(input: { now: Date; count7d: number; newestAt: Date | null }): Light {
   const { now, count7d, newestAt } = input;
-  const plural = `${count7d} support message${count7d === 1 ? "" : "s"} in 7 d`;
-  const fact = count7d === 0 ? plural : newestAt ? `${plural}, newest ${ageText(now.getTime() - newestAt.getTime())} ago` : plural;
-  return { key: "support", label: "Support", state: "info", fact };
+  const base = `${plural(count7d, "support message")} this week`;
+  const fact = count7d === 0 ? base : newestAt ? `${base}, newest ${ageText(now.getTime() - newestAt.getTime())} ago` : base;
+  return maker("support")("info", fact);
 }

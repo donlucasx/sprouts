@@ -13,11 +13,12 @@ const saved = process.env.OPS_TOKEN;
 // Fake wallets, already shortened first4…last3 as the sources emit them.
 const snap: OpsSnapshot = {
   at: "2026-11-12T00:00:00.000Z",
-  lights: [{ key: "dailyRun", label: "Daily run", state: "green", fact: "ran 3 h ago" }],
+  lights: [{ key: "dailyRun", label: "Daily savings job", state: "red", fact: "The daily job has never run", action: "Ask Claude to check the daily job." }],
   numbers: {
-    funnel: { d1: { signIns: 1, triedLink: 1, linkedEver: 1, linkedNow: 1, active7d: 1 }, d7: { signIns: 2, triedLink: 2, linkedEver: 2, linkedNow: 2, active7d: 2 }, all: { signIns: 3, triedLink: 3, linkedEver: 3, linkedNow: 3, active7d: 3 } },
+    now: { linkedNow: 2, active7d: 2 },
+    funnel: { d1: { signIns: 1, triedLink: 1, linkedEver: 1 }, d7: { signIns: 2, triedLink: 2, linkedEver: 2 }, all: { signIns: 3, triedLink: 3, linkedEver: 3 } },
     linkFailures7d: { "no usdc": 1 },
-    activity7d: { swaps: 1, usdSwappedCents: 100, roundupCents: 10, feeCents: 1, byCoin: { SKR: { plantings: 1, usdCents: 10 } } },
+    activity7d: { swaps: 1, unpriced7d: 0, usdSwappedCents: 100, roundupCents: 10, feeCents: 1, byCoin: { SKR: { plantings: 1, usdCents: 10 } } },
     recentSwaps: [{ at: "2026-11-11T00:00:00.000Z", wallet: "7xKX…9ab", usdCents: 100, status: "ok" }],
     recentPlantings: [{ at: "2026-11-11T00:00:00.000Z", wallet: "Fk3q…z2P", coin: "SKR", usdCents: 10, status: "ok" }],
   },
@@ -51,6 +52,8 @@ describe("GET /api/ops/health", () => {
     const text = await r.text();
     expect(text).not.toMatch(/[1-9A-HJ-NP-Za-km-z]{32,44}/);
     expect(JSON.parse(text).lights[0].key).toBe("dailyRun");
+    expect(JSON.parse(text).lights[0].action).toBe("Ask Claude to check the daily job.");
+    expect(JSON.parse(text).numbers.now.linkedNow).toBe(2);
   });
   it("?fresh=1 bypasses the cache", async () => {
     await get();

@@ -7,8 +7,9 @@ const NOW = new Date("2026-11-12T12:00:00Z");
 const W1 = "7YsvQ3mNpK9xT2bLhR8cVdFgJ4wZuE6aXyz1".padEnd(44, "A").slice(0, 44);
 const W2 = "9ZkpRt5HnB2vWcQxM8jLdFg3yUe7aSXoP6qTrN4mKbCw".slice(0, 44);
 const numbers = (n: number): OpsNumbers => ({
-  funnel: { d1: { signIns: n, triedLink: 0, linkedEver: 0, linkedNow: 0, active7d: 0 }, d7: { signIns: n, triedLink: 0, linkedEver: 0, linkedNow: 0, active7d: 0 }, all: { signIns: n, triedLink: 0, linkedEver: 0, linkedNow: 0, active7d: 0 } },
-  linkFailures7d: {}, activity7d: { swaps: 0, usdSwappedCents: 0, roundupCents: 0, feeCents: 0, byCoin: {} }, recentSwaps: [], recentPlantings: [],
+  now: { linkedNow: 2, active7d: 1 },
+  funnel: { d1: { signIns: n, triedLink: 0, linkedEver: 0 }, d7: { signIns: n, triedLink: 0, linkedEver: 0 }, all: { signIns: n, triedLink: 0, linkedEver: 0 } },
+  linkFailures7d: {}, activity7d: { swaps: 0, unpriced7d: 0, usdSwappedCents: 0, roundupCents: 0, feeCents: 0, byCoin: {} }, recentSwaps: [], recentPlantings: [],
 });
 
 function healthy(over: Partial<OpsSources> = {}): OpsSources & { calls: Record<string, number> } {
@@ -55,7 +56,9 @@ describe("gatherOps", () => {
     const s = await p;
     const by = Object.fromEntries(s.lights.map((l) => [l.key, l]));
     expect(by.swapWatching.state).toBe("unknown");
-    expect(by.swapWatching.fact).toBe("could not check: webhookAddresses");
+    expect(by.swapWatching.fact).toBe("Could not check this (a data source timed out)");
+    expect(by.swapWatching.action).toBe("Try Refresh. If it stays grey, ask Claude.");
+    expect(by.swapWatching.label).toBe("Swap watching");
     expect(by.swapsArriving.state).not.toBe("unknown");
     expect(by.dailyRun.state).toBe("green");
   });
@@ -64,14 +67,17 @@ describe("gatherOps", () => {
     const s = await gatherOps({ sources: healthy({ cronLatest: async () => { throw new Error("db down"); } }), now: NOW, flags });
     const l = s.lights.find((x) => x.key === "dailyRun")!;
     expect(l.state).toBe("unknown");
-    expect(l.fact).toBe("could not check: cronLatest");
+    expect(l.fact).toBe("Could not check this (a data source timed out)");
   });
 
   it("multi-source light names every failed source", async () => {
     const boom = async () => { throw new Error("x"); };
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
     const s = await gatherOps({ sources: healthy({ linkedWallets: boom, webhookAddresses: boom }), now: NOW, flags });
-    expect(s.lights.find((x) => x.key === "swapWatching")!.fact).toBe("could not check: linkedWallets, webhookAddresses");
-    expect(s.lights.find((x) => x.key === "swapsArriving")!.fact).toBe("could not check: linkedWallets");
+    // Source names never reach the fact (or the JSON), but the server log keeps them.
+    expect(JSON.stringify(s)).not.toMatch(/linkedWallets|webhookAddresses/);
+    expect(err.mock.calls.map((c) => String(c[0])).join("\n")).toMatch(/swapWatching: linkedWallets, webhookAddresses/);
+    err.mockRestore();
   });
 
   it("caches 60 s, fresh bypasses, concurrent calls share one gather", async () => {
@@ -125,6 +131,32 @@ describe("gatherOps", () => {
     expect(l.state).toBe("red");
     expect(l.fact).toContain("USDC lend (Jupiter)");
     expect(l.fact).not.toMatch(/\bleg \d/);
+  });
+
+  it("numbers carry now.{linkedNow,active7d}; funnel windows do not", async () => {
+    const s = await gatherOps({ sources: healthy(), now: NOW, flags });
+    expect(s.numbers!.now).toEqual({ linkedNow: 2, active7d: 1 });
+    for (const w of ["d1", "d7", "all"] as const) expect(Object.keys(s.numbers!.funnel[w]).sort()).toEqual(["linkedEver", "signIns", "triedLink"]);
+  });
+
+  it("every amber/red/unknown light has an action; green/info never do; the action is in the snapshot JSON", async () => {
+    const src = healthy({
+      firstPlantingLast: async () => null,
+      pullerLamports: async () => 10_000_000n,
+      support: async () => { throw new Error("x"); },
+      failures: async () => [{ kind: "withdraw_failed", ts: new Date(NOW.getTime() - 3_600_000), resolved: false }],
+    });
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    const s = await gatherOps({ sources: src, now: NOW, flags });
+    err.mockRestore();
+    const bad = s.lights.filter((l) => ["amber", "red", "unknown"].includes(l.state));
+    expect(bad.length).toBeGreaterThanOrEqual(4);
+    for (const l of bad) expect(l.action, l.key).toBeTruthy();
+    for (const l of s.lights.filter((x) => x.state === "green" || x.state === "info")) expect(l.action).toBeUndefined();
+    const parsed = JSON.parse(JSON.stringify(s));
+    const money = parsed.lights.find((l: { key: string }) => l.key === "moneyOps");
+    expect(money.action).toBe("Ask Claude to check today.");
+    expect(money.fact).toContain("a withdrawal failed");
   });
 
   it("privacy: no full base58 string anywhere in the snapshot", async () => {
@@ -184,6 +216,6 @@ describe("gatherOps robustness", () => {
 describe("programLight names", () => {
   it("uses names when given", () => {
     const l = programLight({ enabled: [true, false], expected: [true, true], leashLive: true, names: ["SKR", "stORE"] });
-    expect(l.fact).toBe("stORE differs from expected, LEASH_LIVE=true");
+    expect(l.fact).toBe("Savings option stORE is not in its expected state.");
   });
 });

@@ -29,9 +29,11 @@ export function excludedWallets(env: string | undefined): Set<string> {
 }
 
 export type OpsNumbers = {
-  funnel: Record<"d1" | "d7" | "all", { signIns: number; triedLink: number; linkedEver: number; linkedNow: number; active7d: number }>;
+  /** Current-state figures, not per window. */
+  now: { linkedNow: number; active7d: number };
+  funnel: Record<"d1" | "d7" | "all", { signIns: number; triedLink: number; linkedEver: number }>;
   linkFailures7d: Record<string, number>;
-  activity7d: { swaps: number; usdSwappedCents: number; roundupCents: number; feeCents: number; byCoin: Record<string, { plantings: number; usdCents: number }> };
+  activity7d: { swaps: number; unpriced7d: number; usdSwappedCents: number; roundupCents: number; feeCents: number; byCoin: Record<string, { plantings: number; usdCents: number }> };
   recentSwaps: { at: string; wallet: string; usdCents: number | null; status: string }[];
   recentPlantings: { at: string; wallet: string; coin: string; usdCents: number; status: string }[];
 };
@@ -284,7 +286,7 @@ export function realOpsSources(): OpsSources {
       ]);
       const window = async (cutoff: string | null) => {
         const [s, t, l] = await Promise.all([signIns(cutoff, skip), distinctUsersWithEvent("link_started", cutoff, skip), distinctUsersWithEvent("wallet_linked", cutoff, skip)]);
-        return { signIns: s, triedLink: t, linkedEver: l, linkedNow, active7d };
+        return { signIns: s, triedLink: t, linkedEver: l };
       };
       const [fd1, fd7, fall] = await Promise.all([window(d1), window(d7), window(null)]);
 
@@ -312,6 +314,7 @@ export function realOpsSources(): OpsSources {
       }
       const activity7d = {
         swaps: swaps.length,
+        unpriced7d: swaps.filter((r) => r.usd_size_cents == null).length,
         usdSwappedCents: swaps.reduce((s, r) => s + (r.usd_size_cents == null ? 0 : Number(r.usd_size_cents)), 0),
         roundupCents: swaps.reduce((s, r) => s + Number(r.roundup_cents ?? 0), 0),
         // fee_cents, not fee_amount_raw: fee_cents is the 0.5% fee in USDC cents (types.ts PlantingLegRow, R105, set by plant-run.ts);
@@ -332,14 +335,14 @@ export function realOpsSources(): OpsSources {
         rows(rs.order("ts", { ascending: false }).limit(RECENT)),
         rows(rp.order("ts", { ascending: false }).limit(RECENT)),
       ]);
-      const recentSwaps = swapRows.map((r) => ({ at: String(r.ts), wallet: shortWallet(String(r.wallet_pubkey)), usdCents: r.usd_size_cents == null ? null : Number(r.usd_size_cents), status: r.planting_id ? "planted" : "waiting" }));
+      const recentSwaps = swapRows.map((r) => ({ at: String(r.ts), wallet: shortWallet(String(r.wallet_pubkey)), usdCents: r.usd_size_cents == null ? null : Number(r.usd_size_cents), status: r.planting_id ? "planted" : "saved at next daily run" }));
       // usdCents = what the planting pulled; coin = its legs' assets ("?" for a planting with no legs, e.g. one that failed early).
       const recentPlantings = plantRows.map((r) => {
         const coins = ((r.planting_legs as Row[] | null) ?? []).map((l) => String(l.asset));
         return { at: String(r.ts), wallet: shortWallet(String(r.wallet_pubkey)), coin: coins.length ? coins.join("+") : "?", usdCents: Number(r.usdc_pulled_cents), status: String(r.status) };
       });
 
-      return { funnel: { d1: fd1, d7: fd7, all: fall }, linkFailures7d, activity7d, recentSwaps, recentPlantings };
+      return { now: { linkedNow, active7d }, funnel: { d1: fd1, d7: fd7, all: fall }, linkFailures7d, activity7d, recentSwaps, recentPlantings };
     },
   };
 }

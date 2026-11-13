@@ -64,12 +64,14 @@ describe("dailyRunLight", () => {
   it("amber: ok true but summary null", () => {
     const l = light(run({ summary: null }));
     expect(l.state).toBe("amber");
-    expect(l.fact).toBe("run finished but recorded no summary");
+    expect(l.fact).toBe("The last run finished but left no report");
+    expect(l.action).toBeTruthy();
   });
   it("red, not running: ok false with no finishedAt, 3 min old", () => {
     const l = light(run({ startedAt: ago(3 * 60_000), finishedAt: null, ok: false }));
     expect(l.state).toBe("red");
     expect(l.fact).not.toContain("running");
+    expect(l.action).toBeTruthy();
   });
   it("red: started 11 min ago and not finished", () => {
     expect(light(run({ startedAt: ago(11 * 60_000), finishedAt: null, ok: null })).state).toBe("red");
@@ -83,8 +85,17 @@ describe("dailyRunLight", () => {
     expect(l.state).toBe("amber");
     expect(l.fact).toContain("send unknown");
   });
-  it("amber: reconciled.adjusted non-empty", () => {
-    expect(light(run({}, goodSummary({ reconciled: { adjusted: ["v"], skipped: [], deferred: [] } }))).state).toBe("amber");
+  it("green: reconciled.adjusted is routine, and rides on the green fact", () => {
+    const l = light(run({}, goodSummary({ reconciled: { adjusted: ["v", "w"], skipped: [], deferred: [] } })));
+    expect(l.state).toBe("green");
+    expect(l.fact).toBe("Ran 59 min ago, everything fine (routine cleanup corrected 2 saved amounts)");
+    expect(l.action).toBeUndefined();
+    expect(light(run({}, goodSummary({ reconciled: { adjusted: ["v"], skipped: [], deferred: [] } }))).fact).toContain("corrected 1 saved amount)");
+  });
+  it("amber stays amber with adjusted present, and the fact leaves reconcile out", () => {
+    const l = light(run({}, goodSummary({ reconciled: { adjusted: ["v"] }, coverage: { missing: ["a"], repaired: ["a"] } })));
+    expect(l.state).toBe("amber");
+    expect(l.fact).not.toMatch(/cleanup|reconcile/);
   });
   it("amber: coverage re-added wallets", () => {
     expect(light(run({}, goodSummary({ coverage: { missing: ["a"], repaired: ["a"] } }))).state).toBe("amber");
@@ -118,6 +129,13 @@ describe("dailyRunLight", () => {
 describe("firstPlantingLight", () => {
   const l = (ms: number | null) => firstPlantingLight({ now: NOW, lastRunAt: ms === null ? null : ago(ms) }).state;
   it("green at 1 h", () => expect(l(1 * H)).toBe("green"));
+  const full = (ms: number | null) => firstPlantingLight({ now: NOW, lastRunAt: ms === null ? null : ago(ms) });
+  it("never ran: new-user wording and the 2 h hint", () => {
+    expect(full(null).fact).toBe("No hourly run recorded since the last deploy");
+    expect(full(null).action).toBe("Nothing yet if you just deployed; it runs every hour. Ask Claude if it is still red in 2 hours.");
+  });
+  it("over 6 h keeps the check-the-job action", () => expect(full(7 * H).action).toBe("Ask Claude to check the hourly job."));
+  it("green has no action", () => expect(full(1 * H).action).toBeUndefined());
   it("amber at 3 h", () => expect(l(3 * H)).toBe("amber"));
   it("red at 7 h", () => expect(l(7 * H)).toBe("red"));
   it("red when never", () => expect(l(null)).toBe("red"));
@@ -139,6 +157,12 @@ describe("moneyOpsLight", () => {
       oldestPendingWithdrawalAt: pending === null ? null : ago(pending),
     });
   it("green: nothing", () => expect(m([]).state).toBe("green"));
+  it("failure kinds are translated and pluralised", () => {
+    const l = m([{ kind: "pull_failed", age: H }, { kind: "run_stopped", age: H }, { kind: "move_failed", age: H }, { kind: "withdraw_failed", age: H }]);
+    expect(l.fact).toBe("4 money failures in the last 24 hours (could not collect a round-up, the daily job stopped early, a coin move failed, a withdrawal failed)");
+    expect(l.fact).not.toMatch(/_failed|run_stopped|\(s\)/);
+    expect(l.action).toBeTruthy();
+  });
   it("green: failure older than 7 d", () => expect(m([{ age: 8 * D }]).state).toBe("green"));
   it("amber: resolved failure 2 d old", () => expect(m([{ age: 2 * D, resolved: true }]).state).toBe("amber"));
   it("amber: unresolved failure 3 d old", () => expect(m([{ age: 3 * D }]).state).toBe("amber"));
