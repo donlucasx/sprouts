@@ -79,7 +79,7 @@ describe("cancel + re-unstake from the wallet (the same shares): one cooldown, o
     const lines = await csvLines();
     const skr = lines.filter((l) => l.hash !== "sigPlant");
     expect(skr.map((l) => l.hash)).toEqual(["sigS", ""]);   // the reward keeps its unstake hash; the inferred delivery is not a TxHash
-    expect(skr[1].line).toContain("likely arrived in wsigC..., after a later wallet unstake");
+    expect(skr[1].line).toContain("likely arrived in wsigC, after a later wallet unstake");
     expect(skr[0].received).toBe("64.60");     // S's earned: 114.6 - 50
     expect(skr[1].sent).toBe("114.60");        // S's own amount; the wallet's part of the delivery is not a Sprouts withdrawal
   });
@@ -114,11 +114,11 @@ describe("a Sprouts pick merged into a later wallet unstake (the cooldown reset)
     expect(s.skippedAt).not.toBeNull();
     expect(w).toMatchObject({ source: "wallet", amountRaw: 114_600_000n });
     expect((await pot(live)).skrPickedRaw).toBe(229_200_000n);
-    await crank(live, "wsigM");
+    await crank(live, "wsigMergeDeliveryFullSignature");
     expect(repo.withdrawals.get(w.id)!.amountOutRaw).toBe(229_250_000n);
     const skr = (await csvLines()).filter((l) => l.hash !== "sigPlant");
     expect(skr.map((l) => l.hash)).toEqual(["sigS", ""]);   // the reward keeps its unstake hash; the inferred delivery is not a TxHash
-    expect(skr[1].line).toContain("likely arrived in wsigM..., after a later wallet unstake");
+    expect(skr[1].line).toContain("likely arrived in wsigMergeDeliveryFullSignature, after a later wallet unstake");
     expect(skr[1].sent).toBe("114.60");
   });
 
@@ -142,7 +142,7 @@ describe("a Sprouts pick merged into a later wallet unstake (the cooldown reset)
     await crank(second, "wsig2");
     const skr = (await csvLines()).filter((l) => l.hash !== "sigPlant");
     expect(skr.map((l) => l.hash)).toEqual(["sigS", ""]);   // the reward keeps its unstake hash; the inferred delivery is not a TxHash
-    expect(skr[1].line).toContain("likely arrived in wsig1..., after a later wallet unstake");
+    expect(skr[1].line).toContain("likely arrived in wsig1, after a later wallet unstake");
     expect(skr.map((l) => l.line).join("\n")).not.toContain("wsig2");
   });
 });

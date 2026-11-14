@@ -81,14 +81,22 @@ describe("cron route", () => {
     let started = false;
     swapCheckMock.mockImplementationOnce((a) => { started = true; return actual.checkMissedSwaps(a as never) as never; });
     const err = vi.spyOn(console, "error").mockImplementation(() => {});
-    // Timers only: Date stays real, so the check starts well inside its 255 s cutoff and its first read hangs; the fake clock then
-    // walks to the 285 s bound (the step's own timer), which must end the step.
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    // 11-14 (flake fix): the clock is fake too (setTimeout, clearTimeout and Date), and frozen until the check has started. The old
+    // test advanced 10 s per loop turn whatever the route was doing, so fake time ran on while the route was still on its way to the
+    // check (real event-loop turns: about 2 ms of load was enough), the bound was set relative to that later time, and 60 turns no
+    // longer reached it. Now the route reaches the check with no time passing (setImmediate is real and advances nothing), its
+    // first read hangs, and the clock is then moved exactly to the 285 s bound: not settled 1 ms before it, settled at it.
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
     try {
       let settled = false;
       const p = get().finally(() => { settled = true; });
-      for (let i = 0; i < 60 && !settled; i++) await vi.advanceTimersByTimeAsync(10_000);
+      const waitUntil = performance.now() + 5_000;
+      while (!started && performance.now() < waitUntil) await new Promise((r) => setImmediate(r));
       expect(started).toBe(true);
+      await vi.advanceTimersByTimeAsync(285_000 - 1);
+      expect(settled).toBe(false);   // the hung read holds the step until the bound, not before
+      await vi.advanceTimersByTimeAsync(1);
+      for (let i = 0; i < 1_000 && !settled; i++) await new Promise((r) => setImmediate(r));   // the rest of the route: no timers, real turns only
       expect(settled).toBe(true);
       const res = await p;
       expect(res.status).toBe(200);

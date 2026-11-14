@@ -126,7 +126,8 @@ export function plantingRows(p: PlantingRow, legs: PlantingLegRow[]): TaxRow[] {
  */
 export function withdrawalRows(w: WithdrawalRow, skrPriceUsd: number | null, carriedBy?: WithdrawalRow): TaxRow[] {
   if (w.source !== "sprouts" || w.cancelSignature !== null || w.asset !== "SKR") return [];
-  // 11-14: a superseded Sprouts row whose SKR a later delivery carried (carriedDeliveries): its own amount, that delivery's hash
+  // 11-14: a superseded Sprouts row whose SKR a later delivery carried (carriedDeliveries): its own amount, TxHash blank, that delivery
+  // named in the description in full (the link is inferred, so the user can look it up but the tax tool never matches on it)
   const carried = w.withdrawSignature === null && carriedBy?.withdrawSignature ? carriedBy.withdrawSignature : null;
   if (w.withdrawSignature === null && carried === null) return [];
   const decimals = COINS.SKR.decimals;
@@ -152,7 +153,7 @@ export function withdrawalRows(w: WithdrawalRow, skrPriceUsd: number | null, car
     sentAmount: formatRaw(delivered, decimals), sentCurrency: coinCurrency("SKR"),
     // An inferred delivery (carriedDeliveries) is named in words, never put in TxHash: the tax tool would match on a hash it cannot prove
     description: carried !== null
-      ? `SKR withdrawn from your Sprouts stake to your wallet. Dated when the withdrawal started; likely arrived in ${carried.slice(0, 8)}..., after a later wallet unstake.`
+      ? `SKR withdrawn from your Sprouts stake to your wallet. Dated when the withdrawal started; likely arrived in ${carried}, after a later wallet unstake.`
       : "SKR withdrawn from your Sprouts stake to your wallet. Dated when the withdrawal started; the SKR arrived after the 48-hour cooldown in this transaction.",
     txHash: w.withdrawSignature ?? "",
   });
