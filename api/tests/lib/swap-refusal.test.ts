@@ -40,7 +40,7 @@ describe("recordSwapRefusal", () => {
     const repo = new MemoryRepo();
     repo.addEvent = async () => { throw new Error("db down"); };
     const err = vi.spyOn(console, "error").mockImplementation(() => {});
-    await expect(recordSwapRefusal(repo, { signature: SIG, walletPubkey: "WALLET", reason: "other" })).resolves.toBeUndefined();
+    await expect(recordSwapRefusal(repo, { signature: SIG, walletPubkey: "WALLET", reason: "other" })).resolves.toEqual(expect.any(Number));
     err.mockRestore();
   });
 

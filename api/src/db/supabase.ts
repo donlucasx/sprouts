@@ -71,6 +71,12 @@ export class SupabaseRepo implements Repo {
     return this.one(this.db.from("rules").select().eq("user_pubkey", userPubkey).single(), rulesRow);
   }
 
+  async findRules(userPubkey: string) {
+    const { data, error } = await this.db.from("rules").select().eq("user_pubkey", userPubkey).maybeSingle();
+    if (error) throw new Error(error.message);
+    return data ? rulesRow(data as Row) : null;
+  }
+
   async saveRules(userPubkey: string, patch: Partial<Omit<T.RulesRow, "userPubkey" | "updatedAt">>) {
     await this.getRules(userPubkey);
     const update: Row = { updated_at: new Date().toISOString() };

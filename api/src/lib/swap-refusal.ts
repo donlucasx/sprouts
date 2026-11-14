@@ -27,14 +27,23 @@ export function refusalReason(text: string): RefusalReason {
 
 /** How long one event write may hold the webhook's booking loop (failure-log.ts's LOG_WAIT_MS). */
 export const REFUSAL_WAIT_MS = 2_000;
+/**
+ * L1: one delivery waits on its refusal writes this long IN ALL (each write still starts; past the budget it is not waited on), so
+ * hung writes add at most 5 s to the delivery's booking task, well inside the route's maxDuration.
+ */
+export const REFUSAL_WAIT_TOTAL_MS = 5_000;
 /** One delivery writes at most this many refusal events: a flood of forged or odd items cannot fill the table. */
 export const MAX_REFUSAL_EVENTS_PER_DELIVERY = 10;
 
 /** First 8 base58 characters of the signature (a posted value: anything else is dropped). */
 const shortSig = (sig: unknown) => String(sig ?? "").replace(/[^1-9A-HJ-NP-Za-km-z]/g, "").slice(0, 8);
 
-/** Writes one `swap_refused` event. Never throws; gives up waiting after REFUSAL_WAIT_MS (the write may still land). */
-export async function recordSwapRefusal(repo: Repo, r: { signature: string; walletPubkey: string | null; reason: RefusalReason }, waitMs = REFUSAL_WAIT_MS): Promise<void> {
+/**
+ * Writes one `swap_refused` event. Never throws; gives up waiting after `waitMs` (the write may still land). Answers how long it
+ * waited: the whole `waitMs` when it gave up, else the time the write took.
+ */
+export async function recordSwapRefusal(repo: Repo, r: { signature: string; walletPubkey: string | null; reason: RefusalReason }, waitMs = REFUSAL_WAIT_MS): Promise<number> {
+  const t0 = Date.now();
   const write = (async () => {
     try {
       await repo.addEvent({ kind: "swap_refused", userPubkey: null, walletPubkey: r.walletPubkey, detail: { reason: r.reason, sig: shortSig(r.signature) } });
@@ -42,7 +51,9 @@ export async function recordSwapRefusal(repo: Repo, r: { signature: string; wall
       console.error(`swap_refused not recorded: ${e instanceof Error ? e.name : "error"}`);
     }
   })();
+  if (waitMs <= 0) return 0;   // the delivery's wait budget is spent: the write is started, not waited on
   let t: ReturnType<typeof setTimeout> | undefined;
-  await Promise.race([write, new Promise<void>((resolve) => { t = setTimeout(resolve, waitMs); })]);
+  const gaveUp = await Promise.race([write.then(() => false), new Promise<boolean>((resolve) => { t = setTimeout(() => resolve(true), waitMs); })]);
   clearTimeout(t);
+  return gaveUp ? waitMs : Math.min(waitMs, Date.now() - t0);
 }

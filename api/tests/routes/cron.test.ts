@@ -38,8 +38,9 @@ vi.mock("@/lib/split-run", () => ({ decideSplits: decideMock, applyToUsers: appl
 vi.mock("@/lib/jupiter", () => ({ getQuote: vi.fn(), pricesUsd: vi.fn() }));
 vi.mock("@/lib/store", () => ({ storeRedeemRate: vi.fn() }));
 vi.mock("@/lib/anthropic", () => ({ callTool: vi.fn() }));
-const { swapCheckMock } = vi.hoisted(() => ({ swapCheckMock: vi.fn(async (_a: { deadlineMs: number; hardStopMs: number; exclude: Set<string> }) => ({ checked: 3, unchecked: [], deferred: 0, missed: [{ wallet: "5t9Y…J9t", sig: "44gdAAAA", ts: "2026-11-13T09:14Z", roundupCents: 66 }], calls: { signatures: 3, enhanced: 1, transactions: 1 } })) }));
-vi.mock("@/lib/swap-check", async (orig) => ({ ...(await orig<object>()), checkMissedSwaps: swapCheckMock, realSwapCheckReads: vi.fn(async () => ({})) }));
+const { swapCheckMock } = vi.hoisted(() => ({ swapCheckMock: vi.fn(async (_a: { deadlineMs: number; hardStopMs: number; boundAt?: number; exclude: Set<string> }) => (order.push("swapcheck"), { checked: 3, unchecked: [], deferred: 0, missed: [{ wallet: "5t9Y…J9t", sig: "44gdAAAA", ts: "2026-11-13T09:14Z", roundupCents: 66 }], calls: { signatures: 3, enhanced: 1, transactions: 1 } })) }));
+const { readsMock } = vi.hoisted(() => ({ readsMock: vi.fn(async () => ({})) }));
+vi.mock("@/lib/swap-check", async (orig) => ({ ...(await orig<object>()), checkMissedSwaps: swapCheckMock, realSwapCheckReads: readsMock }));
 
 import { GET } from "@/app/api/cron/plant/route";
 
@@ -63,6 +64,41 @@ describe("cron route", () => {
     expect(a.deadlineMs - before).toBeGreaterThanOrEqual(254_000);
     expect(a.deadlineMs - before).toBeLessThanOrEqual(256_000);
     expect(a.hardStopMs - a.deadlineMs).toBe(25_000);
+    expect(a.boundAt! - a.deadlineMs).toBe(30_000);
+    // L3: it runs after every money step (planting, crank, remainder retry, reconcile) and the coverage pass.
+    expect(order.at(-1)).toBe("swapcheck");
+    expect(order.indexOf("plant")).toBeLessThan(order.indexOf("swapcheck"));
+    expect(order.indexOf("remainders")).toBeLessThan(order.indexOf("swapcheck"));
+    const { reconcileOwnStakes } = await import("@/lib/reconcile");
+    expect(vi.mocked(reconcileOwnStakes).mock.invocationCallOrder.at(-1)!).toBeLessThan(swapCheckMock.mock.invocationCallOrder.at(-1)!);
+  });
+
+  it("M1: a swap check whose read hangs returns by the 285 s bound, and the run record is still written", async () => {
+    const actual = await vi.importActual<typeof import("@/lib/swap-check")>("@/lib/swap-check");
+    await repo.upsertUser({ seedVaultPubkey: "U", sgtMint: "M", skrName: null });
+    await repo.addWallet({ pubkey: "W", userPubkey: "U", delegationPda: "D", dailyCapCents: 500 });
+    readsMock.mockResolvedValueOnce({ signatures: () => new Promise(() => {}), enhanced: async () => [], fetchTx: async () => null, priceUsd: async () => null, puller: "P" } as never);
+    let started = false;
+    swapCheckMock.mockImplementationOnce((a) => { started = true; return actual.checkMissedSwaps(a as never) as never; });
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    // Timers only: Date stays real, so the check starts well inside its 255 s cutoff and its first read hangs; the fake clock then
+    // walks to the 285 s bound (the step's own timer), which must end the step.
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      let settled = false;
+      const p = get().finally(() => { settled = true; });
+      for (let i = 0; i < 60 && !settled; i++) await vi.advanceTimersByTimeAsync(10_000);
+      expect(started).toBe(true);
+      expect(settled).toBe(true);
+      const res = await p;
+      expect(res.status).toBe(200);
+      const rec = repo.cronRuns.get(dayOf(new Date()));
+      expect(rec?.ok).toBe(true);
+      expect(rec?.summary).toMatchObject({ swapCheck: { checked: 0, deferred: 1, missed: [], unchecked: [] } });
+    } finally {
+      vi.useRealTimers();
+      err.mockRestore();
+    }
   });
 
   it("ops #9: a missed-swap check that throws is a failed step (null in the record), never a failed run", async () => {
@@ -137,7 +173,7 @@ describe("cron route", () => {
   it("runs venues, coins, decide, apply, moves, then plant, and reports venues and moves (MOVES_ENABLED=true)", async () => {
     process.env.MOVES_ENABLED = "true";
     const res = await get();
-    expect(order).toEqual(["venues", "coins", "decide", "apply", "moves", "plant", "remainders"]);
+    expect(order).toEqual(["venues", "coins", "decide", "apply", "moves", "plant", "remainders", "swapcheck"]);
     const body = (await res.json()) as { venues: number; moves: number };
     expect(body.venues).toBe(1);
     expect(body.moves).toBe(1);
@@ -149,7 +185,7 @@ describe("cron route", () => {
       order.length = 0;
       const log = vi.spyOn(console, "log").mockImplementation(() => {});
       const body = (await (await get()).json()) as { moves: number | null };
-      expect(order).toEqual(["venues", "coins", "decide", "apply", "plant", "remainders"]);
+      expect(order).toEqual(["venues", "coins", "decide", "apply", "plant", "remainders", "swapcheck"]);
       expect(body.moves).toBeNull();
       expect(log.mock.calls.map((c) => String(c[0])).join("\n")).toContain("moves off,");
       log.mockRestore();

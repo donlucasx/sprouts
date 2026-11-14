@@ -13,7 +13,7 @@ vi.mock("@/lib/rpc", () => ({ rpc: () => ({ getTransaction: () => ({ send: getTr
 vi.mock("@/lib/jupiter", () => ({ priceUsd: async () => null }));
 vi.mock("@/lib/puller", () => ({ pullerSigner: async () => ({ address: "PULLER" }) }));
 
-import { POST } from "@/app/api/webhooks/helius/route";
+import { POST, maxDuration } from "@/app/api/webhooks/helius/route";
 
 const fixture = fixtureJson as unknown as HeliusEnhancedTx;
 const USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
@@ -110,6 +110,30 @@ describe("POST /api/webhooks/helius", () => {
     await POST(new Request("http://x/api/webhooks/helius", { method: "POST", headers: { authorization: "Bearer hook-secret" }, body: JSON.stringify(many) }));
     await Promise.all(tasks.splice(0));
     expect(refused()).toHaveLength(MAX_REFUSAL_EVENTS_PER_DELIVERY);
+  });
+
+  it("L1: hung event writes hold one delivery at most REFUSAL_WAIT_TOTAL_MS in all, well inside the route's maxDuration", async () => {
+    const { REFUSAL_WAIT_TOTAL_MS, MAX_REFUSAL_EVENTS_PER_DELIVERY } = await import("@/lib/swap-refusal");
+    expect(REFUSAL_WAIT_TOTAL_MS).toBe(5_000);
+    expect(maxDuration).toBe(60);
+    getTransactionMock.mockResolvedValue(onChain(now - 3 * 86_400));
+    const writes: unknown[] = [];
+    repo.addEvent = (e) => { writes.push(e); return new Promise(() => {}); };
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const many = Array.from({ length: MAX_REFUSAL_EVENTS_PER_DELIVERY }, (_, i) => ({ ...tx, signature: `${tx.signature.slice(0, 80)}${i}` }));
+      await POST(new Request("http://x/api/webhooks/helius", { method: "POST", headers: { authorization: "Bearer hook-secret" }, body: JSON.stringify(many) }));
+      let done = false;
+      const all = Promise.all(tasks.splice(0)).then(() => { done = true; });
+      await vi.advanceTimersByTimeAsync(REFUSAL_WAIT_TOTAL_MS - 1);
+      expect(done).toBe(false);
+      await vi.advanceTimersByTimeAsync(2);
+      await all;
+      expect(done).toBe(true);
+      expect(writes).toHaveLength(MAX_REFUSAL_EVENTS_PER_DELIVERY);   // every write still started, only the waiting is capped
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("answers before any booking or event write (the response never waits on them)", async () => {

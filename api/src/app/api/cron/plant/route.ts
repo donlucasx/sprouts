@@ -49,6 +49,8 @@ const REMAINDERS_DEADLINE_MS = 260_000;
  */
 const SWAPCHECK_DEADLINE_MS = 255_000;
 const SWAPCHECK_HARD_STOP_MS = 280_000;
+/** M1: the step itself returns by 285 s whatever read is still in flight (the rest of its wallets deferred), so the record is written. */
+const SWAPCHECK_BOUND_MS = 285_000;
 /** 11-07 run lock: a claimed run not finished after this long died (the route's limit is 300 s), so its day can be claimed again. */
 const RUN_STALE_MS = 6 * 60_000;
 
@@ -160,7 +162,7 @@ export async function GET(request: Request) {
     // 10-26: every linked wallet still on the swap webhook (founder alert when not).
     const coverage = await step("webhook coverage", () => checkWebhookCoverage({ repo, watched: () => heliusWebhookAddresses(config().heliusWebhookId), repair: (missing) => heliusEnsureAddresses(config().heliusWebhookId, missing, { tries: 2, settleMs: 500 }) }));   // short: the reconcile may run to 275 s of the 300
     // Ops #9: on-chain swaps of the last 48 h that are not in swaps (DETECTION ONLY: nothing is booked; ops light "Every swap counted").
-    const swapCheck = await step("swap check", async () => checkMissedSwaps({ repo, now: new Date(), reads: await realSwapCheckReads(), exclude: excludedWallets(config().opsExcludeWallets), deadlineMs: startedMs + SWAPCHECK_DEADLINE_MS, hardStopMs: startedMs + SWAPCHECK_HARD_STOP_MS }));
+    const swapCheck = await step("swap check", async () => checkMissedSwaps({ repo, now: new Date(), reads: await realSwapCheckReads(), exclude: excludedWallets(config().opsExcludeWallets), deadlineMs: startedMs + SWAPCHECK_DEADLINE_MS, hardStopMs: startedMs + SWAPCHECK_HARD_STOP_MS, boundAt: startedMs + SWAPCHECK_BOUND_MS }));
     await repo.cleanupExpired();
     // The first production run (2026-09-28) planted and then answered 500 here: reading rules for a made-up user violates the
     // rules -> users foreign key. The keepalive is now a read that needs no row.

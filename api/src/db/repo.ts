@@ -45,6 +45,8 @@ export interface Repo {
 
   /** Creates the defaults when the user has no rules yet. */
   getRules(userPubkey: string): Promise<T.RulesRow>;
+  /** The user's rules row, or null when none was ever written: a pure read (ops #9's dry run must not create the defaults row). */
+  findRules(userPubkey: string): Promise<T.RulesRow | null>;
   saveRules(userPubkey: string, r: Partial<Omit<T.RulesRow, "userPubkey" | "updatedAt">>): Promise<T.RulesRow>;
   /** Every user whose Yield Manager is on, for the daily apply (spec 6.6). */
   listManagedRules(): Promise<T.RulesRow[]>;

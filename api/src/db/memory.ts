@@ -94,6 +94,10 @@ export class MemoryRepo implements Repo {
     return r;
   }
 
+  async findRules(userPubkey: string): Promise<T.RulesRow | null> {
+    return this.rules.get(userPubkey) ?? null;
+  }
+
   async saveRules(userPubkey: string, patch: Partial<Omit<T.RulesRow, "userPubkey" | "updatedAt">>): Promise<T.RulesRow> {
     const current = await this.getRules(userPubkey);
     const next: T.RulesRow = {

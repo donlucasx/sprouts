@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import type { Repo } from "@/db/repo";
 import { MemoryRepo } from "@/db/memory";
 import type { HeliusEnhancedTx } from "@/lib/book-swap";
 import type { ChainTx } from "@/lib/verify-swap";
@@ -66,8 +67,23 @@ function onChainSwap(sig: string, ts: number, wallet = WALLET) {
   world.txs.set(sig, swapTx(sig, ts, wallet));
   world.chains.set(sig, chain(ts, wallet));
 }
-const run = (r: SwapCheckReads, over: { clock?: () => number; deadlineMs?: number; hardStopMs?: number; exclude?: Set<string> } = {}) =>
-  checkMissedSwaps({ repo, now: NOW, reads: r, exclude: over.exclude ?? new Set(), deadlineMs: over.deadlineMs ?? Infinity, hardStopMs: over.hardStopMs ?? Infinity, clock: over.clock ?? (() => 0) });
+const run = (r: SwapCheckReads, over: { clock?: () => number; deadlineMs?: number; hardStopMs?: number; boundAt?: number; exclude?: Set<string>; repo?: Repo } = {}) =>
+  checkMissedSwaps({ repo: over.repo ?? repo, now: NOW, reads: r, exclude: over.exclude ?? new Set(), deadlineMs: over.deadlineMs ?? Infinity, hardStopMs: over.hardStopMs ?? Infinity, boundAt: over.boundAt, clock: over.clock ?? (() => 0) });
+
+/** Only these reads may be called on the repo during a check; anything else (any write, getRules' default insert) is recorded. */
+const READS = new Set(["listActiveWallets", "getWallet", "listSwaps", "topUpKinds", "findRules"]);
+function readOnly(r: MemoryRepo): { repo: Repo; other: string[] } {
+  const other: string[] = [];
+  const repo = new Proxy(r, {
+    get(target, prop) {
+      const v = Reflect.get(target, prop, target) as unknown;
+      if (typeof v !== "function") return v;
+      if (!READS.has(String(prop))) other.push(String(prop));
+      return (v as (...x: unknown[]) => unknown).bind(target);
+    },
+  }) as unknown as Repo;
+  return { repo, other };
+}
 
 beforeEach(async () => {
   repo = new MemoryRepo();
@@ -75,7 +91,56 @@ beforeEach(async () => {
   await link(WALLET, "U");
 });
 
+afterEach(() => vi.useRealTimers());
+
 describe("checkMissedSwaps", () => {
+  it("is strictly read-only: only the listed reads are called (a user with no rules gets the defaults, nothing is written)", async () => {
+    onChainSwap("MISSED1111111111", nowS - 5 * HOUR);
+    const W2 = "SECONDbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb2";
+    await link(W2, "U2");
+    onChainSwap("MISSED2222222222", nowS - 3 * HOUR, W2);
+    onChainSwap("TOPUP11111111111", nowS - 4 * HOUR);
+    await repo.addEvent({ userPubkey: "U", walletPubkey: WALLET, kind: "topup_sent", detail: { signature: "TOPUP11111111111" } });
+    await repo.saveRules("U2", { roundupToCents: 500 });
+    const rulesBefore = new Map((repo as unknown as { rules: Map<string, unknown> }).rules);
+    const eventsBefore = repo.events.length;
+    const ro = readOnly(repo);
+    const out = await run(reads(world), { repo: ro.repo });
+    expect(ro.other).toEqual([]);
+    expect(out.missed.map((m) => [m.sig, m.roundupCents])).toEqual([["MISSED11", 83], ["MISSED22", 383]]);   // U: defaults (no row); U2: its own $5 rule
+    expect((repo as unknown as { rules: Map<string, unknown> }).rules).toEqual(rulesBefore);   // no default rules row created for U
+    expect(repo.events.length).toBe(eventsBefore);
+    expect(await repo.unplantedSwaps(WALLET)).toEqual([]);
+  });
+
+  it("M1: a hung read is cut at the bound: wallets already concluded keep their result, the rest are deferred, never missed", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    onChainSwap("MISSED1111111111", nowS - 5 * HOUR);
+    const W2 = "SECONDbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb2";
+    await link(W2, "U2");
+    onChainSwap("MISSED2222222222", nowS - 3 * HOUR, W2);
+    const base = reads(world);
+    const r = { ...base, enhanced: async (sigs: string[]) => (sigs.includes("MISSED2222222222") ? new Promise<never>(() => {}) : base.enhanced(sigs)) };
+    const p = checkMissedSwaps({ repo, now: NOW, reads: r, exclude: new Set(), deadlineMs: Infinity, hardStopMs: Infinity, boundAt: Date.now() + 10_000 });
+    let done = false;
+    void p.then(() => { done = true; });
+    await vi.advanceTimersByTimeAsync(9_999);
+    expect(done).toBe(false);
+    await vi.advanceTimersByTimeAsync(2);
+    expect(await p).toMatchObject({ checked: 1, unchecked: [], deferred: 1, missed: [{ sig: "MISSED11" }] });
+  });
+
+  it("M1: cut at the bound before the wallet list was read: the step fails (null record), never a 0-wallet green", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    repo.listActiveWallets = () => new Promise(() => {});
+    const p = checkMissedSwaps({ repo, now: NOW, reads: reads(world), exclude: new Set(), deadlineMs: Infinity, hardStopMs: Infinity, boundAt: Date.now() + 1_000 });
+    const caught = p.catch((e: Error) => e.message);
+    await vi.advanceTimersByTimeAsync(1_001);
+    expect(await caught).toMatch(/before the wallet list/);
+  });
+
   it("reports a swap on chain that is not in swaps and that the chain check passes; books nothing", async () => {
     onChainSwap("MISSED1111111111", nowS - 5 * HOUR);
     const r = reads(world);

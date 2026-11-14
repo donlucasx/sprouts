@@ -1,5 +1,7 @@
 import { address, signature as toSignature } from "@solana/kit";
 import type { Repo } from "@/db/repo";
+import type { RulesRow } from "@/db/types";
+import { DEFAULT_RULES } from "@/domain/roundup";
 import type { PriceLookup } from "@/domain/sizing";
 import { bookSwap, type HeliusEnhancedTx } from "./book-swap";
 import { checkSwapOnChain, fetchTransaction, type FetchTx } from "./verify-swap";
@@ -16,8 +18,12 @@ import { stockMints } from "./token-kind";
  *
  * Per active linked wallet (OPS_EXCLUDE_WALLETS left out): its signatures of the last 48 h (paged, at most MAX_PAGES), minus the
  * ones already in swaps, parsed by ONE Helius enhanced call per 100, then run through the SAME bookSwap the webhook uses (legs,
- * puller skip, top-up skip, rules, size, round-up) against a repo whose insertSwap only records, with the on-chain verify's clock
- * set to the block time (as credit-missed-swaps.ts does). A swap bookSwap would insert for THIS wallet is a miss.
+ * puller skip, top-up skip, rules, size, round-up) against a strictly read-only repo (insertSwap only records; getRules reads the
+ * row without creating the defaults one, review M2), with the on-chain verify's clock set to the block time (as
+ * credit-missed-swaps.ts does). A swap bookSwap would insert for THIS wallet is a miss.
+ *
+ * The whole check is also cut at `boundAt` (review M1): a read that hangs past every per-wallet guard cannot hold the run; the
+ * wallets concluded so far keep their result and every other one is counted deferred.
  *
  * Never concludes "nothing missed" from a partial read: a page-cap hit, a read error, an enhanced answer missing a signature, a
  * transaction the RPC cannot return or a capped swaps read marks the wallet unchecked. Swaps before the wallet linked are not owed.
@@ -60,11 +66,15 @@ const short = (k: string) => `${k.slice(0, 4)}…${k.slice(-3)}`;
 class Partial extends Error { constructor(readonly why: UncheckedWallet["why"]) { super(why); } }
 class OutOfTime extends Error {}
 
-/** The repo with insertSwap replaced by a recorder: every read is real, nothing is written by the booking. */
+/** The defaults a first getRules would write, built in memory only (memory.ts builds its default row the same way). */
+const defaultRules = (userPubkey: string): RulesRow => ({ ...DEFAULT_RULES, pins: {}, allocation: { ...DEFAULT_RULES.allocation }, prevAllocation: null, allocationDay: null, pinsByUndo: false, userPubkey, updatedAt: new Date() });
+
+/** The repo with insertSwap replaced by a recorder and getRules by a pure read: nothing is written by the booking. */
 function dryRepo(repo: Repo, record: (s: Parameters<Repo["insertSwap"]>[0]) => void): Repo {
   return new Proxy(repo, {
     get(target, prop) {
       if (prop === "insertSwap") return async (s: Parameters<Repo["insertSwap"]>[0]) => { record(s); return true; };
+      if (prop === "getRules") return async (u: string) => (await target.findRules(u)) ?? defaultRules(u);
       const v = Reflect.get(target, prop, target) as unknown;
       return typeof v === "function" ? v.bind(target) : v;
     },
@@ -80,13 +90,30 @@ export async function checkMissedSwaps(a: {
   deadlineMs: number;
   /** A wallet still being read at or past this is stopped and counted deferred. */
   hardStopMs: number;
+  /** The whole check returns by this (Date.now ms) whatever is still in flight (M1). */
+  boundAt?: number;
   clock?: () => number;
 }): Promise<SwapCheckRecord> {
+  const out: SwapCheckRecord = { checked: 0, unchecked: [], deferred: 0, missed: [], calls: { signatures: 0, enhanced: 0, transactions: 0 } };
+  const listed = { total: null as number | null };
+  const work = runCheck(a, out, listed);
+  if (a.boundAt === undefined) return work;
+  let t: ReturnType<typeof setTimeout> | undefined;
+  const cut = new Promise<"cut">((resolve) => { t = setTimeout(() => resolve("cut"), Math.max(0, a.boundAt! - Date.now())); });
+  const first = await Promise.race([work, cut]).finally(() => clearTimeout(t));
+  if (first !== "cut") return first;
+  work.catch(() => {});   // it may still settle later; nothing it does writes
+  if (listed.total === null) throw new Error("swap check cut at its bound before the wallet list was read");
+  // A snapshot: only wallets that finished count as checked or unchecked (their misses were added when they finished).
+  return { checked: out.checked, unchecked: [...out.unchecked], deferred: listed.total - out.checked - out.unchecked.length, missed: [...out.missed], calls: { ...out.calls } };
+}
+
+async function runCheck(a: Parameters<typeof checkMissedSwaps>[0], out: SwapCheckRecord, listed: { total: number | null }): Promise<SwapCheckRecord> {
   const clock = a.clock ?? Date.now;
   const nowS = Math.floor(a.now.getTime() / 1000);
-  const out: SwapCheckRecord = { checked: 0, unchecked: [], deferred: 0, missed: [], calls: { signatures: 0, enhanced: 0, transactions: 0 } };
   const guard = () => { if (clock() >= a.hardStopMs) throw new OutOfTime(); };
   const wallets = [...new Map((await a.repo.listActiveWallets()).filter((w) => !a.exclude.has(w.pubkey) && !a.exclude.has(w.userPubkey)).map((w) => [w.pubkey, w])).values()];
+  listed.total = wallets.length;
 
   for (const w of wallets) {
     if (clock() >= a.deadlineMs) { out.deferred++; continue; }
@@ -160,7 +187,8 @@ export async function checkMissedSwaps(a: {
   return out;
 }
 
-const ENHANCED_TIMEOUT_MS = 15_000;
+/** M1: one hung Helius parse costs at most this; the step as a whole is also cut at its bound. */
+const ENHANCED_TIMEOUT_MS = 8_000;
 const PRICE_TIMEOUT_MS = 2_000;
 
 /** The real reads: the app's RPC (429-retrying, redacted) for signatures and transactions, Helius's parse, Jupiter's price. */

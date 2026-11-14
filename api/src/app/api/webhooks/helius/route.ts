@@ -8,9 +8,14 @@ import { pullerSigner } from "@/lib/puller";
 import { onChainVerifier } from "@/lib/verify-swap";
 import { stockMints } from "@/lib/token-kind";
 import type { PriceLookup } from "@/domain/sizing";
-import { recordSwapRefusal, refusalReason, MAX_REFUSAL_EVENTS_PER_DELIVERY } from "@/lib/swap-refusal";
+import { recordSwapRefusal, refusalReason, MAX_REFUSAL_EVENTS_PER_DELIVERY, REFUSAL_WAIT_MS, REFUSAL_WAIT_TOTAL_MS } from "@/lib/swap-refusal";
 
 export const runtime = "nodejs";
+/**
+ * L1: the booking runs in after(), inside this invocation's limit: per item a chain read (plus one 2 s retry), an 800 ms price
+ * bound, and the refusal-event waits capped at REFUSAL_WAIT_TOTAL_MS per delivery. 60 s is the explicit ceiling (Hobby's).
+ */
+export const maxDuration = 60;
 
 const PRICE_TIMEOUT_MS = 800;
 
@@ -43,10 +48,11 @@ export async function POST(request: Request) {
     // short signature), at most MAX_REFUSAL_EVENTS_PER_DELIVERY per delivery, each write bounded (swap-refusal.ts). Routine skips
     // (not a swap, a top-up, a puller planting, already booked) write nothing.
     let recorded = 0;
+    let waitLeftMs = REFUSAL_WAIT_TOTAL_MS;
     const refusal = async (signature: unknown, walletPubkey: string | null, reason: ReturnType<typeof refusalReason>) => {
       if (recorded >= MAX_REFUSAL_EVENTS_PER_DELIVERY) return;
       recorded++;
-      await recordSwapRefusal(repo, { signature: String(signature ?? ""), walletPubkey, reason });
+      waitLeftMs -= await recordSwapRefusal(repo, { signature: String(signature ?? ""), walletPubkey, reason }, Math.max(0, Math.min(REFUSAL_WAIT_MS, waitLeftMs)));
     };
     for (const tx of items) {
       try {
