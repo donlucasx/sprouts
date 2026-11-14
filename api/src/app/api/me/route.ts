@@ -130,7 +130,7 @@ export async function GET(request: Request) {
   const ask = !reminderInputs.ok ? null : askFor({
     walletsEver: wallets.length,
     linkedNow: wallets.filter((w) => w.status !== "revoked").map((w) => w.pubkey),
-    withdrawals: countedPicks(withdrawals).length,
+    withdrawals: countedPicks(withdrawals, inputs.skippedEvents).length,
     removedWallets: reminderInputs.events.filter((e) => e.kind === "revoke_seen" && e.walletPubkey && (e.detail as { by?: unknown } | null)?.by === "user").map((e) => ({ wallet: e.walletPubkey!, at: e.ts })),
     now,
     answered: reminderInputs.answers.flatMap((e) => {
@@ -191,7 +191,7 @@ export async function GET(request: Request) {
           venue: l?.venue ?? null, receiptOutRaw: l ? receiptOutRaw(l) : null, underlyingOutRaw: l ? underlyingOutRaw(l) : null };
       }),
       // 11-14: a superseded row whose SKR a later whole-cooldown row counts again is not a second pick (lib/pot countedPicks)
-      picks: countedPicks(withdrawals).filter((w) => COINS[w.asset].live).map((w) => ({ ts: w.unstakeTs, asset: w.asset, amountRaw: w.amountRaw ?? 0n })),
+      picks: countedPicks(withdrawals, inputs.skippedEvents).filter((w) => COINS[w.asset].live).map((w) => ({ ts: w.unstakeTs, asset: w.asset, amountRaw: w.amountRaw ?? 0n })),
     },
     nextPlanting: { pendingCents: pending, thresholdCents, capLeftCents: capLeft, asset: nextAsset },
     lastReceipt: last

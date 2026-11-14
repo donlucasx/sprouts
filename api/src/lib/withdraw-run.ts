@@ -27,7 +27,7 @@ export async function openWithdrawalsOf(repo: Repo, user: string): Promise<Withd
 /**
  * 11-14 (ops #6): the staking program keeps ONE cooldown per position, so of a user's open rows only one whose time is at or after
  * the chain's cooldown start (less the slack) can be live. Every older open row's cooldown was withdrawn or cancelled from the wallet
- * and replaced: it is closed as skipped (never cancelled, so the pot still counts the pick, unless a whole-cooldown row booked in the same run holds its SKR again: lib/pot absorbedPickIds) with withdraw_skipped {reason:
+ * and replaced: it is closed as skipped (never cancelled, so the pot still counts the pick, unless the next whole-cooldown row holds its SKR again: lib/pot absorbedPickIds) with withdraw_skipped {reason:
  * "superseded"}. Returns the ids closed and the rows left open. Nothing is closed while nothing is unstaking or the chain has no time.
  */
 export async function closeSupersededWithdrawals(repo: Repo, user: string, position: Position, open?: WithdrawalRow[]): Promise<{ closed: string[]; live: WithdrawalRow[] }> {

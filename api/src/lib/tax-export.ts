@@ -4,7 +4,7 @@ import { COINS, isLendAsset, type Asset, type LendAsset } from "@/domain/coins";
 import { isAutoVenue, VENUE_SHORT, type AutoVenue } from "@/domain/venues";
 import { RECEIPT } from "@/lib/venues/addresses";
 import { USDC_MINT } from "@/lib/constants";
-import { holds } from "@/lib/pot";
+import { holds, byBooking, bookedBefore, supersededIds } from "@/lib/pot";
 
 /**
  * R447: the taxable events Sprouts creates, as one plain CSV in Koinly's Universal import template (support.koinly.io article
@@ -121,14 +121,14 @@ export function plantingRows(p: PlantingRow, legs: PlantingLegRow[]): TaxRow[] {
  * what the unstake fixed above principal (amountRaw - principalRaw, A15). The reward's Net Worth uses that day's stored SKR price,
  * blank when none is stored (the tool prices it). The table keeps no delivery time: both rows are dated at the unstake.
  * Unstakes the Seed Vault made outside Sprouts (source "wallet"), cancelled and undelivered ones are not Sprouts withdrawals.
- * 11-14: a superseded Sprouts row given `carriedBy` (carriedDeliveries) is delivered: its own amount, that delivery's hash.
+ * 11-14: a superseded Sprouts row given `carriedBy` (carriedDeliveries) is delivered: its own amount, TxHash blank, the likely
+ * delivery named in the description (an inference, not a proof).
  */
 export function withdrawalRows(w: WithdrawalRow, skrPriceUsd: number | null, carriedBy?: WithdrawalRow): TaxRow[] {
   if (w.source !== "sprouts" || w.cancelSignature !== null || w.asset !== "SKR") return [];
   // 11-14: a superseded Sprouts row whose SKR a later delivery carried (carriedDeliveries): its own amount, that delivery's hash
   const carried = w.withdrawSignature === null && carriedBy?.withdrawSignature ? carriedBy.withdrawSignature : null;
-  const withdrawSignature = w.withdrawSignature ?? carried;
-  if (withdrawSignature === null) return [];
+  if (w.withdrawSignature === null && carried === null) return [];
   const decimals = COINS.SKR.decimals;
   const delivered = carried !== null ? w.amountRaw : (w.amountOutRaw ?? w.amountRaw);
   if (delivered === null) return [];
@@ -150,10 +150,11 @@ export function withdrawalRows(w: WithdrawalRow, skrPriceUsd: number | null, car
     ...blank,
     date: w.unstakeTs,
     sentAmount: formatRaw(delivered, decimals), sentCurrency: coinCurrency("SKR"),
+    // An inferred delivery (carriedDeliveries) is named in words, never put in TxHash: the tax tool would match on a hash it cannot prove
     description: carried !== null
-      ? "SKR withdrawn from your Sprouts stake to your wallet. Dated when the withdrawal started; a later unstake from your wallet joined its cooldown, and the SKR arrived with that cooldown in this transaction."
+      ? `SKR withdrawn from your Sprouts stake to your wallet. Dated when the withdrawal started; likely arrived in ${carried.slice(0, 8)}..., after a later wallet unstake.`
       : "SKR withdrawn from your Sprouts stake to your wallet. Dated when the withdrawal started; the SKR arrived after the 48-hour cooldown in this transaction.",
-    txHash: withdrawSignature,
+    txHash: w.withdrawSignature ?? "",
   });
   return rows;
 }
@@ -162,9 +163,10 @@ export function withdrawalRows(w: WithdrawalRow, skrPriceUsd: number | null, car
  * 11-14 (review of 962d66c): the delivery that carried each superseded Sprouts withdrawal, so its reward and withdrawal still reach
  * the export. The staking program keeps one cooldown per position. A wallet unstake during a Sprouts cooldown joins it and resets its
  * clock; the crank then closes the Sprouts row S as superseded (withdraw_skipped {reason: "superseded"}) and books the whole delivery
- * on the live row, usually a wallet row the export leaves out. S's SKR was in that delivery, so S's lines go out with its hash.
+ * on the live row, a wallet row the export leaves out. S's SKR was likely in that delivery, so S's lines go out: TxHash blank
+ * (the link is inferred), the delivery named in the description.
  *
- * For each delivered row L, oldest first: the SKR it delivered beyond its own booking (amountOutRaw less amountRaw for a row that
+ * For each delivered wallet row L, oldest first (ties on id): the SKR it delivered beyond its own booking (amountOutRaw less amountRaw for a row that
  * burned shares; all of it for a whole-cooldown row, which has none) is the room for superseded Sprouts rows. Candidates are the
  * user's superseded Sprouts rows before L and after the last delivered or cancelled row before L (either emptied the cooldown), not
  * superseded before a skip that found nothing unstaking (the chain was empty then), and not given to an earlier delivery. Newest
@@ -174,24 +176,21 @@ export function withdrawalRows(w: WithdrawalRow, skrPriceUsd: number | null, car
  * later hash (the amounts are S's own and real). Each superseded row is given to one delivery at most: nothing is exported twice.
  */
 export function carriedDeliveries(withdrawals: WithdrawalRow[], skippedEvents: EventRow[]): Map<string, WithdrawalRow> {
-  const superseded = new Set<string>();
-  for (const e of skippedEvents) {
-    const d = (e.detail ?? {}) as Record<string, unknown>;
-    if (e.kind === "withdraw_skipped" && d.reason === "superseded" && typeof d.withdrawal === "string") superseded.add(d.withdrawal);
-  }
-  const byTime = [...withdrawals].sort((a, b) => a.unstakeTs.getTime() - b.unstakeTs.getTime());
+  const superseded = supersededIds(skippedEvents);
+  const byTime = [...withdrawals].sort(byBooking);
   const emptySkips = byTime.filter((k) => k.skippedAt !== null && !superseded.has(k.id)).map((k) => (k.skippedAt as Date).getTime());
   const carried = new Map<string, WithdrawalRow>();
   for (const l of byTime) {
-    if (l.withdrawSignature === null || l.cancelSignature !== null || l.asset !== "SKR") continue;
+    // Only a wallet row: a Sprouts row's own line already exports everything it delivered, so carrying onto it would export S twice
+    if (l.source !== "wallet" || l.withdrawSignature === null || l.cancelSignature !== null || l.asset !== "SKR") continue;
     const t = l.unstakeTs.getTime();
-    const boundary = Math.max(-Infinity, ...byTime.filter((x) => x.id !== l.id && x.unstakeTs.getTime() < t && (x.withdrawSignature !== null || x.cancelSignature !== null)).map((x) => x.unstakeTs.getTime()));
+    const ends = byTime.filter((x) => x.id !== l.id && bookedBefore(x, l) && (x.withdrawSignature !== null || x.cancelSignature !== null));
     const own = (l.sharesUnstaked ?? 0n) > 0n ? (l.amountRaw ?? 0n) : 0n;
     const deliveredRaw = l.amountOutRaw ?? l.amountRaw ?? 0n;
     let room = deliveredRaw > own ? deliveredRaw - own : 0n;
     const candidates = byTime.filter((s) => s.source === "sprouts" && s.asset === "SKR" && superseded.has(s.id) && !carried.has(s.id)
       && s.skippedAt !== null && s.withdrawSignature === null && s.cancelSignature === null
-      && s.unstakeTs.getTime() < t && s.unstakeTs.getTime() > boundary
+      && bookedBefore(s, l) && !ends.some((x) => bookedBefore(s, x))
       && !emptySkips.some((k) => k > (s.skippedAt as Date).getTime() && k < t)).reverse();
     for (const s of candidates) {
       const amount = s.amountRaw ?? 0n;

@@ -1,7 +1,6 @@
 import type { Repo } from "@/db/repo";
-import type { UserRow, WithdrawalRow } from "@/db/types";
+import type { EventRow, UserRow, WithdrawalRow } from "@/db/types";
 import type { Position } from "./staking";
-import { SUPERSEDED_SLACK_MS } from "./withdraw-run";
 
 const SCALE = 1_000_000_000n;
 
@@ -69,11 +68,13 @@ computePot.nextFruitProgress = nextFruitProgress;
 /** The ledger side of the pot for one user, so the route, the reconciliation and the withdraw routes share one formula. */
 export async function potInputs(repo: Repo, user: UserRow) {
   // Independent reads at once; the legs of every planting in one batched read (was one read per planting).
-  const [plantings, withdrawals, adjustments] = await Promise.all([
+  const [plantings, withdrawals, adjustments, skippedEvents] = await Promise.all([
     repo.listConfirmedPlantings(user.seedVaultPubkey), repo.listWithdrawals(user.seedVaultPubkey, 10_000), repo.listStakeAdjustments(user.seedVaultPubkey),
+    // 11-14: why each skipped withdrawal closed (absorbedPickIds absorbs only "superseded" ones)
+    repo.listEvents(user.seedVaultPubkey, ["withdraw_skipped"], 10_000),
   ]);
   const legs = plantings.length ? await repo.plantingLegsFor(plantings.map((p) => p.id)) : [];
-  return { plantings, legs, withdrawals, adjustments };
+  return { plantings, legs, withdrawals, adjustments, skippedEvents };
 }
 
 export type PotInputs = Awaited<ReturnType<typeof potInputs>>;
@@ -88,26 +89,51 @@ export const isWholeCooldownRow = (w: WithdrawalRow): boolean => w.source === "w
 /** `budget` holds `amount`, 1% slack for the share price drift between two valuations of the same SKR. */
 export const holds = (budget: bigint, amount: bigint): boolean => budget * 100n >= amount * 99n;
 
+/** Rows in booking order, ties broken on id, so every walk below gives the same answer whatever order the rows were read in. */
+export const byBooking = (a: WithdrawalRow, b: WithdrawalRow): number => a.unstakeTs.getTime() - b.unstakeTs.getTime() || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+export const bookedBefore = (a: WithdrawalRow, b: WithdrawalRow): boolean => byBooking(a, b) < 0;
+
+/** The withdrawals closed as superseded (withdraw_skipped {reason: "superseded"}, 962d66c). A skipped row without that event closed with nothing unstaking. */
+export function supersededIds(skippedEvents: EventRow[]): Set<string> {
+  const ids = new Set<string>();
+  for (const e of skippedEvents) {
+    const d = (e.detail ?? {}) as Record<string, unknown>;
+    if (e.kind === "withdraw_skipped" && d.reason === "superseded" && typeof d.withdrawal === "string") ids.add(d.withdrawal);
+  }
+  return ids;
+}
+
 /**
  * 11-14 (review of 962d66c): the rows whose SKR a later whole-cooldown row E counts again, so each SKR amount is one pick.
- * When E is booked, the same run first closes the user's older open rows as superseded (skippedAt within the slack before E's
- * time). The chain's one read cannot tell why each was replaced: cancelled and its shares unstaked again (put back: E holds that SKR)
- * or withdrawn from the wallet and followed by an unstake and a restake of the same size (a real pick: E holds new SKR). The rule:
- * newest first, a superseded row E's amount can still hold is E's own SKR again and leaves the picks; the first one E cannot hold
- * stops the walk. A cancelled E absorbs nothing (its cooldown went back, and the reconcile books the returned shares as a stake).
- * Display only: an absorbed row's principal still lowers put in, so put in, earned and fruit never move. Rows not superseded by a
- * whole-cooldown row (every Sprouts pick, every share-drop wallet row) count exactly as before.
+ * A row S closed as superseded is a candidate for the FIRST whole-cooldown row booked after S closed, whichever ran first: the
+ * reconcile closes and books E in one run, but the crank can close S while the new cooldown runs and the reconcile book E hours
+ * later. S is no candidate when anything ended or replaced its cooldown before E: another row booked after S closed (it covered the
+ * cooldown), a row newer than S delivered or cancelled, or a skip that found nothing unstaking. The chain's one read cannot tell
+ * why S was replaced: cancelled and its shares unstaked again (put back: E holds that SKR) or withdrawn from the wallet and followed
+ * by an unstake and a restake of the same size (a real pick: E holds new SKR). The rule: newest first, a candidate E's amount can
+ * still hold is E's own SKR again and leaves the picks; the first one E cannot hold stops the walk. A cancelled E absorbs nothing
+ * (its cooldown went back, and the reconcile books the returned shares as a stake). A skipped row with no "superseded" event (closed
+ * with nothing unstaking, or before 962d66c) is never absorbed.
+ * Display only: an absorbed row's principal still lowers put in, so put in, earned and fruit never move. Rows not superseded into a
+ * whole-cooldown row (every share-drop wallet row, every Sprouts pick delivered or still cooling) count exactly as before.
  */
-export function absorbedPickIds(withdrawals: WithdrawalRow[]): Set<string> {
+export function absorbedPickIds(withdrawals: WithdrawalRow[], skippedEvents: EventRow[]): Set<string> {
+  if (!Array.isArray(skippedEvents)) throw new Error("absorbedPickIds needs the withdraw_skipped events");
+  const superseded = supersededIds(skippedEvents);
+  const rows = [...withdrawals].sort(byBooking);
+  const emptySkips = rows.filter((k) => k.skippedAt !== null && !superseded.has(k.id)).map((k) => (k.skippedAt as Date).getTime());
   const absorbed = new Set<string>();
-  const byTime = [...withdrawals].sort((a, b) => a.unstakeTs.getTime() - b.unstakeTs.getTime());
-  for (const e of byTime) {
+  for (const e of rows) {
     if (!isWholeCooldownRow(e) || e.cancelSignature !== null) continue;
     const t = e.unstakeTs.getTime();
-    const run = byTime
-      .filter((s) => s.id !== e.id && !absorbed.has(s.id) && s.skippedAt !== null && s.withdrawSignature === null && s.cancelSignature === null
-        && s.unstakeTs.getTime() < t && s.skippedAt.getTime() <= t && s.skippedAt.getTime() >= t - SUPERSEDED_SLACK_MS)
-      .reverse();
+    const run = rows.filter((s) => {
+      if (s.id === e.id || absorbed.has(s.id) || !superseded.has(s.id) || s.skippedAt === null || s.withdrawSignature !== null || s.cancelSignature !== null) return false;
+      const closed = s.skippedAt.getTime();
+      if (!bookedBefore(s, e) || closed > t) return false;
+      if (rows.some((x) => x.id !== s.id && x.id !== e.id && x.unstakeTs.getTime() > closed && bookedBefore(x, e))) return false;
+      if (rows.some((x) => (x.withdrawSignature !== null || x.cancelSignature !== null) && bookedBefore(s, x) && bookedBefore(x, e))) return false;
+      return !emptySkips.some((k) => k > closed && k < t);
+    }).reverse();
     let left = e.amountRaw ?? 0n;
     for (const s of run) {
       const amount = s.amountRaw ?? 0n;
@@ -120,8 +146,8 @@ export function absorbedPickIds(withdrawals: WithdrawalRow[]): Set<string> {
 }
 
 /** The withdrawals that count as picks (the picked total, the pick timeline, the withdrawal count): not cancelled, not absorbed. */
-export function countedPicks(withdrawals: WithdrawalRow[]): WithdrawalRow[] {
-  const absorbed = absorbedPickIds(withdrawals);
+export function countedPicks(withdrawals: WithdrawalRow[], skippedEvents: EventRow[]): WithdrawalRow[] {
+  const absorbed = absorbedPickIds(withdrawals, skippedEvents);
   return withdrawals.filter((w) => w.cancelSignature === null && !absorbed.has(w.id));
 }
 
@@ -133,7 +159,7 @@ export function potFromInputs(user: UserRow, inputs: PotInputs, chain: { positio
     adjustments: inputs.adjustments,
     // An absorbed row adds nothing to picked; its principal still counts, so put in and earned are unchanged (absorbedPickIds).
     picks: ((absorbed) => inputs.withdrawals.filter((w) => w.cancelSignature === null)
-      .map((w) => ({ amountRaw: absorbed.has(w.id) ? 0n : (w.amountRaw ?? 0n), principalRaw: w.principalRaw })))(absorbedPickIds(inputs.withdrawals)),
+      .map((w) => ({ amountRaw: absorbed.has(w.id) ? 0n : (w.amountRaw ?? 0n), principalRaw: w.principalRaw })))(absorbedPickIds(inputs.withdrawals, inputs.skippedEvents)),
   });
 }
 

@@ -4,7 +4,7 @@ import { setRepoForTests } from "@/db/repo";
 import { issueSession } from "@/lib/session";
 import { reconcileOwnStakes } from "@/lib/reconcile";
 import { runWithdrawCrank } from "@/lib/withdraw-run";
-import { potInputs, potFromInputs, countedPicks } from "@/lib/pot";
+import { potInputs, potFromInputs, countedPicks, absorbedPickIds } from "@/lib/pot";
 import type { Position } from "@/lib/staking";
 import { GET as exportTax } from "@/app/api/export/tax/route";
 
@@ -37,13 +37,14 @@ beforeEach(async () => {
 const reconcile = (pos: Position) => reconcileOwnStakes({ repo, now: new Date(R), chain: { readPosition: async () => pos, sharePrice: async () => SP, finalized: async () => true } });
 const crank = (pos: Position, sig: string, nowMs = R + 49 * H) => runWithdrawCrank({ repo, now: new Date(nowMs), chain: { readPosition: async () => pos, crankWithdraw: async () => sig }, alert: async () => {} });
 /** A Sprouts unstake confirmed `msAgo` before now: shares burned, amount fixed at unstake, principal the part above earned. */
-async function sproutsRow(msAgo: number, o: { shares?: bigint; amountRaw?: bigint; principalRaw?: bigint } = {}) {
-  const w = await repo.insertWithdrawal({ userPubkey: U, asset: "SKR", source: "sprouts", unstakeSignature: "sigS", sharesUnstaked: o.shares ?? 100_000_000n, amountRaw: o.amountRaw ?? 114_600_000n, principalRaw: o.principalRaw ?? 50_000_000n });
+async function sproutsRow(msAgo: number, o: { shares?: bigint; amountRaw?: bigint; principalRaw?: bigint; sig?: string } = {}) {
+  const w = await repo.insertWithdrawal({ userPubkey: U, asset: "SKR", source: "sprouts", unstakeSignature: o.sig ?? "sigS", sharesUnstaked: o.shares ?? 100_000_000n, amountRaw: o.amountRaw ?? 114_600_000n, principalRaw: o.principalRaw ?? 50_000_000n });
   repo.withdrawals.get(w.id)!.unstakeTs = new Date(R - msAgo);
   return w.id;
 }
 const backdate = (id: string, msAgo: number) => { repo.withdrawals.get(id)!.unstakeTs = new Date(R - msAgo); };
-const rows = () => [...repo.withdrawals.values()].sort((a, b) => a.unstakeTs.getTime() - b.unstakeTs.getTime());
+const rows = () => [...repo.withdrawals.values()].sort((a, b) => a.unstakeTs.getTime() - b.unstakeTs.getTime() || a.id.localeCompare(b.id));
+const skips = () => repo.events.filter((e) => e.kind === "withdraw_skipped");
 const pot = async (pos: Position) => potFromInputs((await repo.getUser(U))!, await potInputs(repo, (await repo.getUser(U))!), { position: pos, sharePrice: SP });
 const csvLines = async () => {
   const res = await exportTax(new Request("http://x/api/export/tax", { headers: { authorization: `Bearer ${await issueSession(U, "M")}` } }));
@@ -67,7 +68,8 @@ describe("cancel + re-unstake from the wallet (the same shares): one cooldown, o
     expect(p.skrPickedRaw).toBe(114_700_000n);                 // was 229,300,000: S and the cooldown that holds S's SKR again
     expect(p.skrPrincipalPickedRaw).toBe(50_000_000n);         // S's principal still lowers put in, exactly as before
     expect(p.skrPutInRaw).toBe(1_146_000_000n - 50_000_000n);
-    expect(countedPicks((await potInputs(repo, (await repo.getUser(U))!)).withdrawals).map((w) => w.id)).toEqual([e.id]);
+    const inputs = await potInputs(repo, (await repo.getUser(U))!);
+    expect(countedPicks(inputs.withdrawals, inputs.skippedEvents).map((w) => w.id)).toEqual([e.id]);
   });
 
   it("the tax export: S's reward and withdrawal once, carried by the crank's delivery of the live cooldown", async () => {
@@ -76,7 +78,8 @@ describe("cancel + re-unstake from the wallet (the same shares): one cooldown, o
     await crank(live, "wsigC");
     const lines = await csvLines();
     const skr = lines.filter((l) => l.hash !== "sigPlant");
-    expect(skr.map((l) => l.hash)).toEqual(["sigS", "wsigC"]);
+    expect(skr.map((l) => l.hash)).toEqual(["sigS", ""]);   // the reward keeps its unstake hash; the inferred delivery is not a TxHash
+    expect(skr[1].line).toContain("likely arrived in wsigC..., after a later wallet unstake");
     expect(skr[0].received).toBe("64.60");     // S's earned: 114.6 - 50
     expect(skr[1].sent).toBe("114.60");        // S's own amount; the wallet's part of the delivery is not a Sprouts withdrawal
   });
@@ -94,7 +97,7 @@ describe("withdraw + re-unstake from the wallet (BZQ7, every 48 h): every unstak
     expect(repo.withdrawals.get(w1)!.skippedAt).not.toBeNull();
     const p = await pot(live);
     expect(p.skrPickedRaw).toBe(229_200_000n + 171_900_000n);
-    expect(countedPicks(rows())).toHaveLength(2);
+    expect(countedPicks(rows(), skips())).toHaveLength(2);
     await crank(live, "wsigB");
     const lines = await csvLines();
     expect(lines.map((l) => l.hash)).toEqual(["sigPlant"]);
@@ -114,7 +117,8 @@ describe("a Sprouts pick merged into a later wallet unstake (the cooldown reset)
     await crank(live, "wsigM");
     expect(repo.withdrawals.get(w.id)!.amountOutRaw).toBe(229_250_000n);
     const skr = (await csvLines()).filter((l) => l.hash !== "sigPlant");
-    expect(skr.map((l) => l.hash)).toEqual(["sigS", "wsigM"]);
+    expect(skr.map((l) => l.hash)).toEqual(["sigS", ""]);   // the reward keeps its unstake hash; the inferred delivery is not a TxHash
+    expect(skr[1].line).toContain("likely arrived in wsigM..., after a later wallet unstake");
     expect(skr[1].sent).toBe("114.60");
   });
 
@@ -137,7 +141,9 @@ describe("a Sprouts pick merged into a later wallet unstake (the cooldown reset)
     await reconcile(second);
     await crank(second, "wsig2");
     const skr = (await csvLines()).filter((l) => l.hash !== "sigPlant");
-    expect(skr.map((l) => l.hash)).toEqual(["sigS", "wsig1"]);
+    expect(skr.map((l) => l.hash)).toEqual(["sigS", ""]);   // the reward keeps its unstake hash; the inferred delivery is not a TxHash
+    expect(skr[1].line).toContain("likely arrived in wsig1..., after a later wallet unstake");
+    expect(skr.map((l) => l.line).join("\n")).not.toContain("wsig2");
   });
 });
 
@@ -148,7 +154,7 @@ describe("a plain Sprouts withdrawal: unchanged", () => {
     await crank(live, "wsigP", R);
     const p = await pot(position(900_000_000n, 0n, 0));
     expect(p.skrPickedRaw).toBe(114_600_000n);
-    expect(countedPicks(rows())).toHaveLength(1);
+    expect(countedPicks(rows(), skips())).toHaveLength(1);
     const skr = (await csvLines()).filter((l) => l.hash !== "sigPlant");
     expect(skr.map((l) => l.hash)).toEqual(["sigS", "wsigP"]);
   });
@@ -162,7 +168,7 @@ describe("an uncovered cooldown row (fix E)", () => {
     await reconcile(live);
     expect(repo.withdrawals.get(signup.id)!.skippedAt).not.toBeNull();
     expect((await pot(live)).skrPickedRaw).toBe(250_000_000_000n);
-    expect(countedPicks(rows())).toHaveLength(2);
+    expect(countedPicks(rows(), skips())).toHaveLength(2);
   });
 
   it("a cooldown no row ever tracked: its row is the pick", async () => {
@@ -181,5 +187,77 @@ describe("an uncovered cooldown row (fix E)", () => {
     const p = await pot(live);
     expect(p.skrPickedRaw).toBe(300_000_000n);
     expect(p.skrPutInRaw).toBe(1_146_000_000n - 50_000_000n);
+  });
+});
+
+// Review fix round (a1919b2)
+describe("fix round: orders, sources, missing events, ties", () => {
+  it("M2: the crank closes S as superseded while the new cooldown runs, the reconcile books E hours later: still one pick", async () => {
+    const s = await sproutsRow(50 * H);                  // due, so the crank visits this user
+    const live = position(MINTED - 100_000_000n, 114_700_000n, 6 * H);
+    await crank(live, "never", R);                       // not matured: S closed as superseded, no row added
+    expect(repo.withdrawals.get(s)!.skippedAt).not.toBeNull();
+    expect(repo.withdrawals.size).toBe(1);
+    repo.withdrawals.get(s)!.skippedAt = new Date(R - 5 * H);   // that crank ran five hours before the reconcile
+    await reconcile(live);
+    expect(rows()).toHaveLength(2);
+    expect((await pot(live)).skrPickedRaw).toBe(114_700_000n);
+    expect(countedPicks(rows(), skips())).toHaveLength(1);
+  });
+
+  it("M2 bound: a row booked between S's close and E (it covered the cooldown) keeps S out of E", async () => {
+    const s = await sproutsRow(30 * H);
+    repo.withdrawals.get(s)!.skippedAt = new Date(R - 20 * H);
+    await repo.addEvent({ userPubkey: U, walletPubkey: null, kind: "withdraw_skipped", detail: { withdrawal: s, reason: "superseded" } });
+    const w = await repo.insertWithdrawal({ userPubkey: U, asset: "SKR", source: "wallet", unstakeSignature: null, sharesUnstaked: 5n, amountRaw: 1_000_000n, principalRaw: 0n });
+    backdate(w.id, 10 * H);
+    repo.withdrawals.get(w.id)!.skippedAt = new Date(R - 3 * H);
+    await repo.addEvent({ userPubkey: U, walletPubkey: null, kind: "withdraw_skipped", detail: { withdrawal: w.id, reason: "superseded" } });
+    const e = await repo.insertWithdrawal({ userPubkey: U, asset: "SKR", source: "wallet", unstakeSignature: null, sharesUnstaked: 0n, amountRaw: 500_000_000n, principalRaw: 0n });
+    expect([...absorbedPickIds(rows(), skips())]).toEqual([w.id]);
+    expect(countedPicks(rows(), skips()).map((x) => x.id).sort()).toEqual([s, e.id].sort());
+  });
+
+  it("no withdraw_skipped events: nothing is absorbed and nothing is carried (the numbers before this fix)", async () => {
+    await sproutsRow(30 * H);
+    const live = position(MINTED - 100_000_000n, 114_700_000n, 2 * H);
+    await reconcile(live);
+    repo.events = repo.events.filter((e) => e.kind !== "withdraw_skipped");
+    expect((await pot(live)).skrPickedRaw).toBe(229_300_000n);
+    await crank(live, "wsigN");
+    expect((await csvLines()).map((l) => l.hash)).toEqual(["sigPlant"]);
+  });
+
+  it("a skip with nothing unstaking (no 'superseded' reason) is never absorbed", async () => {
+    const s = await sproutsRow(30 * H);
+    repo.withdrawals.get(s)!.skippedAt = new Date(R - 10 * H);
+    await repo.addEvent({ userPubkey: U, walletPubkey: null, kind: "withdraw_skipped", detail: { withdrawal: s } });
+    await repo.insertWithdrawal({ userPubkey: U, asset: "SKR", source: "wallet", unstakeSignature: null, sharesUnstaked: 0n, amountRaw: 500_000_000n, principalRaw: 0n });
+    expect(absorbedPickIds(rows(), skips()).size).toBe(0);
+  });
+
+  it("H1: a delivery booked on a Sprouts row carries no superseded row (its own line already exports all it sent)", async () => {
+    const s = await sproutsRow(100 * H);
+    repo.withdrawals.get(s)!.skippedAt = new Date(R - 60 * H);
+    await repo.addEvent({ userPubkey: U, walletPubkey: null, kind: "withdraw_skipped", detail: { withdrawal: s, reason: "superseded" } });
+    const l = await sproutsRow(50 * H, { sig: "sigL" });
+    await repo.setWithdrawalDone(l, "wsigL", 229_250_000n);
+    const skr = (await csvLines()).filter((x) => x.hash !== "sigPlant");
+    expect(skr.map((x) => x.hash)).toEqual(["sigL", "wsigL"]);
+    expect(skr[1].sent).toBe("229.25");
+  });
+
+  it("equal timestamps: the same rows are absorbed whatever order they are read in (ties broken on id)", async () => {
+    const a = await sproutsRow(30 * H, { sig: "sigA" });
+    const b = await sproutsRow(30 * H, { sig: "sigB" });
+    const live = position(MINTED - 200_000_000n, 114_700_000n, 2 * H);
+    await reconcile(live);
+    for (const id of [a, b]) repo.withdrawals.get(id)!.skippedAt = repo.withdrawals.get(a)!.skippedAt;
+    const forward = absorbedPickIds(rows(), skips());
+    const backward = absorbedPickIds([...rows()].reverse(), skips());
+    expect(forward.size).toBe(1);   // the cooldown holds one of the two
+    expect([...backward]).toEqual([...forward]);
+    expect([...forward]).toEqual([[a, b].sort().at(-1)]);   // newest by (time, id) first
+    expect((await repo.listWithdrawals(U, 10)).map((w) => w.id)).toEqual((await repo.listWithdrawals(U, 10)).map((w) => w.id));
   });
 });

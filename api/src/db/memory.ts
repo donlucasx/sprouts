@@ -11,6 +11,9 @@ const id = () => `mem-${++seq}`;
 const DAY_MS = 86_400_000;
 
 /** In-process repo for tests and the cron unit tests. Same contract as the Supabase one, nothing persisted. */
+/** Mirrors SupabaseRepo's withdrawal order: newest unstake first, ties broken on id (descending) so equal times read the same every time. */
+const newestFirst = (a: T.WithdrawalRow, b: T.WithdrawalRow) => b.unstakeTs.getTime() - a.unstakeTs.getTime() || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0);
+
 export class MemoryRepo implements Repo {
   users = new Map<string, T.UserRow>();
   rules = new Map<string, T.RulesRow>();
@@ -514,11 +517,11 @@ export class MemoryRepo implements Repo {
 
   async pendingWithdrawal(userPubkey: string) {
     // Either source: a cooldown the wallet started is the basket too (review I2, [A24]).
-    return this.open().filter((w) => w.userPubkey === userPubkey).sort((a, b) => b.unstakeTs.getTime() - a.unstakeTs.getTime())[0] ?? null;
+    return this.open().filter((w) => w.userPubkey === userPubkey).sort(newestFirst)[0] ?? null;
   }
 
   async listWithdrawals(userPubkey: string, limit: number) {
-    return [...this.withdrawals.values()].filter((w) => w.userPubkey === userPubkey).sort((a, b) => b.unstakeTs.getTime() - a.unstakeTs.getTime()).slice(0, limit);
+    return [...this.withdrawals.values()].filter((w) => w.userPubkey === userPubkey).sort(newestFirst).slice(0, limit);
   }
 
   async dueWithdrawals(before: Date) {

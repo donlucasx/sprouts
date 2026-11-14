@@ -576,13 +576,13 @@ export class SupabaseRepo implements Repo {
   }
 
   async pendingWithdrawal(userPubkey: string) {
-    const { data, error } = await this.openWithdrawals().eq("user_pubkey", userPubkey).order("unstake_ts", { ascending: false }).limit(1).maybeSingle();
+    const { data, error } = await this.openWithdrawals().eq("user_pubkey", userPubkey).order("unstake_ts", { ascending: false }).order("id", { ascending: false }).limit(1).maybeSingle();
     if (error) throw new Error(error.message);
     return data ? withdrawalRow(data as Row) : null;
   }
 
   async listWithdrawals(userPubkey: string, limit: number) {
-    return this.many(this.db.from("withdrawals").select().eq("user_pubkey", userPubkey).order("unstake_ts", { ascending: false }).limit(limit), withdrawalRow);
+    return this.many(this.db.from("withdrawals").select().eq("user_pubkey", userPubkey).order("unstake_ts", { ascending: false }).order("id", { ascending: false }).limit(limit), withdrawalRow);
   }
 
   async dueWithdrawals(before: Date) {
