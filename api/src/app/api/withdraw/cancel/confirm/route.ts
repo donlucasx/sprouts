@@ -51,7 +51,8 @@ async function postHandler(request: Request) {
     after = await readPosition(owner);
   }
   if (after.unstakingRaw !== 0n) return NextResponse.json({ error: "The chain still shows the basket. Check again in a minute." }, { status: 409 });
-  await repo.setWithdrawalCancelled(pending.id, posted.signature);
+  // 11-14 (ops #6): the row may have closed while the cancel was in flight (the crank closes a superseded row): never overwrite it.
+  if (!(await repo.setWithdrawalCancelled(pending.id, posted.signature))) return NextResponse.json({ error: "That basket is already closed." }, { status: 409 });
   return NextResponse.json({ cancelled: true });
 }
 export const POST = withAppErrorLog("withdraw/cancel/confirm", postHandler);

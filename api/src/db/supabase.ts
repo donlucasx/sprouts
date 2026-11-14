@@ -583,19 +583,24 @@ export class SupabaseRepo implements Repo {
     return this.many(this.openWithdrawals().lte("unstake_ts", before.toISOString()), withdrawalRow);
   }
 
-  async setWithdrawalDone(withdrawalId: string, signature: string, amountOutRaw: bigint) {
-    const { error } = await this.db.from("withdrawals").update({ withdraw_signature: signature, amount_out_raw: amountOutRaw.toString() }).eq("id", withdrawalId);
+  /** 11-14 (ops #6): a close changes the row only while it is open (the same three nulls as openWithdrawals); true when one changed. */
+  private async closeWithdrawal(withdrawalId: string, values: Row): Promise<boolean> {
+    const { data, error } = await this.db.from("withdrawals").update(values).eq("id", withdrawalId)
+      .is("withdraw_signature", null).is("cancel_signature", null).is("skipped_at", null).select("id");
     if (error) throw new Error(error.message);
+    return (data ?? []).length > 0;
+  }
+
+  async setWithdrawalDone(withdrawalId: string, signature: string, amountOutRaw: bigint) {
+    return this.closeWithdrawal(withdrawalId, { withdraw_signature: signature, amount_out_raw: amountOutRaw.toString() });
   }
 
   async setWithdrawalCancelled(withdrawalId: string, signature: string) {
-    const { error } = await this.db.from("withdrawals").update({ cancel_signature: signature }).eq("id", withdrawalId);
-    if (error) throw new Error(error.message);
+    return this.closeWithdrawal(withdrawalId, { cancel_signature: signature });
   }
 
   async setWithdrawalSkipped(withdrawalId: string) {
-    const { error } = await this.db.from("withdrawals").update({ skipped_at: new Date().toISOString() }).eq("id", withdrawalId);
-    if (error) throw new Error(error.message);
+    return this.closeWithdrawal(withdrawalId, { skipped_at: new Date().toISOString() });
   }
 
   /** Revokes the user's live session on this device, then inserts the new one (R84: one per wallet per device). */

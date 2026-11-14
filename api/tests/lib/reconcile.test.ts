@@ -308,3 +308,66 @@ describe("reconcileOwnStakes (R61, [A16])", () => {
     expect(r.deferred).toEqual([]);
   });
 });
+
+// 11-14 (ops #6): one cooldown slot per position. B: before the reconcile books a wallet row, the user's open rows older than the
+// chain's cooldown (5 min slack) are closed as skipped "superseded". E: a cooldown no open row covers gets one wallet row.
+describe("reconcileOwnStakes: superseded rows and uncovered cooldowns (ops #6)", () => {
+  const H = 3_600_000;
+  const chainTs = (unstakingRaw: bigint, shares: bigint, msBefore: number) => ({
+    readPosition: async () => ({ shares, stakedRaw: 0n, unstakingRaw, unstakeTs: BigInt(Math.floor((LATER.getTime() - msBefore) / 1000)) }),
+    sharePrice: async () => SP, finalized: async () => true,
+  });
+  async function oldRow(repo: MemoryRepo, hoursBefore: number) {
+    const w = await repo.insertWithdrawal({ userPubkey: "U", asset: "SKR", source: "wallet", unstakeSignature: null, sharesUnstaked: 0n, amountRaw: 1n, principalRaw: 0n });
+    repo.withdrawals.get(w.id)!.unstakeTs = new Date(LATER.getTime() - hoursBefore * H);
+    return w.id;
+  }
+  const open = (repo: MemoryRepo) => [...repo.withdrawals.values()].filter((w) => !w.withdrawSignature && !w.cancelSignature && !w.skippedAt);
+
+  it("B: a new wallet unstake closes the user's older open rows as superseded before its row is booked", async () => {
+    const repo = await seeded(1_000_000_000n);
+    const stale = await oldRow(repo, 72);
+    await reconcileOwnStakes({ repo, now: LATER, chain: chainTs(687_600_000n, 400_000_000n, 20 * H) });
+    expect(repo.withdrawals.get(stale)!.skippedAt).not.toBeNull();
+    expect(repo.withdrawals.get(stale)!.cancelSignature).toBeNull();
+    expect(repo.events.filter((e) => e.kind === "withdraw_skipped").map((e) => e.detail)).toEqual([{ withdrawal: stale, reason: "superseded" }]);
+    const live = open(repo);
+    expect(live).toHaveLength(1);
+    expect(live[0].id).not.toBe(stale);
+    expect(live[0].sharesUnstaked).toBe(600_000_000n);
+  });
+
+  it("B never closes a row newer than the chain's cooldown", async () => {
+    const repo = await seeded(1_000_000_000n);
+    const keep = await oldRow(repo, 10);
+    await reconcileOwnStakes({ repo, now: LATER, chain: chainTs(687_600_000n, 400_000_000n, 20 * H) });
+    expect(repo.withdrawals.get(keep)!.skippedAt).toBeNull();
+  });
+
+  it("E: a cooldown that netted to zero shares gets exactly one wallet row (amount = unstaking, shares 0, principal 0); a second run adds none", async () => {
+    const repo = await seeded(1_000_000_000n);
+    const stale = await oldRow(repo, 30);   // 3Jqt: the sign-up row for a cooldown since withdrawn and replaced
+    for (let run = 0; run < 2; run++) await reconcileOwnStakes({ repo, now: LATER, chain: chainTs(50_000_000_000n, 1_000_000_000n, 20 * H) });
+    expect(repo.withdrawals.get(stale)!.skippedAt).not.toBeNull();
+    const live = open(repo);
+    expect(live).toHaveLength(1);
+    expect(live[0]).toMatchObject({ source: "wallet", unstakeSignature: null, sharesUnstaked: 0n, principalRaw: 0n, amountRaw: 50_000_000_000n });
+    expect((await repo.listStakeAdjustments("U")).length).toBe(0);   // nothing booked to the pot's put in
+  });
+
+  it("E: a cooldown already covered (the reconcile's own row, or an open row newer than it) adds nothing", async () => {
+    const repo = await seeded(1_000_000_000n);
+    for (let run = 0; run < 2; run++) await reconcileOwnStakes({ repo, now: LATER, chain: chainTs(687_600_000n, 400_000_000n, 20 * H) });
+    expect(repo.withdrawals.size).toBe(1);
+    const repo2 = await seeded(1_000_000_000n);
+    await oldRow(repo2, 19);
+    await reconcileOwnStakes({ repo: repo2, now: LATER, chain: chainTs(5n, 1_000_000_000n, 20 * H) });
+    expect(repo2.withdrawals.size).toBe(1);
+  });
+
+  it("E: nothing unstaking adds no row", async () => {
+    const repo = await seeded(1_000_000_000n);
+    await reconcileOwnStakes({ repo, now: LATER, chain: chainTs(0n, 1_000_000_000n, 20 * H) });
+    expect(repo.withdrawals.size).toBe(0);
+  });
+});

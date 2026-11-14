@@ -326,3 +326,32 @@ describe("MemoryRepo swap parts", () => {
     expect([...r2.plantings.values()].at(-1)!.status).toBe("failed");
   });
 });
+
+// 11-14 (ops #6, fix C): mirrors SupabaseRepo: a close only changes a row still open, and says whether it did.
+describe("MemoryRepo withdrawal closes are guarded", () => {
+  const W = { userPubkey: "U", asset: "SKR" as const, source: "wallet" as const, unstakeSignature: null, sharesUnstaked: 0n, amountRaw: 5n, principalRaw: 0n };
+  it("an open row closes once; a second close of any kind changes nothing", async () => {
+    const r = new MemoryRepo();
+    const w = await r.insertWithdrawal(W);
+    expect(await r.setWithdrawalSkipped(w.id)).toBe(true);
+    const skippedAt = (await r.listWithdrawals("U", 1))[0].skippedAt;
+    expect(await r.setWithdrawalDone(w.id, "sig", 5n)).toBe(false);
+    expect(await r.setWithdrawalCancelled(w.id, "c")).toBe(false);
+    expect(await r.setWithdrawalSkipped(w.id)).toBe(false);
+    const after = (await r.listWithdrawals("U", 1))[0];
+    expect(after).toMatchObject({ withdrawSignature: null, amountOutRaw: null, cancelSignature: null, skippedAt });
+  });
+  it("done and cancelled each close an open row and guard the others", async () => {
+    const r = new MemoryRepo();
+    const a = await r.insertWithdrawal(W);
+    expect(await r.setWithdrawalDone(a.id, "sig", 5n)).toBe(true);
+    expect(await r.setWithdrawalCancelled(a.id, "c")).toBe(false);
+    const b = await r.insertWithdrawal(W);
+    expect(await r.setWithdrawalCancelled(b.id, "c")).toBe(true);
+    expect(await r.setWithdrawalDone(b.id, "sig", 5n)).toBe(false);
+    expect(await r.setWithdrawalDone("missing", "sig", 5n)).toBe(false);
+    const rows = await r.listWithdrawals("U", 5);
+    expect(rows.find((x) => x.id === a.id)!.cancelSignature).toBeNull();
+    expect(rows.find((x) => x.id === b.id)!.withdrawSignature).toBeNull();
+  });
+});

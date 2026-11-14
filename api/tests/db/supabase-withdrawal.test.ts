@@ -30,3 +30,31 @@ describe("SupabaseRepo.insertWithdrawal (K-I4, unique index 0009)", () => {
     expect(nosig.calls).toEqual(["insert"]);
   });
 });
+
+// 11-14 (ops #6, fix C): the three withdrawal closes only change a row still open, and say whether one changed.
+describe("SupabaseRepo withdrawal closes are guarded", () => {
+  function updateDb(changed: boolean) {
+    const calls: string[] = [];
+    const q: Record<string, unknown> = {
+      update: (v: Record<string, unknown>) => { calls.push(`update ${Object.keys(v).sort().join(",")}`); return q; },
+      eq: (c: string, v: string) => { calls.push(`eq ${c}=${v}`); return q; },
+      is: (c: string, v: null) => { calls.push(`is ${c}=${v}`); return q; },
+      select: (c: string) => { calls.push(`select ${c}`); return Promise.resolve({ data: changed ? [{ id: "w1" }] : [], error: null }); },
+    };
+    return { repo: new SupabaseRepo({ from: () => q } as unknown as SupabaseClient), calls };
+  }
+  const OPEN = ["is withdraw_signature=null", "is cancel_signature=null", "is skipped_at=null"];
+  it("done, cancelled and skipped each filter on the three nulls and report whether a row changed", async () => {
+    for (const [name, call] of [
+      ["done", (r: SupabaseRepo) => r.setWithdrawalDone("w1", "sig", 5n)],
+      ["cancelled", (r: SupabaseRepo) => r.setWithdrawalCancelled("w1", "c")],
+      ["skipped", (r: SupabaseRepo) => r.setWithdrawalSkipped("w1")],
+    ] as const) {
+      const hit = updateDb(true);
+      expect(await call(hit.repo), name).toBe(true);
+      for (const g of [...OPEN, "eq id=w1", "select id"]) expect(hit.calls, name).toContain(g);
+      const miss = updateDb(false);
+      expect(await call(miss.repo), name).toBe(false);
+    }
+  });
+});

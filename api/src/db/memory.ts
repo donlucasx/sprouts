@@ -521,21 +521,32 @@ export class MemoryRepo implements Repo {
     return this.open().filter((w) => w.unstakeTs.getTime() <= before.getTime());
   }
 
-  async setWithdrawalDone(withdrawalId: string, signature: string, amountOutRaw: bigint) {
+  /** Mirrors SupabaseRepo: a close changes the row only while it is open; true when one changed (11-14, ops #6). */
+  private openRow(withdrawalId: string) {
     const w = this.withdrawals.get(withdrawalId);
-    if (!w) return;
+    return w && w.withdrawSignature === null && w.cancelSignature === null && w.skippedAt === null ? w : null;
+  }
+
+  async setWithdrawalDone(withdrawalId: string, signature: string, amountOutRaw: bigint) {
+    const w = this.openRow(withdrawalId);
+    if (!w) return false;
     w.withdrawSignature = signature;
     w.amountOutRaw = amountOutRaw;
+    return true;
   }
 
   async setWithdrawalCancelled(withdrawalId: string, signature: string) {
-    const w = this.withdrawals.get(withdrawalId);
-    if (w) w.cancelSignature = signature;
+    const w = this.openRow(withdrawalId);
+    if (!w) return false;
+    w.cancelSignature = signature;
+    return true;
   }
 
   async setWithdrawalSkipped(withdrawalId: string) {
-    const w = this.withdrawals.get(withdrawalId);
-    if (w) w.skippedAt = new Date();
+    const w = this.openRow(withdrawalId);
+    if (!w) return false;
+    w.skippedAt = new Date();
+    return true;
   }
 
   async putSession(s: { tokenHash: string; userPubkey: string; device: string; expiresAt: Date }) {

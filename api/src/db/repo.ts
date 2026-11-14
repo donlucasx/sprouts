@@ -132,10 +132,17 @@ export interface Repo {
   listWithdrawals(userPubkey: string, limit: number): Promise<T.WithdrawalRow[]>;
   /** Not delivered, not cancelled, not skipped, unstaked before `before` [A11]. */
   dueWithdrawals(before: Date): Promise<T.WithdrawalRow[]>;
-  setWithdrawalDone(id: string, signature: string, amountOutRaw: bigint): Promise<void>;
-  setWithdrawalCancelled(id: string, signature: string): Promise<void>;
-  /** Closes a row the chain has nothing unstaking for (a cancel the app did not see, or a wallet-side withdrawal already taken). */
-  setWithdrawalSkipped(id: string): Promise<void>;
+  /**
+   * The three closes change a row only while it is still open (withdraw_signature, cancel_signature and skipped_at all null) and
+   * answer whether one changed (11-14, ops #6): a closed row is never overwritten by a later close.
+   */
+  setWithdrawalDone(id: string, signature: string, amountOutRaw: bigint): Promise<boolean>;
+  setWithdrawalCancelled(id: string, signature: string): Promise<boolean>;
+  /**
+   * Closes a row the chain has nothing unstaking for (a cancel the app did not see, or a wallet-side withdrawal already taken), or
+   * one a newer cooldown superseded. Skipped, not cancelled: the pot still counts the pick.
+   */
+  setWithdrawalSkipped(id: string): Promise<boolean>;
 
   /** Replaces any live session of the same user on the same device (R84: one per wallet per device). */
   putSession(s: { tokenHash: string; userPubkey: string; device: string; expiresAt: Date }): Promise<void>;

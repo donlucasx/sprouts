@@ -260,4 +260,18 @@ describe("withdraw routes", () => {
     expect((await repo.listWithdrawals(U, 5))[0].cancelSignature).not.toBeNull();
     expect(await repo.pendingWithdrawal(U)).toBeNull();
   });
+  // 11-14 (ops #6, fix C): the row was closed while the cancel was in flight (the crank closed it as superseded): the route answers
+  // "already closed" and never overwrites the closed row with a cancel.
+  it("put it back: a row closed meanwhile is answered as already closed, not overwritten", async () => {
+    const w = await repo.insertWithdrawal({ userPubkey: U, asset: "SKR", source: "sprouts", unstakeSignature: "x", sharesUnstaked: 80_279_232n, amountRaw: 92_000_000n, principalRaw: 0n });
+    const signed = await signAsUser((await (await cancelBuild(post("/api/withdraw/cancel/build", {}))).json()).transaction);
+    statusMock.mockImplementation(async () => { await repo.setWithdrawalSkipped(w.id); return "confirmed"; });
+    positionMock.mockResolvedValue(staked(2_000_000_000n));
+    const r = await cancelConfirm(post("/api/withdraw/cancel/confirm", { signedTransaction: signed }));
+    expect(r.status).toBe(409);
+    expect((await r.json()).error).toMatch(/already closed/i);
+    const row = (await repo.listWithdrawals(U, 5))[0];
+    expect(row.cancelSignature).toBeNull();
+    expect(row.skippedAt).not.toBeNull();
+  });
 });

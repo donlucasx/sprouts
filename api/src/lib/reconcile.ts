@@ -2,6 +2,7 @@ import type { Repo } from "@/db/repo";
 import type { PlantingRow, StakeAdjustmentRow, WithdrawalRow } from "@/db/types";
 import type { Position } from "./staking";
 import { sharesToRaw, potForUser } from "./pot";
+import { closeSupersededWithdrawals, insertCooldownRow, openWithdrawalsOf, SUPERSEDED_SLACK_MS } from "./withdraw-run";
 
 export type ReconcileChain = {
   readPosition(user: string): Promise<Position>;
@@ -35,6 +36,21 @@ function ledgerKey(plantings: PlantingRow[], withdrawals: WithdrawalRow[], adjus
     withdrawals.map((w) => [w.id, w.source, w.cancelSignature, String(w.sharesUnstaked)]),
     adjustments.map((x) => String(x.sharesDelta)),
   ]);
+}
+
+/**
+ * 11-14 (ops #6, fix E): a cooldown on chain that no open row covers (no open row at or after its start, less the slack) gets one
+ * wallet row so the crank delivers it, e.g. an unstake and a restake from the wallet that netted to zero shares (3Jqt 11-12). The
+ * user's superseded rows are closed first (fix B). A row the reconcile booked this run covers its own cooldown, so this adds nothing.
+ */
+async function coverCooldown(repo: Repo, user: string, position: Position): Promise<void> {
+  if (position.unstakingRaw === 0n || position.unstakeTs === null) return;
+  const chainMs = Number(position.unstakeTs) * 1000;
+  const open = await openWithdrawalsOf(repo, user);
+  if (open.some((w) => w.unstakeTs.getTime() + SUPERSEDED_SLACK_MS >= chainMs)) return;
+  await closeSupersededWithdrawals(repo, user, position, open);
+  await insertCooldownRow(repo, user, position);
+  console.error(`reconcile: ${user} has ${position.unstakingRaw} unstaking with no open row; booked a wallet row for it`);
 }
 
 /**
@@ -106,7 +122,10 @@ export async function reconcileOwnStakes(a: { repo: Repo; chain: ReconcileChain;
       const own = adjustments.reduce((s, x) => s + x.sharesDelta, 0n);
       const expected = user.joinedShares + minted - burned + own;
       const delta = position.shares - expected;
-      if (delta > -DUST_SHARES && delta < DUST_SHARES) continue;
+      if (delta > -DUST_SHARES && delta < DUST_SHARES) {
+        await coverCooldown(a.repo, user.seedVaultPubkey, position);
+        continue;
+      }
       if (delta < 0n && position.unstakingRaw === 0n) {
         // Fewer shares with nothing in the cooldown: a lagging read, or a cooldown already withdrawn between two runs. Not a fact to book
         // today (review I6); a real wallet unstake shows its cooldown on at least one daily run.
@@ -123,8 +142,11 @@ export async function reconcileOwnStakes(a: { repo: Repo; chain: ReconcileChain;
         // position (review C1: the post-unstake position would book the fruit as principal and re-offer it).
         const earnedNow = (await potForUser(a.repo, user, { position: { ...position, shares: position.shares - delta }, sharePrice })).skrEarnedRaw;
         const principalRaw = amountRaw > earnedNow ? amountRaw - earnedNow : 0n;
+        // 11-14 (ops #6, fix B): the chain has one cooldown slot, so the user's open rows older than this cooldown are dead: closed first.
+        await closeSupersededWithdrawals(a.repo, user.seedVaultPubkey, position);
         await a.repo.insertWithdrawal({ userPubkey: user.seedVaultPubkey, asset: "SKR", source: "wallet", unstakeSignature: null, sharesUnstaked: -delta, amountRaw, principalRaw });
       }
+      await coverCooldown(a.repo, user.seedVaultPubkey, position);
       adjusted.push(user.seedVaultPubkey);
     } catch (e) {
       console.error(`reconcile: ${user.seedVaultPubkey} skipped: ${e instanceof Error ? e.message : String(e)}`);
