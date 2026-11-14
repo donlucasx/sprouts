@@ -3,7 +3,7 @@
 import { movesEnabled } from "@/lib/moves";
 import { leashLive } from "@/lib/leash";
 import { EXPECTED_LEGS_ENABLED, shortWallet, realOpsSources, type OpsSources, type OpsNumbers } from "./sources";
-import { dailyRunLight, firstPlantingLight, moneyOpsLight, appErrorsLight, amountsAddUpLight, swapWatchingLight, swapsArrivingLight, pricesLight, gasLight, programLight, supportLight, PYTH_ACCESS_ENDS, LIGHT_LABELS, type Light, type LightKey } from "./lights";
+import { dailyRunLight, firstPlantingLight, moneyOpsLight, appErrorsLight, amountsAddUpLight, swapsCountedLight, swapWatchingLight, swapsArrivingLight, pricesLight, gasLight, programLight, supportLight, PYTH_ACCESS_ENDS, LIGHT_LABELS, type Light, type LightKey } from "./lights";
 
 export type OpsSnapshot = { at: string; lights: Light[]; numbers: OpsNumbers | null; numbersAt: string | null; blindSpots: string[]; liveOff: boolean };
 
@@ -16,7 +16,7 @@ const DAY = 86_400_000;
 /** Spec "Known blind spots", one per line. */
 export const BLIND_SPOTS = [
   "The swap watcher can be registered but silently not delivering. \"Swaps coming in\" only catches that after 1 to 3 days.",
-  "One wallet's swaps can go missing while other wallets' swaps keep arriving.",
+  "A missed swap shows on \"Every swap counted\" only after the next daily job (it checks the last 48 hours once a day).",
   "The Discord alerts themselves can fail, and then nothing tells you.",
   "A saving can succeed but with the wrong amount.",
 ];
@@ -57,7 +57,7 @@ async function gather(sources: OpsSources, now: Date, flags: { movesEnabled: boo
   const since7d = new Date(now.getTime() - 7 * DAY).toISOString();
   const T = <K extends keyof OpsSources>(name: K, fn: () => ReturnType<OpsSources[K]>) => withTimeout(fn as () => Promise<Awaited<ReturnType<OpsSources[K]>>>, TIMEOUT_MS).then((r) => ({ name, r }));
 
-  const [cron, first, failures, pending, appErrs, addUp, linked, webhook, swaps, feeds, skr, gas, legs, support, nums] = await Promise.all([
+  const [cron, first, failures, pending, appErrs, addUp, swapCheck, linked, webhook, swaps, feeds, skr, gas, legs, support, nums] = await Promise.all([
     T("cronLatest", () => sources.cronLatest()),
     T("firstPlantingLast", () => sources.firstPlantingLast()),
     // Audit F1: 14 days back, the remainder retry window; moneyOpsLight keeps the other kinds to 7.
@@ -65,6 +65,7 @@ async function gather(sources: OpsSources, now: Date, flags: { movesEnabled: boo
     T("oldestPendingWithdrawalAt", () => sources.oldestPendingWithdrawalAt()),
     T("appErrors", () => sources.appErrors(since24)),
     T("amountsAddUp", () => sources.amountsAddUp(new Date(now.getTime() - 30 * DAY).toISOString())),
+    T("swapCheck", () => sources.swapCheck(since7d)),
     T("linkedWallets", () => sources.linkedWallets()),
     T("webhookAddresses", () => sources.webhookAddresses()),
     T("swapStats", () => sources.swapStats(since24)),
@@ -101,6 +102,7 @@ async function gather(sources: OpsSources, now: Date, flags: { movesEnabled: boo
     light("moneyOps", [failures, pending], () => moneyOpsLight({ now, failures: v(failures), oldestPendingWithdrawalAt: v(pending) })),
     light("appErrors", [appErrs], () => appErrorsLight({ errors: v(appErrs) })),
     light("amountsAddUp", [addUp], () => amountsAddUpLight({ rows: v(addUp) })),
+    light("swapsCounted", [swapCheck], () => swapsCountedLight({ now, input: v(swapCheck) })),
     light("program", [legs], () => programLight({ enabled: v(legs), expected: [...EXPECTED_LEGS_ENABLED], leashLive: flags.leashLive, names: LEG_NAMES })),
     light("support", [support], () => supportLight({ now, count7d: v(support).count, newestAt: v(support).newestAt })),
   ];

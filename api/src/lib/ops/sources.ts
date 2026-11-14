@@ -9,7 +9,7 @@ import { readLeashConfig, LEG_SPEC, LEASH_LEG } from "@/lib/leash";
 import { rpc } from "@/lib/rpc";
 import { APP_REASONS } from "@/lib/founder-alert";
 import { PYTH_ACCOUNT, PYTH_FEED } from "@/lib/venues/addresses";
-import type { CronRunInput, FailureInput, AddUpRow } from "./lights";
+import type { CronRunInput, FailureInput, AddUpRow, SwapCheckInput } from "./lights";
 
 const DAY_MS = 24 * 3_600_000;
 const PAGE = 1000;   // PostgREST's default row cap: every unbounded read pages past it
@@ -56,6 +56,8 @@ export interface OpsSources {
   appErrors(sinceIso: string): Promise<{ step: string }[]>;
   /** Confirmed plantings since the time, each with what it claimed, pulled and recorded in legs (cents); short ids only. */
   amountsAddUp(sinceIso: string): Promise<AddUpRow[]>;
+  /** Ops #9: the newest daily run's missed-swap check, this window's misses still not in swaps, and swap_refused events since. */
+  swapCheck(sinceIso: string): Promise<SwapCheckInput>;
   support(sinceIso: string): Promise<{ count: number; newestAt: Date | null }>;
   numbers(nowIso: string): Promise<OpsNumbers>;
 }
@@ -370,6 +372,44 @@ export function realOpsSources(): OpsSources {
       // Parts other plantings (sent or confirmed; a failed one gives its cents back) pulled of the swaps these plantings claimed.
       const otherParts = await many("swap_parts", "planting_id, signature, cents, plantings!inner(status)", "signature", [...new Set(swaps.map((s) => String(s.signature)))], ["planting_id", "signature"], true);
       return addUpRows({ plantings, swaps, parts: [...ownParts, ...otherParts], legs }, skip);
+    },
+
+    async swapCheck(sinceIso) {
+      const skip = ex();
+      // Only the check's part of each run record (never the whole summary); finished runs only, newest first.
+      const runs = await rows(db().from("cron_runs").select("day, finished_at, check:summary->swapCheck").not("finished_at", "is", null).gte("finished_at", sinceIso).order("finished_at", { ascending: false }).limit(14));
+      const latest = runs[0];
+      const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null);
+      const checkOf = (r: Row | undefined) => {
+        const c = r?.check;
+        return c !== null && typeof c === "object" && !Array.isArray(c) ? (c as Row) : null;
+      };
+      const lc = checkOf(latest);
+      const checked = num(lc?.checked);
+      const last = lc && checked !== null ? { checked, unchecked: Array.isArray(lc.unchecked) ? lc.unchecked.length : 0, deferred: num(lc.deferred) ?? 0 } : null;
+
+      // Each miss once (by its short signature), only inside the window, only well-formed entries.
+      const SIG8 = /^[1-9A-HJ-NP-Za-km-z]{8}$/;
+      const missed = new Map<string, number>();
+      for (const r of runs) {
+        for (const m of (Array.isArray(checkOf(r)?.missed) ? (checkOf(r)!.missed as unknown[]) : [])) {
+          const e = m !== null && typeof m === "object" ? (m as Row) : {};
+          const sig = String(e.sig ?? "");
+          const ts = Date.parse(String(e.ts ?? ""));
+          if (!SIG8.test(sig) || !Number.isFinite(ts) || ts < Date.parse(sinceIso) || missed.has(sig)) continue;
+          missed.set(sig, num(e.roundupCents) ?? 0);
+        }
+      }
+      // A miss credited since (now in swaps) is dropped: one read, matched on the short signature (base58: safe in the filter).
+      const sigs = [...missed.keys()].slice(0, 50);
+      const credited = new Set<string>();
+      if (sigs.length) {
+        for (const b of await rows(db().from("swaps").select("signature").or(sigs.map((x) => `signature.like.${x}*`).join(",")).limit(1000))) credited.add(String(b.signature).slice(0, 8));
+      }
+
+      const refused = (await allRows((a, b) => db().from("events").select("id, wallet_pubkey").eq("kind", "swap_refused").gte("ts", sinceIso).order("id").range(a, b)))
+        .filter((r) => !isExcluded(skip, r.wallet_pubkey));
+      return { lastCheckAt: latest ? date(latest.finished_at) : null, last, missed: [...missed].filter(([sig]) => !credited.has(sig)).map(([, cents]) => ({ cents })), refused7d: refused.length };
     },
 
     async support(sinceIso) {

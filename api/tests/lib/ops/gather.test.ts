@@ -29,6 +29,7 @@ function healthy(over: Partial<OpsSources> = {}): OpsSources & { calls: Record<s
     legsEnabled: wrap("legsEnabled", async () => [true, true, true, true, true, true, true, true]),
     appErrors: wrap("appErrors", async () => []),
     amountsAddUp: wrap("amountsAddUp", async () => []),
+    swapCheck: wrap("swapCheck", async () => ({ lastCheckAt: new Date(NOW.getTime() - 3_500_000), last: { checked: 2, unchecked: 0, deferred: 0 }, missed: [], refused7d: 0 })),
     support: wrap("support", async () => ({ count: 0, newestAt: null })),
     numbers: wrap("numbers", async () => numbers(1)),
   };
@@ -40,9 +41,9 @@ beforeEach(() => resetOpsCacheForTests());
 afterEach(() => vi.useRealTimers());
 
 describe("gatherOps", () => {
-  it("all healthy: 11 lights in key order, none unknown", async () => {
+  it("all healthy: 12 lights in key order, none unknown", async () => {
     const s = await gatherOps({ sources: healthy(), now: NOW, flags });
-    expect(s.lights.map((l) => l.key)).toEqual(["dailyRun", "firstPlanting", "swapWatching", "swapsArriving", "prices", "gas", "moneyOps", "appErrors", "amountsAddUp", "program", "support"]);
+    expect(s.lights.map((l) => l.key)).toEqual(["dailyRun", "firstPlanting", "swapWatching", "swapsArriving", "prices", "gas", "moneyOps", "appErrors", "amountsAddUp", "swapsCounted", "program", "support"]);
     expect(s.lights.filter((l) => l.state === "unknown")).toEqual([]);
     expect(s.numbers).not.toBeNull();
     expect(s.blindSpots).toHaveLength(4);
@@ -200,7 +201,7 @@ describe("gatherOps robustness", () => {
     const by = Object.fromEntries(s.lights.map((l) => [l.key, l]));
     expect(by.dailyRun.state).toBe("unknown");
     expect(by.prices.state).toBe("unknown");
-    expect(s.lights).toHaveLength(11);
+    expect(s.lights).toHaveLength(12);
     expect(by.gas.state).toBe("green");
   });
 
@@ -266,5 +267,15 @@ describe("amountsAddUp light in gatherOps", () => {
   it("a failing source makes it unknown, never green", async () => {
     const s = await gatherOps({ sources: healthy({ amountsAddUp: async () => { throw new Error("db down"); } }), now: NOW, flags });
     expect(s.lights.find((x) => x.key === "amountsAddUp")).toMatchObject({ state: "unknown", fact: "Could not check this (a data source timed out)" });
+  });
+});
+
+describe("swapsCounted light in gatherOps", () => {
+  it("missed swaps this week turn it amber; a failing source makes it unknown", async () => {
+    const s = await gatherOps({ sources: healthy({ swapCheck: async () => ({ lastCheckAt: NOW, last: { checked: 2, unchecked: 0, deferred: 0 }, missed: [{ cents: 66 }, { cents: 64 }], refused7d: 0 }) }), now: NOW, flags });
+    expect(s.lights.find((l) => l.key === "swapsCounted")).toMatchObject({ state: "amber", fact: "2 swaps missed this week, $1.30 in round-ups", action: "Ask Claude to credit them." });
+    resetOpsCacheForTests();
+    const t = await gatherOps({ sources: healthy({ swapCheck: async () => { throw new Error("db down"); } }), now: NOW, flags });
+    expect(t.lights.find((l) => l.key === "swapsCounted")!.state).toBe("unknown");
   });
 });

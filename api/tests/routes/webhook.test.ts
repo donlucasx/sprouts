@@ -65,4 +65,59 @@ describe("POST /api/webhooks/helius", () => {
     expect(getTransactionMock).toHaveBeenCalledTimes(1);
     expect((await repo.unplantedSwaps("WALLET")).length).toBe(0);
   });
+
+  // Ops #9: a delivered swap that is not booked for a reason other than "not a swap / top-up / already booked" leaves an event.
+  const refused = () => repo.events.filter((e) => e.kind === "swap_refused");
+
+  it("a swap the chain refuses writes one swap_refused event (reason enum, 8-char signature, wallet)", async () => {
+    getTransactionMock.mockResolvedValue(onChain(now - 3 * 86_400));
+    await deliver(tx);
+    expect(refused()).toHaveLength(1);
+    expect(refused()[0]).toMatchObject({ walletPubkey: "WALLET", detail: { reason: "time_mismatch", sig: tx.signature.slice(0, 8) } });
+  });
+
+  it("a chain read that throws is recorded as chain_read_error, with no RPC text", async () => {
+    getTransactionMock.mockRejectedValue(new Error("fetch failed https://rpc?api-key=SECRET"));
+    await deliver(tx);
+    expect(refused()).toHaveLength(1);
+    expect(JSON.stringify(refused()[0].detail)).not.toContain("SECRET");
+    expect(refused()[0].detail).toMatchObject({ reason: "chain_read_error" });
+  });
+
+  it("a booking that throws is recorded as error (wallet unknown)", async () => {
+    getTransactionMock.mockResolvedValue(onChain(now));
+    repo.getRules = async () => { throw new Error("db down"); };
+    await deliver(tx);
+    expect(refused()).toHaveLength(1);
+    expect(refused()[0]).toMatchObject({ walletPubkey: null, detail: { reason: "error" } });
+  });
+
+  it("routine items write nothing: a booked swap, a re-delivery, an unknown wallet, a top-up, a puller planting", async () => {
+    getTransactionMock.mockResolvedValue(onChain(now));
+    await deliver(tx);
+    await deliver(tx);   // already booked
+    await deliver({ ...tx, signature: "OTHER", tokenTransfers: tx.tokenTransfers.map((t) => ({ ...t, fromUserAccount: t.fromUserAccount === "WALLET" ? "STRANGER" : t.fromUserAccount, toUserAccount: t.toUserAccount === "WALLET" ? "STRANGER" : t.toUserAccount })), feePayer: "STRANGER", events: {} });
+    await deliver({ ...tx, signature: "PULLERPAID", feePayer: "PULLER" });
+    await repo.addEvent({ userPubkey: "U", walletPubkey: "WALLET", kind: "topup_sent", detail: { signature: "TOPUP" } });
+    await deliver({ ...tx, signature: "TOPUP" });
+    expect(refused()).toHaveLength(0);
+  });
+
+  it("at most MAX_REFUSAL_EVENTS_PER_DELIVERY events per delivery (a flood cannot fill the table)", async () => {
+    const { MAX_REFUSAL_EVENTS_PER_DELIVERY } = await import("@/lib/swap-refusal");
+    getTransactionMock.mockResolvedValue(onChain(now - 3 * 86_400));
+    const many = Array.from({ length: MAX_REFUSAL_EVENTS_PER_DELIVERY + 5 }, (_, i) => ({ ...tx, signature: `${tx.signature.slice(0, 80)}${i}` }));
+    await POST(new Request("http://x/api/webhooks/helius", { method: "POST", headers: { authorization: "Bearer hook-secret" }, body: JSON.stringify(many) }));
+    await Promise.all(tasks.splice(0));
+    expect(refused()).toHaveLength(MAX_REFUSAL_EVENTS_PER_DELIVERY);
+  });
+
+  it("answers before any booking or event write (the response never waits on them)", async () => {
+    getTransactionMock.mockResolvedValue(onChain(now - 3 * 86_400));
+    const res = await POST(new Request("http://x/api/webhooks/helius", { method: "POST", headers: { authorization: "Bearer hook-secret" }, body: JSON.stringify([tx]) }));
+    expect(res.status).toBe(200);
+    expect(refused()).toHaveLength(0);
+    await Promise.all(tasks.splice(0));
+    expect(refused()).toHaveLength(1);
+  });
 });

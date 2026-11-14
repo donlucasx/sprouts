@@ -38,6 +38,8 @@ vi.mock("@/lib/split-run", () => ({ decideSplits: decideMock, applyToUsers: appl
 vi.mock("@/lib/jupiter", () => ({ getQuote: vi.fn(), pricesUsd: vi.fn() }));
 vi.mock("@/lib/store", () => ({ storeRedeemRate: vi.fn() }));
 vi.mock("@/lib/anthropic", () => ({ callTool: vi.fn() }));
+const { swapCheckMock } = vi.hoisted(() => ({ swapCheckMock: vi.fn(async (_a: { deadlineMs: number; hardStopMs: number; exclude: Set<string> }) => ({ checked: 3, unchecked: [], deferred: 0, missed: [{ wallet: "5t9Y…J9t", sig: "44gdAAAA", ts: "2026-11-13T09:14Z", roundupCents: 66 }], calls: { signatures: 3, enhanced: 1, transactions: 1 } })) }));
+vi.mock("@/lib/swap-check", async (orig) => ({ ...(await orig<object>()), checkMissedSwaps: swapCheckMock, realSwapCheckReads: vi.fn(async () => ({})) }));
 
 import { GET } from "@/app/api/cron/plant/route";
 
@@ -49,6 +51,28 @@ beforeAll(() => {
 
 describe("cron route", () => {
   let repo: MemoryRepo;
+
+  it("ops #9: runs the missed-swap check last, under its own cutoffs, and records it in the run record", async () => {
+    swapCheckMock.mockClear();
+    const before = Date.now();
+    const res = await GET(new Request("http://x/api/cron/plant", { headers: { authorization: `Bearer ${SECRET}` } }));
+    const body = (await res.json()) as { swapCheck: unknown };
+    expect(body.swapCheck).toMatchObject({ checked: 3, missed: [{ sig: "44gdAAAA", roundupCents: 66 }] });
+    const a = swapCheckMock.mock.calls[0][0];
+    // Starts no wallet past 255 s (45 s before the 300 s kill, after the reconcile's 275 s); a wallet still going at 280 s is deferred.
+    expect(a.deadlineMs - before).toBeGreaterThanOrEqual(254_000);
+    expect(a.deadlineMs - before).toBeLessThanOrEqual(256_000);
+    expect(a.hardStopMs - a.deadlineMs).toBe(25_000);
+  });
+
+  it("ops #9: a missed-swap check that throws is a failed step (null in the record), never a failed run", async () => {
+    swapCheckMock.mockRejectedValueOnce(new Error("helius down"));
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = await GET(new Request("http://x/api/cron/plant", { headers: { authorization: `Bearer ${SECRET}` } }));
+    err.mockRestore();
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { swapCheck: unknown }).swapCheck).toBeNull();
+  });
 
   beforeEach(() => {
     order.length = 0;

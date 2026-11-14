@@ -105,7 +105,8 @@ function solGained(tx: HeliusEnhancedTx, wallet: string): { mint: string; amount
   return lamports > 0 ? { mint: WSOL, amount: lamports / LAMPORTS } : null;
 }
 
-export type BookResult = { booked: true; walletPubkey: string; roundupCents: number } | { booked: false; refused?: string };
+/** `refused` (with the wallet it was for) only when the chain check said no; every routine skip is a bare `{ booked: false }`. */
+export type BookResult = { booked: true; walletPubkey: string; roundupCents: number } | { booked: false; refused?: string; walletPubkey?: string };
 
 /**
  * The on-chain re-check (lib/verify-swap, R207 #8): null when the chain agrees, corrected legs when the wallet received slightly
@@ -141,7 +142,7 @@ export async function bookSwap(a: { repo: Repo; tx: HeliusEnhancedTx; priceUsd: 
     if ((await a.repo.topUpKinds(a.tx.signature, pubkey)).length > 0) return { booked: false };
     if (a.verify) {
       const verdict = await a.verify({ signature: a.tx.signature, wallet: pubkey, legs, timestamp: a.tx.timestamp });
-      if (typeof verdict === "string") return { booked: false, refused: verdict };
+      if (typeof verdict === "string") return { booked: false, refused: verdict, walletPubkey: pubkey };
       if (verdict) legs = verdict;
     }
     const rules = rulesRowToRules(await a.repo.getRules(wallet.userPubkey));

@@ -24,6 +24,8 @@ import { USDC_MINT } from "@/lib/constants";
 import { alertFounder, checkWebhookCoverage } from "@/lib/founder-alert";
 import { heliusEnsureAddresses, heliusWebhookAddresses } from "@/lib/helius";
 import { config } from "@/lib/config";
+import { checkMissedSwaps, realSwapCheckReads } from "@/lib/swap-check";
+import { excludedWallets } from "@/lib/ops/sources";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -40,6 +42,13 @@ const WITHDRAW_DEADLINE_MS = 250_000;
  * 20 reads of one transaction each; one in flight at 260 s ends well before the reconcile's own 275 s stop and the 300 s kill.
  */
 const REMAINDERS_DEADLINE_MS = 260_000;
+/**
+ * Ops #9: the missed-swap check runs LAST (after the reconcile and the coverage pass) and starts no wallet past 255 s from the run's
+ * start, 45 s before the 300 s kill; a run whose reconcile went long skips it (every wallet deferred). A wallet still being read at
+ * 280 s is stopped and counted deferred (never concluded), leaving the cleanup and the keepalive their time.
+ */
+const SWAPCHECK_DEADLINE_MS = 255_000;
+const SWAPCHECK_HARD_STOP_MS = 280_000;
 /** 11-07 run lock: a claimed run not finished after this long died (the route's limit is 300 s), so its day can be claimed again. */
 const RUN_STALE_MS = 6 * 60_000;
 
@@ -105,7 +114,7 @@ export async function GET(request: Request) {
     // The Yield Manager's steps before the planting run (spec 6.1): snapshot the venues, then the coins (its lending legs read today's
     // venue rows), decide each stop's split, apply to users, propose moves. Budgets: decide 90 s (DECIDE_BUDGET_MS); the moves step
     // reads no position past 150 s from the start; planting starts no new wallet past 240 s, the crank none past 250 s, the
-    // remainder retry none past 260 s, the reconcile none past 275 s; the whole route has 300 s.
+    // remainder retry none past 260 s, the reconcile none past 275 s, the swap check (last) no wallet past 255 s; the whole route has 300 s.
     // realVenueReads() is built inside each step, so a missing JUPITER_API_KEY or RPC fails that step loudly in the log, not the run.
     const venues = await step("venues", () => snapshotVenues({ repo, now, reads: realVenueReads() }));
     const coins = await step("snapshot", () => snapshotCoins({ repo, now, reads: realCoinReads(repo, now) }));
@@ -150,6 +159,8 @@ export async function GET(request: Request) {
     const reconciled = (await step("reconcile", () => reconcileOwnStakes({ repo, now: new Date(), deadlineMs: startedMs + 275_000, chain: { readPosition: (u) => readPosition(address(u), "finalized"), sharePrice, finalized: signaturesFinalized } })));
     // 10-26: every linked wallet still on the swap webhook (founder alert when not).
     const coverage = await step("webhook coverage", () => checkWebhookCoverage({ repo, watched: () => heliusWebhookAddresses(config().heliusWebhookId), repair: (missing) => heliusEnsureAddresses(config().heliusWebhookId, missing, { tries: 2, settleMs: 500 }) }));   // short: the reconcile may run to 275 s of the 300
+    // Ops #9: on-chain swaps of the last 48 h that are not in swaps (DETECTION ONLY: nothing is booked; ops light "Every swap counted").
+    const swapCheck = await step("swap check", async () => checkMissedSwaps({ repo, now: new Date(), reads: await realSwapCheckReads(), exclude: excludedWallets(config().opsExcludeWallets), deadlineMs: startedMs + SWAPCHECK_DEADLINE_MS, hardStopMs: startedMs + SWAPCHECK_HARD_STOP_MS }));
     await repo.cleanupExpired();
     // The first production run (2026-09-28) planted and then answered 500 here: reading rules for a made-up user violates the
     // rules -> users foreign key. The keepalive is now a read that needs no row.
@@ -157,9 +168,9 @@ export async function GET(request: Request) {
     const summary = { coins: coins ? coins.filter((c) => c.ok).length : null, splits: splits ? splits.map((s) => ({ stop: s.stop, fallback: s.fallback })) : null, applied: applied ? applied.changed.length : null, venues: venues ? venues.filter((v) => v.ok).length : null, moves: moves ? moves.proposed.length : null };
     // Review M8: expired and settled cards are logged too, so a move stuck in flight shows in the log.
     const movesLine = moves ? `${moves.proposed.length} (expired ${moves.expired.length}, settled ${moves.settled.length ? moves.settled.join(" ") : 0})` : movesOn ? "failed" : "off";
-    console.log(`cron: venues ${summary.venues ?? "failed"}, coins ${summary.coins ?? "failed"}, splits ${summary.splits ? summary.splits.map((s) => `${s.stop}${s.fallback ? `(${s.fallback})` : ""}`).join(" ") : "failed"}, applied ${summary.applied ?? "failed"}, moves ${movesLine}, planted ${planting.planted.length}, skipped ${planting.skipped.length}, ${withdrawals ? `cranked ${withdrawals.cranked.length}, failed ${withdrawals.failed.length}, closed ${withdrawals.skipped.length}, deferred ${withdrawals.deferred.length}` : "withdrawals failed"}, reconciled ${reconciled ? `${reconciled.adjusted.length} (skipped ${reconciled.skipped.length}, deferred ${reconciled.deferred.length})` : "failed"}, off webhook ${coverage ? `${coverage.missing.length} (re-added ${coverage.repaired.length})` : "failed"}, remainders ${remainders ? `${remainders.recorded} recorded of ${remainders.retried} retried (still missing ${remainders.still_missing}, deferred ${remainders.deferred})` : "failed"}`);
+    console.log(`cron: venues ${summary.venues ?? "failed"}, coins ${summary.coins ?? "failed"}, splits ${summary.splits ? summary.splits.map((s) => `${s.stop}${s.fallback ? `(${s.fallback})` : ""}`).join(" ") : "failed"}, applied ${summary.applied ?? "failed"}, moves ${movesLine}, planted ${planting.planted.length}, skipped ${planting.skipped.length}, ${withdrawals ? `cranked ${withdrawals.cranked.length}, failed ${withdrawals.failed.length}, closed ${withdrawals.skipped.length}, deferred ${withdrawals.deferred.length}` : "withdrawals failed"}, reconciled ${reconciled ? `${reconciled.adjusted.length} (skipped ${reconciled.skipped.length}, deferred ${reconciled.deferred.length})` : "failed"}, off webhook ${coverage ? `${coverage.missing.length} (re-added ${coverage.repaired.length})` : "failed"}, remainders ${remainders ? `${remainders.recorded} recorded of ${remainders.retried} retried (still missing ${remainders.still_missing}, deferred ${remainders.deferred})` : "failed"}, swaps missed ${swapCheck ? `${swapCheck.missed.length} (checked ${swapCheck.checked}, unchecked ${swapCheck.unchecked.length}, deferred ${swapCheck.deferred})` : "check failed"}`);
     // Kimi H2: coverage is recorded (null when its step failed) so the Daily-job light's coverage rules can fire.
-    const record = { ...summary, planting, withdrawals, remainders, reconciled, coverage, seconds: Math.round((Date.now() - startedMs) / 1000) };
+    const record = { ...summary, planting, withdrawals, remainders, reconciled, coverage, swapCheck, seconds: Math.round((Date.now() - startedMs) / 1000) };
     await finishRun(repo, day, now, true, record);
     return NextResponse.json(json(record));
   } catch (e) {

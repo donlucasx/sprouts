@@ -159,7 +159,8 @@ export type EventKind =
   | "app_error"   // an unexpected server error (a throw or 5xx) on a money route (detail: step, status, error); the ops "App errors" light counts them
   | "feedback_answer"   // 0.1.9: an answer to an in-app question (detail: question, ref, answer); /api/me asks each ref once
   | "support_message"   // 11-01: Settings > Message us (detail: topic, message, email, app, context); replies go by email
-  | "remainder_unrecorded";   // audit F1 (11-13): a confirmed planting's leftover change could not be recorded (detail: plantingId, kind SKR|WSOL|USDC|legs, reason; never error text); the daily run retries it for 14 days
+  | "remainder_unrecorded"   // audit F1 (11-13): a confirmed planting's leftover change could not be recorded (detail: plantingId, kind SKR|WSOL|USDC|legs, reason; never error text); the daily run retries it for 14 days
+  | "swap_refused";   // ops #9 (11-14): a webhook item that would have been a swap was not booked (refused by the chain check, or the booking threw); detail: reason enum, sig (first 8 chars). Routine non-swaps are never written
 
 export type EventRow = { id: number; userPubkey: string | null; walletPubkey: string | null; ts: Date; kind: EventKind; detail: unknown };
 

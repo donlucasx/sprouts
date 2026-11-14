@@ -1,7 +1,7 @@
 // Ops dashboard lights: one pure function per light (inputs in, { state, fact } out). No I/O, no imports from @/lib.
 
 export type LightState = "green" | "amber" | "red" | "unknown" | "info";
-export type LightKey = "dailyRun" | "firstPlanting" | "swapWatching" | "swapsArriving" | "prices" | "gas" | "moneyOps" | "appErrors" | "amountsAddUp" | "program" | "support";
+export type LightKey = "dailyRun" | "firstPlanting" | "swapWatching" | "swapsArriving" | "prices" | "gas" | "moneyOps" | "appErrors" | "amountsAddUp" | "swapsCounted" | "program" | "support";
 /** `action` is the "Do:" line: set on every amber/red/unknown light, never on green or info. */
 export type Light = { key: LightKey; label: string; state: LightState; fact: string; action?: string };
 
@@ -15,6 +15,7 @@ export const LIGHT_LABELS: Record<LightKey, string> = {
   moneyOps: "Withdrawals and failures",
   appErrors: "App errors",
   amountsAddUp: "Amounts add up",
+  swapsCounted: "Every swap counted",
   program: "Savings settings",
   support: "Support inbox",
 };
@@ -187,6 +188,42 @@ export function amountsAddUpLight(input: { rows: AddUpRow[] }): Light {
   const amber = gaps.filter((g) => g.amber);
   if (amber.length) return mk("amber", `${plural(amber.length, "saving")} pulled more than ${amber.length === 1 ? "its" : "their"} round-ups, biggest gap ${dollars(Math.max(...amber.map((g) => g.gap)))}`, "Ask Claude to check them today.");
   return mk("green", "Every saving in the last 30 days pulled what its round-ups say");
+}
+
+/**
+ * Ops #9: the daily missed-swap check (lib/swap-check.ts). `last` is the newest daily run's check (null: that run did not check, or
+ * the step failed); `missed` is every miss the week's runs found that is still not in swaps (one entry per swap); `refused7d` the
+ * webhook's swap_refused events in 7 days.
+ */
+export type SwapCheckInput = {
+  lastCheckAt: Date | null;
+  last: { checked: number; unchecked: number; deferred: number } | null;
+  missed: { cents: number }[];
+  refused7d: number;
+};
+
+/**
+ * Green: the last check (under 26 h old) found nothing missing and read every wallet. Amber: a swap missed this week and not yet
+ * credited (whatever the check's age: a miss is never hidden), or wallets the last run could not check. Unknown: no recent check.
+ */
+export function swapsCountedLight(input: { now: Date; input: SwapCheckInput }): Light {
+  const { now } = input;
+  const { lastCheckAt, last, missed, refused7d } = input.input;
+  const mk = maker("swapsCounted");
+  const refusedNote = refused7d > 0 ? `; ${plural(refused7d, "swap")} refused by the swap watcher this week` : "";
+  const parts: string[] = [];
+  if (missed.length) parts.push(`${plural(missed.length, "swap")} missed this week, ${dollars(missed.reduce((t, m) => t + m.cents, 0))} in round-ups`);
+  const age = lastCheckAt ? now.getTime() - lastCheckAt.getTime() : null;
+  const fresh = age !== null && age <= 26 * HOUR;
+  const notChecked = fresh && last ? last.unchecked + last.deferred : 0;
+  if (notChecked) parts.push(`${plural(notChecked, "wallet")} could not be checked in the last run`);
+  if (parts.length) return mk("amber", `${parts.join("; ")}${refusedNote}`, missed.length ? "Ask Claude to credit them." : "Ask Claude if it repeats.");
+  const ASK = "Ask Claude to check the daily job.";
+  if (!lastCheckAt) return mk("unknown", `No swap check recorded yet${refusedNote}`, "Nothing if you just deployed; it runs with the daily job. Ask Claude if it stays grey.");
+  if (!fresh) return mk("unknown", `The last swap check was ${ageText(age!)} ago${refusedNote}`, ASK);
+  if (!last) return mk("unknown", `The last daily job did not check swaps${refusedNote}`, ASK);
+  const when = ageText(age!);
+  return mk("green", `${last.checked === 0 ? `No missed swaps; no wallets to check (checked ${when} ago)` : `No missed swaps; all ${plural(last.checked, "wallet")} checked ${when} ago`}${refusedNote}`);
 }
 
 // ---- Infra lights ----

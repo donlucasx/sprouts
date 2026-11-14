@@ -8,6 +8,7 @@ import { pullerSigner } from "@/lib/puller";
 import { onChainVerifier } from "@/lib/verify-swap";
 import { stockMints } from "@/lib/token-kind";
 import type { PriceLookup } from "@/domain/sizing";
+import { recordSwapRefusal, refusalReason, MAX_REFUSAL_EVENTS_PER_DELIVERY } from "@/lib/swap-refusal";
 
 export const runtime = "nodejs";
 
@@ -38,13 +39,26 @@ export async function POST(request: Request) {
     const repo = await getRepo();
     const puller = (await pullerSigner()).address;
     const verify = onChainVerifier();
+    // Ops #9: a swap refused by the chain check, or an item whose booking threw, also leaves a `swap_refused` event (reason enum,
+    // short signature), at most MAX_REFUSAL_EVENTS_PER_DELIVERY per delivery, each write bounded (swap-refusal.ts). Routine skips
+    // (not a swap, a top-up, a puller planting, already booked) write nothing.
+    let recorded = 0;
+    const refusal = async (signature: unknown, walletPubkey: string | null, reason: ReturnType<typeof refusalReason>) => {
+      if (recorded >= MAX_REFUSAL_EVENTS_PER_DELIVERY) return;
+      recorded++;
+      await recordSwapRefusal(repo, { signature: String(signature ?? ""), walletPubkey, reason });
+    };
     for (const tx of items) {
       try {
         const r = await bookSwap({ repo, tx, priceUsd: boundedPrice, ignoreFeePayer: puller, verify, stockMints });
         if (r.booked) console.log(`booked ${tx.signature} for ${r.walletPubkey}: ${r.roundupCents} cents`);
-        else if (r.refused) console.error(`webhook item refused ${tx.signature}: ${r.refused}`);
+        else if (r.refused) {
+          console.error(`webhook item refused ${tx.signature}: ${r.refused}`);
+          await refusal(tx.signature, r.walletPubkey ?? null, refusalReason(r.refused));
+        }
       } catch (e) {
         console.error(`webhook item failed ${tx?.signature ?? "?"}: ${e instanceof Error ? e.message : String(e)}`);
+        await refusal(tx?.signature, null, "error");
       }
     }
   });

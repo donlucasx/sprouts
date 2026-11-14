@@ -89,3 +89,21 @@ export async function heliusHistory(address: string, limit = 100): Promise<unkno
   const j = (await res.json()) as { data?: unknown[] } | unknown[];
   return Array.isArray(j) ? j : (j.data ?? []);
 }
+
+/**
+ * Ops #9: Helius's parse of up to 100 signatures (POST /v0/transactions), for the daily missed-swap check. The URL carries the
+ * key, so a failure is rethrown with no URL and no body text.
+ */
+export async function heliusParseTransactions(signatures: string[], opts: { timeoutMs?: number } = {}): Promise<import("./book-swap").HeliusEnhancedTx[]> {
+  if (signatures.length > 100) throw new Error("Helius parse takes at most 100 signatures");
+  let res: Response;
+  try {
+    res = await fetch(url("/v0/transactions"), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ transactions: signatures }), signal: AbortSignal.timeout(opts.timeoutMs ?? 15_000) });
+  } catch (e) {
+    throw new Error(`Helius parse failed: ${e instanceof Error ? e.name : "error"}`);
+  }
+  if (!res.ok) throw new Error(`Helius parse failed: ${res.status}`);
+  const body = (await res.json().catch(() => null)) as unknown;
+  if (!Array.isArray(body)) throw new Error("Helius parse answered no list");
+  return body as import("./book-swap").HeliusEnhancedTx[];
+}

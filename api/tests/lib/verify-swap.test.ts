@@ -146,7 +146,7 @@ describe("bookSwap with the on-chain check", () => {
   it("does not book a swap the chain refuses, and says why", async () => {
     const repo = await repoWithWallet();
     const r = await bookSwap({ repo, tx: fixture, priceUsd: prices, verify: onChainVerifier(async () => null, { now: () => T + 5, retryMs: 0 }) });
-    expect(r).toEqual({ booked: false, refused: "not found on chain" });
+    expect(r).toEqual({ booked: false, refused: "not found on chain", walletPubkey: "WALLET" });
     expect((await repo.unplantedSwaps("WALLET")).length).toBe(0);
   });
 
