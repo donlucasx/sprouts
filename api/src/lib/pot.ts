@@ -1,6 +1,7 @@
 import type { Repo } from "@/db/repo";
-import type { UserRow } from "@/db/types";
+import type { UserRow, WithdrawalRow } from "@/db/types";
 import type { Position } from "./staking";
+import { SUPERSEDED_SLACK_MS } from "./withdraw-run";
 
 const SCALE = 1_000_000_000n;
 
@@ -77,13 +78,62 @@ export async function potInputs(repo: Repo, user: UserRow) {
 
 export type PotInputs = Awaited<ReturnType<typeof potInputs>>;
 
+/**
+ * 11-14 (review of 962d66c): a row that books a whole cooldown, not a share drop: wallet source, no shares, no principal. That is the
+ * sign-up row for a cooldown already running [A24] and fix E's row for a cooldown no open row covered. Its amount is everything
+ * unstaking, so it can hold SKR an earlier row already counts.
+ */
+export const isWholeCooldownRow = (w: WithdrawalRow): boolean => w.source === "wallet" && (w.sharesUnstaked ?? 0n) === 0n && w.principalRaw === 0n;
+
+/** `budget` holds `amount`, 1% slack for the share price drift between two valuations of the same SKR. */
+export const holds = (budget: bigint, amount: bigint): boolean => budget * 100n >= amount * 99n;
+
+/**
+ * 11-14 (review of 962d66c): the rows whose SKR a later whole-cooldown row E counts again, so each SKR amount is one pick.
+ * When E is booked, the same run first closes the user's older open rows as superseded (skippedAt within the slack before E's
+ * time). The chain's one read cannot tell why each was replaced: cancelled and its shares unstaked again (put back: E holds that SKR)
+ * or withdrawn from the wallet and followed by an unstake and a restake of the same size (a real pick: E holds new SKR). The rule:
+ * newest first, a superseded row E's amount can still hold is E's own SKR again and leaves the picks; the first one E cannot hold
+ * stops the walk. A cancelled E absorbs nothing (its cooldown went back, and the reconcile books the returned shares as a stake).
+ * Display only: an absorbed row's principal still lowers put in, so put in, earned and fruit never move. Rows not superseded by a
+ * whole-cooldown row (every Sprouts pick, every share-drop wallet row) count exactly as before.
+ */
+export function absorbedPickIds(withdrawals: WithdrawalRow[]): Set<string> {
+  const absorbed = new Set<string>();
+  const byTime = [...withdrawals].sort((a, b) => a.unstakeTs.getTime() - b.unstakeTs.getTime());
+  for (const e of byTime) {
+    if (!isWholeCooldownRow(e) || e.cancelSignature !== null) continue;
+    const t = e.unstakeTs.getTime();
+    const run = byTime
+      .filter((s) => s.id !== e.id && !absorbed.has(s.id) && s.skippedAt !== null && s.withdrawSignature === null && s.cancelSignature === null
+        && s.unstakeTs.getTime() < t && s.skippedAt.getTime() <= t && s.skippedAt.getTime() >= t - SUPERSEDED_SLACK_MS)
+      .reverse();
+    let left = e.amountRaw ?? 0n;
+    for (const s of run) {
+      const amount = s.amountRaw ?? 0n;
+      if (!holds(left, amount)) break;
+      absorbed.add(s.id);
+      left = amount < left ? left - amount : 0n;
+    }
+  }
+  return absorbed;
+}
+
+/** The withdrawals that count as picks (the picked total, the pick timeline, the withdrawal count): not cancelled, not absorbed. */
+export function countedPicks(withdrawals: WithdrawalRow[]): WithdrawalRow[] {
+  const absorbed = absorbedPickIds(withdrawals);
+  return withdrawals.filter((w) => w.cancelSignature === null && !absorbed.has(w.id));
+}
+
 /** The pot from the ledger side already read and the chain reads given: one formula for the route, the reconciliation and the withdraw routes. */
 export function potFromInputs(user: UserRow, inputs: PotInputs, chain: { position: Position; sharePrice: bigint }): Pot {
   return computePot({
     position: chain.position, sharePrice: chain.sharePrice, joined: { shares: user.joinedShares, sharePrice: user.joinedSharePrice },
     legsRaw: inputs.legs.filter((l) => l.asset === "SKR").map((l) => l.amountOutRaw),
     adjustments: inputs.adjustments,
-    picks: inputs.withdrawals.filter((w) => w.cancelSignature === null).map((w) => ({ amountRaw: w.amountRaw ?? 0n, principalRaw: w.principalRaw })),
+    // An absorbed row adds nothing to picked; its principal still counts, so put in and earned are unchanged (absorbedPickIds).
+    picks: ((absorbed) => inputs.withdrawals.filter((w) => w.cancelSignature === null)
+      .map((w) => ({ amountRaw: absorbed.has(w.id) ? 0n : (w.amountRaw ?? 0n), principalRaw: w.principalRaw })))(absorbedPickIds(inputs.withdrawals)),
   });
 }
 

@@ -4,6 +4,7 @@ import { COINS, isLendAsset, type Asset, type LendAsset } from "@/domain/coins";
 import { isAutoVenue, VENUE_SHORT, type AutoVenue } from "@/domain/venues";
 import { RECEIPT } from "@/lib/venues/addresses";
 import { USDC_MINT } from "@/lib/constants";
+import { holds } from "@/lib/pot";
 
 /**
  * R447: the taxable events Sprouts creates, as one plain CSV in Koinly's Universal import template (support.koinly.io article
@@ -120,11 +121,16 @@ export function plantingRows(p: PlantingRow, legs: PlantingLegRow[]): TaxRow[] {
  * what the unstake fixed above principal (amountRaw - principalRaw, A15). The reward's Net Worth uses that day's stored SKR price,
  * blank when none is stored (the tool prices it). The table keeps no delivery time: both rows are dated at the unstake.
  * Unstakes the Seed Vault made outside Sprouts (source "wallet"), cancelled and undelivered ones are not Sprouts withdrawals.
+ * 11-14: a superseded Sprouts row given `carriedBy` (carriedDeliveries) is delivered: its own amount, that delivery's hash.
  */
-export function withdrawalRows(w: WithdrawalRow, skrPriceUsd: number | null): TaxRow[] {
-  if (w.source !== "sprouts" || w.cancelSignature !== null || w.withdrawSignature === null || w.asset !== "SKR") return [];
+export function withdrawalRows(w: WithdrawalRow, skrPriceUsd: number | null, carriedBy?: WithdrawalRow): TaxRow[] {
+  if (w.source !== "sprouts" || w.cancelSignature !== null || w.asset !== "SKR") return [];
+  // 11-14: a superseded Sprouts row whose SKR a later delivery carried (carriedDeliveries): its own amount, that delivery's hash
+  const carried = w.withdrawSignature === null && carriedBy?.withdrawSignature ? carriedBy.withdrawSignature : null;
+  const withdrawSignature = w.withdrawSignature ?? carried;
+  if (withdrawSignature === null) return [];
   const decimals = COINS.SKR.decimals;
-  const delivered = w.amountOutRaw ?? w.amountRaw;
+  const delivered = carried !== null ? w.amountRaw : (w.amountOutRaw ?? w.amountRaw);
   if (delivered === null) return [];
   const earned = w.amountRaw !== null && w.amountRaw > w.principalRaw ? w.amountRaw - w.principalRaw : 0n;
   const rows: TaxRow[] = [];
@@ -144,10 +150,57 @@ export function withdrawalRows(w: WithdrawalRow, skrPriceUsd: number | null): Ta
     ...blank,
     date: w.unstakeTs,
     sentAmount: formatRaw(delivered, decimals), sentCurrency: coinCurrency("SKR"),
-    description: "SKR withdrawn from your Sprouts stake to your wallet. Dated when the withdrawal started; the SKR arrived after the 48-hour cooldown in this transaction.",
-    txHash: w.withdrawSignature,
+    description: carried !== null
+      ? "SKR withdrawn from your Sprouts stake to your wallet. Dated when the withdrawal started; a later unstake from your wallet joined its cooldown, and the SKR arrived with that cooldown in this transaction."
+      : "SKR withdrawn from your Sprouts stake to your wallet. Dated when the withdrawal started; the SKR arrived after the 48-hour cooldown in this transaction.",
+    txHash: withdrawSignature,
   });
   return rows;
+}
+
+/**
+ * 11-14 (review of 962d66c): the delivery that carried each superseded Sprouts withdrawal, so its reward and withdrawal still reach
+ * the export. The staking program keeps one cooldown per position. A wallet unstake during a Sprouts cooldown joins it and resets its
+ * clock; the crank then closes the Sprouts row S as superseded (withdraw_skipped {reason: "superseded"}) and books the whole delivery
+ * on the live row, usually a wallet row the export leaves out. S's SKR was in that delivery, so S's lines go out with its hash.
+ *
+ * For each delivered row L, oldest first: the SKR it delivered beyond its own booking (amountOutRaw less amountRaw for a row that
+ * burned shares; all of it for a whole-cooldown row, which has none) is the room for superseded Sprouts rows. Candidates are the
+ * user's superseded Sprouts rows before L and after the last delivered or cancelled row before L (either emptied the cooldown), not
+ * superseded before a skip that found nothing unstaking (the chain was empty then), and not given to an earlier delivery. Newest
+ * first, each is carried while the room holds its amount (1% slack); the first that does not fit stops the walk.
+ * What this cannot see: a cooldown the wallet withdrew itself has no delivery hash here, so such a row stays out (as before); and
+ * when a whole-cooldown row stands for an unstake and restake of the same size after the wallet withdrew S, S's lines carry the
+ * later hash (the amounts are S's own and real). Each superseded row is given to one delivery at most: nothing is exported twice.
+ */
+export function carriedDeliveries(withdrawals: WithdrawalRow[], skippedEvents: EventRow[]): Map<string, WithdrawalRow> {
+  const superseded = new Set<string>();
+  for (const e of skippedEvents) {
+    const d = (e.detail ?? {}) as Record<string, unknown>;
+    if (e.kind === "withdraw_skipped" && d.reason === "superseded" && typeof d.withdrawal === "string") superseded.add(d.withdrawal);
+  }
+  const byTime = [...withdrawals].sort((a, b) => a.unstakeTs.getTime() - b.unstakeTs.getTime());
+  const emptySkips = byTime.filter((k) => k.skippedAt !== null && !superseded.has(k.id)).map((k) => (k.skippedAt as Date).getTime());
+  const carried = new Map<string, WithdrawalRow>();
+  for (const l of byTime) {
+    if (l.withdrawSignature === null || l.cancelSignature !== null || l.asset !== "SKR") continue;
+    const t = l.unstakeTs.getTime();
+    const boundary = Math.max(-Infinity, ...byTime.filter((x) => x.id !== l.id && x.unstakeTs.getTime() < t && (x.withdrawSignature !== null || x.cancelSignature !== null)).map((x) => x.unstakeTs.getTime()));
+    const own = (l.sharesUnstaked ?? 0n) > 0n ? (l.amountRaw ?? 0n) : 0n;
+    const deliveredRaw = l.amountOutRaw ?? l.amountRaw ?? 0n;
+    let room = deliveredRaw > own ? deliveredRaw - own : 0n;
+    const candidates = byTime.filter((s) => s.source === "sprouts" && s.asset === "SKR" && superseded.has(s.id) && !carried.has(s.id)
+      && s.skippedAt !== null && s.withdrawSignature === null && s.cancelSignature === null
+      && s.unstakeTs.getTime() < t && s.unstakeTs.getTime() > boundary
+      && !emptySkips.some((k) => k > (s.skippedAt as Date).getTime() && k < t)).reverse();
+    for (const s of candidates) {
+      const amount = s.amountRaw ?? 0n;
+      if (!holds(room, amount)) break;
+      carried.set(s.id, l);
+      room = amount < room ? room - amount : 0n;
+    }
+  }
+  return carried;
 }
 
 /**

@@ -142,7 +142,8 @@ export interface Repo {
   setWithdrawalCancelled(id: string, signature: string): Promise<boolean>;
   /**
    * Closes a row the chain has nothing unstaking for (a cancel the app did not see, or a wallet-side withdrawal already taken), or
-   * one a newer cooldown superseded. Skipped, not cancelled: the pot still counts the pick.
+   * one a newer cooldown superseded. Skipped, not cancelled: its principal always stays in the pot; its pick counts unless a later
+   * whole-cooldown row holds its SKR again (lib/pot absorbedPickIds).
    */
   setWithdrawalSkipped(id: string): Promise<boolean>;
 

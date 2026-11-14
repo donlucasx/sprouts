@@ -16,7 +16,7 @@ import { carryMoves, moveCarriesFor } from "@/lib/moves";
 import { leashAllowedFor, userRouting } from "@/lib/user-routing";
 import { ASSETS, COINS, type LiveAsset } from "@/domain/coins";
 import { pickAsset } from "@/domain/allocation";
-import { potInputs, potFromInputs } from "@/lib/pot";
+import { potInputs, potFromInputs, countedPicks } from "@/lib/pot";
 import { capLeftCents } from "@/domain/cap";
 import { SKR_MINT, STORE_MINT } from "@/lib/constants";
 import { STOP_DEFAULTS } from "@/domain/split";
@@ -130,7 +130,7 @@ export async function GET(request: Request) {
   const ask = !reminderInputs.ok ? null : askFor({
     walletsEver: wallets.length,
     linkedNow: wallets.filter((w) => w.status !== "revoked").map((w) => w.pubkey),
-    withdrawals: withdrawals.filter((x) => x.cancelSignature === null).length,
+    withdrawals: countedPicks(withdrawals).length,
     removedWallets: reminderInputs.events.filter((e) => e.kind === "revoke_seen" && e.walletPubkey && (e.detail as { by?: unknown } | null)?.by === "user").map((e) => ({ wallet: e.walletPubkey!, at: e.ts })),
     now,
     answered: reminderInputs.answers.flatMap((e) => {
@@ -190,7 +190,8 @@ export async function GET(request: Request) {
         return { id: p.id, ts: p.ts, asset: l?.asset ?? "SKR", usdcInCents: l?.usdcInCents ?? 0, amountOutRaw: l?.amountOutRaw ?? 0n, feeCents: l?.feeCents ?? 0, signature: p.signature,
           venue: l?.venue ?? null, receiptOutRaw: l ? receiptOutRaw(l) : null, underlyingOutRaw: l ? underlyingOutRaw(l) : null };
       }),
-      picks: withdrawals.filter((w) => w.cancelSignature === null && COINS[w.asset].live).map((w) => ({ ts: w.unstakeTs, asset: w.asset, amountRaw: w.amountRaw ?? 0n })),
+      // 11-14: a superseded row whose SKR a later whole-cooldown row counts again is not a second pick (lib/pot countedPicks)
+      picks: countedPicks(withdrawals).filter((w) => COINS[w.asset].live).map((w) => ({ ts: w.unstakeTs, asset: w.asset, amountRaw: w.amountRaw ?? 0n })),
     },
     nextPlanting: { pendingCents: pending, thresholdCents, capLeftCents: capLeft, asset: nextAsset },
     lastReceipt: last
