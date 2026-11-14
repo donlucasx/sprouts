@@ -20,6 +20,8 @@ const { positionMock, sendMock, statusMock, validMock } = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/staking", async (orig) => ({ ...(await orig<object>()), readPosition: (...a: unknown[]) => positionMock(...a), sharePrice: vi.fn(async () => SP) }));
 vi.mock("@/lib/jupiter", () => ({ priceUsd: vi.fn(async () => 0.0183) }));
+const { alertMock } = vi.hoisted(() => ({ alertMock: vi.fn(async (_card: unknown) => {}) }));
+vi.mock("@/lib/founder-alert", async (orig) => ({ ...(await orig<object>()), alertFounder: (card: unknown) => alertMock(card) }));
 vi.mock("@/lib/planting", () => ({ signatureStatus: (sig: string) => statusMock(sig) }));
 // The confirm poll (20 x 1.5 s) asks the chain once here; settleUnconfirmed is the real one, over the mocked rpc and status.
 vi.mock("@/lib/user-tx", async (orig) => ({ ...(await orig<object>()), waitConfirmed: (sig: string) => statusMock(sig) }));
@@ -260,16 +262,20 @@ describe("withdraw routes", () => {
     expect((await repo.listWithdrawals(U, 5))[0].cancelSignature).not.toBeNull();
     expect(await repo.pendingWithdrawal(U)).toBeNull();
   });
-  // 11-14 (ops #6, fix C): the row was closed while the cancel was in flight (the crank closed it as superseded): the route answers
-  // "already closed" and never overwrites the closed row with a cancel.
-  it("put it back: a row closed meanwhile is answered as already closed, not overwritten", async () => {
+  // 11-14 (ops #6, fix C): the row was closed while the cancel was in flight (the crank closed it as superseded). The cancel landed
+  // (the chain shows nothing unstaking), so the user is told it worked; the closed row is never overwritten, and the founder is alerted.
+  it("put it back: a row closed meanwhile is not overwritten; the landed cancel answers success and alerts", async () => {
+    alertMock.mockClear();
     const w = await repo.insertWithdrawal({ userPubkey: U, asset: "SKR", source: "sprouts", unstakeSignature: "x", sharesUnstaked: 80_279_232n, amountRaw: 92_000_000n, principalRaw: 0n });
     const signed = await signAsUser((await (await cancelBuild(post("/api/withdraw/cancel/build", {}))).json()).transaction);
     statusMock.mockImplementation(async () => { await repo.setWithdrawalSkipped(w.id); return "confirmed"; });
     positionMock.mockResolvedValue(staked(2_000_000_000n));
     const r = await cancelConfirm(post("/api/withdraw/cancel/confirm", { signedTransaction: signed }));
-    expect(r.status).toBe(409);
-    expect((await r.json()).error).toMatch(/already closed/i);
+    expect(r.status).toBe(200);
+    expect(await r.json()).toEqual({ cancelled: true });
+    expect(alertMock).toHaveBeenCalledTimes(1);
+    expect(alertMock.mock.calls[0][0]).toMatchObject({ channel: "ops", title: "Cancel landed on an already-closed withdrawal" });
+    expect(JSON.stringify(alertMock.mock.calls[0][0])).toContain(w.id.slice(0, 8));
     const row = (await repo.listWithdrawals(U, 5))[0];
     expect(row.cancelSignature).toBeNull();
     expect(row.skippedAt).not.toBeNull();

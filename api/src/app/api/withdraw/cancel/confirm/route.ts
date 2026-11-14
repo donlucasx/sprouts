@@ -8,6 +8,7 @@ import { verifyPostedTransaction } from "@/lib/verify-tx";
 import { sendPosted, waitConfirmed, settleUnconfirmed, STILL_WAITING, userAddress } from "@/lib/user-tx";
 import { SKR_STAKING_PROGRAM } from "@/lib/constants";
 import { withAppErrorLog } from "@/lib/failure-log";
+import { alertFounder } from "@/lib/founder-alert";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -52,7 +53,12 @@ async function postHandler(request: Request) {
   }
   if (after.unstakingRaw !== 0n) return NextResponse.json({ error: "The chain still shows the basket. Check again in a minute." }, { status: 409 });
   // 11-14 (ops #6): the row may have closed while the cancel was in flight (the crank closes a superseded row): never overwrite it.
-  if (!(await repo.setWithdrawalCancelled(pending.id, posted.signature))) return NextResponse.json({ error: "That basket is already closed." }, { status: 409 });
+  // The cancel did land (nothing unstaking on chain), so the user hears it worked; the founder checks the bookkeeping.
+  if (!(await repo.setWithdrawalCancelled(pending.id, posted.signature))) {
+    const row = pending.id.slice(0, 8), sig = posted.signature.slice(0, 8);
+    console.error(`withdraw/cancel/confirm: cancel ${posted.signature} landed but row ${pending.id} was already closed; not booked`);
+    await alertFounder({ channel: "ops", title: "Cancel landed on an already-closed withdrawal", text: `Row ${row}… was already closed; cancel ${sig}… landed on chain and is not on any row`, todo: "Check that row; book the cancel by hand if the basket should show as put back" }).catch(() => {});
+  }
   return NextResponse.json({ cancelled: true });
 }
 export const POST = withAppErrorLog("withdraw/cancel/confirm", postHandler);
