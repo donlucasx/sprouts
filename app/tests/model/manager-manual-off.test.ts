@@ -17,20 +17,20 @@ describe("manual off switches (10-23)", () => {
     expect(manualSplit({ cbBTC: 0, stORE: 20, hSOL: 15 })).toEqual(split({ SKR: 65, stORE: 20, hSOL: 15 }));
   });
 
-  it("splitRows reads a 0 pin as off; SKR is always the rest", () => {
+  it("splitRows reads a 0 pin as off; SKR has its own number (addendum 11-15: no rest)", () => {
     const rows = splitRows({ managed: false, stop: "balanced", pins: { stORE: 0, hSOL: 20 }, allocation: split({ SKR: 100 }) });
     expect(rows.find((r) => r.asset === "stORE")).toMatchObject({ mode: "off", pct: 0 });
     expect(rows.find((r) => r.asset === "hSOL")).toMatchObject({ mode: "pinned", pct: 20 });
-    expect(rows.find((r) => r.asset === "SKR")).toMatchObject({ mode: "the rest", pct: 80 });
+    expect(rows.find((r) => r.asset === "SKR")).toMatchObject({ mode: "pinned", pct: 80 });
     expect(rows.find((r) => r.asset === "cbBTC")!.mode).toBe("pinned");
   });
 
   it("setManualCoinOn switches a coin off and back on, keeps other pins, SKR too (11-15)", () => {
     expect(setManualCoinOn({ hSOL: 20 }, "stORE", false)).toEqual({ hSOL: 20, stORE: 0 });
-    // Final review 11-15: stORE on and unpinned is pinned at the 10 on screen with the change.
-    expect(setManualCoinOn({ hSOL: 20, stORE: 0 }, "stORE", true)).toEqual({ hSOL: 20, stORE: 10 });
-    expect(setManualCoinOn({ hSOL: 20 }, "hSOL", false)).toEqual({ hSOL: 0, stORE: 10 });
-    expect(setManualCoinOn({ hSOL: 20 }, "SKR", false)).toEqual({ hSOL: 20, SKR: 0, stORE: 10 });
+    // Addendum 11-15: switching on starts the coin at 0 (unpinned in the draft); nothing else moves.
+    expect(setManualCoinOn({ hSOL: 20, stORE: 0 }, "stORE", true)).toEqual({ hSOL: 20 });
+    expect(setManualCoinOn({ hSOL: 20 }, "hSOL", false)).toEqual({ hSOL: 0 });
+    expect(setManualCoinOn({ hSOL: 20 }, "SKR", false)).toEqual({ hSOL: 20, SKR: 0 });
   });
 
   it("offCoins lists the 0 pins, SKR included (11-15)", () => {
@@ -39,13 +39,11 @@ describe("manual off switches (10-23)", () => {
     expect(offCoins({})).toEqual([]);
   });
 
-  it("canStepUp counts stORE at its default only while it is on and unpinned", () => {
+  it("canStepUp: an off coin has no '+'; an on coin steps up to its pin max (addendum 11-15: the total line, not '+', holds 100)", () => {
     const view = (pins: Record<string, number>) => ({ managed: false, stop: "balanced" as const, pins, allocation: split({ SKR: 100 }) });
-    // on: 10 (default) + 75 + 15 + 5 = 105, refused (11-15: the cap is the total of 100, not SKR's quarter)
-    expect(canStepUp(view({ hSOL: 75, cbBTC: 10 }), "cbBTC")).toBe(true);
-    expect(canStepUp(view({ hSOL: 75, cbBTC: 15 }), "cbBTC")).toBe(false);
-    // off: the default's 10 is free
-    expect(canStepUp(view({ hSOL: 75, cbBTC: 15, stORE: 0 }), "cbBTC")).toBe(true);
+    expect(canStepUp(view({ hSOL: 75, cbBTC: 15 }), "cbBTC")).toBe(true);
+    expect(canStepUp(view({ hSOL: 75, cbBTC: 15 }), "hSOL")).toBe(false);
+    expect(canStepUp(view({ hSOL: 75, cbBTC: 0 }), "cbBTC")).toBe(false);
   });
 
   it("copy: the floor line says the switch, the disclosure drops the recommendation line, How it works names the USDC", () => {

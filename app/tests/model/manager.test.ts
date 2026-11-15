@@ -27,16 +27,16 @@ describe("the tables", () => {
 
 describe("splitRows (spec 3.1)", () => {
   // Review Focus 1: the Saga after the migration.
-  it("off: rows from a migrated stORE pin; SKR is the rest, every other coin pinned at 0", () => {
+  it("off: rows from a migrated stORE pin; SKR has its own number (addendum 11-15: no rest), every other coin pinned at 0", () => {
     const rows = splitRows(rules({ pins: { stORE: 50 }, allocation: split({ SKR: 50, stORE: 50 }) }));
     expect(rows.map((r) => r.asset)).toEqual([...ASSETS]);
-    expect(rows[0]).toEqual({ asset: "SKR", pct: 50, mode: "the rest", bound: null });
+    expect(rows[0]).toEqual({ asset: "SKR", pct: 50, mode: "pinned", bound: null });
     expect(rows[1]).toEqual({ asset: "stORE", pct: 50, mode: "pinned", bound: null });
     expect(rows[4]).toEqual({ asset: "hSOL", pct: 0, mode: "pinned", bound: null });
   });
 
-  it("off with no pins: stORE at its floor of 10 (R-O1, the run plants it), SKR 90 the rest", () => {
-    expect(splitRows(rules({}))[0]).toEqual({ asset: "SKR", pct: 90, mode: "the rest", bound: null });
+  it("off with no pins: stORE at its default of 10 (R-O1, the run plants it), SKR 90, both with steppers", () => {
+    expect(splitRows(rules({}))[0]).toEqual({ asset: "SKR", pct: 90, mode: "pinned", bound: null });
     expect(splitRows(rules({}))[1]).toEqual({ asset: "stORE", pct: 10, mode: "pinned", bound: null });
   });
 
@@ -83,19 +83,18 @@ describe("splitRows (spec 3.1)", () => {
     expect(rows[1]).toEqual({ asset: "stORE", pct: 0, mode: "off", bound: null });
     expect(rows[4].pct).toBe(20);
   });
-  it("off ignores the preview", () => {
-    expect(splitRows(rules({}), preview)[0]).toEqual({ asset: "SKR", pct: 90, mode: "the rest", bound: null });
-    expect(splitRows(rules({}), preview)[2].pct).toBe(0);
+  // Addendum 11-15: off, the "preview" is the draft's own shares (draftShares), shown as they are.
+  it("off reads the draft's shares when given", () => {
+    expect(splitRows(rules({}), preview)[0]).toEqual({ asset: "SKR", pct: 45, mode: "pinned", bound: null });
+    expect(splitRows(rules({ pins: { stORE: 0 } }), preview)[1]).toEqual({ asset: "stORE", pct: 0, mode: "off", bound: null });
   });
 });
 
 describe("pins", () => {
-  it("canStepUp mirrors the API's validatePins: off, a total of 100 (11-15: no SKR quarter); on, the stop's share, or 100 when SKR is pinned", () => {
+  it("canStepUp: off, only the coin's pin max (addendum 11-15: the total may pass 100 in the draft, Save waits for 100); on, the stop's share, or 100 when SKR is pinned", () => {
     const off = (pins: Pins) => ({ managed: false, stop: "balanced" as Stop, pins, allocation: split({ SKR: 100 }) });
-    expect(canStepUp(off({ stORE: 50, hSOL: 20 }), "hSOL")).toBe(true);    // 70 pinned, +5 = 75
-    expect(canStepUp(off({ stORE: 50, hSOL: 25 }), "hSOL")).toBe(true);    // 80: SKR's quarter is gone
-    expect(canStepUp(off({ stORE: 50, hSOL: 45 }), "cbBTC")).toBe(true);   // 100 exactly
-    expect(canStepUp(off({ stORE: 50, hSOL: 50 }), "cbBTC")).toBe(false);  // 105: the total binds every coin, not only the stepped one
+    expect(canStepUp(off({ stORE: 50, hSOL: 20 }), "hSOL")).toBe(true);
+    expect(canStepUp(off({ stORE: 50, hSOL: 50 }), "cbBTC")).toBe(true);   // 105 in the draft: the total line asks for 5% less
     expect(canStepUp(off({ stORE: 50 }), "stORE")).toBe(false);            // stORE's own max is 50
     const on = (pins: Pins) => ({ managed: true, stop: "careful" as Stop, pins, allocation: split({ SKR: 50, hSOL: 50 }) });
     expect(canStepUp(on({ stORE: 5, hSOL: 40 }), "hSOL")).toBe(true);      // Careful: 50 pinned = 100 - the floor of 50
@@ -115,27 +114,20 @@ describe("pins", () => {
     expect(managedPins({ SKR: 0, hSOL: 0 })).toEqual({ SKR: 0, hSOL: 0 });
     expect(managedPins({})).toEqual({});
   });
+  // Addendum 11-15: stepPin works on the draft's explicit pins (explicitPins): only that coin moves; an unpinned on coin is 0.
   it("stepPin moves by 5 inside 0 and the coin's pin max", () => {
-    // Final review 11-15: stORE on and unpinned is pinned at its 10 with any pin change
-    expect(stepPin({ hSOL: 20 }, "hSOL", 1)).toEqual({ hSOL: 25, stORE: 10 });
+    expect(stepPin({ hSOL: 20 }, "hSOL", 1)).toEqual({ hSOL: 25 });
     expect(stepPin({ hSOL: 75 }, "hSOL", 1)).toEqual({ hSOL: 75 });
     expect(stepPin({ stORE: 50 }, "stORE", 1)).toEqual({ stORE: 50 });
     // 10-23: a 0 pin is the off switch, so stepping down to 0% leaves the coin on with no pin
-    expect(stepPin({ hSOL: 3 }, "hSOL", -1)).toEqual({ stORE: 10 });
+    expect(stepPin({ hSOL: 3 }, "hSOL", -1)).toEqual({});
     expect(stepPin({ hSOL: 5, stORE: 0 }, "hSOL", -1)).toEqual({ stORE: 0 });
-    expect(stepPin({}, "cbBTC", 1)).toEqual({ cbBTC: 5, stORE: 10 });
+    expect(stepPin({}, "cbBTC", 1)).toEqual({ cbBTC: 5 });
   });
-  it("stepPin: stORE moves from its default of 10 and stops at 5 (11-15: off is the switch)", () => {
-    expect(stepPin({}, "stORE", 1)).toEqual({ stORE: 15 });
+  it("stepPin: stORE steps like any coin, down to 0 while on (addendum 11-15)", () => {
+    expect(stepPin({}, "stORE", 1)).toEqual({ stORE: 5 });
     expect(stepPin({ stORE: 15 }, "stORE", -1)).toEqual({ stORE: 10 });
-    expect(stepPin({ stORE: 10 }, "stORE", -1)).toEqual({ stORE: 5 });
-  });
-  it("canStepUp off counts stORE at its default while unpinned (11-15: no SKR quarter)", () => {
-    const off = (pins: Pins) => ({ managed: false, stop: "balanced" as Stop, pins, allocation: split({ SKR: 100 }) });
-    expect(canStepUp(off({ hSOL: 60 }), "hSOL")).toBe(true);    // 60 + stORE 10 + 5 = 75
-    expect(canStepUp(off({ hSOL: 65 }), "hSOL")).toBe(true);    // 80, SKR's quarter is gone
-    expect(canStepUp(off({ hSOL: 60 }), "stORE")).toBe(true);   // stORE 10 -> 15
-    expect(canStepUp(off({ hSOL: 75, cbBTC: 15 }), "stORE")).toBe(false);   // 10 + 90 + 5 = 105
+    expect(stepPin({ stORE: 5 }, "stORE", -1)).toEqual({});
   });
   it("pinsForOn (R346, 10-23): turning the manager on drops the manual shares and keeps the coins switched off", () => {
     expect(pinsForOn({ hSOL: 0, stORE: 50, cbBTC: 0 })).toEqual({ hSOL: 0, cbBTC: 0 });

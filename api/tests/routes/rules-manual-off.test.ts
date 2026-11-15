@@ -161,3 +161,38 @@ describe("PUT /api/rules `off` (manual switches, 10-23)", () => {
     expect((await repo.getRules(U)).pins).toEqual({ hSOL: 40, stORE: 0 });
   });
 });
+
+// Addendum 11-15 (owner: no "rest", must reach 100 to save): the app sends every on coin's own number, SKR included, summing to 100,
+// with stORE on at 0 sent switched off (the app's pinsToSave). The route is unchanged: it drops the non-zero SKR pin and SKR's share is
+// 100 minus the others, which is the user's number. These bodies are the app's exact save bodies.
+describe("PUT /api/rules, manager off, the user's own numbers (addendum 11-15)", () => {
+  const sum = (s: Split) => Object.values(s).reduce((a, c) => a + c, 0);
+  it("SKR 30 / USDC lending 40 / cbBTC 30, stORE switched off: planted exactly", async () => {
+    const res = await put({ managed: false, pins: { SKR: 30, USDC_LEND: 40, cbBTC: 30, stORE: 0 }, off: ["stORE"] });
+    expect(res.status).toBe(200);
+    const b = await json(res);
+    expect(b.allocation).toEqual(split({ SKR: 30, USDC_LEND: 40, cbBTC: 30 }));
+    expect(b.pins).toEqual({ USDC_LEND: 40, cbBTC: 30, stORE: 0 });   // SKR is on, unpinned: its share is 100 minus the others
+  });
+  it("stORE pinned 10: SKR 20 / stORE 10 / USDC lending 40 / cbBTC 30 planted exactly", async () => {
+    const b = await json(await put({ managed: false, pins: { SKR: 20, stORE: 10, USDC_LEND: 40, cbBTC: 30 }, off: [] }));
+    expect(b.allocation).toEqual(split({ SKR: 20, stORE: 10, USDC_LEND: 40, cbBTC: 30 }));
+  });
+  it("why the app sends stORE on at 0 as off: an unpinned stORE is planted at its default 10, moving the user's numbers", async () => {
+    const b = await json(await put({ managed: false, pins: { SKR: 30, USDC_LEND: 40, cbBTC: 30 }, off: [] }));
+    expect(b.allocation.stORE).toBe(10);
+    expect(b.allocation).not.toEqual(split({ SKR: 30, USDC_LEND: 40, cbBTC: 30 }));
+  });
+  it("SKR on at 0 (no pin) gets 0 and stays on; SKR switched off gets 0", async () => {
+    const on0 = await json(await put({ managed: false, pins: { USDC_LEND: 50, cbBTC: 50, stORE: 0 }, off: ["stORE"] }));
+    expect(on0.allocation).toEqual(split({ USDC_LEND: 50, cbBTC: 50 }));
+    expect(on0.pins.SKR).toBeUndefined();
+    const off = await json(await put({ managed: false, pins: { SKR: 0, stORE: 0, USDC_LEND: 60, cbBTC: 40 }, off: ["SKR", "stORE"] }));
+    expect(off.allocation).toEqual(split({ USDC_LEND: 60, cbBTC: 40 }));
+    expect(sum(off.allocation)).toBe(100);
+  });
+  it("an untouched user's first change pinned at the shares shown (SKR 90 / stORE 10) plants what they had", async () => {
+    const b = await json(await put({ managed: false, pins: { SKR: 90, stORE: 10 }, off: [] }));
+    expect(b.allocation).toEqual(split({ SKR: 90, stORE: 10 }));
+  });
+});

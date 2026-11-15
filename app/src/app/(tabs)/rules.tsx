@@ -34,12 +34,15 @@ import {
   UNDONE_TEXT,
   STORE_ROW_NOTE,
   STORE_FLOOR_LINE,
-  PIN_STEP,
   STORE_FLOOR,
   canStepUp,
   canSwitchOff,
-  restLine,
+  explicitPins,
+  draftShares,
+  splitTotal,
+  pinsToSave,
 } from '@/model/manager'
+import type { Pins } from '@/lib/coins'
 import { ORE_DISCLOSURE } from '@/lib/ore-copy'
 import { rulesChanges } from '@/lib/forms'
 import { pauseState } from '@/lib/me-state'
@@ -143,6 +146,9 @@ export default function Rules() {
   const [signing, setSigning] = useState(false)
   // Changes are a draft until Save (09-29: each "+" asked for its own approval, and the first tap looked like nothing happened).
   const [draft, setDraft] = useState<Partial<RulesShape>>({})
+  // Addendum 11-15: true once a manager-off split change has pinned every on coin at its shown share (explicitPins); the draft's pins
+  // are then the user's own numbers, read as they are (draftShares), and Save waits for a total of exactly 100.
+  const [explicit, setExplicit] = useState(false)
   // The watcher (spec 6): a rule in plain English becomes a proposal, set on the controls as the draft; Save is the confirmation.
   const [ask, setAsk] = useState('')
   const [asking, setAsking] = useState(false)
@@ -168,6 +174,18 @@ export default function Rules() {
     setUndone(false)
     setDraft((d) => ({ ...d, ...p }))
   }
+  // Manager off: the split's draft as explicit pins (an untouched user's SKR 90 / stORE 10 included), and its shares and total.
+  const manualPins: Pins = explicit ? r.pins : explicitPins(r.pins)
+  const total = r.managed ? null : splitTotal(draftShares(manualPins))
+  const editManual = (f: (pins: Pins) => Pins) => {
+    if (busy) return
+    setExplicit(true)
+    edit({ pins: f(manualPins) })
+  }
+  const clearDraft = () => {
+    setDraft({})
+    setExplicit(false)
+  }
   // The ORE disclosure shows inline once: the first time the manager is switched on, or, off, the first time stORE gets a pin above
   // zero (spec 3.1; since R-O1 a first "+" pins it at 15, over the 10% floor every split keeps).
   // F1: switched on but not yet saved, the saved allocation is still the OFF one; the rows preview the stop's split instead.
@@ -178,7 +196,7 @@ export default function Rules() {
     (unsavedOn || r.stop !== saved.stop || JSON.stringify(managedPins(r.pins)) !== JSON.stringify(managedPins(saved.pins)))
   const preview = coinsChanged ? managedPreview(me.manager.stopSplit, managedPins(r.pins), r.stop) : undefined
   const pause = pauseState(me.wallets)
-  const rows = splitRows(r, preview)
+  const rows = splitRows(r, r.managed ? preview : draftShares(manualPins))
   // With the manager on, coins at 0% fold into one line (10-08). With it off every coin shows with its steppers: that is
   // how a free user sets their own split (device review 10-08: folding left SKR alone and looked like the only choice).
   // His note 10-08: a coin he switched off stays in the list with its switch off; only coins the manager left at 0% fold.
@@ -186,7 +204,7 @@ export default function Rules() {
   const shownRows = rows.filter((row) => !hiddenRows.includes(row))
   const showDisclosure =
     (r.managed && !saved.managed) ||
-    // (stORE pinned at the 10 it already had, by a change to another coin (plantStore, final review 11-15), is not a first pin.)
+    // (stORE pinned at the 10 it already had, by the first change of the split (explicitPins, addendum 11-15), is not a first pin.)
     (!r.managed && (r.pins.stORE ?? 0) > 0 && (saved.pins.stORE ?? 0) === 0 && !(saved.pins.stORE === undefined && r.pins.stORE === STORE_FLOOR)) ||
     // 10-23: stORE switched back on with the manager off
     (!r.managed && r.pins.stORE !== 0 && saved.pins.stORE === 0)
@@ -205,13 +223,18 @@ export default function Rules() {
         // 10-23: off, the split goes with its switches as `off` (without it the API reads a 0 pin as "no share", for old builds).
         body: {
           ...patch,
-          ...(r.managed ? { pins: managedPins(r.pins) } : 'pins' in patch || 'managed' in patch ? { pins: r.pins, off: offCoins(r.pins) } : {}),
+          // Addendum 11-15: the user's own numbers sum to 100; stORE on at 0 goes switched off (pinsToSave).
+          ...(r.managed
+            ? { pins: managedPins(r.pins) }
+            : 'pins' in patch || 'managed' in patch
+              ? { pins: explicit ? pinsToSave(r.pins) : r.pins, off: offCoins(explicit ? pinsToSave(r.pins) : r.pins) }
+              : {}),
           ...(reauth ? { reauth } : {}),
         },
       })
       // The answer and the draft clear land together, so the screen moves once; the fresh read reconciles in the background.
       applyRules(answer, { undoAvailable: false, changedDay: null })
-      setDraft({})
+      clearDraft()
       void invalidate()
     } catch (e) {
       // Dev builds only: the real error for Metro's terminal (09-29: a save after the sign-in failed with only the generic line).
@@ -231,7 +254,7 @@ export default function Rules() {
     try {
       const answer = await undoSplit()
       applyRules(answer, { managed: false, undoAvailable: false, changedDay: null })
-      setDraft({})
+      clearDraft()
       setUndone(true)
       void invalidate()
     } catch (e) {
@@ -279,8 +302,9 @@ export default function Rules() {
             ) : null}
             {error ? <ThemedText tone="error">{error}</ThemedText> : null}
             <View style={{ flexDirection: 'row', gap: spacing.sm }}>
-              <Button title="Discard" kind="quiet" disabled={busy} onPress={() => setDraft({})} style={{ flex: 1 }} />
-              <Button title="Save changes" loading={busy} onPress={saveAll} style={{ flex: 2 }} />
+              <Button title="Discard" kind="quiet" disabled={busy} onPress={clearDraft} style={{ flex: 1 }} />
+              {/* Addendum 11-15: manager off, Save waits for a total of exactly 100 */}
+              <Button title="Save changes" loading={busy} disabled={total !== null && !total.ok} onPress={saveAll} style={{ flex: 2 }} />
             </View>
           </>
         ) : null
@@ -461,23 +485,24 @@ export default function Rules() {
               value={row.mode !== 'off'}
               disabled={busy || (row.mode !== 'off' && !canSwitchOff(r, row.asset))}
               onValueChange={(on) =>
-                edit({ pins: r.managed ? setCoinOn(r.pins, row.asset, on) : setManualCoinOn(r.pins, row.asset, on) })
+                r.managed ? edit({ pins: setCoinOn(r.pins, row.asset, on) }) : editManual((p) => setManualCoinOn(p, row.asset, on))
               }
             />
             {!r.managed && row.mode === 'pinned' && (
               <StepButtons
                 what={COIN_NAME_LONG[row.asset]}
-                onLess={() => edit({ pins: stepPin(r.pins, row.asset, -1) })}
-                onMore={() => edit({ pins: stepPin(r.pins, row.asset, 1) })}
-                lessDisabled={busy || row.pct <= (row.asset === 'stORE' ? PIN_STEP : 0)}
-                moreDisabled={busy || !canStepUp(r, row.asset)}
+                onLess={() => editManual((p) => stepPin(p, row.asset, -1))}
+                onMore={() => editManual((p) => stepPin(p, row.asset, 1))}
+                lessDisabled={busy || row.pct <= 0}
+                moreDisabled={busy || !canStepUp({ ...r, pins: manualPins }, row.asset)}
               />
             )}
           </View>
         ))}
-        {restLine(r) ? (
-          <ThemedText variant="caption" tone="secondary">
-            {restLine(r)}
+        {/* Addendum 11-15: no rest; the total, and what to fix while it is not 100 */}
+        {total ? (
+          <ThemedText variant="caption" tone={total.ok ? 'secondary' : undefined}>
+            {total.fix ? `${total.line} ${total.fix}` : total.line}
           </ThemedText>
         ) : null}
         {hiddenRows.length > 0 ? (
@@ -496,7 +521,11 @@ export default function Rules() {
           <Switch
             {...toggle}
             value={r.managed}
-            onValueChange={(v) => edit(v ? { managed: true, pins: pinsForOn(r.pins) } : { managed: false })}
+            onValueChange={(v) => {
+              if (busy) return
+              setExplicit(false)
+              edit(v ? { managed: true, pins: pinsForOn(r.pins) } : { managed: false })
+            }}
             accessibilityLabel={SWITCH_LABEL}
           />
         </View>
