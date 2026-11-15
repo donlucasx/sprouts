@@ -48,7 +48,7 @@ describe("PUT /api/rules with the Yield Manager", () => {
     await put({ managed: true, stop: "balanced" });
     const over = await put({ pins: { cbBTC: 75, hSOL: 30 } });   // 11-15: was cbBTC 40 + hSOL 30 (over 100 minus SKR's 35)
     expect(over.status).toBe(400);
-    expect(((await over.json()) as { error: string }).error).toBe("Pins add up to more than the split allows. SKR keeps at least 35%.");
+    expect(((await over.json()) as { error: string }).error).toBe("Your coins add up to more than 100%.");
     // A stORE pin of 5 (one "-" tap) is saved and kept (11-15: a pin wins over the default; was read as 10, SKR 90).
     const storeLow = await put({ managed: false, pins: { stORE: 5 } });
     expect(storeLow.status).toBe(200);
@@ -58,7 +58,7 @@ describe("PUT /api/rules with the Yield Manager", () => {
     expect(low.status).toBe(200);
     expect(((await low.json()) as { allocation: Split }).allocation.SKR).toBe(30);
     const range = await put({ pins: { stORE: 55 } });
-    expect(((await range.json()) as { error: string }).error).toBe("Pins go up to 50 for stORE and 75 for the other coins.");
+    expect(((await range.json()) as { error: string }).error).toBe("Pins go up to 100 for SKR, 50 for stORE and 75 for the other coins.");
     const bad = await put({ pins: { DOGE: 10 } });
     expect(bad.status).toBe(400);
   });
@@ -151,11 +151,11 @@ describe("PUT /api/rules with the Yield Manager", () => {
     expect(manual.allocation).toEqual(split({ SKR: 90, stORE: 10 }));
   });
 
-  it("R346: SKR cannot be switched off; off, a 0 pin is no pin (the manual split's 0 means nothing)", async () => {
+  it("R346 (11-15: SKR too): on, a 0 pin is kept for every coin; off, a non-SKR 0 pin sent without `off` is no pin (the manual split's 0 means nothing)", async () => {
     const on = (await (await put({ managed: true, stop: "balanced", pins: { SKR: 0, hSOL: 0 } })).json()) as { pins: Record<string, number> };
-    expect(on.pins).toEqual({ hSOL: 0 });
+    expect(on.pins).toEqual({ SKR: 0, hSOL: 0 });
     const off = (await (await put({ managed: false, pins: { hSOL: 0, cbBTC: 10 } })).json()) as { pins: Record<string, number> };
-    expect(off.pins).toEqual({ cbBTC: 10 });
+    expect(off.pins).toEqual({ SKR: 0, cbBTC: 10 });   // the switched-off SKR carries over (0.1.10 sends no SKR key)
   });
 
   it("a bad body names the field it failed on, in the API's own sentence (R44 holds)", async () => {

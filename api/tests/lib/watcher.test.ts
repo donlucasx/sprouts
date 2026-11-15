@@ -37,6 +37,18 @@ describe("compileRule", () => {
     expect(r.notes).toEqual(["ORE's share tops out at 50."]);
   });
 
+  it("an ORE share of 0 switches stORE off; 20 is a stORE pin of 20 that the planting keeps (no default raise)", async () => {
+    const off = await compileRule({ text: "no ORE", current, model: answers({ oreShare: 0, understood: "stORE off." }) });
+    expect(off.patch).toEqual({ pins: { stORE: 0 } });
+    const on = await compileRule({ text: "20% ORE", current, model: answers({ oreShare: 20, understood: "20% grows ORE." }) });
+    expect(on.patch).toEqual({ pins: { stORE: 20 } });
+    const { effectiveSplit, STOP_DEFAULTS } = await import("@/domain/split");
+    const split = effectiveSplit({ managed: false, stop: "balanced", pins: { stORE: 20 }, stopSplit: STOP_DEFAULTS.balanced });
+    expect(split.stORE).toBe(20);
+    const { withStoreFloor } = await import("@/domain/split");
+    expect(withStoreFloor(split, { skrFloor: 25, off: false, pinned: true }).stORE).toBe(20);
+  });
+
   it("nothing to change is an empty patch, not an error", async () => {
     const r = await compileRule({ text: "round up every swap", current, model: answers({ roundupOn: true, understood: "Every swap rounds up, as now." }) });
     expect(r.patch).toEqual({});

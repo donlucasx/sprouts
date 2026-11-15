@@ -7,7 +7,7 @@ import { badRequest } from "@/lib/bad-request";
 import { ReauthSchema, verifyReauth } from "@/lib/reauth";
 import { isLiveAsset, sameSplit, type LiveAsset } from "@/domain/coins";
 import type { Pins } from "@/domain/roundup";
-import { validatePins, floorFor, effectiveSplit, STOP_DEFAULTS, STOP_LABEL, PIN_MAX } from "@/domain/split";
+import { validatePins, effectiveSplit, STOP_DEFAULTS } from "@/domain/split";
 import { dayOf } from "@/domain/day";
 import { withAppErrorLog } from "@/lib/failure-log";
 
@@ -37,11 +37,11 @@ const Body = z.object({
   reauth: ReauthSchema.optional(),
 }).strict();
 
-const PIN_COPY = (floor: number, stop: string) => ({
-  sum: `Pins add up to more than the split allows. SKR keeps at least ${floor}%.`,
+const PIN_COPY = {
+  sum: "Your coins add up to more than 100%.",
+  range: "Pins go up to 100 for SKR, 50 for stORE and 75 for the other coins.",
   none_on: "Keep at least one coin on.",
-  range: `Pins go up to ${PIN_MAX.stORE} for stORE and ${PIN_MAX.hSOL} for the other coins.`,
-});
+} as const;
 
 /** Saves the user's rules. Raising the daily limit asks the Seeker for a fresh sign-in (R84); everything else is the session's. */
 async function putHandler(request: Request) {
@@ -52,7 +52,6 @@ async function putHandler(request: Request) {
   const { reauth, managed, stop, pins: rawPins, off, ...rest } = parsed.data;
   if (off !== undefined) {
     if (!off.every(isLiveAsset)) return NextResponse.json({ error: "Bad request: off." }, { status: 400 });
-    if (off.includes("SKR")) return NextResponse.json({ error: "SKR stays on." }, { status: 400 });
   }
   const repo = await getRepo();
   const current = await repo.getRules(session.pubkey);
@@ -73,6 +72,8 @@ async function putHandler(request: Request) {
         pins[k as LiveAsset] = v; // zeros are sorted out below, once the switch's next state is known (R346)
       }
       pinsByUndo = false; // pins you send are yours
+      // 0.1.10 (A2): a managed save sends only the 0 pins of non-SKR coins and no `off`; an SKR that was off stays off.
+      if (off === undefined && !("SKR" in rawPins) && current.pins.SKR === 0) pins.SKR = 0;
     }
     const nextManaged = managed ?? current.managed;
     const nextStop = stop ?? current.stop;
@@ -82,22 +83,21 @@ async function putHandler(request: Request) {
       for (const k of Object.keys(pins) as LiveAsset[]) if (pins[k] !== 0) delete pins[k];
       pinsByUndo = false;
     }
-    if (!nextManaged) delete pins.SKR; // spec 4.2: off, SKR is always the rest, so an SKR pin from the manager's time is dropped
+    if (!nextManaged && pins.SKR !== 0) delete pins.SKR; // spec 4.2: off, SKR is the rest, so a non-zero SKR pin from the manager's time is dropped; a 0 pin is the switch (11-15)
     if (off !== undefined) {
       // 10-23: the app's switches are the truth for every coin; a coin not in `off` is on (a 0 pin left over means nothing).
       for (const k of Object.keys(pins) as LiveAsset[]) if (pins[k] === 0) delete pins[k];
       for (const k of off as LiveAsset[]) pins[k] = 0;
     } else {
-      // R346: on, a 0 pin is a coin switched off (the manager never buys it), so it is kept; SKR cannot be switched off (its floor).
+      // R346: on, a 0 pin is a coin switched off (the manager never buys it), so it is kept, SKR included (11-15).
       // Off, a 0 pin SENT without `off` is no pin (old builds: the manual split's 0 means nothing, SKR is the rest; the audit's P5
       // note), and so is a manager-time 0 carried into manual by an old build. A manual save that leaves the pins alone keeps its
       // switches (10-23).
       const dropZeros = !nextManaged && (rawPins !== undefined || current.managed);
-      for (const k of Object.keys(pins) as LiveAsset[]) if (pins[k] === 0 && (dropZeros || k === "SKR")) delete pins[k];
+      for (const k of Object.keys(pins) as LiveAsset[]) if (pins[k] === 0 && (dropZeros && k !== "SKR")) delete pins[k];
     }
-    const floor = floorFor(nextManaged, nextStop);
     const problem = validatePins(pins);
-    if (problem) return NextResponse.json({ error: PIN_COPY(floor, STOP_LABEL[nextStop])[problem] }, { status: 400 });
+    if (problem) return NextResponse.json({ error: PIN_COPY[problem] }, { status: 400 });
     const stopSplit = nextManaged ? ((await repo.latestSplitDay(nextStop))?.split ?? STOP_DEFAULTS[nextStop]) : STOP_DEFAULTS[nextStop];
     const allocation = effectiveSplit({ managed: nextManaged, stop: nextStop, pins, stopSplit });
     Object.assign(patch, { managed: nextManaged, stop: nextStop, pins, pinsByUndo, allocation });

@@ -51,12 +51,70 @@ describe("PUT /api/rules `off` (manual switches, 10-23)", () => {
     expect(b.allocation).toEqual(split({ SKR: 90, stORE: 10 }));
   });
 
-  it("SKR cannot be switched off, and unknown coins are refused", async () => {
-    const skr = await put({ managed: false, off: ["SKR"] });
-    expect(skr.status).toBe(400);
-    expect((await json(skr)).error).toBe("SKR stays on.");
+  it("SKR can be switched off with the manager off: a 0 pin, and the allocation gives it nothing", async () => {
+    const res = await put({ managed: false, off: ["SKR"] });
+    expect(res.status).toBe(200);
+    const b = await json(res);
+    expect(b.pins.SKR).toBe(0);
+    expect(b.allocation.SKR).toBe(0);
+    expect(Object.values(b.allocation).reduce((a, c) => a + c, 0)).toBe(100);
     expect((await put({ managed: false, off: ["DOGE"] })).status).toBe(400);
   });
+
+  it("SKR off with the manager on, sent the way the app does: pins { SKR: 0 }", async () => {
+    const b = await json(await put({ managed: true, pins: { SKR: 0 } }));
+    expect(b.pins.SKR).toBe(0);
+    expect(b.allocation.SKR).toBe(0);
+  });
+
+  it("switching all six coins off is refused: keep at least one on", async () => {
+    const res = await put({ managed: false, off: ["SKR", "stORE", "hSOL", "USDC_LEND", "SOL_LEND", "cbBTC"] });
+    expect(res.status).toBe(400);
+    expect((await json(res)).error).toBe("Keep at least one coin on.");
+  });
+
+  it("an SKR pin of 5 is saved with the manager on (no minimum)", async () => {
+    const b = await json(await put({ managed: true, pins: { SKR: 5 } }));
+    expect(b.allocation.SKR).toBe(5);
+  });
+
+  it("0.1.10 shape: off without SKR and pins without SKR leaves an SKR that is on alone", async () => {
+    const res = await put({ off: ["stORE"], pins: { cbBTC: 30 } });
+    expect(res.status).toBe(200);
+    const b = await json(res);
+    expect("SKR" in b.pins).toBe(false);
+    expect(b.pins).toEqual({ cbBTC: 30, stORE: 0 });
+  });
+
+  it("0.1.10 managed save (pins only, no off) keeps SKR off for a user whose SKR is off", async () => {
+    await put({ managed: false, off: ["SKR"] });
+    const b = await json(await put({ managed: true, pins: { stORE: 0 } }));
+    expect(b.pins.SKR).toBe(0);
+    expect(b.allocation.SKR).toBe(0);
+  });
+
+  it("manager off, a non-zero SKR pin is still dropped; a 0 pin is kept", async () => {
+    await put({ managed: true, pins: { SKR: 40 } });
+    const b = await json(await put({ managed: false }));
+    expect("SKR" in b.pins).toBe(false);
+  });
+
+  it("the undo carries SKR off through and the allocation honours it", async () => {
+    await put({ managed: true, pins: { SKR: 0 } });
+    await repo.saveRules(U, { prevAllocation: split({ SKR: 60, hSOL: 40 }), allocationDay: "2026-10-23" });
+    const res = await undo(new Request("http://x/api/rules/undo", { method: "POST", headers: auth }));
+    expect(res.status).toBe(200);
+    const r = await repo.getRules(U);
+    expect(r.pins.SKR).toBe(0);
+    expect(r.allocation.SKR).toBe(0);
+  });
+
+  it("the undo for a user with SKR on saves yesterday's split as before", async () => {
+    await repo.saveRules(U, { prevAllocation: split({ SKR: 50, stORE: 10, hSOL: 40 }), allocationDay: "2026-10-23" });
+    await undo(new Request("http://x/api/rules/undo", { method: "POST", headers: auth }));
+    expect((await repo.getRules(U)).allocation).toEqual(split({ SKR: 50, stORE: 10, hSOL: 40 }));
+  });
+
 
   it("switches carry over both ways between manual and the manager", async () => {
     await put({ managed: false, off: ["stORE"] });

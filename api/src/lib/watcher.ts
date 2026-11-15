@@ -152,7 +152,8 @@ export async function compileRule(opts: { text: string; current: Rules; model: M
   }
   if (out.oreShare !== undefined) {
     const share = fit("oreShare", out.oreShare);
-    if (share !== (opts.current.pins.stORE ?? 0)) patch.pins = { ...opts.current.pins, stORE: share };
+    // 11-15: an unpinned stORE is the 10% default, not 0, so "no ORE" (0) must write the off pin.
+    if (share !== opts.current.pins.stORE) patch.pins = { ...opts.current.pins, stORE: share };
   }
   if (out.cannot) notes.push(out.cannot.trim().slice(0, 300));
   return { patch, understood: out.understood.trim().slice(0, 200), notes, usage: raw.usage };
