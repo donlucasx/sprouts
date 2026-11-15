@@ -14,7 +14,7 @@ describe("the tables", () => {
     expect(STOP_FLOOR).toEqual({ careful: 50, balanced: 35, bold: 25 });
     expect(STOP_MAX.careful).toEqual({ stORE: 10, USDC_LEND: 30, SOL_LEND: 15, hSOL: 15, cbBTC: 30 });
     expect(STOP_MAX.bold.cbBTC).toBe(20);
-    expect(PIN_MAX).toEqual({ SKR: 100, stORE: 50, hSOL: 75, USDC_LEND: 75, SOL_LEND: 75, cbBTC: 75 });
+    expect(PIN_MAX).toEqual({ SKR: 100, stORE: 100, hSOL: 100, USDC_LEND: 100, SOL_LEND: 100, cbBTC: 100 });
     expect(PIN_STEP).toBe(5);
     expect(MANAGER_LINE).toBe("Each morning, Claude Haiku 5.5 reads live rates and sends your new change where it pays best. It never sells what you hold.");  // R348; 10-12 names the model, as the deck does
     expect(PRO_BADGE).toBe("Pro");
@@ -95,7 +95,8 @@ describe("pins", () => {
     const off = (pins: Pins) => ({ managed: false, stop: "balanced" as Stop, pins, allocation: split({ SKR: 100 }) });
     expect(canStepUp(off({ stORE: 50, hSOL: 20 }), "hSOL")).toBe(true);
     expect(canStepUp(off({ stORE: 50, hSOL: 50 }), "cbBTC")).toBe(true);   // 105 in the draft: the total line asks for 5% less
-    expect(canStepUp(off({ stORE: 50 }), "stORE")).toBe(false);            // stORE's own max is 50
+    expect(canStepUp(off({ stORE: 100 }), "stORE")).toBe(false);           // stORE's own max is 100 (owner 11-15)
+    expect(canStepUp(off({ stORE: 95 }), "stORE")).toBe(true);
     const on = (pins: Pins) => ({ managed: true, stop: "careful" as Stop, pins, allocation: split({ SKR: 50, hSOL: 50 }) });
     expect(canStepUp(on({ stORE: 5, hSOL: 40 }), "hSOL")).toBe(true);      // Careful: 50 pinned = 100 - the floor of 50
     expect(canStepUp(on({ stORE: 5, hSOL: 45 }), "hSOL")).toBe(false);     // 55 would leave SKR under 50
@@ -117,8 +118,9 @@ describe("pins", () => {
   // Addendum 11-15: stepPin works on the draft's explicit pins (explicitPins): only that coin moves; an unpinned on coin is 0.
   it("stepPin moves by 5 inside 0 and the coin's pin max", () => {
     expect(stepPin({ hSOL: 20 }, "hSOL", 1)).toEqual({ hSOL: 25 });
-    expect(stepPin({ hSOL: 75 }, "hSOL", 1)).toEqual({ hSOL: 75 });
-    expect(stepPin({ stORE: 50 }, "stORE", 1)).toEqual({ stORE: 50 });
+    expect(stepPin({ hSOL: 75 }, "hSOL", 1)).toEqual({ hSOL: 80 });   // owner 11-15: every coin reaches 100
+    expect(stepPin({ hSOL: 100 }, "hSOL", 1)).toEqual({ hSOL: 100 });
+    expect(stepPin({ stORE: 100 }, "stORE", 1)).toEqual({ stORE: 100 });
     // 10-23: a 0 pin is the off switch, so stepping down to 0% leaves the coin on with no pin
     expect(stepPin({ hSOL: 3 }, "hSOL", -1)).toEqual({});
     expect(stepPin({ hSOL: 5, stORE: 0 }, "hSOL", -1)).toEqual({ stORE: 0 });

@@ -42,7 +42,7 @@ describe("manual off switches (10-23)", () => {
   it("canStepUp: an off coin has no '+'; an on coin steps up to its pin max (addendum 11-15: the total line, not '+', holds 100)", () => {
     const view = (pins: Record<string, number>) => ({ managed: false, stop: "balanced" as const, pins, allocation: split({ SKR: 100 }) });
     expect(canStepUp(view({ hSOL: 75, cbBTC: 15 }), "cbBTC")).toBe(true);
-    expect(canStepUp(view({ hSOL: 75, cbBTC: 15 }), "hSOL")).toBe(false);
+    expect(canStepUp(view({ hSOL: 100, cbBTC: 15 }), "hSOL")).toBe(false);
     expect(canStepUp(view({ hSOL: 75, cbBTC: 0 }), "cbBTC")).toBe(false);
   });
 

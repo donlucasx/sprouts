@@ -57,8 +57,8 @@ describe("PUT /api/rules with the Yield Manager", () => {
     const low = await put({ pins: { SKR: 30 } });   // 11-15: was 400 "SKR keeps at least 35% on Balanced."
     expect(low.status).toBe(200);
     expect(((await low.json()) as { allocation: Split }).allocation.SKR).toBe(30);
-    const range = await put({ pins: { stORE: 55 } });
-    expect(((await range.json()) as { error: string }).error).toBe("Pins go up to 100 for SKR, 50 for stORE and 75 for the other coins.");
+    const range = await put({ pins: { stORE: 101 } });
+    expect(((await range.json()) as { error: string }).error).toBe("Pins go up to 100%.");
     const bad = await put({ pins: { DOGE: 10 } });
     expect(bad.status).toBe(400);
   });

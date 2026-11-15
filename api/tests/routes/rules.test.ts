@@ -73,12 +73,11 @@ describe("rules, wallets, revoke", () => {
     expect((await put({ roundupToCents: 200 })).status).toBe(400);
   });
 
-  // The split is never set directly (spec 3.1): with the manager off the stORE share is a pin, up to 50, and SKR is the rest.
-  it("PUT takes the stORE share as a pin with the manager off, up to 50", async () => {
+  // The split is never set directly (spec 3.1): with the manager off the stORE share is a pin, up to 100 (owner 11-15), and SKR is the rest.
+  it("PUT takes the stORE share as a pin with the manager off, up to 100", async () => {
     expect((await put({ pins: { stORE: 50 } })).status).toBe(200);
     expect((await repo.getRules(U)).allocation).toEqual({ ...SKR_ONLY, SKR: 50, stORE: 50 });
-    expect((await put({ pins: { stORE: 60 } })).status).toBe(400);
-    expect((await put({ pins: { stORE: 55 } })).status).toBe(400);
+    expect((await put({ pins: { stORE: 101 } })).status).toBe(400);
     expect((await put({ pins: { stORE: 50, hSOL: 51 } })).status).toBe(400);   // 11-15: over 100 (was hSOL 30, over SKR's quarter)
     expect((await repo.getRules(U)).allocation).toEqual({ ...SKR_ONLY, SKR: 50, stORE: 50 });
   });

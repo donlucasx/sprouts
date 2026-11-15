@@ -32,13 +32,19 @@ describe("validatePins without minimums", () => {
   it("none_on, range, sum; a low SKR pin is fine", () => {
     expect(validatePins({ SKR: 0, stORE: 0, USDC_LEND: 0, SOL_LEND: 0, hSOL: 0, cbBTC: 0 })).toBe("none_on");
     expect(validatePins({ SKR: 5 })).toBeNull();
-    expect(validatePins({ stORE: 60 })).toBe("range");
+    expect(validatePins({ stORE: 101 })).toBe("range");
+    expect(validatePins({ USDC_LEND: 100 })).toBeNull();   // owner 11-15: 100% for every coin
+    expect(validatePins({ stORE: 100 })).toBeNull();
     expect(validatePins({ USDC_LEND: 60, cbBTC: 50 })).toBe("sum");
   });
 });
 
 describe("effectiveSplit, manager off", () => {
   const manual = (pins: Record<string, number>) => effectiveSplit({ managed: false, stop: "careful", pins, stopSplit: CAREFUL });
+  it("one coin at 100 (owner 11-15): USDC lending 100 with SKR off and stORE pinned 0 is that coin alone; with stORE unpinned its default 10 comes off it", () => {
+    expect(manual({ USDC_LEND: 100, SKR: 0 })).toEqual(split({ USDC_LEND: 90, stORE: 10 }));   // stORE unpinned keeps its default 10, from the largest pin
+    expect(manual({ USDC_LEND: 100, SKR: 0, stORE: 0 })).toEqual(split({ USDC_LEND: 100 }));
+  });
   it("SKR off: the rest goes to USDC lending", () => {
     const s = manual({ SKR: 0, cbBTC: 30, USDC_LEND: 40, stORE: 0 });
     expect(s).toEqual(split({ USDC_LEND: 70, cbBTC: 30 }));

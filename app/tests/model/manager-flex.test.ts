@@ -147,8 +147,9 @@ describe("manager off, no rest: the draft pins every on coin at its shown share"
     expect(stepPin({ SKR: 90 }, "stORE", -1)).toEqual({ SKR: 90 });   // already 0: nothing
   });
   it("'+' stops at the coin's pin max; an off coin is not stepped", () => {
-    expect(stepPin({ cbBTC: 75 }, "cbBTC", 1)).toEqual({ cbBTC: 75 });
-    expect(stepPin({ stORE: 50 }, "stORE", 1)).toEqual({ stORE: 50 });
+    expect(stepPin({ cbBTC: 100 }, "cbBTC", 1)).toEqual({ cbBTC: 100 });
+    expect(stepPin({ stORE: 100 }, "stORE", 1)).toEqual({ stORE: 100 });
+    expect(stepPin({ USDC_LEND: 95 }, "USDC_LEND", 1)).toEqual({ USDC_LEND: 100 });   // owner 11-15: 100% for every coin
     expect(stepPin({ SKR: 100 }, "SKR", 1)).toEqual({ SKR: 100 });
     expect(stepPin({ stORE: 0, SKR: 100 }, "stORE", 1)).toEqual({ stORE: 0, SKR: 100 });
     expect(stepPin({ stORE: 0, SKR: 100 }, "stORE", -1)).toEqual({ stORE: 0, SKR: 100 });
@@ -158,12 +159,19 @@ describe("manager off, no rest: the draft pins every on coin at its shown share"
     expect(setManualCoinOn({ SKR: 60, stORE: 0, cbBTC: 30 }, "stORE", true)).toEqual({ SKR: 60, cbBTC: 30 });
     expect(draftShares(setManualCoinOn({ SKR: 60, stORE: 0, cbBTC: 30 }, "stORE", true)).stORE).toBe(0);
   });
+  it("a draft of USDC lending 100, every other coin off, totals 100 and may be saved (owner 11-15)", () => {
+    const pins = { SKR: 0, stORE: 0, USDC_LEND: 100 } as Pins;
+    expect(splitTotal(draftShares(explicitPins(pins)))).toEqual({ total: 100, line: "Total 100%.", fix: null, ok: true });
+    expect(draftShares(pins)).toEqual(split({ USDC_LEND: 100 }));
+  });
   it("canStepUp: only the coin's own pin max binds; the total may pass 100 (the total line says what to fix)", () => {
     expect(canStepUp(view({ pins: { SKR: 90, stORE: 10 } }), "cbBTC")).toBe(true);
     expect(canStepUp(view({ pins: { SKR: 95, stORE: 10 } }), "SKR")).toBe(true);
     expect(canStepUp(view({ pins: { SKR: 100 } }), "SKR")).toBe(false);
-    expect(canStepUp(view({ pins: { cbBTC: 75 } }), "cbBTC")).toBe(false);
-    expect(canStepUp(view({ pins: { stORE: 50 } }), "stORE")).toBe(false);
+    expect(canStepUp(view({ pins: { cbBTC: 100 } }), "cbBTC")).toBe(false);
+    expect(canStepUp(view({ pins: { stORE: 100 } }), "stORE")).toBe(false);
+    expect(canStepUp(view({ pins: { USDC_LEND: 95 } }), "USDC_LEND")).toBe(true);
+    expect(canStepUp(view({ pins: { USDC_LEND: 100 } }), "USDC_LEND")).toBe(false);
     expect(canStepUp(view({ pins: { stORE: 0 } }), "stORE")).toBe(false);   // off
   });
   it("splitTotal: 'Total N%.' and, off 100, what to fix; only 100 saves", () => {

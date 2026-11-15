@@ -36,12 +36,13 @@ describe("validatePins (spec 4.2; no minimums since 11-15)", () => {
     expect(validatePins({ SKR: 35, hSOL: 65 })).toBeNull();
     expect(validatePins({ SKR: 35, hSOL: 70 })).toBe("sum");
   });
-  it("the pin maxes: stORE 50, others 75; whole percents only", () => {
-    expect(validatePins({ stORE: 55 })).toBe("range");
-    expect(validatePins({ hSOL: 80 })).toBe("range");
+  it("the pin max is 100 for every coin (owner 11-15: 100% for every coin); whole percents only", () => {
+    expect(validatePins({ stORE: 101 })).toBe("range");
+    expect(validatePins({ hSOL: 101 })).toBe("range");
     expect(validatePins({ hSOL: 12.5 })).toBe("range");
     expect(validatePins({ hSOL: 12 })).toBeNull();
-    expect(validatePins({ stORE: 50 })).toBeNull();
+    expect(validatePins({ stORE: 100 })).toBeNull();
+    expect(validatePins({ USDC_LEND: 100 })).toBeNull();
   });
 });
 

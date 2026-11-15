@@ -39,7 +39,7 @@ const Body = z.object({
 
 const PIN_COPY = {
   sum: "Your coins add up to more than 100%.",
-  range: "Pins go up to 100 for SKR, 50 for stORE and 75 for the other coins.",
+  range: "Pins go up to 100%.",
   none_on: "Keep at least one coin on.",
 } as const;
 

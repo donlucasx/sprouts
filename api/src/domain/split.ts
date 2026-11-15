@@ -20,7 +20,8 @@ export const STOP_LABEL: Record<Stop, string> = { careful: "Careful", balanced: 
 export const MANUAL_FLOOR = 25;
 /** R-O1 (10-21), a DEFAULT since 11-15: stORE starts at 10% while it is on and has no pin. Any stORE pin wins. */
 export const STORE_FLOOR = 10;
-export const PIN_MAX: Record<LiveAsset, number> = { SKR: 100, stORE: 50, USDC_LEND: 75, SOL_LEND: 75, hSOL: 75, cbBTC: 75 };
+// Owner ruling 11-15: "100% for every coin". Keep in sync with api/src/domain/split.ts and app/src/model/manager.ts.
+export const PIN_MAX: Record<LiveAsset, number> = { SKR: 100, stORE: 100, USDC_LEND: 100, SOL_LEND: 100, hSOL: 100, cbBTC: 100 };
 /** The app's stepper moves pins by this; the API accepts any whole percent so an undo can pin yesterday's exact values. */
 export const PIN_STEP = 5;
 /** R120: the manager's own daily move per coin, in points. The user's actions are not limited. */
