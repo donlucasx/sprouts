@@ -2,7 +2,7 @@ import type { MeResponse } from "./api";
 import { TERMS_MD } from "./terms-text";
 
 /** Contracts 5.6 (DECIDED 10-04): the version the API records at sign-in and on POST /api/terms. */
-export const TERMS_VERSION = "2026-11-01";
+export const TERMS_VERSION = "2026-11-15";
 export type TermsBlock = { kind: "title" | "heading" | "para" | "bullet"; text: string };
 const SUMMARY = "## In three lines";
 
@@ -26,10 +26,10 @@ export function termsNeeded(me: Pick<MeResponse, "terms"> | null | undefined): b
   return !!me?.terms && me.terms.acceptedVersion !== me.terms.currentVersion;
 }
 
-/** What the Terms page offers a signed-in user: "agree" when the page's bundled text is the version the API asks for, "update" when the API has moved on (the text shown would not be the one accepted), null when nothing is owed. */
+/** What the Terms page offers a signed-in user: "agree" when the API asks for the bundled version or an older one (the text shown is at least as new), "update" only when the API is newer than the bundle (date strings compare lexically), null when nothing is owed. */
 export function termsAction(me: Pick<MeResponse, "terms"> | null | undefined): "agree" | "update" | null {
   if (!termsNeeded(me)) return null;
-  return me?.terms?.currentVersion === TERMS_VERSION ? "agree" : "update";
+  return (me?.terms?.currentVersion ?? "") <= TERMS_VERSION ? "agree" : "update";
 }
 /** The cached read with the accepted version filled in from the POST's answer, so Home drops its card at once. */
 export function withAccepted<T extends { terms?: MeResponse["terms"] }>(me: T, version: string): T {
