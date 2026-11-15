@@ -35,7 +35,17 @@ const EVERY_PAGE = [
   { key: "X-Frame-Options", value: "DENY" },
 ];
 
+// The default Vercel host serves the same site as sprouts.money. Send its pages to the real domain so only one copy of the
+// site is public. /api stays on both hosts: a redirect would turn a POST (webhook, cron, app call) into a GET.
+const VERCEL_HOST = [{ type: "host" as const, value: "sprouts-api-gamma.vercel.app" }];
+
 const nextConfig: NextConfig = {
+  async redirects() {
+    return [
+      { source: "/", has: VERCEL_HOST, destination: "https://sprouts.money/", permanent: true },
+      { source: "/:path((?!api/).*)", has: VERCEL_HOST, destination: "https://sprouts.money/:path", permanent: true },
+    ];
+  },
   async headers() {
     return [
       { source: "/:path*", headers: EVERY_PAGE },
