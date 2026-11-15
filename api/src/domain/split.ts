@@ -161,13 +161,15 @@ function takeFrom(x: Record<LiveAsset, number>, donors: LiveAsset[], deficit: nu
 
 /**
  * R-O1 (10-21): raise a whole-percent split's stORE to STORE_FLOOR, taking from each donor tier in turn (largest first within a
- * tier, SKR never below `skrMin`). Returns false when the tiers could not cover it.
+ * tier, SKR never below `skrMin`). Returns false when the tiers could not cover it. stORE is never its own donor (review fix 11-15:
+ * `out.stORE += takeFrom(...)` read stORE before takeFrom lowered it, so a self-donation added the points twice).
  */
 function raiseStore(out: Split, tiers: LiveAsset[][], skrMin: number): boolean {
   for (const tier of tiers) {
     const need = STORE_FLOOR - out.stORE;
     if (need <= 0) break;
-    out.stORE += takeFrom(out, tier, need, (c) => (c === "SKR" ? skrMin : 0));
+    const taken = takeFrom(out, tier.filter((c) => c !== "stORE"), need, (c) => (c === "SKR" ? skrMin : 0));
+    out.stORE += taken;
   }
   return out.stORE >= STORE_FLOOR;
 }
@@ -258,7 +260,7 @@ export function effectiveSplit(a: { managed: boolean; stop: Stop; pins: Pins; st
   for (const c of pinned) fb[c] = pins[c]!;
   const rc = restCoin(on, fb, pinned);
   if (rc && R > 0) fb[rc] += R;
-  if (storeDefault && rc) raiseStore(fb, [[rc], NON_SKR.filter(others)], skrMin);
+  if (storeDefault && rc) raiseStore(fb, [[rc].filter((c) => c !== "stORE"), NON_SKR.filter(others)], skrMin);
   return done(fb);
 }
 

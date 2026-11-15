@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { ASSETS, zeroSplit, type LiveAsset, type Split } from "@/domain/coins";
-import { STOPS, STOP_DEFAULTS, STORE_FLOOR, isOn, restCoin, validatePins, effectiveSplit, withStoreFloor, redistributeDisabled } from "@/domain/split";
+import { STOPS, STOP_DEFAULTS, STORE_FLOOR, PIN_MAX, isOn, restCoin, validatePins, effectiveSplit, withStoreFloor, redistributeDisabled } from "@/domain/split";
 import { pickAsset } from "@/domain/allocation";
 
 // Coin flexibility (11-15): any coin can be switched off (a 0 pin), no coin has a user-facing minimum, stORE's 10% is a default.
@@ -132,7 +132,75 @@ describe("the combinations sweep", () => {
       const s = effectiveSplit({ managed, stop, pins, stopSplit: STOP_DEFAULTS[stop] });
       expect(sum(s)).toBe(100);
       for (const c of ASSETS) if (pins[c] === 0) expect(s[c]).toBe(0);
-      if (h !== undefined) expect(s.hSOL).toBeGreaterThanOrEqual(h);
+      // A pin is exact, except manager off with SKR and USDC lending off: hSOL (20) is then the largest on coin and takes the rest.
+      if (h !== undefined) expect(s.hSOL).toBe(!managed && !skr && !usdc ? 100 - s.stORE : h);
     }
+  });
+});
+
+// Review fix 1 (11-15): stORE as the only free on coin with R < 10 made the fallback's raiseStore use stORE as its own donor (105).
+describe("stORE never donates to itself", () => {
+  it("the three reproduced literals sum to 100", () => {
+    const a = effectiveSplit({ managed: true, stop: "careful", pins: { SKR: 30, USDC_LEND: 65, SOL_LEND: 0, hSOL: 0, cbBTC: 0 }, stopSplit: CAREFUL });
+    const b = effectiveSplit({ managed: true, stop: "careful", pins: { SKR: 0, USDC_LEND: 50, cbBTC: 45, SOL_LEND: 0, hSOL: 0 }, stopSplit: CAREFUL });
+    const c = effectiveSplit({ managed: true, stop: "balanced", pins: { SKR: 10, SOL_LEND: 10, cbBTC: 75, USDC_LEND: 0, hSOL: 0 }, stopSplit: STOP_DEFAULTS.balanced });
+    for (const s of [a, b, c]) {
+      expect(sum(s)).toBe(100);
+      expect(s.stORE).toBe(10);
+    }
+    expect(a).toEqual(split({ SKR: 30, stORE: 10, USDC_LEND: 60 }));
+  });
+  it("a seeded random sweep of pin sets (SKR pins too), both modes, random disabled legs: sums to 100, no off coin above 0", () => {
+    let seed = 20261115;
+    const rnd = (n: number) => {
+      seed = (seed * 1103515245 + 12345) % 2147483648;
+      return seed % n;
+    };
+    let checked = 0;
+    for (let i = 0; i < 6000; i++) {
+      const stop = (["careful", "balanced", "bold"] as const)[rnd(3)];
+      const pins: Partial<Record<LiveAsset, number>> = {};
+      if (i % 2 === 0) {
+        let room = 100;
+        for (const c of ASSETS) {
+          const k = rnd(4);   // 0: free, 1: off, 2-3: a pin
+          if (k === 1) pins[c] = 0;
+          else if (k >= 2) {
+            const v = rnd(Math.min(PIN_MAX[c], room) + 1);
+            pins[c] = v;
+            room -= v;
+          }
+        }
+      } else {
+        // stORE the only free coin and a rest R of 0..9: every other coin pinned (0 = off), the pins summing to 100 - R.
+        let left = 100 - rnd(10);
+        for (const c of ASSETS) {
+          if (c === "stORE") continue;
+          const v = rnd(3) === 0 ? 0 : Math.min(PIN_MAX[c], left, 1 + rnd(left + 1));
+          pins[c] = v;
+          left -= v;
+        }
+        if (left > 0) continue;
+      }
+      if (validatePins(pins)) continue;
+      checked++;
+      const disabled = ASSETS.filter(() => rnd(5) === 0);
+      for (const managed of [true, false]) {
+        const s = effectiveSplit({ managed, stop, pins, stopSplit: STOP_DEFAULTS[stop] });
+        expect(sum(s)).toBe(100);
+        for (const c of ASSETS) if (pins[c] === 0) expect(s[c]).toBe(0);
+        const userOff = ASSETS.filter((c) => pins[c] === 0);
+        const r = redistributeDisabled(s, disabled, stop, userOff);
+        if (r === null) expect(ASSETS.every((c) => disabled.includes(c) || userOff.includes(c))).toBe(true);
+        else {
+          expect(sum(r)).toBeCloseTo(100, 9);
+          for (const c of [...userOff, ...disabled]) expect(r[c]).toBe(0);
+        }
+        const d = effectiveSplit({ managed, stop, pins, stopSplit: STOP_DEFAULTS[stop], disabled });
+        expect(sum(d)).toBeCloseTo(100, 9);
+        for (const c of userOff) expect(d[c]).toBe(0);
+      }
+    }
+    expect(checked).toBeGreaterThan(1000);
   });
 });
