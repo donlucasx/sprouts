@@ -23,7 +23,7 @@ export default function Terms() {
   // Controller ruling (Task 11 review, risk 3): the card only. New sign-ins accept at /api/auth/verify; there is no hard block on other screens.
   const action = session !== null ? termsAction(me) : null
   async function accept() {
-    // Post the version the API asks for (termsAction only offers "agree" when it is the bundled one).
+    // termsAction only offers "agree" when the API's version is at or below the bundled version; accept posts the API's own version.
     const version = me?.terms?.currentVersion ?? TERMS_VERSION
     setBusy(true)
     setError(null)

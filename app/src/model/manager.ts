@@ -34,7 +34,7 @@ export const MANAGER_LINE = "Each morning, Claude Haiku 5.5 reads live rates and
 export const PRO_BADGE = "Pro";
 export const PRO_LINE = "Included free during launch.";
 /** R348: the one line above the split rows, so each control says what it does. 11-15: SKR has a switch too; one coin stays on. */
-export const ROWS_LINE = { on: "Switch a coin off and the manager won't buy it. Keep at least one on.", off: "Set your own split. Switch a coin off and Sprouts won't buy it." } as const;
+export const ROWS_LINE = { on: "Switch a coin off and the manager won't buy it. Keep at least one on.", off: "Set your own split. Switch a coin off and Sprouts won't buy it. Keep at least one on." } as const;
 /** 11-15: the stop's SKR share is the manager's aim, not a user minimum. */
 export const STOP_LINE = "Careful aims for about 50% in SKR, Balanced 35%, Bold 25%.";
 export const UNDONE_TEXT = "Yesterday's split is back. The AI Yield Manager is off until you turn it on.";
@@ -206,13 +206,25 @@ export function setCoinOn(pins: Pins, asset: LiveAsset, on: boolean): Pins {
   return next;
 }
 
-/** 10-23 (his ruling): with the manager off, switch a coin on (back to no pin: stORE at its default, SKR the rest, the others at 0%)
- *  or off (a 0 pin: never bought). 11-15: SKR too. Other pins stay. */
+/**
+ * Final review 11-15 (controller ruling): with the manager off, a pin change made while stORE is on and unpinned also pins stORE at
+ * the 10 on screen. The API (R-O1, kept for existing users) takes an unpinned stORE's default out of the largest pin rather than out of
+ * SKR's 25, so without this a "+" on cbBTC 70 planted cbBTC 65 and SKR kept a hidden 25. Pinned, the pins are planted as set and SKR
+ * (or the rest coin) takes the rest. Left unpinned when the pins leave stORE no room (validatePins refuses a sum over 100).
+ */
+function plantStore(pins: Pins): Pins {
+  if (pins.stORE !== undefined) return pins;
+  const total = ASSETS.reduce((s, c) => s + (pins[c] ?? 0), 0);
+  return total + STORE_FLOOR <= 100 ? { ...pins, stORE: STORE_FLOOR } : pins;
+}
+
+/** 10-23 (his ruling): with the manager off, switch a coin on (back to no pin: the others at 0%, SKR or the rest coin the rest) or off
+ *  (a 0 pin: never bought). 11-15: SKR too. Other pins stay; stORE, on and unpinned, is pinned at its 10 (plantStore). */
 export function setManualCoinOn(pins: Pins, asset: LiveAsset, on: boolean): Pins {
   const next: Pins = { ...pins };
   if (on) delete next[asset];
   else next[asset] = 0;
-  return next;
+  return plantStore(next);
 }
 
 /** The coins switched off (0 pins), sent to the API as `off` with every save that carries the split (10-23). 11-15: SKR included. */
@@ -232,7 +244,8 @@ export function restLine(r: RulesView): string | null {
   const p = manualParts(r.pins);
   if (!p.restTo || p.rest <= 0) return null;
   const name = COIN_NAME_LONG[p.restTo];
-  return `${p.storeDefault ? `stORE starts at ${STORE_FLOOR}%. ` : ""}The rest, ${p.rest}%, goes to ${name}.`;
+  // stORE as the rest coin is not told it starts at 10%: its line is the rest it takes.
+  return `${p.storeDefault && p.restTo !== "stORE" ? `stORE starts at ${STORE_FLOOR}%. ` : ""}The rest, ${p.rest}%, goes to ${name}.`;
 }
 
 /**
@@ -279,23 +292,26 @@ export function managedPreview(stopSplit: Split, pins: Pins, stop: Stop): Split 
 }
 
 /** Move a pin by PIN_STEP inside 0 and the coin's pin max (manager off: the only steppers). 11-15: stORE steps from its default of 10
- *  and stops at 5 (its off is the switch); a coin switched off is not stepped down. */
+ *  and stops at 5 (its off is the switch); a coin switched off is not stepped down. A step that moves nothing writes nothing; one
+ *  that moves a pin while stORE is on and unpinned pins stORE at its 10 too (plantStore). */
 export function stepPin(pins: Pins, asset: LiveAsset, dir: 1 | -1): Pins {
   if (pins[asset] === 0 && dir === -1) return pins;
   const min = asset === "stORE" ? STORE_STEP_MIN : 0;
   const current = pins[asset] ?? (asset === "stORE" ? STORE_FLOOR : 0);
   const next = Math.max(min, Math.min(PIN_MAX[asset], current + dir * PIN_STEP));
+  if (next === current) return pins;
   // 10-23: a 0 pin is the off switch, so stepping down to 0% leaves the coin on with no pin.
   if (next === 0) {
     const rest: Pins = { ...pins };
     delete rest[asset];
-    return rest;
+    return plantStore(rest);
   }
-  return { ...pins, [asset]: next };
+  return plantStore({ ...pins, [asset]: next });
 }
 
 /** Whether a pin's "+" may move it up by PIN_STEP, mirroring the API's validatePins: the coin's pin max and a total of at most 100.
- *  Off (11-15, no SKR quarter): stORE counts at its default while it is on and unpinned, so the pins the user sets are planted as set.
+ *  Off (11-15, no SKR quarter): stORE counts at its default while it is on and unpinned, and the step pins it there (plantStore), so
+ *  the pins the user sets are planted as set.
  *  On: the pins must leave a free SKR the stop's share, or reach at most 100 with SKR pinned. */
 export function canStepUp(r: RulesView, asset: LiveAsset): boolean {
   const current = r.pins[asset] ?? (!r.managed && asset === "stORE" ? STORE_FLOOR : 0);

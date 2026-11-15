@@ -86,6 +86,16 @@ describe("PUT /api/rules `off` (manual switches, 10-23)", () => {
     expect(b.pins).toEqual({ cbBTC: 30, stORE: 0 });
   });
 
+  it("0.1.10 manual save by a user whose SKR is off: accepted, and SKR is back on (the accepted trade)", async () => {
+    await put({ managed: false, off: ["SKR"] });
+    const res = await put({ managed: false, off: ["stORE"], pins: { cbBTC: 30 } });
+    expect(res.status).toBe(200);
+    const b = await json(res);
+    expect("SKR" in b.pins).toBe(false);
+    expect(b.pins).toEqual({ cbBTC: 30, stORE: 0 });
+    expect(b.allocation).toEqual(split({ SKR: 70, cbBTC: 30 }));
+  });
+
   it("0.1.10 managed save (pins only, no off) keeps SKR off for a user whose SKR is off", async () => {
     await put({ managed: false, off: ["SKR"] });
     const b = await json(await put({ managed: true, pins: { stORE: 0 } }));
@@ -107,6 +117,16 @@ describe("PUT /api/rules `off` (manual switches, 10-23)", () => {
     const r = await repo.getRules(U);
     expect(r.pins.SKR).toBe(0);
     expect(r.allocation.SKR).toBe(0);
+  });
+
+  it("the undo logs the allocation it saved, not yesterday's split, when a coin in it is now off", async () => {
+    await put({ managed: true, pins: { SKR: 0 } });
+    await repo.saveRules(U, { prevAllocation: split({ SKR: 60, hSOL: 40 }), allocationDay: "2026-10-23" });
+    await undo(new Request("http://x/api/rules/undo", { method: "POST", headers: auth }));
+    const saved = (await repo.getRules(U)).allocation;
+    expect(saved.SKR).toBe(0);
+    const ev = repo.events.find((e) => e.kind === "split_undone")!;
+    expect((ev.detail as { to: Split }).to).toEqual(saved);
   });
 
   it("the undo for a user with SKR on saves yesterday's split as before", async () => {

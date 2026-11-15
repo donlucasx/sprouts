@@ -35,6 +35,7 @@ import {
   STORE_ROW_NOTE,
   STORE_FLOOR_LINE,
   PIN_STEP,
+  STORE_FLOOR,
   canStepUp,
   canSwitchOff,
   restLine,
@@ -185,7 +186,8 @@ export default function Rules() {
   const shownRows = rows.filter((row) => !hiddenRows.includes(row))
   const showDisclosure =
     (r.managed && !saved.managed) ||
-    (!r.managed && (r.pins.stORE ?? 0) > 0 && (saved.pins.stORE ?? 0) === 0) ||
+    // (stORE pinned at the 10 it already had, by a change to another coin (plantStore, final review 11-15), is not a first pin.)
+    (!r.managed && (r.pins.stORE ?? 0) > 0 && (saved.pins.stORE ?? 0) === 0 && !(saved.pins.stORE === undefined && r.pins.stORE === STORE_FLOOR)) ||
     // 10-23: stORE switched back on with the manager off
     (!r.managed && r.pins.stORE !== 0 && saved.pins.stORE === 0)
 

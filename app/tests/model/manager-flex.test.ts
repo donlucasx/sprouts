@@ -103,8 +103,9 @@ describe("switches (A3, A14)", () => {
     expect(managedPreview(CAREFUL, { SKR: 0 }, "careful").SKR).toBe(0);
   });
   it("setManualCoinOn switches SKR off and back on", () => {
-    expect(setManualCoinOn({}, "SKR", false)).toEqual({ SKR: 0 });
-    expect(setManualCoinOn({ SKR: 0, hSOL: 20 }, "SKR", true)).toEqual({ hSOL: 20 });
+    // stORE on and unpinned: the change also pins stORE at the 10 on screen (final review item 1).
+    expect(setManualCoinOn({}, "SKR", false)).toEqual({ SKR: 0, stORE: 10 });
+    expect(setManualCoinOn({ SKR: 0, hSOL: 20 }, "SKR", true)).toEqual({ hSOL: 20, stORE: 10 });
   });
   it("offCoins lists every 0 pin, SKR included", () => {
     expect(offCoins({ SKR: 0 })).toEqual(["SKR"]);
@@ -140,6 +141,33 @@ describe("steppers without minimums", () => {
   });
 });
 
+describe("manager off, stORE on and unpinned: a pin change plants stORE at 10 (final review item 1)", () => {
+  it("'+' on cbBTC 70 pins cbBTC 75 and stORE 10, and SKR takes the rest, 15", () => {
+    const pins = stepPin({ cbBTC: 70 }, "cbBTC", 1);
+    expect(pins).toEqual({ cbBTC: 75, stORE: 10 });
+    expect(manualSplit(pins)).toEqual(split({ cbBTC: 75, stORE: 10, SKR: 15 }));
+    // Before: the API took stORE's default out of the largest pin, so '+' looked dead (cbBTC stayed 65, SKR 25).
+    expect(manualSplit({ cbBTC: 75 })).toEqual(split({ cbBTC: 65, stORE: 10, SKR: 25 }));
+  });
+  it("'-' and the switches plant it too; a stORE pin or an off stORE is left as it is", () => {
+    expect(stepPin({ cbBTC: 70 }, "cbBTC", -1)).toEqual({ cbBTC: 65, stORE: 10 });
+    expect(setManualCoinOn({ cbBTC: 70 }, "hSOL", false)).toEqual({ cbBTC: 70, hSOL: 0, stORE: 10 });
+    expect(setManualCoinOn({ cbBTC: 70, stORE: 0 }, "stORE", true)).toEqual({ cbBTC: 70, stORE: 10 });
+    expect(manualSplit({ cbBTC: 70, stORE: 10 })).toEqual(split({ cbBTC: 70, stORE: 10, SKR: 20 }));
+    expect(stepPin({ cbBTC: 70, stORE: 15 }, "cbBTC", -1)).toEqual({ cbBTC: 65, stORE: 15 });
+    expect(stepPin({ cbBTC: 70, stORE: 0 }, "cbBTC", 1)).toEqual({ cbBTC: 75, stORE: 0 });
+    expect(setManualCoinOn({ cbBTC: 70 }, "stORE", false)).toEqual({ cbBTC: 70, stORE: 0 });
+  });
+  it("a step that changes nothing writes nothing; a user who changes nothing keeps pins {}", () => {
+    expect(stepPin({ cbBTC: 75 }, "cbBTC", 1)).toEqual({ cbBTC: 75 });
+    expect(stepPin({}, "cbBTC", -1)).toEqual({});
+    expect(manualSplit({})).toEqual(split({ stORE: 10, SKR: 90 }));
+  });
+  it("an old pin set that leaves stORE no room is left unpinned (validatePins would refuse a sum over 100)", () => {
+    expect(setManualCoinOn({ hSOL: 75, cbBTC: 25 }, "SOL_LEND", false)).toEqual({ hSOL: 75, cbBTC: 25, SOL_LEND: 0 });
+  });
+});
+
 describe("rows and the rest line", () => {
   it("manager off: SKR reads off at a 0 pin, else the rest", () => {
     expect(splitRows(view({ pins: { SKR: 0, cbBTC: 30 } }))[0]).toEqual({ asset: "SKR", pct: 0, mode: "off", bound: null });
@@ -155,6 +183,9 @@ describe("rows and the rest line", () => {
     expect(rows.find((x) => x.asset === "USDC_LEND")).toEqual({ asset: "USDC_LEND", pct: 70, mode: "the rest", bound: null });
     expect(rows.find((x) => x.asset === "cbBTC")!.mode).toBe("pinned");
     expect(rows.find((x) => x.asset === "SKR")!.mode).toBe("off");
+  });
+  it("restLine: stORE as the unpinned rest coin is not told it starts at 10%", () => {
+    expect(restLine(view({ pins: { SKR: 0, USDC_LEND: 0, cbBTC: 5 } }))).toBe("The rest, 85%, goes to stORE.");
   });
   it("restLine: N is the leftover even when stORE is the rest coin", () => {
     expect(restLine(view({ pins: { SKR: 0, USDC_LEND: 0, stORE: 20, cbBTC: 5 } }))).toBe("The rest, 75%, goes to stORE.");
@@ -175,7 +206,7 @@ describe("rows and the rest line", () => {
 describe("copy", () => {
   it("the stop line, the rows line, the stORE line", () => {
     expect(STOP_LINE).toBe("Careful aims for about 50% in SKR, Balanced 35%, Bold 25%.");
-    expect(ROWS_LINE).toEqual({ on: "Switch a coin off and the manager won't buy it. Keep at least one on.", off: "Set your own split. Switch a coin off and Sprouts won't buy it." });
+    expect(ROWS_LINE).toEqual({ on: "Switch a coin off and the manager won't buy it. Keep at least one on.", off: "Set your own split. Switch a coin off and Sprouts won't buy it. Keep at least one on." });
     expect(STORE_FLOOR_LINE).toEqual({ on: "stORE starts at 10% until you change it.", off: "stORE starts at 10% until you change it." });
     for (const s of [STOP_LINE, ROWS_LINE.on, ROWS_LINE.off, STORE_FLOOR_LINE.on]) expect(s).not.toMatch(/—/);
   });

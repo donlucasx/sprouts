@@ -47,6 +47,9 @@ describe("effectiveSplit, manager off", () => {
   it("SKR and USDC lending off: the rest goes to the largest on coin", () => {
     expect(manual({ SKR: 0, USDC_LEND: 0, stORE: 0, cbBTC: 30, hSOL: 20 })).toEqual(split({ cbBTC: 80, hSOL: 20 }));
   });
+  it("SKR on, stORE pinned at 10 with cbBTC 75 (the app plants stORE's 10 with a change): the pins are exact, SKR the rest", () => {
+    expect(manual({ cbBTC: 75, stORE: 10 })).toEqual(split({ cbBTC: 75, stORE: 10, SKR: 15 }));
+  });
   it("SKR off, stORE on and unpinned: stORE keeps its default 10, USDC lending the rest", () => {
     expect(manual({ SKR: 0, cbBTC: 50 })).toEqual(split({ stORE: 10, USDC_LEND: 40, cbBTC: 50 }));
   });

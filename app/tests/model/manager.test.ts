@@ -19,7 +19,7 @@ describe("the tables", () => {
     expect(MANAGER_LINE).toBe("Each morning, Claude Haiku 5.5 reads live rates and sends your new change where it pays best. It never sells what you hold.");  // R348; 10-12 names the model, as the deck does
     expect(PRO_BADGE).toBe("Pro");
     expect(PRO_LINE).toBe("Included free during launch.");  // R347
-    expect(ROWS_LINE).toEqual({ on: "Switch a coin off and the manager won't buy it. Keep at least one on.", off: "Set your own split. Switch a coin off and Sprouts won't buy it." });  // 10-23, 11-15: one coin stays on
+    expect(ROWS_LINE).toEqual({ on: "Switch a coin off and the manager won't buy it. Keep at least one on.", off: "Set your own split. Switch a coin off and Sprouts won't buy it. Keep at least one on." });  // 10-23, 11-15: one coin stays on
     expect(STOP_LINE).toBe("Careful aims for about 50% in SKR, Balanced 35%, Bold 25%.");   // 11-15: the aim, not a minimum
     expect(UNDONE_TEXT).toBe("Yesterday's split is back. The AI Yield Manager is off until you turn it on.");
   });
@@ -116,13 +116,14 @@ describe("pins", () => {
     expect(managedPins({})).toEqual({});
   });
   it("stepPin moves by 5 inside 0 and the coin's pin max", () => {
-    expect(stepPin({ hSOL: 20 }, "hSOL", 1)).toEqual({ hSOL: 25 });
+    // Final review 11-15: stORE on and unpinned is pinned at its 10 with any pin change
+    expect(stepPin({ hSOL: 20 }, "hSOL", 1)).toEqual({ hSOL: 25, stORE: 10 });
     expect(stepPin({ hSOL: 75 }, "hSOL", 1)).toEqual({ hSOL: 75 });
     expect(stepPin({ stORE: 50 }, "stORE", 1)).toEqual({ stORE: 50 });
     // 10-23: a 0 pin is the off switch, so stepping down to 0% leaves the coin on with no pin
-    expect(stepPin({ hSOL: 3 }, "hSOL", -1)).toEqual({});
+    expect(stepPin({ hSOL: 3 }, "hSOL", -1)).toEqual({ stORE: 10 });
     expect(stepPin({ hSOL: 5, stORE: 0 }, "hSOL", -1)).toEqual({ stORE: 0 });
-    expect(stepPin({}, "cbBTC", 1)).toEqual({ cbBTC: 5 });
+    expect(stepPin({}, "cbBTC", 1)).toEqual({ cbBTC: 5, stORE: 10 });
   });
   it("stepPin: stORE moves from its default of 10 and stops at 5 (11-15: off is the switch)", () => {
     expect(stepPin({}, "stORE", 1)).toEqual({ stORE: 15 });

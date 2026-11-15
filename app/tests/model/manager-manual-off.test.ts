@@ -27,9 +27,10 @@ describe("manual off switches (10-23)", () => {
 
   it("setManualCoinOn switches a coin off and back on, keeps other pins, SKR too (11-15)", () => {
     expect(setManualCoinOn({ hSOL: 20 }, "stORE", false)).toEqual({ hSOL: 20, stORE: 0 });
-    expect(setManualCoinOn({ hSOL: 20, stORE: 0 }, "stORE", true)).toEqual({ hSOL: 20 });
-    expect(setManualCoinOn({ hSOL: 20 }, "hSOL", false)).toEqual({ hSOL: 0 });
-    expect(setManualCoinOn({ hSOL: 20 }, "SKR", false)).toEqual({ hSOL: 20, SKR: 0 });
+    // Final review 11-15: stORE on and unpinned is pinned at the 10 on screen with the change.
+    expect(setManualCoinOn({ hSOL: 20, stORE: 0 }, "stORE", true)).toEqual({ hSOL: 20, stORE: 10 });
+    expect(setManualCoinOn({ hSOL: 20 }, "hSOL", false)).toEqual({ hSOL: 0, stORE: 10 });
+    expect(setManualCoinOn({ hSOL: 20 }, "SKR", false)).toEqual({ hSOL: 20, SKR: 0, stORE: 10 });
   });
 
   it("offCoins lists the 0 pins, SKR included (11-15)", () => {

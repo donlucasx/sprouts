@@ -26,10 +26,11 @@ async function postHandler(request: Request) {
   // 10-23: a coin switched off stays off through the undo (a 0 pin means off with the manager off too now).
   for (const c of ASSETS) if (current.pins[c] === 0) pins[c] = 0;
   // The pins are marked as the undo's (R137): turning the manager back on drops them, so it is free again; pins set by hand are not marked.
-  // The split is recomputed from the pins so a switched-off coin (SKR included) is never in the allocation; with SKR on it equals `prev`.
+  // The split is recomputed from the pins so a switched-off coin (SKR included) is never in the allocation. It equals `prev` only while
+  // every coin in `prev` is still on; a coin switched off since moves its share to the rest coin.
   const allocation = effectiveSplit({ managed: false, stop: current.stop, pins, stopSplit: STOP_DEFAULTS[current.stop] });
   const saved = await repo.saveRules(session.pubkey, { managed: false, pins, pinsByUndo: true, allocation, prevAllocation: null, allocationDay: null });
-  await repo.addEvent({ userPubkey: session.pubkey, walletPubkey: null, kind: "split_undone", detail: { from: current.allocation, to: prev, day: dayOf(new Date()) } });
+  await repo.addEvent({ userPubkey: session.pubkey, walletPubkey: null, kind: "split_undone", detail: { from: current.allocation, to: saved.allocation, day: dayOf(new Date()) } });
   return NextResponse.json(rulesRowToRules(saved));
 }
 export const POST = withAppErrorLog("rules/undo", postHandler);
