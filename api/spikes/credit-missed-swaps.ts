@@ -25,8 +25,17 @@ const wallet = wallets[0].pubkey as string;
 
 const rpc = config().heliusRpcUrl;
 const key = new URL(rpc).searchParams.get("api-key");
-const sigs = (await (await fetch(rpc, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "getSignaturesForAddress", params: [wallet, { limit: 100 }] }) })).json()) as { result?: { signature: string }[] };
-const wanted = (sigs.result ?? []).map((s) => s.signature).filter((s) => args.slice(1).some((p) => s.startsWith(p)));
+// 11-14: pages back (up to 10 x 1000) until every wanted prefix is found: a busy wallet pushes old swaps past the first page.
+const found: string[] = [];
+let before: string | undefined;
+for (let page = 0; page < 10 && found.length < args.length - 1; page++) {
+  const res = (await (await fetch(rpc, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "getSignaturesForAddress", params: [wallet, { limit: 1000, ...(before ? { before } : {}) }] }) })).json()) as { result?: { signature: string }[] };
+  const list = res.result ?? [];
+  for (const s of list) if (args.slice(1).some((p) => s.signature.startsWith(p)) && !found.includes(s.signature)) found.push(s.signature);
+  if (list.length < 1000) break;
+  before = list[list.length - 1].signature;
+}
+const wanted = found;
 if (wanted.length !== args.length - 1) throw new Error(`found ${wanted.length} of ${args.length - 1} signatures`);
 const txs = (await (await fetch(`https://api.helius.xyz/v0/transactions?api-key=${key}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ transactions: wanted }) })).json()) as HeliusEnhancedTx[];
 
