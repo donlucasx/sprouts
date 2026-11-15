@@ -5,7 +5,7 @@
 import { getRepo } from "../src/db/repo";
 import { isAsset, isStop, type Asset, type Stop } from "../src/domain/coins";
 import type { Pins } from "../src/domain/roundup";
-import { effectiveSplit, validatePins, floorFor, STOP_DEFAULTS } from "../src/domain/split";
+import { effectiveSplit, validatePins, STOP_DEFAULTS } from "../src/domain/split";
 
 const argv = process.argv.slice(2);
 const user = argv[0];
@@ -30,7 +30,7 @@ if (managed !== undefined || stop !== undefined || pins !== undefined) {
   const s = stop ?? before.stop;
   const p = { ...(pins ?? before.pins) };
   if (!m) delete p.SKR; // as the route: off, SKR is always the rest (spec 4.2), so an SKR pin is dropped
-  const problem = validatePins(p, floorFor(m, s));
+  const problem = validatePins(p);
   if (problem) { console.log(`pins refused: ${problem}`); process.exit(1); }
   const stopSplit = m ? ((await repo.latestSplitDay(s))?.split ?? STOP_DEFAULTS[s]) : STOP_DEFAULTS[s];
   Object.assign(patch, { managed: m, stop: s, pins: p, allocation: effectiveSplit({ managed: m, stop: s, pins: p, stopSplit }) });

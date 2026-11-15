@@ -9,16 +9,16 @@ import type { Pins } from "./roundup";
 type NonSkr = Exclude<LiveAsset, "SKR">;
 const NON_SKR: readonly NonSkr[] = ["stORE", "USDC_LEND", "SOL_LEND", "hSOL", "cbBTC"] as const;
 
-/** Lending spec 9 (R254-R303): the risk stops' maxes per leg; SKR's number is a floor. */
+/** Lending spec 9 (R254-R303): the risk stops' maxes per leg; SKR's number is the share the manager lifts a free SKR to (11-15: not a user minimum). */
 export const STOPS: Record<Stop, { floor: number; max: Record<NonSkr, number> }> = {
   careful: { floor: 50, max: { stORE: 10, USDC_LEND: 30, SOL_LEND: 15, hSOL: 15, cbBTC: 30 } },
   balanced: { floor: 35, max: { stORE: 20, USDC_LEND: 30, SOL_LEND: 25, hSOL: 25, cbBTC: 25 } },
   bold: { floor: 25, max: { stORE: 30, USDC_LEND: 20, SOL_LEND: 35, hSOL: 35, cbBTC: 20 } },
 };
 export const STOP_LABEL: Record<Stop, string> = { careful: "Careful", balanced: "Balanced", bold: "Bold" };
-/** With the manager off, pins alone set the split and SKR still keeps a quarter (spec 4.1). */
+/** Spec 4.1 before 11-15: SKR's manual quarter. No longer a user minimum; the planting run still passes it as withStoreFloor's skrFloor. */
 export const MANUAL_FLOOR = 25;
-/** R-O1 (10-21): stORE keeps at least 10% of every split in every mode, unless it is switched off (a 0 pin) or disabled. */
+/** R-O1 (10-21), a DEFAULT since 11-15: stORE starts at 10% while it is on and has no pin. Any stORE pin wins. */
 export const STORE_FLOOR = 10;
 export const PIN_MAX: Record<LiveAsset, number> = { SKR: 100, stORE: 50, USDC_LEND: 75, SOL_LEND: 75, hSOL: 75, cbBTC: 75 };
 /** The app's stepper moves pins by this; the API accepts any whole percent so an undo can pin yesterday's exact values. */
@@ -38,55 +38,72 @@ export const STOP_DEFAULTS: Record<Stop, Split> = {
 export const floorFor = (managed: boolean, stop: Stop): number => (managed ? STOPS[stop].floor : MANUAL_FLOOR);
 export const stopMax = (stop: Stop, a: LiveAsset): number => (a === "SKR" ? 100 : STOPS[stop].max[a]);
 
+/** 11-15: a coin is off iff its pin is exactly 0, in both modes, SKR included. An off coin is never bought. */
+export const isOn = (pins: Pins, c: LiveAsset): boolean => pins[c] !== 0;
+
+const largest = (cs: readonly LiveAsset[], split: Split): LiveAsset =>
+  ASSETS.filter((c) => cs.includes(c)).reduce((b, c) => (split[c] > split[b] ? c : b));
+
+/**
+ * 11-15: where money no on coin can take goes (the manual rest with SKR off, any overflow): SKR if on, else USDC_LEND if on, else
+ * the on coin with the largest share (ASSETS order on ties). It may exceed its max. With `pinned` (A4), only on coins without a
+ * pin are candidates; when every on coin is pinned, the largest on coin. Null when nothing is on.
+ */
+export function restCoin(on: readonly LiveAsset[], split: Split, pinned: readonly LiveAsset[] = []): LiveAsset | null {
+  if (on.length === 0) return null;
+  const free = on.filter((c) => !pinned.includes(c));
+  if (free.length === 0) return largest(on, split);
+  if (free.includes("SKR")) return "SKR";
+  if (free.includes("USDC_LEND")) return "USDC_LEND";
+  return largest(free, split);
+}
+
 /**
  * Spec 6.5 and 3, as ruled by R336 (+ Claude's follow-up, 10-04): a leg that cannot take money this planting (its leash flag is off
  * for a leashed user, or no lending venue is eligible) hands its share to the enabled legs, WATER-FILLED up to each one's stop max
- * for `stop` (one point at a time to the leg with the most headroom; ASSETS order on ties). What is left once every enabled leg is
- * at its max goes to USDC_LEND, the least volatile leg, even past its max. When USDC_LEND is itself disabled the remainder is left
- * unpulled: the split then sums under 100 and the planting run pulls only that share (plant-run). (The brief's "else the enabled
- * leg with the most headroom" is the fill itself: a remainder exists only when no enabled leg has headroom left.)
- * An enabled leg already over its max (a pin) keeps its share and takes nothing more. Null when no leg is enabled.
+ * for `stop` (one point at a time to the leg with the most headroom; ASSETS order on ties). An enabled leg already over its max (a
+ * pin) keeps its share and takes nothing more.
+ * 11-15: a `userOff` coin (switched off) never receives, and any share it still holds (a stale allocation) is zeroed and handed on
+ * with the disabled legs' shares. What is left once every receiving leg is at its max goes to restCoin (SKR if it receives, which
+ * has room for everything; else USDC_LEND; else the largest), even past its max, so the result always sums to 100 (the old
+ * "left unpulled" remainder is gone). Null when no enabled leg is on.
  */
-export function redistributeDisabled(split: Split, disabled: readonly LiveAsset[], stop: Stop): Split | null {
-  const enabled = ASSETS.filter((a) => !disabled.includes(a));
-  if (enabled.length === 0) return null;
+export function redistributeDisabled(split: Split, disabled: readonly LiveAsset[], stop: Stop, userOff: readonly LiveAsset[] = []): Split | null {
+  const receivers = ASSETS.filter((a) => !disabled.includes(a) && !userOff.includes(a));
+  if (receivers.length === 0) return null;
   const out: Split = { ...split };
   let moved = 0;
   for (const a of ASSETS) {
-    if (!disabled.includes(a)) continue;
+    if (receivers.includes(a)) continue;
     moved += out[a];
     out[a] = 0;
   }
   const headroom = (a: LiveAsset) => Math.max(0, stopMax(stop, a) - out[a]);
   while (moved > 1e-9) {
-    const best = enabled.reduce((b, a) => (headroom(a) > headroom(b) ? a : b), enabled[0]);
+    const best = receivers.reduce((b, a) => (headroom(a) > headroom(b) ? a : b), receivers[0]);
     const step = Math.min(1, moved, headroom(best));
     if (step <= 1e-9) break;
     out[best] += step;
     moved -= step;
   }
-  if (moved > 1e-9 && enabled.includes("USDC_LEND")) out.USDC_LEND += moved;
+  if (moved > 1e-9) out[restCoin(receivers, out)!] += moved;
   return out;
 }
 
-export type PinProblem = "sum" | "skr_floor" | "range";
+export type PinProblem = "sum" | "range" | "none_on";
 
 /**
- * Save-time rule (spec 4.2), the only place pin conflicts are resolved; the cron never resolves one. R-O1 (10-21) is deliberately
- * NOT checked here, so the app builds already shipped (which step stORE by 5 and leave room for SKR's floor only) never hit a new
- * 400: a stORE pin under STORE_FLOOR is accepted and read as the floor, and pins that leave stORE no room are trimmed by
- * effectiveSplit (coordinator ruling, 10-21).
+ * Save-time rule (spec 4.2), the only place pin conflicts are resolved; the cron never resolves one. 11-15: no coin has a
+ * user-facing minimum, so only whole pins inside 0..PIN_MAX, a sum of at most 100, and at least one coin on (not every coin at 0).
  */
-export function validatePins(pins: Pins, floor: number): PinProblem | null {
+export function validatePins(pins: Pins): PinProblem | null {
   for (const a of ASSETS) {
     const v = pins[a];
     if (v === undefined) continue;
     if (!Number.isInteger(v) || v < 0 || v > PIN_MAX[a]) return "range";
   }
-  const total = ASSETS.reduce((s, a) => s + (pins[a] ?? 0), 0);
-  if (total > 100) return "sum";
-  if (pins.SKR !== undefined) return pins.SKR < floor ? "skr_floor" : null;
-  return total > 100 - floor ? "sum" : null;
+  if (ASSETS.reduce((s, a) => s + (pins[a] ?? 0), 0) > 100) return "sum";
+  return ASSETS.some((a) => isOn(pins, a)) ? null : "none_on";
 }
 
 /** Largest-remainder rounding to whole percents that still sum to 100. */
@@ -103,10 +120,11 @@ function roundTo100(x: Record<LiveAsset, number>): Split {
 }
 
 /**
- * Clamp the free non-SKR coins to their bound and pour the excess into free coins with room, SKR last and unbounded. SKR takes the
- * leftover even when pinned: a pinned SKR is a floor, since SKR has no max (spec 4.3).
+ * Clamp the free non-SKR coins to their bound and pour the excess into free coins with room. What none can hold goes to `rest()`
+ * (11-15: restCoin, which is SKR whenever SKR is on and free, as before), past its bound; returns that coin, or null when nothing
+ * was left over (or nothing is on to take it).
  */
-function waterFill(x: Record<LiveAsset, number>, free: LiveAsset[], bound: (a: LiveAsset) => number) {
+function waterFill(x: Record<LiveAsset, number>, free: LiveAsset[], bound: (a: LiveAsset) => number, rest: () => LiveAsset | null): LiveAsset | null {
   let excess = 0;
   for (const a of free) {
     if (a !== "SKR" && x[a] > bound(a)) {
@@ -122,7 +140,10 @@ function waterFill(x: Record<LiveAsset, number>, free: LiveAsset[], bound: (a: L
     excess -= pour;
     room = room.filter((a) => x[a] < bound(a) - 1e-9);
   }
-  if (excess > 1e-9) x.SKR += excess;
+  if (excess <= 1e-9) return null;
+  const rc = rest();
+  if (rc) x[rc] += excess;
+  return rc;
 }
 
 /** Take `deficit` from the largest donors first, never below `lower(a)`; returns what was taken. */
@@ -154,79 +175,90 @@ function raiseStore(out: Split, tiers: LiveAsset[][], skrMin: number): boolean {
 /**
  * R-O1 (10-21), the planting run's net under every saved split (manager on or off, the SKR_ONLY default too): stORE raised to
  * STORE_FLOOR from SKR above `skrFloor` first, then the largest other coin. `off` (stORE disabled for the user, or switched off with
- * a 0 pin) leaves the split as it is.
+ * a 0 pin) leaves the split as it is; so does `pinned` (11-15: a stORE pin wins over the default).
  */
-export function withStoreFloor(split: Split, a: { skrFloor: number; off: boolean }): Split {
-  if (a.off || split.stORE >= STORE_FLOOR) return split;
+export function withStoreFloor(split: Split, a: { skrFloor: number; off: boolean; pinned: boolean }): Split {
+  if (a.off || a.pinned || split.stORE >= STORE_FLOOR) return split;
   const out = { ...split };
   raiseStore(out, [["SKR"], NON_SKR.filter((c) => c !== "stORE")], a.skrFloor);
   return out;
 }
 
 /**
- * The user's split (spec 4.3). Off: pins are the split and SKR is the rest. On: pinned coins fixed, the stop split's weights
- * over the free coins renormalised to what is left, clamped to the stop maxes, SKR kept at the floor, rounded to 100.
- * R-O1 (10-21), in both modes: stORE keeps STORE_FLOOR unless it is disabled or pinned at 0, its off switch (R346; off too, 10-23). A stORE pin
- * saved under the floor before the rule reads as the floor; pins that leave no room for it give way after SKR's share above its floor.
+ * The user's split (spec 4.3). Off: pins are the split and the rest goes to restCoin (SKR when on, as before). On: pinned coins
+ * fixed, the stop split's weights over the free coins renormalised to what is left, clamped to the stop maxes, a free SKR lifted to
+ * the stop's share (the manager's aim, not a user lock), rounded to 100; what no free coin can hold goes to restCoin.
+ * 11-15: a 0 pin is a coin switched off (SKR included) and stays 0. No user-facing minimum: a SKR pin is exact and the manual
+ * quarter is gone. stORE's STORE_FLOOR is a DEFAULT: it applies while stORE is on (not disabled, no 0 pin) and unpinned; any stORE
+ * pin wins. When pins leave it no room it comes from the largest other pins, as R-O1 did. Nothing on (none_on at save): all zero.
  */
 export function effectiveSplit(a: { managed: boolean; stop: Stop; pins: Pins; stopSplit: Split; disabled?: readonly LiveAsset[] }): Split {
-  const done = (s: Split): Split => (a.disabled?.length ? (redistributeDisabled(s, a.disabled, a.stop) ?? s) : s);
+  const on = ASSETS.filter((c) => isOn(a.pins, c));
+  if (on.length === 0) return zeroSplit();
+  const userOff = ASSETS.filter((c) => !isOn(a.pins, c));
+  const done = (s: Split): Split => (a.disabled?.length ? (redistributeDisabled(s, a.disabled, a.stop, userOff) ?? s) : s);
   const others = (c: LiveAsset) => c !== "SKR" && c !== "stORE";
+  const storeDefault = !a.disabled?.includes("stORE") && a.pins.stORE === undefined;
   if (!a.managed) {
-    // Off (his ruling 10-23): a 0 pin is a coin switched off, as with the manager on (R346). The route stores one only when the app
-    // sends `off`, so splits saved before have none. A coin switched off gives its share to SKR (the rest); stORE off has no floor.
-    // SKR has no switch in either mode ("keep SKR on, for now").
-    const storeOn = !a.disabled?.includes("stORE") && a.pins.stORE !== 0;
+    // Off (his ruling 10-23, 11-15): pins are the split; a non-zero SKR pin is ignored (SKR is the rest, no stepper of its own).
     const out = zeroSplit();
-    let rest = 100;
-    for (const c of NON_SKR) {
-      out[c] = c === "stORE" && storeOn ? Math.max(a.pins.stORE ?? 0, STORE_FLOOR) : (a.pins[c] ?? 0);
-      rest -= out[c];
-    }
-    out.SKR = rest;
-    if (storeOn && out.SKR < MANUAL_FLOOR) {
-      // Only pins saved before R-O1 get here: undo the raise, then take it from SKR above its quarter and the largest other pins.
-      out.stORE = a.pins.stORE ?? 0;
+    for (const c of NON_SKR) out[c] = a.pins[c] ?? 0;
+    if (storeDefault && isOn(a.pins, "SKR")) {
+      // SKR on (anti-goal 1, controller ruling 11-15): R-O1's donor order exactly as before, so no saved split changes: stORE's
+      // default from SKR (the rest) above MANUAL_FLOOR first, then the largest other pins.
+      out.stORE = STORE_FLOOR;
       out.SKR = 100 - NON_SKR.reduce((s, c) => s + out[c], 0);
-      raiseStore(out, [["SKR"], NON_SKR.filter(others)], MANUAL_FLOOR);
+      if (out.SKR < MANUAL_FLOOR) {
+        out.stORE = 0;
+        out.SKR = 100 - NON_SKR.reduce((s, c) => s + out[c], 0);
+        raiseStore(out, [["SKR"], NON_SKR.filter(others)], MANUAL_FLOOR);
+      }
+      return done(out);
     }
+    if (storeDefault) {
+      // SKR off: no SKR donor and no minimum; stORE's default is set first, pins that leave it no room give way from the largest.
+      out.stORE = STORE_FLOOR;
+      const excess = NON_SKR.reduce((s, c) => s + out[c], 0) - 100;
+      if (excess > 0) takeFrom(out, NON_SKR.filter(others), excess, () => 0);
+    }
+    const rest = 100 - NON_SKR.reduce((s, c) => s + out[c], 0);
+    if (rest > 0) out[restCoin(on, out)!] += rest;
     return done(out);
   }
   const floor = STOPS[a.stop].floor;
-  const storeOn = !a.disabled?.includes("stORE") && a.pins.stORE !== 0;
-  // A stORE pin saved under the floor before R-O1 counts as the floor.
-  const pins: Pins = storeOn && a.pins.stORE !== undefined ? { ...a.pins, stORE: Math.max(a.pins.stORE, STORE_FLOOR) } : a.pins;
+  const pins = a.pins;
   const pinned = ASSETS.filter((c) => pins[c] !== undefined);
   const free = ASSETS.filter((c) => pins[c] === undefined);
   const R = 100 - pinned.reduce((s, c) => s + pins[c]!, 0);
   const bound = (c: LiveAsset) => (pinned.includes(c) ? PIN_MAX[c] : stopMax(a.stop, c));
-  const skrMin = Math.max(floor, pins.SKR ?? 0);
+  // A free SKR is lifted to the stop's share; a pinned SKR (0 = off) is exact.
+  const skrMin = pins.SKR ?? floor;
   const x = zeroSplit() as Record<LiveAsset, number>;
   for (const c of pinned) x[c] = pins[c]!;
+  const rest = () => restCoin(on, x, pinned);
   const weight = free.reduce((s, c) => s + a.stopSplit[c], 0);
-  for (const c of free) x[c] = weight > 0 ? (a.stopSplit[c] / weight) * R : c === "SKR" ? R : 0;
-  waterFill(x, free, bound);
-  const storeKeep = (c: LiveAsset) => (c === "stORE" && storeOn ? Math.min(x.stORE, STORE_FLOOR) : 0);
+  if (weight > 0) for (const c of free) x[c] = (a.stopSplit[c] / weight) * R;
+  else if (R > 0 && free.length) {
+    // Every free coin at 0 weight: the rest coin among them takes R, and the fill spreads what it cannot hold.
+    const rc = rest();
+    if (rc) x[rc] = R;
+  }
+  const over = waterFill(x, free, bound, rest);
+  const storeKeep = (c: LiveAsset) => (c === "stORE" && storeDefault ? Math.min(x.stORE, STORE_FLOOR) : 0);
   if (free.includes("SKR") && x.SKR < floor) x.SKR += takeFrom(x, free.filter((c) => c !== "SKR"), floor - x.SKR, storeKeep);
   const out = roundTo100(x);
-  // R-O1: the largest free non-SKR coins first, then SKR above its floor (or its pin).
-  if (storeOn) raiseStore(out, [free.filter(others), ["SKR"]], skrMin);
+  // stORE's default: the largest free non-SKR coins first, then a free SKR above the stop's share.
+  if (storeDefault) raiseStore(out, [free.filter(others), ["SKR"]], skrMin);
   const total = ASSETS.reduce((s, c) => s + out[c], 0);
-  const ok = total === 100 && ASSETS.every((c) => out[c] >= 0 && out[c] <= bound(c)) && (!free.includes("SKR") || out.SKR >= floor) && (!storeOn || out.stORE >= STORE_FLOOR) && pinned.every((c) => (c === "SKR" ? out.SKR >= pins.SKR! : out[c] === pins[c]));
+  const ok = total === 100 && ASSETS.every((c) => out[c] >= 0 && (c === over || out[c] <= bound(c))) && (!free.includes("SKR") || out.SKR >= floor) && (!storeDefault || out.stORE >= STORE_FLOOR) && pinned.every((c) => c === over || out[c] === pins[c]);
   if (ok) return done(out);
-  // Fallback: pins fixed, SKR takes the rest, unpinned non-SKR coins 0 (never discard a pin), except that stORE keeps its floor:
-  // from SKR above its floor first, then from the largest other pins (only pins saved before R-O1 leave no room for it).
+  // Fallback: pins fixed, the rest to restCoin (SKR when on and free), unpinned others 0 (never discard a pin), except that
+  // stORE's default then comes from the rest coin (a free SKR above the stop's share) and then the largest other pins, as R-O1 did.
   const fb = zeroSplit();
   for (const c of pinned) fb[c] = pins[c]!;
-  fb.SKR = (pins.SKR ?? 0) + (pinned.includes("SKR") ? 0 : R);
-  if (pinned.includes("SKR")) fb.SKR += R;
-  if (storeOn) {
-    // Undo the raise of an old stORE pin (SKR took the difference), then take the floor from SKR above skrMin and the largest pins.
-    const raw = a.pins.stORE ?? 0;
-    fb.SKR += fb.stORE - raw;
-    fb.stORE = raw;
-    raiseStore(fb, [["SKR"], NON_SKR.filter(others)], skrMin);
-  }
+  const rc = restCoin(on, fb, pinned);
+  if (rc && R > 0) fb[rc] += R;
+  if (storeDefault && rc) raiseStore(fb, [[rc], NON_SKR.filter(others)], skrMin);
   return done(fb);
 }
 

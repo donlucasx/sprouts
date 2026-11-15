@@ -82,7 +82,8 @@ export async function GET(request: Request) {
   const storeEarnedRaw = holdings.find((h) => h.asset === "stORE")?.earnedUnderlyingRaw ?? 0n;
 
   const ledgerWallet = wallets.find((w) => w.status === "active") ?? wallets[0];
-  const nextAsset = pickAsset(ledgerWallet?.ledgerCents ?? {}, rules.allocation);
+  // R2-N1 (11-15): an empty target (every coin off) reads as its largest share, never null on the wire.
+  const nextAsset = pickAsset(ledgerWallet?.ledgerCents ?? {}, rules.allocation) ?? ASSETS.reduce((b, c) => (rules.allocation[c] > rules.allocation[b] ? c : b));
   // Contracts 5.2: legsEnabled is null for a user with no leashed wallet; [] when the leash config cannot be read (nothing is enabled we can show).
   const leashWallets = wallets.filter((w) => w.linkModel === "leash" && w.status !== "revoked");
   // Second wave, at once: the reads that need the wallets, the rules or the stORE basis from the first.

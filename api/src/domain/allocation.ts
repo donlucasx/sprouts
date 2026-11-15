@@ -8,11 +8,12 @@ export type Ledger = Partial<Record<Asset, number>>;
 
 /**
  * One asset per planting (spec 7.2). Among the coins the target wants, plant the one whose delivered share sits furthest below
- * its target, so the split is honored over time. From an empty ledger the largest target wins, SKR on ties.
+ * its target, so the split is honored over time. From an empty ledger the largest target wins, SKR on ties. An empty target
+ * (11-15: every coin off or disabled) answers null: no leg is enabled, nothing is pulled.
  */
-export function pickAsset(ledger: Ledger, target: Split): LiveAsset {
+export function pickAsset(ledger: Ledger, target: Split): LiveAsset | null {
   const wanted = ASSETS.filter((a) => target[a] > 0);
-  if (wanted.length === 0) return "SKR";
+  if (wanted.length === 0) return null;
   const total = wanted.reduce((s, a) => s + (ledger[a] ?? 0), 0);
   // A target may sum under 100 (R336 follow-up: a share left unpulled); its legs are then read as proportions of its own total.
   const targetTotal = wanted.reduce((s, a) => s + target[a], 0);

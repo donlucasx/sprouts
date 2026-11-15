@@ -44,18 +44,19 @@ describe("PUT /api/rules with the Yield Manager", () => {
     expect(((await res.json()) as { allocation: Split }).allocation).toEqual(STOP_DEFAULTS.careful);
   });
 
-  it("pins are checked against the floor at save time, with the copy a user reads", async () => {
+  it("pins are checked at save time (11-15: no SKR floor, only a sum over 100), with the copy a user reads", async () => {
     await put({ managed: true, stop: "balanced" });
-    const over = await put({ pins: { cbBTC: 40, hSOL: 30 } });
+    const over = await put({ pins: { cbBTC: 75, hSOL: 30 } });   // 11-15: was cbBTC 40 + hSOL 30 (over 100 minus SKR's 35)
     expect(over.status).toBe(400);
     expect(((await over.json()) as { error: string }).error).toBe("Pins add up to more than the split allows. SKR keeps at least 35%.");
-    // R-O1 with the shipped app (coordinator 10-21): a stORE pin of 5 (one "+" tap) is saved, and the split reads it as 10.
+    // A stORE pin of 5 (one "-" tap) is saved and kept (11-15: a pin wins over the default; was read as 10, SKR 90).
     const storeLow = await put({ managed: false, pins: { stORE: 5 } });
     expect(storeLow.status).toBe(200);
-    expect(((await storeLow.json()) as { allocation: Split }).allocation).toEqual(split({ SKR: 90, stORE: 10 }));
+    expect(((await storeLow.json()) as { allocation: Split }).allocation).toEqual(split({ SKR: 95, stORE: 5 }));
     await put({ managed: true, stop: "balanced" });
-    const low = await put({ pins: { SKR: 30 } });
-    expect(((await low.json()) as { error: string }).error).toBe("SKR keeps at least 35% on Balanced.");
+    const low = await put({ pins: { SKR: 30 } });   // 11-15: was 400 "SKR keeps at least 35% on Balanced."
+    expect(low.status).toBe(200);
+    expect(((await low.json()) as { allocation: Split }).allocation.SKR).toBe(30);
     const range = await put({ pins: { stORE: 55 } });
     expect(((await range.json()) as { error: string }).error).toBe("Pins go up to 50 for stORE and 75 for the other coins.");
     const bad = await put({ pins: { DOGE: 10 } });

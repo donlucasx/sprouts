@@ -34,7 +34,7 @@ describe("pickAsset", () => {
     const ledger: Record<string, number> = {};
     const target = split({ SKR: 45, hSOL: 20, USDC_LEND: 20, cbBTC: 15 });
     for (let i = 0; i < 20; i++) {
-      const a = pickAsset(ledger, target);
+      const a = pickAsset(ledger, target)!;
       ledger[a] = (ledger[a] ?? 0) + 200;
     }
     expect(ledger).toEqual({ SKR: 1800, hSOL: 800, USDC_LEND: 800, cbBTC: 600 });

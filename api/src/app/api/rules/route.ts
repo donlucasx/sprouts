@@ -39,7 +39,7 @@ const Body = z.object({
 
 const PIN_COPY = (floor: number, stop: string) => ({
   sum: `Pins add up to more than the split allows. SKR keeps at least ${floor}%.`,
-  skr_floor: `SKR keeps at least ${floor}% on ${stop}.`,
+  none_on: "Keep at least one coin on.",
   range: `Pins go up to ${PIN_MAX.stORE} for stORE and ${PIN_MAX.hSOL} for the other coins.`,
 });
 
@@ -96,7 +96,7 @@ async function putHandler(request: Request) {
       for (const k of Object.keys(pins) as LiveAsset[]) if (pins[k] === 0 && (dropZeros || k === "SKR")) delete pins[k];
     }
     const floor = floorFor(nextManaged, nextStop);
-    const problem = validatePins(pins, floor);
+    const problem = validatePins(pins);
     if (problem) return NextResponse.json({ error: PIN_COPY(floor, STOP_LABEL[nextStop])[problem] }, { status: 400 });
     const stopSplit = nextManaged ? ((await repo.latestSplitDay(nextStop))?.split ?? STOP_DEFAULTS[nextStop]) : STOP_DEFAULTS[nextStop];
     const allocation = effectiveSplit({ managed: nextManaged, stop: nextStop, pins, stopSplit });

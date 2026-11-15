@@ -746,7 +746,7 @@ async function plantOneOrThrow(a: RunArgs, w: WalletRow, ctx: RunCtx): Promise<P
   // R-O1 (10-21): every planting's split keeps stORE at its floor, whatever split was saved (a manager-off user's split is only
   // recomputed when they save), unless stORE is disabled here (its leash leg) or switched off: a 0 pin, manager on (R346) or off
   // (10-23; the route stores a manual 0 pin only from the app's explicit `off`).
-  const floored = withStoreFloor(rules.allocation, { skrFloor: floorFor(rules.managed, rules.stop), off: disabled.includes("stORE") || rules.pins.stORE === 0 });
+  const floored = withStoreFloor(rules.allocation, { skrFloor: floorFor(rules.managed, rules.stop), off: disabled.includes("stORE") || rules.pins.stORE === 0, pinned: rules.pins.stORE !== undefined && rules.pins.stORE !== 0 });
   const target = redistributeDisabled(floored, disabled, rules.stop);
   if (!target) return { wallet: w.pubkey, reason: "no leg enabled" };
   // R336 follow-up: with USDC lending disabled and every enabled leg at its stop max, the rest of the split is left unpulled. One leg
@@ -764,7 +764,9 @@ async function plantOneOrThrow(a: RunArgs, w: WalletRow, ctx: RunCtx): Promise<P
   }
 
   type Attempt = { built: Built; sim: Simulation; carry: Partial<Record<CarryKind, bigint>>; venue: AutoVenue | null; leg: LeashLegByte | null; cfg: PriceCfg | null; feedAlive: boolean; settleMismatch: boolean };
-  let asset: LiveAsset = pickAsset(w.ledgerCents, target);
+  const picked = pickAsset(w.ledgerCents, target);
+  if (!picked) return { wallet: w.pubkey, reason: "no leg enabled" };   // A4 (11-15): an empty target, nothing pulled
+  let asset: LiveAsset = picked;
   // A build that is not sent reclaims its posted price at once (SKR, contracts 10 item 15; a no-op for every other build).
   const discard = (b: Built) => a.chain.cleanup(b).catch((e) => console.error(`price cleanup for ${b.signature} failed: ${message(e)}`));
   const attempt = async (asset: LiveAsset): Promise<Attempt> => {

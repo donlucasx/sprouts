@@ -79,7 +79,7 @@ describe("rules, wallets, revoke", () => {
     expect((await repo.getRules(U)).allocation).toEqual({ ...SKR_ONLY, SKR: 50, stORE: 50 });
     expect((await put({ pins: { stORE: 60 } })).status).toBe(400);
     expect((await put({ pins: { stORE: 55 } })).status).toBe(400);
-    expect((await put({ pins: { stORE: 50, hSOL: 30 } })).status).toBe(400);
+    expect((await put({ pins: { stORE: 50, hSOL: 51 } })).status).toBe(400);   // 11-15: over 100 (was hSOL 30, over SKR's quarter)
     expect((await repo.getRules(U)).allocation).toEqual({ ...SKR_ONLY, SKR: 50, stORE: 50 });
   });
 

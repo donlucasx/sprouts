@@ -4,7 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import { config } from "../src/lib/config";
 import { rulesRow } from "../src/db/supabase";
 import { ASSETS, type LiveAsset } from "../src/domain/coins";
-import { validatePins, floorFor, effectiveSplit, STOP_DEFAULTS, STORE_FLOOR } from "../src/domain/split";
+import { validatePins, effectiveSplit, STOP_DEFAULTS, STORE_FLOOR } from "../src/domain/split";
 import type { Pins } from "../src/domain/roundup";
 
 const db = createClient(config().supabaseUrl, config().supabaseServiceKey, { auth: { persistSession: false } });
@@ -26,7 +26,7 @@ for (const r of rows) {
   if (Object.keys(pins).length) n.anyPins++;
   if (pins.stORE !== undefined && pins.stORE > 0 && pins.stORE < STORE_FLOOR) n.storePinBelowFloor++;
   if (r.managed && pins.stORE === 0) n.storePinZeroOn++;
-  const p = validatePins(pins, floorFor(r.managed, r.stop));
+  const p = validatePins(pins);
   if (p === "sum") n.problemSum++;
   else if (p) n.problemOther++;
   if (r.allocation.stORE < STORE_FLOOR) {

@@ -31,11 +31,11 @@ describe("manual off switches (10-23)", () => {
   });
 
   it("validatePins accepts 0 pins (the switches) without counting them", () => {
-    expect(validatePins({ stORE: 0, USDC_LEND: 0, hSOL: 75 }, MANUAL_FLOOR)).toBeNull();
+    expect(validatePins({ stORE: 0, USDC_LEND: 0, hSOL: 75 })).toBeNull();
   });
 
   it("the planting net honours a switched-off stORE and still floors a split saved without one", () => {
-    expect(withStoreFloor(split({ SKR: 100 }), { skrFloor: MANUAL_FLOOR, off: true })).toEqual(split({ SKR: 100 }));
-    expect(withStoreFloor(split({ SKR: 100 }), { skrFloor: MANUAL_FLOOR, off: false })).toEqual(split({ SKR: 90, stORE: 10 }));
+    expect(withStoreFloor(split({ SKR: 100 }), { skrFloor: MANUAL_FLOOR, off: true, pinned: false })).toEqual(split({ SKR: 100 }));
+    expect(withStoreFloor(split({ SKR: 100 }), { skrFloor: MANUAL_FLOOR, off: false, pinned: false })).toEqual(split({ SKR: 90, stORE: 10 }));
   });
 });
