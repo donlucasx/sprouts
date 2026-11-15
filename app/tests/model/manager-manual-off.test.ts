@@ -25,30 +25,30 @@ describe("manual off switches (10-23)", () => {
     expect(rows.find((r) => r.asset === "cbBTC")!.mode).toBe("pinned");
   });
 
-  it("setManualCoinOn switches a coin off and back on, keeps other pins, and never touches SKR", () => {
+  it("setManualCoinOn switches a coin off and back on, keeps other pins, SKR too (11-15)", () => {
     expect(setManualCoinOn({ hSOL: 20 }, "stORE", false)).toEqual({ hSOL: 20, stORE: 0 });
     expect(setManualCoinOn({ hSOL: 20, stORE: 0 }, "stORE", true)).toEqual({ hSOL: 20 });
     expect(setManualCoinOn({ hSOL: 20 }, "hSOL", false)).toEqual({ hSOL: 0 });
-    expect(setManualCoinOn({ hSOL: 20 }, "SKR", false)).toEqual({ hSOL: 20 });
+    expect(setManualCoinOn({ hSOL: 20 }, "SKR", false)).toEqual({ hSOL: 20, SKR: 0 });
   });
 
-  it("offCoins lists the 0 pins, never SKR", () => {
+  it("offCoins lists the 0 pins, SKR included (11-15)", () => {
     expect(offCoins({ stORE: 0, hSOL: 20, cbBTC: 0 })).toEqual(["stORE", "cbBTC"]);
-    expect(offCoins({ SKR: 0 } as never)).toEqual([]);
+    expect(offCoins({ SKR: 0 })).toEqual(["SKR"]);
     expect(offCoins({})).toEqual([]);
   });
 
-  it("canStepUp counts stORE at its floor only while it is on", () => {
+  it("canStepUp counts stORE at its default only while it is on and unpinned", () => {
     const view = (pins: Record<string, number>) => ({ managed: false, stop: "balanced" as const, pins, allocation: split({ SKR: 100 }) });
-    // on: 10 (floor) + 60 + 5 = 75 = 100 - 25, allowed; from 65 it would crowd SKR's quarter
-    expect(canStepUp(view({ hSOL: 60 }), "hSOL")).toBe(true);
-    expect(canStepUp(view({ hSOL: 65 }), "hSOL")).toBe(false);
-    // off: the floor's 10 is free
-    expect(canStepUp(view({ hSOL: 65, stORE: 0 }), "hSOL")).toBe(true);
+    // on: 10 (default) + 75 + 15 + 5 = 105, refused (11-15: the cap is the total of 100, not SKR's quarter)
+    expect(canStepUp(view({ hSOL: 75, cbBTC: 10 }), "cbBTC")).toBe(true);
+    expect(canStepUp(view({ hSOL: 75, cbBTC: 15 }), "cbBTC")).toBe(false);
+    // off: the default's 10 is free
+    expect(canStepUp(view({ hSOL: 75, cbBTC: 15, stORE: 0 }), "cbBTC")).toBe(true);
   });
 
   it("copy: the floor line says the switch, the disclosure drops the recommendation line, How it works names the USDC", () => {
-    expect(STORE_FLOOR_LINE.off).toBe("stORE stays at 10% or more while it's on.");
+    expect(STORE_FLOOR_LINE.off).toBe("stORE starts at 10% until you change it.");   // 11-15: a default
     expect(ORE_DISCLOSURE).not.toMatch(/recommend/i);
     expect(ORE_DISCLOSURE).toMatch(/Sprouts keeps 10% of every split in stORE unless you switch it off in Rules\.$/);
     expect(HOW_IT_WORKS).not.toMatch(/coins you chose/);
