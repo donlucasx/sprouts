@@ -16,7 +16,7 @@ import { newlyLinked } from '@/lib/newly-linked'
 import { confirmWithRetries, LINK_NOT_ON_CHAIN_YET } from '@/lib/confirm-retry'
 import { useSession } from '@/lib/session'
 import { reportLinkFailure, type LinkFailure, type LinkStep } from '@/lib/link-report'
-import { APPROVAL_WARN_BODY, APPROVAL_WARN_TITLE, CAN, CANT, CODE_STEPS, LINK_FINISHING, LINK_INTRO, OTHER_WALLET_LINE, phoneSolNote, phoneUsdcNote } from '@/lib/safety-copy'
+import { APPROVAL_WARN_BODY, APPROVAL_WARN_TITLE, CAN, CANT, CODE_STEPS, LINK_FINISHING, SAFETY_HEADING, OTHER_WALLET_LINE, phoneSolNote, phoneUsdcNote } from '@/lib/safety-copy'
 import { TopUpButton } from '@/components/TopUp'
 import { TOPUP, TOPUP_DEFAULT_CENTS } from '@/lib/topup'
 import { FONT, radius, spacing, useTheme } from '@/theme'
@@ -170,7 +170,7 @@ export default function Connect() {
 
   return (
     <Screen back title="Link a wallet" keyboard keyboardAnchor={() => askBottom.current}>
-      <ThemedText>{LINK_INTRO}</ThemedText>
+      <ThemedText variant="heading">{SAFETY_HEADING}</ThemedText>
       <Card>
         {CAN.map((l) => <Mark key={l} ok text={l} />)}
         {CANT.map((l) => <Mark key={l} ok={false} text={l} />)}

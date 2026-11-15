@@ -150,6 +150,15 @@ describe("rows and the rest line", () => {
     expect(splitRows({ ...on, pins: { SKR: 0 } })[0]).toEqual({ asset: "SKR", pct: 0, mode: "off", bound: null });
     expect(splitRows(on)[0]).toEqual({ asset: "SKR", pct: 70, mode: "auto", bound: "aims for 50%" });
   });
+  it("manager off, SKR off: the coin that takes the rest reads 'the rest' with its total, and has no stepper row mode", () => {
+    const rows = splitRows(view({ pins: { SKR: 0, cbBTC: 30, USDC_LEND: 40, stORE: 0 } }));
+    expect(rows.find((x) => x.asset === "USDC_LEND")).toEqual({ asset: "USDC_LEND", pct: 70, mode: "the rest", bound: null });
+    expect(rows.find((x) => x.asset === "cbBTC")!.mode).toBe("pinned");
+    expect(rows.find((x) => x.asset === "SKR")!.mode).toBe("off");
+  });
+  it("restLine: N is the leftover even when stORE is the rest coin", () => {
+    expect(restLine(view({ pins: { SKR: 0, USDC_LEND: 0, stORE: 20, cbBTC: 5 } }))).toBe("The rest, 75%, goes to stORE.");
+  });
   it("restLine: manager off and SKR off, the share the rest coin takes, net of stORE's default", () => {
     expect(restLine(view({ pins: { SKR: 0, cbBTC: 30, stORE: 0 } }))).toBe("The rest, 70%, goes to USDC lending.");
     expect(restLine(view({ pins: { SKR: 0, cbBTC: 50 } }))).toBe("stORE starts at 10%. The rest, 40%, goes to USDC lending.");

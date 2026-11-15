@@ -4,6 +4,8 @@
  * so the messaging is always the same"); change both, the test checks they match.
  */
 /** The line above the card. His note 10-28: "Your USDC stays in your wallet until then." cut. */
+/** Heading of the Link a wallet screen; the same string as the heading on /link (api/src/app/link/page.tsx). */
+export const SAFETY_HEADING = "What Sprouts can and can't do"
 export const LINK_INTRO = 'Every swap rounds up. Once a day, Sprouts plants the change using USDC in your wallet.'
 
 export const CAN: readonly string[] = ['Plants up to $5 of USDC a day, only into your own savings']

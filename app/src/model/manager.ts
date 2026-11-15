@@ -56,8 +56,9 @@ const isOn = (pins: Pins, c: LiveAsset): boolean => pins[c] !== 0;
  * 11-15) reads "off". An old non-zero pin reads as on. */
 export function splitRows(r: RulesView, preview?: Split): Row[] {
   if (!r.managed) {
-    const split = manualSplit(r.pins);
-    return ASSETS.map((asset) => ({ asset, pct: split[asset], mode: !isOn(r.pins, asset) ? "off" : asset === "SKR" ? "the rest" : "pinned", bound: null }));
+    const { split, restTo } = manualParts(r.pins);
+    // The coin that takes the rest (SKR if on, else the rest coin) reads "the rest": its share is its total, no stepper.
+    return ASSETS.map((asset) => ({ asset, pct: split[asset], mode: !isOn(r.pins, asset) ? "off" : asset === restTo || asset === "SKR" ? "the rest" : "pinned", bound: null }));
   }
   return ASSETS.map((asset) => {
     if (!isOn(r.pins, asset)) return { asset, pct: 0, mode: "off", bound: null };
@@ -231,7 +232,6 @@ export function restLine(r: RulesView): string | null {
   const p = manualParts(r.pins);
   if (!p.restTo || p.rest <= 0) return null;
   const name = COIN_NAME_LONG[p.restTo];
-  if (p.restTo === "stORE") return `The rest, ${p.split.stORE}%, goes to ${name}.`;
   return `${p.storeDefault ? `stORE starts at ${STORE_FLOOR}%. ` : ""}The rest, ${p.rest}%, goes to ${name}.`;
 }
 

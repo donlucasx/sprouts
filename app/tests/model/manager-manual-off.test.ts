@@ -50,7 +50,7 @@ describe("manual off switches (10-23)", () => {
   it("copy: the floor line says the switch, the disclosure drops the recommendation line, How it works names the USDC", () => {
     expect(STORE_FLOOR_LINE.off).toBe("stORE starts at 10% until you change it.");   // 11-15: a default
     expect(ORE_DISCLOSURE).not.toMatch(/recommend/i);
-    expect(ORE_DISCLOSURE).toMatch(/Sprouts keeps 10% of every split in stORE unless you switch it off in Rules\.$/);
+    expect(ORE_DISCLOSURE).toMatch(/stORE starts at 10% of your split until you change it or switch it off in Rules\.$/);
     expect(HOW_IT_WORKS).not.toMatch(/coins you chose/);
     expect(HOW_IT_WORKS).toMatch(/paid from the USDC in your linked wallet/);
     for (const s of [ORE_DISCLOSURE, HOW_IT_WORKS, STORE_FLOOR_LINE.off]) expect(s).not.toMatch(/—/);

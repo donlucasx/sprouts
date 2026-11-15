@@ -34,8 +34,10 @@ import {
   UNDONE_TEXT,
   STORE_ROW_NOTE,
   STORE_FLOOR_LINE,
-  STORE_FLOOR,
+  PIN_STEP,
   canStepUp,
+  canSwitchOff,
+  restLine,
 } from '@/model/manager'
 import { ORE_DISCLOSURE } from '@/lib/ore-copy'
 import { rulesChanges } from '@/lib/forms'
@@ -450,13 +452,12 @@ export default function Rules() {
             <ThemedText numeric style={{ width: 48, textAlign: 'right' }}>
               {row.pct}%
             </ThemedText>
-            {/* R346, and 10-23 with the manager off too: every coin has its switch; SKR's stays on ("keep SKR on, for now"). */}
+            {/* R346, and 10-23 with the manager off too: 11-15 ruling: every coin has its switch, SKR included; at least one stays on. */}
             <Switch
               {...toggle}
               accessibilityLabel={`Use ${COIN_NAME_LONG[row.asset]}`}
               value={row.mode !== 'off'}
-              disabled={row.asset === 'SKR'}
-              style={row.asset === 'SKR' ? { opacity: 0.5 } : undefined}
+              disabled={busy || (row.mode !== 'off' && !canSwitchOff(r, row.asset))}
               onValueChange={(on) =>
                 edit({ pins: r.managed ? setCoinOn(r.pins, row.asset, on) : setManualCoinOn(r.pins, row.asset, on) })
               }
@@ -466,12 +467,17 @@ export default function Rules() {
                 what={COIN_NAME_LONG[row.asset]}
                 onLess={() => edit({ pins: stepPin(r.pins, row.asset, -1) })}
                 onMore={() => edit({ pins: stepPin(r.pins, row.asset, 1) })}
-                lessDisabled={busy || row.pct <= (row.asset === 'stORE' ? STORE_FLOOR : 0)}
+                lessDisabled={busy || row.pct <= (row.asset === 'stORE' ? PIN_STEP : 0)}
                 moreDisabled={busy || !canStepUp(r, row.asset)}
               />
             )}
           </View>
         ))}
+        {restLine(r) ? (
+          <ThemedText variant="caption" tone="secondary">
+            {restLine(r)}
+          </ThemedText>
+        ) : null}
         {hiddenRows.length > 0 ? (
           <Pressable onPress={() => setShowAll(true)} accessibilityRole="button" style={{ minHeight: TARGET, justifyContent: 'center' }}>
             <ThemedText variant="caption" style={{ color: colors.accentText }}>

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { CAN, CANT, LINK_INTRO, APPROVAL_WARN_TITLE, APPROVAL_WARN_BODY, OTHER_WALLET_LINE, phoneUsdcNote, phoneSolNote } from '../../src/lib/safety-copy'
+import { SAFETY_HEADING, CAN, CANT, LINK_INTRO, APPROVAL_WARN_TITLE, APPROVAL_WARN_BODY, OTHER_WALLET_LINE, phoneUsdcNote, phoneSolNote } from '../../src/lib/safety-copy'
 import * as web from '../../../api/src/lib/link-safety-copy'
 
 describe('safety copy (mirrors api/src/app/safety.tsx)', () => {
@@ -9,6 +9,9 @@ describe('safety copy (mirrors api/src/app/safety.tsx)', () => {
     for (const l of [...CAN, ...CANT, LINK_INTRO, APPROVAL_WARN_TITLE, APPROVAL_WARN_BODY, OTHER_WALLET_LINE]) expect(l).not.toMatch(/—/)
   })
   // his ask 10-28: /link says the app's Link a wallet lines word for word
+  it('heading matches /link', () => {
+    expect(SAFETY_HEADING).toBe("What Sprouts can and can't do")
+  })
   it('matches the lines under the code box on /link', () => {
     expect(web.LINK_INTRO).toBe(LINK_INTRO)
     expect(web.CAN).toEqual(CAN)
