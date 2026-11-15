@@ -5,11 +5,12 @@ import type { CarryKind, PlantingLegRow, PlantingRow, VenueDayRow, WalletRow } f
 import { rulesRowToRules } from "@/db/types";
 import { alertFounder } from "./founder-alert";
 import { pickAsset, type Asset } from "@/domain/allocation";
-import { ASSETS, COINS, LEND_ASSETS, isLendAsset, type LendAsset, type LiveAsset } from "@/domain/coins";
+import { ASSETS, COINS, LEND_ASSETS, isLendAsset, type LendAsset, type LiveAsset, type Split } from "@/domain/coins";
 import { addDays, dayOf } from "@/domain/day";
 import { capCarryClaim, capLeftCents, coveredOldestFirst, plantAmountCents } from "@/domain/cap";
 import { plantThresholdFor } from "@/domain/threshold";
-import { floorFor, redistributeDisabled, withStoreFloor } from "@/domain/split";
+import { floorFor, isOn, redistributeDisabled, withStoreFloor } from "@/domain/split";
+import type { Rules } from "@/domain/roundup";
 import { lendingUsdByProtocol } from "./user-routing";
 import { errorText } from "./redact";
 export { lendingUsdByProtocol } from "./user-routing";
@@ -580,6 +581,36 @@ async function legSkipped(a: { repo: Repo; now: Date }, w: WalletRow, asset: Liv
 
 const json = (v: unknown) => JSON.stringify(v, (_k, x) => (typeof x === "bigint" ? x.toString() : x));
 
+/** A5 (11-15): a planting target that sums under 100. Unreachable from a whole allocation; plantOneOrThrow skips it ("split under 100"). */
+export class SplitUnder100Error extends Error {
+  constructor(share: number) {
+    super(`split under 100 after redistribution (${share})`);
+    this.name = "SplitUnder100Error";
+  }
+}
+
+/**
+ * The split one planting aims at (pure). R-O1 (10-21): stORE's 10% default applies at planting time whatever split was saved, unless
+ * stORE is disabled here (its leash leg) or switched off (a 0 pin); any stORE pin wins (11-15). A SKR that is off lends nothing to
+ * the default (skrFloor 0). Then the disabled legs' shares, and any stale share on a coin the user switched off, go to the on coins
+ * (redistributeDisabled with userOff), so an off coin is never in the target. Null when no on coin can take money today (or the
+ * target is empty): "no leg enabled". Throws SplitUnder100Error when the target sums under 100 (a broken allocation row).
+ */
+export function plantingTarget(rules: Pick<Rules, "allocation" | "pins" | "managed" | "stop">, disabled: readonly LiveAsset[]): Split | null {
+  const userOff = ASSETS.filter((c) => !isOn(rules.pins, c));
+  const floored = withStoreFloor(rules.allocation, {
+    skrFloor: isOn(rules.pins, "SKR") ? floorFor(rules.managed, rules.stop) : 0,
+    off: disabled.includes("stORE") || rules.pins.stORE === 0,
+    pinned: rules.pins.stORE !== undefined && rules.pins.stORE !== 0,
+  });
+  const target = redistributeDisabled(floored, disabled, rules.stop, userOff);
+  if (!target) return null;
+  const share = ASSETS.reduce((sum, leg) => sum + target[leg], 0);
+  if (share <= 1e-9) return null;
+  if (share < 100 - 1e-9) throw new SplitUnder100Error(share);
+  return target;
+}
+
 async function plantOne(a: RunArgs, w: WalletRow, ctx: RunCtx): Promise<Planted | Skipped> {
   try {
     return await plantOneOrThrow(a, w, ctx);
@@ -742,26 +773,22 @@ async function plantOneOrThrow(a: RunArgs, w: WalletRow, ctx: RunCtx): Promise<P
   }
   // Residual N1 (10-05): the water-fill gives points to the leg with the most headroom, and a 0% lending leg has full headroom, so
   // once any leg is disabled every lending leg needs its venue. A lending leg with no venue is itself disabled and gets no points.
-  if (disabled.length > 0) for (const leg of LEND_ASSETS) if (!(leg in venues)) await checkLend(leg);
-  // R-O1 (10-21): every planting's split keeps stORE at its floor, whatever split was saved (a manager-off user's split is only
-  // recomputed when they save), unless stORE is disabled here (its leash leg) or switched off: a 0 pin, manager on (R346) or off
-  // (10-23; the route stores a manual 0 pin only from the app's explicit `off`).
-  const floored = withStoreFloor(rules.allocation, { skrFloor: floorFor(rules.managed, rules.stop), off: disabled.includes("stORE") || rules.pins.stORE === 0, pinned: rules.pins.stORE !== undefined && rules.pins.stORE !== 0 });
-  const target = redistributeDisabled(floored, disabled, rules.stop);
-  if (!target) return { wallet: w.pubkey, reason: "no leg enabled" };
-  // R336 follow-up: with USDC lending disabled and every enabled leg at its stop max, the rest of the split is left unpulled. One leg
-  // takes each planting, so "unpulled" is the pull itself: only the target's share of the change is pulled (the USDC stays in the
-  // wallet; the round-ups this planting selected, by the cap and balance bounds above, are all claimed by it: overweighting the capped
-  // legs later would be wrong. A part is the exception: it records only the share pulled, below). The venue check above used the larger amount (the stricter 60% test); both are already bounded by the
-  // cap and the USDC balance.
-  const share = ASSETS.reduce((sum, leg) => sum + target[leg], 0);
-  if (share < 100 - 1e-9) {
-    amount = plantAmountCents({ pendingCents: Math.floor((covered * share) / 100), capLeftCents: left, feeCents: NETWORK_FEE_CENTS, minCents: forced ? 0 : threshold });
-    // Round 3 (review): a part records what is actually pulled for its swap (the share), never the whole day; the rest stays owed.
-    if (part && amount.pullCents > 0) part = { ...part, cents: amount.changeCents };
-    if (amount.pullCents === 0) return { wallet: w.pubkey, reason: "below threshold" };
-    pullRaw = BigInt(amount.pullCents) * USDC_PER_CENT;
+  // 11-15: a stale share on a coin the user switched off is handed on by the same water-fill, so it needs the venues too.
+  const staleOff = ASSETS.some((c) => !isOn(rules.pins, c) && rules.allocation[c] > 0);
+  if (disabled.length > 0 || staleOff) for (const leg of LEND_ASSETS) if (!(leg in venues)) await checkLend(leg);
+  // A5 + R2-N3 (11-15): the target always sums to 100 (redistributeDisabled conserves the split). A row that does not is a broken
+  // invariant: the planting is skipped here (no pull, nothing claimed), never thrown on to plantOne's "build failed" outage count.
+  let target: Split | null;
+  try {
+    target = plantingTarget(rules, disabled);
+  } catch (e) {
+    if (!(e instanceof SplitUnder100Error)) throw e;
+    const line = `ALERT: planting for ${w.pubkey} skipped: ${e.message}`;
+    console.error(line);
+    void alertFounder({ channel: "ops", title: "Planting skipped (split under 100)", text: line.slice(0, 500), fields: [["Wallet", w.pubkey]], todo: "Check this user's rules row: its allocation does not sum to 100" });
+    return { wallet: w.pubkey, reason: "split under 100" };
   }
+  if (!target) return { wallet: w.pubkey, reason: "no leg enabled" };
 
   type Attempt = { built: Built; sim: Simulation; carry: Partial<Record<CarryKind, bigint>>; venue: AutoVenue | null; leg: LeashLegByte | null; cfg: PriceCfg | null; feedAlive: boolean; settleMismatch: boolean };
   const picked = pickAsset(w.ledgerCents, target);
@@ -840,7 +867,8 @@ async function plantOneOrThrow(a: RunArgs, w: WalletRow, ctx: RunCtx): Promise<P
       void alertFounder({ channel: "ops", title: `Lending planting skipped (${failed})`, text: line.slice(0, 500), fields: [["Wallet", w.pubkey]], todo: "Waits for the next run. If it repeats, check the lending venue" });
     }
     // Review M4: a leashed user never falls back to SKR while leg 0 has no price source (no PYTH_API_KEY, R324): it would be skipped there anyway.
-    if (isLendAsset(failed) || disabled.includes("SKR") || (leashed && !skrPriceSource())) {
+    // 11-15: a user who switched SKR off never gets it as a fallback; the failed leg waits for the next run.
+    if (isLendAsset(failed) || disabled.includes("SKR") || !isOn(rules.pins, "SKR") || (leashed && !skrPriceSource())) {
       await legSkipped(a, w, failed, err);
       return null;
     }

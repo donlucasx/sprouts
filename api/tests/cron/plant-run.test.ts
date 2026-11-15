@@ -847,7 +847,8 @@ describe("the SKR slippage remainder (R207 #2)", () => {
     expect(plantings(repo)[1]).toMatchObject({ status: "failed", skrCarryInRaw: 500n });
     expect(await repo.skrCreditRaw("U")).toBe(500n);
 
-    await repo.saveRules("U", { allocation: { ...SKR_ONLY, SKR: 0, stORE: 100 } });
+    // 11-15: stORE back on (storeOff's 0 pin cleared); a stale stORE share on a switched-off stORE would never be bought.
+    await repo.saveRules("U", { pins: {}, allocation: { ...SKR_ONLY, SKR: 0, stORE: 100 } });
     const builds: BuildArgs[] = [];
     await runPlanting({ repo, now: new Date(later.getTime() + 86_400_000), chain: recording(builds) });
     expect(builds.map((b) => [b.asset, b.carryIn.SKR])).toEqual([["stORE", undefined]]);
@@ -2317,5 +2318,147 @@ describe("cap carry: round-ups past the daily cap wait for the next days (owner 
     const r = await runPlanting({ repo, now: NOW, chain: fakeChain({ readLeashConfig: async () => leashCfg([6, 7]) }) });
     expect(r.skipped[0].reason).toBe("below threshold");
     expect(await waiting(repo)).toEqual([150]);
+  });
+});
+
+import { plantingTarget, SplitUnder100Error } from "@/lib/plant-run";
+import { ASSETS } from "@/domain/coins";
+import type { Pins } from "@/domain/roundup";
+
+describe("a coin switched off is never bought (11-15, coin flexibility Task 3)", () => {
+  type BuildArgs = Parameters<Chain["buildPlantingTx"]>[0];
+  const recording = (builds: BuildArgs[], over: Partial<Chain> = {}) => { const base = fakeChain(over); return { ...base, buildPlantingTx: async (a: BuildArgs) => { builds.push(a); return base.buildPlantingTx(a); } } as Chain; };
+  const split = (s: Partial<Record<(typeof ASSETS)[number], number>>) => ({ SKR: 0, stORE: 0, USDC_LEND: 0, SOL_LEND: 0, hSOL: 0, cbBTC: 0, ...s });
+  const failing = (bad: string, builds: BuildArgs[]) => { const base = fakeChain(); return fakeChain({ buildPlantingTx: async (a) => { builds.push(a); if (a.asset === bad) throw new Error("Jupiter: no route"); return base.buildPlantingTx(a); } }); };
+
+  it("(a) SKR off, the cbBTC leg fails to build: no SKR attempt, leg_skipped, nothing pulled", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await repo.saveRules("U", { managed: false, pins: { SKR: 0, cbBTC: 90 }, allocation: split({ stORE: 10, cbBTC: 90 }) });
+    await repo.bumpLedger("W", "stORE", 1_000);   // the picker wants cbBTC
+    const builds: BuildArgs[] = [];
+    const r = await runPlanting({ repo, now: NOW, chain: failing("cbBTC", builds) });
+    expect(builds.map((b) => b.asset)).toEqual(["cbBTC"]);
+    expect(r.planted).toEqual([]);
+    expect(r.skipped).toEqual([{ wallet: "W", reason: "leg failed" }]);
+    expect(repo.events.map((e) => e.kind)).toContain("leg_skipped");
+    expect(repo.events.map((e) => e.kind)).not.toContain("leg_fallback");
+    expect((await repo.unplantedSwaps("W")).length).toBe(3);
+  });
+
+  it("(b) SKR on, the same cbBTC failure: falls back to SKR as before", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await repo.saveRules("U", { managed: false, pins: { cbBTC: 50 }, allocation: split({ SKR: 40, stORE: 10, cbBTC: 50 }) });
+    await repo.bumpLedger("W", "SKR", 1_000);
+    await repo.bumpLedger("W", "stORE", 1_000);   // cbBTC furthest under
+    const builds: BuildArgs[] = [];
+    const r = await runPlanting({ repo, now: NOW, chain: failing("cbBTC", builds) });
+    expect(builds.map((b) => b.asset)).toEqual(["cbBTC", "SKR"]);
+    expect(r.planted[0]?.asset).toBe("SKR");
+    expect(repo.events.map((e) => e.kind)).toContain("leg_fallback");
+  });
+
+  it("(c) the only coin on is USDC lending and its venue is out today: no leg enabled, no pull, the round-ups wait", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await seedVenues(repo, { kamino_klend: { eligible: false }, jupiter_lend: { eligible: false } });
+    await repo.saveRules("U", { managed: false, pins: { SKR: 0, stORE: 0, SOL_LEND: 0, hSOL: 0, cbBTC: 0 }, allocation: split({ USDC_LEND: 100 }) });
+    const builds: BuildArgs[] = [];
+    const r = await runPlanting({ repo, now: NOW, chain: recording(builds) });
+    expect(builds).toEqual([]);
+    expect(r.planted).toEqual([]);
+    expect(r.skipped).toEqual([{ wallet: "W", reason: "no leg enabled" }]);
+    expect(repo.events.map((e) => e.kind)).not.toContain("pull_failed");
+    expect((await repo.unplantedSwaps("W")).length).toBe(3);
+    expect(repo.plantings.size).toBe(0);
+  });
+
+  it("(c) leashed: every on coin's leash leg off is no leg enabled too", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await repo.setWalletLink("W", { delegationPda: "D", linkModel: "leash" });
+    await repo.saveRules("U", { managed: false, pins: { SKR: 0, stORE: 0, USDC_LEND: 0, SOL_LEND: 0, cbBTC: 0 }, allocation: split({ hSOL: 75, SKR: 25 }) });
+    const builds: BuildArgs[] = [];
+    const r = await runPlanting({ repo, now: NOW, chain: recording(builds, { readLeashConfig: async () => leashCfg([0, 1, 7]) }) });   // SKR, stORE, cbBTC legs on; hSOL off
+    expect(builds).toEqual([]);
+    expect(r.skipped).toEqual([{ wallet: "W", reason: "no leg enabled" }]);
+    expect((await repo.unplantedSwaps("W")).length).toBe(3);
+  });
+
+  const base = { managed: false, stop: "balanced" as const };
+  it("(d) stORE pinned 5: the target keeps stORE at 5 (the net does not raise it)", () => {
+    expect(plantingTarget({ ...base, pins: { stORE: 5 }, allocation: split({ SKR: 95, stORE: 5 }) }, [])).toEqual(split({ SKR: 95, stORE: 5 }));
+  });
+
+  it("(e) the default user (no pins, SKR 100): target SKR 90 / stORE 10 as today", () => {
+    expect(plantingTarget({ ...base, pins: {}, allocation: split({ SKR: 100 }) }, [])).toEqual(split({ SKR: 90, stORE: 10 }));
+    expect(plantingTarget({ managed: true, stop: "careful", pins: {}, allocation: split({ SKR: 100 }) }, [])).toEqual(split({ SKR: 90, stORE: 10 }));
+  });
+
+  it("(f) SKR on, its leg out: the overflow goes to USDC lending as today", () => {
+    expect(plantingTarget({ managed: true, stop: "careful", pins: {}, allocation: split({ SKR: 90, stORE: 10 }) }, ["SKR", "cbBTC"]))
+      .toEqual(split({ stORE: 10, USDC_LEND: 60, SOL_LEND: 15, hSOL: 15 }));
+  });
+
+  it("(g) USDC lending out as well: the largest on coin takes the rest and the target sums to 100", () => {
+    const t = plantingTarget({ managed: true, stop: "careful", pins: {}, allocation: split({ SKR: 90, stORE: 10 }) }, ["SKR", "cbBTC", "USDC_LEND"]);
+    expect(t).toEqual(split({ stORE: 10, SOL_LEND: 75, hSOL: 15 }));
+  });
+
+  it("(h) a stale allocation with SKR 40 for a user whose SKR is off: target SKR 0", () => {
+    const t = plantingTarget({ ...base, pins: { SKR: 0, hSOL: 50 }, allocation: split({ SKR: 40, stORE: 10, hSOL: 50 }) }, []);
+    expect(t?.SKR).toBe(0);
+    expect(ASSETS.reduce((s, c) => s + t![c], 0)).toBeCloseTo(100, 9);
+  });
+
+  it("(h) in the run: the stale SKR share never plants SKR, nor a lending leg with no venue", async () => {
+    for (let d = 0; d < 6; d++) {
+      const repo = await seeded([83, 62, 70]);
+      await repo.saveRules("U", { managed: false, pins: { SKR: 0, hSOL: 50 }, allocation: split({ SKR: 40, stORE: 10, hSOL: 50 }) });
+      if (d > 0) await repo.bumpLedger("W", ASSETS[d], 10_000);   // tilt the picker each time
+      const builds: BuildArgs[] = [];
+      const r = await runPlanting({ repo, now: NOW, chain: recording(builds) });
+      expect(r.planted.length).toBe(1);
+      expect(builds.map((b) => b.asset).filter((a) => a === "SKR" || a === "USDC_LEND" || a === "SOL_LEND")).toEqual([]);
+    }
+  });
+
+  it("A5: no target from redistributeDisabled sums under 100 (every disabled set, many splits, pins and stops)", () => {
+    let seed = 7;
+    const rnd = () => ((seed = (seed * 1_103_515_245 + 12_345) % 2_147_483_648) / 2_147_483_648);
+    let checked = 0;
+    for (let i = 0; i < 120; i++) {
+      // A whole-percent split summing to 100, and pins switching a random set of coins off (never all of them).
+      const cuts = ASSETS.slice(1).map(() => Math.floor(rnd() * 101)).sort((x, y) => x - y);
+      const parts = [...cuts, 100].map((c, k) => c - (k ? cuts[k - 1] : 0));
+      const allocation = Object.fromEntries(ASSETS.map((c, k) => [c, parts[k]])) as ReturnType<typeof split>;
+      const pins: Pins = {};
+      for (const c of ASSETS) if (rnd() < 0.3) pins[c] = 0;
+      if (rnd() < 0.3 && pins.stORE === undefined) pins.stORE = 5;
+      if (ASSETS.every((c) => pins[c] === 0)) delete pins.SKR;
+      for (const stop of ["careful", "balanced", "bold"] as const) {
+        for (const managed of [true, false]) {
+          for (let mask = 0; mask < 64; mask++) {
+            const disabled = ASSETS.filter((_, k) => mask & (1 << k));
+            const t = plantingTarget({ managed, stop, pins, allocation }, disabled);
+            checked++;
+            if (t === null) continue;
+            expect(ASSETS.reduce((s, c) => s + t[c], 0)).toBeCloseTo(100, 9);
+            for (const c of ASSETS) if (pins[c] === 0 || disabled.includes(c)) expect(t[c]).toBe(0);
+          }
+        }
+      }
+    }
+    expect(checked).toBe(120 * 3 * 2 * 64);
+  });
+
+  it("A5: an allocation that is not whole (corrupt row) throws the invariant, which the run skips as split under 100: no pull, nothing claimed, no outage", async () => {
+    expect(() => plantingTarget({ ...base, pins: {}, allocation: split({ SKR: 50 }) }, [])).toThrow(SplitUnder100Error);
+    const repo = await seeded([83, 62, 70]);
+    await repo.saveRules("U", { allocation: split({ SKR: 50 }) });
+    const builds: BuildArgs[] = [];
+    const r = await runPlanting({ repo, now: NOW, chain: recording(builds) });
+    expect(builds).toEqual([]);
+    expect(r.skipped).toEqual([{ wallet: "W", reason: "split under 100" }]);
+    expect(repo.events.map((e) => e.kind)).not.toContain("pull_failed");
+    expect((await repo.unplantedSwaps("W")).length).toBe(3);
+    expect(repo.plantings.size).toBe(0);
   });
 });
