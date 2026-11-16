@@ -51,6 +51,16 @@ describe("PUT /api/rules `off` (manual switches, 10-23)", () => {
     expect(b.allocation).toEqual(split({ SKR: 90, stORE: 10 }));
   });
 
+  it("owner 11-15: the app's exact save body for a draft USDC_LEND 100, SKR and cbBTC on at 0 saves both off", async () => {
+    // pinsToSave(draft) = every unpinned coin as 0; off = offCoins(pins), in ASSETS order.
+    const pins = { SKR: 0, stORE: 0, USDC_LEND: 100, SOL_LEND: 0, hSOL: 0, cbBTC: 0 };
+    const res = await put({ managed: false, pins, off: ["SKR", "stORE", "SOL_LEND", "hSOL", "cbBTC"] });
+    expect(res.status).toBe(200);
+    const b = await json(res);
+    expect(b.pins).toEqual(pins);
+    expect(b.allocation).toEqual(split({ USDC_LEND: 100 }));
+  });
+
   it("SKR can be switched off with the manager off: a 0 pin, and the allocation gives it nothing", async () => {
     const res = await put({ managed: false, off: ["SKR"] });
     expect(res.status).toBe(200);

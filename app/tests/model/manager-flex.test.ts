@@ -180,10 +180,26 @@ describe("manager off, no rest: the draft pins every on coin at its shown share"
     expect(splitTotal(split({ SKR: 80, stORE: 10 }))).toEqual({ total: 90, line: "Total 90%.", fix: "Add 10% to another coin to save.", ok: false });
     for (const s of ["Take 5% from another coin to save.", "Add 10% to another coin to save."]) expect(s).not.toMatch(/—/);
   });
-  it("pinsToSave: stORE on at 0 is sent switched off (the API reads an unpinned stORE as its default 10); nothing else changes", () => {
-    expect(pinsToSave({ SKR: 30, USDC_LEND: 40, cbBTC: 30 })).toEqual({ SKR: 30, USDC_LEND: 40, cbBTC: 30, stORE: 0 });
-    expect(pinsToSave({ SKR: 20, stORE: 10, USDC_LEND: 40, cbBTC: 30 })).toEqual({ SKR: 20, stORE: 10, USDC_LEND: 40, cbBTC: 30 });
-    expect(pinsToSave({ SKR: 100, stORE: 0 })).toEqual({ SKR: 100, stORE: 0 });
+  it("pinsToSave: every coin on at 0 (no pin in the draft) is sent switched off; pinned coins go as they are (stORE unchanged)", () => {
+    expect(pinsToSave({ SKR: 30, USDC_LEND: 40, cbBTC: 30 })).toEqual({ SKR: 30, USDC_LEND: 40, cbBTC: 30, stORE: 0, SOL_LEND: 0, hSOL: 0 });
+    expect(pinsToSave({ SKR: 20, stORE: 10, USDC_LEND: 40, cbBTC: 30 })).toEqual({ SKR: 20, stORE: 10, USDC_LEND: 40, cbBTC: 30, SOL_LEND: 0, hSOL: 0 });
+    expect(pinsToSave({ SKR: 100, stORE: 0 })).toEqual({ SKR: 100, stORE: 0, USDC_LEND: 0, SOL_LEND: 0, hSOL: 0, cbBTC: 0 });
+  });
+  it("owner 11-15: SKR and cbBTC on at 0 with USDC_LEND 100 save off (0 pins, listed in off); before saving they read on", () => {
+    const draft: Pins = { USDC_LEND: 100 }; // every other coin is on at 0 (no pin) in the draft
+    const draftRows = splitRows(view({ pins: draft }), draftShares(draft));
+    expect(draftRows.find((r) => r.asset === "SKR")!.mode).toBe("pinned");
+    expect(draftRows.find((r) => r.asset === "cbBTC")!.mode).toBe("pinned");
+    const saved = pinsToSave(draft);
+    expect(saved.SKR).toBe(0);
+    expect(saved.cbBTC).toBe(0);
+    expect(saved.USDC_LEND).toBe(100);
+    expect(offCoins(saved)).toEqual(expect.arrayContaining(["SKR", "cbBTC"]));
+    expect(offCoins(saved)).not.toContain("USDC_LEND");
+    const rows = splitRows(view({ pins: saved }));
+    expect(rows.find((r) => r.asset === "SKR")!.mode).toBe("off");
+    expect(rows.find((r) => r.asset === "cbBTC")!.mode).toBe("off");
+    expect(rows.find((r) => r.asset === "USDC_LEND")).toMatchObject({ mode: "pinned", pct: 100 });
   });
 });
 

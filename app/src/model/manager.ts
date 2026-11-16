@@ -231,10 +231,13 @@ export function splitTotal(shares: Split): { total: number; line: string; fix: s
   return { total, line: `Total ${total}%.`, fix, ok: total === 100 };
 }
 
-/** The draft's pins as saved: stORE on at 0 (unpinned in the draft) goes as switched off, since the API plants an unpinned stORE at its
- *  default of 10. Every other pin goes as it is (the API drops a non-zero SKR pin and gives SKR 100 minus the others: its number). */
+/** The draft's pins as saved (owner 11-15: "when a coin that is on is turned down to 0%, after saved, it should be turned off
+ *  automaticaly"): every coin on at 0 (no pin in the draft, SKR and stORE included) goes as switched off, a 0 pin. While editing it
+ *  stays on. Every pinned coin goes as it is (the API drops a non-zero SKR pin and gives SKR 100 minus the others: its number). */
 export function pinsToSave(pins: Pins): Pins {
-  return pins.stORE === undefined ? { ...pins, stORE: 0 } : pins;
+  const next: Pins = { ...pins };
+  for (const c of ASSETS) if (next[c] === undefined) next[c] = 0;
+  return next;
 }
 
 /** 10-23 (his ruling): with the manager off, switch a coin on or off (a 0 pin: never bought). 11-15: SKR too. Addendum 11-15: on the
