@@ -206,3 +206,27 @@ describe("PUT /api/rules, manager off, the user's own numbers (addendum 11-15)",
     expect(b.allocation).toEqual(split({ SKR: 90, stORE: 10 }));
   });
 });
+
+// Device bug 11-16: turning the AI Yield Manager off starts the manual draft from the planted split (the app's pinsForOff), so a
+// save right after the toggle plants exactly what the manager had.
+describe("PUT /api/rules, manager turned off from the planted split (11-16)", () => {
+  it("the owner's case, the app's exact body: USDC lending 75 / SOL lending 25 saved as they were, nothing else on", async () => {
+    await put({ managed: true, pins: { SKR: 0, stORE: 0, hSOL: 0, cbBTC: 0 } });
+    await repo.saveRules(U, { allocation: split({ USDC_LEND: 75, SOL_LEND: 25 }) });
+    // pinsForOff(allocation, pins) then pinsToSave; off = offCoins(that), in ASSETS order.
+    const pins = { SKR: 0, stORE: 0, USDC_LEND: 75, SOL_LEND: 25, hSOL: 0, cbBTC: 0 };
+    const res = await put({ managed: false, pins, off: ["SKR", "stORE", "hSOL", "cbBTC"] });
+    expect(res.status).toBe(200);
+    const b = await json(res);
+    expect(b.managed).toBe(false);
+    expect(b.pins).toEqual(pins);
+    expect(b.allocation).toEqual(split({ USDC_LEND: 75, SOL_LEND: 25 }));
+  });
+
+  it("no coin off: every coin's planted share saved exactly", async () => {
+    await put({ managed: true, pins: {} });
+    const pins = { SKR: 38, stORE: 20, USDC_LEND: 20, SOL_LEND: 2, hSOL: 12, cbBTC: 8 };
+    const b = await json(await put({ managed: false, pins, off: [] }));
+    expect(b.allocation).toEqual(split(pins));
+  });
+});

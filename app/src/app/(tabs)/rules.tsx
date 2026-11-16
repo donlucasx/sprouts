@@ -25,6 +25,7 @@ import {
   managedPreview,
   stepPin,
   pinsForOn,
+  pinsForOff,
   undoLine,
   SWITCH_LABEL,
   MANAGER_LINE,
@@ -523,8 +524,23 @@ export default function Rules() {
             value={r.managed}
             onValueChange={(v) => {
               if (busy) return
-              setExplicit(false)
-              edit(v ? { managed: true, pins: pinsForOn(r.pins) } : { managed: false })
+              if (v) {
+                setExplicit(false)
+                edit({ managed: true, pins: pinsForOn(r.pins) })
+                return
+              }
+              // Device bug 11-16: off starts the manual draft from the split being planted, as explicit pins (total 100).
+              const changed = r.stop !== saved.stop || JSON.stringify(managedPins(r.pins)) !== JSON.stringify(managedPins(saved.pins))
+              if (!saved.managed && !changed) {
+                // Switched on and back off with nothing else changed: the saved manual split, untouched, as before.
+                setUndone(false)
+                setExplicit(false)
+                setDraft(({ managed: _m, pins: _p, ...rest }) => rest)
+                return
+              }
+              const planted = changed ? managedPreview(me.manager.stopSplit, managedPins(r.pins), r.stop) : saved.allocation
+              setExplicit(true)
+              edit({ managed: false, pins: pinsForOff(planted, managedPins(r.pins)) })
             }}
             accessibilityLabel={SWITCH_LABEL}
           />

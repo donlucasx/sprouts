@@ -336,6 +336,19 @@ export function pinsForOn(pins: Pins): Pins {
   return managedPins(pins);
 }
 
+/** Device bug 11-16 (controller ruling): the pins when the switch flips off. The manual draft starts from the split being planted
+ *  (`allocation`: the saved one, or the managed preview the screen showed) as explicit pins: a coin with a share is pinned at it, an on
+ *  coin at 0 stays on with no pin (pinsToSave turns it off at save), a coin switched off (0 pin) stays off. The total is the
+ *  allocation's, 100, so Save works at once. */
+export function pinsForOff(allocation: Split, pins: Pins): Pins {
+  const next: Pins = {};
+  for (const c of ASSETS) {
+    if (!isOn(pins, c)) next[c] = 0;
+    else if (allocation[c] > 0) next[c] = allocation[c];
+  }
+  return next;
+}
+
 /** "Changed {Mon D}." (F4: labelled by the day the manager changed the split, gated by undoAvailable). */
 export function undoLine(changedDay: string | null): string | null {
   return changedDay ? `Changed ${dayLabel(changedDay)}.` : null;
