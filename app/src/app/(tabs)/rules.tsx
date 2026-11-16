@@ -20,7 +20,7 @@ import {
   splitRows,
   setCoinOn,
   setManualCoinOn,
-  offCoins,
+  saveSwitches,
   managedPins,
   managedPreview,
   stepPin,
@@ -41,7 +41,6 @@ import {
   explicitPins,
   draftShares,
   splitTotal,
-  pinsToSave,
 } from '@/model/manager'
 import type { Pins } from '@/lib/coins'
 import { ORE_DISCLOSURE } from '@/lib/ore-copy'
@@ -225,11 +224,8 @@ export default function Rules() {
         body: {
           ...patch,
           // Addendum 11-15: the user's own numbers sum to 100; stORE on at 0 goes switched off (pinsToSave).
-          ...(r.managed
-            ? { pins: managedPins(r.pins) }
-            : 'pins' in patch || 'managed' in patch
-              ? { pins: explicit ? pinsToSave(r.pins) : r.pins, off: offCoins(explicit ? pinsToSave(r.pins) : r.pins) }
-              : {}),
+          // Device bug 11-16: on, `off` goes too, so a coin switched on (SKR included) is on at the API (saveSwitches).
+          ...saveSwitches(r, explicit, 'pins' in patch || 'managed' in patch),
           ...(reauth ? { reauth } : {}),
         },
       })

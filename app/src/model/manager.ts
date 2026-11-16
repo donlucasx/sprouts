@@ -254,6 +254,16 @@ export function offCoins(pins: Pins): LiveAsset[] {
   return ASSETS.filter((c) => pins[c] === 0);
 }
 
+/** The pins and switches a save sends (rules.tsx saveAll). Device bug 11-16 (controller ruling): the app always sends its full switch
+ *  list as `off`, in both modes, so the API's off-branch (the switches are the truth) applies. A managed save without `off` hit the
+ *  API's 0.1.10 carry-over (A2), which keeps an SKR that was off when the pins have no SKR key: SKR switched on came back off.
+ *  On: only the 0 pins go (R346). Off: the explicit draft through pinsToSave, or nothing when the split and the switch are untouched. */
+export function saveSwitches(r: { managed: boolean; pins: Pins }, explicit: boolean, splitTouched: boolean): { pins?: Pins; off?: LiveAsset[] } {
+  if (!r.managed && !splitTouched) return {};
+  const pins = r.managed ? managedPins(r.pins) : explicit ? pinsToSave(r.pins) : r.pins;
+  return { pins, off: offCoins(pins) };
+}
+
 /** 11-15: a switch may go off unless it is the last coin on (the API answers none_on). */
 export function canSwitchOff(r: RulesView, asset: LiveAsset): boolean {
   return ASSETS.some((c) => c !== asset && isOn(r.pins, c));
