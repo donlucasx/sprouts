@@ -27,7 +27,7 @@ describe("Helius credit counting covers every billed call site", () => {
   it("every file that reaches Helius over HTTP imports helius-credits (offenders listed)", () => {
     const offenders = files(SRC)
       .map((p) => ({ rel: path.relative(SRC, p).split(path.sep).join("/"), text: readFileSync(p, "utf8") }))
-      .filter((f) => BILLED.test(f.text) && !(f.rel in ALLOW) && !/from "(@\/lib\/|\.\/)helius-credits"/.test(f.text))
+      .filter((f) => BILLED.test(f.text) && !(f.rel in ALLOW) && !/from "(@\/lib\/|\.\/)helius-(credits|count)"/.test(f.text))
       .map((f) => f.rel);
     expect(offenders).toEqual([]);
   });
@@ -40,9 +40,18 @@ describe("Helius credit counting covers every billed call site", () => {
     }
   });
 
+  it("rpc.ts and helius-count.ts stay loadable from the app's tests: no '@/' import, nothing from db/ or founder-alert, types included", () => {
+    // The app's vitest and tsc map '@' to app/src, and app tests import api code that imports rpc.ts (fix round 2).
+    for (const rel of ["lib/rpc.ts", "lib/helius-count.ts"]) {
+      const text = readFileSync(path.join(SRC, rel), "utf8");
+      const specs = [...text.matchAll(/(?:from|import\()\s*"([^"]+)"/g)].map((m) => m[1]);
+      expect(specs.filter((x) => x.startsWith("@/") || x.includes("db/") || x.includes("founder-alert") || x.includes("helius-credits")), rel).toEqual([]);
+    }
+  });
+
   it("the swap webhook route counts each delivered item (1 credit each)", () => {
     const text = readFileSync(path.join(SRC, "app/api/webhooks/helius/route.ts"), "utf8");
-    expect(text).toMatch(/from "@\/lib\/helius-credits"/);
+    expect(text).toMatch(/from "@\/lib\/helius-count"/);
     expect(text).toMatch(/countHelius\(\s*items\.length/);
   });
 });

@@ -4,7 +4,7 @@ import {
 } from "@solana/kit";
 import { config } from "./config";
 import { redactError } from "./redact";
-import { countHelius, rpcCreditCost } from "./helius-credits";
+import { countHelius, rpcCreditCost } from "./helius-count";
 
 let cached: Rpc<SolanaRpcApi> | null = null;
 

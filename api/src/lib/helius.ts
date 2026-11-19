@@ -1,7 +1,7 @@
 import { config } from "./config";
 import type { HeliusEnhancedTx } from "./book-swap";
 import { parsedEventToTx, PREVIEW_PAGE_SIZE, type FetchPage } from "./preview";
-import { countHelius, HELIUS_REST_COST } from "./helius-credits";
+import { countHelius, HELIUS_REST_COST } from "./helius-count";
 
 const API = "https://api.helius.xyz";
 

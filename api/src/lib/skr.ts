@@ -1,6 +1,6 @@
 import { Connection, PublicKey } from "@solana/web3.js";
 import { TldParser } from "@onsol/tldparser";
-import { countingFetch } from "./helius-credits";
+import { countingFetch } from "./helius-count";
 
 const SUFFIX = ".skr";
 

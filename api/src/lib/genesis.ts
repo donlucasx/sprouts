@@ -1,5 +1,5 @@
 import { Connection, PublicKey } from "@solana/web3.js";
-import { countingFetch } from "./helius-credits";
+import { countingFetch } from "./helius-count";
 import { TOKEN_2022_PROGRAM_ID, unpackAccount, unpackMint, getMetadataPointerState, getTokenGroupMemberState } from "@solana/spl-token";
 
 /** Solana Mobile's Genesis Token group: the same address serves as the metadata pointer target and the group. */

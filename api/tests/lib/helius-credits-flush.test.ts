@@ -6,7 +6,8 @@ import { setRepoForTests } from "@/db/repo";
 const tasks: (() => Promise<unknown>)[] = [];
 vi.mock("next/server", async (orig) => ({ ...(await orig<object>()), after: (fn: () => Promise<unknown>) => { tasks.push(fn); } }));
 
-const { countHelius, pendingHeliusCredits, _resetHeliusCredits, FLUSH_AT_CREDITS, FLUSH_AFTER_MS } = await import("@/lib/helius-credits");
+const { countHelius, pendingHeliusCredits, _resetHeliusCredits, FLUSH_AT_CREDITS, FLUSH_AFTER_MS, setHeliusFlushTarget } = await import("@/lib/helius-credits");
+const { getRepo } = await import("@/db/repo");
 
 const credits = (repo: MemoryRepo) => repo.events.filter((e) => e.kind === "helius_credits").map((e) => (e.detail as { credits: number }).credits);
 const endRequest = async () => { const t = tasks.splice(0); for (const f of t) await f(); return t.length; };
@@ -62,5 +63,19 @@ describe("countHelius inside a request: flushed per request, so an instance dies
     countHelius(1, t);
     expect(await endRequest()).toBe(1);
     expect(credits(repo)).toEqual([61]);
+  });
+
+  it("db/repo.ts registers getRepo as the flush target at load; with no target (the app's tests) counts only accumulate", async () => {
+    setHeliusFlushTarget(null);
+    try {
+      countHelius(500, new Date("2026-11-19T10:00:00Z"));
+      expect(tasks).toHaveLength(0);
+      expect(pendingHeliusCredits()).toBe(500);
+    } finally {
+      setHeliusFlushTarget(getRepo);
+    }
+    countHelius(1, new Date("2026-11-19T10:00:00Z"));
+    expect(await endRequest()).toBe(1);
+    expect(credits(repo)).toEqual([501]);
   });
 });

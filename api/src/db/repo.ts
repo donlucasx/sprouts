@@ -1,6 +1,7 @@
 import type * as T from "./types";
 import type { Asset, LiveAsset, LendAsset, Stop } from "@/domain/coins";
 import { isLendAsset } from "@/domain/coins";
+import { setHeliusFlushTarget } from "@/lib/helius-count";
 import type { Venue } from "@/domain/venues";
 
 /** A planting as the run records it; the share columns are filled in by the run and the confirmation [A16]. */
@@ -260,3 +261,7 @@ export async function getRepo(): Promise<Repo> {
   }
   return live;
 }
+
+// 11-19 (fix round 2): a request's Helius credit count is flushed through the repo; helius-count.ts takes it from here so that it
+// imports nothing from db/ (the app's tests load rpc.ts, which imports helius-count).
+setHeliusFlushTarget(getRepo);
