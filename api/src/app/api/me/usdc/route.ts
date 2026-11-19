@@ -4,7 +4,7 @@ import { requireSession } from "@/lib/auth-guard";
 import { readUsdcBalanceRaw } from "@/lib/subscriptions";
 import { rpc } from "@/lib/rpc";
 import { priceUsd } from "@/lib/jupiter";
-import { affordableTopUps } from "@/lib/topup";
+import { affordableTopUps, topUpSources } from "@/lib/topup";
 import { WSOL_MINT } from "@/lib/constants";
 
 export const runtime = "nodejs";
@@ -16,6 +16,9 @@ export const runtime = "nodejs";
  *
  * 10-27: `topUpCents`, the "Add USDC" amounts this wallet's SOL covers (affordableTopUps); [] = none, so the app shows the address to
  * send USDC to; null = unknown (no balance or no price), so the app offers every amount and the build route decides.
+ *
+ * Task 7 (0.1.12): `topUpSources`, the coins this wallet can top up from, SOL first (lib/topup.ts topUpSources); null when the
+ * balances or prices could not be read. 0.1.11 reads only usdcRaw, topUpCents and solLamports, unchanged.
  */
 export async function GET(request: Request) {
   const session = await requireSession(request);
@@ -32,5 +35,9 @@ export async function GET(request: Request) {
   const topUpCents = sol !== null && solUsd !== null ? affordableTopUps(sol, solUsd) : null;
   // 0.1.10: the wallet's SOL in lamports (null when unread), so Link a wallet can say BEFORE the approval that it needs a little SOL
   // (5 of 31 failed links 10-14 to 11-12 were wallets with no SOL for the rent and fee).
-  return NextResponse.json({ usdcRaw: usdc, topUpCents, solLamports: sol === null ? null : sol.toString() });
+  const sources = await topUpSources(me, sol, solUsd, topUpCents).catch((e) => {
+    console.error(`/api/me/usdc: the top-up coins could not be read (${e instanceof Error ? e.message : String(e)})`);
+    return null;
+  });
+  return NextResponse.json({ usdcRaw: usdc, topUpCents, solLamports: sol === null ? null : sol.toString(), topUpSources: sources });
 }

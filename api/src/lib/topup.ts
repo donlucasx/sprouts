@@ -1,12 +1,13 @@
 import { AccountRole, address, getBase64Encoder, getProgramDerivedAddress, type Address, type Instruction } from "@solana/kit";
 import { findAssociatedTokenPda, TOKEN_PROGRAM_ADDRESS, ASSOCIATED_TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
 import { TOKEN_2022_PROGRAM_ADDRESS } from "@solana-program/token-2022";
-import { checkQuoteMints, getQuote, getSwapInstructions, JUPITER_AGGREGATOR } from "./jupiter";
-import { SYSTEM_PROGRAM, USDC_MINT, WSOL_MINT } from "./constants";
+import { checkQuoteMints, getQuote, getSwapInstructions, JUPITER_AGGREGATOR, jupiterToken, pricesUsd, type JupiterToken } from "./jupiter";
+import { SKR_MINT, SYSTEM_PROGRAM, USDC_MINT, WSOL_MINT } from "./constants";
 import { COINS } from "@/domain/coins";
 import { RECEIPT } from "./venues/addresses";
 import { buildUserTransaction } from "./user-tx";
 import { rpc } from "./rpc";
+import { cached } from "./memo";
 
 /**
  * The SOL top-up (10-22, owner-approved): round-ups are pulled only as USDC, and most Seeker wallets hold SOL, so a wallet the daily run
@@ -33,6 +34,15 @@ export function affordableTopUps(solLamports: bigint, solUsd: number): number[] 
   });
 }
 
+/**
+ * Task 7 (any coin): the offers a coin worth `valueCents` in this wallet covers, 3% kept back for the swap's slippage and price moves.
+ * A rough gate only, as affordableTopUps: the build route quotes and checks the real amount.
+ */
+export function affordableTopUpsFor(valueCents: number): number[] {
+  if (!(valueCents > 0)) return [];
+  return TOPUP_OFFERS.filter((cents) => cents <= valueCents * 0.97);
+}
+
 /** Kept in the wallet for network fees and rent after the top-up (about 0.01 SOL). */
 export const SOL_RESERVE_LAMPORTS = 10_000_000n;
 export const TOPUP_SLIPPAGE_BPS = 50;
@@ -48,6 +58,12 @@ export const TOPUP_MAX_LAMPORTS = 1_000_000_000n;
  * no ExactOut route; Raydium AMM v4 is a variant (105 today) past the IDL the app pins.
  */
 export const TOPUP_DEXES = ["Raydium CLMM", "Whirlpool"] as const;
+/** A token top-up wraps nothing, so the wallet needs only the network fee and possibly its USDC account's rent (about 0.003 SOL). */
+export const TOPUP_TOKEN_SOL_RESERVE_LAMPORTS = 3_000_000n;
+/** At most this many coins beside SOL in /api/me/usdc topUpSources (the app shows at most 2 of them). */
+const TOPUP_MAX_TOKEN_SOURCES = 4;
+const DAY_MS = 24 * 60 * 60 * 1000;
+const HOUR_MS = 60 * 60 * 1000;
 /** A v0 transaction's wire limit; the top-up is compiled without a lookup table (the app refuses one), so the route must fit. */
 const MAX_WIRE_BYTES = 1232;
 
@@ -75,11 +91,17 @@ const MAX_ROUTE_STEPS = 4;
 const JUPITER_EVENT_AUTHORITY = "D8cy77BBepLMngZx6ZukaTff5hCt1HrWyKk3Hnd9oitf";
 
 export type TopUpIx = { program: string; accounts: string[]; signers?: string[]; data: Uint8Array };
-export type TopUpPlan = { outRaw: bigint; quotedInLamports: bigint; wrapLamports: bigint; slippageBps: number };
+/** quotedIn and maxIn are in the source coin's base units (lamports for SOL); a token top-up wraps nothing (wrapLamports 0). */
+export type TopUpPlan = { outRaw: bigint; quotedInLamports: bigint; quotedIn: bigint; maxIn: bigint; wrapLamports: bigint; slippageBps: number };
 /** Jupiter's program authority for an id, and its own wSOL and USDC accounts (shared_accounts_exact_out_route slots 1, 4, 5). */
 export type JupiterAuthority = { authority: string; wsol: string; usdc: string };
 /** What checkTopUp compares against, all derived from the wallet alone (topUpAccounts). */
 export type TopUpAccounts = { wsolAta: string; usdcAta: string; foreign: readonly string[]; authorities: readonly JupiterAuthority[] };
+/**
+ * The token top-up's source (topUpSourceAccounts): the coin, the wallet's classic account for it (the swap's slot 3, the only place it may
+ * appear), its Token-2022 account for it (nowhere), and per Jupiter program authority that authority's own accounts for the coin and USDC.
+ */
+export type TopUpSourceAccounts = { mint: string; ata: string; token2022Ata: string; authorities: readonly { authority: string; source: string; usdc: string }[] };
 
 const no = (why: string): never => { throw new Error(`Top-up refused: ${why}`); };
 const u16At = (d: Uint8Array, at: number) => new DataView(d.buffer, d.byteOffset, d.byteLength).getUint16(at, true);
@@ -88,11 +110,19 @@ const u64At = (d: Uint8Array, at: number) => new DataView(d.buffer, d.byteOffset
 const same = (ix: TopUpIx, expected: readonly string[]) => ix.accounts.length === expected.length && expected.every((e, i) => ix.accounts[i] === e);
 
 const ataOf = async (owner: Address, mint: Address, tokenProgram: Address = TOKEN_PROGRAM_ADDRESS) => (await findAssociatedTokenPda({ owner, mint, tokenProgram }))[0] as string;
-/** The mints whose accounts the wallet may hold beside SOL and USDC: the coins (live and retired) and the lending receipts. */
-const FOREIGN_MINTS: readonly Address[] = [
+/**
+ * The mints whose accounts the wallet may hold beside SOL and USDC: the coins (live and retired) and the lending receipts. Kept equal to
+ * the app's TOPUP_FOREIGN_MINTS (app/src/lib/sign.ts); tests/lib/topup.test.ts compares the two. None is ever a top-up source, but SKR
+ * (controller ruling 11-19: planted SKR is staked, so liquid SKR in the wallet is the user's own): its classic account may then sit in
+ * the swap's source slot of an SKR top-up, and nowhere else in any top-up.
+ */
+export const FOREIGN_MINTS: readonly Address[] = [
   ...Object.values(COINS).map((c) => c.mint).filter((m) => m !== USDC_MINT && m !== WSOL_MINT),
   ...Object.values(RECEIPT).flatMap((v) => Object.values(v).map((r) => r.mint)),
 ];
+/** Whether `mint` may be a token top-up's source: not USDC, not wSOL (that is the SOL top-up), no garden coin or receipt but SKR. */
+export const isTopUpSource = (mint: string): boolean =>
+  mint !== USDC_MINT && mint !== WSOL_MINT && (mint === SKR_MINT || !(FOREIGN_MINTS as readonly string[]).includes(mint));
 let authorities: Promise<JupiterAuthority[]> | null = null;
 const jupiterAuthorities = () =>
   (authorities ??= Promise.all(
@@ -116,6 +146,14 @@ export async function topUpAccounts(user: Address): Promise<TopUpAccounts> {
   return { wsolAta, usdcAta, foreign, authorities: auth };
 }
 
+/** A token top-up's source accounts for `user` and `mint` (see TopUpSourceAccounts). Throws for USDC, wSOL, a garden coin or a receipt. */
+export async function topUpSourceAccounts(user: Address, mint: Address): Promise<TopUpSourceAccounts> {
+  if (!isTopUpSource(mint)) no(`${mint} is not a top-up source`);
+  const [ata, token2022Ata, auth] = await Promise.all([ataOf(user, mint), ataOf(user, mint, TOKEN_2022_PROGRAM_ADDRESS), jupiterAuthorities()]);
+  const per = await Promise.all(auth.map(async (x) => ({ authority: x.authority, source: await ataOf(address(x.authority), mint), usdc: x.usdc })));
+  return { mint, ata, token2022Ata, authorities: per };
+}
+
 /** The swap's data read the way Jupiter's program reads it; anything it cannot read in full, or with bytes left over, refuses. */
 export function parseSharedExactOut(d: Uint8Array): { id: number; outAmount: bigint; quotedIn: bigint; slippageBps: number; feeBps: number } {
   if (d.length < 13 || Buffer.from(d.slice(0, 8)).toString("hex") !== SHARED_EXACT_OUT) no("the swap is not Jupiter's shared-accounts ExactOut route");
@@ -137,23 +175,18 @@ export function parseSharedExactOut(d: Uint8Array): { id: number; outAmount: big
   return { id, outAmount: u64At(d, at), quotedIn: u64At(d, at + 8), slippageBps: u16At(d, at + 16), feeBps: d[at + 18] };
 }
 
-/**
- * What a top-up transaction may hold, and nothing else (the app runs the same check before the wallet is asked, sign.ts 'topup'):
- * compute budget (a limit and a price, the priority fee at most 0.001 SOL); create the user's wSOL and USDC accounts (optional, paid by
- * the user); move SOL into the user's own wSOL account, then SyncNative; ONE Jupiter shared_accounts_exact_out_route (its data parsed
- * in full, its 13 fixed accounts pinned, the wallet and its token accounts nowhere in the route accounts) from that wSOL account into the
- * user's USDC account, USDC out, no platform fee, slippage at most 1%, the wrap no larger than the swap's own maximum, at most 1 SOL; then
- * close the wSOL account back to the user. The user is the only signer; none of its other token accounts appears anywhere. `outRaw`,
- * when given, is the USDC the screen promised. The SOL price bound is the app's alone (sign.ts): it reads a price this API never touches.
- */
-export function checkTopUp(ixs: TopUpIx[], a: TopUpAccounts & { user: string; outRaw?: bigint }): TopUpPlan {
+/** Every top-up: only its five programs, the wallet the only signer, none of `foreign` in any instruction. */
+function screen(ixs: TopUpIx[], user: string, foreign: ReadonlySet<string>): void {
   const allowed = new Set([COMPUTE_BUDGET, ATA, SYSTEM, TOKEN, JUPITER_AGGREGATOR]);
-  const foreign = new Set(a.foreign);
   for (const ix of ixs) {
     if (!allowed.has(ix.program)) no(`program ${ix.program} is not used by a top-up`);
-    for (const s of ix.signers ?? []) if (s !== a.user) no(`signer ${s} is not the wallet`);
+    for (const s of ix.signers ?? []) if (s !== user) no(`signer ${s} is not the wallet`);
     for (const acc of ix.accounts) if (foreign.has(acc)) no(`the wallet's other token account ${acc} is in the transaction`);
   }
+}
+
+/** Every top-up's leading compute budget: at most one limit and one price, no accounts, the priority fee at most 0.001 SOL. Returns the next index. */
+function computeBudget(ixs: TopUpIx[]): number {
   let i = 0;
   let cuLimit: bigint | null = null, cuPrice: bigint | null = null;
   for (; i < ixs.length && ixs[i].program === COMPUTE_BUDGET; i++) {
@@ -164,6 +197,32 @@ export function checkTopUp(ixs: TopUpIx[], a: TopUpAccounts & { user: string; ou
     else no("a compute budget instruction other than one limit and one price");
   }
   if (((cuLimit ?? DEFAULT_CU_LIMIT) * (cuPrice ?? 0n) + 999_999n) / 1_000_000n > TOPUP_MAX_PRIORITY_LAMPORTS) no("the priority fee is above 0.001 SOL");
+  return i;
+}
+
+/** The swap's amounts, as both top-ups hold them: no platform fee, slippage at most 1%, the USDC asked (or $2 to $25), a positive input. */
+function checkAmounts(route: ReturnType<typeof parseSharedExactOut>, outRawAsked: bigint | undefined): bigint {
+  const { outAmount: outRaw, quotedIn, slippageBps, feeBps } = route;
+  if (feeBps !== 0) no("the swap carries a platform fee");
+  if (slippageBps > TOPUP_MAX_SLIPPAGE_BPS) no(`slippage ${slippageBps} bps is above ${TOPUP_MAX_SLIPPAGE_BPS}`);
+  if (outRawAsked !== undefined ? outRaw !== outRawAsked : outRaw < BigInt(TOPUP_MIN_CENTS) * 10_000n || outRaw > BigInt(TOPUP_MAX_CENTS) * 10_000n) no(`the swap delivers ${outRaw}, not the amount asked`);
+  if (quotedIn <= 0n) no("the swap quotes no input");
+  return (quotedIn * BigInt(10_000 + slippageBps) + 9_999n) / 10_000n + 1n;
+}
+
+/**
+ * What a top-up transaction may hold, and nothing else (the app runs the same check before the wallet is asked, sign.ts 'topup'):
+ * compute budget (a limit and a price, the priority fee at most 0.001 SOL); create the user's wSOL and USDC accounts (optional, paid by
+ * the user); move SOL into the user's own wSOL account, then SyncNative; ONE Jupiter shared_accounts_exact_out_route (its data parsed
+ * in full, its 13 fixed accounts pinned, the wallet and its token accounts nowhere in the route accounts) from that wSOL account into the
+ * user's USDC account, USDC out, no platform fee, slippage at most 1%, the wrap no larger than the swap's own maximum, at most 1 SOL; then
+ * close the wSOL account back to the user. The user is the only signer; none of its other token accounts appears anywhere. `outRaw`,
+ * when given, is the USDC the screen promised. The SOL price bound is the app's alone (sign.ts): it reads a price this API never touches.
+ */
+export function checkTopUp(ixs: TopUpIx[], a: TopUpAccounts & { user: string; outRaw?: bigint; source?: TopUpSourceAccounts }): TopUpPlan {
+  if (a.source) return checkTokenTopUp(ixs, a, a.source);
+  screen(ixs, a.user, new Set(a.foreign));
+  let i = computeBudget(ixs);
   let wsolCreate = false, usdcCreate = false, wrapLamports: bigint | null = null, synced = false;
   for (; i < ixs.length && ixs[i].program !== JUPITER_AGGREGATOR; i++) {
     const ix = ixs[i];
@@ -195,17 +254,53 @@ export function checkTopUp(ixs: TopUpIx[], a: TopUpAccounts & { user: string; ou
   });
   const mine = new Set([a.user, a.wsolAta, a.usdcAta]);
   if (swap.accounts.slice(fixed.length).some((acc) => mine.has(acc))) no("the wallet or its own token accounts are in the route accounts");
-  const { outAmount: outRaw, quotedIn, slippageBps, feeBps } = route;
-  if (feeBps !== 0) no("the swap carries a platform fee");
-  if (slippageBps > TOPUP_MAX_SLIPPAGE_BPS) no(`slippage ${slippageBps} bps is above ${TOPUP_MAX_SLIPPAGE_BPS}`);
-  if (a.outRaw !== undefined ? outRaw !== a.outRaw : outRaw < BigInt(TOPUP_MIN_CENTS) * 10_000n || outRaw > BigInt(TOPUP_MAX_CENTS) * 10_000n) no(`the swap delivers ${outRaw}, not the amount asked`);
-  const maxIn = (quotedIn * BigInt(10_000 + slippageBps) + 9_999n) / 10_000n + 1n;
-  if (quotedIn <= 0n || wrapLamports! > maxIn) no("the SOL wrapped is above the swap's maximum");
+  const maxIn = checkAmounts(route, a.outRaw);
+  const { outAmount: outRaw, quotedIn, slippageBps } = route;
+  if (wrapLamports! > maxIn) no("the SOL wrapped is above the swap's maximum");
   if (maxIn > TOPUP_MAX_LAMPORTS) no("the swap may spend more than 1 SOL");
   const close = ixs[i++];
   if (!close || close.program !== TOKEN || close.data.length !== 1 || close.data[0] !== CLOSE_ACCOUNT || !same(close, [a.wsolAta, a.user, a.user])) no("the wSOL account is not closed back to the wallet after the swap");
   if (i !== ixs.length) no("an instruction after the unwrap");
-  return { outRaw, quotedInLamports: quotedIn, wrapLamports: wrapLamports!, slippageBps };
+  return { outRaw, quotedInLamports: quotedIn, quotedIn, maxIn, wrapLamports: wrapLamports!, slippageBps };
+}
+
+/**
+ * The token top-up (Task 7; the app runs the same check, sign.ts checkTokenTopUp): the wallet's own `source.mint` swapped to USDC, in
+ * this order and nothing else: compute budget (as the SOL top-up); [create the wallet's own USDC account]; ONE Jupiter
+ * shared_accounts_exact_out_route, its data parsed in full, its 13 fixed accounts pinned (the program authority for the data's id and that
+ * authority's own source-coin and USDC accounts, the wallet as transfer authority, its classic source account as the source, its USDC
+ * account as the destination, the source mint, no platform fee or Token-2022 account), the wallet and its source, wSOL and USDC accounts
+ * nowhere in the route accounts, USDC out, no platform fee, slippage at most 1%; no SOL transfer, no SyncNative, no close, nothing after.
+ * Refused outright: a source that is USDC, wSOL or a garden coin or receipt but SKR (isTopUpSource); the wallet's Token-2022 account for
+ * the source coin and its accounts for every other FOREIGN_MINTS mint anywhere. The coin's price bound is the app's alone.
+ */
+function checkTokenTopUp(ixs: TopUpIx[], a: TopUpAccounts & { user: string; outRaw?: bigint }, source: TopUpSourceAccounts): TopUpPlan {
+  if (!isTopUpSource(source.mint)) no(`${source.mint} is not a top-up source`);
+  screen(ixs, a.user, new Set([...a.foreign.filter((x) => x !== source.ata), source.token2022Ata]));
+  let i = computeBudget(ixs);
+  let usdcCreate = false;
+  for (; i < ixs.length && ixs[i].program !== JUPITER_AGGREGATOR; i++) {
+    const ix = ixs[i];
+    if (ix.program !== ATA) no(`a ${ix.program} instruction before the swap`);
+    if (ix.data.length !== 1 || ix.data[0] !== ATA_CREATE_IDEMPOTENT) no("an account instruction that is not CreateIdempotent");
+    if (usdcCreate || !same(ix, [a.user, a.usdcAta, a.user, USDC_MINT, SYSTEM, TOKEN])) no("an account creation other than the wallet's own USDC account");
+    usdcCreate = true;
+  }
+  const swap = ixs[i++];
+  if (!swap || swap.program !== JUPITER_AGGREGATOR) no("no Jupiter swap");
+  const route = parseSharedExactOut(swap.data);
+  const auth = source.authorities[route.id];
+  if (!auth) no(`no Jupiter program authority for id ${route.id}`);
+  const fixed = [TOKEN, auth.authority, a.user, source.ata, auth.source, auth.usdc, a.usdcAta, source.mint, USDC_MINT, JUPITER_AGGREGATOR, JUPITER_AGGREGATOR, JUPITER_EVENT_AUTHORITY, JUPITER_AGGREGATOR] as string[];
+  if (swap.accounts.length <= fixed.length) no("the swap has no route accounts");
+  fixed.forEach((want, k) => {
+    if (swap.accounts[k] !== want) no(`the swap's account ${k} is ${swap.accounts[k]}, not ${want}`);
+  });
+  const mine = new Set([a.user, source.ata, a.wsolAta, a.usdcAta]);
+  if (swap.accounts.slice(fixed.length).some((acc) => mine.has(acc))) no("the wallet or its own token accounts are in the route accounts");
+  const maxIn = checkAmounts(route, a.outRaw);
+  if (i !== ixs.length) no("an instruction after the swap");
+  return { outRaw: route.outAmount, quotedInLamports: route.quotedIn, quotedIn: route.quotedIn, maxIn, wrapLamports: 0n, slippageBps: route.slippageBps };
 }
 
 /** kit's instruction as the check reads it (signers from the roles). */
@@ -233,7 +328,12 @@ export class TopUpRefused extends Error {
 export const TOPUP_COPY = {
   noSol: (cents: number, needLamports: bigint, haveLamports: bigint) =>
     `Not enough SOL. Adding ${dollars(cents)} of USDC needs about ${sol(needLamports)} SOL plus 0.01 SOL kept for fees, and this wallet has ${sol(haveLamports)} SOL.`,
-  noRoute: "Sprouts could not get a SOL to USDC price just now. Nothing was asked of your wallet. Try again in a minute.",
+  /** SOL keeps the sentence it always had. */
+  noRouteFor: (symbol: string) => `Sprouts could not get a ${symbol} to USDC price just now. Nothing was asked of your wallet. Try again in a minute.`,
+  noToken: (symbol: string, cents: number) => `Not enough ${symbol}. Adding ${dollars(cents)} of USDC needs more than this wallet holds.`,
+  noSolForFee: (symbol: string) => `Not enough SOL for the network fee. Adding USDC from ${symbol} needs about ${sol(TOPUP_TOKEN_SOL_RESERVE_LAMPORTS)} SOL in this wallet.`,
+  notSource: "Sprouts cannot add USDC from this coin. Pick another coin.",
+  notNow: "Sprouts could not build the top-up just now. Nothing was asked of your wallet. Try again in a minute.",
   tooBig: "Sprouts could not fit this swap in one transaction just now. Nothing was asked of your wallet. Try again in a minute.",
   wouldFail: "This top-up would fail on chain, so nothing was asked of your wallet. Try again in a minute.",
 } as const;
@@ -243,16 +343,168 @@ export const TOPUP_CONFIRM = {
   notTopUp: "This is not a Sprouts top-up, so nothing was sent.",
   notMarked: "Could not start the top-up. Nothing moved. Try again.",
   failed: "The swap failed on chain. Your SOL stayed in your wallet, less the network fee.",
+  failedToken: "The swap failed on chain. Your coins stayed in your wallet, less the network fee.",
   expired: "The top-up did not go through. Nothing moved. Try again.",
   pending: "Your top-up was sent but is not confirmed yet. Check Home in a minute before you try again.",
 } as const;
 
+export type BuiltTopUp = { transaction: string; usdcRaw: string; maxLamports?: string; inputMint: string; maxInRaw: string };
+
 /**
- * The unsigned top-up for `user` (the Seed Vault wallet, fee payer and only signer): a Jupiter ExactOut quote SOL to USDC for `cents`,
+ * The unsigned top-up (see buildSolTopUp and buildTokenTopUp). No `inputMint`, or the wSOL mint: today's SOL top-up exactly (the
+ * answer adds inputMint = wSOL and maxInRaw = maxLamports; 0.1.11 reads neither). Any other coin: the token top-up.
+ */
+export async function buildTopUp(user: Address, cents: number, inputMint?: Address): Promise<BuiltTopUp> {
+  if (inputMint === undefined || inputMint === WSOL_MINT) {
+    const built = await buildSolTopUp(user, cents);
+    return { ...built, inputMint: WSOL_MINT, maxInRaw: built.maxLamports };
+  }
+  return buildTokenTopUp(user, cents, inputMint);
+}
+
+/** Jupiter's word on a coin (symbol, decimals, verified, token program), read once a day per mint. */
+const topUpToken = (mint: string): Promise<JupiterToken | null> => cached(`topup-token:${mint}`, () => jupiterToken(mint), () => true, DAY_MS);
+/** A coin Jupiter verified, of the classic Token program (the swap's fixed token program), and allowed as a source. */
+const usableToken = (mint: string, t: JupiterToken | null): t is JupiterToken => !!t && t.verified && t.tokenProgram === TOKEN && isTopUpSource(mint);
+/** Whether a $5 ExactOut route from `mint` to USDC exists through TOPUP_DEXES: the same for every user, read once an hour per mint. */
+const topUpRouted = (mint: Address): Promise<boolean> =>
+  cached(
+    `topup-route:${mint}`,
+    () => getQuote({ inputMint: mint, outputMint: USDC_MINT, amountRaw: BigInt(TOPUP_DEFAULT_CENTS) * 10_000n, slippageBps: TOPUP_SLIPPAGE_BPS, swapMode: "ExactOut", maxAccounts: 20, dexes: TOPUP_DEXES }).then(() => true, () => false),
+    () => true,
+    HOUR_MS,
+  );
+
+/** Compiled with no lookup table, held to the wire limit, and simulated; throws TopUpRefused with the sentence to show. */
+async function compileAndSimulate(user: Address, ixs: Instruction[]): Promise<string> {
+  // Static accounts only (the app refuses a lookup table it cannot read): the route was asked for at most 20 accounts.
+  const transaction = await buildUserTransaction(user, ixs);
+  if (getBase64Encoder().encode(transaction).length > MAX_WIRE_BYTES) throw new TopUpRefused(TOPUP_COPY.tooBig, 503);
+  const sim = await rpc().simulateTransaction(transaction as Parameters<ReturnType<typeof rpc>["simulateTransaction"]>[0], { encoding: "base64", sigVerify: false, replaceRecentBlockhash: true, commitment: "confirmed" }).send();
+  if (sim.value.err) {
+    console.error(`topup: simulation failed for ${user}: ${JSON.stringify(sim.value.err, (_k, v) => (typeof v === "bigint" ? v.toString() : v))}`);
+    throw new TopUpRefused(TOPUP_COPY.wouldFail, 400);
+  }
+  return transaction;
+}
+
+/**
+ * The token top-up for `user` (Task 7): refused 400 before any quote for USDC, a garden coin or receipt (SKR allowed), a coin Jupiter
+ * has not verified or one outside the classic Token program; then a Jupiter ExactOut quote coin to USDC for `cents` through TOPUP_DEXES,
+ * the balance check (the coin covers the quote's maximum, and TOPUP_TOKEN_SOL_RESERVE_LAMPORTS of SOL for the fee and a USDC account),
+ * Jupiter's instructions (no wrap, shared accounts) checked with the token rules, compiled with no lookup table, and simulated.
+ */
+async function buildTokenTopUp(user: Address, cents: number, inputMint: Address): Promise<BuiltTopUp> {
+  const outRaw = BigInt(cents) * 10_000n;
+  let source: TopUpSourceAccounts;
+  try {
+    source = await topUpSourceAccounts(user, inputMint);
+  } catch {
+    throw new TopUpRefused(TOPUP_COPY.notSource, 400);
+  }
+  let token: JupiterToken | null;
+  try {
+    token = await topUpToken(inputMint);
+  } catch (e) {
+    console.error(`topup: no token info for ${inputMint} (${e instanceof Error ? e.message : String(e)})`);
+    throw new TopUpRefused(TOPUP_COPY.notNow, 503);
+  }
+  if (!usableToken(inputMint, token)) throw new TopUpRefused(TOPUP_COPY.notSource, 400);
+  const accounts = await topUpAccounts(user);
+  let quote;
+  try {
+    quote = await getQuote({ inputMint, outputMint: USDC_MINT, amountRaw: outRaw, slippageBps: TOPUP_SLIPPAGE_BPS, swapMode: "ExactOut", maxAccounts: 20, dexes: TOPUP_DEXES });
+    checkQuoteMints(quote, { inputMint, outputMint: USDC_MINT });
+  } catch (e) {
+    console.error(`topup: no ${token.symbol} quote for ${user} (${e instanceof Error ? e.message : String(e)})`);
+    throw new TopUpRefused(TOPUP_COPY.noRouteFor(token.symbol), 503);
+  }
+  const maxIn = BigInt(quote.otherAmountThreshold);
+  const [lamports, held] = await Promise.all([
+    rpc().getBalance(user, { commitment: "confirmed" }).send().then((r) => BigInt(r.value)),
+    // No account yet reads as none held.
+    rpc().getTokenAccountBalance(address(source.ata), { commitment: "confirmed" }).send().then((r) => BigInt(r.value.amount), () => 0n),
+  ]);
+  if (held < maxIn) throw new TopUpRefused(TOPUP_COPY.noToken(token.symbol, cents), 409);
+  if (lamports < TOPUP_TOKEN_SOL_RESERVE_LAMPORTS) throw new TopUpRefused(TOPUP_COPY.noSolForFee(token.symbol), 409);
+  let parsed;
+  try {
+    parsed = await getSwapInstructions({ quote, userPublicKey: user, wrapAndUnwrapSol: false, maxPriorityLamports: TOPUP_PRIORITY_LAMPORTS, useSharedAccounts: true });
+  } catch (e) {
+    console.error(`topup: no ${token.symbol} swap instructions for ${user} (${e instanceof Error ? e.message : String(e)})`);
+    throw new TopUpRefused(TOPUP_COPY.noRouteFor(token.symbol), 503);
+  }
+  const ixs = [...parsed.computeBudget, ...parsed.setup, parsed.swap, ...(parsed.cleanup ? [parsed.cleanup] : [])];
+  try {
+    checkTopUp(ixs.map(toTopUpIx), { user, ...accounts, outRaw, source });
+  } catch (e) {
+    console.error(`topup: Jupiter's ${token.symbol} answer for ${user} refused (${e instanceof Error ? e.message : String(e)})`);
+    throw new TopUpRefused(TOPUP_COPY.noRouteFor(token.symbol), 503);
+  }
+  const transaction = await compileAndSimulate(user, ixs);
+  return { transaction, usdcRaw: outRaw.toString(), inputMint, maxInRaw: maxIn.toString() };
+}
+
+export type TopUpSourceOffer = { mint: string; symbol: string; decimals: number; valueCents: number; offers: number[] };
+
+/**
+ * GET /api/me/usdc topUpSources (Task 7): SOL first (its `offers` = topUpCents), then at most TOPUP_MAX_TOKEN_SOURCES coins by value
+ * that this wallet holds in its classic Token account, that may be a source (isTopUpSource), that Jupiter verified, whose value covers
+ * an offer (affordableTopUpsFor) and that route to USDC through TOPUP_DEXES. Coins only when the wallet keeps the SOL a token top-up
+ * needs. Null when the SOL, its price, the balances or the prices could not be read.
+ */
+export async function topUpSources(user: Address, solLamports: bigint | null, solUsd: number | null, solOffers: number[] | null): Promise<TopUpSourceOffer[] | null> {
+  if (solLamports === null || solUsd === null || solOffers === null) return null;
+  const sol: TopUpSourceOffer = { mint: WSOL_MINT, symbol: "SOL", decimals: 9, valueCents: Math.floor((Number(solLamports) * solUsd) / 1e7), offers: solOffers };
+  let held: { mint: Address; raw: bigint; decimals: number }[];
+  try {
+    const { value } = await rpc().getTokenAccountsByOwner(user, { programId: TOKEN_PROGRAM_ADDRESS }, { encoding: "jsonParsed", commitment: "confirmed" }).send();
+    const rows = value.map((v) => {
+      const info = (v.account.data as { parsed?: { info?: { mint?: string; tokenAmount?: { amount?: string; decimals?: number } } } }).parsed?.info;
+      return { pubkey: v.pubkey as string, mint: info?.mint, amount: info?.tokenAmount?.amount, decimals: info?.tokenAmount?.decimals };
+    });
+    const eligible = rows.filter((r): r is { pubkey: string; mint: string; amount: string; decimals: number } =>
+      typeof r.mint === "string" && typeof r.amount === "string" && typeof r.decimals === "number" && isTopUpSource(r.mint) && BigInt(r.amount) > 0n);
+    // Only the wallet's own associated account: the one the swap spends from.
+    const atas = await Promise.all(eligible.map((r) => ataOf(user, address(r.mint))));
+    held = eligible.filter((r, k) => r.pubkey === atas[k]).map((r) => ({ mint: address(r.mint), raw: BigInt(r.amount), decimals: r.decimals }));
+  } catch (e) {
+    console.error(`topup: the token balances could not be read (${e instanceof Error ? e.message : String(e)})`);
+    return null;
+  }
+  if (held.length === 0 || solLamports < TOPUP_TOKEN_SOL_RESERVE_LAMPORTS) return [sol];
+  let prices: Awaited<ReturnType<typeof pricesUsd>>;
+  try {
+    prices = await pricesUsd(held.map((h) => h.mint));
+  } catch (e) {
+    console.error(`topup: the token prices could not be read (${e instanceof Error ? e.message : String(e)})`);
+    return null;
+  }
+  const valued = held
+    .map((h) => ({ ...h, valueCents: prices[h.mint] ? Math.floor((Number(h.raw) / 10 ** h.decimals) * prices[h.mint].usdPrice * 100 + 1e-6) : 0 }))
+    .filter((h) => affordableTopUpsFor(h.valueCents).length > 0)
+    .sort((x, y) => y.valueCents - x.valueCents)
+    .slice(0, TOPUP_MAX_TOKEN_SOURCES * 2);
+  const checked = await Promise.all(
+    valued.map(async (h) => {
+      try {
+        const t = await topUpToken(h.mint);
+        if (!usableToken(h.mint, t) || !(await topUpRouted(h.mint))) return null;
+        return { mint: h.mint as string, symbol: t.symbol, decimals: h.decimals, valueCents: h.valueCents, offers: affordableTopUpsFor(h.valueCents) };
+      } catch {
+        return null;
+      }
+    }),
+  );
+  return [sol, ...checked.filter((x): x is TopUpSourceOffer => x !== null).slice(0, TOPUP_MAX_TOKEN_SOURCES)];
+}
+
+/**
+ * The unsigned SOL top-up for `user` (the Seed Vault wallet, fee payer and only signer): a Jupiter ExactOut quote SOL to USDC for `cents`,
  * the balance check (the quote's maximum SOL plus SOL_RESERVE_LAMPORTS), Jupiter's instructions checked (checkTopUp), compiled with no
  * lookup table, and simulated. Throws TopUpRefused with the sentence to show.
  */
-export async function buildTopUp(user: Address, cents: number): Promise<{ transaction: string; usdcRaw: string; maxLamports: string }> {
+async function buildSolTopUp(user: Address, cents: number): Promise<{ transaction: string; usdcRaw: string; maxLamports: string }> {
   const outRaw = BigInt(cents) * 10_000n;
   const accounts = await topUpAccounts(user);
   let quote;
@@ -261,7 +513,7 @@ export async function buildTopUp(user: Address, cents: number): Promise<{ transa
     checkQuoteMints(quote, { inputMint: WSOL_MINT, outputMint: USDC_MINT });
   } catch (e) {
     console.error(`topup: no quote for ${user} (${e instanceof Error ? e.message : String(e)})`);
-    throw new TopUpRefused(TOPUP_COPY.noRoute, 503);
+    throw new TopUpRefused(TOPUP_COPY.noRouteFor("SOL"), 503);
   }
   const maxIn = BigInt(quote.otherAmountThreshold);
   const { value: balance } = await rpc().getBalance(user, { commitment: "confirmed" }).send();
@@ -271,7 +523,7 @@ export async function buildTopUp(user: Address, cents: number): Promise<{ transa
     parsed = await getSwapInstructions({ quote, userPublicKey: user, wrapAndUnwrapSol: true, maxPriorityLamports: TOPUP_PRIORITY_LAMPORTS, useSharedAccounts: true });
   } catch (e) {
     console.error(`topup: no swap instructions for ${user} (${e instanceof Error ? e.message : String(e)})`);
-    throw new TopUpRefused(TOPUP_COPY.noRoute, 503);
+    throw new TopUpRefused(TOPUP_COPY.noRouteFor("SOL"), 503);
   }
   const ixs = [...parsed.computeBudget, ...parsed.setup, parsed.swap, ...(parsed.cleanup ? [parsed.cleanup] : [])];
   try {
@@ -279,16 +531,9 @@ export async function buildTopUp(user: Address, cents: number): Promise<{ transa
     if (plan.wrapLamports > maxIn) throw new Error("Top-up refused: the wrap is above the quote's maximum");
   } catch (e) {
     console.error(`topup: Jupiter's answer for ${user} refused (${e instanceof Error ? e.message : String(e)})`);
-    throw new TopUpRefused(TOPUP_COPY.noRoute, 503);
+    throw new TopUpRefused(TOPUP_COPY.noRouteFor("SOL"), 503);
   }
-  // Static accounts only (the app refuses a lookup table it cannot read): the route was asked for at most 20 accounts.
-  const transaction = await buildUserTransaction(user, ixs);
-  if (getBase64Encoder().encode(transaction).length > MAX_WIRE_BYTES) throw new TopUpRefused(TOPUP_COPY.tooBig, 503);
-  const sim = await rpc().simulateTransaction(transaction as Parameters<ReturnType<typeof rpc>["simulateTransaction"]>[0], { encoding: "base64", sigVerify: false, replaceRecentBlockhash: true, commitment: "confirmed" }).send();
-  if (sim.value.err) {
-    console.error(`topup: simulation failed for ${user}: ${JSON.stringify(sim.value.err, (_k, v) => (typeof v === "bigint" ? v.toString() : v))}`);
-    throw new TopUpRefused(TOPUP_COPY.wouldFail, 400);
-  }
+  const transaction = await compileAndSimulate(user, ixs);
   return { transaction, usdcRaw: outRaw.toString(), maxLamports: maxIn.toString() };
 }
 

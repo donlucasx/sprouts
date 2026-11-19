@@ -5,14 +5,16 @@ import { setRepoForTests } from "@/db/repo";
 import { issueSession } from "@/lib/session";
 import fixture from "../fixtures/jupiter-topup-exactout.json";
 import plain from "../fixtures/jupiter-topup-exactout-plain.json";
+import token from "../fixtures/jupiter-topup-exactout-token.json";
 
 /** A fake chain for the SOL top-up: the wallet's lamports, the simulation, the send and the signature's status. */
 const { chain, simulateMock } = vi.hoisted(() => ({
-  chain: { lamports: 200_000_000n, sent: 0, status: "confirmed" as "confirmed" | "failed" | "pending", blockhashValid: true },
+  chain: { lamports: 200_000_000n, tokenRaw: 100_000_000n, sent: 0, status: "confirmed" as "confirmed" | "failed" | "pending", blockhashValid: true },
   simulateMock: vi.fn(async () => ({ value: { err: null as unknown, logs: [] as string[] } })),
 }));
 vi.mock("@/lib/rpc", () => ({ rpc: () => ({
   getBalance: () => ({ send: async () => ({ value: chain.lamports }) }),
+  getTokenAccountBalance: () => ({ send: async () => ({ value: { amount: chain.tokenRaw.toString(), decimals: 6 } }) }),
   getLatestBlockhash: () => ({ send: async () => ({ value: { blockhash: "GHtXQBsoZHVnNFa9YevAzFr17DJjgHXk3ycTKD5xD3Zi", lastValidBlockHeight: 1n } }) }),
   simulateTransaction: () => ({ send: simulateMock }),
   sendTransaction: () => ({ send: async () => { chain.sent++; return "sig"; } }),
@@ -29,9 +31,19 @@ import { POST as build } from "@/app/api/topup/build/route";
 import { POST as confirm } from "@/app/api/topup/confirm/route";
 
 const USER = fixture.user;
+const JUP_MINT = token.quote.inputMint;
+const UNVERIFIED = "4wiD3N7FrBNJSmZUQDkGHM4CsvDrvyvx7G1FApLGEbJ1";
 const fetchMock = vi.fn(async (url: string, _init?: { body?: string }) => {
-  if (url.includes("/swap/v1/quote")) return new Response(JSON.stringify(fixture.quote));
-  if (url.includes("/swap/v1/swap-instructions")) return new Response(JSON.stringify(fixture.swapInstructions));
+  const token_ = new URL(url).searchParams.get("inputMint") === JUP_MINT;
+  if (url.includes("/swap/v1/quote")) return new Response(JSON.stringify(token_ ? token.quote : fixture.quote));
+  if (url.includes("/swap/v1/swap-instructions")) {
+    const asked = JSON.parse(String(_init?.body ?? "{}"));
+    return new Response(JSON.stringify(asked.quoteResponse?.inputMint === JUP_MINT ? token.swapInstructions : fixture.swapInstructions));
+  }
+  if (url.includes("/tokens/v2/search")) {
+    const q = new URL(url).searchParams.get("query");
+    return new Response(JSON.stringify(q === JUP_MINT ? [{ id: JUP_MINT, symbol: "JUP", decimals: 6, tokenProgram: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", isVerified: true }] : q === UNVERIFIED ? [{ id: UNVERIFIED, symbol: "FAKE", decimals: 6, tokenProgram: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", isVerified: false }] : []));
+  }
   return new Response("not found", { status: 404 });
 });
 const call = async (fn: typeof build, body: unknown) =>
@@ -51,14 +63,14 @@ describe("POST /api/topup/build (the SOL top-up's unsigned transaction)", () => 
     vi.stubGlobal("fetch", fetchMock);
     fetchMock.mockClear();
     simulateMock.mockClear();
-    Object.assign(chain, { lamports: 200_000_000n, sent: 0, status: "confirmed", blockhashValid: true });
+    Object.assign(chain, { lamports: 200_000_000n, tokenRaw: 100_000_000n, sent: 0, status: "confirmed", blockhashValid: true });
   });
 
   it("asks Jupiter for ExactOut $5 of USDC from SOL, and answers a simulated v0 transaction the wallet pays and alone signs, no lookup table", async () => {
     const res = await call(build, {});
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body).toMatchObject({ usdcRaw: "5000000", maxLamports: fixture.quote.otherAmountThreshold });
+    expect(body).toMatchObject({ usdcRaw: "5000000", maxLamports: fixture.quote.otherAmountThreshold, inputMint: "So11111111111111111111111111111111111111112", maxInRaw: fixture.quote.otherAmountThreshold });
     const quoteUrl = String(fetchMock.mock.calls[0][0]);
     expect(quoteUrl).toContain("swapMode=ExactOut");
     expect(quoteUrl).toContain("amount=5000000");
@@ -119,6 +131,63 @@ describe("POST /api/topup/build (the SOL top-up's unsigned transaction)", () => 
   it("requires a session", async () => {
     expect((await build(new Request("http://x", { method: "POST", body: "{}" }))).status).toBe(401);
   });
+
+  // Task 7: any coin. An old app sends no inputMint (above, unchanged); the wSOL mint is the same SOL path.
+  it("takes the wSOL mint as the SOL top-up, unchanged", async () => {
+    const res = await call(build, { cents: 500, inputMint: "So11111111111111111111111111111111111111112" });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ maxLamports: fixture.quote.otherAmountThreshold, inputMint: "So11111111111111111111111111111111111111112" });
+  });
+
+  it("refuses a garden coin, USDC or an unverified coin with 400 before any quote", async () => {
+    for (const inputMint of ["he1iusmfkpAdwvxLNGV8Y1iSbj4rUy6yMhEA3fotn9A", "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", UNVERIFIED, "not a mint"]) {
+      fetchMock.mockClear();
+      const res = await call(build, { cents: 500, inputMint });
+      expect(res.status).toBe(400);
+      expect(fetchMock.mock.calls.some((c) => String(c[0]).includes("/swap/v1/"))).toBe(false);
+    }
+  });
+
+  it("builds a token top-up: ExactOut JUP to USDC through the pinned dexes, nothing wrapped, inputMint echoed, the quote's maximum as maxInRaw", async () => {
+    const res = await call(build, { cents: 500, inputMint: JUP_MINT });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toMatchObject({ usdcRaw: "5000000", inputMint: JUP_MINT, maxInRaw: token.quote.otherAmountThreshold });
+    expect(body.maxLamports).toBeUndefined();
+    const quoteUrl = new URL(String(fetchMock.mock.calls.find((c) => String(c[0]).includes("/swap/v1/quote"))![0]));
+    expect(quoteUrl.searchParams.get("inputMint")).toBe(JUP_MINT);
+    expect(quoteUrl.searchParams.get("swapMode")).toBe("ExactOut");
+    expect(quoteUrl.searchParams.get("dexes")).toBe("Raydium CLMM,Whirlpool");
+    expect(quoteUrl.searchParams.get("platformFeeBps")).toBeNull();
+    const swapBody = JSON.parse(String(fetchMock.mock.calls.find((c) => String(c[0]).includes("swap-instructions"))![1]?.body));
+    expect(swapBody).toMatchObject({ userPublicKey: USER, wrapAndUnwrapSol: false, useSharedAccounts: true });
+    expect(swapBody.feeAccount).toBeUndefined();
+    const m = getCompiledTransactionMessageDecoder().decode(decode(body.transaction).messageBytes);
+    expect(m.header.numSignerAccounts).toBe(1);
+    expect("addressTableLookups" in m ? (m.addressTableLookups ?? []).length : 0).toBe(0);
+    expect(getBase64Encoder().encode(body.transaction).length).toBeLessThanOrEqual(1232);
+    expect(simulateMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses with a plain sentence when the wallet holds too little of the coin, or too little SOL for the fee", async () => {
+    chain.tokenRaw = BigInt(token.quote.otherAmountThreshold) - 1n;
+    let res = await call(build, { cents: 500, inputMint: JUP_MINT });
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toBe("Not enough JUP. Adding $5.00 of USDC needs more than this wallet holds.");
+    chain.tokenRaw = BigInt(token.quote.otherAmountThreshold);
+    chain.lamports = 2_999_999n;
+    res = await call(build, { cents: 500, inputMint: JUP_MINT });
+    expect(res.status).toBe(409);
+    expect(simulateMock).not.toHaveBeenCalled();
+  });
+
+  it("names the coin when there is no route", async () => {
+    fetchMock.mockImplementationOnce(async (url: string) => (url.includes("/tokens/v2/search") ? new Response(JSON.stringify([{ id: JUP_MINT, symbol: "JUP", decimals: 6, tokenProgram: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", isVerified: true }])) : new Response("x", { status: 500 })));
+    fetchMock.mockImplementationOnce(async () => new Response("no route", { status: 400 }));
+    const res = await call(build, { cents: 500, inputMint: JUP_MINT });
+    expect(res.status).toBe(503);
+    expect((await res.json()).error).toBe("Sprouts could not get a JUP to USDC price just now. Nothing was asked of your wallet. Try again in a minute.");
+  });
 });
 
 describe("POST /api/topup/confirm (sends the signed top-up)", () => {
@@ -126,7 +195,7 @@ describe("POST /api/topup/confirm (sends the signed top-up)", () => {
     setRepoForTests(new MemoryRepo());
     process.env.JUPITER_API_KEY ??= "test";
     vi.stubGlobal("fetch", fetchMock);
-    Object.assign(chain, { lamports: 200_000_000n, sent: 0, status: "confirmed", blockhashValid: true });
+    Object.assign(chain, { lamports: 200_000_000n, tokenRaw: 100_000_000n, sent: 0, status: "confirmed", blockhashValid: true });
   });
   const built = async () => (await (await call(build, {})).json()).transaction as string;
 
@@ -135,6 +204,28 @@ describe("POST /api/topup/confirm (sends the signed top-up)", () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ status: "confirmed", usdcRaw: "5000000" });
     expect(chain.sent).toBe(1);
+  });
+
+  it("sends a signed token top-up (the swap's source mint is JUP) and records it as a top-up", async () => {
+    const built = await (await call(build, { cents: 500, inputMint: JUP_MINT })).json();
+    expect(built.inputMint).toBe(JUP_MINT);
+    const res = await call(confirm, { signedTransaction: signed(built.transaction) });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ status: "confirmed", usdcRaw: "5000000" });
+    expect(chain.sent).toBe(1);
+  });
+
+  it("refuses a swap whose source mint is a garden coin, and sends nothing", async () => {
+    const hsol = "he1iusmfkpAdwvxLNGV8Y1iSbj4rUy6yMhEA3fotn9A";
+    const bad = JSON.parse(JSON.stringify(token.swapInstructions).replaceAll(JUP_MINT, hsol));
+    const { buildUserTransaction } = await import("@/lib/user-tx");
+    const { parseSwapInstructions } = await import("@/lib/jupiter");
+    const p = parseSwapInstructions(bad);
+    const { address } = await import("@solana/kit");
+    const tx = await buildUserTransaction(address(USER), [...p.computeBudget, ...p.setup, p.swap]);
+    const res = await call(confirm, { signedTransaction: signed(tx) });
+    expect(res.status).toBe(400);
+    expect(chain.sent).toBe(0);
   });
 
   it("refuses an unsigned transaction and sends nothing", async () => {
@@ -164,7 +255,7 @@ describe("POST /api/topup/confirm records the top-up", () => {
     setRepoForTests(repo);
     process.env.JUPITER_API_KEY ??= "test";
     vi.stubGlobal("fetch", fetchMock);
-    Object.assign(chain, { lamports: 200_000_000n, sent: 0, status: "confirmed", blockhashValid: true });
+    Object.assign(chain, { lamports: 200_000_000n, tokenRaw: 100_000_000n, sent: 0, status: "confirmed", blockhashValid: true });
   });
   const built = async () => (await (await call(build, {})).json()).transaction as string;
   const kinds = () => repo.events.map((e) => e.kind);
@@ -179,6 +270,14 @@ describe("POST /api/topup/confirm records the top-up", () => {
     expect(kinds()).toEqual(["topup_sent", "topped_up"]);
     expect(repo.events.map((e) => e.detail)).toEqual([{ signature, usdcRaw: "5000000" }, { signature, usdcRaw: "5000000", sentAt: expect.any(String) }]);
     expect(repo.events.every((e) => e.userPubkey === USER && e.walletPubkey === USER)).toBe(true);
+  });
+
+  it("a token top-up writes topup_sent then topped_up the same way", async () => {
+    const tx = (await (await call(build, { cents: 500, inputMint: JUP_MINT })).json()).transaction as string;
+    const res = await call(confirm, { signedTransaction: signed(tx) });
+    expect(res.status).toBe(200);
+    expect(kinds()).toEqual(["topup_sent", "topped_up"]);
+    expect(repo.events[1].detail).toMatchObject({ usdcRaw: "5000000" });
   });
 
   it("a mark that cannot be written sends nothing and answers 400 'nothing moved' (the app shows a 400's words as they are)", async () => {

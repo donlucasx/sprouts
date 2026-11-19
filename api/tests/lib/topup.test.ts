@@ -171,3 +171,144 @@ describe("affordableTopUps", async () => {
     expect(affordableTopUps(SOL, 0)).toEqual([]);
   });
 });
+
+// Task 7 (any-coin top-up): the token path of the same check. The fixture is Jupiter's real answer (api.jup.ag swap/v1, 2026-11-19):
+// ExactOut 5 USDC from JUP through TOPUP_DEXES, useSharedAccounts, wrapAndUnwrapSol false, for the same public placeholder wallet.
+describe("checkTopUp with a source coin (the token top-up)", async () => {
+  const token = (await import("../fixtures/jupiter-topup-exactout-token.json")).default;
+  const { topUpSourceAccounts, affordableTopUpsFor } = await import("@/lib/topup");
+  const { USDC_MINT, WSOL_MINT } = await import("@/lib/constants");
+  const { COINS } = await import("@/domain/coins");
+  const { RECEIPT } = await import("@/lib/venues/addresses");
+  const JUP_MINT = token.quote.inputMint;
+  type Source = Awaited<ReturnType<typeof topUpSourceAccounts>>;
+  let src: Source;
+  beforeAll(async () => {
+    src = await topUpSourceAccounts(address(USER), address(JUP_MINT));
+  });
+  const tixs = (): TopUpIx[] => {
+    const p = parseSwapInstructions(JSON.parse(JSON.stringify(token.swapInstructions)));
+    return [...p.computeBudget, ...p.setup, p.swap, ...(p.cleanup ? [p.cleanup] : [])].map(toTopUpIx);
+  };
+  const tcheck = (list: TopUpIx[], source: Source = src, outRaw: bigint | undefined = 5_000_000n) => checkTopUp(list, { user: USER, ...acc, outRaw, source });
+  const SYS = "11111111111111111111111111111111";
+  const TOKEN = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+
+  it("accepts Jupiter's own token answer: 5 USDC out of the wallet's own JUP account, no fee, no wrap", () => {
+    expect(token.user).toBe(USER);
+    const plan = tcheck(tixs());
+    expect(plan.outRaw).toBe(5_000_000n);
+    expect(plan.slippageBps).toBe(50);
+    expect(plan.wrapLamports).toBe(0n);
+    expect(plan.quotedIn).toBe(BigInt(token.quote.inAmount));
+    expect(swapOf(tixs()).accounts[3]).toBe(src.ata);
+    expect(swapOf(tixs()).accounts[7]).toBe(JUP_MINT);
+  });
+
+  it("refuses an added SOL transfer, a SyncNative, or a close (nothing is wrapped and nothing follows the swap)", () => {
+    let list = tixs();
+    list.splice(swapIndex(list), 0, { program: SYS, accounts: [USER, acc.wsolAta], signers: [USER], data: Uint8Array.from([2, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0]) });
+    expect(() => tcheck(list)).toThrow(/before the swap/);
+    list = tixs();
+    list.splice(swapIndex(list), 0, { program: TOKEN, accounts: [acc.wsolAta], data: Uint8Array.from([17]) });
+    expect(() => tcheck(list)).toThrow(/before the swap/);
+    list = tixs();
+    list.push({ program: TOKEN, accounts: [acc.wsolAta, USER, USER], signers: [USER], data: Uint8Array.from([9]) });
+    expect(() => tcheck(list)).toThrow(/after the swap/);
+  });
+
+  it("refuses the source account swapped for another of the wallet's accounts, or delivery anywhere else", () => {
+    let list = tixs();
+    swapOf(list).accounts[3] = acc.wsolAta;
+    expect(() => tcheck(list)).toThrow(/account 3/);
+    list = tixs();
+    swapOf(list).accounts[3] = src.token2022Ata;
+    expect(() => tcheck(list)).toThrow(/other token account|account 3/);
+    list = tixs();
+    swapOf(list).accounts = swapOf(list).accounts.map((a) => (a === acc.usdcAta ? ATTACKER : a));
+    expect(() => tcheck(list)).toThrow(/account 6/);
+  });
+
+  it("never takes USDC, wSOL, a garden coin (but SKR) or a lending receipt as the source", async () => {
+    const refused = [USDC_MINT, WSOL_MINT, COINS.hSOL.mint, COINS.stORE.mint, COINS.cbBTC.mint, COINS.JitoSOL.mint, COINS.JupSOL.mint, RECEIPT.USDC_LEND.kamino_klend.mint, RECEIPT.SOL_LEND.jupiter_lend.mint];
+    for (const m of refused) {
+      await expect(topUpSourceAccounts(address(USER), m)).rejects.toThrow(/not a top-up source/);
+      expect(() => tcheck(tixs(), { ...src, mint: m })).toThrow(/not a top-up source/);
+    }
+  });
+
+  it("SKR (staked when planted, so the wallet's liquid SKR is the user's own) may be the source, and only as the source", async () => {
+    const skr = await topUpSourceAccounts(address(USER), SKR_MINT);
+    expect(skr.ata).toBe(skrAta);
+    // The JUP answer re-pointed at SKR: same route, the source mint, the wallet's SKR account and the authority's SKR account swapped in.
+    const list = tixs();
+    const s = swapOf(list);
+    const auth = src.authorities[s.data[8]];
+    const skrAuth = skr.authorities[s.data[8]];
+    s.accounts = s.accounts.map((a) => (a === JUP_MINT ? SKR_MINT : a === src.ata ? skr.ata : a === auth.source ? skrAuth.source : a));
+    expect(() => tcheck(list, skr)).not.toThrow();
+    // In a JUP top-up the wallet's SKR account stays untouchable.
+    const other = tixs();
+    swapOf(other).accounts.push(skrAta);
+    expect(() => tcheck(other)).toThrow(/other token account/);
+  });
+
+  it("refuses a platform fee, slippage above 1%, or another amount than asked", () => {
+    let list = tixs();
+    let s = swapOf(list);
+    s.data[s.data.length - 1] = 20;
+    expect(() => tcheck(list)).toThrow(/platform fee/);
+    list = tixs();
+    s = swapOf(list);
+    tail(s).setUint16(s.data.length - 3, 101, true);
+    expect(() => tcheck(list)).toThrow(/slippage/);
+    expect(() => tcheck(tixs(), src, 6_000_000n)).toThrow(/not the amount asked/);
+  });
+
+  it("refuses the wallet, its source, wSOL or USDC account among the route accounts", () => {
+    for (const who of [USER, src.ata, acc.wsolAta, acc.usdcAta]) {
+      const list = tixs();
+      swapOf(list).accounts.push(who);
+      expect(() => tcheck(list)).toThrow(/route accounts/);
+    }
+  });
+
+  it("refuses an account creation other than the wallet's own USDC account", () => {
+    const list = tixs();
+    const create = list.find((ix) => ix.program === "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL")!;
+    list.splice(swapIndex(list), 0, { ...create, accounts: [USER, acc.wsolAta, USER, WSOL_MINT, SYS, TOKEN] });
+    expect(() => tcheck(list)).toThrow(/account creation/);
+  });
+
+  it("affordableTopUpsFor: the offers at or under the coin's value less 3%", () => {
+    expect(affordableTopUpsFor(520)).toEqual([500]);
+    expect(affordableTopUpsFor(1_100)).toEqual([500, 1_000]);
+    expect(affordableTopUpsFor(2_600)).toEqual([500, 1_000, 2_500]);
+    expect(affordableTopUpsFor(400)).toEqual([]);
+  });
+});
+
+// Kimi plan review #8: the app's never-touched list (app/src/lib/sign.ts TOPUP_FOREIGN_MINTS) and this API's FOREIGN_MINTS are the same set.
+describe("the top-up's foreign mints match the app's", async () => {
+  const { FOREIGN_MINTS } = await import("@/lib/topup");
+  const { readFileSync } = await import("node:fs");
+  it("lists the same mints as app/src/lib/sign.ts", () => {
+    const src = readFileSync(new URL("../../../app/src/lib/sign.ts", import.meta.url), "utf8");
+    const block = src.match(/const TOPUP_FOREIGN_MINTS[^\n]*\n([\s\S]*?)\n\]\)/)![1];
+    const entries = block.split("\n").map((l) => l.replace(/\/\/.*$/, "").trim().replace(/,$/, "")).filter(Boolean);
+    const resolve = (e: string): string => {
+      const lit = e.match(/^'(\w+)'$/);
+      if (lit) return lit[1];
+      const constant = e.match(/^(\w+)$/);
+      if (constant) return src.match(new RegExp(`export const ${constant[1]} = '(\\w+)'`))![1];
+      const klend = e.match(/^KLEND_RESERVE\.(\w+)\.collateralMint$/);
+      if (klend) return src.match(new RegExp(`${klend[1]}: Object\\.freeze\\(\\{ reserve:[^}]*collateralMint: '(\\w+)'`))![1];
+      const jlend = e.match(/^JLEND\.(\w+)\.fTokenMint$/);
+      if (jlend) return src.match(new RegExp(`${jlend[1]}: Object\\.freeze\\(\\{ lending:[^}]*fTokenMint: '(\\w+)'`))![1];
+      throw new Error(`cannot read the app's TOPUP_FOREIGN_MINTS entry ${e}`);
+    };
+    const app = entries.map(resolve);
+    expect(app.length).toBe(10);
+    expect([...app].sort()).toEqual([...FOREIGN_MINTS].map(String).sort());
+  });
+});

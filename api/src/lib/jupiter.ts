@@ -282,3 +282,18 @@ export async function pricesUsd(mints: string[]): Promise<Record<string, PriceIn
   }
   return out;
 }
+
+export type JupiterToken = { symbol: string; decimals: number; verified: boolean; tokenProgram: string };
+
+/**
+ * Jupiter's token search for one mint (Tokens API v2): its symbol, decimals, token program and whether Jupiter verified it; null when
+ * Jupiter does not know it. Throws on a failed call. The any-coin top-up (Task 7) lists only verified coins of the classic Token program.
+ */
+export async function jupiterToken(mint: string): Promise<JupiterToken | null> {
+  const res = await fetch(`${BASE}/tokens/v2/search?query=${encodeURIComponent(mint)}`, { headers: headers(), signal: timeout() });
+  if (!res.ok) throw new Error(`Jupiter token search failed: ${res.status}`);
+  const list = (await res.json()) as { id?: unknown; symbol?: unknown; decimals?: unknown; isVerified?: unknown; tokenProgram?: unknown }[];
+  const t = Array.isArray(list) ? list.find((x) => x?.id === mint) : undefined;
+  if (!t || typeof t.symbol !== "string" || typeof t.decimals !== "number" || typeof t.tokenProgram !== "string") return null;
+  return { symbol: t.symbol, decimals: t.decimals, verified: t.isVerified === true, tokenProgram: t.tokenProgram };
+}
