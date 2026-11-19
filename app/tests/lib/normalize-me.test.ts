@@ -69,3 +69,13 @@ describe("Review Focus 1: today's production read", () => {
   })
   it('is idempotent', () => expect(normalizeMe(me)).toEqual(me))
 })
+
+describe('normalizeMe opening (slow opening)', () => {
+  it('drops a retired waiting coin and keeps a live one', () => {
+    const o = { ...prod, opening: { plantedCents: 0, waiting: [{ asset: 'JitoSOL', afterCents: 500 }, { asset: 'cbBTC', afterCents: 1000 }] } } as unknown as MeResponse
+    expect(normalizeMe(o).opening).toEqual({ plantedCents: 0, waiting: [{ asset: 'cbBTC', afterCents: 1000 }] })
+  })
+  it('leaves a read without opening without it', () => {
+    expect('opening' in normalizeMe(prod)).toBe(false)
+  })
+})

@@ -284,6 +284,8 @@ export function normalizeMe(me: MeResponse): MeResponse {
     },
     nextPlanting: { ...me.nextPlanting, asset: isRetired(me.nextPlanting.asset) ? 'SKR' : me.nextPlanting.asset },
     lastReceipt: me.lastReceipt && isRetired(me.lastReceipt.asset) ? null : me.lastReceipt,
+    // Slow opening: only live coins wait; an older API sends no `opening` and the read stays without it.
+    ...(me.opening ? { opening: { ...me.opening, waiting: me.opening.waiting.filter((w) => !isRetired(w.asset)) } } : {}),
   }
 }
 

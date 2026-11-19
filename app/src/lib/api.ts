@@ -94,6 +94,8 @@ export type Manager = { managed: boolean; stop: Stop; pins: Pins; changedDay: st
 export type SplitRow = { ts: string; by: "manager" | "you" | "undo"; from: Partial<Record<string, number>>; to: Partial<Record<string, number>>; stop: string | null; why: string | null; fallback: string | null; managed?: boolean | null; turnedOn?: boolean };
 
 export type MeResponse = {
+  /** Season 11-23 (slow opening): coins in the split that wait to join the garden. Absent from an older API. */
+  opening?: { plantedCents: number; waiting: { asset: LiveAsset; afterCents: number }[] } | null;
   user: { pubkey: string; skrName: string | null; joinedAt: string; wateredAt: string | null };
   pot: {
     skrStakedRaw: string; skrPutInRaw: string; skrEarnedRaw: string; skrPickedRaw: string; skrPrincipalPickedRaw: string; joinedValueRaw: string;

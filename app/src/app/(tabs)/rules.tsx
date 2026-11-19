@@ -48,6 +48,7 @@ import { rulesChanges } from '@/lib/forms'
 import { pauseState } from '@/lib/me-state'
 import { usePauseToggle } from '@/lib/use-pause'
 import { weekLine } from '@/lib/week'
+import { joinsLine } from '@/lib/opening'
 import { coinColor } from '@/lib/coin-colors'
 import { PauseRow } from '@/components/PauseRow'
 import { VenuesPanel } from '@/components/VenuesPanel'
@@ -469,6 +470,11 @@ export default function Rules() {
               {row.asset === 'stORE' ? (
                 <ThemedText variant="caption" tone="secondary">
                   {STORE_ROW_NOTE}
+                </ThemedText>
+              ) : null}
+              {row.mode !== 'off' && joinsLine(me, row.asset) ? (
+                <ThemedText variant="caption" tone="secondary">
+                  {joinsLine(me, row.asset)}
                 </ThemedText>
               ) : null}
             </View>
