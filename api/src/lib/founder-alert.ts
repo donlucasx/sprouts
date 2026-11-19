@@ -255,14 +255,34 @@ export function founderCardFor(e: Omit<EventRow, "id" | "ts">, extra: { skrName?
  * 11-10: `repair` (the cron passes heliusEnsureAddresses) re-adds the missing wallets and returns the ones still off. Swaps a
  * wallet made while off the webhook were never booked, so a repaired gap still alerts: someone may want to look at its swaps.
  * A throwing repair counts as nothing repaired.
+ * Season economics: the other direction. A watched address whose wallet row says `revoked` is an extra; `prune` (the cron passes
+ * heliusRemoveAddresses) takes them off and returns the ones still on. A watched address with NO wallet row is only named in the
+ * alert, never removed: link/confirm adds to the webhook before the row is written, so it may be a link in progress. A throwing
+ * prune counts as nothing removed.
  */
-export async function checkWebhookCoverage(a: { repo: Repo; watched: () => Promise<string[]>; repair?: (missing: string[]) => Promise<string[]>; alert?: (text: string) => Promise<void> }): Promise<{ missing: string[]; repaired: string[] }> {
+export async function checkWebhookCoverage(a: {
+  repo: Repo;
+  watched: () => Promise<string[]>;
+  repair?: (missing: string[]) => Promise<string[]>;
+  prune?: (extras: string[]) => Promise<string[]>;
+  alert?: (text: string) => Promise<void>;
+}): Promise<{ missing: string[]; repaired: string[]; extras: string[]; removed: string[] }> {
   const [watched, active, paused] = await Promise.all([a.watched(), a.repo.listActiveWallets(), a.repo.listPausedWallets()]);
   const on = new Set(watched);
-  const missing = [...active, ...paused].map((w) => w.pubkey).filter((k) => !on.has(k));
-  if (!missing.length) return { missing, repaired: [] };
+  const known = [...active, ...paused].map((w) => w.pubkey);
+  const missing = known.filter((k) => !on.has(k));
+  const knownSet = new Set(known);
+  const extras: string[] = [];
+  const unknown: string[] = [];
+  for (const k of watched) {
+    if (knownSet.has(k)) continue;
+    const row = await a.repo.getWallet(k);
+    if (row?.status === "revoked") extras.push(k);
+    else if (!row) unknown.push(k);
+  }
+  if (!missing.length && !extras.length && !unknown.length) return { missing, repaired: [], extras, removed: [] };
   let still = missing;
-  if (a.repair) {
+  if (a.repair && missing.length) {
     try {
       const left = new Set(await a.repair(missing));
       still = missing.filter((k) => left.has(k));
@@ -271,16 +291,30 @@ export async function checkWebhookCoverage(a: { repo: Repo; watched: () => Promi
     }
   }
   const repaired = missing.filter((k) => !still.includes(k));
+  let removed: string[] = [];
+  if (a.prune && extras.length) {
+    try {
+      const left = new Set(await a.prune(extras));
+      removed = extras.filter((k) => !left.has(k));
+    } catch (e) {
+      console.error(`webhook coverage: prune failed: ${errorText(e)}`);
+    }
+  }
   const parts: string[] = [];
   if (repaired.length) parts.push(`Re-added ${repaired.length} linked wallet(s) to the Helius webhook: ${repaired.map((k) => short(k)).join(", ")}. Swaps they made while off it were not counted.`);
   if (still.length) parts.push(`Round-ups NOT being counted: ${still.length} linked wallet(s) missing from the Helius webhook: ${still.map((k) => short(k)).join(", ")}. Add them back.`);
+  if (removed.length) parts.push(`Took ${removed.length} revoked wallet(s) off the Helius webhook: ${removed.map((k) => short(k)).join(", ")}.`);
+  const kept = extras.filter((k) => !removed.includes(k));
+  if (kept.length) parts.push(`${kept.length} revoked wallet(s) still on the Helius webhook: ${kept.map((k) => short(k)).join(", ")}. Remove them by hand if this repeats.`);
+  if (unknown.length) parts.push(`${unknown.length} address(es) on the Helius webhook with no wallet row: ${unknown.map((k) => short(k)).join(", ")}. Left alone (a link may be in progress); check them if they stay.`);
+  const bad = still.length > 0;
   await (a.alert ?? ((text: string) => alertFounder({
     channel: "ops",
-    title: still.length ? "Swaps not being counted (watch list)" : "Wallets put back on the watch list",
+    title: bad ? "Swaps not being counted (watch list)" : repaired.length ? "Wallets put back on the watch list" : "Watch list tidied",
     text,
-    todo: still.length ? "Add the listed wallets to the Helius webhook by hand" : "Check their swaps during the gap; nothing was booked while they were off",
+    todo: bad ? "Add the listed wallets to the Helius webhook by hand" : repaired.length ? "Check their swaps during the gap; nothing was booked while they were off" : "Nothing, unless the same addresses are listed again tomorrow",
   })))(parts.join(" "));
-  return { missing: still, repaired };
+  return { missing: still, repaired, extras, removed };
 }
 
 const TOPIC_LABEL: Record<string, string> = { link: "Linking a wallet", planting: "Plantings", withdraw: "Withdrawing", idea: "An idea", other: "Something else" };

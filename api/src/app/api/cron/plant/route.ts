@@ -22,7 +22,7 @@ import { dayOf } from "@/domain/day";
 import { isAutoVenue } from "@/domain/venues";
 import { USDC_MINT } from "@/lib/constants";
 import { alertFounder, checkWebhookCoverage } from "@/lib/founder-alert";
-import { heliusEnsureAddresses, heliusWebhookAddresses } from "@/lib/helius";
+import { heliusEnsureAddresses, heliusRemoveAddresses, heliusWebhookAddresses } from "@/lib/helius";
 import { config } from "@/lib/config";
 import { checkMissedSwaps, realSwapCheckReads } from "@/lib/swap-check";
 import { excludedWallets } from "@/lib/ops/sources";
@@ -160,7 +160,7 @@ export async function GET(request: Request) {
     // final status call); as a step, a throw is logged and the cleanup and the keepalive still run (round 2, R2-1).
     const reconciled = (await step("reconcile", () => reconcileOwnStakes({ repo, now: new Date(), deadlineMs: startedMs + 275_000, chain: { readPosition: (u) => readPosition(address(u), "finalized"), sharePrice, finalized: signaturesFinalized } })));
     // 10-26: every linked wallet still on the swap webhook (founder alert when not).
-    const coverage = await step("webhook coverage", () => checkWebhookCoverage({ repo, watched: () => heliusWebhookAddresses(config().heliusWebhookId), repair: (missing) => heliusEnsureAddresses(config().heliusWebhookId, missing, { tries: 2, settleMs: 500 }) }));   // short: the reconcile may run to 275 s of the 300
+    const coverage = await step("webhook coverage", () => checkWebhookCoverage({ repo, watched: () => heliusWebhookAddresses(config().heliusWebhookId), repair: (missing) => heliusEnsureAddresses(config().heliusWebhookId, missing, { tries: 2, settleMs: 500 }), prune: (extras) => heliusRemoveAddresses(config().heliusWebhookId, extras, { tries: 2, settleMs: 500, stillRevoked: async (k) => (await repo.getWallet(k))?.status === "revoked" }) }));   // short: the reconcile may run to 275 s of the 300
     // Ops #9: on-chain swaps of the last 48 h that are not in swaps (DETECTION ONLY: nothing is booked; ops light "Every swap counted").
     const swapCheck = await step("swap check", async () => checkMissedSwaps({ repo, now: new Date(), reads: await realSwapCheckReads(), exclude: excludedWallets(config().opsExcludeWallets), deadlineMs: startedMs + SWAPCHECK_DEADLINE_MS, hardStopMs: startedMs + SWAPCHECK_HARD_STOP_MS, boundAt: startedMs + SWAPCHECK_BOUND_MS }));
     await repo.cleanupExpired();

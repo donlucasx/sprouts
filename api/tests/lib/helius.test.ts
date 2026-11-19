@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { heliusEnsureAddresses, heliusAddAddress, heliusParsedPage } from "@/lib/helius";
+import { heliusEnsureAddresses, heliusRemoveAddresses, heliusAddAddress, heliusParsedPage } from "@/lib/helius";
 import parsedFixture from "../fixtures/helius-parsed-events.json";
 
 // A fake Helius webhook endpoint: GET returns the stored webhook, PUT replaces the whole list (as Helius does).
@@ -68,6 +68,59 @@ describe("heliusEnsureAddresses", () => {
     vi.stubGlobal("fetch", vi.fn(async (_u: string, init?: { method?: string }) =>
       init?.method === "PUT" ? new Response("nope", { status: 500 }) : new Response(JSON.stringify({ webhookID: "WH", webhookURL: "u", transactionTypes: ["ANY"], accountAddresses: [], webhookType: "enhanced" }))));
     await expect(heliusEnsureAddresses("WH", ["B"], FAST)).rejects.toThrow("Helius update webhook failed: 500");
+  });
+});
+
+describe("heliusRemoveAddresses", () => {
+  it("removes only the given addresses, keeps the others and the webhook's fields", async () => {
+    const { hook, puts } = fakeHelius(["A", "B", "C"]);
+    expect(await heliusRemoveAddresses("WH", ["B", "Z"], FAST)).toEqual([]);
+    expect(puts).toHaveLength(1);
+    expect(puts[0].accountAddresses).toEqual(["A", "C"]);
+    expect(puts[0]).toMatchObject({ webhookURL: hook.webhookURL, transactionTypes: ["ANY"], webhookType: "enhanced", authHeader: "Bearer s" });
+  });
+
+  it("writes nothing when none of them is on the webhook", async () => {
+    const { puts } = fakeHelius(["A"]);
+    expect(await heliusRemoveAddresses("WH", ["B"], FAST)).toEqual([]);
+    expect(puts).toHaveLength(0);
+  });
+
+  it("a racing link write re-added the revoked wallet after our PUT: the second PUT removes it", async () => {
+    const { hook, puts } = fakeHelius(["A", "B"], (h, n) => { if (n === 1) h.accountAddresses = ["A", "B", "X"]; });
+    expect(await heliusRemoveAddresses("WH", ["B"], FAST)).toEqual([]);
+    expect(puts).toHaveLength(2);
+    expect(hook.accountAddresses.sort()).toEqual(["A", "X"]);
+  });
+
+  it("returns what is still on the webhook after the last try", async () => {
+    fakeHelius(["A", "B"], (h) => { h.accountAddresses = ["A", "B"]; });
+    expect(await heliusRemoveAddresses("WH", ["B"], { tries: 2, settleMs: 0 })).toEqual(["B"]);
+  });
+
+  it("keeps an address whose stillRevoked answers false", async () => {
+    const { puts } = fakeHelius(["A", "B", "C"]);
+    const stillRevoked = vi.fn(async (k: string) => k !== "B");
+    expect(await heliusRemoveAddresses("WH", ["B", "C"], { ...FAST, stillRevoked })).toEqual([]);
+    expect(puts[0].accountAddresses).toEqual(["A", "B"]);
+  });
+
+  it("never writes an empty list: removing the last address writes nothing and returns it", async () => {
+    const { puts } = fakeHelius(["B"]);
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(await heliusRemoveAddresses("WH", ["B"], FAST)).toEqual(["B"]);
+    expect(puts).toHaveLength(0);
+    expect(err).toHaveBeenCalled();
+    err.mockRestore();
+  });
+
+  it("a failed write throws with no URL (the key) in the message", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (_u: string, init?: { method?: string }) =>
+      init?.method === "PUT" ? new Response("nope", { status: 500 }) : new Response(JSON.stringify({ webhookID: "WH", webhookURL: "u", transactionTypes: ["ANY"], accountAddresses: ["A", "B"], webhookType: "enhanced" }))));
+    const e = (await heliusRemoveAddresses("WH", ["B"], FAST).catch((x: unknown) => x)) as Error;
+    expect(e.message).toContain("Helius update webhook failed: 500");
+    expect(e.message).not.toContain("test-key");
+    expect(e.message).not.toContain("api.helius.xyz");
   });
 });
 

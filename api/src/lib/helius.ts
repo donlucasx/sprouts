@@ -68,6 +68,53 @@ export async function heliusEnsureAddresses(webhookId: string, want: string[], o
   return wanted.filter((a) => !have.has(a));
 }
 
+/**
+ * Take addresses off the webhook (revoked wallets), same read-modify-write and re-read loop as heliusEnsureAddresses: a racing
+ * link write can put one back, so each write is checked by a re-read after a pause and an address still there is removed again.
+ * Before each write `stillRevoked` is asked again; an address it answers false for (re-linked meanwhile) is left alone and dropped
+ * from this call's work, so it is not in the returned list. An empty list is never written (Helius refuses it): the last
+ * addresses stay and are returned. Returns the requested addresses still on the webhook.
+ */
+export async function heliusRemoveAddresses(
+  webhookId: string,
+  remove: string[],
+  opts: { tries?: number; settleMs?: number; stillRevoked?: (address: string) => Promise<boolean> } = {},
+): Promise<string[]> {
+  const tries = opts.tries ?? ENSURE_TRIES;
+  const settleMs = opts.settleMs ?? ENSURE_SETTLE_MS;
+  let work = [...new Set(remove)];
+  let hook = await readWebhook(webhookId);
+  for (let i = 0; i < tries; i++) {
+    let have = new Set(hook.accountAddresses);
+    work = work.filter((a) => have.has(a));
+    if (!work.length) return [];
+    if (opts.stillRevoked) {
+      const keep = await Promise.all(work.map((a) => opts.stillRevoked!(a)));
+      work = work.filter((_, j) => keep[j]);
+      if (!work.length) return [];
+    }
+    const drop = new Set(work);
+    const left = hook.accountAddresses.filter((a) => !drop.has(a));
+    if (!left.length) {
+      console.error(`helius: not removing ${work.length} address(es): it would leave the webhook with none`);
+      return work;
+    }
+    const res = await fetch(url(`/v0/webhooks/${webhookId}`), {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        webhookURL: hook.webhookURL, transactionTypes: hook.transactionTypes, accountAddresses: left,
+        webhookType: hook.webhookType, ...(hook.authHeader ? { authHeader: hook.authHeader } : {}),
+      }),
+    });
+    if (!res.ok) throw new Error(`Helius update webhook failed: ${res.status} ${(await res.text()).slice(0, 200)}`);
+    await sleep(settleMs + Math.floor(Math.random() * settleMs));
+    hook = await readWebhook(webhookId);
+  }
+  const have = new Set(hook.accountAddresses);
+  return work.filter((a) => have.has(a));
+}
+
 /** Add one wallet to the webhook (plus `alsoKnown`, re-added if a racing write dropped them); throws when it is still not watched. */
 export async function heliusAddAddress(webhookId: string, address: string, alsoKnown: string[] = []): Promise<void> {
   const missing = await heliusEnsureAddresses(webhookId, [address, ...alsoKnown]);
