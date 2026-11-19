@@ -41,7 +41,7 @@ describe("parsedEventToTx (Helius Parsed Events, fixture scrubbed to WALLET)", (
   const bySig = (prefix: string) => items.find((e) => (e as { signature: string }).signature.startsWith(prefix));
 
   it("a sell (token for SOL) reads the wallet's legs", () => {
-    const tx = parsedEventToTx(bySig("3YrEEoPF"), WALLET)!;
+    const tx = parsedEventToTx(bySig("SigSwapSe11"), WALLET)!;
     expect(tx).toMatchObject({ timestamp: 1795128576, type: "SWAP", feePayer: WALLET });
     expect(extractSwapLegs(tx, WALLET)).toEqual({
       wallet: WALLET, inMint: "6oGuFDbEeaSzTcvrmmd2MqfNYwHKXFoN7regcR22pump", inAmount: 7899.04282, outMint: WSOL, outAmount: 0.002500221,
@@ -49,14 +49,14 @@ describe("parsedEventToTx (Helius Parsed Events, fixture scrubbed to WALLET)", (
   });
 
   it("a buy (SOL for a token) reads the wallet's legs, both wSOL transfers out added up", () => {
-    const legs = extractSwapLegs(parsedEventToTx(bySig("UsnzUrW2"), WALLET)!, WALLET)!;
+    const legs = extractSwapLegs(parsedEventToTx(bySig("SigSwapBuy"), WALLET)!, WALLET)!;
     expect(legs.inMint).toBe(WSOL);
     expect(legs.inAmount).toBeCloseTo(0.000725565, 12);
     expect(legs).toMatchObject({ outMint: "6oGuFDbEeaSzTcvrmmd2MqfNYwHKXFoN7regcR22pump", outAmount: 2551.336647 });
   });
 
   it("a SOL transfer out, a SOL transfer in and an unparsed item are no swap", () => {
-    for (const p of ["65dgazUc", "5JEoLRgA", "4n2SuJw3"]) {
+    for (const p of ["SigSendAway", "SigSendBack", "SigUnparsed"]) {
       const tx = parsedEventToTx(bySig(p), WALLET);
       expect(tx).not.toBeNull();
       expect(extractSwapLegs(tx!, WALLET)).toBeNull();

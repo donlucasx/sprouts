@@ -125,8 +125,8 @@ describe("heliusParsedPage (Home preview, Parsed Events)", () => {
     expect(first.txs[0]).toMatchObject({ signature: parsedFixture.data[0].signature, type: "SWAP", feePayer: W });
     expect(f.mock.calls[0][0]).toContain("/v1/parsed-events/transaction-history");
     expect(JSON.parse(f.mock.calls[0][1]!.body!)).toEqual({ address: W, limit: 100 });
-    await heliusParsedPage(W, "471508872:439");
-    expect(JSON.parse(f.mock.calls[1][1]!.body!)).toEqual({ address: W, limit: 100, paginationToken: "471508872:439" });
+    await heliusParsedPage(W, "400000004:1");
+    expect(JSON.parse(f.mock.calls[1][1]!.body!)).toEqual({ address: W, limit: 100, paginationToken: "400000004:1" });
   });
 
   it("no paginationToken is the end of the history", async () => {

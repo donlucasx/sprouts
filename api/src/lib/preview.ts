@@ -10,7 +10,7 @@ import { dayOf } from "@/domain/day";
 export const PREVIEW_DAYS = 30;
 /**
  * At most this many pages of 100 transactions are read (Helius credits; a busier wallet is summed over what was read). 11-19 (Season
- * economics): Parsed Events costs 10 credits a page (Enhanced was 100), so a preview is at most 20 credits, and once a day per user.
+ * economics): Parsed Events costs 10 credits a page (Enhanced was 100), so at most 20 credits a read; reads kept 24 h per instance.
  */
 export const PREVIEW_MAX_PAGES = 2;
 export const PREVIEW_PAGE_SIZE = 100;
