@@ -81,6 +81,19 @@ describe("MemoryRepo", () => {
     expect(await r.hasLinkInProgress("W2")).toBe(false);
   });
 
+  it("hasLinkInProgress: a USED code past its expiry still counts (confirm burns it, then spends seconds on the webhook before the row is written); an unused expired one does not", async () => {
+    const r = new MemoryRepo();
+    await r.putLinkCode({ code: "TAIL22", userPubkey: "U", expiresAt: new Date(Date.now() + 60_000), nonce: 1n });
+    await r.bindLinkCode("TAIL22", "W", "pda");
+    await r.takeLinkCode("TAIL22", "W");
+    r.linkCodes.get("TAIL22")!.expiresAt = new Date(Date.now() - 5_000);
+    expect(await r.hasLinkInProgress("W")).toBe(true);
+    await r.putLinkCode({ code: "UNUSD2", userPubkey: "U", expiresAt: new Date(Date.now() + 60_000), nonce: 2n });
+    await r.bindLinkCode("UNUSD2", "W3", "pda");
+    r.linkCodes.get("UNUSD2")!.expiresAt = new Date(Date.now() - 5_000);
+    expect(await r.hasLinkInProgress("W3")).toBe(false);
+  });
+
   it("addWallet on an existing wallet resets the delegation, cap and status and keeps the ledger", async () => {
     const r = await withWallet();
     await r.bumpLedger("W", "SKR", 50);

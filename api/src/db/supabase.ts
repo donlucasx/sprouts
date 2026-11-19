@@ -543,7 +543,7 @@ export class SupabaseRepo implements Repo {
   }
 
   async hasLinkInProgress(walletPubkey: string) {
-    const { data, error } = await this.db.from("link_codes").select("code").eq("wallet_pubkey", walletPubkey).gt("expires_at", new Date().toISOString()).limit(1);
+    const { data, error } = await this.db.from("link_codes").select("code").eq("wallet_pubkey", walletPubkey).or(`used.eq.true,expires_at.gt.${new Date().toISOString()}`).limit(1);
     if (error) throw new Error(error.message);
     return (data ?? []).length > 0;
   }

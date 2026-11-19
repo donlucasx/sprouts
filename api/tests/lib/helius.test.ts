@@ -134,6 +134,14 @@ describe("heliusRemoveAddresses", () => {
     err.mockRestore();
   });
 
+  it("an address kept by stillRevoked and lost to a concurrent write, then re-added, is reported kept, not removed", async () => {
+    const { hook } = fakeHelius(["A", "B", "C"], (h, n) => { if (n === 1) h.accountAddresses = ["A"]; });
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(await heliusRemoveAddresses("WH", ["B", "C"], { ...FAST, stillRevoked: async (k) => k !== "B" })).toEqual({ removed: ["C"], kept: ["B"] });
+    expect(hook.accountAddresses.sort()).toEqual(["A", "B"]);
+    err.mockRestore();
+  });
+
   it("a failed write throws with no URL (the key) in the message", async () => {
     vi.stubGlobal("fetch", vi.fn(async (_u: string, init?: { method?: string }) =>
       init?.method === "PUT" ? new Response("nope", { status: 500 }) : new Response(JSON.stringify({ webhookID: "WH", webhookURL: "u", transactionTypes: ["ANY"], accountAddresses: ["A", "B"], webhookType: "enhanced" }))));
