@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
+import { cached, clearSharedReads } from "@/lib/memo";
 import { retryOncePrice, WEBHOOK_PRICE_TIMEOUT_MS, WEBHOOK_PRICE_RETRY_MS } from "@/lib/webhook-price";
 
 const noSleep = async () => {};
@@ -50,6 +51,34 @@ describe("retryOncePrice", () => {
       await p;
       expect(out).toBeNull();
     } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("over a memoized read whose first call hangs, the retry reads fresh (retryRead) and can succeed; without it the retry joins the hung promise", async () => {
+    vi.useFakeTimers();
+    try {
+      clearSharedReads();
+      const raw = vi.fn<(m: string) => Promise<number | null>>()
+        .mockImplementationOnce(() => new Promise<number | null>(() => {}))
+        .mockResolvedValue(150);
+      const memoed = (m: string) => cached(`p|${m}`, () => raw(m), (v) => v !== null);
+      const fresh = vi.fn(async () => 150 as number | null);
+      const p = retryOncePrice(memoed, { retryRead: fresh })("M");
+      await vi.advanceTimersByTimeAsync(800 + 300 + 1);
+      expect(await p).toBe(150);
+      expect(fresh).toHaveBeenCalledTimes(1);
+      expect(raw).toHaveBeenCalledTimes(1);
+      // Without retryRead the retry gets the same pending promise: no second request, null.
+      clearSharedReads();
+      raw.mockReset();
+      raw.mockImplementationOnce(() => new Promise<number | null>(() => {})).mockResolvedValue(150);
+      const q = retryOncePrice(memoed)("M");
+      await vi.advanceTimersByTimeAsync(800 + 300 + 800 + 1);
+      expect(await q).toBeNull();
+      expect(raw).toHaveBeenCalledTimes(1);
+    } finally {
+      clearSharedReads();
       vi.useRealTimers();
     }
   });

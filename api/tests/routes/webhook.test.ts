@@ -7,12 +7,13 @@ import { getBase58Decoder } from "@solana/kit";
 
 // Security R207 #8, the route's wiring: the booking task the webhook schedules re-reads each swap from chain through the app's
 // RPC (faked here) before booking it. `after` runs the task inline so the test can await it.
-const { tasks, getTransactionMock } = vi.hoisted(() => ({ tasks: [] as Promise<unknown>[], getTransactionMock: vi.fn() }));
+const { tasks, getTransactionMock, priceMock } = vi.hoisted(() => ({ tasks: [] as Promise<unknown>[], getTransactionMock: vi.fn(), priceMock: vi.fn<(m: string) => Promise<number | null>>() }));
 vi.mock("next/server", async (orig) => ({ ...(await orig<object>()), after: (fn: () => Promise<unknown>) => { tasks.push(fn()); } }));
 vi.mock("@/lib/rpc", () => ({ rpc: () => ({ getTransaction: () => ({ send: getTransactionMock }) }) }));
-vi.mock("@/lib/jupiter", () => ({ priceUsd: async () => null }));
+vi.mock("@/lib/jupiter", () => ({ priceUsd: (m: string) => priceMock(m) }));
 vi.mock("@/lib/puller", () => ({ pullerSigner: async () => ({ address: "PULLER" }) }));
 
+import { clearSharedReads } from "@/lib/memo";
 import { POST, maxDuration } from "@/app/api/webhooks/helius/route";
 
 const fixture = fixtureJson as unknown as HeliusEnhancedTx;
@@ -50,6 +51,9 @@ describe("POST /api/webhooks/helius", () => {
     await repo.upsertUser({ seedVaultPubkey: "U", sgtMint: "M", skrName: null });
     await repo.addWallet({ pubkey: "WALLET", userPubkey: "U", delegationPda: "D", dailyCapCents: 500 });
     getTransactionMock.mockReset();
+    priceMock.mockReset();
+    priceMock.mockResolvedValue(null);
+    clearSharedReads();
   });
 
   it("books a swap the chain confirms, with one getTransaction", async () => {
@@ -94,6 +98,45 @@ describe("POST /api/webhooks/helius", () => {
     expect((zero[0].detail as { sig: string }).sig).toHaveLength(8);
     expect(await repo.unplantedSwaps("WALLET")).toEqual([]);
     expect(refused()).toHaveLength(0);
+  });
+
+  const unpricedTx = () => ({ ...tx, tokenTransfers: tx.tokenTransfers.map((t) => ({ ...t, mint: t.mint === USDC ? "Unknown1" : t.mint })), events: { swap: { ...tx.events!.swap, tokenInputs: tx.events!.swap!.tokenInputs!.map((t) => ({ ...t, mint: t.mint === USDC ? "Unknown1" : t.mint })) } } }) as HeliusEnhancedTx;
+  const sigOf = (i: number) => getBase58Decoder().decode(new Uint8Array(64).fill(20 + i));
+  async function deliverMany(items: HeliusEnhancedTx[]) {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      await POST(new Request("http://x/api/webhooks/helius", { method: "POST", headers: { authorization: "Bearer hook-secret" }, body: JSON.stringify(items) }));
+      const all = Promise.all(tasks.splice(0));
+      await vi.advanceTimersByTimeAsync(60_000);
+      await all;
+    } finally {
+      vi.useRealTimers();
+    }
+  }
+
+  it("a price-down delivery: after 2 unpriced items in a row the rest read no price (still unbooked, zero_roundup within the cap)", async () => {
+    getTransactionMock.mockResolvedValue(onChain(now, "Unknown1"));
+    const mk = (n: number) => Array.from({ length: n }, (_, i) => ({ ...unpricedTx(), signature: sigOf(i) }));
+    await deliverMany(mk(2));
+    const callsForTwo = priceMock.mock.calls.length;
+    expect(callsForTwo).toBeGreaterThan(0);
+    priceMock.mockClear();
+    await deliverMany(mk(6));
+    expect(priceMock.mock.calls.length).toBe(callsForTwo);
+    expect(await repo.unplantedSwaps("WALLET")).toEqual([]);
+    expect(repo.events.filter((e) => e.kind === "zero_roundup").length).toBeGreaterThanOrEqual(6);
+  });
+
+  it("an unpriced swap, then the same signature delivered again with a price, books exactly once", async () => {
+    getTransactionMock.mockResolvedValue(onChain(now, "Unknown1"));
+    const u = unpricedTx();
+    await deliverMany([u]);
+    expect(await repo.unplantedSwaps("WALLET")).toEqual([]);
+    priceMock.mockResolvedValue(0.00002);
+    await deliverMany([u]);
+    expect((await repo.unplantedSwaps("WALLET")).length).toBe(1);
+    await deliverMany([u]);
+    expect((await repo.unplantedSwaps("WALLET")).length).toBe(1);
   });
 
   it("zero_roundup events count toward MAX_REFUSAL_EVENTS_PER_DELIVERY", async () => {

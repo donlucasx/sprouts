@@ -232,6 +232,17 @@ describe("checkMissedSwaps", () => {
     expect(await run(reads(world))).toMatchObject({ checked: 0, missed: [], unchecked: [{ why: "read_error" }] });
   });
 
+  it("an unpriced swap (no stable leg, no price) marks the wallet unchecked, never silently checked with 0 missed", async () => {
+    onChainSwap("UNPRICED1111111", nowS - 5 * HOUR);
+    const UNK = "Unknown1111111111111111111111111111111111111";
+    world.txs.set("UNPRICED1111111", JSON.parse(JSON.stringify(world.txs.get("UNPRICED1111111")).replaceAll(USDC, UNK)));
+    const c = world.chains.get("UNPRICED1111111")!;
+    const remint = (b: { mint: string }[]) => b.map((x) => ({ ...x, mint: x.mint === USDC ? UNK : x.mint }));
+    world.chains.set("UNPRICED1111111", { ...c, meta: { ...c.meta!, preTokenBalances: remint(c.meta!.preTokenBalances as never) as never, postTokenBalances: remint(c.meta!.postTokenBalances as never) as never } });
+    const out = await run(reads(world));
+    expect(out).toMatchObject({ checked: 0, missed: [], unchecked: [{ wallet: "WALL…aa1", why: "price_unavailable" }] });
+  });
+
   it("a swap the chain refuses (the wallet did not sign it) is not missed", async () => {
     onChainSwap("NOTMINE111111111", nowS - 5 * HOUR);
     world.chains.set("NOTMINE111111111", chain(nowS - 5 * HOUR, WALLET, false));

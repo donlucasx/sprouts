@@ -494,11 +494,17 @@ async function buildTokenTopUp(user: Address, cents: number, inputMint: Address)
     throw new TopUpRefused(TOPUP_COPY.noRouteFor(token.symbol), 503);
   }
   const ixs = [...parsed.computeBudget, ...parsed.setup, parsed.swap, ...(parsed.cleanup ? [parsed.cleanup] : [])];
+  let plan: TopUpPlan;
   try {
-    checkTopUp(ixs.map(toTopUpIx), { user, ...accounts, outRaw, source });
+    plan = checkTopUp(ixs.map(toTopUpIx), { user, ...accounts, outRaw, source });
   } catch (e) {
     console.error(`topup: Jupiter's ${token.symbol} answer for ${user} refused (${e instanceof Error ? e.message : String(e)})`);
     throw new TopUpRefused(TOPUP_COPY.noRouteFor(token.symbol), 503);
+  }
+  // Kimi review (Task 7, 1a): the bound again on the maximum the built swap really carries (it can differ from the quote's by rounding).
+  if (!withinTopUpPriceBound(plan.maxIn, outRaw, price, held.decimals)) {
+    console.error(`topup: ${token.symbol} swap for ${user} above the price bound (max ${plan.maxIn} at $${price})`);
+    throw new TopUpRefused(TOPUP_COPY.noFairPrice(token.symbol), 503);
   }
   const transaction = await compileAndSimulate(user, ixs);
   return { transaction, usdcRaw: outRaw.toString(), inputMint, maxInRaw: maxIn.toString() };

@@ -10,20 +10,21 @@ const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, 
 /**
  * A price lookup for the webhook: each attempt is bounded by `timeoutMs`; a null, a throw or a timeout tries once more after
  * `retryAfterMs`; then null. An unpriced swap is left unbooked by book-swap (a redelivery or the daily check picks it up), so
- * one more try is worth 300 ms.
+ * one more try is worth 300 ms. `retryRead` (optional) is the read used for the retry: pass the unmemoized read next to a memoized
+ * `read`, since the memo hands a timed-out first attempt's still-pending promise back to the retry (never a fresh request).
  */
 export function retryOncePrice(
   read: PriceLookup,
-  opts: { timeoutMs?: number; retryAfterMs?: number; sleep?: (ms: number) => Promise<void> } = {},
+  opts: { retryRead?: PriceLookup; timeoutMs?: number; retryAfterMs?: number; sleep?: (ms: number) => Promise<void> } = {},
 ): PriceLookup {
   const timeoutMs = opts.timeoutMs ?? WEBHOOK_PRICE_TIMEOUT_MS;
   const retryAfterMs = opts.retryAfterMs ?? WEBHOOK_PRICE_RETRY_MS;
   const sleep = opts.sleep ?? wait;
-  const attempt = async (mint: string): Promise<number | null> => {
+  const attempt = async (mint: string, via: PriceLookup): Promise<number | null> => {
     let t: ReturnType<typeof setTimeout> | undefined;
     try {
       return await Promise.race([
-        read(mint).catch(() => null),
+        via(mint).catch(() => null),
         new Promise<null>((resolve) => { t = setTimeout(() => resolve(null), timeoutMs); }),
       ]);
     } finally {
@@ -31,9 +32,9 @@ export function retryOncePrice(
     }
   };
   return async (mint) => {
-    const first = await attempt(mint);
+    const first = await attempt(mint, read);
     if (first !== null) return first;
     await sleep(retryAfterMs);
-    return attempt(mint);
+    return attempt(mint, opts.retryRead ?? read);
   };
 }

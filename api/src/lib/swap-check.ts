@@ -52,7 +52,7 @@ export type SwapCheckReads = {
 };
 
 export type MissedSwap = { wallet: string; sig: string; ts: string; roundupCents: number };
-export type UncheckedWallet = { wallet: string; why: "page_cap" | "read_error" | "partial_read" };
+export type UncheckedWallet = { wallet: string; why: "page_cap" | "read_error" | "partial_read" | "price_unavailable" };
 export type SwapCheckRecord = {
   checked: number;
   unchecked: UncheckedWallet[];
@@ -164,7 +164,7 @@ async function runCheck(a: Parameters<typeof checkMissedSwaps>[0], out: SwapChec
         guard();
         let inserted: Parameters<Repo["insertSwap"]>[0] | null = null;
         const repo = dryRepo(a.repo, (s) => { inserted = s; });
-        await bookSwap({
+        const res = await bookSwap({
           repo, tx, priceUsd: a.reads.priceUsd, ignoreFeePayer: a.reads.puller, stockMints: a.reads.stockMints,
           verify: async (x) => {
             guard();
@@ -174,6 +174,8 @@ async function runCheck(a: Parameters<typeof checkMissedSwaps>[0], out: SwapChec
             return checkSwapOnChain(chain, { ...x, nowS: x.timestamp + 5 });
           },
         });
+        // No price: the check cannot tell whether this is a miss, so the wallet is reported, not counted checked.
+        if (!res.booked && res.unpriced) throw new Partial("price_unavailable");
         const s = inserted as Parameters<Repo["insertSwap"]>[0] | null;
         if (s && s.walletPubkey === w.pubkey) found.push({ wallet: short(w.pubkey), sig: tx.signature.slice(0, 8), ts: `${new Date(tx.timestamp * 1000).toISOString().slice(0, 16)}Z`, roundupCents: s.roundupCents });
       }
@@ -200,7 +202,7 @@ export async function realSwapCheckReads(): Promise<SwapCheckReads> {
     },
     enhanced: (sigs) => heliusParseTransactions(sigs, { timeoutMs: ENHANCED_TIMEOUT_MS }),
     fetchTx: fetchTransaction,
-    // An unpriced swap is still a miss (its round-up reads 0); a hung price never holds the run.
+    // A null price makes bookSwap answer `unpriced`, which marks the wallet unchecked (never a silent "nothing missed"); a hung price never holds the run.
     priceUsd: (mint) => Promise.race([priceUsd(mint), new Promise<null>((resolve) => setTimeout(() => resolve(null), PRICE_TIMEOUT_MS))]),
     stockMints,
     puller: (await pullerSigner()).address,

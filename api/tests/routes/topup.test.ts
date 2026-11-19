@@ -227,6 +227,30 @@ describe("POST /api/topup/build (the SOL top-up's unsigned transaction)", () => 
     expect(simulateMock).not.toHaveBeenCalled();
   });
 
+  // Kimi review (Task 7, 1a): the bound is applied again to the maximum parsed out of the built swap, not only to the quote's threshold.
+  it("refuses a built swap whose own maximum is above the price bound even when the quote's threshold passed it", async () => {
+    const M = BigInt(token.quote.otherAmountThreshold);
+    const limit = 5_000_000n * 1_000_000n * 10n ** 6n * 10_300n;           // usdcRaw x 1e6 x 10^decimals x (10000 + margin)
+    const pico = limit / (10_000n * M) + 1n;                                // M x pico is just over the limit, (M - 1) x pico is not
+    chain.jupUsd = Number(pico) / 1e12;
+    const orig = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation(async (url: string, init?: { body?: string }) => {
+      if (url.includes("/swap/v1/quote") && new URL(url).searchParams.get("inputMint") === JUP_MINT) {
+        return new Response(JSON.stringify({ ...token.quote, otherAmountThreshold: (M - 1n).toString() }));
+      }
+      return orig(url, init);
+    });
+    try {
+      const res = await call(build, { cents: 500, inputMint: JUP_MINT });
+      expect(res.status).toBe(503);
+      expect((await res.json()).error).toBe("Sprouts could not get a fair JUP to USDC price right now. Nothing was asked of your wallet. Try again later.");
+      expect(fetchMock.mock.calls.some((c) => String(c[0]).includes("swap-instructions"))).toBe(true);   // it got past the quote-level bound
+      expect(simulateMock).not.toHaveBeenCalled();
+    } finally {
+      fetchMock.mockImplementation(orig);
+    }
+  });
+
   it("names the coin when there is no route", async () => {
     fetchMock.mockImplementationOnce(async (url: string) => (url.includes("/tokens/v2/search") ? new Response(JSON.stringify([{ id: JUP_MINT, symbol: "JUP", decimals: 6, tokenProgram: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", isVerified: true }])) : new Response("x", { status: 500 })));
     fetchMock.mockImplementationOnce(async () => new Response("no route", { status: 400 }));
