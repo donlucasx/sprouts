@@ -16,7 +16,7 @@ describe('Settings > About Sprouts (spec 6.2, 11; R452: six questions)', () => {
     ]))
   it('How Sprouts holds your money opens with the precise sentence, verbatim, and says what an old approval still allows', () => {
     expect(PRECISE_GUARANTEE).toBe(
-      "Once you re-link, Sprouts' server can only pull through the Sprouts program: at most your $5 daily limit, and only in a transaction that leaves at least 98.5% of that value (99.9% for USDC lending), at a live oracle price, in the coins Sprouts has enabled, lending positions or SKR stake; otherwise it reverts. The server still chooses when, which leg and how much up to the limit; rounding remainders carry to your next planting. Only Sprouts' offline admin key can change these rules or replace the program; your $5-a-day limit still holds.",
+      "Once you re-link, Sprouts' server can only pull through the Sprouts program: at most your $5 daily limit, and only in a transaction that leaves at least 98.5% of that value (99.4% for USDC lending), at a live oracle price, in the coins Sprouts has enabled, lending positions or SKR stake; otherwise it reverts. The server still chooses when, which leg and how much up to the limit; rounding remainders carry to your next planting. Only Sprouts' offline admin key can change these rules or replace the program; your $5-a-day limit still holds.",
     )
     expect(DISCLOSURES[0][1].startsWith(PRECISE_GUARANTEE)).toBe(true)
     expect(DISCLOSURES[0][1]).toContain('stays on chain under the old rules until you re-link or revoke it')
@@ -29,7 +29,7 @@ describe('Settings > About Sprouts (spec 6.2, 11; R452: six questions)', () => {
       '60%',
       'marginfi and Lulo',
       'restricts some regions',   // R367 (10-05): softened, no named countries
-      'No Sprouts fee on USDC or SOL lending',
+      'SOL lending has no Sprouts fee for now',
       "Sprouts' offline admin key",
       POOL_FULL_LINE,
     ])
@@ -60,9 +60,12 @@ describe('Settings > About Sprouts (spec 6.2, 11; R452: six questions)', () => {
     )
     expect(RELINK.body).toBe(PUBLIC_GUARANTEE)
   })
-  it('fees: no Sprouts fee on lending; Sprouts pays the network fee and rent, as the Terms say (R266, audits/fee-model)', () => {
+  it('fees: 0.5% on USDC lending, no fee on SOL lending; Sprouts pays the network fee and rent, as the Terms say (R266, audits/fee-model)', () => {
     const fees = DISCLOSURES.find(([h]) => h === 'What does it cost?')![1]
-    expect(fees).toContain('No Sprouts fee on USDC or SOL lending')
+    expect(fees).toBe(
+      'Sprouts takes 0.5% of each SKR, stORE, hSOL, cbBTC and USDC lending planting, in USDC. SOL lending has no Sprouts fee for now, and there is nothing on interest, withdrawals or moves. Sprouts pays the network fee and the one-time account rent for your coin and lending accounts. Leftovers from rounding carry to your next planting. Fees are on every receipt. Pro (the Yield Manager, automatic lending and tax reports) is included free during launch.',
+    )
+    expect(fees).toContain('SOL lending has no Sprouts fee for now')
     expect(fees).toContain('Sprouts pays the network fee and the one-time account rent')
     expect(fees).not.toMatch(/passes through|about \$0\.03/)
   })

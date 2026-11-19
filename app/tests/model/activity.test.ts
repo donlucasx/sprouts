@@ -32,6 +32,9 @@ describe('R362: a planting is one short line (what, amount); the long line lives
   it('lending: the label names the leg, the venue moves into the details with "no Sprouts fee"', () => {
     expect(keep(plantingRow(planting([usdc], { networkFeeCents: 0 })))).toMatchObject({ label: 'Planted USDC lending', amount: '$0.62', details: ['$0.62 went into USDC lending (Kamino), no Sprouts fee'] })
   })
+  it('USDC lending with the 0.5% fee: the details end with the fee', () => {
+    expect(keep(plantingRow(planting([{ ...usdc, usdcInCents: 200, feeCents: 1, feeAmountRaw: '10000' }], { networkFeeCents: 0 })))?.details[0]).toBe('$2.00 went into USDC lending (Kamino), fee $0.01')
+  })
   it('several legs: the count in the label, the total on the right, each leg in the details', () => {
     const skr = { asset: 'SKR' as const, usdcInCents: 90, amountOutRaw: '4920000', feeCents: 0, feeAmountRaw: '0', usdPrice: 0.0183 }
     const r = keep(plantingRow(planting([skr, { ...usdc, usdcInCents: 110 }])))

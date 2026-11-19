@@ -23,11 +23,23 @@ describe('Review Focus 2: a lending amount is in receipt units and is never show
   })
 })
 
-describe('Review Focus 3: lending never says "fee under 1 cent" (R266: no fee on lending)', () => {
-  it('a lending leg with feeCents 0 and feeAmountRaw "0" says no Sprouts fee; a coin with the same fields keeps its clause', () => {
-    const lend = plantedLine({ usdcInCents: 200, asset: 'USDC_LEND', amountOutRaw: '1661200', usdPrice: 1, feeCents: 0, feeAmountRaw: '0', venue: 'kamino_klend' })
-    expect(lend).not.toContain('fee under')
-    expect(lend).toContain('no Sprouts fee')
+describe('Review Focus 3: lending fee wording (0.5% on USDC lending from the season; SOL lending free)', () => {
+  const usdc = (o: object) => plantedLine({ usdcInCents: 200, asset: 'USDC_LEND', amountOutRaw: '1661200', usdPrice: 1, feeCents: 0, feeAmountRaw: '0', venue: 'kamino_klend', ...o } as Parameters<typeof plantedLine>[0])
+  it('SOL lending says no Sprouts fee whatever the fee fields', () => {
+    const sol = (o: object) => plantedLine({ usdcInCents: 200, asset: 'SOL_LEND', amountOutRaw: '1340000', usdPrice: 150, feeCents: 0, feeAmountRaw: '0', venue: 'kamino_klend', ...o } as Parameters<typeof plantedLine>[0])
+    expect(sol({})).toBe('$2.00 went into SOL lending (Kamino), no Sprouts fee')
+    expect(sol({ feeCents: 1, feeAmountRaw: '10000' })).toBe('$2.00 went into SOL lending (Kamino), no Sprouts fee')
+  })
+  it('USDC lending from before the fee keeps saying no Sprouts fee', () => {
+    expect(usdc({})).toBe('$2.00 went into USDC lending (Kamino), no Sprouts fee')
+    expect(usdc({ feeAmountRaw: undefined })).toBe('$2.00 went into USDC lending (Kamino), no Sprouts fee')
+    expect(usdc({})).not.toContain('fee under')
+  })
+  it('USDC lending with the fee shows it; a sub-cent fee says under 1 cent', () => {
+    expect(usdc({ feeCents: 1, feeAmountRaw: '10000' })).toBe('$2.00 went into USDC lending (Kamino), fee $0.01')
+    expect(usdc({ usdcInCents: 50, feeCents: 0, feeAmountRaw: '2500' })).toBe('$0.50 went into USDC lending (Kamino), fee under 1 cent')
+  })
+  it('a coin with the same fields keeps its clause', () => {
     expect(plantedLine({ usdcInCents: 200, asset: 'hSOL', amountOutRaw: '12300000', usdPrice: 168, feeCents: 0, feeAmountRaw: '0' })).toBe('$2.00 became 0.0123 hSOL ($2.07), fee under 1 cent')
   })
 })

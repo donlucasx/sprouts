@@ -4,7 +4,7 @@ import { WEB_LINK_TRUST } from './relink'
 
 /** Spec 6.2, the precise guarantee, verbatim (Settings and README). */
 export const PRECISE_GUARANTEE =
-  "Once you re-link, Sprouts' server can only pull through the Sprouts program: at most your $5 daily limit, and only in a transaction that leaves at least 98.5% of that value (99.9% for USDC lending), at a live oracle price, in the coins Sprouts has enabled, lending positions or SKR stake; otherwise it reverts. The server still chooses when, which leg and how much up to the limit; rounding remainders carry to your next planting. Only Sprouts' offline admin key can change these rules or replace the program; your $5-a-day limit still holds."
+  "Once you re-link, Sprouts' server can only pull through the Sprouts program: at most your $5 daily limit, and only in a transaction that leaves at least 98.5% of that value (99.4% for USDC lending), at a live oracle price, in the coins Sprouts has enabled, lending positions or SKR stake; otherwise it reverts. The server still chooses when, which leg and how much up to the limit; rounding remainders carry to your next planting. Only Sprouts' offline admin key can change these rules or replace the program; your $5-a-day limit still holds."
 
 /** Contracts 2.6 and R324: where the program's prices come from and cbBTC's looser age. Build-written copy, awaiting his ruling. The SKR price line waits on contracts 10 item 15 (fix round 1, I1). */
 export const PRICE_LINE = "Prices come from Pyth. cbBTC's price can be up to 10 minutes old."
@@ -24,7 +24,7 @@ export const DISCLOSURES: [string, string][] = [
   ],
   [
     'What does it cost?',
-    'Sprouts takes 0.5% of each SKR, stORE, hSOL and cbBTC planting, in USDC, inside the swap. No Sprouts fee on USDC or SOL lending, and nothing on interest, withdrawals or moves. Sprouts pays the network fee and the one-time account rent for your coin and lending accounts. Leftovers from rounding carry to your next planting. Fees are on every receipt. Pro (the Yield Manager, automatic lending and tax reports) is included free during launch.',
+    'Sprouts takes 0.5% of each SKR, stORE, hSOL, cbBTC and USDC lending planting, in USDC. SOL lending has no Sprouts fee for now, and there is nothing on interest, withdrawals or moves. Sprouts pays the network fee and the one-time account rent for your coin and lending accounts. Leftovers from rounding carry to your next planting. Fees are on every receipt. Pro (the Yield Manager, automatic lending and tax reports) is included free during launch.',
   ],
   [
     'Where does lending go?',
