@@ -139,6 +139,12 @@ export const REFUSED = {
   overpriced: 'This swap asks for more SOL than the USDC is worth right now. Nothing was signed.',
 } as const
 
+/** The top-up's two price refusals, naming the coin swapped (REFUSED.price and .overpriced are these for SOL, word for word). */
+export const REFUSED_COIN = {
+  price: (symbol: string) => `Sprouts could not check the ${symbol} price, so nothing was asked of your wallet. Try again.`,
+  overpriced: (symbol: string) => `This swap asks for more ${symbol} than the USDC is worth right now. Nothing was signed.`,
+} as const
+
 /** A check before signing failed; `message` is one of REFUSED, safe to show as is. */
 export class SignRefused extends Error {
   constructor(message: string) {
@@ -472,7 +478,8 @@ export const fetchUsdPrice: UsdPriceSource = async (mint) => {
     clearTimeout(timer)
   }
 }
-export type CheckOptions = { solUsd?: SolUsdSource; usdPrice?: UsdPriceSource }
+/** coinSymbol: the token top-up's coin, named in its price refusals (display only; the check reads the flow's inputMint). */
+export type CheckOptions = { solUsd?: SolUsdSource; usdPrice?: UsdPriceSource; coinSymbol?: string }
 
 /** The most lamports `usdcRaw` USDC is worth at `solUsd`, plus the margin and the priority-fee cap; null when the price is not sane. */
 export function topUpLamportCeiling(usdcRaw: bigint, solUsd: number): bigint | null {
@@ -574,12 +581,15 @@ async function checkTopUp(ixs: Ix[], user: string, usdcRaw: bigint, solUsd: SolU
  * USDC accounts, this wallet as the transfer authority, its own classic `inputMint` account as the source, its USDC account as the
  * destination, no platform fee or Token-2022 account), this wallet and its source, wSOL and USDC accounts nowhere in the route accounts,
  * delivering exactly `usdcRaw`, no fee, slippage at most 1%; no SOL transfer, no SyncNative, no close, nothing after the swap. Refused
- * outright: `inputMint` = USDC, = wSOL (that is the SOL path) or any garden coin or receipt (TOPUP_FOREIGN_MINTS: never sold), and any
+ * outright: `inputMint` = USDC, = wSOL (that is the SOL path) or any garden coin or receipt (TOPUP_FOREIGN_MINTS but SKR: never sold), and any
  * Token-2022 account of this wallet's for `inputMint`. Last, the most the swap may spend is held to the phone's own price for the coin
  * (+3%); a price the phone cannot read refuses, it never skips the bound.
  */
-async function checkTokenTopUp(ixs: Ix[], user: string, inputMint: string, usdcRaw: bigint, usdPrice: UsdPriceSource): Promise<void> {
-  if (inputMint === USDC_MINT || inputMint === WSOL_MINT || TOPUP_FOREIGN_MINTS.includes(inputMint)) return refuse('plan')
+async function checkTokenTopUp(ixs: Ix[], user: string, inputMint: string, usdcRaw: bigint, usdPrice: UsdPriceSource, symbol: string): Promise<void> {
+  // Controller ruling (11-19): SKR may be the chosen source. Planted SKR is staked in the Seed Vault position, so the wallet's liquid SKR
+  // is the user's own, not the garden. Its account is then allowed only as the swap's source (slot 3); SKR stays on the never-touched
+  // list for every other top-up, and every other mint on it is never a source.
+  if (inputMint === USDC_MINT || inputMint === WSOL_MINT || (inputMint !== SKR_MINT && TOPUP_FOREIGN_MINTS.includes(inputMint))) return refuse('plan')
   let sourceAta: string
   try {
     sourceAta = await ata(user, inputMint)
@@ -592,7 +602,7 @@ async function checkTokenTopUp(ixs: Ix[], user: string, inputMint: string, usdcR
   // As the SOL top-up, plus this wallet's Token-2022 account for the source coin: in no instruction at all.
   const foreign = new Set(
     await Promise.all([
-      ...TOPUP_FOREIGN_MINTS.flatMap((m) => [ata(user, m), pda(ATA_PROGRAM, [key(user), key(TOKEN_2022_PROGRAM), key(m)])]),
+      ...TOPUP_FOREIGN_MINTS.flatMap((m) => [...(m === inputMint ? [] : [ata(user, m)]), pda(ATA_PROGRAM, [key(user), key(TOKEN_2022_PROGRAM), key(m)])]),
       pda(ATA_PROGRAM, [key(user), key(TOKEN_2022_PROGRAM), key(WSOL_MINT)]),
       pda(ATA_PROGRAM, [key(user), key(TOKEN_2022_PROGRAM), key(USDC_MINT)]),
       pda(ATA_PROGRAM, [key(user), key(TOKEN_2022_PROGRAM), key(inputMint)]),
@@ -632,15 +642,16 @@ async function checkTokenTopUp(ixs: Ix[], user: string, inputMint: string, usdcR
   const maxIn = (route.quotedIn * BigInt(10_000 + route.slippageBps) + 9_999n) / 10_000n + 1n
   // maxIn x usd / 10^decimals <= usdcRaw / 1e6 x 1.03, in integers: the price in 1e-12 USD per whole coin.
   let p: { usd: number; decimals: number }
+  const noPrice = (): never => { throw new SignRefused(REFUSED_COIN.price(symbol)) }
   try {
     p = await usdPrice(inputMint)
   } catch {
-    return refuse('price')
+    return noPrice()
   }
   const sane = p && typeof p.usd === 'number' && Number.isFinite(p.usd) && p.usd > 0 && p.usd < 10_000_000 && Number.isInteger(p.decimals) && p.decimals >= 0 && p.decimals <= 18
   const pico = sane ? BigInt(Math.round(p.usd * 1e12)) : 0n
-  if (!sane || pico <= 0n) return refuse('price')
-  if (maxIn * pico * 10_000n > usdcRaw * 1_000_000n * 10n ** BigInt(p.decimals) * (10_000n + TOPUP_PRICE_MARGIN_BPS)) refuse('overpriced')
+  if (!sane || pico <= 0n) return noPrice()
+  if (maxIn * pico * 10_000n > usdcRaw * 1_000_000n * 10n ** BigInt(p.decimals) * (10_000n + TOPUP_PRICE_MARGIN_BPS)) throw new SignRefused(REFUSED_COIN.overpriced(symbol))
 }
 
 /**
@@ -680,7 +691,7 @@ async function checkInstructions(ixs: Ix[], flow: SignFlow, opts: CheckOptions):
   if (flow.kind === 'topup')
     return flow.inputMint === undefined
       ? checkTopUp(ixs, user, amountOf(flow.usdcRaw), opts.solUsd ?? fetchSolUsd)
-      : checkTokenTopUp(ixs, user, flow.inputMint, amountOf(flow.usdcRaw), opts.usdPrice ?? fetchUsdPrice)
+      : checkTokenTopUp(ixs, user, flow.inputMint, amountOf(flow.usdcRaw), opts.usdPrice ?? fetchUsdPrice, opts.coinSymbol ?? 'coin')
   const d = await derived(user)
   switch (flow.kind) {
     case 'withdraw': {

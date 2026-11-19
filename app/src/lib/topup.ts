@@ -40,6 +40,13 @@ export type TopUpSource = { mint: string; symbol: string; decimals: number; valu
 export const defaultSource = (sources: readonly TopUpSource[] | null | undefined): TopUpSource | null =>
   sources?.find((s) => s.mint === WSOL_MINT) ?? sources?.[0] ?? null
 
+/** Controller ruling (11-19): the picker shows at most 3 coins: SOL first (when offered), then the two worth the most in this wallet. */
+export function pickerSources(sources: readonly TopUpSource[]): TopUpSource[] {
+  const sol = sources.filter((s) => s.mint === WSOL_MINT).slice(0, 1)
+  const others = sources.filter((s) => s.mint !== WSOL_MINT).sort((a, b) => b.valueCents - a.valueCents).slice(0, 2)
+  return [...sol, ...others]
+}
+
 export const TOPUP_DEFAULT_CENTS = 500
 export const TOPUP_MAX_CENTS = 2_500
 /** 10-26 (his: "can the top up be dialed?"): the amounts offered; the one that covers the pause is picked first. */

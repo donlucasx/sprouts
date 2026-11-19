@@ -6,7 +6,7 @@ import { Button } from '@/components/Button'
 import { ThemedText } from '@/components/ThemedText'
 import { api } from '@/lib/api'
 import { makeSigner } from '@/lib/sign'
-import { choiceFor, defaultSource, TOPUP, TOPUP_CHOICES, TopUpFailed, topUpThisPhone, type TopUpSource } from '@/lib/topup'
+import { choiceFor, defaultSource, pickerSources, TOPUP, TOPUP_CHOICES, TopUpFailed, topUpThisPhone, type TopUpSource } from '@/lib/topup'
 import { coverageLine } from '@/lib/usdc-runway'
 import { TwoWay } from '@/components/TwoWay'
 import { oneAtATime } from '@/lib/withdraw-flow'
@@ -27,7 +27,8 @@ import { spacing } from '@/theme'
 export function TopUpButton({ user, cents: suggested, done, onDone, avgDailyCents = null, compact = false, offers = null, sources = null }: { user: string; cents: number; done: (cents: number) => string; onDone?: () => void; avgDailyCents?: number | null; compact?: boolean; offers?: readonly number[] | null; sources?: readonly TopUpSource[] | null }) {
   const [open, setOpen] = useState(!compact)
   // Only coins with an amount to offer are picked or shown; none at all = the address to send USDC to.
-  const usable = sources ? sources.filter((s) => s.offers.length > 0) : null
+  // At most 3 (SOL first, then the two worth the most), per the controller ruling 11-19.
+  const usable = sources ? pickerSources(sources.filter((s) => s.offers.length > 0)) : null
   const [pickedMint, setPickedMint] = useState<string | null>(null)
   const source = usable ? (usable.find((s) => s.mint === pickedMint) ?? defaultSource(usable)) : null
   const symbol = source?.symbol ?? 'SOL'
@@ -54,7 +55,7 @@ export function TopUpButton({ user, cents: suggested, done, onDone, avgDailyCent
         ...(source ? { inputMint: source.mint } : {}),
         // topUpThisPhone shapes the body: exactly { cents } for SOL (as 0.1.11), { cents, inputMint } for another coin
         build: (body) => api<{ transaction: string; usdcRaw: string; inputMint?: string }>('/api/topup/build', { method: 'POST', body }),
-        sign: (flow) => makeSigner(signTransaction, flow),
+        sign: (flow) => makeSigner(signTransaction, flow, { coinSymbol: symbol }),
         confirm: (body) => api<{ status?: string }>('/api/topup/confirm', { method: 'POST', body }),
         onSigned: () => setPhase('chain'),
       })

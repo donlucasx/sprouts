@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { REFUSED, SignRefused, type SignFlow } from '@/lib/sign'
 import { DROPPED_NOTHING_SENT } from '@/lib/wallet-errors'
-import { defaultSource, TOPUP, TopUpFailed, topUpCentsFor, topUpOffer, topUpThisPhone } from '@/lib/topup'
+import { defaultSource, pickerSources, TOPUP, TopUpFailed, topUpCentsFor, topUpOffer, topUpThisPhone } from '@/lib/topup'
 
 const ME = 'HJCJKRQLV2HVKfe3sFdTF5jjBY1xfWgnK8cLcjH7qnHd'
 const OTHER = '7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU'
@@ -169,5 +169,16 @@ describe('any-coin top-up (Task 3): the source coin', () => {
     expect(defaultSource([])).toBeNull()
     expect(defaultSource(null)).toBeNull()
     expect(defaultSource(undefined)).toBeNull()
+  })
+
+  it('the picker shows at most 3 coins: SOL first when offered, then the two worth the most', () => {
+    const c = (symbol: string, valueCents: number, mint = symbol) => ({ mint, symbol, decimals: 6, valueCents, offers: [500] })
+    const sol = c('SOL', 600, WSOL)
+    const [a, b, d, e] = [c('A', 900), c('B', 3_000), c('D', 700), c('E', 1_200)]
+    expect(pickerSources([sol, a, b, d, e]).map((s) => s.symbol)).toEqual(['SOL', 'B', 'E'])
+    expect(pickerSources([a, b, d, e]).map((s) => s.symbol)).toEqual(['B', 'E'])
+    expect(pickerSources([a, sol]).map((s) => s.symbol)).toEqual(['SOL', 'A'])
+    expect(pickerSources([sol])).toEqual([sol])
+    expect(pickerSources([])).toEqual([])
   })
 })

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { address, getAddressEncoder, getProgramDerivedAddress, AccountRole, type Address, type Instruction, type Transaction } from '@solana/kit'
-import { fetchSolUsd, fetchUsdPrice, makeSigner, parseSharedExactOut, REFUSED, SignRefused, SOL_PRICE_URL, topUpLamportCeiling, type SignFlow, type SolUsdSource, type UsdPriceSource } from '@/lib/sign'
+import { fetchSolUsd, fetchUsdPrice, makeSigner, parseSharedExactOut, REFUSED, REFUSED_COIN, SignRefused, SOL_PRICE_URL, topUpLamportCeiling, type SignFlow, type SolUsdSource, type UsdPriceSource } from '@/lib/sign'
 import { parseSwapInstructions } from '../../../api/src/lib/jupiter'
 import { wire, ATTACKER } from '../fixtures/api-built'
 import { ataOf, L } from '../fixtures/lend-built'
@@ -212,16 +212,23 @@ describe("topup from a token: this wallet's own token account to USDC, one Jupit
     return { usd, decimals }
   }
   const tbuilt = () => built(T as unknown as Fixture)
-  async function tsigns(base64: string, usdPrice: UsdPriceSource = usdOf(fair)) {
+  const authority = () => at(tbuilt(), JUP).accounts![1].address
+  /** The fixture re-pointed at `m`: the mint, this wallet's source account and the authority's account for it all agree. */
+  const rebrand = async (m: string, ixs = tbuilt()) => {
+    ixs = reroute(ixs, MINT, m)
+    ixs = reroute(ixs, await ataOf(USER, MINT), await ataOf(USER, m))
+    return reroute(ixs, await ataOf(authority(), MINT), await ataOf(authority(), m))
+  }
+  async function tsigns(base64: string, usdPrice: UsdPriceSource = usdOf(fair), f: SignFlow = tflow) {
     const sign = vi.fn(async (tx: Transaction) => tx)
-    expect(await makeSigner(sign, tflow, { usdPrice, solUsd: async () => { throw new Error('the token path never reads the SOL price') } })(base64)).toBe(base64)
+    expect(await makeSigner(sign, f, { usdPrice, solUsd: async () => { throw new Error('the token path never reads the SOL price') } })(base64)).toBe(base64)
     expect(sign).toHaveBeenCalledTimes(1)
   }
   async function trefused(base64: string, why: keyof typeof REFUSED, f: SignFlow = tflow, usdPrice: UsdPriceSource = usdOf(fair)) {
     const sign = vi.fn(async (tx: Transaction) => tx)
-    const out = makeSigner(sign, f, { usdPrice, solUsd: priceOf(fairPrice()) })(base64)
+    const out = makeSigner(sign, f, { usdPrice, solUsd: priceOf(fairPrice()), coinSymbol: 'JUP' })(base64)
     await expect(out).rejects.toThrow(SignRefused)
-    await expect(out).rejects.toThrow(REFUSED[why])
+    await expect(out).rejects.toThrow(why === 'price' || why === 'overpriced' ? REFUSED_COIN[why]('JUP') : REFUSED[why])
     expect(sign).not.toHaveBeenCalled()
   }
 
@@ -237,20 +244,29 @@ describe("topup from a token: this wallet's own token account to USDC, one Jupit
 
   it('refuses inputMint = USDC, = wSOL (the SOL path), = a garden coin (cbBTC) or a receipt (K-Lend USDC)', async () => {
     const any: UsdPriceSource = async () => ({ usd: 1, decimals: 6 })
-    for (const m of [L.USDC, L.WSOL, 'cbbtcf3aa214zXHbiAZQwf4122FBYbraNdFqgw4iMij', 'B8V6WVjPxW1UGwVDfxH2d2r8SyT4cqn7dQRK6XneVa7D', SKR_MINT])
+    for (const m of [L.USDC, L.WSOL, 'cbbtcf3aa214zXHbiAZQwf4122FBYbraNdFqgw4iMij', 'B8V6WVjPxW1UGwVDfxH2d2r8SyT4cqn7dQRK6XneVa7D'])
       await trefused(wire(tbuilt(), USER), 'plan', { ...tflow, inputMint: m }, any)
   })
 
+  it("SKR may be the chosen source (controller ruling 11-19): its account only as the swap's source; anywhere else still refused", async () => {
+    const skr: SignFlow = { ...tflow, inputMint: SKR_MINT }
+    const skrPrice: UsdPriceSource = async () => ({ usd: fair, decimals: DECIMALS })
+    await tsigns(wire(await rebrand(SKR_MINT), USER), skrPrice, skr)
+    // SKR's account among the route accounts of its own top-up, its Token-2022 account, or another source than its own account.
+    await trefused(wire(addRouteAccount(await rebrand(SKR_MINT), await ataOf(USER, SKR_MINT)), USER), 'plan', skr, skrPrice)
+    await trefused(wire(addRouteAccount(await rebrand(SKR_MINT), await ata2022(USER, SKR_MINT)), USER), 'plan', skr, skrPrice)
+    await trefused(wire(reroute(await rebrand(SKR_MINT), await ataOf(USER, SKR_MINT), ATTACKER), USER), 'plan', skr, skrPrice)
+    // A JUP top-up or a SOL top-up that touches this wallet's SKR account anywhere is still refused.
+    await trefused(wire(addRouteAccount(tbuilt(), await ataOf(USER, SKR_MINT)), USER), 'plan')
+    await trefused(wire(await rebrand(SKR_MINT), USER), 'plan')
+    await refused(wire(addRouteAccount(built(), await ataOf(USER, SKR_MINT)), USER), 'plan')
+  })
+
   it('refuses the same swap moved onto USDC, wSOL, a garden coin or a receipt (its accounts consistent with that mint)', async () => {
-    const authority = at(tbuilt(), JUP).accounts![1].address
-    /** The fixture re-pointed at `m`: the mint, this wallet's source account and the authority's account for it all agree. */
-    const rebrand = async (m: string) => {
-      let ixs = reroute(tbuilt(), MINT, m)
-      ixs = reroute(ixs, await ataOf(USER, MINT), await ataOf(USER, m))
-      return reroute(ixs, await ataOf(authority, MINT), await ataOf(authority, m))
-    }
     const any: UsdPriceSource = async () => ({ usd: 1, decimals: 6 })
     for (const m of [L.USDC, L.WSOL, 'cbbtcf3aa214zXHbiAZQwf4122FBYbraNdFqgw4iMij', 'B8V6WVjPxW1UGwVDfxH2d2r8SyT4cqn7dQRK6XneVa7D'])
+      await trefused(wire(await rebrand(m), USER), 'plan', { ...tflow, inputMint: m }, any)
+    for (const m of ['storenSbvkfzircixnaosc5CbzNZVrHJ6S3EKrS1yqR', 'he1iusmfkpAdwvxLNGV8Y1iSbj4rUy6yMhEA3fotn9A', 'J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn', 'jupSoLaHXQiZZTSfEWMTRRgpnyFm8f6sZdosWBjx93v'])
       await trefused(wire(await rebrand(m), USER), 'plan', { ...tflow, inputMint: m }, any)
     // The re-pointing itself is sound: onto another plain coin it signs (at that coin's fair price).
     const BONK = 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263'
@@ -302,6 +318,15 @@ describe("topup from a token: this wallet's own token account to USDC, one Jupit
     await trefused(wire(tbuilt(), USER), 'price', tflow, usdOf(Number.NaN))
     await trefused(wire(tbuilt(), USER), 'price', tflow, usdOf(0))
     await trefused(wire(tbuilt(), USER), 'price', tflow, usdOf(fair, 99))
+  })
+
+  it('names the chosen coin in the price refusals (SOL keeps its words)', async () => {
+    expect(REFUSED_COIN.price('SOL')).toBe(REFUSED.price)
+    expect(REFUSED_COIN.overpriced('SOL')).toBe(REFUSED.overpriced)
+    const sign = vi.fn(async (tx: Transaction) => tx)
+    await expect(makeSigner(sign, tflow, { usdPrice: usdOf(fair * 1.05), coinSymbol: 'JUP' })(wire(tbuilt(), USER))).rejects.toThrow('This swap asks for more JUP than the USDC is worth right now. Nothing was signed.')
+    await expect(makeSigner(sign, tflow, { usdPrice: async () => { throw new Error('offline') }, coinSymbol: 'JUP' })(wire(tbuilt(), USER))).rejects.toThrow('Sprouts could not check the JUP price, so nothing was asked of your wallet. Try again.')
+    expect(sign).not.toHaveBeenCalled()
   })
 })
 
