@@ -21,10 +21,10 @@ const BONK = "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263";
 const bal = (accountIndex: number, mint: string, amount: string, decimals: number) => ({ accountIndex, mint, owner: "WALLET", uiTokenAmount: { amount, decimals } });
 
 /** The fixture's swap as the chain has it, timed now so it is recent. */
-function onChain(blockTime: number) {
+function onChain(blockTime: number, inMint = USDC) {
   return {
     blockTime: BigInt(blockTime),
-    meta: { err: null, preBalances: [1_000_000_000n], postBalances: [999_995_000n], preTokenBalances: [bal(1, USDC, "5000000", 6)], postTokenBalances: [bal(1, USDC, "3830000", 6), bal(2, BONK, "5200050000", 5)] },
+    meta: { err: null, preBalances: [1_000_000_000n], postBalances: [999_995_000n], preTokenBalances: [bal(1, inMint, "5000000", 6)], postTokenBalances: [bal(1, inMint, "3830000", 6), bal(2, BONK, "5200050000", 5)] },
     transaction: { message: { accountKeys: [{ pubkey: "WALLET", signer: true }] } },
   };
 }
@@ -74,6 +74,43 @@ describe("POST /api/webhooks/helius", () => {
     await deliver(tx);
     expect(refused()).toHaveLength(1);
     expect(refused()[0]).toMatchObject({ walletPubkey: "WALLET", detail: { reason: "time_mismatch", sig: tx.signature.slice(0, 8) } });
+  });
+
+  it("an unpriced item writes one zero_roundup event and no swap row", async () => {
+    getTransactionMock.mockResolvedValue(onChain(now, "Unknown1"));
+    // Neither leg is a stable and the price read (mocked null) finds nothing.
+    const unpriced = { ...tx, tokenTransfers: tx.tokenTransfers.map((t) => ({ ...t, mint: t.mint === USDC ? "Unknown1" : t.mint })), events: { swap: { ...tx.events!.swap, tokenInputs: tx.events!.swap!.tokenInputs!.map((t) => ({ ...t, mint: t.mint === USDC ? "Unknown1" : t.mint })) } } } as HeliusEnhancedTx;
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const done = deliver(unpriced);
+      await vi.advanceTimersByTimeAsync(5_000);
+      await done;
+    } finally {
+      vi.useRealTimers();
+    }
+    const zero = repo.events.filter((e) => e.kind === "zero_roundup");
+    expect(zero).toHaveLength(1);
+    expect(zero[0]).toMatchObject({ walletPubkey: "WALLET", detail: { reason: "unpriced" } });
+    expect((zero[0].detail as { sig: string }).sig).toHaveLength(8);
+    expect(await repo.unplantedSwaps("WALLET")).toEqual([]);
+    expect(refused()).toHaveLength(0);
+  });
+
+  it("zero_roundup events count toward MAX_REFUSAL_EVENTS_PER_DELIVERY", async () => {
+    const { MAX_REFUSAL_EVENTS_PER_DELIVERY } = await import("@/lib/swap-refusal");
+    getTransactionMock.mockResolvedValue(onChain(now, "Unknown1"));
+    const unpriced = { ...tx, tokenTransfers: tx.tokenTransfers.map((t) => ({ ...t, mint: t.mint === USDC ? "Unknown1" : t.mint })), events: { swap: { ...tx.events!.swap, tokenInputs: tx.events!.swap!.tokenInputs!.map((t) => ({ ...t, mint: t.mint === USDC ? "Unknown1" : t.mint })) } } } as HeliusEnhancedTx;
+    const many = Array.from({ length: MAX_REFUSAL_EVENTS_PER_DELIVERY + 3 }, (_, i) => ({ ...unpriced, signature: getBase58Decoder().decode(new Uint8Array(64).fill(10 + i)) }));
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      await POST(new Request("http://x/api/webhooks/helius", { method: "POST", headers: { authorization: "Bearer hook-secret" }, body: JSON.stringify(many) }));
+      const all = Promise.all(tasks.splice(0));
+      await vi.advanceTimersByTimeAsync(60_000);
+      await all;
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(repo.events.filter((e) => e.kind === "zero_roundup")).toHaveLength(MAX_REFUSAL_EVENTS_PER_DELIVERY);
   });
 
   it("a chain read that throws is recorded as chain_read_error, with no RPC text", async () => {

@@ -57,3 +57,23 @@ export async function recordSwapRefusal(repo: Repo, r: { signature: string; wall
   clearTimeout(t);
   return gaveUp ? waitMs : Math.min(waitMs, Date.now() - t0);
 }
+
+/**
+ * Writes one `zero_roundup` event for a swap left unbooked because no price could be read. Same bounded-write pattern as
+ * recordSwapRefusal: never throws, waits at most `waitMs`, answers how long it waited.
+ */
+export async function recordZeroRoundup(repo: Repo, r: { signature: string; walletPubkey: string }, waitMs = REFUSAL_WAIT_MS): Promise<number> {
+  const t0 = Date.now();
+  const write = (async () => {
+    try {
+      await repo.addEvent({ kind: "zero_roundup", userPubkey: null, walletPubkey: r.walletPubkey, detail: { reason: "unpriced", sig: shortSig(r.signature) } });
+    } catch (e) {
+      console.error(`zero_roundup not recorded: ${e instanceof Error ? e.name : "error"}`);
+    }
+  })();
+  if (waitMs <= 0) return 0;
+  let t: ReturnType<typeof setTimeout> | undefined;
+  const gaveUp = await Promise.race([write.then(() => false), new Promise<boolean>((resolve) => { t = setTimeout(() => resolve(true), waitMs); })]);
+  clearTimeout(t);
+  return gaveUp ? waitMs : Math.min(waitMs, Date.now() - t0);
+}

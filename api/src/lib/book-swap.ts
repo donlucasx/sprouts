@@ -106,7 +106,11 @@ function solGained(tx: HeliusEnhancedTx, wallet: string): { mint: string; amount
 }
 
 /** `refused` (with the wallet it was for) only when the chain check said no; every routine skip is a bare `{ booked: false }`. */
-export type BookResult = { booked: true; walletPubkey: string; roundupCents: number } | { booked: false; refused?: string; walletPubkey?: string };
+export type BookResult =
+  | { booked: true; walletPubkey: string; roundupCents: number }
+  /** `unpriced`: both legs are real but no price could be read; nothing is booked (never a zero round-up booked as success). */
+  | { booked: false; unpriced: true; walletPubkey: string }
+  | { booked: false; unpriced?: undefined; refused?: string; walletPubkey?: string };
 
 /**
  * The on-chain re-check (lib/verify-swap, R207 #8): null when the chain agrees, corrected legs when the wallet received slightly
@@ -147,6 +151,8 @@ export async function bookSwap(a: { repo: Repo; tx: HeliusEnhancedTx; priceUsd: 
     }
     const rules = rulesRowToRules(await a.repo.getRules(wallet.userPubkey));
     const size = await usdSizeCents(legs, a.priceUsd);
+    // No price: leave it unbooked (the signature stays free, so a Helius redelivery or the daily check can still book it).
+    if (size === null) return { booked: false, unpriced: true, walletPubkey: pubkey };
     const roundupCents = computeRoundupCents(size, rules);
     const booked = await a.repo.insertSwap({
       signature: a.tx.signature, walletPubkey: pubkey, ts: new Date(a.tx.timestamp * 1000),

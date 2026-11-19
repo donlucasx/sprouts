@@ -73,14 +73,14 @@ describe("bookSwap", () => {
     expect((await bookSwap({ repo, tx: fixture, priceUsd: prices })).booked).toBe(false);
   });
 
-  it("unpriced swap books zero", async () => {
+  it("an unpriced swap is NOT booked", async () => {
     const repo = await repoWithWallet();
     const tx = clone();
     tx.signature = "sig-unpriced";
     tx.tokenTransfers[0].mint = "Unknown1";
     tx.events!.swap!.tokenInputs![0].mint = "Unknown1";
-    expect(await bookSwap({ repo, tx, priceUsd: prices })).toEqual({ booked: true, walletPubkey: "WALLET", roundupCents: 0 });
-    expect((await repo.unplantedSwaps("WALLET"))[0].usdSizeCents).toBeNull();
+    expect(await bookSwap({ repo, tx, priceUsd: prices })).toEqual({ booked: false, unpriced: true, walletPubkey: "WALLET" });
+    expect(await repo.unplantedSwaps("WALLET")).toEqual([]);
   });
 
   it("a two-hop swap (four transfers) still reads the wallet's own legs", async () => {

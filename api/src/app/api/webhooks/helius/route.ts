@@ -3,25 +3,22 @@ import { timingSafeEqual } from "node:crypto";
 import { getRepo } from "@/db/repo";
 import { config } from "@/lib/config";
 import { bookSwap, type HeliusEnhancedTx } from "@/lib/book-swap";
-import { priceUsd } from "@/lib/jupiter";
+import { sharedPriceUsd } from "@/lib/shared-reads";
+import { retryOncePrice } from "@/lib/webhook-price";
 import { pullerSigner } from "@/lib/puller";
 import { onChainVerifier } from "@/lib/verify-swap";
 import { stockMints } from "@/lib/token-kind";
-import type { PriceLookup } from "@/domain/sizing";
-import { recordSwapRefusal, refusalReason, MAX_REFUSAL_EVENTS_PER_DELIVERY, REFUSAL_WAIT_MS, REFUSAL_WAIT_TOTAL_MS } from "@/lib/swap-refusal";
+import { recordSwapRefusal, recordZeroRoundup, refusalReason, MAX_REFUSAL_EVENTS_PER_DELIVERY, REFUSAL_WAIT_MS, REFUSAL_WAIT_TOTAL_MS } from "@/lib/swap-refusal";
 
 export const runtime = "nodejs";
 /**
- * L1: the booking runs in after(), inside this invocation's limit: per item a chain read (plus one 2 s retry), an 800 ms price
- * bound, and the refusal-event waits capped at REFUSAL_WAIT_TOTAL_MS per delivery. 60 s is the explicit ceiling (Hobby's).
+ * L1: the booking runs in after(), inside this invocation's limit: per item a chain read (plus one 2 s retry), a price read
+ * (two 800 ms attempts and a 300 ms wait at most), and the refusal-event waits capped at REFUSAL_WAIT_TOTAL_MS per delivery. 60 s is the explicit ceiling (Hobby's).
  */
 export const maxDuration = 60;
 
-const PRICE_TIMEOUT_MS = 800;
-
-/** A price lookup that gives up after 800 ms: an unpriced swap books zero rather than losing the event. */
-const boundedPrice: PriceLookup = (mint) =>
-  Promise.race([priceUsd(mint), new Promise<null>((resolve) => setTimeout(() => resolve(null), PRICE_TIMEOUT_MS))]);
+/** The shared (memoed) price read, each attempt bounded at 800 ms, one retry after 300 ms (webhook-price.ts). */
+const webhookPrice = retryOncePrice(sharedPriceUsd);
 
 function authorized(header: string | null): boolean {
   const expected = Buffer.from(`Bearer ${config().heliusWebhookSecret}`);
@@ -54,11 +51,20 @@ export async function POST(request: Request) {
       recorded++;
       waitLeftMs -= await recordSwapRefusal(repo, { signature: String(signature ?? ""), walletPubkey, reason }, Math.max(0, Math.min(REFUSAL_WAIT_MS, waitLeftMs)));
     };
+    // A swap with no price (after the retry) is left unbooked and logged as `zero_roundup`; it shares the per-delivery event cap and wait budget.
+    const zeroRoundup = async (signature: unknown, walletPubkey: string) => {
+      if (recorded >= MAX_REFUSAL_EVENTS_PER_DELIVERY) return;
+      recorded++;
+      waitLeftMs -= await recordZeroRoundup(repo, { signature: String(signature ?? ""), walletPubkey }, Math.max(0, Math.min(REFUSAL_WAIT_MS, waitLeftMs)));
+    };
     for (const tx of items) {
       try {
-        const r = await bookSwap({ repo, tx, priceUsd: boundedPrice, ignoreFeePayer: puller, verify, stockMints });
+        const r = await bookSwap({ repo, tx, priceUsd: webhookPrice, ignoreFeePayer: puller, verify, stockMints });
         if (r.booked) console.log(`booked ${tx.signature} for ${r.walletPubkey}: ${r.roundupCents} cents`);
-        else if (r.refused) {
+        else if (r.unpriced) {
+          console.error(`webhook item unpriced ${tx.signature}: left unbooked`);
+          await zeroRoundup(tx.signature, r.walletPubkey);
+        } else if (r.refused) {
           console.error(`webhook item refused ${tx.signature}: ${r.refused}`);
           await refusal(tx.signature, r.walletPubkey ?? null, refusalReason(r.refused));
         }
