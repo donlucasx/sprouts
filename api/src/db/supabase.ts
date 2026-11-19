@@ -363,6 +363,21 @@ export class SupabaseRepo implements Repo {
     return this.many(this.db.from("events").select().eq("user_pubkey", userPubkey).in("kind", kinds).order("id", { ascending: false }).limit(limit), eventRow);
   }
 
+  async listEventsByKind(kind: T.EventKind, since: Date, limit: number) {
+    // Paged like ops/sources.ts's allRows: one read stops at PostgREST's row cap (1000).
+    const PAGE = 1000;
+    const out: T.EventRow[] = [];
+    for (let from = 0; from < limit; from += PAGE) {
+      const to = Math.min(from + PAGE, limit) - 1;
+      const { data, error } = await this.db.from("events").select().eq("kind", kind).gte("ts", since.toISOString()).order("id").range(from, to);
+      if (error) throw new Error(error.message);
+      const got = ((data ?? []) as Row[]).map(eventRow);
+      out.push(...got);
+      if (got.length < to - from + 1) break;
+    }
+    return out;
+  }
+
   async topUpKinds(signature: string, walletPubkey: string) {
     const { data, error } = await this.db.from("events").select("kind").in("kind", ["topup_sent", "topped_up"]).eq("wallet_pubkey", walletPubkey).eq("detail->>signature", signature);
     if (error) throw new Error(error.message);

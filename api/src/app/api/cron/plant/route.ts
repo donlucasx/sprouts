@@ -23,6 +23,7 @@ import { isAutoVenue } from "@/domain/venues";
 import { USDC_MINT } from "@/lib/constants";
 import { alertFounder, checkWebhookCoverage, stillRevokedCheck } from "@/lib/founder-alert";
 import { heliusEnsureAddresses, heliusRemoveAddresses, heliusWebhookAddresses } from "@/lib/helius";
+import { flushHeliusCredits, checkHeliusCredits } from "@/lib/helius-credits";
 import { config } from "@/lib/config";
 import { checkMissedSwaps, realSwapCheckReads } from "@/lib/swap-check";
 import { excludedWallets } from "@/lib/ops/sources";
@@ -163,6 +164,9 @@ export async function GET(request: Request) {
     const coverage = await step("webhook coverage", () => checkWebhookCoverage({ repo, watched: () => heliusWebhookAddresses(config().heliusWebhookId), repair: (missing) => heliusEnsureAddresses(config().heliusWebhookId, missing, { tries: 2, settleMs: 500 }), prune: (extras) => heliusRemoveAddresses(config().heliusWebhookId, extras, { tries: 2, settleMs: 500, stillRevoked: stillRevokedCheck(repo) }) }));   // short: the reconcile may run to 275 s of the 300
     // Ops #9: on-chain swaps of the last 48 h that are not in swaps (DETECTION ONLY: nothing is booked; ops light "Every swap counted").
     const swapCheck = await step("swap check", async () => checkMissedSwaps({ repo, now: new Date(), reads: await realSwapCheckReads(), exclude: excludedWallets(config().opsExcludeWallets), deadlineMs: startedMs + SWAPCHECK_DEADLINE_MS, hardStopMs: startedMs + SWAPCHECK_HARD_STOP_MS, boundAt: startedMs + SWAPCHECK_BOUND_MS }));
+    // 11-19: this run's own Helius count is written, then this cycle's total is checked (ops post once at 70% and once at 90% of 1M).
+    // After the swap check, so today's run is in the sum.
+    const credits = await step("helius credits", async () => { await flushHeliusCredits(repo, now); return checkHeliusCredits({ repo, now }); });
     await repo.cleanupExpired();
     // The first production run (2026-09-28) planted and then answered 500 here: reading rules for a made-up user violates the
     // rules -> users foreign key. The keepalive is now a read that needs no row.
@@ -170,6 +174,7 @@ export async function GET(request: Request) {
     const summary = { coins: coins ? coins.filter((c) => c.ok).length : null, splits: splits ? splits.map((s) => ({ stop: s.stop, fallback: s.fallback })) : null, applied: applied ? applied.changed.length : null, venues: venues ? venues.filter((v) => v.ok).length : null, moves: moves ? moves.proposed.length : null };
     // Review M8: expired and settled cards are logged too, so a move stuck in flight shows in the log.
     const movesLine = moves ? `${moves.proposed.length} (expired ${moves.expired.length}, settled ${moves.settled.length ? moves.settled.join(" ") : 0})` : movesOn ? "failed" : "off";
+    if (credits) console.log(`cron: helius credits ${credits.credits} this cycle (since ${credits.cycle})${credits.alerted ? `, alerted ${credits.alerted}%` : ""}`);
     console.log(`cron: venues ${summary.venues ?? "failed"}, coins ${summary.coins ?? "failed"}, splits ${summary.splits ? summary.splits.map((s) => `${s.stop}${s.fallback ? `(${s.fallback})` : ""}`).join(" ") : "failed"}, applied ${summary.applied ?? "failed"}, moves ${movesLine}, planted ${planting.planted.length}, skipped ${planting.skipped.length}, ${withdrawals ? `cranked ${withdrawals.cranked.length}, failed ${withdrawals.failed.length}, closed ${withdrawals.skipped.length}, deferred ${withdrawals.deferred.length}` : "withdrawals failed"}, reconciled ${reconciled ? `${reconciled.adjusted.length} (skipped ${reconciled.skipped.length}, deferred ${reconciled.deferred.length})` : "failed"}, off webhook ${coverage ? `${coverage.missing.length} (re-added ${coverage.repaired.length}), revoked extras ${coverage.extras.length} (removed ${coverage.removed.length})` : "failed"}, remainders ${remainders ? `${remainders.recorded} recorded of ${remainders.retried} retried (still missing ${remainders.still_missing}, deferred ${remainders.deferred})` : "failed"}, swaps missed ${swapCheck ? `${swapCheck.missed.length} (checked ${swapCheck.checked}, unchecked ${swapCheck.unchecked.length}, deferred ${swapCheck.deferred})` : "check failed"}`);
     // Kimi H2: coverage is recorded (null when its step failed) so the Daily-job light's coverage rules can fire.
     const record = { ...summary, planting, withdrawals, remainders, reconciled, coverage, swapCheck, seconds: Math.round((Date.now() - startedMs) / 1000) };

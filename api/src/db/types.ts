@@ -161,6 +161,8 @@ export type EventKind =
   | "support_message"   // 11-01: Settings > Message us (detail: topic, message, email, app, context); replies go by email
   | "remainder_unrecorded"   // audit F1 (11-13): a confirmed planting's leftover change could not be recorded (detail: plantingId, kind SKR|WSOL|USDC|legs, reason; never error text); the daily run retries it for 14 days
   | "zero_roundup"   // a webhook swap with no price after one retry was left unbooked; detail: reason "unpriced", sig (first 8 chars). Helius does not redeliver after our 200; the daily missed-swap check (detection only, 48 h window) is the net
+  | "helius_credits"   // 11-19: one function instance's count of Helius credits it spent (no user; detail: cycle "YYYY-MM-DD" of the 14th, credits)
+  | "helius_credit_alert"   // 11-19: the ops post at a level of the monthly credits went out (detail: cycle, level 70|90); once per level per cycle
   | "swap_refused";   // ops #9 (11-14): a webhook item that would have been a swap was not booked (refused by the chain check, or the booking threw); detail: reason enum, sig (first 8 chars). Routine non-swaps are never written
 
 export type EventRow = { id: number; userPubkey: string | null; walletPubkey: string | null; ts: Date; kind: EventKind; detail: unknown };

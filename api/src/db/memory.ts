@@ -331,6 +331,10 @@ export class MemoryRepo implements Repo {
     return this.events.filter((e) => e.userPubkey === userPubkey && kinds.includes(e.kind)).sort((a, b) => b.id - a.id).slice(0, limit);
   }
 
+  async listEventsByKind(kind: T.EventKind, since: Date, limit: number) {
+    return this.events.filter((e) => e.kind === kind && e.ts.getTime() >= since.getTime()).sort((a, b) => a.id - b.id).slice(0, limit).map((e) => ({ ...e }));
+  }
+
   async topUpKinds(signature: string, walletPubkey: string) {
     return this.events.filter((e) => (e.kind === "topup_sent" || e.kind === "topped_up") && e.walletPubkey === walletPubkey && (e.detail as { signature?: unknown } | null)?.signature === signature).map((e) => e.kind);
   }

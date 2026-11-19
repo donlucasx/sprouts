@@ -9,6 +9,7 @@ import { retryOncePrice, deliveryPriceLookup } from "@/lib/webhook-price";
 import { pullerSigner } from "@/lib/puller";
 import { onChainVerifier } from "@/lib/verify-swap";
 import { stockMints } from "@/lib/token-kind";
+import { countHelius } from "@/lib/helius-credits";
 import { recordSwapRefusal, recordZeroRoundup, refusalReason, MAX_REFUSAL_EVENTS_PER_DELIVERY, REFUSAL_WAIT_MS, REFUSAL_WAIT_TOTAL_MS } from "@/lib/swap-refusal";
 
 export const runtime = "nodejs";
@@ -37,6 +38,7 @@ export async function POST(request: Request) {
   if (!authorized(request.headers.get("authorization"))) return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   const body = (await request.json().catch(() => null)) as unknown;
   const items = Array.isArray(body) ? (body as HeliusEnhancedTx[]) : [];
+  countHelius(items.length);   // 11-19: Helius bills 1 credit per delivered event
 
   after(async () => {
     const repo = await getRepo();

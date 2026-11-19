@@ -1,6 +1,7 @@
 import { config } from "./config";
 import type { HeliusEnhancedTx } from "./book-swap";
 import { parsedEventToTx, PREVIEW_PAGE_SIZE, type FetchPage } from "./preview";
+import { countHelius, HELIUS_REST_COST } from "./helius-credits";
 
 const API = "https://api.helius.xyz";
 
@@ -13,6 +14,7 @@ function url(path: string, extra = "") {
 // Every transaction type, not SWAP only: a swap through a router Helius does not know parses as INITIALIZE_ACCOUNT or UNKNOWN
 // (09-30, Jupiter's Order Engine); the booking reads the legs itself.
 export async function heliusCreateWebhook(a: { webhookUrl: string; authHeader: string; accountAddresses: string[] }): Promise<{ webhookID: string }> {
+  countHelius(HELIUS_REST_COST.webhookWrite);
   const res = await fetch(url("/v0/webhooks"), {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -25,6 +27,7 @@ export async function heliusCreateWebhook(a: { webhookUrl: string; authHeader: s
 type Webhook = { webhookID: string; webhookURL: string; transactionTypes: string[]; accountAddresses: string[]; webhookType: string; authHeader?: string };
 
 async function readWebhook(webhookId: string): Promise<Webhook> {
+  countHelius(HELIUS_REST_COST.webhookRead);
   const res = await fetch(url(`/v0/webhooks/${webhookId}`));
   if (!res.ok) throw new Error(`Helius read webhook failed: ${res.status}`);
   return (await res.json()) as Webhook;
@@ -51,6 +54,7 @@ export async function heliusEnsureAddresses(webhookId: string, want: string[], o
     const have = new Set(hook.accountAddresses);
     const missing = wanted.filter((a) => !have.has(a));
     if (!missing.length) return [];
+    countHelius(HELIUS_REST_COST.webhookWrite);
     const res = await fetch(url(`/v0/webhooks/${webhookId}`), {
       method: "PUT",
       headers: { "content-type": "application/json" },
@@ -105,6 +109,7 @@ export async function heliusRemoveAddresses(
       console.error(`helius: not removing ${work.length} address(es): it would leave the webhook with none`);
       return result();
     }
+    countHelius(HELIUS_REST_COST.webhookWrite);
     const res = await fetch(url(`/v0/webhooks/${webhookId}`), {
       method: "PUT",
       headers: { "content-type": "application/json" },
@@ -151,6 +156,7 @@ export async function heliusWebhookAddresses(webhookId: string): Promise<string[
 export const heliusParsedPage: FetchPage = async (wallet, cursor) => {
   for (let attempt = 0; ; attempt++) {
     let res: Response;
+    countHelius(HELIUS_REST_COST.parsedEvents);   // each attempt, a 429'd one too
     try {
       res = await fetch(url("/v1/parsed-events/transaction-history"), {
         method: "POST",
@@ -179,6 +185,7 @@ export const heliusParsedPage: FetchPage = async (wallet, cursor) => {
 export async function heliusParseTransactions(signatures: string[], opts: { timeoutMs?: number } = {}): Promise<import("./book-swap").HeliusEnhancedTx[]> {
   if (signatures.length > 100) throw new Error("Helius parse takes at most 100 signatures");
   let res: Response;
+  countHelius(HELIUS_REST_COST.parseTransactions);
   try {
     res = await fetch(url("/v0/transactions"), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ transactions: signatures }), signal: AbortSignal.timeout(opts.timeoutMs ?? 15_000) });
   } catch (e) {

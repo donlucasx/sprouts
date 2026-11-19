@@ -4,6 +4,7 @@ import {
 } from "@solana/kit";
 import { config } from "./config";
 import { redactError } from "./redact";
+import { countHelius, rpcCreditCost } from "./helius-credits";
 
 let cached: Rpc<SolanaRpcApi> | null = null;
 
@@ -20,15 +21,24 @@ export const RETRY_AFTER_CAP_MS = 2_000;
 
 export type RetryOptions = { sleep?: (ms: number) => Promise<void>; random?: () => number };
 
-/** The HTTP transport for `url`: 429s retried (withRetryOn429), then any error redacted. Exported for tests. */
+/** The HTTP transport for `url`: each attempt counted (Helius credits), 429s retried (withRetryOn429), then any error redacted. Exported for tests. */
 export function rpcTransport(url: string, opts: RetryOptions = {}): RpcTransport {
-  const retrying = withRetryOn429(createDefaultRpcTransport({ url }), opts);
+  const retrying = withRetryOn429(countingTransport(createDefaultRpcTransport({ url })), opts);
   return (async (req: Parameters<RpcTransport>[0]) => {
     try {
       return await retrying(req);
     } catch (e) {
       throw redactError(e);
     }
+  }) as RpcTransport;
+}
+
+/** 11-19: counts each request it sends by method (rpcCreditCost); inside the 429 retry, since each attempt is billed. */
+export function countingTransport(inner: RpcTransport): RpcTransport {
+  return (async (req: Parameters<RpcTransport>[0]) => {
+    const method = (req.payload as { method?: unknown } | null)?.method;
+    countHelius(rpcCreditCost(typeof method === "string" ? method : "?"));
+    return inner(req);
   }) as RpcTransport;
 }
 

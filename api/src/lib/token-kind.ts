@@ -1,4 +1,5 @@
 import { config } from "./config";
+import { countingFetch } from "./helius-credits";
 import { STABLES, MAJORS, LSTS } from "@/domain/classify";
 
 /**
@@ -19,7 +20,7 @@ type Fetch = (url: string, init: RequestInit) => Promise<{ json(): Promise<unkno
  * The subset of `mints` that are tokenized shares. Known coins are never asked about. Any failure (timeout, RPC error, odd
  * answer) returns what is already known: the swap is then labeled as before, and booking is never held up by a label.
  */
-export async function stockMints(mints: string[], fetchImpl: Fetch = fetch, rpcUrl?: string): Promise<ReadonlySet<string>> {
+export async function stockMints(mints: string[], fetchImpl: Fetch = countingFetch(), rpcUrl?: string): Promise<ReadonlySet<string>> {
   const ask = [...new Set(mints)].filter((m) => !cache.has(m) && !STABLES.has(m) && !MAJORS.has(m) && !LSTS.has(m));
   if (ask.length > 0) {
     try {

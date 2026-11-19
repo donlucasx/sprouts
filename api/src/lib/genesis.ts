@@ -1,4 +1,5 @@
 import { Connection, PublicKey } from "@solana/web3.js";
+import { countingFetch } from "./helius-credits";
 import { TOKEN_2022_PROGRAM_ID, unpackAccount, unpackMint, getMetadataPointerState, getTokenGroupMemberState } from "@solana/spl-token";
 
 /** Solana Mobile's Genesis Token group: the same address serves as the metadata pointer target and the group. */
@@ -19,7 +20,7 @@ export function checkGenesisAccounts(accounts: ParsedAccount[]): { mint: string 
 
 /** Server-side only. Lists the wallet's Token-2022 accounts, reads their mints in batches, and applies the check. */
 export async function verifyGenesisHolder(rpcUrl: string, owner: string): Promise<{ mint: string } | null> {
-  const conn = new Connection(rpcUrl, "confirmed");
+  const conn = new Connection(rpcUrl, { commitment: "confirmed", fetch: countingFetch() });   // 11-19: each call counted (Helius credits)
   const { value } = await conn.getTokenAccountsByOwner(new PublicKey(owner), { programId: TOKEN_2022_PROGRAM_ID });
   const held = value.map((v) => unpackAccount(v.pubkey, v.account, TOKEN_2022_PROGRAM_ID)).filter((acc) => acc.amount > 0n);
   const parsed: ParsedAccount[] = [];
@@ -69,7 +70,7 @@ export function parseSearchAssets(result: unknown): SagaAsset[] {
 }
 
 /** Server-side only. The holder check Solana Mobile documents: DAS `searchAssets` by owner within the verified collection (Helius skips unverified collections). */
-export async function verifySagaHolder(rpcUrl: string, owner: string, fetchImpl: typeof fetch = fetch): Promise<{ mint: string } | null> {
+export async function verifySagaHolder(rpcUrl: string, owner: string, fetchImpl: typeof fetch = countingFetch()): Promise<{ mint: string } | null> {
   const body = { jsonrpc: "2.0", id: "genesis", method: "searchAssets", params: { ownerAddress: owner, grouping: ["collection", SAGA_COLLECTION], page: 1, limit: 50 } };
   const res = await fetchImpl(rpcUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
   if (!res.ok) throw new Error(`searchAssets answered ${res.status}`);
