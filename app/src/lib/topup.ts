@@ -1,5 +1,5 @@
 import type { MeResponse, WalletPause } from './api'
-import { REFUSED, SignRefused, WSOL_MINT, type SignFlow } from './sign'
+import { REFUSED, SignRefused, topUpSourceAllowed, WSOL_MINT, type SignFlow } from './sign'
 import { DROPPED_NOTHING_SENT } from './wallet-errors'
 
 /**
@@ -55,11 +55,11 @@ export function pickerSources(sources: readonly TopUpSource[]): TopUpSource[] {
 
 /**
  * What TopUpButton shows. No list, or an empty one (an older API, or a read that listed nothing): no picker, SOL, `offers` (0.1.11's
- * topUpCents; null = every amount). A list: its coins with amounts, at most 3 (pickerSources); the picked one (else defaultSource) and
+ * topUpCents; null = every amount). A list: its coins with amounts (only coins the phone would sign: a buggy or hostile answer never shows the rest), at most 3 (pickerSources); the picked one (else defaultSource) and
  * its amounts; none with amounts = [] (the address to send USDC to).
  */
 export function topUpChoices(sources: readonly TopUpSource[] | null | undefined, offers: readonly number[] | null | undefined, pickedMint: string | null) {
-  const usable = sources?.length ? pickerSources(sources.filter((s) => s.offers.length > 0)) : null
+  const usable = sources?.length ? pickerSources(sources.filter((s) => topUpSourceAllowed(s.mint) && s.offers.length > 0)) : null
   const source = usable ? (usable.find((s) => s.mint === pickedMint) ?? defaultSource(usable)) : null
   const choices: readonly number[] = usable ? (source?.offers ?? []) : (offers ?? TOPUP_CHOICES)
   return { usable, source, symbol: source?.symbol ?? 'SOL', choices }

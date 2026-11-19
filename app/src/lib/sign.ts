@@ -415,6 +415,10 @@ const TOPUP_FOREIGN_MINTS: readonly string[] = Object.freeze([
   JLEND.SOL_LEND.fTokenMint,
 ])
 
+/** Whether the phone could ever sign a top-up that swaps this mint: SOL (the wSOL entry) and SKR, any other coin not on the refusal list. */
+export const topUpSourceAllowed = (mint: string): boolean =>
+  mint === WSOL_MINT || (mint !== USDC_MINT && (mint === SKR_MINT || !TOPUP_FOREIGN_MINTS.includes(mint)))
+
 const u16At = (d: Uint8Array, at: number) => new DataView(d.buffer, d.byteOffset, d.byteLength).getUint16(at, true)
 const u32At = (d: Uint8Array, at: number) => new DataView(d.buffer, d.byteOffset, d.byteLength).getUint32(at, true)
 const listIs = (ix: Ix, expected: readonly string[]) => ix.accounts.length === expected.length && expected.every((e, i) => ix.accounts[i] === e)

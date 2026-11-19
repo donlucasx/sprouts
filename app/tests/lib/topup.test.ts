@@ -182,6 +182,19 @@ describe('any-coin top-up (Task 3): the source coin', () => {
     expect(pickerSources([])).toEqual([])
   })
 
+  it('the picker drops any coin the phone would refuse to sign (cbBTC, a K-Lend receipt, USDC)', () => {
+    const c = (symbol: string, mint: string, valueCents: number) => ({ mint, symbol, decimals: 6, valueCents, offers: [500] })
+    const list = [
+      c('USDC', 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', 9_000),
+      c('cbBTC', 'cbbtcf3aa214zXHbiAZQwf4122FBYbraNdFqgw4iMij', 8_000),
+      c('kUSDC', 'B8V6WVjPxW1UGwVDfxH2d2r8SyT4cqn7dQRK6XneVa7D', 7_000),
+      c('SKR', SKR, 800),
+      c('SOL', WSOL, 600),
+    ]
+    expect(topUpChoices(list, null, null).usable?.map((s) => s.symbol)).toEqual(['SOL', 'SKR'])
+    expect(topUpChoices(list.slice(0, 3), [500], null)).toMatchObject({ usable: [], choices: [] })
+  })
+
   it("an empty topUpSources is read as absent: SOL and topUpCents as in 0.1.11, never the send-USDC view (review fix round 1, finding 2)", () => {
     for (const sources of [[], null, undefined]) {
       expect(topUpChoices(sources, [500, 1_000], null)).toEqual({ usable: null, source: null, symbol: 'SOL', choices: [500, 1_000] })

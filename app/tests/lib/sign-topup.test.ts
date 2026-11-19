@@ -242,6 +242,13 @@ describe("topup from a token: this wallet's own token account to USDC, one Jupit
     await refused(wire(tbuilt(), USER), 'plan', flow)
   })
 
+  it('refuses a token top-up with a second USDC account create before the swap', async () => {
+    const ixs = tbuilt()
+    const i = ixs.findIndex((ix) => ix.programAddress === L.ATA)
+    expect(i).toBeGreaterThanOrEqual(0)
+    await trefused(wire([...ixs.slice(0, i + 1), ixs[i], ...ixs.slice(i + 1)], USER), 'plan')
+  })
+
   it('refuses inputMint = USDC, = wSOL (the SOL path), = a garden coin (cbBTC) or a receipt (K-Lend USDC)', async () => {
     const any: UsdPriceSource = async () => ({ usd: 1, decimals: 6 })
     for (const m of [L.USDC, L.WSOL, 'cbbtcf3aa214zXHbiAZQwf4122FBYbraNdFqgw4iMij', 'B8V6WVjPxW1UGwVDfxH2d2r8SyT4cqn7dQRK6XneVa7D'])
