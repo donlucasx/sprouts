@@ -2368,7 +2368,8 @@ describe("cap carry: round-ups past the daily cap wait for the next days (owner 
   });
 });
 
-import { plantingTarget, SplitUnder100Error } from "@/lib/plant-run";
+import { plantingTarget, openingTarget, SplitUnder100Error } from "@/lib/plant-run";
+import { rulesRowToRules } from "@/db/types";
 import { ASSETS } from "@/domain/coins";
 import type { Pins } from "@/domain/roundup";
 
@@ -2568,6 +2569,82 @@ describe("slow opening (season 11-23): one new coin per $5 a user has planted, a
     expect(r.skipped).toEqual([{ wallet: "W", reason: "leg failed" }]);
     expect(repo.events.map((e) => e.kind)).toContain("leg_skipped");
     expect(repo.events.map((e) => e.kind)).not.toContain("leg_fallback");
+  });
+
+  it("review 1: no SKR fallback past the limit when nothing waits: hSOL $3 planted, its build fails, no SKR opens", async () => {
+    const repo = await seeded([83, 62, 70], { planted: true });
+    await repo.bumpLedger("W", "hSOL", 300);
+    await repo.saveRules("U", { managed: false, pins: { stORE: 0 }, allocation: split({ hSOL: 100 }) });
+    const builds: BuildArgs[] = [];
+    const base = fakeChain();
+    const r = await runPlanting({ repo, now: NOW, chain: fakeChain({ buildPlantingTx: async (a) => { builds.push(a); if (a.asset === "hSOL") throw new Error("Jupiter: no route"); return base.buildPlantingTx(a); } }) });
+    expect(builds.map((b) => b.asset)).toEqual(["hSOL"]);
+    expect(r.skipped).toEqual([{ wallet: "W", reason: "leg failed" }]);
+    expect(repo.events.map((e) => e.kind)).not.toContain("leg_fallback");
+  });
+
+  it("review 1: one wallet's unconfirmed SKR fallback uses the free slot; the user's second wallet in the same run opens no other coin", async () => {
+    const repo = await seeded([83, 62, 70], { planted: true });
+    await repo.bumpLedger("W", "hSOL", 500);   // $5 planted, hSOL open: one free slot (cbBTC may open)
+    await repo.saveRules("U", { managed: false, pins: { stORE: 0 }, allocation: split({ cbBTC: 60, hSOL: 40 }) });
+    await repo.addWallet({ pubkey: "W2", userPubkey: "U", delegationPda: "D2", dailyCapCents: 500 });
+    await swap(repo, "w2", "W2", 215);
+    const builds: BuildArgs[] = [];
+    const base = fakeChain();
+    const chain = fakeChain({
+      buildPlantingTx: async (a) => { builds.push(a); if (a.delegator === "W" && a.asset === "cbBTC") throw new Error("Jupiter: no route"); return base.buildPlantingTx(a); },
+      sendPlanting: async () => { throw new Error("timeout"); },   // unconfirmed: no ledger key until the next run
+    });
+    await runPlanting({ repo, now: NOW, chain });
+    expect(builds.filter((b) => b.delegator === "W").map((b) => b.asset)).toEqual(["cbBTC", "SKR"]);   // the fallback took the slot
+    expect(builds.filter((b) => b.delegator === "W2").map((b) => b.asset)).not.toContain("cbBTC");     // no third kind
+    expect(builds.filter((b) => b.delegator === "W2").length).toBe(1);
+  });
+
+  it("review 2: the user's wallets unreadable is a skip, never a build failure toward the outage stop", async () => {
+    const repo = await seeded([83, 62, 70], { planted: true });
+    vi.spyOn(repo, "listWalletsOf").mockRejectedValue(new Error("db down"));
+    const builds: BuildArgs[] = [];
+    const r = await runPlanting({ repo, now: NOW, chain: recording(builds) });
+    expect(builds).toEqual([]);
+    expect(r.skipped).toEqual([{ wallet: "W", reason: "wallets unreadable" }]);
+    expect(repo.events.map((e) => e.kind)).not.toContain("pull_failed");
+    expect(repo.plantings.size).toBe(1);   // only the past one
+    expect((await repo.unplantedSwaps("W")).length).toBe(3);
+  });
+
+  it("review 3a: stORE's 10% default on, a new SKR-only user under $5: SKR plants, stORE waits for $5, nothing else opens", async () => {
+    const repo = await seeded([100]);
+    await repo.saveRules("U", { plantThresholdCents: 100 });
+    const builds: BuildArgs[] = [];
+    for (let d = 0; d < 4; d++) {
+      const day = new Date(NOW.getTime() + d * 86_400_000);
+      if (d > 0) await swap(repo, `a${d}`, "W", 100, day);
+      await runPlanting({ repo, now: day, chain: recording(builds) });
+    }
+    expect(builds.map((b) => b.asset)).toEqual(["SKR", "SKR", "SKR", "SKR"]);
+    expect((await repo.getWallet("W"))?.ledgerCents).toEqual({ SKR: 400 });
+    const wallets = await repo.listWalletsOf("U");
+    expect(openingTarget({ ...rulesRowToRules(await repo.getRules("U")) }, [], wallets.map((w) => w.ledgerCents)).opening?.waiting).toEqual([{ asset: "stORE", afterCents: 500 }]);
+    await swap(repo, "a4", "W", 100, new Date(NOW.getTime() + 4 * 86_400_000));
+    await runPlanting({ repo, now: new Date(NOW.getTime() + 4 * 86_400_000), chain: recording(builds) });
+    await swap(repo, "a5", "W", 100, new Date(NOW.getTime() + 5 * 86_400_000));
+    await runPlanting({ repo, now: new Date(NOW.getTime() + 5 * 86_400_000), chain: recording(builds) });
+    expect(builds.map((b) => b.asset).slice(4)).toEqual(["SKR", "stORE"]);   // $5 planted after day 5's SKR: stORE opens
+  });
+
+  it("review 3b: a two-wallet user plants $3 + $2 across the wallets; the next run opens the waiting coin", async () => {
+    const repo = await seeded([300]);
+    await repo.addWallet({ pubkey: "W2", userPubkey: "U", delegationPda: "D2", dailyCapCents: 500 });
+    await swap(repo, "w2", "W2", 200);
+    await repo.saveRules("U", { managed: false, pins: { stORE: 0 }, allocation: split({ SKR: 50, hSOL: 50 }) });
+    const builds: BuildArgs[] = [];
+    await runPlanting({ repo, now: NOW, chain: recording(builds) });
+    expect(builds.map((b) => [b.delegator, b.asset])).toEqual([["W", "SKR"], ["W2", "SKR"]]);
+    const day2 = new Date(NOW.getTime() + 86_400_000);
+    await swap(repo, "w2b", "W2", 200, day2);
+    await runPlanting({ repo, now: day2, chain: recording(builds) });
+    expect(builds.map((b) => b.asset)).toEqual(["SKR", "SKR", "hSOL"]);
   });
 
   it("switch off and on: with the only open coin off SKR opens (never stalled); switched back on, cbBTC plants again at once", async () => {

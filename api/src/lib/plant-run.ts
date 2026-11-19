@@ -5,7 +5,7 @@ import type { CarryKind, PlantingLegRow, PlantingRow, VenueDayRow, WalletRow } f
 import { rulesRowToRules } from "@/db/types";
 import { alertFounder } from "./founder-alert";
 import { pickAsset, type Asset, type Ledger } from "@/domain/allocation";
-import { coinOpening, type Opening } from "@/domain/opening";
+import { coinOpening, OPEN_STEP_CENTS, type Opening } from "@/domain/opening";
 import { ASSETS, COINS, LEND_ASSETS, isLendAsset, type LendAsset, type LiveAsset, type Split } from "@/domain/coins";
 import { addDays, dayOf } from "@/domain/day";
 import { capCarryClaim, capLeftCents, coveredOldestFirst, plantAmountCents } from "@/domain/cap";
@@ -807,13 +807,21 @@ async function plantOneOrThrow(a: RunArgs, w: WalletRow, ctx: RunCtx): Promise<P
   // A5 + R2-N3 (11-15): the target always sums to 100 (redistributeDisabled conserves the split). A row that does not is a broken
   // invariant: the planting is skipped here (no pull, nothing claimed), never thrown on to plantOne's "build failed" outage count.
   // Slow opening (season 11-23): the user's open kinds and planted dollars come from every wallet's ledger, plus the kinds this run
-  // already sent for the user (their ledger keys appear only at confirmation). pickAsset below stays per wallet.
-  const ledgers: Ledger[] = (await a.repo.listWalletsOf(w.userPubkey)).map((x) => x.ledgerCents);
+  // already sent for the user (their ledger keys appear only at confirmation). pickAsset below stays per wallet. A failed read is a
+  // skip (nothing pulled, nothing claimed), not a build failure toward the outage stop: the wallet plants on the next run.
+  let ledgers: Ledger[];
+  try {
+    ledgers = (await a.repo.listWalletsOf(w.userPubkey)).map((x) => x.ledgerCents);
+  } catch (e) {
+    console.error(`planting for ${w.pubkey} skipped: the user's wallets could not be read (${message(e)}); the next run plants`);
+    return { wallet: w.pubkey, reason: "wallets unreadable" };
+  }
   for (const k of ctx.opened.get(w.userPubkey) ?? []) ledgers.push({ [k]: 0 });
   let target: Split | null;
   let shut: readonly LiveAsset[] = [];
+  let opening: Opening | null = null;
   try {
-    ({ target, shut } = openingTarget(rules, disabled, ledgers));
+    ({ target, shut, opening } = openingTarget(rules, disabled, ledgers));
   } catch (e) {
     if (!(e instanceof SplitUnder100Error)) throw e;
     const line = `ALERT: planting for ${w.pubkey} skipped: ${e.message}`;
@@ -901,8 +909,10 @@ async function plantOneOrThrow(a: RunArgs, w: WalletRow, ctx: RunCtx): Promise<P
     }
     // Review M4: a leashed user never falls back to SKR while leg 0 has no price source (no PYTH_API_KEY, R324): it would be skipped there anyway.
     // 11-15: a user who switched SKR off never gets it as a fallback; the failed leg waits for the next run.
-    // Season 11-23: a SKR that waits to open (slow opening) is never a fallback either.
-    if (isLendAsset(failed) || disabled.includes("SKR") || !isOn(rules.pins, "SKR") || shut.includes("SKR") || (leashed && !skrPriceSource())) {
+    // Season 11-23 (slow opening): a SKR that waits to open is never a fallback, nor a SKR not open yet when the user has no free
+    // slot (open kinds x $5 above what they planted): the fallback would open a kind past the limit.
+    const skrPastLimit = !!opening && !opening.open.includes("SKR") && opening.open.length * OPEN_STEP_CENTS > opening.plantedCents;
+    if (isLendAsset(failed) || disabled.includes("SKR") || !isOn(rules.pins, "SKR") || shut.includes("SKR") || skrPastLimit || (leashed && !skrPriceSource())) {
       await legSkipped(a, w, failed, err);
       return null;
     }
@@ -1038,7 +1048,8 @@ async function plantOneOrThrow(a: RunArgs, w: WalletRow, ctx: RunCtx): Promise<P
   // From here the transaction may be on chain: an error (a database write, the confirm, the share read) is "send unknown",
   // never "build failed" (09-29), so it does not count toward the outage stop; the row stays `sent` for the next run to reconcile.
   sendStarted = true;
-  ctx.opened.set(w.userPubkey, (ctx.opened.get(w.userPubkey) ?? new Set<LiveAsset>()).add(asset));
+  // Slow opening: a send that did not fail on chain may have opened this kind; the rest of this user's run counts it as open.
+  const markOpened = () => void ctx.opened.set(w.userPubkey, (ctx.opened.get(w.userPubkey) ?? new Set<LiveAsset>()).add(asset));
   try {
     try {
       await a.chain.sendPlanting(built);
@@ -1056,10 +1067,12 @@ async function plantOneOrThrow(a: RunArgs, w: WalletRow, ctx: RunCtx): Promise<P
       if (status === "pending") {
         // Left as `sent` with its round-ups claimed; the next run reconciles it by signature instead of pulling again.
         console.error(`planting for ${w.pubkey} sent but unconfirmed (${built.signature}): ${message(e)}; reconciled next run${built.postedPrice ? "; its posted price account is NOT reclaimed (the planting may still land): reclaim it by hand from the build's cleanup" : ""}`);
+        markOpened();
         await a.repo.addEvent({ userPubkey: w.userPubkey, walletPubkey: w.pubkey, kind: "pull_failed", detail: { stage: "confirm", err: message(e), signature: built.signature } });
         return { wallet: w.pubkey, reason: "send unknown" };
       }
     }
+    markOpened();
     await bookConfirmed(a.repo, a.chain, planting, outBefore);
     await tidy();
     return { wallet: w.pubkey, asset, pullCents: amount.pullCents, signature: built.signature };

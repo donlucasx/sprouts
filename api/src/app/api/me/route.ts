@@ -14,7 +14,7 @@ import { sharedSharePrice, sharedPriceUsd, sharedStoreRedeemRate, sharedLeashCon
 import { TERMS_VERSION } from "@/lib/terms";
 import { carryMoves, moveCarriesFor } from "@/lib/moves";
 import { leashAllowedFor, userRouting } from "@/lib/user-routing";
-import { ASSETS, COINS, type LiveAsset } from "@/domain/coins";
+import { ASSETS, COINS, type LiveAsset, type Split } from "@/domain/coins";
 import { pickAsset } from "@/domain/allocation";
 import { potInputs, potFromInputs, countedPicks } from "@/lib/pot";
 import { capLeftCents } from "@/domain/cap";
@@ -23,8 +23,7 @@ import { STOP_DEFAULTS } from "@/domain/split";
 import { dayOf } from "@/domain/day";
 import { pauseCauseOf, PAUSE_EVENT_KINDS } from "@/domain/pause-cause";
 import { NETWORK_FEE_CENTS, openingTarget, SplitUnder100Error } from "@/lib/plant-run";
-import type { Split } from "@/domain/coins";
-import type { Opening } from "@/domain/opening";
+import { coinOpening, type Opening } from "@/domain/opening";
 import { plantThresholdFor } from "@/domain/threshold";
 import { reminderFor } from "@/domain/reminders";
 import { CURRENT_MESSAGE } from "@/domain/messages";
@@ -94,7 +93,7 @@ export async function GET(request: Request) {
     if (!(e instanceof SplitUnder100Error)) throw e;
   }
   const nextTarget = opened.target ?? rules.allocation;
-  const opening = { plantedCents: opened.opening?.plantedCents ?? wallets.reduce((s, w) => s + Object.values(w.ledgerCents).reduce<number>((t, v) => t + (v ?? 0), 0), 0), waiting: opened.opening?.waiting ?? [] };
+  const opening = { plantedCents: (opened.opening ?? coinOpening(wallets.map((w) => w.ledgerCents), rules.allocation)).plantedCents, waiting: opened.opening?.waiting ?? [] };
   // R2-N1 (11-15): an empty target (every coin off) reads as its largest share, never null on the wire.
   const nextAsset = pickAsset(ledgerWallet?.ledgerCents ?? {}, nextTarget) ?? ASSETS.reduce((b, c) => (rules.allocation[c] > rules.allocation[b] ? c : b));
   // Contracts 5.2: legsEnabled is null for a user with no leashed wallet; [] when the leash config cannot be read (nothing is enabled we can show).
