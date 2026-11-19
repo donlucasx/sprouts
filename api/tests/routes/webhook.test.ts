@@ -127,6 +127,19 @@ describe("POST /api/webhooks/helius", () => {
     expect(repo.events.filter((e) => e.kind === "zero_roundup").length).toBeGreaterThanOrEqual(6);
   });
 
+  const swapOf = (mint: string, i: number) => ({ ...unpricedTx(), signature: sigOf(i), tokenTransfers: tx.tokenTransfers.map((t) => ({ ...t, mint: t.mint === USDC ? mint : t.mint })), events: { swap: { ...tx.events!.swap, tokenInputs: tx.events!.swap!.tokenInputs!.map((t) => ({ ...t, mint: t.mint === USDC ? mint : t.mint })) } } }) as HeliusEnhancedTx;
+
+  it("the breaker is per coin: two swaps of an unpriceable coin X then a swap of a priceable coin Y in one delivery books Y, and X is read at most twice (4 Jupiter calls: attempt + retry each) (security review)", async () => {
+    getTransactionMock.mockResolvedValueOnce(onChain(now, "UnpriceableX")).mockResolvedValueOnce(onChain(now, "UnpriceableX")).mockResolvedValueOnce(onChain(now, "UnpriceableX")).mockResolvedValueOnce(onChain(now, "PricedY"));
+    priceMock.mockImplementation(async (m) => (m === "PricedY" ? 0.00002 : null));
+    await deliverMany([swapOf("UnpriceableX", 0), swapOf("UnpriceableX", 1), swapOf("UnpriceableX", 2), swapOf("PricedY", 3)]);
+    const booked = await repo.unplantedSwaps("WALLET");
+    expect(booked.map((b) => b.signature)).toEqual([sigOf(3)]);
+    expect(priceMock.mock.calls.filter(([m]) => m === "UnpriceableX").length).toBeLessThanOrEqual(4);   // 2 reads, each an attempt plus its retry
+    expect(priceMock.mock.calls.some(([m]) => m === "PricedY")).toBe(true);
+    expect(repo.events.filter((e) => e.kind === "zero_roundup")).toHaveLength(3);
+  });
+
   it("an unpriced swap, then the same signature delivered again with a price, books exactly once", async () => {
     getTransactionMock.mockResolvedValue(onChain(now, "Unknown1"));
     const u = unpricedTx();

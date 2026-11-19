@@ -5,7 +5,7 @@ import { config } from "@/lib/config";
 import { bookSwap, type HeliusEnhancedTx } from "@/lib/book-swap";
 import { sharedPriceUsd } from "@/lib/shared-reads";
 import { priceUsd } from "@/lib/jupiter";
-import { retryOncePrice } from "@/lib/webhook-price";
+import { retryOncePrice, deliveryPriceLookup } from "@/lib/webhook-price";
 import { pullerSigner } from "@/lib/puller";
 import { onChainVerifier } from "@/lib/verify-swap";
 import { stockMints } from "@/lib/token-kind";
@@ -20,8 +20,6 @@ export const maxDuration = 60;
 
 /** The shared (memoed) price read, each attempt bounded at 800 ms, one retry after 300 ms (webhook-price.ts); the retry reads fresh (priceUsd), since the memo would hand back a hung first attempt. */
 const webhookPrice = retryOncePrice(sharedPriceUsd, { retryRead: priceUsd });
-/** After this many unpriced items in a row within one delivery, the rest of that delivery stops reading prices (Jupiter is down). */
-const PRICE_DOWN_AFTER = 2;
 
 function authorized(header: string | null): boolean {
   const expected = Buffer.from(`Bearer ${config().heliusWebhookSecret}`);
@@ -60,14 +58,11 @@ export async function POST(request: Request) {
       recorded++;
       waitLeftMs -= await recordZeroRoundup(repo, { signature: String(signature ?? ""), walletPubkey }, Math.max(0, Math.min(REFUSAL_WAIT_MS, waitLeftMs)));
     };
-    // Per-delivery only (no negative cache: the display routes share the memo). Reset by any booked swap.
-    let unpricedRun = 0;
-    const deliveryPrice = async (mint: string) => (unpricedRun >= PRICE_DOWN_AFTER ? null : webhookPrice(mint));
+    // Per-delivery only (no negative cache: the display routes share the memo). The breaker is per mint, plus a 40 s read-time backstop.
+    const deliveryPrice = deliveryPriceLookup(webhookPrice);
     for (const tx of items) {
       try {
         const r = await bookSwap({ repo, tx, priceUsd: deliveryPrice, ignoreFeePayer: puller, verify, stockMints });
-        if (r.booked) unpricedRun = 0;
-        else if (r.unpriced) unpricedRun++;
         if (r.booked) console.log(`booked ${tx.signature} for ${r.walletPubkey}: ${r.roundupCents} cents`);
         else if (r.unpriced) {
           console.error(`webhook item unpriced ${tx.signature}: left unbooked`);

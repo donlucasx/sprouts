@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { cached, clearSharedReads } from "@/lib/memo";
-import { retryOncePrice, WEBHOOK_PRICE_TIMEOUT_MS, WEBHOOK_PRICE_RETRY_MS } from "@/lib/webhook-price";
+import { deliveryPriceLookup, retryOncePrice, WEBHOOK_PRICE_TIMEOUT_MS, WEBHOOK_PRICE_RETRY_MS } from "@/lib/webhook-price";
 
 const noSleep = async () => {};
 
@@ -81,5 +81,35 @@ describe("retryOncePrice", () => {
       clearSharedReads();
       vi.useRealTimers();
     }
+  });
+});
+
+describe("deliveryPriceLookup", () => {
+  it("a mint that failed twice reads null at once; other mints are still read", async () => {
+    const read = vi.fn<(m: string) => Promise<number | null>>(async (m) => (m === "Y" ? 5 : null));
+    const price = deliveryPriceLookup(read);
+    expect(await price("X")).toBeNull();
+    expect(await price("X")).toBeNull();
+    expect(await price("X")).toBeNull();
+    expect(await price("Y")).toBe(5);
+    expect(read.mock.calls.filter(([m]) => m === "X")).toHaveLength(2);
+  });
+
+  it("a throw counts as a failure; a success resets that mint's count", async () => {
+    const read = vi.fn<(m: string) => Promise<number | null>>().mockRejectedValueOnce(new Error("x")).mockResolvedValueOnce(7).mockResolvedValueOnce(null).mockResolvedValueOnce(9);
+    const price = deliveryPriceLookup(read);
+    expect(await price("M")).toBeNull();
+    expect(await price("M")).toBe(7);
+    expect(await price("M")).toBeNull();
+    expect(await price("M")).toBe(9);
+  });
+
+  it("backstop: after the budget is spent on reads, no new read starts (every mint, including new ones, reads null)", async () => {
+    let t = 0;
+    const read = vi.fn<(m: string) => Promise<number | null>>(async () => { t += 25_000; return null; });
+    const price = deliveryPriceLookup(read, { now: () => t });
+    await price("A"); await price("B");   // 50 s spent
+    expect(await price("C")).toBeNull();
+    expect(read).toHaveBeenCalledTimes(2);
   });
 });
