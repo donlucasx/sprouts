@@ -126,6 +126,17 @@ describe("POST /api/topup/build (the SOL top-up's unsigned transaction)", () => 
     expect(simulateMock).not.toHaveBeenCalled();
   });
 
+  it("a Jupiter 429 on the quote (after retries) is the usual 'no route' 503, nothing asked of the wallet", async () => {
+    const st = vi.spyOn(globalThis, "setTimeout").mockImplementation(((fn: () => void) => { fn(); return 0 as never; }) as never);
+    try {
+      fetchMock.mockImplementationOnce(async () => new Response("limit", { status: 429 })).mockImplementationOnce(async () => new Response("limit", { status: 429 })).mockImplementationOnce(async () => new Response("limit", { status: 429 }));
+      const res = await call(build, {});
+      expect(res.status).toBe(503);
+      expect((await res.json()).error).toMatch(/could not get a SOL to USDC price just now\. Nothing was asked of your wallet/);
+      expect(simulateMock).not.toHaveBeenCalled();
+    } finally { st.mockRestore(); }
+  });
+
   it("refuses Jupiter's plain ExactOut route (the wallet among the AMM's accounts), before building anything", async () => {
     fetchMock.mockImplementationOnce(async () => new Response(JSON.stringify(plain.quote))).mockImplementationOnce(async () => new Response(JSON.stringify(plain.swapInstructions)));
     const res = await call(build, {});

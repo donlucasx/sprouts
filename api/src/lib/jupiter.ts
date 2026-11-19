@@ -229,6 +229,7 @@ export async function jupiterFetch(
     const res = await fetch(url, { ...init, signal: timeout() });
     if (res.status !== 429) return res;
     if (attempt >= JUPITER_RETRY_MS.length) throw new JupiterRateLimited(`Jupiter ${what} failed: 429 ${(await res.text().catch(() => "")).slice(0, 200)}`);
+    await res.text().catch(() => "");   // free the socket before waiting (an 8-worker burst would otherwise hold them until GC)
     const ra = Number(res.headers.get("retry-after"));
     const wait = Number.isFinite(ra) && ra > 0 ? Math.min(ra * 1000, RETRY_AFTER_CAP_MS) : Math.round(JUPITER_RETRY_MS[attempt] * (0.5 + Math.random()));
     await sleep(wait);

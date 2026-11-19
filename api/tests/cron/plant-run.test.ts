@@ -634,6 +634,7 @@ describe("runPlanting", () => {
     expect(r.skipped.every((s) => s.reason === "jupiter busy")).toBe(true);
     expect(repo.events.filter((e) => e.kind === "run_stopped").length).toBe(0);
     expect(repo.events.filter((e) => e.kind === "pull_failed" && (e.detail as { err?: string }).err === "jupiter 429").length).toBe(12);
+    for (let i = 0; i < 12; i++) expect(await repo.unplantedSwaps(`W${i}`)).toHaveLength(1);
   });
 
   it("a 429 between two build failures neither counts nor resets", async () => {
@@ -1440,6 +1441,14 @@ describe("Task 11 carry-ins (T7/T8/T9 reviews)", () => {
     const r = await runPlanting({ repo, now: NOW, chain: recording(builds, { readLeashConfig: async () => leashCfg([0, 6]), simulatePlanting: async (b) => (++sims === 1 ? settleMismatch : base.simulatePlanting(b)) }) });
     expect(builds.map((b) => b.asset)).toEqual(["hSOL", "hSOL"]);
     expect(r.planted).toEqual([{ wallet: "W", asset: "hSOL", pullCents: 215, signature: "sig2" }]);
+  });
+
+  it("a 429 building a leashed SKR leg is 'jupiter busy' with the 429 event, not a skipped leg", async () => {
+    const repo = await leashed();
+    const r = await runPlanting({ repo, now: NOW, chain: fakeChain({ readLeashConfig: async () => leashCfg([0]), buildPlantingTx: async () => { throw new JupiterRateLimited("Jupiter quote failed: 429 x"); } }) });
+    expect(r.skipped).toEqual([{ wallet: "W", reason: "jupiter busy" }]);
+    expect(repo.events.some((e) => e.kind === "leg_skipped")).toBe(false);
+    expect(repo.events.some((e) => e.kind === "pull_failed" && (e.detail as { err?: string }).err === "jupiter 429")).toBe(true);
   });
 
   it("6007 twice: the leg is skipped (no SKR fallback) and a repeat on a later run raises an alert", async () => {

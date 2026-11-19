@@ -891,7 +891,7 @@ async function plantOneOrThrow(a: RunArgs, w: WalletRow, ctx: RunCtx): Promise<P
       r = await attempt(leg);
     } catch (e) {
       if (leg !== "SKR") return fallbackOrSkip(leg, message(e));
-      if (!leashed) throw e;
+      if (!leashed || isJupiterRateLimit(e)) throw e;   // a 429 reaches plantOne: "jupiter busy", not a skipped leg
       await legSkipped(a, w, leg, message(e));
       return null;
     }

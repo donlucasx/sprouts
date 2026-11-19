@@ -302,4 +302,14 @@ describe("jupiterFetch: 429 retries", () => {
     await jupiterFetch("http://x", {}, "quote", b.sleep);
     expect(b.s).toEqual([3000]);
   });
+  it("an intermediate 429's body is consumed before the wait", async () => {
+    const text = vi.fn(async () => "slow down");
+    const first = { status: 429, headers: new Headers(), text } as unknown as Response;
+    const f = vi.fn().mockResolvedValueOnce(first).mockResolvedValueOnce(new Response("ok", { status: 200 }));
+    vi.stubGlobal("fetch", f);
+    const order: string[] = [];
+    text.mockImplementation(async () => { order.push("read"); return ""; });
+    await jupiterFetch("http://x", {}, "quote", async () => { order.push("sleep"); });
+    expect(order).toEqual(["read", "sleep"]);
+  });
 });
