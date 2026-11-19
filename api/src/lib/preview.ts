@@ -1,5 +1,4 @@
 import { extractSwapLegs, type HeliusEnhancedTx } from "./book-swap";
-import { config } from "./config";
 import { usdSizeCents, type PriceLookup } from "@/domain/sizing";
 import { computeRoundupCents, type Rules } from "@/domain/roundup";
 import { dayOf } from "@/domain/day";
@@ -9,11 +8,16 @@ import { dayOf } from "@/domain/day";
  * Nothing is stored: the answer is computed on request from the chain and returned. Moves nothing, signs nothing.
  */
 export const PREVIEW_DAYS = 30;
-/** At most this many pages of 100 transactions are read (Helius credits; a busier wallet is summed over what was read). */
-export const PREVIEW_MAX_PAGES = 5;
+/**
+ * At most this many pages of 100 transactions are read (Helius credits; a busier wallet is summed over what was read). 11-19 (Season
+ * economics): Parsed Events costs 10 credits a page (Enhanced was 100), so a preview is at most 20 credits, and once a day per user.
+ */
+export const PREVIEW_MAX_PAGES = 2;
 export const PREVIEW_PAGE_SIZE = 100;
 /** At most this many distinct non-stable coins are priced; swaps with no stable or SOL leg past that are left out. */
 export const PREVIEW_MAX_PRICED = 15;
+/** The swaps read for a user are kept this long per function instance (the rules are applied on every request). */
+export const PREVIEW_CACHE_MS = 24 * 3_600_000;
 /** The comparison shown when the wallet's swaps are whole dollars: "add 10 cents to every swap". */
 export const PREVIEW_PER_SWAP_CENTS = 10;
 
@@ -40,28 +44,51 @@ export function previewTotals(swaps: PreviewSwap[], rules: Rules, partial = fals
   };
 }
 
-export type FetchPage = (wallet: string, before: string | undefined) => Promise<HeliusEnhancedTx[]>;
+export type HistoryPage = { txs: HeliusEnhancedTx[]; next: string | null };
+/** One page of the wallet's history, newest first; `next` is the cursor for the page after it (null at the end). */
+export type FetchPage = (wallet: string, cursor: string | undefined) => Promise<HistoryPage>;
 
-/** One page of the wallet's history, newest first (Helius parsed transactions). */
-export const heliusPage: FetchPage = async (wallet, before) => {
-  const key = new URL(config().heliusRpcUrl).searchParams.get("api-key");
-  const url = new URL(`https://api.helius.xyz/v0/addresses/${wallet}/transactions`);
-  url.searchParams.set("api-key", key ?? "");
-  url.searchParams.set("limit", String(PREVIEW_PAGE_SIZE));
-  if (before) url.searchParams.set("before", before);
-  // Helius answers 429 when several reads land at once (seen 11-12 on the free plan): one more try after 1 s. Each read gets 2.5 s,
-  // so 5 pages with a retry each stay under the route's 30 s (Kimi 11-12).
-  for (let attempt = 0; ; attempt++) {
-    const res = await fetch(url, { signal: AbortSignal.timeout(2_500) });
-    if (res.ok) return (await res.json()) as HeliusEnhancedTx[];
-    if (res.status !== 429 || attempt >= 1) throw new Error(`history ${res.status}`);
-    await new Promise((r) => setTimeout(r, 1_000));
-  }
+type ParsedTransfer = { fromUserAccount?: string; toUserAccount?: string; mint?: string; rawTokenAmount?: number | string; decimals?: number; amount?: number };
+type ParsedEvent = {
+  signature?: string;
+  parsed?: {
+    blockTime?: number; fee?: number; feePayer?: string; transactionStatus?: string;
+    nativeTransfers?: ParsedTransfer[] | null; tokenTransfers?: ParsedTransfer[] | null;
+    summary?: { type?: string } | null; events?: HeliusEnhancedTx["events"];
+  } | null;
 };
 
 /**
+ * One Helius Parsed Events item (POST /v1/parsed-events/transaction-history, fixture helius-parsed-events.json) as the fields
+ * `extractSwapLegs` and `walletSwaps` read. Token amounts come as raw units plus decimals; the summary type is lower case ("swap").
+ * Null when the item has no signature or no time. A failed transaction keeps its fields but moves no coin, so it reads as no swap.
+ */
+export function parsedEventToTx(e: unknown, _wallet: string): HeliusEnhancedTx | null {
+  const ev = e as ParsedEvent | null;
+  const p = ev?.parsed;
+  if (!ev || typeof ev.signature !== "string" || !p || typeof p.blockTime !== "number") return null;
+  const ok = !p.transactionStatus || p.transactionStatus === "OK";
+  return {
+    signature: ev.signature,
+    timestamp: p.blockTime,
+    type: (p.summary?.type ?? "unknown").toUpperCase(),
+    feePayer: p.feePayer ?? "",
+    fee: p.fee,
+    tokenTransfers: ok
+      ? (p.tokenTransfers ?? []).map((t) => ({
+          fromUserAccount: t.fromUserAccount ?? "", toUserAccount: t.toUserAccount ?? "", mint: t.mint ?? "",
+          tokenAmount: Number(t.rawTokenAmount ?? 0) / 10 ** (t.decimals ?? 0),
+        }))
+      : [],
+    nativeTransfers: ok ? (p.nativeTransfers ?? []).map((t) => ({ fromUserAccount: t.fromUserAccount ?? "", toUserAccount: t.toUserAccount ?? "", amount: Number(t.amount ?? 0) })) : [],
+    ...(ok && p.events?.swap ? { events: { swap: p.events.swap } } : {}),
+  };
+}
+
+/**
  * The swaps the wallet made itself (it paid the fee) in the last PREVIEW_DAYS, sized in cents. `partial` when the page limit
- * stopped the read before the window's start.
+ * stopped the read before the window's start. The end of the history is a page with no cursor: Parsed Events can answer fewer
+ * than 100 items AND a cursor (probe 11-19: 49 items, then an empty page), so a short page is not the end.
  */
 export async function walletSwaps(wallet: string, a: { fetchPage: FetchPage; priceUsd: PriceLookup; nowS: number }): Promise<{ swaps: PreviewSwap[]; partial: boolean }> {
   const since = a.nowS - PREVIEW_DAYS * 86_400;
@@ -71,10 +98,9 @@ export async function walletSwaps(wallet: string, a: { fetchPage: FetchPage; pri
     return priced.get(mint)!;
   };
   const swaps: PreviewSwap[] = [];
-  let before: string | undefined;
+  let cursor: string | undefined;
   for (let page = 0; page < PREVIEW_MAX_PAGES; page++) {
-    const txs = await a.fetchPage(wallet, before);
-    if (txs.length === 0) return { swaps, partial: false };
+    const { txs, next } = await a.fetchPage(wallet, cursor);
     for (const tx of txs) {
       if (tx.timestamp < since) return { swaps, partial: false };
       if (tx.feePayer !== wallet) continue;
@@ -83,9 +109,8 @@ export async function walletSwaps(wallet: string, a: { fetchPage: FetchPage; pri
       const size = await usdSizeCents(legs, price);
       if (size !== null) swaps.push({ day: dayOf(new Date(tx.timestamp * 1000)), sizeCents: size });
     }
-    // A short page is the wallet's whole history: no further read (review 11-12: it cost an extra call returning []).
-    if (txs.length < PREVIEW_PAGE_SIZE) return { swaps, partial: false };
-    before = txs[txs.length - 1].signature;
+    if (!next) return { swaps, partial: false };
+    cursor = next;
   }
   return { swaps, partial: true };
 }

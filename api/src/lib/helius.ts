@@ -1,4 +1,6 @@
 import { config } from "./config";
+import type { HeliusEnhancedTx } from "./book-swap";
+import { parsedEventToTx, PREVIEW_PAGE_SIZE, type FetchPage } from "./preview";
 
 const API = "https://api.helius.xyz";
 
@@ -78,17 +80,35 @@ export async function heliusWebhookAddresses(webhookId: string): Promise<string[
   return (await readWebhook(webhookId)).accountAddresses;
 }
 
-/** Recent swaps for one address through Parsed Events (the cheaper successor of Enhanced Transactions). Onboarding preview only. */
-export async function heliusHistory(address: string, limit = 100): Promise<unknown[]> {
-  const res = await fetch(url("/v1/parsed-events/transaction-history"), {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ address, limit, types: ["swap"] }),
-  });
-  if (!res.ok) throw new Error(`Helius history failed: ${res.status} ${(await res.text()).slice(0, 200)}`);
-  const j = (await res.json()) as { data?: unknown[] } | unknown[];
-  return Array.isArray(j) ? j : (j.data ?? []);
-}
+/**
+ * One page of a wallet's history through Parsed Events (10 credits a page; Enhanced Transactions cost 100), every type (the
+ * preview reads the legs itself, like the webhook), for Home's preview only. The cursor is the answer's `paginationToken`.
+ * Helius answers 429 when several reads land at once (seen 11-12 on the free plan): one more try after 1 s. Each read gets 2.5 s.
+ * The URL carries the key, so a failure is rethrown as `history <status>` with no URL and no body text.
+ */
+export const heliusParsedPage: FetchPage = async (wallet, cursor) => {
+  for (let attempt = 0; ; attempt++) {
+    let res: Response;
+    try {
+      res = await fetch(url("/v1/parsed-events/transaction-history"), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ address: wallet, limit: PREVIEW_PAGE_SIZE, ...(cursor ? { paginationToken: cursor } : {}) }),
+        signal: AbortSignal.timeout(2_500),
+      });
+    } catch (e) {
+      throw new Error(`history ${e instanceof Error ? e.name : "error"}`);
+    }
+    if (res.ok) {
+      const j = (await res.json().catch(() => null)) as { data?: unknown; paginationToken?: unknown } | null;
+      if (!j || !Array.isArray(j.data)) throw new Error("history no list");
+      const txs = j.data.map((e) => parsedEventToTx(e, wallet)).filter((t): t is HeliusEnhancedTx => t !== null);
+      return { txs, next: typeof j.paginationToken === "string" && j.paginationToken ? j.paginationToken : null };
+    }
+    if (res.status !== 429 || attempt >= 1) throw new Error(`history ${res.status}`);
+    await new Promise((r) => setTimeout(r, 1_000));
+  }
+};
 
 /**
  * Ops #9: Helius's parse of up to 100 signatures (POST /v0/transactions), for the daily missed-swap check. The URL carries the

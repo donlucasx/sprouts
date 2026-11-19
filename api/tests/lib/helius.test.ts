@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { heliusEnsureAddresses, heliusAddAddress } from "@/lib/helius";
+import { heliusEnsureAddresses, heliusAddAddress, heliusParsedPage } from "@/lib/helius";
+import parsedFixture from "../fixtures/helius-parsed-events.json";
 
 // A fake Helius webhook endpoint: GET returns the stored webhook, PUT replaces the whole list (as Helius does).
 // `onPut` runs after each PUT is stored, so a test can play a racing writer that overwrites the list.
@@ -109,5 +110,40 @@ describe("heliusAddAddress", () => {
       vi.useRealTimers();
     }
     expect(hook.accountAddresses.sort()).toEqual(["A", "B", "K"]);
+  });
+});
+
+describe("heliusParsedPage (Home preview, Parsed Events)", () => {
+  const W = "WALLET1111111111111111111111111111111111111";
+
+  it("POSTs every type, 100 a page, passes the cursor as paginationToken and maps the items", async () => {
+    const f = vi.fn(async (_url: string, _init?: { body?: string }) => new Response(JSON.stringify(parsedFixture)));
+    vi.stubGlobal("fetch", f);
+    const first = await heliusParsedPage(W, undefined);
+    expect(first.next).toBe(parsedFixture.paginationToken);
+    expect(first.txs).toHaveLength(parsedFixture.data.length);
+    expect(first.txs[0]).toMatchObject({ signature: parsedFixture.data[0].signature, type: "SWAP", feePayer: W });
+    expect(f.mock.calls[0][0]).toContain("/v1/parsed-events/transaction-history");
+    expect(JSON.parse(f.mock.calls[0][1]!.body!)).toEqual({ address: W, limit: 100 });
+    await heliusParsedPage(W, "471508872:439");
+    expect(JSON.parse(f.mock.calls[1][1]!.body!)).toEqual({ address: W, limit: 100, paginationToken: "471508872:439" });
+  });
+
+  it("no paginationToken is the end of the history", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ data: [] }))));
+    expect(await heliusParsedPage(W, "c")).toEqual({ txs: [], next: null });
+  });
+
+  it("tries once more after a 429, then fails with the status and no URL (the URL carries the key)", async () => {
+    const f = vi.fn(async () => new Response("slow down https://api.helius.xyz/?api-key=test-key", { status: 429 }));
+    vi.stubGlobal("fetch", f);
+    const err = await heliusParsedPage(W, undefined).then(() => null, (e: Error) => e);
+    expect(f).toHaveBeenCalledTimes(2);
+    expect(err?.message).toBe("history 429");
+  });
+
+  it("a network failure names no URL", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new TypeError("fetch failed https://api.helius.xyz/?api-key=test-key"); }));
+    await expect(heliusParsedPage(W, undefined)).rejects.toThrow(/^history TypeError$/);
   });
 });

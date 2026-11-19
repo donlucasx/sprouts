@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, vi } from "vitest";
 import { MemoryRepo } from "@/db/memory";
 import { setRepoForTests } from "@/db/repo";
 import { issueSession } from "@/lib/session";
+import { PREVIEW_CACHE_MS } from "@/lib/preview";
 
 const { walletSwapsMock } = vi.hoisted(() => ({ walletSwapsMock: vi.fn() }));
 vi.mock("@/lib/preview", async (orig) => ({ ...(await orig<object>()), walletSwaps: walletSwapsMock }));
@@ -43,6 +44,43 @@ describe("GET /api/me/preview", () => {
     walletSwapsMock.mockRejectedValueOnce(new Error("history 429"));
     expect((await GET(new Request("http://x/api/me/preview", { headers: auth }))).status).toBe(503);
   });
+  const newUser = async (pk: string) => {
+    await repo.upsertUser({ seedVaultPubkey: pk, sgtMint: `M-${pk}`, skrName: null });
+    return { authorization: `Bearer ${await issueSession(pk, "test-device")}` };
+  };
+
+  it("keeps the read swaps for 24 hours per user: a second open reads no history, and the rules apply anew", async () => {
+    expect(PREVIEW_CACHE_MS).toBe(24 * 3_600_000);
+    const h = await newUser("C1");
+    walletSwapsMock.mockResolvedValueOnce({ swaps: [{ day: "d", sizeCents: 117 }], partial: true });
+    const before = walletSwapsMock.mock.calls.length;
+    const a = await GET(new Request("http://x/api/me/preview", { headers: h }));
+    await repo.saveRules("C1", { perSwapOn: true, perSwapCents: 25 });
+    const b = await GET(new Request("http://x/api/me/preview", { headers: h }));
+    expect(walletSwapsMock.mock.calls.length - before).toBe(1);
+    const ja = await a.json();
+    const jb = await b.json();
+    // old-app compatibility: exactly the five keys
+    expect(Object.keys(jb).sort()).toEqual(["days", "partial", "perSwapSavedCents", "savedCents", "swaps"]);
+    expect(ja).toMatchObject({ swaps: 1, savedCents: 83, partial: true });
+    expect(jb).toMatchObject({ swaps: 1, partial: true });
+    expect(jb.savedCents).toBeGreaterThan(ja.savedCents);
+    // another user reads their own history
+    walletSwapsMock.mockResolvedValueOnce({ swaps: [], partial: false });
+    expect((await (await GET(new Request("http://x/api/me/preview", { headers: await newUser("C2") }))).json()).swaps).toBe(0);
+    expect(walletSwapsMock.mock.calls.length - before).toBe(2);
+  });
+
+  it("a failed read is not kept: the next open reads again", async () => {
+    const h = await newUser("C3");
+    walletSwapsMock.mockRejectedValueOnce(new Error("history 500"));
+    walletSwapsMock.mockResolvedValueOnce({ swaps: [], partial: false });
+    const before = walletSwapsMock.mock.calls.length;
+    expect((await GET(new Request("http://x/api/me/preview", { headers: h }))).status).toBe(503);
+    expect((await GET(new Request("http://x/api/me/preview", { headers: h }))).status).toBe(200);
+    expect(walletSwapsMock.mock.calls.length - before).toBe(2);
+  });
+
   it("a fourth read in a minute is refused before the history is read", async () => {
     walletSwapsMock.mockResolvedValue({ swaps: [], partial: false });
     const before = walletSwapsMock.mock.calls.length;
