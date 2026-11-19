@@ -6,7 +6,7 @@ import { Button } from '@/components/Button'
 import { ThemedText } from '@/components/ThemedText'
 import { api } from '@/lib/api'
 import { makeSigner } from '@/lib/sign'
-import { choiceFor, defaultSource, pickerSources, TOPUP, TOPUP_CHOICES, TopUpFailed, topUpThisPhone, type TopUpSource } from '@/lib/topup'
+import { choiceFor, TOPUP, TopUpFailed, topUpChoices, topUpThisPhone, type TopUpSource } from '@/lib/topup'
 import { coverageLine } from '@/lib/usdc-runway'
 import { TwoWay } from '@/components/TwoWay'
 import { oneAtATime } from '@/lib/withdraw-flow'
@@ -27,12 +27,8 @@ import { spacing } from '@/theme'
 export function TopUpButton({ user, cents: suggested, done, onDone, avgDailyCents = null, compact = false, offers = null, sources = null }: { user: string; cents: number; done: (cents: number) => string; onDone?: () => void; avgDailyCents?: number | null; compact?: boolean; offers?: readonly number[] | null; sources?: readonly TopUpSource[] | null }) {
   const [open, setOpen] = useState(!compact)
   // Only coins with an amount to offer are picked or shown; none at all = the address to send USDC to.
-  // At most 3 (SOL first, then the two worth the most), per the controller ruling 11-19.
-  const usable = sources ? pickerSources(sources.filter((s) => s.offers.length > 0)) : null
   const [pickedMint, setPickedMint] = useState<string | null>(null)
-  const source = usable ? (usable.find((s) => s.mint === pickedMint) ?? defaultSource(usable)) : null
-  const symbol = source?.symbol ?? 'SOL'
-  const choices = usable ? (source?.offers ?? []) : (offers ?? TOPUP_CHOICES)
+  const { usable, source, symbol, choices } = topUpChoices(sources, offers, pickedMint)
   // 10-26: $5 / $10 / $25, the one covering the pause picked first; one quiet line says how long it lasts (his: "subtle")
   const [picked, setPicked] = useState<number>(() => choiceFor(suggested, choices))
   // the offers can arrive after the first render (Home's /api/me/usdc read): an amount they do not hold is never built or shown

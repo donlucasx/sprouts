@@ -490,6 +490,42 @@ export function topUpLamportCeiling(usdcRaw: bigint, solUsd: number): bigint | n
 }
 
 /**
+ * Both top-ups' leading compute budget: at most one limit and one price, no accounts, the priority fee (limit x price) at most 0.001 SOL.
+ * Returns the index of the first instruction after it.
+ */
+function topUpComputeBudget(ixs: Ix[]): number {
+  let i = 0
+  let limit: bigint | null = null
+  let price: bigint | null = null
+  for (; i < ixs.length && ixs[i].program === COMPUTE_BUDGET_PROGRAM; i++) {
+    const d = ixs[i].data
+    if (ixs[i].accounts.length !== 0) refuse('plan')
+    if (d.length === 5 && d[0] === 2 && limit === null) limit = BigInt(u32At(d, 1))
+    else if (d.length === 9 && d[0] === 3 && price === null) price = u64At(d, 1)
+    else refuse('plan')
+  }
+  if (((limit ?? 1_400_000n) * (price ?? 0n) + 999_999n) / 1_000_000n > TOPUP_MAX_PRIORITY_LAMPORTS) refuse('plan')
+  return i
+}
+
+/**
+ * The accounts no top-up may touch: this wallet's accounts for every TOPUP_FOREIGN_MINTS mint under both token programs (its classic
+ * account for `exemptMint` left out: the token top-up's chosen source, SKR by ruling), its wSOL and USDC accounts under Token-2022, and
+ * its Token-2022 accounts for `extraToken2022Mints`.
+ */
+async function topUpForeign(user: string, exemptMint?: string, extraToken2022Mints: readonly string[] = []): Promise<Set<string>> {
+  const t22 = (m: string) => pda(ATA_PROGRAM, [key(user), key(TOKEN_2022_PROGRAM), key(m)])
+  return new Set(
+    await Promise.all([
+      ...TOPUP_FOREIGN_MINTS.flatMap((m) => [...(m === exemptMint ? [] : [ata(user, m)]), t22(m)]),
+      t22(WSOL_MINT),
+      t22(USDC_MINT),
+      ...extraToken2022Mints.map(t22),
+    ]),
+  )
+}
+
+/**
  * The SOL top-up, in this order and nothing else: compute budget (at most one limit and one price, the priority fee at most 0.001 SOL);
  * [create this wallet's wSOL account]; one SOL transfer into it; SyncNative; [create this wallet's USDC account]; ONE Jupiter
  * shared_accounts_exact_out_route, its data parsed in full (pinned swap variants only), every fixed account pinned (Jupiter's program
@@ -504,25 +540,9 @@ async function checkTopUp(ixs: Ix[], user: string, usdcRaw: bigint, solUsd: SolU
   const allowed = new Set([COMPUTE_BUDGET_PROGRAM, ATA_PROGRAM, SYSTEM_PROGRAM, TOKEN_PROGRAM, JUPITER_PROGRAM])
   if (ixs.some((ix) => !allowed.has(ix.program))) refuse('program')
   // The wallet's other token accounts (both token programs) and its wSOL / USDC accounts under Token-2022: in no instruction at all.
-  const foreign = new Set(
-    await Promise.all([
-      ...TOPUP_FOREIGN_MINTS.flatMap((m) => [ata(user, m), pda(ATA_PROGRAM, [key(user), key(TOKEN_2022_PROGRAM), key(m)])]),
-      pda(ATA_PROGRAM, [key(user), key(TOKEN_2022_PROGRAM), key(WSOL_MINT)]),
-      pda(ATA_PROGRAM, [key(user), key(TOKEN_2022_PROGRAM), key(USDC_MINT)]),
-    ]),
-  )
+  const foreign = await topUpForeign(user)
   if (ixs.some((ix) => foreign.has(ix.program) || ix.accounts.some((a) => foreign.has(a)))) refuse('plan')
-  let i = 0
-  let limit: bigint | null = null
-  let price: bigint | null = null
-  for (; i < ixs.length && ixs[i].program === COMPUTE_BUDGET_PROGRAM; i++) {
-    const d = ixs[i].data
-    if (ixs[i].accounts.length !== 0) refuse('plan')
-    if (d.length === 5 && d[0] === 2 && limit === null) limit = BigInt(u32At(d, 1))
-    else if (d.length === 9 && d[0] === 3 && price === null) price = u64At(d, 1)
-    else refuse('plan')
-  }
-  if (((limit ?? 1_400_000n) * (price ?? 0n) + 999_999n) / 1_000_000n > TOPUP_MAX_PRIORITY_LAMPORTS) refuse('plan')
+  let i = topUpComputeBudget(ixs)
   let wsolCreate = false
   let usdcCreate = false
   let synced = false
@@ -600,26 +620,9 @@ async function checkTokenTopUp(ixs: Ix[], user: string, inputMint: string, usdcR
   const allowed = new Set([COMPUTE_BUDGET_PROGRAM, ATA_PROGRAM, SYSTEM_PROGRAM, TOKEN_PROGRAM, JUPITER_PROGRAM])
   if (ixs.some((ix) => !allowed.has(ix.program))) refuse('program')
   // As the SOL top-up, plus this wallet's Token-2022 account for the source coin: in no instruction at all.
-  const foreign = new Set(
-    await Promise.all([
-      ...TOPUP_FOREIGN_MINTS.flatMap((m) => [...(m === inputMint ? [] : [ata(user, m)]), pda(ATA_PROGRAM, [key(user), key(TOKEN_2022_PROGRAM), key(m)])]),
-      pda(ATA_PROGRAM, [key(user), key(TOKEN_2022_PROGRAM), key(WSOL_MINT)]),
-      pda(ATA_PROGRAM, [key(user), key(TOKEN_2022_PROGRAM), key(USDC_MINT)]),
-      pda(ATA_PROGRAM, [key(user), key(TOKEN_2022_PROGRAM), key(inputMint)]),
-    ]),
-  )
+  const foreign = await topUpForeign(user, inputMint, [inputMint])
   if (ixs.some((ix) => foreign.has(ix.program) || ix.accounts.some((a) => foreign.has(a)))) refuse('plan')
-  let i = 0
-  let limit: bigint | null = null
-  let price: bigint | null = null
-  for (; i < ixs.length && ixs[i].program === COMPUTE_BUDGET_PROGRAM; i++) {
-    const d = ixs[i].data
-    if (ixs[i].accounts.length !== 0) refuse('plan')
-    if (d.length === 5 && d[0] === 2 && limit === null) limit = BigInt(u32At(d, 1))
-    else if (d.length === 9 && d[0] === 3 && price === null) price = u64At(d, 1)
-    else refuse('plan')
-  }
-  if (((limit ?? 1_400_000n) * (price ?? 0n) + 999_999n) / 1_000_000n > TOPUP_MAX_PRIORITY_LAMPORTS) refuse('plan')
+  let i = topUpComputeBudget(ixs)
   let usdcCreate = false
   for (; i < ixs.length && ixs[i].program !== JUPITER_PROGRAM; i++) {
     const ix = ixs[i]

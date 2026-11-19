@@ -47,6 +47,18 @@ export function pickerSources(sources: readonly TopUpSource[]): TopUpSource[] {
   return [...sol, ...others]
 }
 
+/**
+ * What TopUpButton shows. No list, or an empty one (an older API, or a read that listed nothing): no picker, SOL, `offers` (0.1.11's
+ * topUpCents; null = every amount). A list: its coins with amounts, at most 3 (pickerSources); the picked one (else defaultSource) and
+ * its amounts; none with amounts = [] (the address to send USDC to).
+ */
+export function topUpChoices(sources: readonly TopUpSource[] | null | undefined, offers: readonly number[] | null | undefined, pickedMint: string | null) {
+  const usable = sources?.length ? pickerSources(sources.filter((s) => s.offers.length > 0)) : null
+  const source = usable ? (usable.find((s) => s.mint === pickedMint) ?? defaultSource(usable)) : null
+  const choices: readonly number[] = usable ? (source?.offers ?? []) : (offers ?? TOPUP_CHOICES)
+  return { usable, source, symbol: source?.symbol ?? 'SOL', choices }
+}
+
 export const TOPUP_DEFAULT_CENTS = 500
 export const TOPUP_MAX_CENTS = 2_500
 /** 10-26 (his: "can the top up be dialed?"): the amounts offered; the one that covers the pause is picked first. */

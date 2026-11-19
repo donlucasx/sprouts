@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { REFUSED, SignRefused, type SignFlow } from '@/lib/sign'
 import { DROPPED_NOTHING_SENT } from '@/lib/wallet-errors'
-import { defaultSource, pickerSources, TOPUP, TopUpFailed, topUpCentsFor, topUpOffer, topUpThisPhone } from '@/lib/topup'
+import { defaultSource, pickerSources, topUpChoices, TOPUP, TopUpFailed, topUpCentsFor, topUpOffer, topUpThisPhone } from '@/lib/topup'
 
 const ME = 'HJCJKRQLV2HVKfe3sFdTF5jjBY1xfWgnK8cLcjH7qnHd'
 const OTHER = '7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU'
@@ -180,5 +180,20 @@ describe('any-coin top-up (Task 3): the source coin', () => {
     expect(pickerSources([a, sol]).map((s) => s.symbol)).toEqual(['SOL', 'A'])
     expect(pickerSources([sol])).toEqual([sol])
     expect(pickerSources([])).toEqual([])
+  })
+
+  it("an empty topUpSources is read as absent: SOL and topUpCents as in 0.1.11, never the send-USDC view (review fix round 1, finding 2)", () => {
+    for (const sources of [[], null, undefined]) {
+      expect(topUpChoices(sources, [500, 1_000], null)).toEqual({ usable: null, source: null, symbol: 'SOL', choices: [500, 1_000] })
+      expect(topUpChoices(sources, null, null).choices).toEqual([500, 1_000, 2_500])
+      expect(topUpChoices(sources, [], null).choices).toEqual([])
+    }
+    const sol = { mint: WSOL, symbol: 'SOL', decimals: 9, valueCents: 600, offers: [] as number[] }
+    const skr = { mint: SKR, symbol: 'SKR', decimals: 6, valueCents: 800, offers: [500] }
+    // A list: its coins with amounts; the picked one's amounts; none with amounts = [].
+    expect(topUpChoices([sol, skr], [500], null)).toMatchObject({ symbol: 'SKR', choices: [500] })
+    expect(topUpChoices([{ ...sol, offers: [500, 1_000] }, skr], null, SKR)).toMatchObject({ symbol: 'SKR', choices: [500] })
+    expect(topUpChoices([{ ...sol, offers: [500, 1_000] }, skr], null, null)).toMatchObject({ symbol: 'SOL', choices: [500, 1_000] })
+    expect(topUpChoices([sol], [500], null)).toMatchObject({ usable: [], choices: [] })
   })
 })
