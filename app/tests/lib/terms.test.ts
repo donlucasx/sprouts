@@ -13,7 +13,8 @@ describe('Terms + Privacy (R283; R365, the text of 10-07)', () => {
     expect(TERMS_MD).toContain('(99.4% for USDC lending)')
     expect(TERMS_MD).not.toContain('99.9%')
     expect(TERMS_MD).toContain('Coins join your garden as it grows')
-    expect(TERMS_MD).toContain('SOL lending has no Sprouts fee for now.')
+    expect(TERMS_MD).toContain('before the deposit for USDC or SOL lending.')
+    expect(TERMS_MD).not.toContain('for now')
     expect(TERMS_MD).toContain('from SOL or another coin in your wallet')
   })
   it('the page: title, headings, paragraphs and bullets, without the "I agree" summary section', () => {
@@ -28,7 +29,7 @@ describe('Terms + Privacy (R283; R365, the text of 10-07)', () => {
     const s = termsSummary()
     expect(s).toHaveLength(3)
     expect(s[0]).toBe('Your coins stay in your own wallet. Sprouts can pull up to $5 a day, and once your wallet is on the leash the program itself makes sure it can only go into your own savings. You can revoke the allowance any time.')
-    expect(s[2]).toBe('Sprouts takes 0.5% of each planting (SOL lending: no fee for now) and nothing on interest or withdrawals. We keep your public keys and plantings, never your private keys, and we never sell your data.')
+    expect(s[2]).toBe('Sprouts takes 0.5% of each planting and nothing on interest or withdrawals. We keep your public keys and plantings, never your private keys, and we never sell your data.')
   })
   it('asks only when the API says this version is not accepted; an API without terms never asks', () => {
     expect(termsNeeded(undefined)).toBe(false)

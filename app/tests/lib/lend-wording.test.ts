@@ -23,12 +23,14 @@ describe('Review Focus 2: a lending amount is in receipt units and is never show
   })
 })
 
-describe('Review Focus 3: lending fee wording (0.5% on USDC lending from the season; SOL lending free)', () => {
+describe('Review Focus 3: lending fee wording (0.5% on USDC lending from the season; SOL lending the same)', () => {
   const usdc = (o: object) => plantedLine({ usdcInCents: 200, asset: 'USDC_LEND', amountOutRaw: '1661200', usdPrice: 1, feeCents: 0, feeAmountRaw: '0', venue: 'kamino_klend', ...o } as Parameters<typeof plantedLine>[0])
-  it('SOL lending says no Sprouts fee whatever the fee fields', () => {
+  it('SOL lending follows the USDC rule: a fee shows, an older row says no Sprouts fee', () => {
     const sol = (o: object) => plantedLine({ usdcInCents: 200, asset: 'SOL_LEND', amountOutRaw: '1340000', usdPrice: 150, feeCents: 0, feeAmountRaw: '0', venue: 'kamino_klend', ...o } as Parameters<typeof plantedLine>[0])
     expect(sol({})).toBe('$2.00 went into SOL lending (Kamino), no Sprouts fee')
-    expect(sol({ feeCents: 1, feeAmountRaw: '10000' })).toBe('$2.00 went into SOL lending (Kamino), no Sprouts fee')
+    expect(sol({ feeAmountRaw: undefined })).toBe('$2.00 went into SOL lending (Kamino), no Sprouts fee')
+    expect(sol({ feeCents: 1, feeAmountRaw: '10000' })).toBe('$2.00 went into SOL lending (Kamino), fee $0.01')
+    expect(sol({ feeCents: 0, feeAmountRaw: '4000' })).toBe('$2.00 went into SOL lending (Kamino), fee under 1 cent')
   })
   it('USDC lending from before the fee keeps saying no Sprouts fee', () => {
     expect(usdc({})).toBe('$2.00 went into USDC lending (Kamino), no Sprouts fee')

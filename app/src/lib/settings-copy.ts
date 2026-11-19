@@ -24,7 +24,7 @@ export const DISCLOSURES: [string, string][] = [
   ],
   [
     'What does it cost?',
-    'Sprouts takes 0.5% of each SKR, stORE, hSOL, cbBTC and USDC lending planting, in USDC. SOL lending has no Sprouts fee for now, and there is nothing on interest, withdrawals or moves. Sprouts pays the network fee and the one-time account rent for your coin and lending accounts. Leftovers from rounding carry to your next planting. Fees are on every receipt. Pro (the Yield Manager, automatic lending and tax reports) is included free during launch.',
+    'Sprouts takes 0.5% of each planting, in USDC, including USDC and SOL lending. There is nothing on interest, withdrawals or moves. Sprouts pays the network fee and the one-time account rent for your coin and lending accounts. Leftovers from rounding carry to your next planting. Fees are on every receipt. Pro (the Yield Manager, automatic lending and tax reports) is included free during launch.',
   ],
   [
     'Where does lending go?',

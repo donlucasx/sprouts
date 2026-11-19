@@ -92,10 +92,9 @@ export function plantedWhat(p: Planted): string {
   if (isLend(p.asset)) return `${formatUsd(p.usdcInCents)} went into ${legLabel(p.asset, p.venue)}`;
   return `${formatUsd(p.usdcInCents)} became ${formatAmount(p.asset, BigInt(p.amountOutRaw), p.usdPrice)}`;
 }
-/** A planting in one clause, dollars first (manual 5 and 6), with the fee clause as ruled (R139); SOL lending carries no Sprouts fee (R266); USDC lending pays 0.5% from the season, and rows from before it keep saying no fee. */
+/** A planting in one clause, dollars first (manual 5 and 6), with the fee clause as ruled (R139); SOL and USDC lending pay 0.5% from the season, and rows from before it keep saying no fee. */
 export function plantedLine(p: Planted & { feeCents: number; feeAmountRaw?: string }): string {
-  if (p.asset === "SOL_LEND") return `${plantedWhat(p)}, no Sprouts fee`;
-  if (p.asset === "USDC_LEND") {
+  if (p.asset === "SOL_LEND" || p.asset === "USDC_LEND") {
     if (p.feeCents > 0) return `${plantedWhat(p)}, fee ${formatUsd(p.feeCents)}`;
     if (p.feeAmountRaw && /^[1-9]\d*$/.test(p.feeAmountRaw)) return `${plantedWhat(p)}, fee under 1 cent`;
     return `${plantedWhat(p)}, no Sprouts fee`;

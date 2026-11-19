@@ -29,7 +29,7 @@ describe('Settings > About Sprouts (spec 6.2, 11; R452: six questions)', () => {
       '60%',
       'marginfi and Lulo',
       'restricts some regions',   // R367 (10-05): softened, no named countries
-      'SOL lending has no Sprouts fee for now',
+      'including USDC and SOL lending',
       "Sprouts' offline admin key",
       POOL_FULL_LINE,
     ])
@@ -60,12 +60,12 @@ describe('Settings > About Sprouts (spec 6.2, 11; R452: six questions)', () => {
     )
     expect(RELINK.body).toBe(PUBLIC_GUARANTEE)
   })
-  it('fees: 0.5% on USDC lending, no fee on SOL lending; Sprouts pays the network fee and rent, as the Terms say (R266, audits/fee-model)', () => {
+  it('fees: 0.5% on every planting incl. USDC and SOL lending; Sprouts pays the network fee and rent, as the Terms say (R266, audits/fee-model)', () => {
     const fees = DISCLOSURES.find(([h]) => h === 'What does it cost?')![1]
     expect(fees).toBe(
-      'Sprouts takes 0.5% of each SKR, stORE, hSOL, cbBTC and USDC lending planting, in USDC. SOL lending has no Sprouts fee for now, and there is nothing on interest, withdrawals or moves. Sprouts pays the network fee and the one-time account rent for your coin and lending accounts. Leftovers from rounding carry to your next planting. Fees are on every receipt. Pro (the Yield Manager, automatic lending and tax reports) is included free during launch.',
+      'Sprouts takes 0.5% of each planting, in USDC, including USDC and SOL lending. There is nothing on interest, withdrawals or moves. Sprouts pays the network fee and the one-time account rent for your coin and lending accounts. Leftovers from rounding carry to your next planting. Fees are on every receipt. Pro (the Yield Manager, automatic lending and tax reports) is included free during launch.',
     )
-    expect(fees).toContain('SOL lending has no Sprouts fee for now')
+    expect(fees).toContain('including USDC and SOL lending')
     expect(fees).toContain('Sprouts pays the network fee and the one-time account rent')
     expect(fees).not.toMatch(/passes through|about \$0\.03/)
   })
