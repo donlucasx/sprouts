@@ -325,7 +325,7 @@ describe("usdcNotice: one message that names each wallet short of USDC", async (
   const { usdcNotice } = await import("@/lib/me-state");
   const PHONE = "PhoneWa11et111111111111111111111111111111111", OTHER = "887dOther111111111111111111111111111111AXVu";
   const w = (pubkey: string, paused: boolean) => ({ pubkey, status: paused ? "paused" : "active", pause: paused ? { reason: "no_usdc", needCents: 150, resumeAtCents: 200 } : null });
-  const me = (ws: ReturnType<typeof w>[]) => ({ user: { pubkey: PHONE }, wallets: ws }) as never;
+  const me = (ws: ReturnType<typeof w>[], pendingCents = 30) => ({ user: { pubkey: PHONE }, wallets: ws, nextPlanting: { pendingCents } }) as never;
   it("one wallet: its name in the title, one line; the Seed Vault wallet gets the top-up, another wallet does not", () => {
     expect(usdcNotice(me([w(PHONE, false)]), { usdcCents: 0, low: false })).toEqual({ title: "Seed Vault wallet has no USDC", lines: ["Sprouts plants your round-ups with USDC from this wallet. Until you add some, they wait."], topUp: true });
     expect(usdcNotice(me([w(PHONE, false)]), { usdcCents: 120, low: true })?.title).toBe("Seed Vault wallet is low on USDC");
@@ -401,5 +401,20 @@ describe('previewLine (0.1.10)', () => {
     expect(previewLine({ swaps: 0, savedCents: 0, perSwapSavedCents: 0 })).toBeNull()
     expect(previewLine(null)).toBeNull()
     expect(previewLine(undefined)).toBeNull()
+  })
+})
+
+// Task 4 (11-19): the $0 notice waits for round-ups
+describe('usdcNotice: the no-USDC notice only with round-ups waiting', () => {
+  const PHONE = 'PhoneWa11et111111111111111111111111111111111'
+  const active = { pubkey: PHONE, status: 'active', pause: null }
+  const at = (wallets: unknown[], pendingCents?: number) => ({ user: { pubkey: PHONE }, wallets, ...(pendingCents === undefined ? {} : { nextPlanting: { pendingCents } }) }) as never
+  it('zero USDC and nothing waiting: no notice; with 30 cents waiting: the notice', () => {
+    expect(usdcNotice(at([active], 0), { usdcCents: 0, low: false })).toBeNull()
+    expect(usdcNotice(at([active], 30), { usdcCents: 0, low: false })?.title).toBe('Seed Vault wallet has no USDC')
+  })
+  it('the phone wallet not linked: no zero notice; a cached read without nextPlanting: none', () => {
+    expect(usdcNotice(at([], 30), { usdcCents: 0, low: false })).toBeNull()
+    expect(usdcNotice(at([active]), { usdcCents: 0, low: false })).toBeNull()
   })
 })

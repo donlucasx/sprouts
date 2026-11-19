@@ -42,7 +42,7 @@ import { QuestionCard } from '@/components/QuestionCard'
 import { cardsFor, countHomeVisit, dismiss, homeVisits, readDismissed } from '@/lib/feedback'
 import { TopUpButton } from '@/components/TopUp'
 import { BambooFrame } from '@/garden2/BambooFrame'
-import { TOPUP, topUpOffer } from '@/lib/topup'
+import { TOPUP, TOPUP_DEFAULT_CENTS, postLinkUsdc, topUpOffer } from '@/lib/topup'
 import { MoveCard } from '@/components/MoveCard'
 import { termsNeeded, termsSummary } from '@/lib/terms'
 import { arrivalLine, formatSkr, formatAsOf } from '@/lib/format'
@@ -255,7 +255,9 @@ export default function Home() {
   const avg = activity ? avgDailyRoundupCents(activity.swaps, me.user.pubkey, now) : null
   const usdcCents = usdcRead?.usdcRaw != null ? Number(BigInt(usdcRead.usdcRaw) / 10_000n) : null
   const low = topUp.phoneCents === null ? lowUsdcLine(usdcCents, avg) : null
-  const notice = usdcNotice(me, { usdcCents, low: low !== null })
+  const postLink = postLinkUsdc({ linked, phone: me.user.pubkey, usdcCents })
+  // one top-up on screen: the linked card's Add USDC replaces the amber notice's
+  const notice = postLink?.topUp ? null : usdcNotice(me, { usdcCents, low: low !== null })
   const stopped = stoppedNotice(me)
   const noWallet = showLinkPrompt(me)
   // R96, R184 and R186: the one line and the can decided together, so they always agree; the can is in colour only while a bud waits.
@@ -340,6 +342,8 @@ export default function Home() {
             </ThemedText>
           </View>
           <ThemedText style={{ fontSize: 14, lineHeight: 20 }}>{LINKED_LINE}</ThemedText>
+          {postLink?.line ? <ThemedText style={{ fontSize: 14, lineHeight: 20 }}>{postLink.line}</ThemedText> : null}
+          {postLink?.topUp ? <TopUpButton compact user={me.user.pubkey} cents={TOPUP_DEFAULT_CENTS} done={TOPUP.done} avgDailyCents={avg} offers={usdcRead?.topUpCents ?? null} sources={usdcRead?.topUpSources ?? null} /> : null}
           <Button title="OK" kind="quiet" onPress={() => router.setParams({ linked: undefined })} style={{ alignSelf: 'flex-start' }} />
         </View>
       ) : null}

@@ -116,7 +116,7 @@ export function stoppedNotice(me: Pick<MeResponse, 'wallets' | 'user'>): { title
  * Seed Vault wallet, others by address): one wallet is a title and one line; several, a title and a line each. `phone` is this phone's
  * wallet's own read (its balance, and whether lowUsdcLine calls it low); the top-up shows when the Seed Vault wallet is one of them.
  */
-export function usdcNotice(me: Pick<MeResponse, 'wallets' | 'user'>, phone: { usdcCents: number | null; low: boolean }): { title: string; lines: string[]; topUp: boolean } | null {
+export function usdcNotice(me: Pick<MeResponse, 'wallets' | 'user' | 'nextPlanting'>, phone: { usdcCents: number | null; low: boolean }): { title: string; lines: string[]; topUp: boolean } | null {
   type Entry = { name: string; mine: boolean; state: 'paused' | 'zero' | 'low'; cents: number }
   const short = (k: string) => `${k.slice(0, 4)}...${k.slice(-4)}`
   const entries: Entry[] = []
@@ -126,7 +126,9 @@ export function usdcNotice(me: Pick<MeResponse, 'wallets' | 'user'>, phone: { us
     const mine = w.pubkey === me.user.pubkey
     entries.push({ name: mine ? PHONE_WALLET : short(w.pubkey), mine, state: 'paused', cents: need })
   }
-  if (!entries.some((e) => e.mine) && phone.usdcCents !== null && (phone.usdcCents <= 0 || phone.low))
+  // Task 4 (11-19): $0 says nothing until round-ups wait (a fresh wallet with no swaps yet is not a problem); needs the phone wallet linked and active
+  const waiting = (me.nextPlanting?.pendingCents ?? 0) > 0 && me.wallets.some((w) => w.pubkey === me.user.pubkey && w.status === 'active')
+  if (!entries.some((e) => e.mine) && phone.usdcCents !== null && ((phone.usdcCents <= 0 && waiting) || (phone.usdcCents > 0 && phone.low)))
     entries.unshift({ name: PHONE_WALLET, mine: true, state: phone.usdcCents <= 0 ? 'zero' : 'low', cents: phone.usdcCents })
   entries.sort((x, y) => Number(y.mine) - Number(x.mine))
   if (!entries.length) return null

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { REFUSED, SignRefused, type SignFlow } from '@/lib/sign'
 import { DROPPED_NOTHING_SENT } from '@/lib/wallet-errors'
-import { defaultSource, pickerSources, topUpChoices, TOPUP, TopUpFailed, topUpCentsFor, topUpOffer, topUpThisPhone } from '@/lib/topup'
+import { postLinkUsdc, defaultSource, pickerSources, topUpChoices, TOPUP, TopUpFailed, topUpCentsFor, topUpOffer, topUpThisPhone } from '@/lib/topup'
 
 const ME = 'HJCJKRQLV2HVKfe3sFdTF5jjBY1xfWgnK8cLcjH7qnHd'
 const OTHER = '7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU'
@@ -195,5 +195,22 @@ describe('any-coin top-up (Task 3): the source coin', () => {
     expect(topUpChoices([{ ...sol, offers: [500, 1_000] }, skr], null, SKR)).toMatchObject({ symbol: 'SKR', choices: [500] })
     expect(topUpChoices([{ ...sol, offers: [500, 1_000] }, skr], null, null)).toMatchObject({ symbol: 'SOL', choices: [500, 1_000] })
     expect(topUpChoices([sol], [500], null)).toMatchObject({ usable: [], choices: [] })
+  })
+})
+
+describe('postLinkUsdc: what Home says under "linked"', () => {
+  const W = 'W1111111111111111111111111111xyz9'
+  it('no linked param: nothing', () => expect(postLinkUsdc({ linked: undefined, phone: 'P', usdcCents: 0 })).toBeNull())
+  it("this phone's wallet: the Add USDC button under 500, nothing at 500 or unread", () => {
+    expect(postLinkUsdc({ linked: 'P', phone: 'P', usdcCents: 0 })).toEqual({ line: null, topUp: true })
+    expect(postLinkUsdc({ linked: 'P', phone: 'P', usdcCents: 499 })).toEqual({ line: null, topUp: true })
+    expect(postLinkUsdc({ linked: 'P', phone: 'P', usdcCents: 500 })).toBeNull()
+    expect(postLinkUsdc({ linked: 'P', phone: 'P', usdcCents: null })).toBeNull()
+  })
+  it('another wallet: where to add it, no button, whatever the balance', () => {
+    const want = { line: TOPUP.otherWallet('W111...xyz9'), topUp: false }
+    expect(postLinkUsdc({ linked: W, phone: 'P', usdcCents: 0 })).toEqual(want)
+    expect(postLinkUsdc({ linked: W, phone: 'P', usdcCents: 9000 })).toEqual(want)
+    expect(want.line).toBe("Top up works only for this phone's wallet. Add USDC to W111...xyz9 from wherever you use it.")
   })
 })

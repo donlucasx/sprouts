@@ -86,6 +86,16 @@ export function topUpOffer(me: Pick<MeResponse, 'wallets' | 'user'>): { phoneCen
   }
 }
 
+/**
+ * Home's card right after Link a wallet (Task 4, 11-19): this phone's wallet under $5 of USDC gets the "Add USDC" button (Home's own
+ * /api/me/usdc read, not the link route's numbers); another wallet gets the line saying where to add it. null = nothing to add.
+ */
+export function postLinkUsdc(a: { linked: string | undefined; phone: string; usdcCents: number | null }): { line: string | null; topUp: boolean } | null {
+  if (!a.linked) return null
+  if (a.linked !== a.phone) return { line: TOPUP.otherWallet(`${a.linked.slice(0, 4)}...${a.linked.slice(-4)}`), topUp: false }
+  return a.usdcCents !== null && a.usdcCents < TOPUP_DEFAULT_CENTS ? { line: null, topUp: true } : null
+}
+
 /** A top-up that did not finish; `message` is the sentence to show as it is. */
 export class TopUpFailed extends Error {
   constructor(message: string) {
