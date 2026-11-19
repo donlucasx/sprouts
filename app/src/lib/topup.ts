@@ -1,5 +1,5 @@
 import type { MeResponse, WalletPause } from './api'
-import { REFUSED, SignRefused, type SignFlow } from './sign'
+import { REFUSED, SignRefused, WSOL_MINT, type SignFlow } from './sign'
 import { DROPPED_NOTHING_SENT } from './wallet-errors'
 
 /**
@@ -15,8 +15,11 @@ export const TOPUP = {
   open: 'Add USDC',
   button: (cents: number) => `Add $${Math.round(cents / 100)} of USDC`,
   // 10-27 (his note on the Saga: "should state somewhere that you are swapping existing sol from your wallet into USDC")
-  how: (cents: number, covers: string | null) =>
-    `Swaps SOL already in this wallet for $${Math.round(cents / 100)} of USDC${covers ? `, ${covers.charAt(0).toLowerCase()}${covers.slice(1)}` : ''}. No Sprouts fee.`,
+  // Task 3 (any-coin top-up): the coin picked names itself; SOL by default, so the SOL line is unchanged
+  how: (cents: number, covers: string | null, symbol = 'SOL') =>
+    `Swaps ${symbol} already in this wallet for $${Math.round(cents / 100)} of USDC${covers ? `, ${covers.charAt(0).toLowerCase()}${covers.slice(1)}` : ''}. No Sprouts fee.`,
+  /** The line under the closed "Add USDC" button (owner's copy, 11-19), the picked coin's symbol in it. */
+  swapsLine: (symbol: string) => `Swaps a little of your ${symbol} into USDC. No Sprouts fee.`,
   sendHere: 'Send USDC to this address from any wallet or exchange. Plantings start again once it arrives.',
   copy: 'Copy address',
   copied: 'Copied',
@@ -30,6 +33,12 @@ export const TOPUP = {
   failedBefore: 'Could not start the top-up. Nothing moved. Try again.',
   otherWallet: (short: string) => `Top up works only for this phone's wallet. Add USDC to ${short} from wherever you use it.`,
 } as const
+
+/** GET /api/me/usdc topUpSources (0.1.12 API): a coin this phone's wallet can top up from; SOL first, absent from an older API. */
+export type TopUpSource = { mint: string; symbol: string; decimals: number; valueCents: number; offers: number[] }
+/** The coin picked first: SOL when offered, else the first; null when there is no list (an older API: the SOL top-up as in 0.1.11). */
+export const defaultSource = (sources: readonly TopUpSource[] | null | undefined): TopUpSource | null =>
+  sources?.find((s) => s.mint === WSOL_MINT) ?? sources?.[0] ?? null
 
 export const TOPUP_DEFAULT_CENTS = 500
 export const TOPUP_MAX_CENTS = 2_500
@@ -81,23 +90,29 @@ const apiStatus = (e: unknown): number | null => {
 export async function topUpThisPhone(a: {
   user: string
   cents: number
-  build: (cents: number) => Promise<{ transaction: string; usdcRaw: string }>
+  /** The coin to swap; absent or the wSOL mint = SOL (the build body is then exactly { cents }, as 0.1.11 sends it). */
+  inputMint?: string
+  build: (body: { cents: number; inputMint?: string }) => Promise<{ transaction: string; usdcRaw: string; inputMint?: string }>
   sign: (flow: SignFlow) => (transaction: string) => Promise<string>
   confirm: (body: { signedTransaction: string }) => Promise<{ status?: string }>
   onSigned?: () => void
 }): Promise<'confirmed' | 'pending'> {
   const usdcRaw = String(BigInt(a.cents) * 10_000n)
-  let built: { transaction: string; usdcRaw: string }
+  const token = a.inputMint !== undefined && a.inputMint !== WSOL_MINT ? a.inputMint : undefined
+  let built: { transaction: string; usdcRaw: string; inputMint?: string }
   try {
-    built = await a.build(a.cents)
+    built = await a.build(token === undefined ? { cents: a.cents } : { cents: a.cents, inputMint: token })
   } catch (e) {
     throw new TopUpFailed(apiStatus(e) !== null && apiStatus(e) !== 0 ? (e as Error).message : TOPUP.failedBefore)
   }
   // The button's amount, never the build's: a build for another amount is refused before the wallet is asked.
   if (built.usdcRaw !== usdcRaw) throw new TopUpFailed(REFUSED.plan)
+  // The coin asked, never the build's: SOL accepts no echo (an older API) or wSOL; a token must be echoed exactly.
+  const echoed = built.inputMint === undefined || built.inputMint === WSOL_MINT ? undefined : built.inputMint
+  if (echoed !== token) throw new TopUpFailed(REFUSED.plan)
   let signedTransaction: string
   try {
-    signedTransaction = await a.sign({ kind: 'topup', user: a.user, usdcRaw })(built.transaction)
+    signedTransaction = await a.sign(token === undefined ? { kind: 'topup', user: a.user, usdcRaw } : { kind: 'topup', user: a.user, usdcRaw, inputMint: token })(built.transaction)
   } catch (e) {
     throw new TopUpFailed(e instanceof SignRefused ? e.message : DROPPED_NOTHING_SENT)
   }

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { REFUSED, SignRefused, type SignFlow } from '@/lib/sign'
 import { DROPPED_NOTHING_SENT } from '@/lib/wallet-errors'
-import { TOPUP, TopUpFailed, topUpCentsFor, topUpOffer, topUpThisPhone } from '@/lib/topup'
+import { defaultSource, TOPUP, TopUpFailed, topUpCentsFor, topUpOffer, topUpThisPhone } from '@/lib/topup'
 
 const ME = 'HJCJKRQLV2HVKfe3sFdTF5jjBY1xfWgnK8cLcjH7qnHd'
 const OTHER = '7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU'
@@ -100,5 +100,74 @@ describe('the offer and its amount', () => {
     expect(TOPUP.how(500, 'About 2 weeks of round-ups')).toBe('Swaps SOL already in this wallet for $5 of USDC, about 2 weeks of round-ups. No Sprouts fee.')
     expect(TOPUP.done(500)).toBe('Your wallet now has $5.00 more USDC. Sprouts plants again at the next daily planting.')
     for (const l of lines) expect(l).not.toMatch(/—|–/)
+  })
+})
+
+describe('any-coin top-up (Task 3): the source coin', () => {
+  const SKR = 'SKRbvo6Gf7GondiT3BbTfuRDPqLWei4j2Qy2NPGZhW3'
+  const WSOL = 'So11111111111111111111111111111111111111112'
+  const BONK = 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263'
+  function go(inputMint: string | undefined, echo?: string) {
+    const flows: SignFlow[] = []
+    const bodies: unknown[] = []
+    const out = topUpThisPhone({
+      user: ME,
+      cents: 500,
+      ...(inputMint !== undefined ? { inputMint } : {}),
+      build: async (body) => {
+        bodies.push(body)
+        return { transaction: 'TX', usdcRaw: '5000000', ...(echo !== undefined ? { inputMint: echo } : {}) }
+      },
+      sign: (flow) => {
+        flows.push(flow)
+        return async () => 'SIGNED'
+      },
+      confirm: async () => ({ status: 'confirmed' }),
+    })
+    return { out, flows, bodies }
+  }
+
+  it("names the coin it swaps, SOL by default", () => {
+    expect(TOPUP.swapsLine('SOL')).toBe('Swaps a little of your SOL into USDC. No Sprouts fee.')
+    expect(TOPUP.swapsLine('SKR')).toBe('Swaps a little of your SKR into USDC. No Sprouts fee.')
+    expect(TOPUP.how(500, null)).toBe('Swaps SOL already in this wallet for $5 of USDC. No Sprouts fee.')
+    expect(TOPUP.how(500, 'About 2 weeks of round-ups', 'SKR')).toBe('Swaps SKR already in this wallet for $5 of USDC, about 2 weeks of round-ups. No Sprouts fee.')
+    for (const l of [TOPUP.swapsLine('SOL'), TOPUP.how(500, null, 'SKR')]) expect(l).not.toMatch(/—|–/)
+  })
+
+  it('a token: the build body names it and the flow carries it', async () => {
+    const r = go(SKR, SKR)
+    await expect(r.out).resolves.toBe('confirmed')
+    expect(r.bodies).toEqual([{ cents: 500, inputMint: SKR }])
+    expect(r.flows).toEqual([{ kind: 'topup', user: ME, usdcRaw: '5000000', inputMint: SKR }])
+  })
+
+  it("SOL: the body is exactly { cents } (as 0.1.11) and the flow has no inputMint, whether the API echoes wSOL or nothing", async () => {
+    for (const [mint, echo] of [[undefined, undefined], [undefined, WSOL], [WSOL, WSOL], [WSOL, undefined]] as const) {
+      const r = go(mint, echo)
+      await expect(r.out).resolves.toBe('confirmed')
+      expect(JSON.stringify(r.bodies)).toBe('[{"cents":500}]')
+      expect(r.flows).toEqual([{ kind: 'topup', user: ME, usdcRaw: '5000000' }])
+      expect('inputMint' in r.flows[0]).toBe(false)
+    }
+  })
+
+  it("a build that echoes another coin than the one asked is refused before the wallet is asked", async () => {
+    for (const [mint, echo] of [[SKR, BONK], [SKR, WSOL], [SKR, undefined], [undefined, SKR], [WSOL, SKR]] as const) {
+      const r = go(mint, echo)
+      await expect(r.out).rejects.toBeInstanceOf(TopUpFailed)
+      await expect(r.out).rejects.toThrow(REFUSED.plan)
+      expect(r.flows).toEqual([])
+    }
+  })
+
+  it('defaultSource: SOL first, else the first source; none when there are no sources', () => {
+    const sol = { mint: WSOL, symbol: 'SOL', decimals: 9, valueCents: 900, offers: [500] }
+    const skr = { mint: SKR, symbol: 'SKR', decimals: 6, valueCents: 800, offers: [500] }
+    expect(defaultSource([skr, sol])).toBe(sol)
+    expect(defaultSource([skr])).toBe(skr)
+    expect(defaultSource([])).toBeNull()
+    expect(defaultSource(null)).toBeNull()
+    expect(defaultSource(undefined)).toBeNull()
   })
 })

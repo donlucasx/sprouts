@@ -6,7 +6,7 @@ import { Button } from '@/components/Button'
 import { ThemedText } from '@/components/ThemedText'
 import { api } from '@/lib/api'
 import { makeSigner } from '@/lib/sign'
-import { choiceFor, TOPUP, TOPUP_CHOICES, TopUpFailed, topUpThisPhone } from '@/lib/topup'
+import { choiceFor, defaultSource, TOPUP, TOPUP_CHOICES, TopUpFailed, topUpThisPhone, type TopUpSource } from '@/lib/topup'
 import { coverageLine } from '@/lib/usdc-runway'
 import { TwoWay } from '@/components/TwoWay'
 import { oneAtATime } from '@/lib/withdraw-flow'
@@ -21,9 +21,17 @@ import { spacing } from '@/theme'
  *  first; the amounts, the swap button and its line open under it on the tap. */
 /** `offers` (10-27, /api/me/usdc topUpCents): the amounts this wallet's SOL covers; [] = none, so the address to send USDC to is shown
  *  instead; null or absent = unknown, every amount offered (the build route decides). */
-export function TopUpButton({ user, cents: suggested, done, onDone, avgDailyCents = null, compact = false, offers = null }: { user: string; cents: number; done: (cents: number) => string; onDone?: () => void; avgDailyCents?: number | null; compact?: boolean; offers?: readonly number[] | null }) {
+/** `sources` (Task 3, /api/me/usdc topUpSources, 0.1.12 API): the coins this wallet can top up from, SOL first; when more than one has
+ *  amounts, a picker of their symbols opens above the amounts, SOL picked first, and the amounts are the picked coin's. null or absent
+ *  (an older API) = no picker, SOL, `offers` as in 0.1.11. */
+export function TopUpButton({ user, cents: suggested, done, onDone, avgDailyCents = null, compact = false, offers = null, sources = null }: { user: string; cents: number; done: (cents: number) => string; onDone?: () => void; avgDailyCents?: number | null; compact?: boolean; offers?: readonly number[] | null; sources?: readonly TopUpSource[] | null }) {
   const [open, setOpen] = useState(!compact)
-  const choices = offers ?? TOPUP_CHOICES
+  // Only coins with an amount to offer are picked or shown; none at all = the address to send USDC to.
+  const usable = sources ? sources.filter((s) => s.offers.length > 0) : null
+  const [pickedMint, setPickedMint] = useState<string | null>(null)
+  const source = usable ? (usable.find((s) => s.mint === pickedMint) ?? defaultSource(usable)) : null
+  const symbol = source?.symbol ?? 'SOL'
+  const choices = usable ? (source?.offers ?? []) : (offers ?? TOPUP_CHOICES)
   // 10-26: $5 / $10 / $25, the one covering the pause picked first; one quiet line says how long it lasts (his: "subtle")
   const [picked, setPicked] = useState<number>(() => choiceFor(suggested, choices))
   // the offers can arrive after the first render (Home's /api/me/usdc read): an amount they do not hold is never built or shown
@@ -43,7 +51,9 @@ export function TopUpButton({ user, cents: suggested, done, onDone, avgDailyCent
       const outcome = await topUpThisPhone({
         user,
         cents,
-        build: (c) => api<{ transaction: string; usdcRaw: string }>('/api/topup/build', { method: 'POST', body: { cents: c } }),
+        ...(source ? { inputMint: source.mint } : {}),
+        // topUpThisPhone shapes the body: exactly { cents } for SOL (as 0.1.11), { cents, inputMint } for another coin
+        build: (body) => api<{ transaction: string; usdcRaw: string; inputMint?: string }>('/api/topup/build', { method: 'POST', body }),
         sign: (flow) => makeSigner(signTransaction, flow),
         confirm: (body) => api<{ status?: string }>('/api/topup/confirm', { method: 'POST', body }),
         onSigned: () => setPhase('chain'),
@@ -63,10 +73,21 @@ export function TopUpButton({ user, cents: suggested, done, onDone, avgDailyCent
   }
 
   const landed = line !== null && !line.error && line.text === done(cents)
-  if (!open) return <Button title={TOPUP.open} onPress={() => setOpen(true)} />
+  if (!open)
+    return (
+      <View style={{ gap: spacing.xs }}>
+        <Button title={TOPUP.open} onPress={() => setOpen(true)} />
+        <ThemedText variant="caption" tone="secondary">
+          {TOPUP.swapsLine(symbol)}
+        </ThemedText>
+      </View>
+    )
   if (choices.length === 0) return <SendUsdcHere address={user} copied={copied} onCopy={() => void copyAddress(user).then(() => setCopied(true))} />
   return (
     <View style={{ gap: spacing.xs }}>
+      {landed || phase || !usable || usable.length < 2 || !source ? null : (
+        <TwoWay options={usable.map((s) => ({ value: s.mint, label: s.symbol }))} value={source.mint} onChange={(m) => setPickedMint(m)} />
+      )}
       {landed || phase ? null : (
         choices.length > 1 ? <TwoWay options={choices.map((c) => ({ value: String(c), label: `$${c / 100}` }))} value={String(cents)} onChange={(v) => setPicked(Number(v))} /> : null
       )}
@@ -77,7 +98,7 @@ export function TopUpButton({ user, cents: suggested, done, onDone, avgDailyCent
         </ThemedText>
       ) : landed ? null : (
         <ThemedText variant="caption" tone="secondary">
-          {TOPUP.how(cents, coverageLine(cents, avgDailyCents))}
+          {TOPUP.how(cents, coverageLine(cents, avgDailyCents), symbol)}
         </ThemedText>
       )}
       {line ? (

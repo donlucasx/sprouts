@@ -7,7 +7,7 @@ import { Screen } from '@/components/Screen'
 import { Button } from '@/components/Button'
 import { Card } from '@/components/Card'
 import { ThemedText } from '@/components/ThemedText'
-import { api, ApiError } from '@/lib/api'
+import { api, ApiError, type MeUsdcResponse } from '@/lib/api'
 import { makeSigner } from '@/lib/sign'
 import { linkErrorView, showStillStuck } from '@/lib/link-error'
 import { QuestionCard } from '@/components/QuestionCard'
@@ -99,7 +99,7 @@ export default function Connect() {
   // is no note: the "before you link" point says it anyway.
   const { data: usdc } = useQuery({
     queryKey: ['me-usdc', session?.pubkey],
-    queryFn: () => api<{ usdcRaw: string | null; topUpCents?: number[] | null; solLamports?: string | null }>('/api/me/usdc'),
+    queryFn: () => api<MeUsdcResponse>('/api/me/usdc'),
     enabled: !!session,
     retry: false,
     staleTime: 30_000,
@@ -185,7 +185,7 @@ export default function Connect() {
         ) : null}
         {/* 10-22: the note's own fix, one tap; it stays mounted after a top-up so its confirmation shows once the note has gone */}
         {session && (usdcNote || toppedUp) ? (
-          <TopUpButton compact user={session.pubkey} cents={TOPUP_DEFAULT_CENTS} done={TOPUP.doneLink} onDone={() => setToppedUp(true)} offers={usdc?.topUpCents ?? null} />
+          <TopUpButton compact user={session.pubkey} cents={TOPUP_DEFAULT_CENTS} done={TOPUP.doneLink} onDone={() => setToppedUp(true)} offers={usdc?.topUpCents ?? null} sources={usdc?.topUpSources ?? null} />
         ) : null}
         {/* 0.1.10: no SOL for the rent and fee is said before the approval, not after it fails */}
         {solNote ? (

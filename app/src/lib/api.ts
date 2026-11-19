@@ -1,6 +1,7 @@
 import { loadSession } from "./session";
 import { LEND_MOCK, mockAfter, mockBefore } from "./lend-mock";
 import type { Asset, AutoVenue, LendAsset, LiveAsset, Stop, Split, Pins, Venue } from "./coins";
+import type { TopUpSource } from "./topup";
 export { ASSETS } from "./coins";
 export type { Asset, AutoVenue, LendAsset, LiveAsset, Stop, Split, Pins, Venue } from "./coins";
 
@@ -67,6 +68,9 @@ export type MoveStatus = "open" | "dismissed" | "expired" | "done" | "failed";
  *  ends by itself once the wallet holds `resumeAtCents` (threshold + network fee), or the user's, which only their resume ends.
  *  `needCents` is what the run wanted to pull when it paused (null when unknown). */
 export type WalletPause = { reason: "no_usdc"; needCents: number | null; resumeAtCents: number } | { reason: "user" };
+/** GET /api/me/usdc (Home and Link a wallet read it): this phone's wallet's USDC, the top-up amounts its SOL covers ([] = none, the
+ *  address to send USDC to is shown; null or absent = unknown), and (0.1.12 API, absent from an older one) the coins it can top up from. */
+export type MeUsdcResponse = { usdcRaw: string | null; topUpCents?: number[] | null; solLamports?: string | null; topUpSources?: TopUpSource[] | null };
 
 /** One wallet-held leg as /api/me serves it (zero balances are omitted); USDC_LEND/SOL_LEND are one aggregated row each, heldRaw in UNDERLYING units. */
 export type Holding = { asset: LiveAsset; heldRaw: string; putInCents: number; valueUsd: number | null; earnedUsd: number | null; earnedUnderlyingRaw: string | null; growthPct?: number | null };

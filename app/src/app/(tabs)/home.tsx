@@ -25,7 +25,7 @@ import { plantLayouts } from '@/model/scene-to-layout'
 import { watcherLine } from '@/model/watcher'
 import { Garden } from '@/garden/Garden'
 import { COIN_FULL_NAME, COIN_LOGO } from '@/lib/coin-icons'
-import type { LendingPosition, MeResponse, PreviewResponse } from '@/lib/api'
+import type { LendingPosition, MeResponse, MeUsdcResponse, PreviewResponse } from '@/lib/api'
 import { earnedLabel } from '@/lib/coin-sheet'
 import { CoinSheet } from '@/components/CoinSheet'
 import { Screen } from '@/components/Screen'
@@ -92,7 +92,7 @@ export default function Home() {
   useEffect(() => {
     if (me && activity) writeLastAvg(avgDailyRoundupCents(activity.swaps, me.user.pubkey, new Date()))
   }, [me, activity])
-  const { data: usdcRead } = useQuery({ queryKey: ['me-usdc', me?.user.pubkey], queryFn: () => api<{ usdcRaw: string | null; topUpCents?: number[] | null }>('/api/me/usdc'), enabled: !!me, retry: false, staleTime: 60_000 })
+  const { data: usdcRead } = useQuery({ queryKey: ['me-usdc', me?.user.pubkey], queryFn: () => api<MeUsdcResponse>('/api/me/usdc'), enabled: !!me, retry: false, staleTime: 60_000 })
   // 0.1.10 (his ruling "Last 30 days total"): with no wallet linked, what their own swaps would have saved. Read once per 12 hours;
   // a failed read shows nothing extra (the plain prompt stays).
   const { data: preview } = useQuery({
@@ -356,7 +356,7 @@ export default function Home() {
               {line}
             </ThemedText>
           ))}
-          {notice.topUp ? <TopUpButton compact user={me.user.pubkey} cents={topUp.phoneCents ?? 500} done={TOPUP.done} avgDailyCents={avg} offers={usdcRead?.topUpCents ?? null} /> : null}
+          {notice.topUp ? <TopUpButton compact user={me.user.pubkey} cents={topUp.phoneCents ?? 500} done={TOPUP.done} avgDailyCents={avg} offers={usdcRead?.topUpCents ?? null} sources={usdcRead?.topUpSources ?? null} /> : null}
         </View>
       ) : null}
       {stopped ? (

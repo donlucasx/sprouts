@@ -1,12 +1,13 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { address, getAddressEncoder, getProgramDerivedAddress, AccountRole, type Address, type Instruction, type Transaction } from '@solana/kit'
-import { fetchSolUsd, makeSigner, parseSharedExactOut, REFUSED, SignRefused, SOL_PRICE_URL, topUpLamportCeiling, type SignFlow, type SolUsdSource } from '@/lib/sign'
+import { fetchSolUsd, fetchUsdPrice, makeSigner, parseSharedExactOut, REFUSED, SignRefused, SOL_PRICE_URL, topUpLamportCeiling, type SignFlow, type SolUsdSource, type UsdPriceSource } from '@/lib/sign'
 import { parseSwapInstructions } from '../../../api/src/lib/jupiter'
 import { wire, ATTACKER } from '../fixtures/api-built'
 import { ataOf, L } from '../fixtures/lend-built'
 import fixture from '../fixtures/jupiter-topup-exactout.json'
 import whirlpool from '../fixtures/jupiter-topup-exactout-whirlpool.json'
 import plain from '../fixtures/jupiter-topup-exactout-plain.json'
+import tokenFixture from '../fixtures/jupiter-topup-exactout-token.json'
 
 // The SOL top-up as the API builds it (api/src/lib/topup.ts): real Jupiter answers (lite-api swap/v1, 2026-10-22, ExactOut 5 USDC from
 // SOL, useSharedAccounts, dexes Raydium CLMM + Whirlpool, wrapAndUnwrapSol, a fresh wallet, so both account creates are in), parsed by
@@ -194,5 +195,129 @@ describe("the phone's own SOL price", () => {
     expect(topUpLamportCeiling(5_000_000n, 100)).toBe(51_500_000n + 1_000_000n)
     expect(topUpLamportCeiling(5_000_000n, Number.POSITIVE_INFINITY)).toBeNull()
     expect(topUpLamportCeiling(5_000_000n, 0.5)).toBeNull()
+  })
+})
+
+// Task 3 (season economics): any-coin top-up. A real Jupiter answer (api.jup.ag swap/v1, 2026-11-19, ExactOut 5 USDC from JUP,
+// useSharedAccounts, dexes Raydium CLMM + Whirlpool, wrapAndUnwrapSol false, the same placeholder wallet), parsed by the API's own parser.
+describe("topup from a token: this wallet's own token account to USDC, one Jupiter shared-accounts ExactOut swap, nothing wrapped", () => {
+  const T = tokenFixture
+  const MINT = T.quote.inputMint
+  const DECIMALS = 6
+  const tflow: SignFlow = { kind: 'topup', user: USER, usdcRaw: '5000000', inputMint: MINT }
+  /** The token price the recorded quote implies (5 USDC for inAmount base units). */
+  const fair = 5 / (Number(T.quote.inAmount) / 10 ** DECIMALS)
+  const usdOf = (usd: number, decimals = DECIMALS): UsdPriceSource => async (mint) => {
+    expect(mint).toBe(MINT)
+    return { usd, decimals }
+  }
+  const tbuilt = () => built(T as unknown as Fixture)
+  async function tsigns(base64: string, usdPrice: UsdPriceSource = usdOf(fair)) {
+    const sign = vi.fn(async (tx: Transaction) => tx)
+    expect(await makeSigner(sign, tflow, { usdPrice, solUsd: async () => { throw new Error('the token path never reads the SOL price') } })(base64)).toBe(base64)
+    expect(sign).toHaveBeenCalledTimes(1)
+  }
+  async function trefused(base64: string, why: keyof typeof REFUSED, f: SignFlow = tflow, usdPrice: UsdPriceSource = usdOf(fair)) {
+    const sign = vi.fn(async (tx: Transaction) => tx)
+    const out = makeSigner(sign, f, { usdPrice, solUsd: priceOf(fairPrice()) })(base64)
+    await expect(out).rejects.toThrow(SignRefused)
+    await expect(out).rejects.toThrow(REFUSED[why])
+    expect(sign).not.toHaveBeenCalled()
+  }
+
+  it("signs a token top-up (fixture): 5 USDC to this wallet's USDC account, from its own JUP account, nothing wrapped or closed", async () => {
+    expect(T.user).toBe(fixture.user)
+    await tsigns(wire(tbuilt(), USER))
+  })
+
+  it("refuses the same wire for another mint than the flow's, and the SOL flow (no inputMint) reads it as not the plan", async () => {
+    await trefused(wire(tbuilt(), USER), 'plan', { ...tflow, inputMint: 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263' }, async () => ({ usd: 1, decimals: 5 }))
+    await refused(wire(tbuilt(), USER), 'plan', flow)
+  })
+
+  it('refuses inputMint = USDC, = wSOL (the SOL path), = a garden coin (cbBTC) or a receipt (K-Lend USDC)', async () => {
+    const any: UsdPriceSource = async () => ({ usd: 1, decimals: 6 })
+    for (const m of [L.USDC, L.WSOL, 'cbbtcf3aa214zXHbiAZQwf4122FBYbraNdFqgw4iMij', 'B8V6WVjPxW1UGwVDfxH2d2r8SyT4cqn7dQRK6XneVa7D', SKR_MINT])
+      await trefused(wire(tbuilt(), USER), 'plan', { ...tflow, inputMint: m }, any)
+  })
+
+  it('refuses the same swap moved onto USDC, wSOL, a garden coin or a receipt (its accounts consistent with that mint)', async () => {
+    const authority = at(tbuilt(), JUP).accounts![1].address
+    /** The fixture re-pointed at `m`: the mint, this wallet's source account and the authority's account for it all agree. */
+    const rebrand = async (m: string) => {
+      let ixs = reroute(tbuilt(), MINT, m)
+      ixs = reroute(ixs, await ataOf(USER, MINT), await ataOf(USER, m))
+      return reroute(ixs, await ataOf(authority, MINT), await ataOf(authority, m))
+    }
+    const any: UsdPriceSource = async () => ({ usd: 1, decimals: 6 })
+    for (const m of [L.USDC, L.WSOL, 'cbbtcf3aa214zXHbiAZQwf4122FBYbraNdFqgw4iMij', 'B8V6WVjPxW1UGwVDfxH2d2r8SyT4cqn7dQRK6XneVa7D'])
+      await trefused(wire(await rebrand(m), USER), 'plan', { ...tflow, inputMint: m }, any)
+    // The re-pointing itself is sound: onto another plain coin it signs (at that coin's fair price).
+    const BONK = 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263'
+    const sign = vi.fn(async (tx: Transaction) => tx)
+    await makeSigner(sign, { ...tflow, inputMint: BONK }, { usdPrice: async () => ({ usd: fair, decimals: DECIMALS }) })(wire(await rebrand(BONK), USER))
+    expect(sign).toHaveBeenCalledTimes(1)
+  })
+
+  it("refuses a source account that is not this wallet's own classic account for the mint, and its Token-2022 account anywhere", async () => {
+    await trefused(wire(reroute(tbuilt(), await ataOf(USER, MINT), ATTACKER), USER), 'plan')
+    await trefused(wire(reroute(tbuilt(), await ataOf(USER, MINT), await ata2022(USER, MINT)), USER), 'plan')
+    await trefused(wire(addRouteAccount(tbuilt(), await ata2022(USER, MINT)), USER), 'plan')
+  })
+
+  it("refuses a swap into someone else's account, this wallet or its accounts among the route accounts, a fee, slippage over 1%, another amount", async () => {
+    await trefused(wire(reroute(tbuilt(), await ataOf(USER, L.USDC), ATTACKER), USER), 'plan')
+    await trefused(wire(addRouteAccount(tbuilt(), USER, AccountRole.READONLY), USER), 'plan')
+    await trefused(wire(addRouteAccount(tbuilt(), await ataOf(USER, MINT)), USER), 'plan')
+    await trefused(wire(addRouteAccount(tbuilt(), await ataOf(USER, L.USDC)), USER), 'plan')
+    await trefused(wire(addRouteAccount(tbuilt(), await ataOf(USER, SKR_MINT)), USER), 'plan')
+    await trefused(wire(swap(tbuilt(), (d) => void (d[d.length - 1] = 20)), USER), 'plan')
+    await trefused(wire(swap(tbuilt(), (d, v) => v.setUint16(d.length - 3, 500, true)), USER), 'plan')
+    await trefused(wire(tbuilt(), USER), 'plan', { ...tflow, usdcRaw: '6000000' })
+    await trefused(wire(swap(tbuilt(), (d) => void (d[8] = (d[8] + 1) % 8)), USER), 'plan')
+  })
+
+  it('refuses an added SOL transfer, SyncNative or close, and anything after the swap', async () => {
+    const ixs = tbuilt()
+    const i = ixs.findIndex((ix) => ix.programAddress === JUP)
+    const wsol = address(await ataOf(USER, L.WSOL))
+    const transfer: Instruction = { programAddress: address(L.SYSTEM), accounts: [{ address: USER, role: AccountRole.WRITABLE_SIGNER }, { address: wsol, role: AccountRole.WRITABLE }], data: new Uint8Array([2, 0, 0, 0, 64, 66, 15, 0, 0, 0, 0, 0]) }
+    const sync: Instruction = { programAddress: address(L.TOKEN), accounts: [{ address: wsol, role: AccountRole.WRITABLE }], data: new Uint8Array([17]) }
+    const close: Instruction = { programAddress: address(L.TOKEN), accounts: [{ address: wsol, role: AccountRole.WRITABLE }, { address: USER, role: AccountRole.WRITABLE }, { address: USER, role: AccountRole.READONLY_SIGNER }], data: new Uint8Array([9]) }
+    const theft: Instruction = { ...transfer, accounts: [transfer.accounts![0], { address: ATTACKER, role: AccountRole.WRITABLE }] }
+    await trefused(wire([...ixs.slice(0, i), transfer, ...ixs.slice(i)], USER), 'plan')
+    await trefused(wire([...ixs.slice(0, i), transfer, sync, ...ixs.slice(i)], USER), 'plan')
+    await trefused(wire([...ixs, close], USER), 'plan')
+    await trefused(wire([...ixs, theft], USER), 'plan')
+    await trefused(wire([...ixs.slice(0, i + 1), ixs[i]], USER), 'plan')
+  })
+
+  it("refuses a route priced 5% under the phone's own price, a swap scaled up, and when the phone cannot read the token's price", async () => {
+    // The route pays 5% less USDC per coin than the phone's price says the coin is worth: the swap may spend more than 3% over fair.
+    await trefused(wire(tbuilt(), USER), 'overpriced', tflow, usdOf(fair * 1.05))
+    // Within the margin (2% plus the route's 0.5% slippage) it signs.
+    await tsigns(wire(tbuilt(), USER), usdOf(fair * 1.02))
+    await trefused(wire(swap(tbuilt(), (d, v) => v.setBigUint64(d.length - 11, v.getBigUint64(d.length - 11, true) * 2n, true)), USER), 'overpriced')
+    await trefused(wire(tbuilt(), USER), 'price', tflow, async () => { throw new Error('offline') })
+    await trefused(wire(tbuilt(), USER), 'price', tflow, usdOf(Number.NaN))
+    await trefused(wire(tbuilt(), USER), 'price', tflow, usdOf(0))
+    await trefused(wire(tbuilt(), USER), 'price', tflow, usdOf(fair, 99))
+  })
+})
+
+describe("the phone's own token price", () => {
+  afterEach(() => vi.unstubAllGlobals())
+  it("reads Jupiter's public price API for the mint and throws when it has no number", async () => {
+    const MINT = tokenFixture.quote.inputMint
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ [MINT]: { usdPrice: 0.25, decimals: 6 } })))
+    vi.stubGlobal('fetch', fetchMock)
+    expect(await fetchUsdPrice(MINT)).toEqual({ usd: 0.25, decimals: 6 })
+    expect(String((fetchMock.mock.calls[0] as unknown[])[0])).toBe(`https://lite-api.jup.ag/price/v3?ids=${MINT}`)
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 503 })))
+    await expect(fetchUsdPrice(MINT)).rejects.toThrow()
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ [MINT]: { usdPrice: 0.25 } }))))
+    await expect(fetchUsdPrice(MINT)).rejects.toThrow()
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}')))
+    await expect(fetchUsdPrice(MINT)).rejects.toThrow()
   })
 })
