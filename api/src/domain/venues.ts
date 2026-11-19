@@ -46,6 +46,26 @@ export function pickVenue(a: { candidates: VenueCandidate[]; lendingUsdByProtoco
   return null;
 }
 
+/** Task 14: one new receipt account's rent, rounded up. A new planting leaves the venue the user already holds only when the gap pays this back 3x. */
+export const NEW_RECEIPT_COST_USD = 0.25;
+
+/**
+ * Venue stickiness: `pickVenue`, but a user who already holds a receipt at `sticky` stays there unless moving to the best venue
+ * earns more than 3x a new receipt account (moveQualifies). A sticky venue that is ineligible, vetoed, leash-off or over the cap
+ * is not a choice, so the best answer stands.
+ */
+export function pickVenueSticky(a: Parameters<typeof pickVenue>[0] & { sticky: AutoVenue | null }): AutoVenue | null {
+  const best = pickVenue(a);
+  const sticky = a.sticky;
+  if (!sticky || !best || best === sticky) return best;
+  if (!pickVenue({ ...a, allowed: (a.allowed ?? AUTO_VENUES).filter((v) => v === sticky) })) return best;
+  const from = a.candidates.find((c) => c.venue === sticky)?.avg7Pct;
+  const to = a.candidates.find((c) => c.venue === best)?.avg7Pct;
+  if (from == null || to == null) return best;
+  const held = (a.lendingUsdByProtocol[VENUE_PROTOCOL[sticky]] ?? 0) + a.addUsd;
+  return moveQualifies({ valueUsd: held, fromAvg7Pct: from, toAvg7Pct: to, costUsd: NEW_RECEIPT_COST_USD }).qualifies ? best : sticky;
+}
+
 /** Spec 7, R280: propose a move only when its 30-day dollar gain on 7-day-average actual rates beats 3x its network cost. */
 export function moveQualifies(a: { valueUsd: number; fromAvg7Pct: number; toAvg7Pct: number; costUsd: number }): { gain30dUsd: number; qualifies: boolean } {
   const gain30dUsd = (a.valueUsd * (a.toAvg7Pct - a.fromAvg7Pct) * 30) / (100 * 365);

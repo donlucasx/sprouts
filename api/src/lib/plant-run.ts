@@ -15,7 +15,7 @@ import type { Rules } from "@/domain/roundup";
 import { lendingUsdByProtocol } from "./user-routing";
 import { errorText } from "./redact";
 export { lendingUsdByProtocol } from "./user-routing";
-import { AUTO_VENUES, VENUE_PROTOCOL, pickVenue, venueCandidates, type AutoVenue, type Protocol } from "@/domain/venues";
+import { AUTO_VENUES, VENUE_PROTOCOL, pickVenue, pickVenueSticky, venueCandidates, type AutoVenue, type Protocol } from "@/domain/venues";
 import { LEASH_PROGRAM } from "./constants";
 import { isJupiterRateLimit } from "./jupiter";
 import { enabledLegs, leashAllowedVenues, leashLegOf, leashLive, LEASH_ERRORS, LEG_SPEC, postedPriceRefusal, skrPriceSource, type LeashConfig, type LeashLegByte } from "./leash";
@@ -787,7 +787,8 @@ async function plantOneOrThrow(a: RunArgs, w: WalletRow, ctx: RunCtx): Promise<P
   const checkLend = async (leg: LendAsset) => {
     if (positionsUsd === undefined) positionsUsd = await a.chain.lendingPositions(w.userPubkey).then((p) => lendingUsdByProtocol(p, ctx.venueDays, ctx.prices)).catch((e) => { console.error(`lending positions of ${w.userPubkey} unreadable (${message(e)}); no lending today`); return null; });
     const allowed = enabled ? leashAllowedVenues(enabled, leg) : undefined;
-    venues[leg] = positionsUsd === null ? null : pickVenue({ candidates: venueCandidates(leg, ctx.venueDays, ctx.yesterday), lendingUsdByProtocol: positionsUsd, addUsd: amount.pullCents / 100, ...(allowed ? { allowed } : {}) });
+    const sticky = positionsUsd === null ? null : await stickyVenue(a.repo, w.userPubkey, leg);
+    venues[leg] = positionsUsd === null ? null : pickVenueSticky({ candidates: venueCandidates(leg, ctx.venueDays, ctx.yesterday), lendingUsdByProtocol: positionsUsd, addUsd: amount.pullCents / 100, sticky, ...(allowed ? { allowed } : {}) });
     if (!venues[leg]) disabled.push(leg);
   };
   for (const leg of ASSETS) {
@@ -1089,6 +1090,20 @@ async function plantOneOrThrow(a: RunArgs, w: WalletRow, ctx: RunCtx): Promise<P
 }
 
 /** The error's message, plus its cause when it has one (Node's "fetch failed" keeps the host and the reason only in the cause); redacted (K-M10). */
+/** Task 14: the venue of the user's newest sent or confirmed lending leg of this asset (their last 20 plantings); a failed read answers null (no stickiness). */
+async function stickyVenue(repo: Repo, user: string, asset: LendAsset): Promise<AutoVenue | null> {
+  try {
+    const ps = (await repo.listPlantings(user, 20)).filter((p) => p.status === "sent" || p.status === "confirmed");
+    if (!ps.length) return null;
+    const legs = await repo.plantingLegsFor(ps.map((p) => p.id));
+    for (const p of ps) {
+      const leg = legs.find((l) => l.plantingId === p.id && l.asset === asset && l.venue);
+      if (leg?.venue) return leg.venue;
+    }
+  } catch (e) { console.error(`lending history of ${user} unreadable (${message(e)}); no venue stickiness`); }
+  return null;
+}
+
 function message(e: unknown): string {
   return errorText(e);
 }

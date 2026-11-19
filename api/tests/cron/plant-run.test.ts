@@ -2669,3 +2669,33 @@ describe("slow opening (season 11-23): one new coin per $5 a user has planted, a
     expect(builds2.map((b) => b.asset)).toEqual(["SKR", "cbBTC"]);   // cbBTC open, a candidate again, now furthest below
   });
 });
+
+describe("venue stickiness (Task 14): a new planting stays at the venue the user already holds", () => {
+  type BuildArgs = Parameters<Chain["buildPlantingTx"]>[0];
+  const lendOnly = { SKR: 0, stORE: 0, USDC_LEND: 100, SOL_LEND: 0, hSOL: 0, cbBTC: 0 };
+  const recording = (builds: BuildArgs[]) => { const base = fakeChain(); return { ...base, buildPlantingTx: async (a: BuildArgs) => { builds.push(a); return base.buildPlantingTx(a); } } as Chain; };
+  const pastLend = async (repo: MemoryRepo, venue: "kamino_klend" | "jupiter_lend") => {
+    const p = await repo.insertPlanting({ userPubkey: "U", walletPubkey: "W", signature: "past-lend", usdcPulledCents: 200, networkFeeCents: 0, status: "confirmed", aiLine: null, ts: new Date(NOW.getTime() - 30 * 86_400_000) },
+      [{ asset: "USDC_LEND", usdcInCents: 200, amountOutRaw: 1n, staked: false, feeAmountRaw: 0n, feeCents: 0, rateAtPlanting: 1, venue }]);
+    return p;
+  };
+
+  it("last USDC_LEND leg at Kamino, Jupiter ranks first by a hair: the build goes to Kamino", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await seedVenues(repo, { jupiter_lend: { avg7Pct: 4.6 } });
+    await pastLend(repo, "kamino_klend");
+    await repo.saveRules("U", { allocation: lendOnly });
+    const builds: BuildArgs[] = [];
+    await runPlanting({ repo, now: NOW, chain: recording(builds) });
+    expect(builds[0]).toMatchObject({ asset: "USDC_LEND", venue: "kamino_klend" });
+  });
+
+  it("no lending history: today's best venue", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await seedVenues(repo, { jupiter_lend: { avg7Pct: 4.6 } });
+    await repo.saveRules("U", { allocation: lendOnly });
+    const builds: BuildArgs[] = [];
+    await runPlanting({ repo, now: NOW, chain: recording(builds) });
+    expect(builds[0]).toMatchObject({ asset: "USDC_LEND", venue: "jupiter_lend" });
+  });
+});

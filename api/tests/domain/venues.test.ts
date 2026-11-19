@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { pickVenue, moveQualifies, eligibleVenue, avg7, VENUE_PROTOCOL, type VenueCandidate } from "@/domain/venues";
+import { pickVenue, pickVenueSticky, moveQualifies, eligibleVenue, avg7, VENUE_PROTOCOL, type VenueCandidate } from "@/domain/venues";
 
 const k = (avg7Pct: number | null, over: Partial<VenueCandidate> = {}): VenueCandidate => ({ venue: "kamino_klend", avg7Pct, eligible: true, verdict: null, ...over });
 const j = (avg7Pct: number | null, over: Partial<VenueCandidate> = {}): VenueCandidate => ({ venue: "jupiter_lend", avg7Pct, eligible: true, verdict: null, ...over });
@@ -69,5 +69,29 @@ describe("venueCandidates (spec 3: an out-of-band rate is no data, yesterday's r
     const c = venueCandidates("USDC_LEND", [row("kamino_klend", 40, 40, "avoid"), row("jupiter_lend", 4.19, 4.19)], [row("kamino_klend", 4.43, 4.43)]);
     expect(c).toEqual([{ venue: "kamino_klend", avg7Pct: 4.43, eligible: true, verdict: "avoid" }, { venue: "jupiter_lend", avg7Pct: 4.19, eligible: true, verdict: null }]);
     expect(venueCandidates("USDC_LEND", [], [])).toEqual([{ venue: "kamino_klend", avg7Pct: null, eligible: false, verdict: null }, { venue: "jupiter_lend", avg7Pct: null, eligible: false, verdict: null }]);
+  });
+});
+
+describe("pickVenueSticky: a new planting stays where the user already holds a receipt unless the gap pays 3x a new account", () => {
+  const base = { lendingUsdByProtocol: { kamino: 10 }, addUsd: 1 };
+  it("a half-point gap on $11 stays at the sticky venue", () => {
+    expect(pickVenueSticky({ ...base, candidates: [k(4), j(4.5)], sticky: "kamino_klend" })).toBe("kamino_klend");
+  });
+  it("no sticky venue: exactly pickVenue", () => {
+    const a = { ...base, candidates: [k(4), j(4.5)] };
+    expect(pickVenueSticky({ ...a, sticky: null })).toBe(pickVenue(a));
+  });
+  it("a sticky venue the AI avoids is not a choice: the best wins", () => {
+    expect(pickVenueSticky({ ...base, candidates: [k(4, { verdict: "avoid" }), j(4.5)], sticky: "kamino_klend" })).toBe("jupiter_lend");
+  });
+  it("a sticky venue over the 60% cap is not a choice: whatever pickVenue answers", () => {
+    const a = { candidates: [k(4), j(4.5)], lendingUsdByProtocol: { kamino: 25 }, addUsd: 1 };
+    expect(pickVenueSticky({ ...a, sticky: "kamino_klend" })).toBe(pickVenue(a));
+  });
+  it("a leash-off sticky venue is not a choice", () => {
+    expect(pickVenueSticky({ ...base, candidates: [k(4), j(4.5)], allowed: ["jupiter_lend"], sticky: "kamino_klend" })).toBe("jupiter_lend");
+  });
+  it("$100,000 held and a 1-point gap: the gain beats the cost, the best wins", () => {
+    expect(pickVenueSticky({ candidates: [k(4), j(5)], lendingUsdByProtocol: { kamino: 100_000 }, addUsd: 1, sticky: "kamino_klend" })).toBe("jupiter_lend");
   });
 });
