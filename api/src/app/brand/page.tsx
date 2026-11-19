@@ -17,6 +17,19 @@ const LOGOS = [
   { file: "sprouts-logo-two-tone.svg", name: "Two-tone", note: "the app icon's colours", bg: "#FFFCF6" },
   { file: "sprouts-app-icon.svg", name: "App icon", note: "SVG, or PNG 1024", bg: "transparent", png: "sprouts-app-icon-1024.png" },
 ];
+const LOCKUPS = [
+  { file: "sprouts-lockup-horizontal-green.svg", name: "Horizontal", note: "green and ink", bg: "#FFFCF6" },
+  { file: "sprouts-lockup-horizontal-reversed.svg", name: "Horizontal", note: "on dark", bg: "#0E1A14" },
+  { file: "sprouts-lockup-horizontal-white.svg", name: "Horizontal", note: "white", bg: "#1E6B44" },
+  { file: "sprouts-lockup-horizontal-ink.svg", name: "Horizontal", note: "ink, one colour", bg: "#FFFCF6" },
+  { file: "sprouts-lockup-stacked-green.svg", name: "Stacked", note: "green and ink", bg: "#FFFCF6" },
+  { file: "sprouts-lockup-stacked-reversed.svg", name: "Stacked", note: "on dark", bg: "#0E1A14" },
+  { file: "sprouts-lockup-stacked-white.svg", name: "Stacked", note: "white", bg: "#1E6B44" },
+  { file: "sprouts-lockup-stacked-ink.svg", name: "Stacked", note: "ink, one colour", bg: "#FFFCF6" },
+  { file: "sprouts-wordmark-ink.svg", name: "Wordmark", note: "ink", bg: "#FFFCF6" },
+  { file: "sprouts-wordmark-green.svg", name: "Wordmark", note: "green", bg: "#FFFCF6" },
+  { file: "sprouts-wordmark-white.svg", name: "Wordmark", note: "white", bg: "#1E6B44" },
+];
 const COLOURS = [
   ["Sprout green", "#1E6B44", "the logo, buttons"], ["Leaf green", "#2E8B57", "illustration, success"], ["Deep green", "#145A3C", "small text on paper"],
   ["Mint", "#A7F0B6", "the logo and accents on dark"], ["Icon ground", "#F4EEDF", "app icon background"], ["Paper", "#FFFCF6", "page background"],
@@ -36,6 +49,8 @@ const CSS = `
 .brand .tile { aspect-ratio:1; display:flex; align-items:center; justify-content:center; }
 .brand .tile img { width:62%; height:62%; }
 .brand .tile img.full { width:100%; height:100%; }
+.brand .tile.wide { aspect-ratio:16/10; }
+.brand .tile.wide img { width:80%; height:70%; }
 .brand .meta { display:flex; align-items:center; gap:.5rem; padding:.7rem .9rem; font-size:.9rem; }
 .brand .meta b { font-weight:600; }
 .brand .meta span { color:var(--muted); flex:1; min-width:0; }
@@ -79,6 +94,20 @@ export default function Brand() {
           ))}
         </div>
 
+        <h2>Wordmark and lockups</h2>
+        <p className="muted">The word is &ldquo;sprouts&rdquo; in Outfit 600, lowercase. The logo always sits to the left of it or above it, never to the right.</p>
+        <div className="grid">
+          {LOCKUPS.map((l) => (
+            <div className="card" key={l.file}>
+              <div className="tile wide" style={{ background: l.bg }}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={K + l.file} alt={`Sprouts ${l.name.toLowerCase()}, ${l.note}`} />
+              </div>
+              <div className="meta"><b>{l.name}</b><span>{l.note}</span><a className="dl" href={K + l.file} download>SVG</a></div>
+            </div>
+          ))}
+        </div>
+
         <h2>Using the logo</h2>
         <ul>
           <li>Leave clear space of a quarter of the logo&apos;s height on every side.</li>
@@ -112,7 +141,7 @@ export default function Brand() {
         </div>
 
         <h2>Name and line</h2>
-        <p>Write <b>Sprouts</b>: one word, capital S. On X it is <a href="https://x.com/sproutsonseeker">@sproutsonseeker</a>.</p>
+        <p>In sentences, write <b>Sprouts</b>: one word, capital S. Only the wordmark is lowercase. On X it is <a href="https://x.com/sproutsonseeker">@sproutsonseeker</a>.</p>
         <p>The one line: <b>Round up every swap and plant the change.</b></p>
       </main>
       <SiteFooter />
