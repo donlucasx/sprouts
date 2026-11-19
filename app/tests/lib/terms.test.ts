@@ -3,13 +3,18 @@ import { existsSync, readFileSync } from 'node:fs'
 import { TERMS_MD } from '@/lib/terms-text'
 import { TERMS_VERSION, termsAction, termsBlocks, termsNeeded, termsSummary, withAccepted, stampSignIn, agreedLine } from '@/lib/terms'
 
-const FINAL = new URL('../../../../../docs/legal/2026-11-15-terms.md', import.meta.url) // the project's docs/legal, outside the repo
+const FINAL = new URL('../../../../../docs/legal/2026-11-23-terms.md', import.meta.url) // the project's docs/legal, outside the repo
 
 describe('Terms + Privacy (R283; R365, the text of 10-07)', () => {
   it.skipIf(!existsSync(FINAL))('is the final file, byte for byte (never paraphrased)', () => expect(TERMS_MD).toBe(readFileSync(FINAL, 'utf8')))
   it("the version is the page's own", () => {
-    expect(TERMS_VERSION).toBe('2026-11-15')
-    expect(TERMS_MD).toContain('Version 2026-11-15.')
+    expect(TERMS_VERSION).toBe('2026-11-23')
+    expect(TERMS_MD).toContain('Version 2026-11-23.')
+    expect(TERMS_MD).toContain('(99.4% for USDC lending)')
+    expect(TERMS_MD).not.toContain('99.9%')
+    expect(TERMS_MD).toContain('Coins join your garden as it grows')
+    expect(TERMS_MD).toContain('SOL lending has no Sprouts fee for now.')
+    expect(TERMS_MD).toContain('from SOL or another coin in your wallet')
   })
   it('the page: title, headings, paragraphs and bullets, without the "I agree" summary section', () => {
     const b = termsBlocks()
@@ -23,7 +28,7 @@ describe('Terms + Privacy (R283; R365, the text of 10-07)', () => {
     const s = termsSummary()
     expect(s).toHaveLength(3)
     expect(s[0]).toBe('Your coins stay in your own wallet. Sprouts can pull up to $5 a day, and once your wallet is on the leash the program itself makes sure it can only go into your own savings. You can revoke the allowance any time.')
-    expect(s[2]).toBe('Fees are 0.5% on coin plantings and zero on lending. We keep your public keys and plantings, never your private keys, and we never sell your data.')
+    expect(s[2]).toBe('Sprouts takes 0.5% of each planting (SOL lending: no fee for now) and nothing on interest or withdrawals. We keep your public keys and plantings, never your private keys, and we never sell your data.')
   })
   it('asks only when the API says this version is not accepted; an API without terms never asks', () => {
     expect(termsNeeded(undefined)).toBe(false)
@@ -34,10 +39,11 @@ describe('Terms + Privacy (R283; R365, the text of 10-07)', () => {
   })
   it('offers "agree" when the API asks for the bundled version or an older one; only a newer one says update the app', () => {
     expect(termsAction(undefined)).toBe(null)
-    expect(termsAction({ terms: { currentVersion: '2026-11-15', acceptedVersion: '2026-11-15' } })).toBe(null)
+    expect(termsAction({ terms: { currentVersion: '2026-11-23', acceptedVersion: '2026-11-23' } })).toBe(null)
+    expect(termsAction({ terms: { currentVersion: '2026-11-23', acceptedVersion: null } })).toBe('agree')
     expect(termsAction({ terms: { currentVersion: '2026-11-15', acceptedVersion: null } })).toBe('agree')
     expect(termsAction({ terms: { currentVersion: '2026-11-01', acceptedVersion: null } })).toBe('agree')
-    expect(termsAction({ terms: { currentVersion: '2026-12-01', acceptedVersion: '2026-11-15' } })).toBe('update')
+    expect(termsAction({ terms: { currentVersion: '2026-12-01', acceptedVersion: '2026-11-23' } })).toBe('update')
     expect(termsAction({ terms: { currentVersion: '2026-12-01', acceptedVersion: null } })).toBe('update')
   })
   it('the accepted version goes into the read at once, and the card drops', () => {
@@ -51,7 +57,7 @@ describe('Terms + Privacy (R283; R365, the text of 10-07)', () => {
 })
 
 describe('after sign-in (0.1.9, 11-07: no stale Terms card)', () => {
-  const owed = (pubkey: string) => ({ user: { pubkey }, terms: { currentVersion: '2026-11-15', acceptedVersion: null as string | null, acceptedAt: null as string | null } }) as never
+  const owed = (pubkey: string) => ({ user: { pubkey }, terms: { currentVersion: '2026-11-23', acceptedVersion: null as string | null, acceptedAt: null as string | null } }) as never
   it('same user: the saved read is stamped accepted now', () => {
     const out = stampSignIn(owed('A'), 'A') as unknown as { terms: { currentVersion: string; acceptedVersion: string; acceptedAt: string } }
     expect(termsNeeded(out)).toBe(false)
@@ -66,7 +72,7 @@ describe('after sign-in (0.1.9, 11-07: no stale Terms card)', () => {
     const last = { user: { pubkey: 'A' } } as never
     expect(stampSignIn(last, 'A')).toBe(last)
   })
-  const accepted = { terms: { currentVersion: '2026-11-15', acceptedVersion: '2026-11-15', acceptedAt: '2026-11-08T02:35:03Z' } }
+  const accepted = { terms: { currentVersion: '2026-11-23', acceptedVersion: '2026-11-23', acceptedAt: '2026-11-08T02:35:03Z' } }
   it('the agreed line, in the phone zone given', () => {
     expect(agreedLine(accepted, 'America/Los_Angeles')).toBe('You agreed to these Terms on Nov 7, 2026.')
     expect(agreedLine(accepted, 'UTC')).toBe('You agreed to these Terms on Nov 8, 2026.')
