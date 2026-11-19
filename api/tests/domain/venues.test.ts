@@ -91,6 +91,9 @@ describe("pickVenueSticky: a new planting stays where the user already holds a r
   it("a leash-off sticky venue is not a choice", () => {
     expect(pickVenueSticky({ ...base, candidates: [k(4), j(4.5)], allowed: ["jupiter_lend"], sticky: "kamino_klend" })).toBe("jupiter_lend");
   });
+  it("the new money counts toward the value that earns the gap: nothing held + $200,000 added, 1-point gap -> best", () => {
+    expect(pickVenueSticky({ candidates: [k(4), j(5)], lendingUsdByProtocol: {}, addUsd: 200_000, sticky: "kamino_klend" })).toBe("jupiter_lend");
+  });
   it("$100,000 held and a 1-point gap: the gain beats the cost, the best wins", () => {
     expect(pickVenueSticky({ candidates: [k(4), j(5)], lendingUsdByProtocol: { kamino: 100_000 }, addUsd: 1, sticky: "kamino_klend" })).toBe("jupiter_lend");
   });

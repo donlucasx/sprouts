@@ -2674,11 +2674,94 @@ describe("venue stickiness (Task 14): a new planting stays at the venue the user
   type BuildArgs = Parameters<Chain["buildPlantingTx"]>[0];
   const lendOnly = { SKR: 0, stORE: 0, USDC_LEND: 100, SOL_LEND: 0, hSOL: 0, cbBTC: 0 };
   const recording = (builds: BuildArgs[]) => { const base = fakeChain(); return { ...base, buildPlantingTx: async (a: BuildArgs) => { builds.push(a); return base.buildPlantingTx(a); } } as Chain; };
-  const pastLend = async (repo: MemoryRepo, venue: "kamino_klend" | "jupiter_lend") => {
-    const p = await repo.insertPlanting({ userPubkey: "U", walletPubkey: "W", signature: "past-lend", usdcPulledCents: 200, networkFeeCents: 0, status: "confirmed", aiLine: null, ts: new Date(NOW.getTime() - 30 * 86_400_000) },
-      [{ asset: "USDC_LEND", usdcInCents: 200, amountOutRaw: 1n, staked: false, feeAmountRaw: 0n, feeCents: 0, rateAtPlanting: 1, venue }]);
-    return p;
+  let n = 0;
+  const pastLend = async (repo: MemoryRepo, venue: "kamino_klend" | "jupiter_lend", o: { wallet?: string; asset?: "USDC_LEND" | "SOL_LEND"; status?: "confirmed" | "failed"; daysAgo?: number } = {}) =>
+    repo.insertPlanting({ userPubkey: "U", walletPubkey: o.wallet ?? "W", signature: `past-lend-${++n}`, usdcPulledCents: 200, networkFeeCents: 0, status: o.status ?? "confirmed", aiLine: null, ts: new Date(NOW.getTime() - (o.daysAgo ?? 30) * 86_400_000) },
+      [{ asset: o.asset ?? "USDC_LEND", usdcInCents: 200, amountOutRaw: 1n, staked: false, feeAmountRaw: 0n, feeCents: 0, rateAtPlanting: 1, venue }]);
+  const hair = { jupiter_lend: { avg7Pct: 4.6 } };   // Jupiter ranks first by a hair
+  const run = async (repo: MemoryRepo, over: Partial<Chain> = {}, rules: object = { allocation: lendOnly }) => {
+    await repo.saveRules("U", rules as never);
+    const builds: BuildArgs[] = [];
+    const base = fakeChain(over);
+    const r = await runPlanting({ repo, now: NOW, chain: { ...base, buildPlantingTx: async (a: BuildArgs) => { builds.push(a); return base.buildPlantingTx(a); } } as Chain });
+    return { builds, r };
   };
+  const addW2 = async (repo: MemoryRepo) => {
+    await repo.addWallet({ pubkey: "W2", userPubkey: "U", delegationPda: "D2", dailyCapCents: 500 });
+    for (const [i, c] of [83, 62, 70].entries()) await repo.insertSwap({ signature: `w2s-${i}`, walletPubkey: "W2", ts: new Date(NOW.getTime() - 3_600_000), inMint: "a", inAmount: 1, outMint: "b", outAmount: 1, usdSizeCents: 100, class: "major", roundupCents: c });
+  };
+
+  it("per wallet: wallet A's newest leg at Kamino does not make wallet B sticky to Kamino", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await seedVenues(repo, hair);
+    await addW2(repo);
+    await pastLend(repo, "kamino_klend", { wallet: "W" });
+    await pastLend(repo, "jupiter_lend", { wallet: "W2", daysAgo: 40 });
+    const { builds } = await run(repo);
+    const by = Object.fromEntries(builds.map((b) => [b.delegator, b.venue]));
+    expect(by).toEqual({ W: "kamino_klend", W2: "jupiter_lend" });
+  });
+
+  it("per wallet: a wallet with no lending history is not sticky to another wallet's venue", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await seedVenues(repo, hair);
+    await addW2(repo);
+    await pastLend(repo, "kamino_klend", { wallet: "W" });
+    const { builds } = await run(repo);
+    expect(Object.fromEntries(builds.map((b) => [b.delegator, b.venue]))).toEqual({ W: "kamino_klend", W2: "jupiter_lend" });
+  });
+
+  it("a failed planting does not seed", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await seedVenues(repo, hair);
+    await pastLend(repo, "kamino_klend", { status: "failed" });
+    expect((await run(repo)).builds[0].venue).toBe("jupiter_lend");
+  });
+
+  it("a SOL_LEND leg does not seed USDC_LEND", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await seedVenues(repo, hair);
+    await pastLend(repo, "kamino_klend", { asset: "SOL_LEND" });
+    expect((await run(repo)).builds[0].venue).toBe("jupiter_lend");
+  });
+
+  it("a failed history read falls back to the best venue", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await seedVenues(repo, hair);
+    await pastLend(repo, "kamino_klend");
+    repo.plantingLegsFor = async () => { throw new Error("db down"); };
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try { expect((await run(repo)).builds[0].venue).toBe("jupiter_lend"); } finally { spy.mockRestore(); }
+  });
+
+  it("the leash overrides a sticky venue: Kamino off, the build goes to Jupiter", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await seedVenues(repo);   // Kamino ahead; sticky is Kamino, but its leg is off
+    await repo.setWalletLink("W", { delegationPda: "D", linkModel: "leash" });
+    await pastLend(repo, "kamino_klend");
+    const { builds } = await run(repo, { readLeashConfig: async () => leashCfg([3]) });
+    expect(builds[0]).toMatchObject({ asset: "USDC_LEND", venue: "jupiter_lend" });
+  });
+
+  it("the 60% cap overrides a sticky venue: Kamino holds all of $24, the build goes to Jupiter", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await seedVenues(repo, { kamino_klend: { avg7Pct: 4.2 }, jupiter_lend: { avg7Pct: 4.3 } });
+    await pastLend(repo, "kamino_klend");
+    const { builds } = await run(repo, { lendingPositions: async () => [{ asset: "USDC_LEND", venue: "kamino_klend", receiptRaw: 20_000_000n }] });
+    expect(builds[0].venue).toBe("jupiter_lend");
+  });
+
+  it("otherVenue still retries after a sticky pick fails", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await seedVenues(repo, hair);
+    await pastLend(repo, "kamino_klend");
+    const built: (string | null)[] = [];
+    const base = fakeChain();
+    const chain = fakeChain({ buildPlantingTx: async (a) => { built.push(a.venue); if (a.venue === "kamino_klend") throw new Error("Transaction too large: 1267 bytes"); return base.buildPlantingTx(a); } });
+    await repo.saveRules("U", { allocation: lendOnly });
+    await runPlanting({ repo, now: NOW, chain });
+    expect(built).toEqual(["kamino_klend", "jupiter_lend"]);
+  });
 
   it("last USDC_LEND leg at Kamino, Jupiter ranks first by a hair: the build goes to Kamino", async () => {
     const repo = await seeded([83, 62, 70]);

@@ -782,12 +782,14 @@ async function plantOneOrThrow(a: RunArgs, w: WalletRow, ctx: RunCtx): Promise<P
   if (enabled === null) return { wallet: w.pubkey, reason: "leash unavailable" };
   let pullRaw = BigInt(amount.pullCents) * USDC_PER_CENT;
   let positionsUsd: Partial<Record<Protocol, number>> | null | undefined;
+  let recent: Partial<Record<LendAsset, AutoVenue>> | undefined;
   const venues: Partial<Record<LendAsset, AutoVenue | null>> = {};
   const disabled: LiveAsset[] = [];
   const checkLend = async (leg: LendAsset) => {
     if (positionsUsd === undefined) positionsUsd = await a.chain.lendingPositions(w.userPubkey).then((p) => lendingUsdByProtocol(p, ctx.venueDays, ctx.prices)).catch((e) => { console.error(`lending positions of ${w.userPubkey} unreadable (${message(e)}); no lending today`); return null; });
     const allowed = enabled ? leashAllowedVenues(enabled, leg) : undefined;
-    const sticky = positionsUsd === null ? null : await stickyVenue(a.repo, w.userPubkey, leg);
+    recent ??= await recentLendVenues(a.repo, w.userPubkey, w.pubkey);
+    const sticky = positionsUsd === null ? null : recent[leg] ?? null;
     venues[leg] = positionsUsd === null ? null : pickVenueSticky({ candidates: venueCandidates(leg, ctx.venueDays, ctx.yesterday), lendingUsdByProtocol: positionsUsd, addUsd: amount.pullCents / 100, sticky, ...(allowed ? { allowed } : {}) });
     if (!venues[leg]) disabled.push(leg);
   };
@@ -1089,21 +1091,19 @@ async function plantOneOrThrow(a: RunArgs, w: WalletRow, ctx: RunCtx): Promise<P
   }
 }
 
-/** The error's message, plus its cause when it has one (Node's "fetch failed" keeps the host and the reason only in the cause); redacted (K-M10). */
-/** Task 14: the venue of the user's newest sent or confirmed lending leg of this asset (their last 20 plantings); a failed read answers null (no stickiness). */
-async function stickyVenue(repo: Repo, user: string, asset: LendAsset): Promise<AutoVenue | null> {
+/** Task 14: this wallet's newest sent or confirmed lending leg per asset (its last 20 plantings), read once. A receipt account and its rent are per wallet. A failed read answers none (no stickiness). */
+async function recentLendVenues(repo: Repo, user: string, wallet: string): Promise<Partial<Record<LendAsset, AutoVenue>>> {
+  const out: Partial<Record<LendAsset, AutoVenue>> = {};
   try {
-    const ps = (await repo.listPlantings(user, 20)).filter((p) => p.status === "sent" || p.status === "confirmed");
-    if (!ps.length) return null;
+    const ps = (await repo.listPlantings(user, 20)).filter((p) => p.walletPubkey === wallet && (p.status === "sent" || p.status === "confirmed"));
+    if (!ps.length) return out;
     const legs = await repo.plantingLegsFor(ps.map((p) => p.id));
-    for (const p of ps) {
-      const leg = legs.find((l) => l.plantingId === p.id && l.asset === asset && l.venue);
-      if (leg?.venue) return leg.venue;
-    }
-  } catch (e) { console.error(`lending history of ${user} unreadable (${message(e)}); no venue stickiness`); }
-  return null;
+    for (const p of ps) for (const l of legs) if (l.plantingId === p.id && l.venue && isLendAsset(l.asset) && !out[l.asset]) out[l.asset] = l.venue;
+  } catch (e) { console.error(`lending history of ${wallet} unreadable (${message(e)}); no venue stickiness`); return {}; }
+  return out;
 }
 
+/** The error's message, plus its cause when it has one (Node's "fetch failed" keeps the host and the reason only in the cause); redacted (K-M10). */
 function message(e: unknown): string {
   return errorText(e);
 }
