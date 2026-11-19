@@ -151,7 +151,7 @@ export async function bookSwap(a: { repo: Repo; tx: HeliusEnhancedTx; priceUsd: 
     }
     const rules = rulesRowToRules(await a.repo.getRules(wallet.userPubkey));
     const size = await usdSizeCents(legs, a.priceUsd);
-    // No price: leave it unbooked (the signature stays free, so a Helius redelivery or the daily check can still book it).
+    // No price: leave it unbooked (the signature stays free; Helius does not redeliver after our 200, so the daily missed-swap check is the net that finds it).
     if (size === null) return { booked: false, unpriced: true, walletPubkey: pubkey };
     const roundupCents = computeRoundupCents(size, rules);
     const booked = await a.repo.insertSwap({

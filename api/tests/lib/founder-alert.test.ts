@@ -295,6 +295,41 @@ describe("checkWebhookCoverage: revoked extras", () => {
     expect(await check("revokedBBBB")).toBe(false);
   });
 
+  it("after a prune that removed something, active wallets are re-read from the DB and re-checked (a wallet that went active after the first snapshot)", async () => {
+    const { repo, checkWebhookCoverage } = await setup();
+    const alert = vi.fn(async () => {});
+    const prune = vi.fn(async (e: string[]) => {
+      await repo.addWallet({ pubkey: "lateCCCC", userPubkey: U, delegationPda: "P", dailyCapCents: 500, webhookAdded: true });   // linked while we pruned
+      return { removed: e, kept: [] as string[] };
+    });
+    const repair = vi.fn(async (m: string[]) => m.filter((k) => k === "lateCCCC"));
+    const r = await checkWebhookCoverage({ repo, watched: async () => ["activeAAAA", "revokedBBBB"], repair, prune, alert });
+    expect(repair).toHaveBeenCalledTimes(1);
+    expect(repair.mock.calls[0][0].sort()).toEqual(["activeAAAA", "lateCCCC"]);
+    expect(r.missing).toEqual(["lateCCCC"]);
+    expect((alert.mock.calls[0] as unknown as [string])[0]).toContain("NOT being counted");
+  });
+
+  it("no prune removal, no second look", async () => {
+    const { repo, checkWebhookCoverage } = await setup();
+    const repair = vi.fn(async (_m: string[]) => [] as string[]);
+    await checkWebhookCoverage({ repo, watched: async () => ["activeAAAA", "revokedBBBB"], repair, prune: async () => ({ removed: [], kept: ["revokedBBBB"] }), alert: async () => {} });
+    expect(repair).not.toHaveBeenCalled();
+  });
+
+  it("a wallet kept because a link is in progress says so; one kept for another reason asks for a hand removal", async () => {
+    const { repo, checkWebhookCoverage } = await setup();
+    await repo.addWallet({ pubkey: "revokedDDDD", userPubkey: U, delegationPda: "P", dailyCapCents: 500, webhookAdded: true });
+    await repo.setWalletStatus("revokedDDDD", "revoked");
+    await repo.putLinkCode({ code: "RELINK", userPubkey: U, expiresAt: new Date(Date.now() + 60_000), nonce: 1n });
+    await repo.bindLinkCode("RELINK", "revokedBBBB", "pda");
+    const alert = vi.fn(async () => {});
+    await checkWebhookCoverage({ repo, watched: async () => ["activeAAAA", "revokedBBBB", "revokedDDDD"], prune: async () => ({ removed: [], kept: ["revokedBBBB", "revokedDDDD"] }), alert });
+    const text = (alert.mock.calls[0] as unknown as [string])[0];
+    expect(text).toContain("a link is in progress");
+    expect(text).toContain("Remove them by hand");
+  });
+
   it("no extras, no unknown: no alert and prune is not called", async () => {
     const { repo, checkWebhookCoverage } = await setup();
     const alert = vi.fn(async () => {});

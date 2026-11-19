@@ -122,6 +122,7 @@ export async function heliusRemoveAddresses(
       console.error(`helius: a concurrent write dropped ${lost.length} watched address(es) while removing; re-added them`);
       const still = await heliusEnsureAddresses(webhookId, lost, { tries, settleMs });
       if (still.length) console.error(`helius: ${still.length} address(es) still off the webhook after the re-add; the daily coverage pass retries`);
+      for (const a of lost) if (!still.includes(a)) on.add(a);   // they are back on the list: the counts below read it
     }
     work = work.filter((a) => on.has(a));
     if (!work.length) return result();

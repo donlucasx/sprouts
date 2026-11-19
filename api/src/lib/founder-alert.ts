@@ -300,12 +300,27 @@ export async function checkWebhookCoverage(a: {
       console.error(`webhook coverage: prune failed: ${errorText(e)}`);
     }
   }
+  // A pruning write can drop an address a link added a moment ago (its own re-read puts it back; this is the second net): look at
+  // the wallets as they are NOW and make sure every one is watched. Only after a removal, so a quiet day costs nothing extra.
+  if (a.repair && removed.length) {
+    try {
+      const fresh = [...(await a.repo.listActiveWallets()), ...(await a.repo.listPausedWallets())].map((w) => w.pubkey);
+      const off = await a.repair(fresh);
+      for (const k of off) if (!still.includes(k)) still.push(k);
+    } catch (e) {
+      console.error(`webhook coverage: re-check after prune failed: ${errorText(e)}`);
+    }
+  }
   const parts: string[] = [];
   if (repaired.length) parts.push(`Re-added ${repaired.length} linked wallet(s) to the Helius webhook: ${repaired.map((k) => short(k)).join(", ")}. Swaps they made while off it were not counted.`);
   if (still.length) parts.push(`Round-ups NOT being counted: ${still.length} linked wallet(s) missing from the Helius webhook: ${still.map((k) => short(k)).join(", ")}. Add them back.`);
   if (removed.length) parts.push(`Took ${removed.length} revoked wallet(s) off the Helius webhook: ${removed.map((k) => short(k)).join(", ")}.`);
   const kept = extras.filter((k) => !removed.includes(k));
-  if (kept.length) parts.push(`${kept.length} revoked wallet(s) still on the Helius webhook: ${kept.map((k) => short(k)).join(", ")}. Remove them by hand if this repeats.`);
+  const linking: string[] = [];
+  for (const k of kept) if (await a.repo.hasLinkInProgress(k).catch(() => false)) linking.push(k);
+  const stuck = kept.filter((k) => !linking.includes(k));
+  if (linking.length) parts.push(`${linking.length} wallet(s) left on the Helius webhook because a link is in progress: ${linking.map((k) => short(k)).join(", ")}.`);
+  if (stuck.length) parts.push(`${stuck.length} revoked wallet(s) still on the Helius webhook: ${stuck.map((k) => short(k)).join(", ")}. Remove them by hand if this repeats.`);
   if (unknown.length) parts.push(`${unknown.length} address(es) on the Helius webhook with no wallet row: ${unknown.map((k) => short(k)).join(", ")}. Left alone (a link may be in progress); check them if they stay.`);
   const bad = still.length > 0;
   await (a.alert ?? ((text: string) => alertFounder({
