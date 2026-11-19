@@ -331,7 +331,7 @@ export class MemoryRepo implements Repo {
     return this.events.filter((e) => e.userPubkey === userPubkey && kinds.includes(e.kind)).sort((a, b) => b.id - a.id).slice(0, limit);
   }
 
-  async listEventsByKind(kind: T.EventKind, since: Date, limit: number) {
+  async listEventsByKind(kind: T.EventKind, since: Date, limit = Infinity) {
     return this.events.filter((e) => e.kind === kind && e.ts.getTime() >= since.getTime()).sort((a, b) => a.id - b.id).slice(0, limit).map((e) => ({ ...e }));
   }
 

@@ -83,9 +83,24 @@ describe("alertFounder", () => {
     vi.stubEnv("ALERT_WEBHOOK_URL", "https://discord.com/api/webhooks/1/SECRET");
     vi.stubGlobal("fetch", vi.fn(async () => { throw new TypeError("fetch failed https://discord.com/api/webhooks/1/SECRET"); }));
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
-    await expect(alertFounder("x")).resolves.toBeUndefined();
+    await expect(alertFounder("x")).resolves.toBe(false);   // 11-19: delivery is reported, never thrown
     expect(log.mock.calls.flat().join(" ")).not.toContain("SECRET");
     log.mockRestore();
+  });
+});
+
+describe("alertFounder reports delivery (11-19: the Helius credit alert marks a level only after a confirmed post)", () => {
+  it("true on a 2xx; false with no webhook set, on a non-2xx, and on a network error", async () => {
+    vi.stubEnv("ALERT_WEBHOOK_URL", "");
+    vi.stubEnv("ALERT_WEBHOOK_OPS", "");
+    expect(await alertFounder({ channel: "ops", title: "t", text: "x" })).toBe(false);
+    vi.stubEnv("ALERT_WEBHOOK_OPS", "https://discord.com/api/webhooks/0/FAKE-TEST-ONLY");
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("ok", { status: 200 })));
+    expect(await alertFounder({ channel: "ops", title: "t", text: "x" })).toBe(true);
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("", { status: 500 })));
+    expect(await alertFounder({ channel: "ops", title: "t", text: "x" })).toBe(false);
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new TypeError("network"); }));
+    expect(await alertFounder({ channel: "ops", title: "t", text: "x" })).toBe(false);
   });
 });
 

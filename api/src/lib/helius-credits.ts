@@ -5,19 +5,27 @@ import { alertFounder, type AlertCard } from "./founder-alert";
 /**
  * 11-19: Sprouts counts the Helius credits it spends, per billing cycle, so the founder hears at 70% and 90% of the free plan's
  * 1,000,000 (his ruling: upgrade at 70%). Each function instance keeps a pending count (rpc.ts's transport per request and per 429
- * retry, helius.ts per REST call, countingFetch for web3.js Connections and raw DAS posts, the swap webhook per delivered item) and
- * writes it as one `helius_credits` event at FLUSH_AT_CREDITS or every FLUSH_EVERY_MS (inside a request, via after()). The daily
- * run flushes its own count, then sums this cycle's rows and alerts once per level.
+ * retry, helius.ts per REST call, countingFetch for web3.js Connections and raw DAS posts, the swap webhook per delivered item).
+ * Review fix 1: a request that counts anything writes the pending count as one `helius_credits` event in its after() hook once the
+ * pending count reaches FLUSH_AT_CREDITS (50) or its oldest unflushed credit is over FLUSH_AFTER_MS (60 s) old: at most one insert
+ * per request. The daily run flushes its own count, then sums this cycle's rows and alerts once per level.
  *
- * The estimate errs LOW: an instance that dies before a flush loses at most FLUSH_AT_CREDITS uncounted credits (plus whatever it
- * counted within FLUSH_EVERY_MS); wss subscriptions (planting, staking, pyth sends) are not counted; another app on the same key is
- * not counted at all. So the 70% alert leaves a margin before 100%.
+ * What the estimate misses (it errs LOW):
+ * - an instance that is recycled before a flush loses its tail: under FLUSH_AT_CREDITS, so at most ~50 credits per instance lifetime
+ *   (plus a request whose after() never ran);
+ * - wss subscriptions (planting, staking, pyth sends) are not counted; a webhook GET counts 1 (unpublished price);
+ * - another app on the same key is not counted at all (the alert text says so).
+ * What errs SAFE (late or early, never silent):
+ * - the check runs in the daily job (14:00 UTC), so an alert can lag a crossing by up to ~24 h;
+ * - the cycle boundary is the 14th at 00:00 UTC, an assumption from the dashboard's date (its own time zone is not shown): a few
+ *   hours of the old cycle may be summed into the new one, which reads high, never low.
  */
 export const HELIUS_MONTHLY_CREDITS = 1_000_000;
 export const HELIUS_ALERT_LEVELS = [70, 90] as const;   // percent
 export const HELIUS_CYCLE_DAY = 14;                       // the billing cycle starts on the 14th (UTC), per the dashboard
-export const FLUSH_AT_CREDITS = 5_000;
-export const FLUSH_EVERY_MS = 30 * 60_000;
+export const FLUSH_AT_CREDITS = 50;
+/** A pending count whose oldest credit is older than this is flushed by the next request that counts anything. */
+export const FLUSH_AFTER_MS = 60_000;
 
 /** "YYYY-MM-DD" of the latest 14th at or before `now` (UTC). */
 export function creditCycleStart(now: Date): string {
@@ -44,14 +52,20 @@ export function rpcCreditCost(method: string): number {
 export const HELIUS_REST_COST = { webhookRead: 1, webhookWrite: 100, parseTransactions: 100, enhancedHistory: 100, parsedEvents: 10 } as const;
 
 let pending = 0;
-let lastFlushMs = Date.now();
+/** When the oldest credit still pending was counted (null when nothing is pending). */
+let firstPendingMs: number | null = null;
 let scheduled = false;
 
-/** Adds to this instance's pending count; at FLUSH_AT_CREDITS or FLUSH_EVERY_MS it schedules a flush (inside a request only). */
+/**
+ * Adds to this instance's pending count. Inside a request, once pending reaches FLUSH_AT_CREDITS or its oldest credit is over
+ * FLUSH_AFTER_MS old, schedules one flush in after() (one per request: `scheduled` stays set until that flush ends). Outside a
+ * request it only accumulates.
+ */
 export function countHelius(credits: number, now: Date = new Date()): void {
   if (!(credits > 0)) return;
+  if (pending <= 0 || firstPendingMs === null) firstPendingMs = now.getTime();
   pending += credits;
-  if (scheduled || (pending < FLUSH_AT_CREDITS && now.getTime() - lastFlushMs < FLUSH_EVERY_MS)) return;
+  if (scheduled || (pending < FLUSH_AT_CREDITS && now.getTime() - firstPendingMs <= FLUSH_AFTER_MS)) return;
   try {
     after(async () => {
       try {
@@ -73,14 +87,16 @@ export function countHelius(credits: number, now: Date = new Date()): void {
 export async function flushHeliusCredits(repo: Repo, now: Date): Promise<number> {
   const credits = pending;
   if (credits <= 0) return 0;
+  const since = firstPendingMs;
   pending -= credits;   // counts made while the write is in flight stay pending
+  firstPendingMs = null;
   try {
     await repo.addEvent({ userPubkey: null, walletPubkey: null, kind: "helius_credits", detail: { cycle: creditCycleStart(now), credits } });
   } catch (e) {
     pending += credits;
+    firstPendingMs = since;   // the failed count keeps its age
     throw e;
   }
-  lastFlushMs = now.getTime();
   return credits;
 }
 
@@ -94,17 +110,17 @@ export function heliusCreditAlertCard(level: number, credits: number, cycle: str
   };
 }
 
-const ROWS_LIMIT = 50_000;
-
 /**
- * Sums this cycle's `helius_credits` rows. For the highest level reached that has no `helius_credit_alert` { cycle, level } yet
- * (and no higher one), writes that event, then posts to ops. A lower level is never posted after a higher one in the same cycle.
+ * Sums every `helius_credits` row of this cycle (no row cap). For the highest level reached that has no `helius_credit_alert`
+ * { cycle, level } yet (and no higher one), posts to ops and, only when the post was delivered, writes that marker. A failed post
+ * writes nothing, so the next daily check posts again (a duplicate beats a lost alert). A lower level is never posted after a
+ * higher one in the same cycle.
  */
-export async function checkHeliusCredits(a: { repo: Repo; now: Date; alert?: (level: number, credits: number) => Promise<void> }): Promise<{ cycle: string; credits: number; alerted: number | null }> {
+export async function checkHeliusCredits(a: { repo: Repo; now: Date; alert?: (level: number, credits: number) => Promise<boolean> }): Promise<{ cycle: string; credits: number; alerted: number | null }> {
   const cycle = creditCycleStart(a.now);
   const since = new Date(`${cycle}T00:00:00Z`);
   const inCycle = (d: unknown) => (d as { cycle?: unknown } | null)?.cycle === cycle;
-  const rows = await a.repo.listEventsByKind("helius_credits", since, ROWS_LIMIT);
+  const rows = await a.repo.listEventsByKind("helius_credits", since);
   const credits = rows.filter((r) => inCycle(r.detail)).reduce((s, r) => {
     const c = Number((r.detail as { credits?: unknown }).credits);
     return Number.isFinite(c) && c > 0 ? s + c : s;
@@ -112,14 +128,16 @@ export async function checkHeliusCredits(a: { repo: Repo; now: Date; alert?: (le
   const reached = HELIUS_ALERT_LEVELS.filter((l) => credits * 100 >= l * HELIUS_MONTHLY_CREDITS);
   if (!reached.length) return { cycle, credits, alerted: null };
   const level = Math.max(...reached);
-  const posted = (await a.repo.listEventsByKind("helius_credit_alert", since, 100))
+  const posted = (await a.repo.listEventsByKind("helius_credit_alert", since))
     .filter((r) => inCycle(r.detail))
     .map((r) => Number((r.detail as { level?: unknown }).level));
   if (posted.some((p) => p >= level)) return { cycle, credits, alerted: null };
-  // Written before the post: a failed post is lost (logged by alertFounder), never repeated daily.
-  await a.repo.addEvent({ userPubkey: null, walletPubkey: null, kind: "helius_credit_alert", detail: { cycle, level } });
   const alert = a.alert ?? ((l: number, c: number) => alertFounder(heliusCreditAlertCard(l, c, cycle)));
-  await alert(level, credits);
+  if (!(await alert(level, credits))) {
+    console.error(`helius credits: the ${level}% alert was not delivered; the next daily check tries again`);
+    return { cycle, credits, alerted: null };
+  }
+  await a.repo.addEvent({ userPubkey: null, walletPubkey: null, kind: "helius_credit_alert", detail: { cycle, level } });
   return { cycle, credits, alerted: level };
 }
 
@@ -148,6 +166,6 @@ export const pendingHeliusCredits = () => pending;
 /** Tests only. */
 export function _resetHeliusCredits() {
   pending = 0;
-  lastFlushMs = Date.now();
+  firstPendingMs = null;
   scheduled = false;
 }

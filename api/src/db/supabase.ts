@@ -363,8 +363,8 @@ export class SupabaseRepo implements Repo {
     return this.many(this.db.from("events").select().eq("user_pubkey", userPubkey).in("kind", kinds).order("id", { ascending: false }).limit(limit), eventRow);
   }
 
-  async listEventsByKind(kind: T.EventKind, since: Date, limit: number) {
-    // Paged like ops/sources.ts's allRows: one read stops at PostgREST's row cap (1000).
+  async listEventsByKind(kind: T.EventKind, since: Date, limit = Infinity) {
+    // Paged like ops/sources.ts's allRows: one read stops at PostgREST's row cap (1000). No limit = every row, until a short page.
     const PAGE = 1000;
     const out: T.EventRow[] = [];
     for (let from = 0; from < limit; from += PAGE) {

@@ -20,7 +20,7 @@ export function pickSkrName(main: { domain: string; tld: string } | null, skrDom
 /** The wallet's .skr name (AllDomains, always mainnet), as "name.skr", or null when it has none. */
 export async function skrNameOf(rpcUrl: string, owner: string): Promise<string | null> {
   try {
-    const parser = new TldParser(new Connection(rpcUrl, { commitment: "confirmed", fetch: countingFetch() }))   // 11-19: each call counted (Helius credits);
+    const parser = new TldParser(new Connection(rpcUrl, { commitment: "confirmed", fetch: countingFetch() }));   // 11-19: each call counted (Helius credits)
     const key = new PublicKey(owner);
     const main = (await parser.getMainDomain(key).catch(() => null)) as { domain?: string; tld?: string } | null;
     if (main?.domain && main.tld) return pickSkrName({ domain: main.domain, tld: main.tld }, []);

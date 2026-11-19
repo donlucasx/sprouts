@@ -52,13 +52,14 @@ export function cardText(c: AlertCard): string {
   ].join("\n");
 }
 
-export async function alertFounder(input: string | AlertCard, opts: { mention?: boolean } = {}): Promise<void> {
+/** Posts the alert; never throws. Answers true only when the webhook took it (2xx): no webhook set, a non-2xx or a network error is false. */
+export async function alertFounder(input: string | AlertCard, opts: { mention?: boolean } = {}): Promise<boolean> {
   // A bare line (older callers) is an ops alert sent as before: one plain message.
   const card = typeof input === "string" ? null : input;
   const channel: AlertChannel = card?.channel ?? "ops";
   const own = process.env[CHANNEL_ENV[channel]];
   const url = own || process.env.ALERT_WEBHOOK_URL;
-  if (!url) return;
+  if (!url) return false;
   const text = card ? cardText(card) : (input as string);
   try {
     const host = new URL(url).hostname;
@@ -99,9 +100,11 @@ export async function alertFounder(input: string | AlertCard, opts: { mention?: 
       signal: AbortSignal.timeout(3_000),
     });
     if (!res.ok) console.error(`founder alert not delivered: HTTP ${res.status}`);
+    return res.ok;
   } catch (e) {
     // The URL carries the webhook's secret: never logged.
     console.error(`founder alert not delivered: ${e instanceof Error ? e.name : "error"}`);
+    return false;
   }
 }
 

@@ -78,7 +78,7 @@ describe("checkHeliusCredits", () => {
   }
   const alerts = () => {
     const calls: [number, number][] = [];
-    return { calls, alert: async (level: number, credits: number) => { calls.push([level, credits]); } };
+    return { calls, alert: async (level: number, credits: number) => { calls.push([level, credits]); return true; } };
   };
 
   it("699,999: nothing posted", async () => {
@@ -124,6 +124,38 @@ describe("checkHeliusCredits", () => {
     expect(a.calls).toEqual([[70, 700_000]]);
   });
 
+  it("a failed post leaves no marker, and the next check posts again", async () => {
+    const repo = await repoWith([700_000]);
+    const calls: number[] = [];
+    let ok = false;
+    const alert = async (level: number) => { calls.push(level); return ok; };
+    expect((await checkHeliusCredits({ repo, now, alert })).alerted).toBeNull();
+    expect(repo.events.filter((e) => e.kind === "helius_credit_alert")).toEqual([]);
+    ok = true;
+    expect((await checkHeliusCredits({ repo, now, alert })).alerted).toBe(70);
+    expect((await checkHeliusCredits({ repo, now, alert })).alerted).toBeNull();
+    expect(calls).toEqual([70, 70]);
+  });
+
+  it("with no ops webhook set the default post fails, so no marker is written", async () => {
+    vi.stubEnv("ALERT_WEBHOOK_OPS", "");
+    vi.stubEnv("ALERT_WEBHOOK_URL", "");
+    try {
+      const repo = await repoWith([700_000]);
+      expect((await checkHeliusCredits({ repo, now })).alerted).toBeNull();
+      expect(repo.events.filter((e) => e.kind === "helius_credit_alert")).toEqual([]);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("sums every row of the cycle, however many (no row cap)", async () => {
+    const repo = new MemoryRepo();
+    for (let i = 0; i < 60_000; i++) repo.events.push({ id: i + 1, ts: new Date("2026-11-15T00:00Z"), userPubkey: null, walletPubkey: null, kind: "helius_credits", detail: { cycle: "2026-11-14", credits: 15 } });
+    const a = alerts();
+    expect(await checkHeliusCredits({ repo, now, alert: a.alert })).toEqual({ cycle: "2026-11-14", credits: 900_000, alerted: 90 });
+  });
+
   it("the default alert posts to the ops channel with the brief's words", () => {
     expect(heliusCreditAlertCard(70, 712_345, "2026-11-14")).toEqual({
       channel: "ops",
@@ -135,7 +167,7 @@ describe("checkHeliusCredits", () => {
 
   it("without an alert stub it posts through alertFounder to the ops webhook, pinging the founder (fetch stubbed)", async () => {
     vi.stubEnv("ALERT_WEBHOOK_OPS", "https://discord.com/api/webhooks/0/FAKE-TEST-ONLY");
-    const f = vi.fn(async () => new Response("", { status: 204 }));
+    const f = vi.fn(async () => new Response("ok", { status: 200 }));
     vi.stubGlobal("fetch", f);
     try {
       const repo = await repoWith([700_000]);
