@@ -1,202 +1,121 @@
 import type { Metadata } from "next";
-import { Albert_Sans, Outfit } from "next/font/google";
+import { Outfit, Albert_Sans } from "next/font/google";
 import { SiteFooter, SiteHeader } from "../site-chrome";
 
-/**
- * His ask 11-17: an unlisted brand kit for partners making Sprouts content (first: SAGASU's collab art). Garden stills from
- * brand/deck-art/build_timelapse_deck.py --still (GEODE=2 GEODE_APP=1, every plant at the same stage), the marks from
- * brand/pyth-thanks, colours and type from the approved brand manual (brand/manual/sprouts-brand-manual.html, v1.0).
- * Not linked from the site and noindex; the repo is public, so nothing here may be secret.
- */
-const outfit = Outfit({ subsets: ["latin"], weight: ["600"] });
-const albert = Albert_Sans({ subsets: ["latin"], weight: ["400", "600"] });
-const paper = "#FFFCF6", cream = "#FBF7EF", ink = "#2B2622", muted = "#7A746B", sprout = "#1E6B44", rule = "#E6DFD2", dark = "#0E1A14";
+/** His ask 11-19: the brand manual, simplified, public, with the logo files downloadable (Seeker Season partners asked for an SVG). */
+const outfit = Outfit({ subsets: ["latin"], weight: ["600"], variable: "--font-display" });
+const albert = Albert_Sans({ subsets: ["latin"], weight: ["400", "600"], variable: "--font-body" });
 
-export const metadata: Metadata = {
-  title: "Sprouts: brand kit",
-  description: "Garden art, logo and colours for making Sprouts content.",
-  robots: { index: false, follow: false },
-};
+export const metadata: Metadata = { title: "Sprouts: Brand", description: "The Sprouts logo, colours and type, with files to download." };
 
-const PLANTS: [string, string][] = [
-  ["SKR", "mandarin tree, left"],
-  ["USDC lending", "round tree, right"],
-  ["SOL lending", "red maple"],
-  ["stORE", "geode"],
-  ["hSOL", "azalea"],
-  ["cbBTC", "orchid in the blue pot"],
+const K = "/brand/kit/";
+const LOGOS = [
+  { file: "sprouts-logo-green.svg", name: "Green", note: "on light grounds", bg: "#FFFCF6" },
+  { file: "sprouts-logo-mint.svg", name: "Mint", note: "on dark grounds", bg: "#0E1A14" },
+  { file: "sprouts-logo-white.svg", name: "White", note: "on brand green and photos", bg: "#1E6B44" },
+  { file: "sprouts-logo-ink.svg", name: "Ink", note: "one-colour print", bg: "#FFFCF6" },
+  { file: "sprouts-logo-two-tone.svg", name: "Two-tone", note: "the app icon's colours", bg: "#FFFCF6" },
+  { file: "sprouts-app-icon.svg", name: "App icon", note: "SVG, or PNG 1024", bg: "transparent", png: "sprouts-app-icon-1024.png" },
+];
+const COLOURS = [
+  ["Sprout green", "#1E6B44", "the logo, buttons"], ["Leaf green", "#2E8B57", "illustration, success"], ["Deep green", "#145A3C", "small text on paper"],
+  ["Mint", "#A7F0B6", "the logo and accents on dark"], ["Icon ground", "#F4EEDF", "app icon background"], ["Paper", "#FFFCF6", "page background"],
+  ["Ink", "#2B2622", "text"], ["Dark", "#0E1A14", "dark background"],
 ];
 
-const STAGES: [string, string][] = [
-  ["garden-01", "Day one: seeds and sprouts"],
-  ["garden-04", "Weeks in: the geode is still closed"],
-  ["garden-08", "Months in: the geode cracks open"],
-  ["garden-11", "Nearly grown: flowers and gold"],
-];
-
-const MARKS: [string, string, string][] = [
-  ["mark-green.svg", paper, "Green"],
-  ["mark-mint.svg", dark, "Mint"],
-  ["mark-ink.svg", cream, "Ink"],
-];
-
-const COLOURS: [string, string][] = [
-  ["Sprout green", "#1E6B44"],
-  ["Leaf green", "#2E8B57"],
-  ["Mint", "#A7F0B6"],
-  ["Paper", "#FFFCF6"],
-  ["Ink", "#2B2622"],
-  ["Dark", "#0E1A14"],
-];
-const pale = (hex: string) => hex === "#FFFCF6" || hex === "#A7F0B6";
-
-const dl = (file: string, label: string) => <a className="bk-dl" href={`/brand/${file}`} download>{label}</a>;
+const CSS = `
+.brand { --paper:#FFFCF6; --ink:#2B2622; --muted:#6E6A64; --line:#E6E0D4; --leaf-ink:#145A3C; background:var(--paper); color:var(--ink); min-height:100vh; font-family:var(--font-body), "Helvetica Neue", Arial, sans-serif; font-size:16px; line-height:1.55; }
+@media (prefers-color-scheme: dark) { .brand { --paper:#0E1A14; --ink:#FFFCF6; --muted:#C9D8CE; --line:#25362C; --leaf-ink:#A7F0B6; color-scheme:dark; } }
+.brand .wrap { max-width:60rem; margin:0 auto; padding:1.5rem 1.25rem 3rem; }
+.brand h1 { font-family:var(--font-display), sans-serif; font-weight:600; font-size:2.2rem; line-height:1.1; color:var(--leaf-ink); margin:0 0 .5rem; }
+.brand h2 { font-family:var(--font-display), sans-serif; font-weight:600; font-size:1.25rem; margin:2.5rem 0 .75rem; }
+.brand p { margin:0 0 .8rem; max-width:40rem; }
+.brand .muted { color:var(--muted); }
+.brand .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(14rem,1fr)); gap:1rem; }
+.brand .card { border:1px solid var(--line); border-radius:14px; overflow:hidden; }
+.brand .tile { aspect-ratio:1; display:flex; align-items:center; justify-content:center; }
+.brand .tile img { width:62%; height:62%; }
+.brand .tile img.full { width:100%; height:100%; }
+.brand .meta { display:flex; align-items:center; gap:.5rem; padding:.7rem .9rem; font-size:.9rem; }
+.brand .meta b { font-weight:600; }
+.brand .meta span { color:var(--muted); flex:1; min-width:0; }
+.brand .dl { font-size:.8rem; font-weight:600; letter-spacing:.04em; color:var(--leaf-ink); text-decoration:none; border:1px solid var(--line); border-radius:999px; padding:.25rem .65rem; white-space:nowrap; }
+.brand .dl:hover { border-color:var(--leaf-ink); }
+.brand .sw { display:grid; grid-template-columns:repeat(auto-fill,minmax(11rem,1fr)); gap:.75rem; }
+.brand .chip { border:1px solid var(--line); border-radius:12px; overflow:hidden; font-size:.85rem; }
+.brand .chip i { display:block; height:4.5rem; }
+.brand .chip div { padding:.55rem .75rem; }
+.brand .chip code { font-size:.8rem; color:var(--muted); }
+.brand ul { margin:0 0 .8rem; padding-left:1.2rem; }
+.brand .type { display:grid; grid-template-columns:repeat(auto-fill,minmax(16rem,1fr)); gap:1rem; }
+.brand .type .card { padding:1rem 1.1rem; }
+.brand .big { font-size:2.4rem; line-height:1.1; margin:.2rem 0 .4rem; }
+.brand a { color:var(--leaf-ink); }
+`;
 
 export default function Brand() {
   return (
-    <main className={`bk ${albert.className}`}>
-      <style>{`
-        .bk { min-height: 100svh; background: ${paper}; color: ${ink}; display: grid; grid-template-rows: auto 1fr auto; line-height: 1.55; }
-        .bk-col { width: 100%; max-width: 920px; margin: 0 auto; padding: 3vh 24px 8vh; display: grid; gap: 72px; align-content: start; }
-        .bk h1 { font-size: clamp(34px, 7vw, 48px); letter-spacing: -0.02em; line-height: 1.05; margin: 0; }
-        .bk h2 { font-size: 24px; letter-spacing: -0.02em; margin: 0 0 18px; }
-        .bk p { margin: 0; }
-        .bk-lede { font-size: 17px; color: ${muted}; margin-top: 12px; }
-        .bk-frame { border: 1px solid ${rule}; border-radius: 16px; overflow: hidden; background: #fff; }
-        .bk-frame img { display: block; width: 100%; height: auto; }
-        .bk-bar { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
-        .bk-dl { font-size: 13px; font-weight: 600; color: ${sprout}; text-decoration: none; border: 1px solid ${rule}; background: ${cream}; padding: 6px 12px; border-radius: 999px; white-space: nowrap; }
-        .bk-dl:hover { border-color: ${sprout}; }
-        .bk-map { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px 24px; margin: 22px 0 0; font-size: 14px; }
-        .bk-map div { display: grid; }
-        .bk-map dt { font-weight: 600; }
-        .bk-map dd { margin: 0; color: ${muted}; }
-        .bk-two { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
-        .bk-cap { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 14px; font-size: 14px; }
-        .bk-four { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
-        .bk-tile { height: 140px; display: grid; place-items: center; border-bottom: 1px solid ${rule}; }
-        .bk-tile img { height: 60px; width: auto; }
-        .bk-tile.lock img { height: 36px; }
-        .bk-rules { margin: 18px 0 0; padding-left: 18px; color: ${muted}; font-size: 14px; display: grid; gap: 4px; }
-        .bk-six { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; }
-        .bk-chip span { display: block; height: 72px; border-radius: 12px; }
-        .bk-chip div { font-size: 13px; margin-top: 8px; display: grid; }
-        .bk-chip code { color: ${muted}; font-size: 12px; }
-        .bk-text { font-size: 15px; display: grid; gap: 10px; max-width: 640px; }
-        .bk-text ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
-        .bk-foot { font-size: 14px; color: ${muted}; text-align: center; }
-        .bk a.inl { color: ${sprout}; }
-        @media (max-width: 760px) {
-          .bk-four { grid-template-columns: repeat(2, 1fr); }
-          .bk-six { grid-template-columns: repeat(3, 1fr); }
-          .bk-map { grid-template-columns: repeat(2, 1fr); }
-        }
-        @media (max-width: 520px) { .bk-two { grid-template-columns: 1fr; } }
-      `}</style>
-      <SiteHeader />
-      <div className="bk-col">
-        <header>
-          <h1 className={outfit.className}>Brand kit</h1>
-          <p className="bk-lede">Garden art, logo and colours for making Sprouts content.</p>
-        </header>
+    <div className={`brand ${outfit.variable} ${albert.variable}`}>
+      <style>{CSS}</style>
+      <SiteHeader darkOk />
+      <main className="wrap">
+        <h1>Sprouts brand</h1>
+        <p className="muted">The logo, colours and type. Download what you need.</p>
 
-        <section>
-          <h2 className={outfit.className}>The garden</h2>
-          <div className="bk-frame">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/brand/garden-14.webp" alt="The full-grown Sprouts garden: two trees, a red maple, an azalea, an orchid and an open gold geode on raked sand" />
-          </div>
-          <div className="bk-bar">
-            {dl("garden-14.png", "PNG with signs")}
-            {dl("garden-14-clean.png", "PNG without signs")}
-          </div>
-          <dl className="bk-map">
-            {PLANTS.map(([coin, plant]) => (
-              <div key={coin}>
-                <dt>{coin}</dt>
-                <dd>{plant}</dd>
-              </div>
-            ))}
-          </dl>
-        </section>
-
-        <section>
-          <h2 className={outfit.className}>Growth stages</h2>
-          <div className="bk-two">
-            {STAGES.map(([file, caption]) => (
-              <figure key={file} className="bk-frame" style={{ margin: 0 }}>
+        <h2>Logo</h2>
+        <div className="grid">
+          {LOGOS.map((l) => (
+            <div className="card" key={l.file}>
+              <div className="tile" style={{ background: l.bg }}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={`/brand/${file}.webp`} alt={`The Sprouts garden. ${caption}`} loading="lazy" />
-                <figcaption className="bk-cap"><span>{caption}</span>{dl(`${file}.png`, "PNG")}</figcaption>
-              </figure>
-            ))}
-          </div>
-        </section>
-
-        <section>
-          <h2 className={outfit.className}>Logo</h2>
-          <div className="bk-four">
-            {MARKS.map(([file, bg, label]) => (
-              <div key={file} className="bk-frame">
-                <div className="bk-tile" style={{ background: bg }}>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={`/brand/${file}`} alt={`Sprouts mark, ${label.toLowerCase()}`} />
-                </div>
-                <div className="bk-cap"><span>{label}</span>{dl(file, "SVG")}</div>
+                <img className={l.png ? "full" : ""} src={K + l.file} alt={`Sprouts logo, ${l.name}`} />
               </div>
-            ))}
-            <div className="bk-frame">
-              <div className="bk-tile lock" style={{ background: paper }}>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/brand/lockup-ink.png" alt="Sprouts lockup: the mark and the word sprouts" />
+              <div className="meta">
+                <b>{l.name}</b><span>{l.note}</span>
+                <a className="dl" href={K + l.file} download>SVG</a>
+                {l.png ? <a className="dl" href={K + l.png} download>PNG</a> : null}
               </div>
-              <div className="bk-cap"><span>Lockup</span>{dl("lockup-ink.png", "PNG")}</div>
             </div>
-          </div>
-          <ul className="bk-rules">
-            <li>Leave space around the mark of at least a quarter of its height, and keep it 24 px or bigger.</li>
-            <li>Keep it as is: no rotating, stretching, outlines, shadows or other colours.</li>
-            <li>On busy art, put it on a solid circle. In a lockup the mark sits left of the word, and the word is lowercase.</li>
-          </ul>
-        </section>
+          ))}
+        </div>
 
-        <section>
-          <h2 className={outfit.className}>Colour and type</h2>
-          <div className="bk-six">
-            {COLOURS.map(([name, hex]) => (
-              <div key={hex} className="bk-chip">
-                <span style={{ background: hex, border: pale(hex) ? `1px solid ${rule}` : "none" }} />
-                <div><strong>{name}</strong><code>{hex}</code></div>
-              </div>
-            ))}
-          </div>
-          <p className="bk-rules" style={{ paddingLeft: 0, display: "block", marginTop: 22 }}>
-            Headings and the wordmark use <span className={outfit.className} style={{ color: ink }}>Outfit 600</span>. Body text uses
-            Albert Sans. Both are free on Google Fonts.
-          </p>
-        </section>
+        <h2>Using the logo</h2>
+        <ul>
+          <li>Leave clear space of a quarter of the logo&apos;s height on every side.</li>
+          <li>Keep it 24 px or larger, so the crack in the seed reads.</li>
+          <li>Don&apos;t rotate, stretch, outline, add shadows or change its colours.</li>
+          <li>On busy images, use the white logo or the app icon.</li>
+        </ul>
 
-        <section>
-          <h2 className={outfit.className}>Writing about Sprouts</h2>
-          <div className="bk-text">
-            <p>
-              Sprouts rounds up your Solana swaps and saves the change once a day into coins you pick. Everything stays in your own wallet.
-              It&apos;s live on the Solana dApp Store for Seeker and won 1st place at CLOCK IN.
-            </p>
-            <ul>
-              <li>Please don&apos;t promise returns or call it a bank. Rates change.</li>
-              <li>Sprouts doesn&apos;t mine ORE. It buys stORE for you.</li>
-              <li>No cashtags.</li>
-            </ul>
-          </div>
-        </section>
+        <h2>Colours</h2>
+        <div className="sw">
+          {COLOURS.map(([name, hex, use]) => (
+            <div className="chip" key={hex}>
+              <i style={{ background: hex }} />
+              <div><b>{name}</b><br /><code>{hex}</code><br /><span className="muted">{use}</span></div>
+            </div>
+          ))}
+        </div>
 
-        <p className="bk-foot">
-          Please share drafts with us before posting: <a className="inl" href="https://x.com/sproutsonseeker">@sproutsonseeker</a> or{" "}
-          <a className="inl" href="mailto:hello@sprouts.money">hello@sprouts.money</a>.
-        </p>
-      </div>
+        <h2>Type</h2>
+        <div className="type">
+          <div className="card">
+            <div className="big" style={{ fontFamily: "var(--font-display)", fontWeight: 600 }}>Sprouts</div>
+            <b>Outfit 600</b><br /><span className="muted">The name, titles and big numbers. </span>
+            <a href="https://fonts.google.com/specimen/Outfit">Google Fonts</a>
+          </div>
+          <div className="card">
+            <div className="big" style={{ fontFamily: "var(--font-body)" }}>Round up every swap</div>
+            <b>Albert Sans 400 and 600</b><br /><span className="muted">Everything people read. </span>
+            <a href="https://fonts.google.com/specimen/Albert+Sans">Google Fonts</a>
+          </div>
+        </div>
+
+        <h2>Name and line</h2>
+        <p>Write <b>Sprouts</b>: one word, capital S. On X it is <a href="https://x.com/sproutsonseeker">@sproutsonseeker</a>.</p>
+        <p>The one line: <b>Round up every swap and plant the change.</b></p>
+      </main>
       <SiteFooter />
-    </main>
+    </div>
   );
 }
