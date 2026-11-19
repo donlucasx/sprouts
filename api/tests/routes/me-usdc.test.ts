@@ -5,13 +5,15 @@ import { issueSession } from "@/lib/session";
 
 const U = "HJCJKRQLV2HVKfe3sFdTF5jjBY1xfWgnK8cLcjH7qnHd";
 vi.mock("@/lib/subscriptions", () => ({ readUsdcBalanceRaw: vi.fn(async () => 0n) }));
-const { solLamports, tokenAccounts } = vi.hoisted(() => ({
+const { solLamports, tokenAccounts, tokenReads } = vi.hoisted(() => ({
   solLamports: { v: 70_000_000n as bigint | null },
+  tokenReads: { n: 0 },
   tokenAccounts: { v: [] as { pubkey: string; mint: string; amount: string; decimals: number }[] | null },
 }));
 vi.mock("@/lib/rpc", () => ({ rpc: () => ({
   getBalance: () => ({ send: async () => { if (solLamports.v === null) throw new Error("rpc down"); return { value: solLamports.v }; } }),
   getTokenAccountsByOwner: () => ({ send: async () => {
+    tokenReads.n++;
     if (tokenAccounts.v === null) throw new Error("rpc down");
     return { value: tokenAccounts.v.map((t) => ({ pubkey: t.pubkey, account: { data: { parsed: { info: { mint: t.mint, tokenAmount: { amount: t.amount, decimals: t.decimals } } } } } })) };
   } }),
@@ -30,7 +32,8 @@ import { GET } from "@/app/api/me/usdc/route";
 import { address } from "@solana/kit";
 import { findAssociatedTokenPda, TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
 
-const get = async (token?: string) => GET(new Request("http://x/api/me/usdc", token ? { headers: { authorization: `Bearer ${token}` } } : {}));
+const get = async (token?: string, query = "") => GET(new Request(`http://x/api/me/usdc${query}`, token ? { headers: { authorization: `Bearer ${token}` } } : {}));
+const getSources = async (token: string) => get(token, "?sources=1");
 
 // Link a wallet's note before "This phone's wallet" approves: the signed-in Seeker's own USDC, read only.
 describe("GET /api/me/usdc", () => {
@@ -76,6 +79,7 @@ describe("GET /api/me/usdc", () => {
     const HSOL = "he1iusmfkpAdwvxLNGV8Y1iSbj4rUy6yMhEA3fotn9A";
     const FAKE = "4wiD3N7FrBNJSmZUQDkGHM4CsvDrvyvx7G1FApLGEbJ1";
     const NOROUTE = "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN";
+    const THIN = "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263"; // verified, routed, but its $5 route costs $5.50 at today's price
     const WSOL = "So11111111111111111111111111111111111111112";
     const ata = async (mint: string) => (await findAssociatedTokenPda({ owner: address(U), mint: address(mint), tokenProgram: TOKEN_PROGRAM_ADDRESS }))[0] as string;
     const TOKEN = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
@@ -86,22 +90,29 @@ describe("GET /api/me/usdc", () => {
         { pubkey: await ata(FAKE), mint: FAKE, amount: "50000000", decimals: 6 }, // $50, unverified
         { pubkey: await ata(HSOL), mint: HSOL, amount: "1000000000", decimals: 9 }, // a garden coin, $200
         { pubkey: await ata(NOROUTE), mint: NOROUTE, amount: "100000000", decimals: 6 }, // $30, verified, no route
+        { pubkey: await ata(THIN), mint: THIN, amount: "100000000000", decimals: 5 }, // 1M at $0.00002 = $20, verified, routed, overpriced
       ];
+      tokenReads.n = 0;
       vi.mocked(pricesUsd).mockImplementation(async (mints) => {
-        const p: Record<string, number> = { [SKR]: 0.02, [FAKE]: 1, [HSOL]: 200, [NOROUTE]: 0.3 };
+        const p: Record<string, number> = { [SKR]: 0.02, [FAKE]: 1, [HSOL]: 200, [NOROUTE]: 0.3, [THIN]: 0.00002 };
         return Object.fromEntries(mints.filter((m) => p[m]).map((m) => [m, { usdPrice: p[m], liquidity: null, priceChange24h: null, decimals: null }]));
       });
       vi.mocked(jupiterToken).mockImplementation(async (mint) =>
         mint === SKR ? { symbol: "SKR", decimals: 6, verified: true, tokenProgram: TOKEN }
           : mint === NOROUTE ? { symbol: "JUP", decimals: 6, verified: true, tokenProgram: TOKEN }
+          : mint === THIN ? { symbol: "BONK", decimals: 5, verified: true, tokenProgram: TOKEN }
           : mint === HSOL ? { symbol: "hSOL", decimals: 9, verified: true, tokenProgram: TOKEN }
           : { symbol: "FAKE", decimals: 6, verified: false, tokenProgram: TOKEN });
-      vi.mocked(getQuote).mockImplementation(async (a) => { if (a.inputMint === NOROUTE) throw new Error("no route"); return {} as never; });
+      // $5 out: SKR's maximum 251 SKR = $5.02 (within $5.15); THIN's 275,000 = $5.50 (the phone would refuse it as overpriced)
+      vi.mocked(getQuote).mockImplementation(async (a) => {
+        if (a.inputMint === NOROUTE) throw new Error("no route");
+        return { otherAmountThreshold: a.inputMint === THIN ? "27500000000" : "251000000" } as never;
+      });
     });
 
-    it("lists SOL first, then the verified, routed coins the wallet holds enough of; never a garden coin, an unverified or an unrouted one", async () => {
+    it("lists SOL first, then the verified, routed coins the wallet holds enough of; never a garden coin, an unverified, an unrouted or an overpriced one", async () => {
       vi.mocked(readUsdcBalanceRaw).mockResolvedValueOnce(0n);
-      const body = await (await get(await issueSession(U, "M"))).json();
+      const body = await (await getSources(await issueSession(U, "M"))).json();
       expect(body.topUpSources).toEqual([
         { mint: WSOL, symbol: "SOL", decimals: 9, valueCents: 1_400, offers: [500, 1_000] },
         { mint: SKR, symbol: "SKR", decimals: 6, valueCents: 800, offers: [500] },
@@ -116,20 +127,51 @@ describe("GET /api/me/usdc", () => {
     it("answers topUpSources null when the balances cannot be read, every other key as before", async () => {
       vi.mocked(readUsdcBalanceRaw).mockResolvedValueOnce(2_050_000n);
       tokenAccounts.v = null;
-      const body = await (await get(await issueSession(U, "M"))).json();
+      const body = await (await getSources(await issueSession(U, "M"))).json();
       expect(body).toEqual({ usdcRaw: "2050000", topUpCents: [500, 1_000], solLamports: "70000000", topUpSources: null });
     });
 
     it("answers null when the prices cannot be read", async () => {
       vi.mocked(readUsdcBalanceRaw).mockResolvedValueOnce(0n);
       vi.mocked(pricesUsd).mockRejectedValueOnce(new Error("jupiter down"));
-      expect((await (await get(await issueSession(U, "M"))).json()).topUpSources).toBeNull();
+      expect((await (await getSources(await issueSession(U, "M"))).json()).topUpSources).toBeNull();
+    });
+
+    // Task 7 review: opt-in, so the background refresh, Link a wallet and 0.1.11 cost what they did (no token-accounts read)
+    it("without ?sources=1 answers the old shape, no topUpSources key, and reads no token accounts and no prices", async () => {
+      vi.mocked(readUsdcBalanceRaw).mockResolvedValueOnce(0n);
+      vi.mocked(pricesUsd).mockClear();
+      vi.mocked(getQuote).mockClear();
+      vi.mocked(jupiterToken).mockClear();
+      const body = await (await get(await issueSession(U, "M"))).json();
+      expect(body).toEqual({ usdcRaw: "0", topUpCents: [500, 1_000], solLamports: "70000000" });
+      expect(tokenReads.n).toBe(0);
+      expect(pricesUsd).not.toHaveBeenCalled();
+      expect(getQuote).not.toHaveBeenCalled();
+      expect(jupiterToken).not.toHaveBeenCalled();
+    });
+
+    it("keeps a route an hour but a missing one only 10 minutes (a Jupiter hiccup never hides a coin for long)", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      try {
+        const quoted = () => vi.mocked(getQuote).mock.calls.map((c) => c[0].inputMint as string);
+        vi.mocked(getQuote).mockClear();
+        await getSources(await issueSession(U, "M"));
+        expect(quoted().filter((m) => m === SKR || m === NOROUTE).sort()).toEqual([NOROUTE, SKR].sort());
+        vi.advanceTimersByTime(11 * 60_000);
+        vi.mocked(getQuote).mockClear();
+        await getSources(await issueSession(U, "M"));
+        expect(quoted()).toContain(NOROUTE);
+        expect(quoted()).not.toContain(SKR);
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it("SOL alone when the wallet holds no other coin", async () => {
       vi.mocked(readUsdcBalanceRaw).mockResolvedValueOnce(0n);
       tokenAccounts.v = [];
-      expect((await (await get(await issueSession(U, "M"))).json()).topUpSources).toEqual([{ mint: WSOL, symbol: "SOL", decimals: 9, valueCents: 1_400, offers: [500, 1_000] }]);
+      expect((await (await getSources(await issueSession(U, "M"))).json()).topUpSources).toEqual([{ mint: WSOL, symbol: "SOL", decimals: 9, valueCents: 1_400, offers: [500, 1_000] }]);
     });
   });
 

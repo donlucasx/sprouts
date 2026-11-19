@@ -42,7 +42,7 @@ import { QuestionCard } from '@/components/QuestionCard'
 import { cardsFor, countHomeVisit, dismiss, homeVisits, readDismissed } from '@/lib/feedback'
 import { TopUpButton } from '@/components/TopUp'
 import { BambooFrame } from '@/garden2/BambooFrame'
-import { TOPUP, TOPUP_DEFAULT_CENTS, postLinkUsdc, topUpOffer } from '@/lib/topup'
+import { ME_USDC_WITH_SOURCES, TOPUP, TOPUP_DEFAULT_CENTS, postLinkUsdc, topUpOffer } from '@/lib/topup'
 import { MoveCard } from '@/components/MoveCard'
 import { termsNeeded, termsSummary } from '@/lib/terms'
 import { arrivalLine, formatSkr, formatAsOf } from '@/lib/format'
@@ -92,7 +92,8 @@ export default function Home() {
   useEffect(() => {
     if (me && activity) writeLastAvg(avgDailyRoundupCents(activity.swaps, me.user.pubkey, new Date()))
   }, [me, activity])
-  const { data: usdcRead } = useQuery({ queryKey: ['me-usdc', me?.user.pubkey], queryFn: () => api<MeUsdcResponse>('/api/me/usdc'), enabled: !!me, retry: false, staleTime: 60_000 })
+  // Its own key (Link a wallet's read of the plain path shares the 'me-usdc' prefix, so the top-up's invalidation refreshes both).
+  const { data: usdcRead } = useQuery({ queryKey: ['me-usdc', me?.user.pubkey, 'sources'], queryFn: () => api<MeUsdcResponse>(ME_USDC_WITH_SOURCES), enabled: !!me, retry: false, staleTime: 60_000 })
   // 0.1.10 (his ruling "Last 30 days total"): with no wallet linked, what their own swaps would have saved. Read once per 12 hours;
   // a failed read shows nothing extra (the plain prompt stays).
   const { data: preview } = useQuery({

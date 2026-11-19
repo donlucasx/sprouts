@@ -34,6 +34,12 @@ export const TOPUP = {
   otherWallet: (short: string) => `Top up works only for this phone's wallet. Add USDC to ${short} from wherever you use it.`,
 } as const
 
+/**
+ * Task 7 review: the API computes topUpSources only when asked (it costs a Helius token-accounts read and Jupiter calls), so only Home's
+ * read (whose Add USDC shows the coin picker) asks; Link a wallet and the background refresh read the plain path and get no list.
+ */
+export const ME_USDC_WITH_SOURCES = '/api/me/usdc?sources=1'
+
 /** GET /api/me/usdc topUpSources (0.1.12 API): a coin this phone's wallet can top up from; SOL first, absent from an older API. */
 export type TopUpSource = { mint: string; symbol: string; decimals: number; valueCents: number; offers: number[] }
 /** The coin picked first: SOL when offered, else the first; null when there is no list (an older API: the SOL top-up as in 0.1.11). */

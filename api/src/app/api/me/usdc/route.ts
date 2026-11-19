@@ -18,7 +18,8 @@ export const runtime = "nodejs";
  * send USDC to; null = unknown (no balance or no price), so the app offers every amount and the build route decides.
  *
  * Task 7 (0.1.12): `topUpSources`, the coins this wallet can top up from, SOL first (lib/topup.ts topUpSources); null when the
- * balances or prices could not be read. 0.1.11 reads only usdcRaw, topUpCents and solLamports, unchanged.
+ * balances or prices could not be read. Only with `?sources=1` (Home's read in 0.1.12): it costs a Helius token-accounts read and Jupiter
+ * calls, so the background refresh, Link a wallet and every 0.1.11 install get the old shape without the key, at the old cost.
  */
 export async function GET(request: Request) {
   const session = await requireSession(request);
@@ -35,9 +36,11 @@ export async function GET(request: Request) {
   const topUpCents = sol !== null && solUsd !== null ? affordableTopUps(sol, solUsd) : null;
   // 0.1.10: the wallet's SOL in lamports (null when unread), so Link a wallet can say BEFORE the approval that it needs a little SOL
   // (5 of 31 failed links 10-14 to 11-12 were wallets with no SOL for the rent and fee).
+  const body = { usdcRaw: usdc, topUpCents, solLamports: sol === null ? null : sol.toString() };
+  if (new URL(request.url).searchParams.get("sources") !== "1") return NextResponse.json(body);
   const sources = await topUpSources(me, sol, solUsd, topUpCents).catch((e) => {
     console.error(`/api/me/usdc: the top-up coins could not be read (${e instanceof Error ? e.message : String(e)})`);
     return null;
   });
-  return NextResponse.json({ usdcRaw: usdc, topUpCents, solLamports: sol === null ? null : sol.toString(), topUpSources: sources });
+  return NextResponse.json({ ...body, topUpSources: sources });
 }

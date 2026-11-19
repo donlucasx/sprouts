@@ -9,12 +9,16 @@ import token from "../fixtures/jupiter-topup-exactout-token.json";
 
 /** A fake chain for the SOL top-up: the wallet's lamports, the simulation, the send and the signature's status. */
 const { chain, simulateMock } = vi.hoisted(() => ({
-  chain: { lamports: 200_000_000n, tokenRaw: 100_000_000n, sent: 0, status: "confirmed" as "confirmed" | "failed" | "pending", blockhashValid: true },
+  chain: { lamports: 200_000_000n, tokenRaw: 100_000_000n as bigint | null | "down", jupUsd: 0.25, sent: 0, status: "confirmed" as "confirmed" | "failed" | "pending", blockhashValid: true },
   simulateMock: vi.fn(async () => ({ value: { err: null as unknown, logs: [] as string[] } })),
 }));
 vi.mock("@/lib/rpc", () => ({ rpc: () => ({
   getBalance: () => ({ send: async () => ({ value: chain.lamports }) }),
-  getTokenAccountBalance: () => ({ send: async () => ({ value: { amount: chain.tokenRaw.toString(), decimals: 6 } }) }),
+  getTokenAccountBalance: () => ({ send: async () => {
+    if (chain.tokenRaw === null) throw new Error("Invalid param: could not find account");
+    if (chain.tokenRaw === "down") throw new Error("fetch failed");
+    return { value: { amount: chain.tokenRaw.toString(), decimals: 6 } };
+  } }),
   getLatestBlockhash: () => ({ send: async () => ({ value: { blockhash: "GHtXQBsoZHVnNFa9YevAzFr17DJjgHXk3ycTKD5xD3Zi", lastValidBlockHeight: 1n } }) }),
   simulateTransaction: () => ({ send: simulateMock }),
   sendTransaction: () => ({ send: async () => { chain.sent++; return "sig"; } }),
@@ -40,6 +44,7 @@ const fetchMock = vi.fn(async (url: string, _init?: { body?: string }) => {
     const asked = JSON.parse(String(_init?.body ?? "{}"));
     return new Response(JSON.stringify(asked.quoteResponse?.inputMint === JUP_MINT ? token.swapInstructions : fixture.swapInstructions));
   }
+  if (url.includes("/price/v3")) return new Response(JSON.stringify({ [JUP_MINT]: { usdPrice: chain.jupUsd, decimals: 6 } }));
   if (url.includes("/tokens/v2/search")) {
     const q = new URL(url).searchParams.get("query");
     return new Response(JSON.stringify(q === JUP_MINT ? [{ id: JUP_MINT, symbol: "JUP", decimals: 6, tokenProgram: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", isVerified: true }] : q === UNVERIFIED ? [{ id: UNVERIFIED, symbol: "FAKE", decimals: 6, tokenProgram: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", isVerified: false }] : []));
@@ -63,7 +68,7 @@ describe("POST /api/topup/build (the SOL top-up's unsigned transaction)", () => 
     vi.stubGlobal("fetch", fetchMock);
     fetchMock.mockClear();
     simulateMock.mockClear();
-    Object.assign(chain, { lamports: 200_000_000n, tokenRaw: 100_000_000n, sent: 0, status: "confirmed", blockhashValid: true });
+    Object.assign(chain, { lamports: 200_000_000n, tokenRaw: 100_000_000n, jupUsd: 0.25, sent: 0, status: "confirmed", blockhashValid: true });
   });
 
   it("asks Jupiter for ExactOut $5 of USDC from SOL, and answers a simulated v0 transaction the wallet pays and alone signs, no lookup table", async () => {
@@ -181,6 +186,36 @@ describe("POST /api/topup/build (the SOL top-up's unsigned transaction)", () => 
     expect(simulateMock).not.toHaveBeenCalled();
   });
 
+  // Task 7 review: the chain before Jupiter; an RPC outage is not "not enough"; the phone's price bound applied here too.
+  it("refuses a coin the wallet does not hold with 409 before any Jupiter call", async () => {
+    for (const tokenRaw of [null, 0n]) {
+      chain.tokenRaw = tokenRaw;
+      fetchMock.mockClear();
+      const res = await call(build, { cents: 500, inputMint: "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263" });
+      expect(res.status).toBe(409);
+      expect((await res.json()).error).toBe("This wallet holds none of this coin. Pick another coin.");
+      expect(fetchMock).not.toHaveBeenCalled();
+    }
+  });
+
+  it("answers 503 'try again', not 409, when the token balance cannot be read", async () => {
+    chain.tokenRaw = "down";
+    fetchMock.mockClear();
+    const res = await call(build, { cents: 500, inputMint: JUP_MINT });
+    expect(res.status).toBe(503);
+    expect((await res.json()).error).toBe("Sprouts could not build the top-up just now. Nothing was asked of your wallet. Try again in a minute.");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("refuses a quote the phone would call overpriced (its maximum above the USDC plus 3% at Jupiter's price), before any swap is built", async () => {
+    chain.jupUsd = 0.26; // 20.138838 JUP x $0.26 = $5.24 > $5.15
+    const res = await call(build, { cents: 500, inputMint: JUP_MINT });
+    expect(res.status).toBe(503);
+    expect((await res.json()).error).toBe("Sprouts could not get a fair JUP to USDC price right now. Nothing was asked of your wallet. Try again later.");
+    expect(fetchMock.mock.calls.some((c) => String(c[0]).includes("swap-instructions"))).toBe(false);
+    expect(simulateMock).not.toHaveBeenCalled();
+  });
+
   it("names the coin when there is no route", async () => {
     fetchMock.mockImplementationOnce(async (url: string) => (url.includes("/tokens/v2/search") ? new Response(JSON.stringify([{ id: JUP_MINT, symbol: "JUP", decimals: 6, tokenProgram: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", isVerified: true }])) : new Response("x", { status: 500 })));
     fetchMock.mockImplementationOnce(async () => new Response("no route", { status: 400 }));
@@ -195,7 +230,7 @@ describe("POST /api/topup/confirm (sends the signed top-up)", () => {
     setRepoForTests(new MemoryRepo());
     process.env.JUPITER_API_KEY ??= "test";
     vi.stubGlobal("fetch", fetchMock);
-    Object.assign(chain, { lamports: 200_000_000n, tokenRaw: 100_000_000n, sent: 0, status: "confirmed", blockhashValid: true });
+    Object.assign(chain, { lamports: 200_000_000n, tokenRaw: 100_000_000n, jupUsd: 0.25, sent: 0, status: "confirmed", blockhashValid: true });
   });
   const built = async () => (await (await call(build, {})).json()).transaction as string;
 
@@ -255,7 +290,7 @@ describe("POST /api/topup/confirm records the top-up", () => {
     setRepoForTests(repo);
     process.env.JUPITER_API_KEY ??= "test";
     vi.stubGlobal("fetch", fetchMock);
-    Object.assign(chain, { lamports: 200_000_000n, tokenRaw: 100_000_000n, sent: 0, status: "confirmed", blockhashValid: true });
+    Object.assign(chain, { lamports: 200_000_000n, tokenRaw: 100_000_000n, jupUsd: 0.25, sent: 0, status: "confirmed", blockhashValid: true });
   });
   const built = async () => (await (await call(build, {})).json()).transaction as string;
   const kinds = () => repo.events.map((e) => e.kind);

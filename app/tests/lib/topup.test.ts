@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { REFUSED, SignRefused, type SignFlow } from '@/lib/sign'
 import { DROPPED_NOTHING_SENT } from '@/lib/wallet-errors'
-import { postLinkUsdc, defaultSource, pickerSources, topUpChoices, TOPUP, TopUpFailed, topUpCentsFor, topUpOffer, topUpThisPhone } from '@/lib/topup'
+import { ME_USDC_WITH_SOURCES, postLinkUsdc, defaultSource, pickerSources, topUpChoices, TOPUP, TopUpFailed, topUpCentsFor, topUpOffer, topUpThisPhone } from '@/lib/topup'
 
 const ME = 'HJCJKRQLV2HVKfe3sFdTF5jjBY1xfWgnK8cLcjH7qnHd'
 const OTHER = '7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU'
@@ -212,5 +212,23 @@ describe('postLinkUsdc: what Home says under "linked"', () => {
     expect(postLinkUsdc({ linked: W, phone: 'P', usdcCents: 0 })).toEqual(want)
     expect(postLinkUsdc({ linked: W, phone: 'P', usdcCents: 9000 })).toEqual(want)
     expect(want.line).toBe("Top up works only for this phone's wallet. Add USDC to W111...xyz9 from wherever you use it.")
+  })
+})
+
+// Task 7 review: topUpSources is opt-in on the API (a Helius read per call); only Home's read asks for it.
+describe('who asks /api/me/usdc for topUpSources', async () => {
+  const { readFileSync } = await import('node:fs')
+  const read = (p: string) => readFileSync(new URL(`../../src/${p}`, import.meta.url), 'utf8')
+  it("Home's read asks, under its own query key; the background refresh and Link a wallet do not", () => {
+    expect(ME_USDC_WITH_SOURCES).toBe('/api/me/usdc?sources=1')
+    const home = read('app/(tabs)/home.tsx')
+    expect(home).toContain("queryKey: ['me-usdc', me?.user.pubkey, 'sources'], queryFn: () => api<MeUsdcResponse>(ME_USDC_WITH_SOURCES)")
+    expect(home).not.toContain("'/api/me/usdc'")
+    for (const p of ['lib/background.ts', 'app/connect.tsx']) {
+      const src = read(p)
+      expect(src).toMatch(/\/api\/me\/usdc["']/)
+      expect(src).not.toContain('sources=1')
+      expect(src).not.toContain('ME_USDC_WITH_SOURCES')
+    }
   })
 })
