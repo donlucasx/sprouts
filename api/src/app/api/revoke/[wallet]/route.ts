@@ -1,4 +1,4 @@
-import { NextResponse, after } from "next/server";
+import { NextResponse } from "next/server";
 import { z } from "zod";
 import { address, type Address } from "@solana/kit";
 import { getRepo } from "@/db/repo";
@@ -7,9 +7,6 @@ import { buildRevokeIxs, readDelegation } from "@/lib/subscriptions";
 import { verifyPostedTransaction } from "@/lib/verify-tx";
 import { buildUserTransaction, sendPosted, waitConfirmed, settleUnconfirmed, STILL_WAITING } from "@/lib/user-tx";
 import { SUBSCRIPTIONS_PROGRAM } from "@/lib/constants";
-import { heliusRemoveAddresses } from "@/lib/helius";
-import { config } from "@/lib/config";
-import { errorText } from "@/lib/redact";
 import { withAppErrorLog, addressOrNull } from "@/lib/failure-log";
 
 export const runtime = "nodejs";
@@ -82,19 +79,6 @@ async function postHandler(request: Request, ctx: { params: Promise<{ wallet: st
   if (d.exists) return NextResponse.json({ error: "The chain still shows the delegation. Check again in a minute." }, { status: 409 });
   await repo.setWalletStatus(wallet, "revoked");
   await repo.addEvent({ userPubkey: row.userPubkey, walletPubkey: wallet, kind: "revoke_seen", detail: { signature: posted.signature, by: "user" } });
-  // Off the swap webhook (it bills credits per watched address's events); a failure leaves it to the daily coverage pass.
-  const remove = async () => {
-    try {
-      await heliusRemoveAddresses(config().heliusWebhookId, [wallet], { stillRevoked: async (k) => (await repo.getWallet(k))?.status === "revoked" });
-    } catch (e) {
-      console.error("helius remove failed: " + errorText(e));
-    }
-  };
-  try {
-    after(remove);
-  } catch {
-    void remove();   // no request scope (tests, scripts)
-  }
   return NextResponse.json({ revoked: true });
 }
 /** The wallet in the URL (a public address, as the link failures store), never a caller key. */

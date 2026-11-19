@@ -490,6 +490,11 @@ export class MemoryRepo implements Repo {
     c.delegationPda = delegationPda;
   }
 
+  async hasLinkInProgress(walletPubkey: string): Promise<boolean> {
+    for (const c of this.linkCodes.values()) if (c.walletPubkey === walletPubkey && c.expiresAt.getTime() > Date.now()) return true;
+    return false;
+  }
+
   async takeLinkCode(code: string, walletPubkey: string): Promise<T.LinkCodeRow | null> {
     const c = await this.peekLinkCode(code);
     if (!c || c.walletPubkey !== walletPubkey) return null;

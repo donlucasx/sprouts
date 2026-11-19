@@ -69,35 +69,41 @@ export async function heliusEnsureAddresses(webhookId: string, want: string[], o
 }
 
 /**
- * Take addresses off the webhook (revoked wallets), same read-modify-write and re-read loop as heliusEnsureAddresses: a racing
- * link write can put one back, so each write is checked by a re-read after a pause and an address still there is removed again.
- * Before each write `stillRevoked` is asked again; an address it answers false for (re-linked meanwhile) is left alone and dropped
- * from this call's work, so it is not in the returned list. An empty list is never written (Helius refuses it): the last
- * addresses stay and are returned. Returns the requested addresses still on the webhook.
+ * Take addresses off the webhook (revoked wallets), same read-modify-write and re-read loop as heliusEnsureAddresses. Each try:
+ * (1) `stillRevoked` is asked for every address first (a DB read), so no DB call sits between the webhook read and the write;
+ * (2) the webhook is read and written back at once without the addresses; (3) after a pause it is read again: a racing link write
+ * can put one back (removed again on the next try), and a racing write built from an older read can drop an address the snapshot
+ * had and we kept (re-added through heliusEnsureAddresses, and logged). A write that lands between our read and our PUT and adds
+ * an address we never saw is not visible here: that writer's own re-read (heliusEnsureAddresses, 11-10) puts it back.
+ * An address `stillRevoked` answers false for (re-linked meanwhile) is left alone. An empty list is never written (Helius refuses
+ * it). Returns `removed` (requested addresses no longer on the webhook) and `kept` (still on it, for any reason).
+ * Calls per prune: normal 1 read + 1 PUT + 1 re-read; worst case per try the same again, plus a re-add (1 read + 1 PUT + 1 re-read).
  */
 export async function heliusRemoveAddresses(
   webhookId: string,
   remove: string[],
   opts: { tries?: number; settleMs?: number; stillRevoked?: (address: string) => Promise<boolean> } = {},
-): Promise<string[]> {
+): Promise<{ removed: string[]; kept: string[] }> {
   const tries = opts.tries ?? ENSURE_TRIES;
   const settleMs = opts.settleMs ?? ENSURE_SETTLE_MS;
-  let work = [...new Set(remove)];
-  let hook = await readWebhook(webhookId);
+  const wanted = [...new Set(remove)];
+  let work = wanted;
+  let on = new Set<string>();   // the webhook as last read
+  const result = () => ({ removed: wanted.filter((a) => !on.has(a)), kept: wanted.filter((a) => on.has(a)) });
   for (let i = 0; i < tries; i++) {
-    let have = new Set(hook.accountAddresses);
-    work = work.filter((a) => have.has(a));
-    if (!work.length) return [];
     if (opts.stillRevoked) {
-      const keep = await Promise.all(work.map((a) => opts.stillRevoked!(a)));
-      work = work.filter((_, j) => keep[j]);
-      if (!work.length) return [];
+      const ok = await Promise.all(work.map((a) => opts.stillRevoked!(a)));
+      work = work.filter((_, j) => ok[j]);
     }
+    const hook = await readWebhook(webhookId);
+    on = new Set(hook.accountAddresses);
+    work = work.filter((a) => on.has(a));
+    if (!work.length) return result();
     const drop = new Set(work);
     const left = hook.accountAddresses.filter((a) => !drop.has(a));
     if (!left.length) {
       console.error(`helius: not removing ${work.length} address(es): it would leave the webhook with none`);
-      return work;
+      return result();
     }
     const res = await fetch(url(`/v0/webhooks/${webhookId}`), {
       method: "PUT",
@@ -109,10 +115,18 @@ export async function heliusRemoveAddresses(
     });
     if (!res.ok) throw new Error(`Helius update webhook failed: ${res.status} ${(await res.text()).slice(0, 200)}`);
     await sleep(settleMs + Math.floor(Math.random() * settleMs));
-    hook = await readWebhook(webhookId);
+    const after = await readWebhook(webhookId);
+    on = new Set(after.accountAddresses);
+    const lost = left.filter((a) => !on.has(a));
+    if (lost.length) {
+      console.error(`helius: a concurrent write dropped ${lost.length} watched address(es) while removing; re-added them`);
+      const still = await heliusEnsureAddresses(webhookId, lost, { tries, settleMs });
+      if (still.length) console.error(`helius: ${still.length} address(es) still off the webhook after the re-add; the daily coverage pass retries`);
+    }
+    work = work.filter((a) => on.has(a));
+    if (!work.length) return result();
   }
-  const have = new Set(hook.accountAddresses);
-  return work.filter((a) => have.has(a));
+  return result();
 }
 
 /** Add one wallet to the webhook (plus `alsoKnown`, re-added if a racing write dropped them); throws when it is still not watched. */

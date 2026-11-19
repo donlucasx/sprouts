@@ -256,7 +256,7 @@ export function founderCardFor(e: Omit<EventRow, "id" | "ts">, extra: { skrName?
  * wallet made while off the webhook were never booked, so a repaired gap still alerts: someone may want to look at its swaps.
  * A throwing repair counts as nothing repaired.
  * Season economics: the other direction. A watched address whose wallet row says `revoked` is an extra; `prune` (the cron passes
- * heliusRemoveAddresses) takes them off and returns the ones still on. A watched address with NO wallet row is only named in the
+ * heliusRemoveAddresses) takes them off and says which it removed and which it kept (a wallet being re-linked is kept). A watched address with NO wallet row is only named in the
  * alert, never removed: link/confirm adds to the webhook before the row is written, so it may be a link in progress. A throwing
  * prune counts as nothing removed.
  */
@@ -264,9 +264,9 @@ export async function checkWebhookCoverage(a: {
   repo: Repo;
   watched: () => Promise<string[]>;
   repair?: (missing: string[]) => Promise<string[]>;
-  prune?: (extras: string[]) => Promise<string[]>;
+  prune?: (extras: string[]) => Promise<{ removed: string[]; kept: string[] }>;
   alert?: (text: string) => Promise<void>;
-}): Promise<{ missing: string[]; repaired: string[]; extras: string[]; removed: string[] }> {
+}): Promise<{ missing: string[]; repaired: string[]; extras: string[]; removed: string[]; kept: string[] }> {
   const [watched, active, paused] = await Promise.all([a.watched(), a.repo.listActiveWallets(), a.repo.listPausedWallets()]);
   const on = new Set(watched);
   const known = [...active, ...paused].map((w) => w.pubkey);
@@ -280,7 +280,7 @@ export async function checkWebhookCoverage(a: {
     if (row?.status === "revoked") extras.push(k);
     else if (!row) unknown.push(k);
   }
-  if (!missing.length && !extras.length && !unknown.length) return { missing, repaired: [], extras, removed: [] };
+  if (!missing.length && !extras.length && !unknown.length) return { missing, repaired: [], extras, removed: [], kept: [] };
   let still = missing;
   if (a.repair && missing.length) {
     try {
@@ -294,8 +294,8 @@ export async function checkWebhookCoverage(a: {
   let removed: string[] = [];
   if (a.prune && extras.length) {
     try {
-      const left = new Set(await a.prune(extras));
-      removed = extras.filter((k) => !left.has(k));
+      const gone = new Set((await a.prune(extras)).removed);
+      removed = extras.filter((k) => gone.has(k));
     } catch (e) {
       console.error(`webhook coverage: prune failed: ${errorText(e)}`);
     }
@@ -314,8 +314,16 @@ export async function checkWebhookCoverage(a: {
     text,
     todo: bad ? "Add the listed wallets to the Helius webhook by hand" : repaired.length ? "Check their swaps during the gap; nothing was booked while they were off" : "Nothing, unless the same addresses are listed again tomorrow",
   })))(parts.join(" "));
-  return { missing: still, repaired, extras, removed };
+  return { missing: still, repaired, extras, removed, kept };
 }
+
+/**
+ * The prune's last check before it drops a wallet: still revoked AND no link in progress for it. link/confirm burns the code, adds
+ * the address to the webhook and only then writes the wallet row active, and heliusEnsureAddresses writes nothing for an address
+ * already on the list, so a re-link of a revoked wallet looks "revoked" in the DB for a moment while it must stay watched.
+ */
+export const stillRevokedCheck = (repo: Repo) => async (pubkey: string): Promise<boolean> =>
+  (await repo.getWallet(pubkey))?.status === "revoked" && !(await repo.hasLinkInProgress(pubkey));
 
 const TOPIC_LABEL: Record<string, string> = { link: "Linking a wallet", planting: "Plantings", withdraw: "Withdrawing", idea: "An idea", other: "Something else" };
 const at = (iso: unknown) => (typeof iso === "string" ? iso.slice(11, 16) : "?");

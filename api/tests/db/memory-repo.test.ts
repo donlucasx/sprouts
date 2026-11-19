@@ -67,6 +67,20 @@ describe("MemoryRepo", () => {
     expect((await r.peekLinkCode("RACEME"))?.walletPubkey).toBe("W1");
   });
 
+  it("hasLinkInProgress: a bound, unexpired code (used or not) for that wallet; not an unbound, expired or other wallet's", async () => {
+    const r = new MemoryRepo();
+    await r.putLinkCode({ code: "LIVE22", userPubkey: "U", expiresAt: new Date(Date.now() + 60_000), nonce: 1n });
+    expect(await r.hasLinkInProgress("W")).toBe(false);   // unbound
+    await r.bindLinkCode("LIVE22", "W", "pda");
+    expect(await r.hasLinkInProgress("W")).toBe(true);
+    expect(await r.hasLinkInProgress("OTHER")).toBe(false);
+    await r.takeLinkCode("LIVE22", "W");   // confirm burns the code BEFORE it adds to the webhook and writes the row
+    expect(await r.hasLinkInProgress("W")).toBe(true);
+    await r.putLinkCode({ code: "OLD222", userPubkey: "U", expiresAt: new Date(Date.now() - 1_000), nonce: 2n });
+    await r.bindLinkCode("OLD222", "W2", "pda");
+    expect(await r.hasLinkInProgress("W2")).toBe(false);
+  });
+
   it("addWallet on an existing wallet resets the delegation, cap and status and keeps the ledger", async () => {
     const r = await withWallet();
     await r.bumpLedger("W", "SKR", 50);

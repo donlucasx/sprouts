@@ -19,8 +19,6 @@ vi.mock("@/lib/rpc", () => ({
     isBlockhashValid: (blockhash: string, config?: unknown) => ({ send: async () => ({ value: await validMock(blockhash, config) }) }),
   }),
 }));
-const { removeMock } = vi.hoisted(() => ({ removeMock: vi.fn(async (..._a: unknown[]): Promise<string[]> => []) }));
-vi.mock("@/lib/helius", async (orig) => ({ ...(await orig<object>()), heliusRemoveAddresses: removeMock }));
 vi.mock("@/lib/planting", () => ({ signatureStatus: (sig: string) => statusMock(sig) }));
 vi.mock("@/lib/user-tx", async (orig) => ({ ...(await orig<object>()), waitConfirmed: (sig: string) => statusMock(sig) }));   // one ask, not the 30 s poll
 
@@ -59,8 +57,6 @@ const act = (pubkey: string, body: unknown, headers: Record<string, string> = au
 describe("rules, wallets, revoke", () => {
   let repo: MemoryRepo;
   beforeEach(async () => {
-    process.env.HELIUS_WEBHOOK_ID ??= "WH";
-    removeMock.mockClear();
     repo = new MemoryRepo();
     setRepoForTests(repo);
     await repo.upsertUser({ seedVaultPubkey: U, sgtMint: "M", skrName: null });
@@ -155,19 +151,6 @@ describe("rules, wallets, revoke", () => {
     expect((await r.json()).revoked).toBe(true);
     expect((await repo.getWallet(W))?.status).toBe("revoked");
     expect(repo.events.some((e) => e.kind === "revoke_seen" && e.walletPubkey === W)).toBe(true);
-    await vi.waitFor(() => expect(removeMock).toHaveBeenCalledTimes(1));
-    expect((removeMock.mock.calls[0] as unknown[]).slice(1, 2)).toEqual([[W]]);
-  });
-  it("revoke: a webhook remove that throws does not change the 200 answer", async () => {
-    removeMock.mockRejectedValueOnce(new Error("helius down"));
-    const err = vi.spyOn(console, "error").mockImplementation(() => {});
-    const t = await (await revokeGet(new Request(`http://x/api/revoke/${W}`), { params: Promise.resolve({ wallet: W }) })).json();
-    const signed = getBase64EncodedWireTransaction(await signTransaction([wallet.keyPair], getTransactionDecoder().decode(getBase64Encoder().encode(t.transaction))));
-    const r = await revokePost(new Request(`http://x/api/revoke/${W}`, { method: "POST", body: JSON.stringify({ signedTransaction: signed }) }), { params: Promise.resolve({ wallet: W }) });
-    expect(r.status).toBe(200);
-    expect((await r.json()).revoked).toBe(true);
-    await vi.waitFor(() => expect(err).toHaveBeenCalledWith(expect.stringContaining("helius remove failed")));
-    err.mockRestore();
   });
   it("revoke that has not confirmed (round 3, item 8): an expired blockhash did not go through; a valid one may still go through; the wallet stays linked", async () => {
     const t = await (await revokeGet(new Request(`http://x/api/revoke/${W}`), { params: Promise.resolve({ wallet: W }) })).json();

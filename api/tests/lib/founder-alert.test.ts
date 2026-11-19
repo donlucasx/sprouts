@@ -217,7 +217,7 @@ describe("checkWebhookCoverage", () => {
     const repair = vi.fn(async (missing: string[]) => missing.filter((k) => k === "stuckBBBB"));
     const r = await checkWebhookCoverage({ repo, watched: async () => ["watched1111"], repair, alert });
     expect(repair).toHaveBeenCalledWith(expect.arrayContaining(["fixedAAAA", "stuckBBBB"]));
-    expect(r).toEqual({ missing: ["stuckBBBB"], repaired: ["fixedAAAA"], extras: [], removed: [] });
+    expect(r).toEqual({ missing: ["stuckBBBB"], repaired: ["fixedAAAA"], extras: [], removed: [], kept: [] });
     const text = (alert.mock.calls[0] as unknown as [string])[0];
     expect(text).toContain("Re-added 1 linked wallet(s)");
     expect(text).toContain("were not counted");
@@ -231,11 +231,11 @@ describe("checkWebhookCoverage", () => {
     await repo.addWallet({ pubkey: "goneCCCC", userPubkey: U, delegationPda: "P", dailyCapCents: 500, webhookAdded: true });
     const alert = vi.fn(async () => {});
     const ok = await checkWebhookCoverage({ repo, watched: async () => [], repair: async () => [], alert });
-    expect(ok).toEqual({ missing: [], repaired: ["goneCCCC"], extras: [], removed: [] });
+    expect(ok).toEqual({ missing: [], repaired: ["goneCCCC"], extras: [], removed: [], kept: [] });
     expect((alert.mock.calls[0] as unknown as [string])[0]).not.toContain("NOT being counted");
     alert.mockClear();
     const bad = await checkWebhookCoverage({ repo, watched: async () => [], repair: async () => { throw new Error("helius down"); }, alert });
-    expect(bad).toEqual({ missing: ["goneCCCC"], repaired: [], extras: [], removed: [] });
+    expect(bad).toEqual({ missing: ["goneCCCC"], repaired: [], extras: [], removed: [], kept: [] });
     expect((alert.mock.calls[0] as unknown as [string])[0]).toContain("NOT being counted: 1 linked wallet(s)");
   });
 });
@@ -254,10 +254,10 @@ describe("checkWebhookCoverage: revoked extras", () => {
   it("prunes only the revoked one; an address with no wallet row is named in the alert and never pruned", async () => {
     const { repo, checkWebhookCoverage } = await setup();
     const alert = vi.fn(async () => {});
-    const prune = vi.fn(async (_e: string[]) => [] as string[]);
+    const prune = vi.fn(async (e: string[]) => ({ removed: e, kept: [] as string[] }));
     const r = await checkWebhookCoverage({ repo, watched: async () => ["activeAAAA", "revokedBBBB", "unknownXXXXXXXX"], prune, alert });
     expect(prune).toHaveBeenCalledWith(["revokedBBBB"]);
-    expect(r).toEqual({ missing: [], repaired: [], extras: ["revokedBBBB"], removed: ["revokedBBBB"] });
+    expect(r).toEqual({ missing: [], repaired: [], extras: ["revokedBBBB"], removed: ["revokedBBBB"], kept: [] });
     const text = (alert.mock.calls[0] as unknown as [string])[0];
     expect(text).toContain("Took 1 revoked wallet(s)");
     expect(text).toContain("no wallet row");
@@ -269,13 +269,36 @@ describe("checkWebhookCoverage: revoked extras", () => {
     const r = await checkWebhookCoverage({ repo, watched: async () => ["activeAAAA", "revokedBBBB"], prune: async () => { throw new Error("helius down"); }, alert });
     expect(r.extras).toEqual(["revokedBBBB"]);
     expect(r.removed).toEqual([]);
+    expect(r.kept).toEqual(["revokedBBBB"]);
     expect((alert.mock.calls[0] as unknown as [string])[0]).toContain("still on the Helius webhook");
+  });
+
+  it("a wallet the prune kept (being re-linked) is not counted as removed and the alert says so", async () => {
+    const { repo, checkWebhookCoverage } = await setup();
+    const alert = vi.fn(async () => {});
+    const r = await checkWebhookCoverage({ repo, watched: async () => ["activeAAAA", "revokedBBBB"], prune: async () => ({ removed: [], kept: ["revokedBBBB"] }), alert });
+    expect(r).toMatchObject({ extras: ["revokedBBBB"], removed: [], kept: ["revokedBBBB"] });
+    const text = (alert.mock.calls[0] as unknown as [string])[0];
+    expect(text).not.toContain("Took");
+    expect(text).toContain("still on the Helius webhook");
+  });
+
+  it("stillRevokedCheck: a revoked wallet with a live link code bound to it is kept (link/confirm adds to the webhook before the row is written)", async () => {
+    const { repo } = await setup();
+    const { stillRevokedCheck } = await import("@/lib/founder-alert");
+    const check = stillRevokedCheck(repo);
+    expect(await check("revokedBBBB")).toBe(true);
+    expect(await check("activeAAAA")).toBe(false);
+    expect(await check("neverSeen")).toBe(false);
+    await repo.putLinkCode({ code: "RELINK", userPubkey: U, expiresAt: new Date(Date.now() + 60_000), nonce: 1n });
+    await repo.bindLinkCode("RELINK", "revokedBBBB", "pda");
+    expect(await check("revokedBBBB")).toBe(false);
   });
 
   it("no extras, no unknown: no alert and prune is not called", async () => {
     const { repo, checkWebhookCoverage } = await setup();
     const alert = vi.fn(async () => {});
-    const prune = vi.fn(async (_e: string[]) => [] as string[]);
+    const prune = vi.fn(async (e: string[]) => ({ removed: e, kept: [] as string[] }));
     await checkWebhookCoverage({ repo, watched: async () => ["activeAAAA"], prune, alert });
     expect(prune).not.toHaveBeenCalled();
     expect(alert).not.toHaveBeenCalled();

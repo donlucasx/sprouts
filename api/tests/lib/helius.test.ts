@@ -74,7 +74,7 @@ describe("heliusEnsureAddresses", () => {
 describe("heliusRemoveAddresses", () => {
   it("removes only the given addresses, keeps the others and the webhook's fields", async () => {
     const { hook, puts } = fakeHelius(["A", "B", "C"]);
-    expect(await heliusRemoveAddresses("WH", ["B", "Z"], FAST)).toEqual([]);
+    expect(await heliusRemoveAddresses("WH", ["B", "Z"], FAST)).toEqual({ removed: ["B", "Z"], kept: [] });
     expect(puts).toHaveLength(1);
     expect(puts[0].accountAddresses).toEqual(["A", "C"]);
     expect(puts[0]).toMatchObject({ webhookURL: hook.webhookURL, transactionTypes: ["ANY"], webhookType: "enhanced", authHeader: "Bearer s" });
@@ -82,35 +82,55 @@ describe("heliusRemoveAddresses", () => {
 
   it("writes nothing when none of them is on the webhook", async () => {
     const { puts } = fakeHelius(["A"]);
-    expect(await heliusRemoveAddresses("WH", ["B"], FAST)).toEqual([]);
+    expect(await heliusRemoveAddresses("WH", ["B"], FAST)).toEqual({ removed: ["B"], kept: [] });
     expect(puts).toHaveLength(0);
   });
 
   it("a racing link write re-added the revoked wallet after our PUT: the second PUT removes it", async () => {
     const { hook, puts } = fakeHelius(["A", "B"], (h, n) => { if (n === 1) h.accountAddresses = ["A", "B", "X"]; });
-    expect(await heliusRemoveAddresses("WH", ["B"], FAST)).toEqual([]);
+    expect(await heliusRemoveAddresses("WH", ["B"], FAST)).toEqual({ removed: ["B"], kept: [] });
     expect(puts).toHaveLength(2);
     expect(hook.accountAddresses.sort()).toEqual(["A", "X"]);
   });
 
-  it("returns what is still on the webhook after the last try", async () => {
+  it("reports what is still on the webhook after the last try as kept", async () => {
     fakeHelius(["A", "B"], (h) => { h.accountAddresses = ["A", "B"]; });
-    expect(await heliusRemoveAddresses("WH", ["B"], { tries: 2, settleMs: 0 })).toEqual(["B"]);
+    expect(await heliusRemoveAddresses("WH", ["B"], { tries: 2, settleMs: 0 })).toEqual({ removed: [], kept: ["B"] });
   });
 
-  it("keeps an address whose stillRevoked answers false", async () => {
+  it("keeps an address whose stillRevoked answers false (and reports it kept, not removed)", async () => {
     const { puts } = fakeHelius(["A", "B", "C"]);
     const stillRevoked = vi.fn(async (k: string) => k !== "B");
-    expect(await heliusRemoveAddresses("WH", ["B", "C"], { ...FAST, stillRevoked })).toEqual([]);
+    expect(await heliusRemoveAddresses("WH", ["B", "C"], { ...FAST, stillRevoked })).toEqual({ removed: ["C"], kept: ["B"] });
     expect(puts[0].accountAddresses).toEqual(["A", "B"]);
   });
 
-  it("never writes an empty list: removing the last address writes nothing and returns it", async () => {
+  it("asks stillRevoked BEFORE it reads the webhook, so the DB check is not between the read and the write", async () => {
+    const order: string[] = [];
+    fakeHelius(["A", "B"]);
+    const f = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
+    const inner = f.getMockImplementation()!;
+    f.mockImplementation(async (u: string, init?: { method?: string; body?: string }) => { order.push(init?.method ?? "GET"); return inner(u, init); });
+    await heliusRemoveAddresses("WH", ["B"], { ...FAST, stillRevoked: async () => { order.push("db"); return true; } });
+    expect(order.slice(0, 3)).toEqual(["db", "GET", "PUT"]);
+  });
+
+  it("never writes an empty list: removing the last address writes nothing and keeps it", async () => {
     const { puts } = fakeHelius(["B"]);
     const err = vi.spyOn(console, "error").mockImplementation(() => {});
-    expect(await heliusRemoveAddresses("WH", ["B"], FAST)).toEqual(["B"]);
+    expect(await heliusRemoveAddresses("WH", ["B"], FAST)).toEqual({ removed: [], kept: ["B"] });
     expect(puts).toHaveLength(0);
     expect(err).toHaveBeenCalled();
+    err.mockRestore();
+  });
+
+  it("a PUT that lost a concurrent write is repaired: an address the racer's stale list dropped comes back", async () => {
+    // A concurrent link PUT, built from an older read, lands right after ours and drops "C" (which we kept).
+    const { hook } = fakeHelius(["A", "B", "C"], (h, n) => { if (n === 1) h.accountAddresses = ["A"]; });
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(await heliusRemoveAddresses("WH", ["B"], FAST)).toEqual({ removed: ["B"], kept: [] });
+    expect(hook.accountAddresses.sort()).toEqual(["A", "C"]);
+    expect(err).toHaveBeenCalledWith(expect.stringContaining("re-added"));
     err.mockRestore();
   });
 

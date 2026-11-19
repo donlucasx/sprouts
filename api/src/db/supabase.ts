@@ -542,6 +542,12 @@ export class SupabaseRepo implements Repo {
     if (error) throw new Error(error.message);
   }
 
+  async hasLinkInProgress(walletPubkey: string) {
+    const { data, error } = await this.db.from("link_codes").select("code").eq("wallet_pubkey", walletPubkey).gt("expires_at", new Date().toISOString()).limit(1);
+    if (error) throw new Error(error.message);
+    return (data ?? []).length > 0;
+  }
+
   /** Consumes the code only for the wallet it was bound to, in one statement. */
   async takeLinkCode(code: string, walletPubkey: string) {
     const { data, error } = await this.db.from("link_codes").update({ used: true }).eq("code", code).eq("used", false).eq("wallet_pubkey", walletPubkey).gt("expires_at", new Date().toISOString()).select().maybeSingle();

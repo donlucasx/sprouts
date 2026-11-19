@@ -122,6 +122,8 @@ export interface Repo {
   peekLinkCode(code: string): Promise<T.LinkCodeRow | null>;
   /** The first wallet that fetches the transaction owns the code. */
   bindLinkCode(code: string, walletPubkey: string, delegationPda: string): Promise<void>;
+  /** True while an unexpired link code (used or not) is bound to this wallet: a link is in progress or just finished (read-only; the daily webhook prune keeps such a wallet). */
+  hasLinkInProgress(walletPubkey: string): Promise<boolean>;
   /** Consumes the code for the wallet it is bound to, only after the chain confirmed the delegation. */
   takeLinkCode(code: string, walletPubkey: string): Promise<T.LinkCodeRow | null>;
 
