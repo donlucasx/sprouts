@@ -4,7 +4,8 @@ import type { RemainderKind, Repo } from "@/db/repo";
 import type { CarryKind, PlantingLegRow, PlantingRow, VenueDayRow, WalletRow } from "@/db/types";
 import { rulesRowToRules } from "@/db/types";
 import { alertFounder } from "./founder-alert";
-import { pickAsset, type Asset } from "@/domain/allocation";
+import { pickAsset, type Asset, type Ledger } from "@/domain/allocation";
+import { coinOpening, type Opening } from "@/domain/opening";
 import { ASSETS, COINS, LEND_ASSETS, isLendAsset, type LendAsset, type LiveAsset, type Split } from "@/domain/coins";
 import { addDays, dayOf } from "@/domain/day";
 import { capCarryClaim, capLeftCents, coveredOldestFirst, plantAmountCents } from "@/domain/cap";
@@ -153,6 +154,7 @@ export async function runPlanting(a: RunArgs & { deadlineMs?: number }): Promise
     prices: { USDC_LEND: (await a.repo.getCoinDay(day, "USDC_LEND"))?.priceUsd ?? null, SOL_LEND: (await a.repo.getCoinDay(day, "SOL_LEND"))?.priceUsd ?? null },
     gate: startPriceWaits(a.chain, leash, wallets.some((w) => w.linkModel === "leash"), deadline),
     deadline,
+    opened: new Map(),
   };
   let pastDeadline = 0;
   let buildFailures = 0;
@@ -192,7 +194,9 @@ export async function runPlanting(a: RunArgs & { deadlineMs?: number }): Promise
   return { planted, skipped };
 }
 
-type RunCtx = { leash: LeashConfig | null; venueDays: VenueDayRow[]; yesterday: VenueDayRow[]; prices: Partial<Record<LendAsset, number | null>>; gate: (leg: LeashLegByte) => Promise<boolean>; deadline: number };
+type RunCtx = { leash: LeashConfig | null; venueDays: VenueDayRow[]; yesterday: VenueDayRow[]; prices: Partial<Record<LendAsset, number | null>>; gate: (leg: LeashLegByte) => Promise<boolean>; deadline: number;
+  /** Slow opening: the kinds each user's plantings were sent this run (user -> kinds); a ledger key appears only at confirmation. */
+  opened: Map<string, Set<LiveAsset>> };
 
 /** Seconds left of `want`, cut to the run deadline. */
 const waitWithin = (want: number, deadline: number) => Math.max(0, Math.min(want, Math.floor((deadline - Date.now()) / 1000)));
@@ -597,9 +601,10 @@ export class SplitUnder100Error extends Error {
  * the default (skrFloor 0). Then the disabled legs' shares, and any stale share on a coin the user switched off, go to the on coins
  * (redistributeDisabled with userOff), so an off coin is never in the target. Null when no on coin can take money today (or the
  * target is empty): "no leg enabled". Throws SplitUnder100Error when the target sums under 100 (a broken allocation row).
+ * Slow opening (season 11-23): `waiting` coins (not open yet) join userOff, so they get 0 and the target still sums to 100.
  */
-export function plantingTarget(rules: Pick<Rules, "allocation" | "pins" | "managed" | "stop">, disabled: readonly LiveAsset[]): Split | null {
-  const userOff = ASSETS.filter((c) => !isOn(rules.pins, c));
+export function plantingTarget(rules: Pick<Rules, "allocation" | "pins" | "managed" | "stop">, disabled: readonly LiveAsset[], waiting: readonly LiveAsset[] = []): Split | null {
+  const userOff = ASSETS.filter((c) => !isOn(rules.pins, c) || waiting.includes(c));
   const floored = withStoreFloor(rules.allocation, {
     skrFloor: isOn(rules.pins, "SKR") ? floorFor(rules.managed, rules.stop) : 0,
     off: disabled.includes("stORE") || rules.pins.stORE === 0,
@@ -611,6 +616,22 @@ export function plantingTarget(rules: Pick<Rules, "allocation" | "pins" | "manag
   if (share <= 1e-9) return null;
   if (share < 100 - 1e-9) throw new SplitUnder100Error(share);
   return target;
+}
+
+/**
+ * Slow opening (season 11-23): the planting target for a user whose `ledgers` (every wallet, any status) say which coin kinds are
+ * open. Coins that wait (domain/opening) get 0 and their share goes to the coins the user may plant. When some coin waits, a coin
+ * that is not open and had no share is held at 0 too (`shut`), so the hand-on can never open a kind past the limit. `shut` is the
+ * waiting coins plus those; empty when nothing waits. Throws SplitUnder100Error like plantingTarget.
+ */
+export function openingTarget(rules: Pick<Rules, "allocation" | "pins" | "managed" | "stop">, disabled: readonly LiveAsset[], ledgers: readonly Ledger[]): { target: Split | null; opening: Opening | null; shut: LiveAsset[] } {
+  const first = plantingTarget(rules, disabled);
+  if (!first) return { target: null, opening: null, shut: [] };
+  const opening = coinOpening(ledgers, first);
+  if (opening.waiting.length === 0) return { target: first, opening, shut: [] };
+  const waits = opening.waiting.map((x) => x.asset);
+  const shut = ASSETS.filter((c) => waits.includes(c) || (first[c] <= 0 && !opening.open.includes(c)));
+  return { target: plantingTarget(rules, disabled, shut), opening, shut };
 }
 
 async function plantOne(a: RunArgs, w: WalletRow, ctx: RunCtx): Promise<Planted | Skipped> {
@@ -785,9 +806,14 @@ async function plantOneOrThrow(a: RunArgs, w: WalletRow, ctx: RunCtx): Promise<P
   if (disabled.length > 0 || staleOff) for (const leg of LEND_ASSETS) if (!(leg in venues)) await checkLend(leg);
   // A5 + R2-N3 (11-15): the target always sums to 100 (redistributeDisabled conserves the split). A row that does not is a broken
   // invariant: the planting is skipped here (no pull, nothing claimed), never thrown on to plantOne's "build failed" outage count.
+  // Slow opening (season 11-23): the user's open kinds and planted dollars come from every wallet's ledger, plus the kinds this run
+  // already sent for the user (their ledger keys appear only at confirmation). pickAsset below stays per wallet.
+  const ledgers: Ledger[] = (await a.repo.listWalletsOf(w.userPubkey)).map((x) => x.ledgerCents);
+  for (const k of ctx.opened.get(w.userPubkey) ?? []) ledgers.push({ [k]: 0 });
   let target: Split | null;
+  let shut: readonly LiveAsset[] = [];
   try {
-    target = plantingTarget(rules, disabled);
+    ({ target, shut } = openingTarget(rules, disabled, ledgers));
   } catch (e) {
     if (!(e instanceof SplitUnder100Error)) throw e;
     const line = `ALERT: planting for ${w.pubkey} skipped: ${e.message}`;
@@ -875,7 +901,8 @@ async function plantOneOrThrow(a: RunArgs, w: WalletRow, ctx: RunCtx): Promise<P
     }
     // Review M4: a leashed user never falls back to SKR while leg 0 has no price source (no PYTH_API_KEY, R324): it would be skipped there anyway.
     // 11-15: a user who switched SKR off never gets it as a fallback; the failed leg waits for the next run.
-    if (isLendAsset(failed) || disabled.includes("SKR") || !isOn(rules.pins, "SKR") || (leashed && !skrPriceSource())) {
+    // Season 11-23: a SKR that waits to open (slow opening) is never a fallback either.
+    if (isLendAsset(failed) || disabled.includes("SKR") || !isOn(rules.pins, "SKR") || shut.includes("SKR") || (leashed && !skrPriceSource())) {
       await legSkipped(a, w, failed, err);
       return null;
     }
@@ -1011,6 +1038,7 @@ async function plantOneOrThrow(a: RunArgs, w: WalletRow, ctx: RunCtx): Promise<P
   // From here the transaction may be on chain: an error (a database write, the confirm, the share read) is "send unknown",
   // never "build failed" (09-29), so it does not count toward the outage stop; the row stays `sent` for the next run to reconcile.
   sendStarted = true;
+  ctx.opened.set(w.userPubkey, (ctx.opened.get(w.userPubkey) ?? new Set<LiveAsset>()).add(asset));
   try {
     try {
       await a.chain.sendPlanting(built);

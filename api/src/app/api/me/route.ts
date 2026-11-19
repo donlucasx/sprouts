@@ -22,7 +22,9 @@ import { SKR_MINT, STORE_MINT } from "@/lib/constants";
 import { STOP_DEFAULTS } from "@/domain/split";
 import { dayOf } from "@/domain/day";
 import { pauseCauseOf, PAUSE_EVENT_KINDS } from "@/domain/pause-cause";
-import { NETWORK_FEE_CENTS } from "@/lib/plant-run";
+import { NETWORK_FEE_CENTS, openingTarget, SplitUnder100Error } from "@/lib/plant-run";
+import type { Split } from "@/domain/coins";
+import type { Opening } from "@/domain/opening";
 import { plantThresholdFor } from "@/domain/threshold";
 import { reminderFor } from "@/domain/reminders";
 import { CURRENT_MESSAGE } from "@/domain/messages";
@@ -82,8 +84,19 @@ export async function GET(request: Request) {
   const storeEarnedRaw = holdings.find((h) => h.asset === "stORE")?.earnedUnderlyingRaw ?? 0n;
 
   const ledgerWallet = wallets.find((w) => w.status === "active") ?? wallets[0];
+  // Season 11-23 (slow opening): the run's own target with nothing disabled, counted over every wallet (a revoked one too); the
+  // coins that wait to join the garden, and the next coin read from what the user may plant now. A broken or empty target reads
+  // as the saved allocation (and nothing waits), as before.
+  let opened: { target: Split | null; opening: Opening | null } = { target: null, opening: null };
+  try {
+    opened = openingTarget(rulesRowToRules(rules), [], wallets.map((w) => w.ledgerCents));
+  } catch (e) {
+    if (!(e instanceof SplitUnder100Error)) throw e;
+  }
+  const nextTarget = opened.target ?? rules.allocation;
+  const opening = { plantedCents: opened.opening?.plantedCents ?? wallets.reduce((s, w) => s + Object.values(w.ledgerCents).reduce<number>((t, v) => t + (v ?? 0), 0), 0), waiting: opened.opening?.waiting ?? [] };
   // R2-N1 (11-15): an empty target (every coin off) reads as its largest share, never null on the wire.
-  const nextAsset = pickAsset(ledgerWallet?.ledgerCents ?? {}, rules.allocation) ?? ASSETS.reduce((b, c) => (rules.allocation[c] > rules.allocation[b] ? c : b));
+  const nextAsset = pickAsset(ledgerWallet?.ledgerCents ?? {}, nextTarget) ?? ASSETS.reduce((b, c) => (rules.allocation[c] > rules.allocation[b] ? c : b));
   // Contracts 5.2: legsEnabled is null for a user with no leashed wallet; [] when the leash config cannot be read (nothing is enabled we can show).
   const leashWallets = wallets.filter((w) => w.linkModel === "leash" && w.status !== "revoked");
   // Second wave, at once: the reads that need the wallets, the rules or the stORE basis from the first.
@@ -195,6 +208,7 @@ export async function GET(request: Request) {
       picks: countedPicks(withdrawals, inputs.skippedEvents).filter((w) => COINS[w.asset].live).map((w) => ({ ts: w.unstakeTs, asset: w.asset, amountRaw: w.amountRaw ?? 0n })),
     },
     nextPlanting: { pendingCents: pending, thresholdCents, capLeftCents: capLeft, asset: nextAsset },
+    opening,
     lastReceipt: last
       ? { ts: last.ts, usdcPulledCents: last.usdcPulledCents, networkFeeCents: last.networkFeeCents, asset: lastAsset, amountOutRaw: lastLegs[0]?.amountOutRaw ?? 0n, feeCents: lastLegs[0]?.feeCents ?? 0,
           feeAmountRaw: lastLegs[0]?.feeAmountRaw ?? 0n, // R139: "0" on a new leg (the fee was in USDC and rounds to zero), so the app says "fee under 1 cent" as on Activity

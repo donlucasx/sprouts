@@ -115,9 +115,28 @@ describe("GET /api/me", () => {
     let body = await (await me(new Request("http://x/api/me", bearer(await issueSession(U, "M"))))).json();
     expect(body.nextPlanting.asset).toBe("SKR");
     await repo.saveRules(U, { allocation: { ...SKR_ONLY, SKR: 50, stORE: 50 } });
-    await repo.bumpLedger("W", "SKR", 200);
+    await repo.bumpLedger("W", "SKR", 500);   // $5 planted: stORE is open to plant (slow opening, 11-23)
     body = await (await me(new Request("http://x/api/me", bearer(await issueSession(U, "M"))))).json();
     expect(body.nextPlanting.asset).toBe("stORE");
+  });
+
+  // Season 11-23 (slow opening): which coins of the split wait to join the garden, the shape the app's joinsLine reads.
+  it("says which coins wait to join the garden, counting every wallet (a revoked one too)", async () => {
+    const read = async () => (await (await me(new Request("http://x/api/me", bearer(await issueSession(U, "M"))))).json());
+    await repo.saveRules(U, { managed: false, pins: { stORE: 0 }, allocation: { ...SKR_ONLY, SKR: 50, USDC_LEND: 30, hSOL: 20 } });
+    await repo.bumpLedger("W", "SKR", 320);
+    let body = await read();
+    expect(body.opening).toEqual({ plantedCents: 320, waiting: [{ asset: "USDC_LEND", afterCents: 500 }, { asset: "hSOL", afterCents: 1000 }] });
+    expect(body.nextPlanting.asset).toBe("SKR");
+    // a revoked wallet's ledger still counts: its USDC_LEND is open and its cents are planted
+    await repo.addWallet({ pubkey: "R", userPubkey: U, delegationPda: "DR", dailyCapCents: 500 });
+    await repo.bumpLedger("R", "USDC_LEND", 200);
+    await repo.setWalletStatus("R", "revoked");
+    body = await read();
+    expect(body.opening).toEqual({ plantedCents: 520, waiting: [{ asset: "hSOL", afterCents: 1000 }] });
+    // every coin of the split open: nothing waits
+    await repo.bumpLedger("W", "hSOL", 0);
+    expect((await read()).opening).toEqual({ plantedCents: 520, waiting: [] });
   });
 
   // Review I2 [A24]: a cooldown the wallet started (found by the reconciliation, or at join) is the basket too.

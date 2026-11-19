@@ -428,6 +428,7 @@ describe("runPlanting", () => {
   it("uses the allocation: 50/50 alternates assets over two plantings", async () => {
     const repo = await seeded([215]);
     await repo.saveRules("U", { allocation: { ...SKR_ONLY, SKR: 50, stORE: 50 } });
+    for (const c of ["SKR", "stORE"] as const) await repo.bumpLedger("W", c, 0);   // slow opening (11-23): both coins already open
     const chain = fakeChain();
     const a = await runPlanting({ repo, now: NOW, chain });
     await repo.insertSwap({ signature: "s9", walletPubkey: "W", ts: NOW, inMint: "a", inAmount: 1, outMint: "b", outAmount: 1, usdSizeCents: 100, class: "major", roundupCents: 215 });
@@ -440,7 +441,7 @@ describe("runPlanting", () => {
   it("falls back to SKR in the same run when the stORE leg fails to build, outside the outage count", async () => {
     const repo = await seeded([215]);
     await repo.saveRules("U", { allocation: { ...SKR_ONLY, SKR: 50, stORE: 50 } });
-    await repo.bumpLedger("W", "SKR", 200); // the picker wants stORE next
+    await repo.bumpLedger("W", "SKR", 500); // the picker wants stORE next (and $5 planted opens it: slow opening, 11-23)
     const assets: string[] = [];
     const chain = fakeChain({ buildPlantingTx: async (a) => {
       assets.push(a.asset);
@@ -457,7 +458,7 @@ describe("runPlanting", () => {
   it("falls back to SKR when the stORE leg fails simulation", async () => {
     const repo = await seeded([215]);
     await repo.saveRules("U", { allocation: { ...SKR_ONLY, SKR: 50, stORE: 50 } });
-    await repo.bumpLedger("W", "SKR", 200);
+    await repo.bumpLedger("W", "SKR", 500);
     const built: string[] = [];
     const chain = fakeChain({
       buildPlantingTx: async (a) => { built.push(a.asset); return { tx: { asset: a.asset } as never, signature: `sig-${a.asset}`, expectedOutRaw: a.pullRaw * 48n, minOutRaw: a.pullRaw * 47n, lookupTables: [], lastValidBlockHeight: 0n, ...FLOAT }; },
@@ -780,7 +781,7 @@ describe("runPlanting", () => {
   it("an hSOL leg that fails to build plants SKR in the same run and records which coin fell back", async () => {
     const repo = await seeded([215]);
     await repo.saveRules("U", { allocation: { ...SKR_ONLY, SKR: 50, hSOL: 50 } });
-    await repo.bumpLedger("W", "SKR", 200); // the picker wants hSOL next
+    await repo.bumpLedger("W", "SKR", 500); // the picker wants hSOL next (open at $5 planted)
     const assets: string[] = [];
     const chain = fakeChain({ buildPlantingTx: async (a) => {
       assets.push(a.asset);
@@ -951,6 +952,7 @@ describe("the delivery check on the simulation (R207 review)", () => {
   it("refuses a wallet coin delivered elsewhere (the user's account gains nothing) and plants SKR instead", async () => {
     const repo = await seeded([83, 62, 70]);
     await repo.saveRules("U", { allocation: { ...SKR_ONLY, SKR: 0, hSOL: 100 } });
+    await repo.bumpLedger("W", "SKR", 1_000);   // SKR open from earlier plantings, so it may be the fallback (slow opening, 11-23)
     const r = await runPlanting({ repo, now: NOW, chain: fakeChain({
       buildPlantingTx: async (a) => ({ tx: { asset: a.asset } as never, signature: `sig-${a.asset}`, expectedOutRaw: 48n, minOutRaw: 47n, lookupTables: [], lastValidBlockHeight: 0n, ...FLOAT }),
       simulatePlanting: async (b) => ({ ok: true, err: null, logs: [], units: 1, delivery: (b.tx as unknown as { asset: string }).asset === "hSOL" ? { pre: 100n, post: 146n } : { pre: 0n, post: 0n }, ...HELD }),
@@ -1186,6 +1188,7 @@ describe("venues, the leash and the carry in the run (contracts 3.2-3.4)", () =>
     const repo = await seeded([83, 62, 70]);   // U / W: the puller link, Bold-ish with SKR and stORE
     await seedVenues(repo);
     await repo.saveRules("U", { allocation: { SKR: 40, stORE: 30, USDC_LEND: 10, SOL_LEND: 0, hSOL: 10, cbBTC: 10 } });
+    for (const c of ["SKR", "stORE"] as const) await repo.bumpLedger("W", c, 0);   // slow opening (11-23): SKR and stORE open
     await repo.upsertUser({ seedVaultPubkey: "U2", sgtMint: "M2", skrName: null });
     await repo.addWallet({ pubkey: "W2", userPubkey: "U2", delegationPda: "D2", dailyCapCents: 500 });
     await repo.setWalletLink("W2", { delegationPda: "D2", linkModel: "leash" });
@@ -1353,6 +1356,7 @@ describe("Task 11 carry-ins (T7/T8/T9 reviews)", () => {
   it("I2: a swap leg whose puller USDC falls (the swap spent more than the pull) is refused; the same leg with the float held plants", async () => {
     const repo = await seeded([83, 62, 70]);
     await repo.saveRules("U", { allocation: hsolOnly });
+    await repo.bumpLedger("W", "SKR", 1_000);   // SKR open, so it may be the fallback (slow opening, 11-23)
     const drain = { simulatePlanting: async (b: Parameters<Chain["simulatePlanting"]>[0]) => ({ ok: true, err: null, logs: [], units: 1, delivery: { pre: 0n, post: b.minOutRaw }, watched: { ...HELD.watched, PU: { pre: 5_000n, post: 4_999n } } }) };
     const r = await runPlanting({ repo, now: NOW, chain: fakeChain(drain) });
     expect(r.planted).toEqual([]);   // hSOL refused, and its SKR fallback too (the same drain)
@@ -1530,6 +1534,7 @@ describe("Task 11 fix round 1 (review I1, I2, M1-M4, M7, M9)", () => {
   it("I1: an hSOL route that spends the pooled SKR float (other users' remainders) instead of the pull is refused, with an ALERT", async () => {
     const repo = await seeded([83, 62, 70]);
     await repo.saveRules("U", { allocation: hsolOnly });
+    await repo.bumpLedger("W", "SKR", 1_000);   // SKR open, so it may be the fallback (slow opening, 11-23)
     const log = vi.spyOn(console, "error");
     // The forged route: the USDC float RISES by the unspent pull, the user still gets the minimum, 1000 SKR leave the puller's SKR float.
     const r = await runPlanting({ repo, now: NOW, chain: fakeChain({ simulatePlanting: async (b) => (assetOf(b) === "hSOL" ? ok(b, { PU: { pre: 5_000n, post: 2_185_000n }, PS: { pre: 5_000n, post: 4_000n } }) : ok(b, {})) }) });
@@ -2502,5 +2507,88 @@ describe("a coin switched off is never bought (11-15, coin flexibility Task 3)",
     expect(repo.events.map((e) => e.kind)).not.toContain("pull_failed");
     expect((await repo.unplantedSwaps("W")).length).toBe(3);
     expect(repo.plantings.size).toBe(0);
+  });
+});
+
+describe("slow opening (season 11-23): one new coin per $5 a user has planted, across wallets", () => {
+  type BuildArgs = Parameters<Chain["buildPlantingTx"]>[0];
+  const recording = (builds: BuildArgs[], over: Partial<Chain> = {}) => { const base = fakeChain(over); return { ...base, buildPlantingTx: async (a: BuildArgs) => { builds.push(a); return base.buildPlantingTx(a); } } as Chain; };
+  const split = (s: Partial<Record<(typeof ASSETS)[number], number>>) => ({ SKR: 0, stORE: 0, USDC_LEND: 0, SOL_LEND: 0, hSOL: 0, cbBTC: 0, ...s });
+  const swap = (repo: MemoryRepo, sig: string, wallet: string, cents: number, at = NOW) =>
+    repo.insertSwap({ signature: sig, walletPubkey: wallet, ts: new Date(at.getTime() - 3_600_000), inMint: "a", inAmount: 1, outMint: "b", outAmount: 1, usdSizeCents: 100, class: "major", roundupCents: cents });
+
+  it("a new user, SKR 50 / hSOL 50, two daily runs of $1: both SKR; at $5 planted hSOL opens", async () => {
+    const repo = await seeded([100]);
+    await repo.saveRules("U", { managed: false, pins: { stORE: 0 }, plantThresholdCents: 100, allocation: split({ SKR: 50, hSOL: 50 }) });
+    const builds: BuildArgs[] = [];
+    await runPlanting({ repo, now: NOW, chain: recording(builds) });
+    const day2 = new Date(NOW.getTime() + 86_400_000);
+    await swap(repo, "d2", "W", 100, day2);
+    await runPlanting({ repo, now: day2, chain: recording(builds) });
+    expect(builds.map((b) => b.asset)).toEqual(["SKR", "SKR"]);
+    expect((await repo.getWallet("W"))?.ledgerCents).toEqual({ SKR: 200 });
+    await repo.bumpLedger("W", "SKR", 300);   // $5 planted
+    const day3 = new Date(NOW.getTime() + 2 * 86_400_000);
+    await swap(repo, "d3", "W", 100, day3);
+    await runPlanting({ repo, now: day3, chain: recording(builds) });
+    expect(builds.map((b) => b.asset)).toEqual(["SKR", "SKR", "hSOL"]);
+  });
+
+  it("a two-wallet new user opens one coin in one run (the first send is unconfirmed: the run remembers it)", async () => {
+    const repo = await seeded([100]);
+    await repo.addWallet({ pubkey: "W2", userPubkey: "U", delegationPda: "D2", dailyCapCents: 500 });
+    await swap(repo, "w2", "W2", 100);
+    await repo.saveRules("U", { managed: false, pins: { stORE: 0 }, plantThresholdCents: 100, allocation: split({ SKR: 50, hSOL: 50 }) });
+    const builds: BuildArgs[] = [];
+    const r = await runPlanting({ repo, now: NOW, chain: recording(builds, { sendPlanting: async () => { throw new Error("timeout"); } }) });
+    expect(r.skipped.map((x) => x.reason)).toEqual(["send unknown", "send unknown"]);
+    expect(builds.map((b) => b.asset)).toEqual(["SKR", "SKR"]);
+  });
+
+  it("multi-wallet with history: W1 holds SKR $3, the new W2 plants SKR (hSOL waits for the user's $5)", async () => {
+    const repo = await seeded([100]);
+    await repo.bumpLedger("W", "SKR", 300);
+    await repo.saveRules("U", { managed: false, pins: { stORE: 0 }, allocation: split({ SKR: 50, hSOL: 50 }) });
+    await repo.addWallet({ pubkey: "W2", userPubkey: "U", delegationPda: "D2", dailyCapCents: 500 });
+    await repo.setWalletStatus("W", "paused");   // only W2 plants
+    await swap(repo, "w2", "W2", 100);
+    const builds: BuildArgs[] = [];
+    await runPlanting({ repo, now: NOW, chain: recording(builds) });
+    expect(builds.map((b) => [b.delegator, b.asset])).toEqual([["W2", "SKR"]]);
+  });
+
+  it("a waiting SKR is never a fallback: the hSOL build fails, the leg is skipped, no SKR build", async () => {
+    const repo = await seeded([83, 62, 70], { planted: true });
+    await repo.bumpLedger("W", "hSOL", 100);
+    await repo.saveRules("U", { managed: false, pins: { stORE: 0 }, allocation: split({ hSOL: 50, SKR: 50 }) });
+    const builds: BuildArgs[] = [];
+    const base = fakeChain();
+    const r = await runPlanting({ repo, now: NOW, chain: fakeChain({ buildPlantingTx: async (a) => { builds.push(a); if (a.asset === "hSOL") throw new Error("Jupiter: no route"); return base.buildPlantingTx(a); } }) });
+    expect(builds.map((b) => b.asset)).toEqual(["hSOL"]);
+    expect(r.skipped).toEqual([{ wallet: "W", reason: "leg failed" }]);
+    expect(repo.events.map((e) => e.kind)).toContain("leg_skipped");
+    expect(repo.events.map((e) => e.kind)).not.toContain("leg_fallback");
+  });
+
+  it("switch off and on: with the only open coin off SKR opens (never stalled); switched back on, cbBTC plants again at once", async () => {
+    const repo = await seeded([83, 62, 70], { planted: true });
+    await repo.bumpLedger("W", "cbBTC", 300);
+    await repo.saveRules("U", { managed: false, pins: { stORE: 0, cbBTC: 0 }, allocation: split({ cbBTC: 50, SKR: 50 }) });
+    const builds: BuildArgs[] = [];
+    const r = await runPlanting({ repo, now: NOW, chain: recording(builds) });
+    expect(builds.map((b) => b.asset)).toEqual(["SKR"]);
+    expect(r.planted[0]?.asset).toBe("SKR");
+
+    const repo2 = await seeded([83, 62, 70], { planted: true });
+    await repo2.bumpLedger("W", "cbBTC", 300);
+    await repo2.bumpLedger("W", "SKR", 100);   // planted $4, two kinds open
+    await repo2.saveRules("U", { managed: false, pins: { stORE: 0 }, allocation: split({ cbBTC: 50, SKR: 50 }) });
+    const builds2: BuildArgs[] = [];
+    await runPlanting({ repo: repo2, now: NOW, chain: recording(builds2) });
+    expect(builds2.map((b) => b.asset)).toEqual(["SKR"]);   // SKR furthest below (25% of 50)
+    await repo2.bumpLedger("W", "SKR", 1_000);
+    await swap(repo2, "again", "W", 300);
+    await runPlanting({ repo: repo2, now: new Date(NOW.getTime() + 86_400_000), chain: recording(builds2) });
+    expect(builds2.map((b) => b.asset)).toEqual(["SKR", "cbBTC"]);   // cbBTC open, a candidate again, now furthest below
   });
 });

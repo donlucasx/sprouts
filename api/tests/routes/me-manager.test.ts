@@ -28,7 +28,7 @@ describe("GET /api/me with the Yield Manager (spec 7.7)", () => {
     await repo.upsertUser({ seedVaultPubkey: U, sgtMint: "M", skrName: "lucas.skr" });
     await repo.setJoinedPosition(U, { shares: 0n, sharePrice: SP });
     await repo.addWallet({ pubkey: "W", userPubkey: U, delegationPda: U, dailyCapCents: 500 }); // a real address: the route validates it before reading the delegation
-    await repo.bumpLedger("W", "SKR", 200);
+    await repo.bumpLedger("W", "SKR", 500);   // $5 planted: a second coin may open (slow opening, 11-23)
     const p = await repo.insertPlanting({ userPubkey: U, walletPubkey: "W", signature: "sig", usdcPulledCents: 203, networkFeeCents: 3, status: "confirmed", aiLine: null },
       [{ asset: "hSOL", usdcInCents: 200, amountOutRaw: 1_000_000_000n, staked: false, feeAmountRaw: 0n, feeCents: 1, rateAtPlanting: 1.18, venue: null }]);
     await repo.setPlantingShares(p.id, { before: 0n, after: 0n, minted: 0n });
