@@ -13,7 +13,7 @@ const U = "U5555555555555555555555555555555";
 const WALLET = "4wiD3N7FrBNJSmZUQDkGHM4CsvDrvyvx7G1FApLGEbJ1";
 const post = (body: unknown, token?: string) =>
   support(new Request("http://x/api/support", { method: "POST", headers: { "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(body) }));
-const ok = { topic: "link", message: "Phantom opened, I tapped approve and nothing happened.", email: "test@example.com", app: { version: "0.1.8", device: "Seeker" } };
+const ok = { topic: "link", message: "Phantom opened, I tapped approve and nothing happened.", email: "someone@example.com", app: { version: "0.1.8", device: "Seeker" } };
 
 let repo: MemoryRepo;
 let token: string;
@@ -38,7 +38,7 @@ describe("POST /api/support", () => {
       detail: {
         topic: "link",
         message: ok.message,
-        email: "test@example.com",
+        email: "someone@example.com",
         app: { version: "0.1.8", device: "Seeker" },
         context: { skrName: "mo.skr", wallets: [{ pubkey: WALLET }], recent: [{ kind: "link_failed", step: "sign" }] },
       },
@@ -132,7 +132,7 @@ describe("the Discord post", () => {
       detail: {
         topic: "link",
         message: "nothing happened",
-        email: "test@example.com",
+        email: "someone@example.com",
         app: { version: "0.1.8", device: "Seeker" },
         context: { skrName: "mo.skr", wallets: [], recent: [{ kind: "link_failed", ts: "2026-11-01T13:33:00.000Z", step: "sign" }] },
       },
@@ -143,7 +143,7 @@ describe("the Discord post", () => {
         "```",
         "nothing happened",
         "```",
-        "Reply to: test@example.com | app 0.1.8 | Seeker",
+        "Reply to: someone@example.com | app 0.1.8 | Seeker",
         "Wallets: none linked | recent (UTC): link_failed (sign) 13:33",
       ].join("\n"),
     );

@@ -13,12 +13,12 @@ afterEach(() => vi.unstubAllGlobals())
 
 describe('Message us', () => {
   it('Send needs a message and an email that looks like one', () => {
-    expect(canSend('help', 'test@example.com')).toBe(true)
-    expect(canSend('   ', 'test@example.com')).toBe(false)
+    expect(canSend('help', 'someone@example.com')).toBe(true)
+    expect(canSend('   ', 'someone@example.com')).toBe(false)
     expect(canSend('help', '')).toBe(false)
-    expect(canSend('help', 'mo@proton')).toBe(false)
-    expect(canSend('x'.repeat(2001), 'test@example.com')).toBe(false)
-    expect(looksLikeEmail(' test@example.com ')).toBe(true)
+    expect(canSend('help', 'someone@example')).toBe(false)
+    expect(canSend('x'.repeat(2001), 'someone@example.com')).toBe(false)
+    expect(looksLikeEmail(' someone@example.com ')).toBe(true)
   })
 
   it('only the five topics pass (a link screen param that is anything else opens with none picked)', () => {
@@ -33,11 +33,11 @@ describe('Message us', () => {
     expect(readSupportEmail()).toBe('')
     const fetchRef = fetchMock
     fetchRef.mockImplementationOnce(async () => new Response('{"ok":true,"ref":"S-7K3Q"}', { status: 200 }))
-    expect(await sendSupport({ topic: 'link', message: '  nothing happened  ', email: ' test@example.com ' })).toBe('S-7K3Q')
+    expect(await sendSupport({ topic: 'link', message: '  nothing happened  ', email: ' someone@example.com ' })).toBe('S-7K3Q')
     const [url, init] = fetchMock.mock.calls[0]
     expect(url).toMatch(/\/api\/support$/)
-    expect(JSON.parse(String(init?.body))).toEqual({ topic: 'link', message: 'nothing happened', email: 'test@example.com', app: { version: '0.1.8', device: 'Seeker' } })
-    expect(readSupportEmail()).toBe('test@example.com')
+    expect(JSON.parse(String(init?.body))).toEqual({ topic: 'link', message: 'nothing happened', email: 'someone@example.com', app: { version: '0.1.8', device: 'Seeker' } })
+    expect(readSupportEmail()).toBe('someone@example.com')
   })
 
   it('a refused send does not remember the email', async () => {
