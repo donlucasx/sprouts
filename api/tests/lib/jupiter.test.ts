@@ -254,3 +254,52 @@ describe("T21 minor: every Jupiter call carries a 10 s timeout (a hung price rea
     for (const c of f.mock.calls) expect((c[1] as RequestInit).signal).toBeInstanceOf(AbortSignal);
   });
 });
+
+import { jupiterFetch, JupiterRateLimited, isJupiterRateLimit } from "@/lib/jupiter";
+
+describe("jupiterFetch: 429 retries", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const script = (...rs: Array<{ status: number; headers?: Record<string, string> }>) => {
+    const f = vi.fn(async () => { const r = rs.shift()!; return new Response("x", { status: r.status, headers: r.headers }); });
+    vi.stubGlobal("fetch", f);
+    return f;
+  };
+  const sleeps = () => { const s: number[] = []; return { s, sleep: async (ms: number) => { s.push(ms); } }; };
+
+  it("429, 429, 200 resolves after 3 fetches and 2 jittered sleeps", async () => {
+    const f = script({ status: 429 }, { status: 429 }, { status: 200 });
+    const { s, sleep } = sleeps();
+    const res = await jupiterFetch("http://x", {}, "quote", sleep);
+    expect(res.status).toBe(200);
+    expect(f).toHaveBeenCalledTimes(3);
+    expect(s.length).toBe(2);
+    expect(s[0]).toBeGreaterThanOrEqual(250); expect(s[0]).toBeLessThanOrEqual(750);
+    expect(s[1]).toBeGreaterThanOrEqual(750); expect(s[1]).toBeLessThanOrEqual(2250);
+  });
+  it("three 429s reject JupiterRateLimited", async () => {
+    const f = script({ status: 429 }, { status: 429 }, { status: 429 });
+    const { sleep } = sleeps();
+    const e = await jupiterFetch("http://x", {}, "quote", sleep).catch((x) => x);
+    expect(e).toBeInstanceOf(JupiterRateLimited);
+    expect(e.message).toMatch(/^Jupiter quote failed: 429/);
+    expect(isJupiterRateLimit(e)).toBe(true);
+    expect(f).toHaveBeenCalledTimes(3);
+  });
+  it("a 500 is one fetch and not rate-limited", async () => {
+    const f = script({ status: 500 });
+    await expect(getQuote({ inputMint: "a" as never, outputMint: "b" as never, amountRaw: 1n })).rejects.toThrow(/Jupiter quote failed: 500/);
+    expect(f).toHaveBeenCalledTimes(1);
+    expect(isJupiterRateLimit(new Error("Jupiter quote failed: 500"))).toBe(false);
+    expect(isJupiterRateLimit(new Error("Jupiter swap-instructions failed: 429 x"))).toBe(true);
+  });
+  it("Retry-After in seconds wins, capped at 3000 ms", async () => {
+    script({ status: 429, headers: { "retry-after": "2" } }, { status: 200 });
+    const a = sleeps();
+    await jupiterFetch("http://x", {}, "quote", a.sleep);
+    expect(a.s).toEqual([2000]);
+    script({ status: 429, headers: { "retry-after": "60" } }, { status: 200 });
+    const b = sleeps();
+    await jupiterFetch("http://x", {}, "quote", b.sleep);
+    expect(b.s).toEqual([3000]);
+  });
+});

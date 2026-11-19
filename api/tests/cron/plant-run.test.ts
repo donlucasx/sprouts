@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { MemoryRepo } from "@/db/memory";
 import { SKR_ONLY } from "@/domain/coins";
 import { runPlanting, PRE_SEND_WAIT_S, PRE_BUILD_WAIT_S, BUILD_HEADROOM_S, type Chain } from "@/lib/plant-run";
+import { JupiterRateLimited } from "@/lib/jupiter";
 import type { VenueDayRow } from "@/db/types";
 import type { LeashConfig } from "@/lib/leash";
 
@@ -611,10 +612,42 @@ describe("runPlanting", () => {
       await repo.insertSwap({ signature: `x${i}`, walletPubkey: `W${i}`, ts: NOW, inMint: "a", inAmount: 1, outMint: "b", outAmount: 1, usdSizeCents: 100, class: "major", roundupCents: 215 });
     }
     let builds = 0;
-    const r = await runPlanting({ repo, now: NOW, chain: fakeChain({ buildPlantingTx: async () => { builds++; throw new Error("Jupiter quote failed: 429"); } }) });
+    const r = await runPlanting({ repo, now: NOW, chain: fakeChain({ buildPlantingTx: async () => { builds++; throw new Error("Jupiter quote failed: 500"); } }) });
     expect(r.planted).toEqual([]);
     expect(builds).toBe(8);
     expect(r.skipped.filter((s) => s.reason === "run stopped").length).toBe(4);
+    expect(repo.events.filter((e) => e.kind === "run_stopped").length).toBe(1);
+  });
+
+  it("429s never stop the run", async () => {
+    const repo = new MemoryRepo();
+    for (let i = 0; i < 12; i++) {
+      await repo.upsertUser({ seedVaultPubkey: `U${i}`, sgtMint: `M${i}`, skrName: null });
+      await repo.addWallet({ pubkey: `W${i}`, userPubkey: `U${i}`, delegationPda: `D${i}`, dailyCapCents: 500 });
+      await repo.insertSwap({ signature: `x${i}`, walletPubkey: `W${i}`, ts: NOW, inMint: "a", inAmount: 1, outMint: "b", outAmount: 1, usdSizeCents: 100, class: "major", roundupCents: 215 });
+    }
+    let builds = 0;
+    const r = await runPlanting({ repo, now: NOW, chain: fakeChain({ buildPlantingTx: async () => { builds++; throw new JupiterRateLimited("Jupiter quote failed: 429 rate limited"); } }) });
+    expect(r.planted).toEqual([]);
+    expect(builds).toBe(12);
+    expect(r.skipped.length).toBe(12);
+    expect(r.skipped.every((s) => s.reason === "jupiter busy")).toBe(true);
+    expect(repo.events.filter((e) => e.kind === "run_stopped").length).toBe(0);
+    expect(repo.events.filter((e) => e.kind === "pull_failed" && (e.detail as { err?: string }).err === "jupiter 429").length).toBe(12);
+  });
+
+  it("a 429 between two build failures neither counts nor resets", async () => {
+    const repo = new MemoryRepo();
+    await repo.upsertUser({ seedVaultPubkey: "U", sgtMint: "M", skrName: null });
+    for (let i = 0; i < 5; i++) {
+      await repo.addWallet({ pubkey: `W${i}`, userPubkey: "U", delegationPda: `D${i}`, dailyCapCents: 500 });
+      await repo.insertSwap({ signature: `x${i}`, walletPubkey: `W${i}`, ts: NOW, inMint: "a", inAmount: 1, outMint: "b", outAmount: 1, usdSizeCents: 100, class: "major", roundupCents: 215 });
+    }
+    let builds = 0;
+    const errs = [new Error("Jupiter quote failed: 500"), new JupiterRateLimited("Jupiter quote failed: 429"), new Error("Jupiter quote failed: 500"), new Error("Jupiter quote failed: 500"), new Error("never reached")];
+    const r = await runPlanting({ repo, now: NOW, chain: fakeChain({ buildPlantingTx: async () => { throw errs[builds++]; } }) });
+    expect(builds).toBe(4);
+    expect(r.skipped.map((s) => s.reason)).toEqual(["build failed", "jupiter busy", "build failed", "build failed", "run stopped"]);
     expect(repo.events.filter((e) => e.kind === "run_stopped").length).toBe(1);
   });
 

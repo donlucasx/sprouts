@@ -204,6 +204,37 @@ export function checkQuoteSlippageExactOut(q: Quote, slippageBps: number): void 
   if (inn <= 0n || max < inn || max > ceil) throw new Error(`Jupiter quote refused: maximum ${max} is outside ${inn}..${ceil} for ${slippageBps} bps`);
 }
 
+/** Jupiter answered 429 on every attempt. The planting run treats it as "busy", never as an outage. */
+export class JupiterRateLimited extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "JupiterRateLimited";
+  }
+}
+
+/** Base waits before attempts 2 and 3; each is multiplied by a jitter in 0.5..1.5, and a Retry-After (seconds) wins, capped at 3 s. */
+export const JUPITER_RETRY_MS: readonly number[] = [500, 1_500];
+const RETRY_AFTER_CAP_MS = 3_000;
+
+export function isJupiterRateLimit(e: unknown): boolean {
+  return e instanceof JupiterRateLimited || (e instanceof Error && /^Jupiter (quote|swap-instructions) failed: 429\b/.test(e.message));
+}
+
+/** One Jupiter call, retried on 429 only. Any other status comes back to the caller, whose own error text stays as it was. */
+export async function jupiterFetch(
+  url: string, init: RequestInit, what: "quote" | "swap-instructions",
+  sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
+): Promise<Response> {
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(url, { ...init, signal: timeout() });
+    if (res.status !== 429) return res;
+    if (attempt >= JUPITER_RETRY_MS.length) throw new JupiterRateLimited(`Jupiter ${what} failed: 429 ${(await res.text().catch(() => "")).slice(0, 200)}`);
+    const ra = Number(res.headers.get("retry-after"));
+    const wait = Number.isFinite(ra) && ra > 0 ? Math.min(ra * 1000, RETRY_AFTER_CAP_MS) : Math.round(JUPITER_RETRY_MS[attempt] * (0.5 + Math.random()));
+    await sleep(wait);
+  }
+}
+
 export async function getQuote(a: {
   inputMint: Address; outputMint: Address; amountRaw: bigint; slippageBps?: number; maxAccounts?: number; onlyDirectRoutes?: boolean; platformFeeBps?: number;
   /** ExactOut: `amountRaw` is the output wanted (the SOL top-up); every planting leaves it unset (ExactIn). */
@@ -219,7 +250,7 @@ export async function getQuote(a: {
     ...(a.swapMode === "ExactOut" ? { swapMode: "ExactOut" } : {}),
     ...(a.dexes?.length ? { dexes: a.dexes.join(",") } : {}),
   });
-  const res = await fetch(`${BASE}/swap/v1/quote?${q}`, { headers: headers(), signal: timeout() });
+  const res = await jupiterFetch(`${BASE}/swap/v1/quote?${q}`, { headers: headers() }, "quote");
   if (!res.ok) throw new Error(`Jupiter quote failed: ${res.status} ${(await res.text()).slice(0, 200)}`);
   const quote = (await res.json()) as Quote;
   // Every caller gets a quote whose minimum matches the slippage it asked for (R207 #4).
@@ -238,10 +269,9 @@ export async function getSwapInstructions(a: {
   /** The SOL top-up only: Jupiter's shared-accounts route, so the AMMs swap through Jupiter's authority and never see the wallet. */
   useSharedAccounts?: boolean;
 }) {
-  const res = await fetch(`${BASE}/swap/v1/swap-instructions`, {
+  const res = await jupiterFetch(`${BASE}/swap/v1/swap-instructions`, {
     method: "POST",
     headers: headers(),
-    signal: timeout(),
     body: JSON.stringify({
       quoteResponse: a.quote, userPublicKey: a.userPublicKey, wrapAndUnwrapSol: a.wrapAndUnwrapSol ?? false, dynamicComputeUnitLimit: true,
       ...(a.maxPriorityLamports ? { prioritizationFeeLamports: { priorityLevelWithMaxLamports: { maxLamports: a.maxPriorityLamports, priorityLevel: "medium" } } } : {}),
@@ -249,7 +279,7 @@ export async function getSwapInstructions(a: {
       ...(a.feeAccount ? { feeAccount: a.feeAccount } : {}),
       ...(a.useSharedAccounts !== undefined ? { useSharedAccounts: a.useSharedAccounts } : {}),
     }),
-  });
+  }, "swap-instructions");
   if (!res.ok) throw new Error(`Jupiter swap-instructions failed: ${res.status} ${(await res.text()).slice(0, 200)}`);
   return parseSwapInstructions((await res.json()) as SwapInstructionsResponse);
 }

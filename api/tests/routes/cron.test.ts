@@ -35,7 +35,7 @@ vi.mock("@/lib/plant-run", async (orig) => {
 });
 vi.mock("@/lib/coin-data", () => ({ snapshotCoins: snapshotMock, IMPACT_LIMIT_PCT: 1 }));
 vi.mock("@/lib/split-run", () => ({ decideSplits: decideMock, applyToUsers: applyMock }));
-vi.mock("@/lib/jupiter", () => ({ getQuote: vi.fn(), pricesUsd: vi.fn() }));
+vi.mock("@/lib/jupiter", async (orig) => ({ ...(await orig<typeof import("@/lib/jupiter")>()), getQuote: vi.fn(), pricesUsd: vi.fn() }));
 vi.mock("@/lib/store", () => ({ storeRedeemRate: vi.fn() }));
 vi.mock("@/lib/anthropic", () => ({ callTool: vi.fn() }));
 const { swapCheckMock } = vi.hoisted(() => ({ swapCheckMock: vi.fn(async (_a: { deadlineMs: number; hardStopMs: number; boundAt?: number; exclude: Set<string> }) => (order.push("swapcheck"), { checked: 3, unchecked: [], deferred: 0, missed: [{ wallet: "5t9Y…J9t", sig: "44gdAAAA", ts: "2026-11-13T09:14Z", roundupCents: 66 }], calls: { signatures: 3, enhanced: 1, transactions: 1 } })) }));

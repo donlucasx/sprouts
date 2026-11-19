@@ -16,6 +16,7 @@ import { errorText } from "./redact";
 export { lendingUsdByProtocol } from "./user-routing";
 import { AUTO_VENUES, VENUE_PROTOCOL, pickVenue, venueCandidates, type AutoVenue, type Protocol } from "@/domain/venues";
 import { LEASH_PROGRAM } from "./constants";
+import { isJupiterRateLimit } from "./jupiter";
 import { enabledLegs, leashAllowedVenues, leashLegOf, leashLive, LEASH_ERRORS, LEG_SPEC, postedPriceRefusal, skrPriceSource, type LeashConfig, type LeashLegByte } from "./leash";
 import type { ParsedPrice } from "./pyth";
 import { klendDeliveryShortfall } from "./venues/klend";
@@ -173,6 +174,7 @@ export async function runPlanting(a: RunArgs & { deadlineMs?: number }): Promise
       return;
     }
     skipped.push(outcome);
+    // "jupiter busy" (a 429 after retries) neither counts toward the outage stop nor resets the count.
     if (outcome.reason === "build failed" && ++buildFailures >= OUTAGE_AFTER && !stopped) {
       stopped = true;
       console.error(`planting run stopped: ${OUTAGE_AFTER} build failures in a row (Jupiter or RPC outage); the rest wait for the next run`);
@@ -615,7 +617,12 @@ async function plantOne(a: RunArgs, w: WalletRow, ctx: RunCtx): Promise<Planted 
   try {
     return await plantOneOrThrow(a, w, ctx);
   } catch (e) {
-    // Review I1: a Jupiter 400 or 429, a lookup-table fetch or a blockhash error on one wallet must not abort everyone's day.
+    if (isJupiterRateLimit(e)) {
+      console.error(`planting for ${w.pubkey} skipped: Jupiter is busy (429)`);
+      await a.repo.addEvent({ userPubkey: w.userPubkey, walletPubkey: w.pubkey, kind: "pull_failed", detail: { stage: "build", err: "jupiter 429" } });
+      return { wallet: w.pubkey, reason: "jupiter busy" };
+    }
+    // Review I1: a Jupiter 400, a lookup-table fetch or a blockhash error on one wallet must not abort everyone's day.
     console.error(`planting for ${w.pubkey} failed before send: ${message(e)}`);
     await a.repo.addEvent({ userPubkey: w.userPubkey, walletPubkey: w.pubkey, kind: "pull_failed", detail: { stage: "build", err: message(e) } });
     return { wallet: w.pubkey, reason: "build failed" };
