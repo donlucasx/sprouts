@@ -404,17 +404,20 @@ describe('previewLine (0.1.10)', () => {
   })
 })
 
-// Task 4 (11-19): the $0 notice waits for round-ups
-describe('usdcNotice: the no-USDC notice only with round-ups waiting', () => {
+// 11-20: the phone wallet at $0 shows the notice right away (the founder's ruling; the push already fires at $0)
+describe('usdcNotice: the no-USDC notice shows at $0 without waiting for round-ups', () => {
   const PHONE = 'PhoneWa11et111111111111111111111111111111111'
   const active = { pubkey: PHONE, status: 'active', pause: null }
   const at = (wallets: unknown[], pendingCents?: number) => ({ user: { pubkey: PHONE }, wallets, ...(pendingCents === undefined ? {} : { nextPlanting: { pendingCents } }) }) as never
-  it('zero USDC and nothing waiting: no notice; with 30 cents waiting: the notice', () => {
-    expect(usdcNotice(at([active], 0), { usdcCents: 0, low: false })).toBeNull()
+  it('zero USDC shows the notice with nothing waiting and with 30 cents waiting', () => {
+    expect(usdcNotice(at([active], 0), { usdcCents: 0, low: false })?.title).toBe('Seed Vault wallet has no USDC')
     expect(usdcNotice(at([active], 30), { usdcCents: 0, low: false })?.title).toBe('Seed Vault wallet has no USDC')
   })
-  it('the phone wallet not linked: no zero notice; a cached read without nextPlanting: none', () => {
+  it('a cached read without nextPlanting still shows it for a linked, active wallet', () => {
+    expect(usdcNotice(at([active]), { usdcCents: 0, low: false })?.title).toBe('Seed Vault wallet has no USDC')
+  })
+  it('the phone wallet not linked: no zero notice; a failed balance read (null): none', () => {
     expect(usdcNotice(at([], 30), { usdcCents: 0, low: false })).toBeNull()
-    expect(usdcNotice(at([active]), { usdcCents: 0, low: false })).toBeNull()
+    expect(usdcNotice(at([active], 30), { usdcCents: null, low: false })).toBeNull()
   })
 })

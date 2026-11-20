@@ -85,7 +85,7 @@ export function TopUpButton({ user, cents: suggested, done, onDone, avgDailyCent
       <View style={{ gap: spacing.xs }}>
         <Button title={TOPUP.open} onPress={() => setOpen(true)} />
         <ThemedText variant="caption" tone="secondary">
-          {TOPUP.swapsLine(symbol)}
+          {TOPUP.swapsLine(usable ? usable.map((s) => s.symbol) : [symbol])}
         </ThemedText>
       </View>
     )

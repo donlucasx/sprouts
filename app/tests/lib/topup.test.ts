@@ -128,12 +128,14 @@ describe('any-coin top-up (Task 3): the source coin', () => {
     return { out, flows, bodies }
   }
 
-  it("names the coin it swaps, SOL by default", () => {
-    expect(TOPUP.swapsLine('SOL')).toBe('Swaps a little of your SOL into USDC. No Sprouts fee.')
-    expect(TOPUP.swapsLine('SKR')).toBe('Swaps a little of your SKR into USDC. No Sprouts fee.')
+  it("names every coin it can swap", () => {
+    expect(TOPUP.swapsLine(['SOL'])).toBe('Swaps a little of your SOL into USDC. No Sprouts fee.')
+    expect(TOPUP.swapsLine(['SKR'])).toBe('Swaps a little of your SKR into USDC. No Sprouts fee.')
+    expect(TOPUP.swapsLine(['SOL', 'SKR'])).toBe('Swaps a little of your SOL or SKR into USDC. No Sprouts fee.')
+    expect(TOPUP.swapsLine(['SOL', 'SKR', 'JUP'])).toBe('Swaps a little of your SOL, SKR or JUP into USDC. No Sprouts fee.')
     expect(TOPUP.how(500, null)).toBe('Swaps SOL already in this wallet for $5 of USDC. No Sprouts fee.')
     expect(TOPUP.how(500, 'About 2 weeks of round-ups', 'SKR')).toBe('Swaps SKR already in this wallet for $5 of USDC, about 2 weeks of round-ups. No Sprouts fee.')
-    for (const l of [TOPUP.swapsLine('SOL'), TOPUP.how(500, null, 'SKR')]) expect(l).not.toMatch(/—|–/)
+    for (const l of [TOPUP.swapsLine(['SOL', 'SKR', 'JUP']), TOPUP.how(500, null, 'SKR')]) expect(l).not.toMatch(/—|–/)
   })
 
   it('a token: the build body names it and the flow carries it', async () => {

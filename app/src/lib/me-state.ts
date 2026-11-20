@@ -126,9 +126,10 @@ export function usdcNotice(me: Pick<MeResponse, 'wallets' | 'user' | 'nextPlanti
     const mine = w.pubkey === me.user.pubkey
     entries.push({ name: mine ? PHONE_WALLET : short(w.pubkey), mine, state: 'paused', cents: need })
   }
-  // Task 4 (11-19): $0 says nothing until round-ups wait (a fresh wallet with no swaps yet is not a problem); needs the phone wallet linked and active
-  const waiting = (me.nextPlanting?.pendingCents ?? 0) > 0 && me.wallets.some((w) => w.pubkey === me.user.pubkey && w.status === 'active')
-  if (!entries.some((e) => e.mine) && phone.usdcCents !== null && ((phone.usdcCents <= 0 && waiting) || (phone.usdcCents > 0 && phone.low)))
+  // 11-20 (founder's ruling): $0 shows the notice right away, no waiting on round-ups (the push already fires at $0); it still needs the
+  // phone wallet linked and active, so a user-paused or revoked wallet is not nagged
+  const linkedActive = me.wallets.some((w) => w.pubkey === me.user.pubkey && w.status === 'active')
+  if (!entries.some((e) => e.mine) && phone.usdcCents !== null && ((phone.usdcCents <= 0 && linkedActive) || (phone.usdcCents > 0 && phone.low)))
     entries.unshift({ name: PHONE_WALLET, mine: true, state: phone.usdcCents <= 0 ? 'zero' : 'low', cents: phone.usdcCents })
   entries.sort((x, y) => Number(y.mine) - Number(x.mine))
   if (!entries.length) return null
