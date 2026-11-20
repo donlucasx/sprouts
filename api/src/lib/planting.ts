@@ -10,7 +10,7 @@ import { getQuote, getSwapInstructions, checkSwapInstructions, checkQuoteMints, 
 import { buildTransferRecurringIx } from "./subscriptions";
 import { buildStakeIx, sharePrice, skrAta } from "./staking";
 import { klendRate, klendMinOut, buildKlendDepositIxs, checkKlendDepositInstructions } from "./venues/klend";
-import { jlendRate, jlendShares, buildJlendDepositIxs, checkJlendDepositInstructions, JL_EXPECTED_LEFTOVER } from "./venues/jlend";
+import { jlendRate, jlendShares, PRICE_SCALE as JL_PRICE_SCALE, buildJlendDepositIxs, checkJlendDepositInstructions, JL_EXPECTED_LEFTOVER } from "./venues/jlend";
 import { KLEND, JLEND } from "./venues/addresses";
 import { leashLegOf, legAccounts, legRate, readReceipt, buildPullIx, buildSettleIx, checkLeashInstructions, floorRaw, LEG_SPEC, priceSourceFor, sponsoredPriceRefusal, postedPriceRefusal, type LeashLegByte } from "./leash";
 import { buildPriceUpdate, readPostedPrice, readSponsoredPrice, sendPriceTxs, CONF_CAP_BPS, type ParsedPrice } from "./pyth";
@@ -120,8 +120,19 @@ export function solLendSwapFloor(venue: AutoVenue, floorRaw: bigint, rate: { rn:
   if (minOut(s) < floorRaw) throw new Error(`SOL_LEND swap floor: no swap output near ${s} reaches the ${venue} floor ${floorRaw}`);
   return s;
 }
-/** Jupiter Lend's exchange-price scale (jlendShares divides by it). */
-const JL_PRICE_SCALE = 1_000_000_000_000n;
+
+/** Review fix 1 (11-19 ruling): the margin SOL lending's adaptive slippage aims above its swap floor, in bps of the floor. */
+export const SOL_LEND_AIM_MARGIN_BPS = 2n;
+/**
+ * Review fix 1: SOL lending's slippage aims at ceil(swapFloor x (1 + 2 bp)) instead of swapFloor itself, so a small move of the
+ * re-quote or of Pyth between build and landing does not fail the planting. Same cap (never above 100 bps). When the route cannot fit
+ * the margin (expected under the aim), it falls back to aiming at swapFloor exactly (today's behaviour), never below it; null only
+ * when the route is under swapFloor itself ("route under floor"). Coin legs keep leashSwapSlippageBps unchanged.
+ */
+export function solLendSwapSlippageBps(expectedRaw: bigint, swapFloor: bigint): number | null {
+  const aim = (swapFloor * (10_000n + SOL_LEND_AIM_MARGIN_BPS) + 9_999n) / 10_000n;   // ceil, inline
+  return leashSwapSlippageBps(expectedRaw, aim) ?? leashSwapSlippageBps(expectedRaw, swapFloor);
+}
 
 /** The placeholder lookup-table address `measureAlt` compresses against (not on chain; never sent). */
 export const MEASURE_ALT = address("SproutsA1tMeasure11111111111111111111111111");
@@ -131,8 +142,10 @@ export const MEASURE_ALT = address("SproutsA1tMeasure11111111111111111111111111"
  * 10-06 ~23:1x PDT, legs 4/5 (SOL lending) switched on and re-measured leashed (Saga 887d, limit raised locally to 400k): highest
  * 238,591 (SOL_LEND jupiter_lend); at 230,000 about half the SOL builds ran out of compute. Same rule: 238,591 + 75,000 -> 320,000.
  * Task 15b (Kimi gate 3), 11-19 read-only mainnet simulations: the SOL lending fee transfer costs 76 CU, the fee wallet's USDC account
- * create (only when absent) 15,018; the leashed SOL lending plantings with the fee measured 148,752..198,765 (gate, 7 rounds). Against
- * the worst ever measured: 238,591 + 15,018 + 76 + 75,000 = 328,685 -> 330,000.
+ * create (only when absent) 15,018. Leashed SOL lending plantings with the fee (the account present, so no create) measured
+ * 148,752..221,750 units over 17 simulations (highest 221,750, J-Lend); with a create that is at most 236,768. The limit is derived
+ * from the worst SOL lending planting ever measured (238,591, 10-06, pre-fee) plus the create and the transfer:
+ * 238,591 + 15,018 + 76 = 253,685, + 75,000 = 328,685, rounded up to the next 10,000 -> 330,000.
  */
 export const PLANTING_CU_LIMIT = 330_000;
 
@@ -295,17 +308,23 @@ async function composePlanting(a: PlantingInput, posted: { reclaim: Instruction[
     const destination = coin.held === "wallet" ? await ataOf(a.user, coin.mint) : coin.held === "staked" ? await skrAta(puller.address)
       : a.asset === "SOL_LEND" ? pullerWsol : (() => { throw new Error(`${a.asset}: a venue-held leg other than SOL lending never swaps`); })();
     const quoteArgs = { inputMint: USDC_MINT, outputMint: coin.mint, amountRaw: a.pullRaw - (feeRaw ?? 0n), maxAccounts: SWAP_MAX_ACCOUNTS[a.asset], onlyDirectRoutes: a.asset === "SKR", ...(fee.platformFeeBps ? { platformFeeBps: fee.platformFeeBps } : {}) };
+    // Review fix 2: on SOL lending the quote must spend exactly the amount asked for (pull less fee), else the pooled USDC float pays.
+    const checkInput = (q: { inAmount: string }) => {
+      if (a.asset === "SOL_LEND" && q.inAmount !== quoteArgs.amountRaw.toString()) throw new Error(`Planting refused: the ${a.asset} quote spends ${q.inAmount}, not the ${quoteArgs.amountRaw} asked for (pull less fee)`);
+    };
     let quote = await getQuote(quoteArgs);
     checkQuoteMints(quote, { inputMint: USDC_MINT, outputMint: coin.mint });
+    checkInput(quote);
     // Ruling A as corrected (Task 12): on a LEASHED coin leg the swap's minimum is max(route less 100 bps, floor + 1). The route under
     // the floor skips; when 100 bps would land under the floor, re-quote at the tighter slippage (Jupiter's swap enforces the quote's
     // own slippageBps, so a re-quote is the documented way; no instruction bytes are edited). Never looser than 100 bps.
     if (swapFloor !== null) {
-      const bps = leashSwapSlippageBps(BigInt(quote.outAmount), swapFloor);
+      const bps = a.asset === "SOL_LEND" ? solLendSwapSlippageBps(BigInt(quote.outAmount), swapFloor) : leashSwapSlippageBps(BigInt(quote.outAmount), swapFloor);
       if (bps === null) throw new Error(`${a.asset}: route under floor (route ${quote.outAmount} < floor ${swapFloor}); the leg skips today`);
       if (bps !== SWAP_SLIPPAGE_BPS) {
         quote = await getQuote({ ...quoteArgs, slippageBps: bps });
         checkQuoteMints(quote, { inputMint: USDC_MINT, outputMint: coin.mint });
+        checkInput(quote);
       }
       if (BigInt(quote.otherAmountThreshold) < swapFloor) throw new Error(`${a.asset}: route under floor (minimum ${quote.otherAmountThreshold} < floor ${swapFloor} after re-quote at ${bps} bps); the leg skips today`);
     }

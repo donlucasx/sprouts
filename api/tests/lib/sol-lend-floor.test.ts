@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { solLendSwapFloor, lendFeeRaw, leashSwapSlippageBps, SWAP_SLIPPAGE_BPS } from "@/lib/planting";
+import { solLendSwapFloor, solLendSwapSlippageBps, lendFeeRaw, leashSwapSlippageBps, SWAP_SLIPPAGE_BPS } from "@/lib/planting";
 import { floorRaw, LEG_SPEC } from "@/lib/leash";
 import { klendMinOut } from "@/lib/venues/klend";
 import { jlendShares } from "@/lib/venues/jlend";
@@ -101,12 +101,14 @@ describe("Task 15b: the floor sweep (fee 50 taken before the swap, adaptive slip
       const f = floorOf(venue, pull, r, price, conf);
       const s = solLendSwapFloor(venue, f, r);
       const out = quoteOut(pull - lendFeeRaw(pull), price, 20n);
-      const bps = leashSwapSlippageBps(out, s);
+      const bps = solLendSwapSlippageBps(out, s);
       const tag = `${venue} ${r.rn} pull ${pull} price ${price} conf ${conf}: out ${out} S ${s}`;
       expect(bps, tag).not.toBeNull();
       expect(bps! <= SWAP_SLIPPAGE_BPS, tag).toBe(true);
       const minimum = (out * BigInt(10_000 - bps!)) / 10_000n;   // Jupiter's otherAmountThreshold at that slippage
       expect(minimum >= s, tag).toBe(true);
+      // review fix 1: at Pyth less 20 bp the 2 bp margin fits, so the minimum clears the aim, not just S
+      expect(minimum >= (s * 10_002n + 9_999n) / 10_000n, tag).toBe(true);
       expect(venueMinOut(venue, minimum, r) >= f, tag).toBe(true);   // deposit = minimum + carry; carry 0 is the worst case
     }
   });
@@ -116,7 +118,7 @@ describe("Task 15b: the floor sweep (fee 50 taken before the swap, adaptive slip
       const f = floorOf(venue, pull, r, price, conf);
       const s = solLendSwapFloor(venue, f, r);
       const out = quoteOut(pull - lendFeeRaw(pull), price, 20n);
-      const bps = leashSwapSlippageBps(out, s);
+      const bps = solLendSwapSlippageBps(out, s);
       if (price <= 15_000_000_000n) expect(bps, `${venue} pull ${pull} price ${price}`).not.toBeNull();
       if (bps !== null) expect(venueMinOut(venue, (out * BigInt(10_000 - bps)) / 10_000n, r) >= f).toBe(true);
       else expect(out < s).toBe(true);   // the builder throws "route under floor" before signing
@@ -130,5 +132,32 @@ describe("Task 15b: the floor sweep (fee 50 taken before the swap, adaptive slip
       const fixed = (out * BigInt(10_000 - SWAP_SLIPPAGE_BPS)) / 10_000n;
       expect(venueMinOut(venue, fixed, r) < f, `${venue} ${r.rn} pull ${pull} price ${price}`).toBe(true);
     }
+  });
+});
+
+describe("review fix 1: solLendSwapSlippageBps aims 2 bp above the swap floor, same cap, falls back to the floor exactly", () => {
+  const aimOf = (s: bigint) => (s * 10_002n + 9_999n) / 10_000n;
+  it("the margin applies: the minimum lands at or above ceil(S x 1.0002) whenever the route allows it", () => {
+    const s = 16_234_607n;
+    expect(aimOf(s)).toBe(16_237_854n);
+    expect(solLendSwapSlippageBps(16_300_000n, s)).toBe(38);   // aimed at S alone it would be 40
+    expect(leashSwapSlippageBps(16_300_000n, s)).toBe(40);
+    for (let out = aimOf(s); out <= 17_000_000n; out += 1_337n) {
+      const bps = solLendSwapSlippageBps(out, s)!;
+      expect(bps <= SWAP_SLIPPAGE_BPS).toBe(true);
+      expect((out * BigInt(10_000 - bps)) / 10_000n >= aimOf(s)).toBe(true);
+    }
+  });
+  it("never above the 100 bps cap", () => {
+    expect(solLendSwapSlippageBps(20_000_000n, 16_234_607n)).toBe(SWAP_SLIPPAGE_BPS);
+  });
+  it("cap fallback: a route between S and the aim aims at S exactly (today's behaviour), never below it; under S it is null", () => {
+    const s = 16_234_607n;
+    for (const out of [s, s + 1n, 16_236_000n, aimOf(s) - 1n]) {
+      expect(solLendSwapSlippageBps(out, s)).toBe(leashSwapSlippageBps(out, s));
+      const bps = solLendSwapSlippageBps(out, s)!;
+      expect((out * BigInt(10_000 - bps)) / 10_000n >= s).toBe(true);
+    }
+    expect(solLendSwapSlippageBps(s - 1n, s)).toBeNull();
   });
 });

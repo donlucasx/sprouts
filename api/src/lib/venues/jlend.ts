@@ -10,7 +10,7 @@ import type { Simulation } from "../plant-run";
 const hex = (h: string) => Buffer.from(h, "hex");
 const DISC = { mint: hex("065e457a1eb392ab"), deposit: hex("f223c68952e1f2b6"), redeem: hex("b80c569546c461e1"), lending: hex("87c75210f983b6f1") };
 export const LENDING_LEN = 196;
-const PRICE_SCALE = 1_000_000_000_000n;
+export const PRICE_SCALE = 1_000_000_000_000n;
 /** Shares left in the puller's jl account after transferring N - 1: 0 per research 26 (N - 1 minted, 4/4); the leash track's Task 7 confirms. */
 export const JL_EXPECTED_LEFTOVER: 0n | 1n = 0n;
 const dec = getAddressDecoder();

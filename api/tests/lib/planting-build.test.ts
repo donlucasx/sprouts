@@ -68,7 +68,7 @@ vi.mock("@/lib/jupiter", async (orig) => {
   const real = await orig<typeof import("@/lib/jupiter")>();
   return {
     ...real,
-    getQuote: vi.fn(async (a: { outputMint: string; slippageBps?: number }) => ({ inputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", outputMint: a.outputMint, inAmount: "2000000", outAmount: QUOTES[a.outputMint][0],
+    getQuote: vi.fn(async (a: { outputMint: string; slippageBps?: number; amountRaw: bigint }) => ({ inputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", outputMint: a.outputMint, inAmount: String(a.amountRaw), outAmount: QUOTES[a.outputMint][0],
       otherAmountThreshold: a.slippageBps === undefined ? QUOTES[a.outputMint][1] : String((BigInt(QUOTES[a.outputMint][0]) * BigInt(10_000 - a.slippageBps)) / 10_000n), priceImpactPct: "0", routePlan: [] })),
     getSwapInstructions: vi.fn(async () => ({ computeBudget: [], setup: [], swap: { programAddress: real.JUPITER_AGGREGATOR, accounts: [], data: new Uint8Array([229]) }, cleanup: null, lookupTables: [] })),
     checkSwapInstructions: vi.fn((_p: unknown, a: Record<string, unknown>) => { checks.push(a); }),
@@ -1023,33 +1023,57 @@ describe("Task 15b: the 0.5% SOL lending fee and the adaptive swap", () => {
     }
   });
 
-  it("adaptive slippage: an ample route keeps 100; a route where 100 bps lands under the swap floor re-quotes at the computed bps (threshold >= swap floor); a route under the swap floor throws 'route under floor'", async () => {
+  it("adaptive slippage (review fix 1: aim 2 bp above the swap floor): an ample route keeps 100; a tight route re-quotes at the bps that lands on ceil(S x 1.0002); a route between S and the aim falls back to S exactly; a route under S throws 'route under floor'", async () => {
     for (const venue of VENUES) {
       const swapFloor = solLendSwapFloor(venue, floorFor(venue), RATE[venue]);
       expect(swapFloor).toBe(16_234_607n);
+      const aim = 16_237_854n;   // ceil(16_234_607 x 10_002 / 10_000)
       vi.mocked(getQuote).mockClear();
-      setRoute("16500000", "16335000");   // roomBps 160 -> capped at 100: one quote
+      setRoute("16500000", "16335000");   // room over the aim 158 bps -> capped at 100: one quote
       const ample = await buildPlantingTx({ ...base, asset: "SOL_LEND", venue, leashed: true });
       expect(getQuote).toHaveBeenCalledTimes(1);
       expect(quoteCall(0)).not.toHaveProperty("slippageBps");
       expect(ample.leashMinOutRaw! >= ample.leashFloorRaw!).toBe(true);
-      // 16_300_000 x 0.99 = 16_137_000 < 16_234_607: roomBps = (16_300_000 - 16_234_607 - 1) x 10_000 / 16_300_000 = 40
+      // 16_300_000: room over the aim = (16_300_000 - 16_237_854 - 1) x 10_000 / 16_300_000 = 38 (it was 40 aimed at S itself)
       vi.mocked(getQuote).mockClear();
       setRoute("16300000", "16137000");
       const tight = await buildPlantingTx({ ...base, asset: "SOL_LEND", venue, leashed: true });
       expect(getQuote).toHaveBeenCalledTimes(2);
-      expect(quoteCall(1)).toMatchObject({ slippageBps: 40, amountRaw: 1_990_000n });
+      expect(quoteCall(1)).toMatchObject({ slippageBps: 38, amountRaw: 1_990_000n });
       expect(quoteCall(1)).not.toHaveProperty("platformFeeBps");
-      const threshold = (16_300_000n * 9_960n) / 10_000n;   // 16_234_800
-      expect(threshold >= swapFloor).toBe(true);
+      const threshold = (16_300_000n * 9_962n) / 10_000n;   // 16_238_060
+      expect(threshold >= aim).toBe(true);
+      expect(tight.leashMinOutRaw!).toBe(venue === "kamino_klend" ? klendMinOut(threshold, RATE.kamino_klend) : jlendMath.jlendShares(threshold, RATE.jupiter_lend.rn) - 1n);
       expect(tight.leashMinOutRaw! >= tight.leashFloorRaw!).toBe(true);
-      expect(tight.leashMinOutRaw).toBe(venue === "kamino_klend" ? klendMinOut(threshold, RATE.kamino_klend) : jlendMath.jlendShares(threshold, RATE.jupiter_lend.rn) - 1n);
-      // the route itself under the swap floor: skip, no second quote, nothing signed
+      // 16_236_000 sits between S and the aim: the margin cannot fit, so it aims at S exactly (today's behaviour): 0 bps, minimum 16_236_000 >= S
+      vi.mocked(getQuote).mockClear();
+      setRoute("16236000", "16073640");
+      const fallback = await buildPlantingTx({ ...base, asset: "SOL_LEND", venue, leashed: true });
+      expect(quoteCall(1)).toMatchObject({ slippageBps: 0 });
+      expect(fallback.leashMinOutRaw! >= fallback.leashFloorRaw!).toBe(true);
+      // the route itself under S: skip, no second quote, nothing signed
       vi.mocked(getQuote).mockClear();
       setRoute("16200000", "16038000");
       await expect(buildPlantingTx({ ...base, asset: "SOL_LEND", venue, leashed: true })).rejects.toThrow(/SOL_LEND: route under floor \(route 16200000 < floor 16234607\)/);
       expect(getQuote).toHaveBeenCalledTimes(1);
     }
+  });
+
+  it("review fix 1: hSOL keeps today's slippage exactly (aimed at its floor, no margin): the re-quote bps equals leashSwapSlippageBps for the same quote", async () => {
+    QUOTES.he1iusmfkpAdwvxLNGV8Y1iSbj4rUy6yMhEA3fotn9A = ["13700000", "13563000"];
+    const b = await buildPlantingTx({ ...base, asset: "hSOL", venue: null, leashed: true });
+    expect(quoteCall(1).slippageBps).toBe(leashSwapSlippageBps(13_700_000n, b.leashFloorRaw!));
+    expect(quoteCall(1).slippageBps).toBe(38);   // as in the Task 12 test, byte for byte
+    QUOTES.he1iusmfkpAdwvxLNGV8Y1iSbj4rUy6yMhEA3fotn9A = ["13843000", "13705000"];
+  });
+
+  it("review fix 2: a SOL lending quote whose inAmount is not the amount asked for (pull less fee) is refused, on the first quote and on the re-quote", async () => {
+    vi.mocked(getQuote).mockImplementationOnce(async (a) => ({ inputMint: USDC_MINT, outputMint: a.outputMint, inAmount: "2000000", outAmount: "16500000", otherAmountThreshold: "16335000", priceImpactPct: "0", routePlan: [] }) as never);
+    await expect(buildPlantingTx({ ...base, asset: "SOL_LEND", venue: "kamino_klend", leashed: true })).rejects.toThrow(/Planting refused: the SOL_LEND quote spends 2000000, not the 1990000 asked for/);
+    setRoute("16300000", "16137000");
+    vi.mocked(getQuote).mockImplementationOnce(async (a) => ({ inputMint: USDC_MINT, outputMint: a.outputMint, inAmount: "1990000", outAmount: "16300000", otherAmountThreshold: "16137000", priceImpactPct: "0", routePlan: [] }) as never)
+      .mockImplementationOnce(async (a) => ({ inputMint: USDC_MINT, outputMint: a.outputMint, inAmount: "1990001", outAmount: "16300000", otherAmountThreshold: "16238060", priceImpactPct: "0", routePlan: [] }) as never);
+    await expect(buildPlantingTx({ ...base, asset: "SOL_LEND", venue: "jupiter_lend", leashed: true })).rejects.toThrow(/Planting refused: the SOL_LEND quote spends 1990001/);
   });
 
   it("unleashed (an old link) pays the same fee and swaps pull - fee at today's 100 bps; a pull of 199 pays 0: no transfer, no fee account create, the quote is the whole pull", async () => {
