@@ -394,7 +394,7 @@ const SYNC_NATIVE = 17;
  * Token-program (never Token-2022) Transfer [source, destination, authority] or TransferChecked [source, USDC, destination,
  * authority] with 6 decimals, from fee.source to fee.destination, signed by the puller, of exactly fee.amountRaw; none when the
  * amount is 0. A second one is refused, and so is a missing one. The fee wallet (fee.owner) may get an account created only for
- * USDC at fee.destination.
+ * USDC at fee.destination, and only when a fee is due (amount > 0; review): a 0 fee carries neither the transfer nor the create.
  */
 export function checkPlantingInstructions(ixs: readonly Instruction[], a: { puller: Address; user: Address; asset: LiveAsset; venue: AutoVenue | null; leashed: boolean; pullerWsol: Address; pullerJl: Address | null; userMints: Address[]; posted: boolean; fee: LendFeePin | null }): void {
   const refuse = (why: string): never => { throw new Error(`Planting refused: ${why}`); };
@@ -419,7 +419,7 @@ export function checkPlantingInstructions(ixs: readonly Instruction[], a: { pull
       if (acc(0) !== a.puller) refuse(`an account creation paid by ${acc(0)}, not the puller`);
       const owner = acc(2);
       if (owner === a.puller) continue;
-      if (a.fee && owner === a.fee.owner) {
+      if (a.fee && a.fee.amountRaw > 0n && owner === a.fee.owner) {
         if (acc(3) !== USDC_MINT || acc(1) !== a.fee.destination) refuse(`an account creation for the fee wallet's ${acc(3)} at ${acc(1)}, not its USDC account`);
         continue;
       }

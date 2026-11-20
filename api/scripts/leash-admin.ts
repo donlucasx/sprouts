@@ -13,7 +13,7 @@
 //   cd api && pnpm tsx --env-file=.env.local scripts/leash-admin.ts set --admin ~/.config/solana/sprouts-admin.json --enable 0,1,2,3,6,7
 // (the scary flag SKR_OVERRIDE_FLAG still overrides without a key).
 import { address, createSolanaRpc, createSolanaRpcSubscriptions, sendAndConfirmTransactionFactory, assertIsTransactionWithBlockhashLifetime } from "@solana/kit";
-import { loadAdmin, configFor, parseLegs, assertInstallable, assertInitSafe, configAccountBytes, runAdminSteps, skrPriceProof, planLines, PULLER_MAINNET, SKR_OVERRIDE_FLAG, type AdminChain } from "./leash-admin-lib";
+import { loadAdmin, configFor, parseLegs, assertInstallable, assertInitSafe, configAccountBytes, runAdminSteps, skrPriceProof, planLines, planNotes, PULLER_MAINNET, SKR_OVERRIDE_FLAG, type AdminChain } from "./leash-admin-lib";
 import { decodeConfig, leashConfigPda, LEASH_IX, type LeashConfig } from "../src/lib/leash";
 
 const fail = (msg: string, code = 1): never => { console.error(msg); process.exit(code); };
@@ -41,6 +41,7 @@ async function main(): Promise<number> {
     const lines = planLines(raw, want);
     console.log(`plan against Config ${configPda}${raw ? "" : " (none yet)"}: ${lines.length ? `${lines.length} step(s)` : "nothing to send"}`);
     for (const l of lines) console.log(l);
+    for (const n of planNotes(legs)) console.log(n);
     return 0;
   }
 

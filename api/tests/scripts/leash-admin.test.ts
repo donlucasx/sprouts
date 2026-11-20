@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { Keypair } from "@solana/web3.js";
 import { address, AccountRole, generateKeyPairSigner, getTransactionDecoder, getBase64Encoder, getCompiledTransactionMessageDecoder, type Instruction, type Blockhash } from "@solana/kit";
-import { loadAdmin, legConfigFor, configFor, parseLegs, planAdminSteps, planLines, adminIx, adminIxData, adminTxSize, stepName, assertInstallable, assertInitSafe, configAccountBytes, runAdminSteps, skrPriceProof,
+import { loadAdmin, legConfigFor, configFor, parseLegs, planAdminSteps, planLines, planNotes, adminIx, adminIxData, adminTxSize, stepName, assertInstallable, assertInitSafe, configAccountBytes, runAdminSteps, skrPriceProof,
   PULLER_MAINNET, MAX_TX_BYTES, SKR_OVERRIDE_FLAG, type AdminChain } from "../../scripts/leash-admin-lib";
 import { encodeConfig, encodeHeader, encodeLeg, leashConfigPda, LEG_BYTES } from "@/lib/leash";
 import { LEASH_PROGRAM } from "@/lib/constants";
@@ -118,16 +118,20 @@ describe("leash-admin helpers", () => {
     expect((await configFor({ puller: address(PULLER_MAINNET), enabled: DAY1 })).legs[0].enabled).toBe(false);
   });
   it.skipIf(!leashRoot)("matches the BUILT program's golden instruction payloads: init_config, set_leg 0..7, config", async () => {
-    const day1 = preFee(await configFor({ puller: address(PULLER_MAINNET), enabled: DAY1 }));
+    const real = await configFor({ puller: address(PULLER_MAINNET), enabled: DAY1 });
+    const day1 = preFee(real);
     const init = hex("tests/golden/init_config.hex");
     expect(init.length).toBe(162);
     expect(Buffer.from(encodeHeader(day1)).toString("hex")).toBe(init.slice(2));
     expect(Buffer.from(adminIxData({ kind: "init" }, day1)).toString("hex")).toBe(init);
     for (const n of LEG_BYTES) {
-      const g = hex(`tests/golden/set_leg_${n}.hex`);
-      expect(g.length, `set_leg_${n}`).toBe(356);
-      expect(Buffer.from(encodeLeg(n, day1.legs[n])).toString("hex"), `encodeLeg(${n})`).toBe(g.slice(4));
-      expect(Buffer.from(adminIxData({ kind: "leg", leg: n }, day1)).toString("hex"), `set_leg ${n}`).toBe(g);
+      const g0 = hex(`tests/golden/set_leg_${n}.hex`);
+      expect(g0.length, `set_leg_${n}`).toBe(356);
+      // Task 15 review: legs 2/3 compare against the REAL fee-50 payload the owner signs: the golden with its fee u16 (payload byte 6)
+      // set to 50 (0x3200), nothing else changed. Every other leg is the golden as built.
+      const g = n === 2 || n === 3 ? `${g0.slice(0, 12)}3200${g0.slice(16)}` : g0;
+      expect(Buffer.from(encodeLeg(n, real.legs[n])).toString("hex"), `encodeLeg(${n})`).toBe(g.slice(4));
+      expect(Buffer.from(adminIxData({ kind: "leg", leg: n }, real)).toString("hex"), `set_leg ${n}`).toBe(g);
     }
     expect(Buffer.from(encodeConfig(day1)).toString("hex")).toBe(hex("tests/golden/config.hex"));
   });
@@ -194,6 +198,9 @@ describe("leash-admin helpers", () => {
     // no Config yet: init_config, then every leg from "-" (never set)
     expect(planLines(null, want)[0]).toBe("init_config");
     expect(planLines(null, want)[3]).toBe("set_leg 2  fee - -> 50, tol - -> 10");
+    // review: leg 0 in the ON list -> one line saying set needs --env-file=.env.local; otherwise nothing
+    expect(planNotes([0, 1, 2, 3, 4, 5, 6, 7])).toEqual(["note: leg 0 (SKR) is in the ON list, so set needs --env-file=.env.local (the SKR price proof); plan did not check it"]);
+    expect(planNotes([...enabled])).toEqual([]);
   });
   it("builds the contracts 2.5 instructions: tags, lengths, accounts", async () => {
     const c = await configFor({ puller: address(PULLER_MAINNET), enabled: DAY1 });

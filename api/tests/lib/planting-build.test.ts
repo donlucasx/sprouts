@@ -703,6 +703,7 @@ import { getTransferCheckedInstruction } from "@solana-program/token";
 import { lendFeeRaw, LEND_FEE_BPS } from "@/lib/planting";
 import { floorRaw } from "@/lib/leash";
 import { JLEND_PROGRAM } from "@/lib/constants";
+import * as jlendMath from "@/lib/venues/jlend";
 
 /** Task 15 (Review Focus 3 and 4): the USDC lending fee, one pinned transfer to the fee wallet's USDC account, before the deposit. */
 describe("Task 15: the 0.5% USDC lending fee", () => {
@@ -747,11 +748,11 @@ describe("Task 15: the 0.5% USDC lending fee", () => {
     expect(b.minOutRaw).toBe(klendMinOut(1_990_500n, { rn: 12_038n, rd: 10_000n }));
     expect(b.leashMinOutRaw! >= b.leashFloorRaw!).toBe(true);
     expect(b.sizeBytes).toBeLessThanOrEqual(1232);
-    console.log(`[Task 15 size] USDC_LEND kamino_klend leashed, with the fee account create: ${b.sizeBytes} B`);
+    if (process.env.PRINT_PLANTING_SIZES) console.log(`[Task 15 size] USDC_LEND kamino_klend leashed, with the fee account create: ${b.sizeBytes} B`);
     presentAccounts.add(feeAta);
     const noCreate = await buildPlantingTx({ ...base, asset: "USDC_LEND", venue: "kamino_klend", leashed: true, carryIn: { USDC: 500n } });
     expect(noCreate.sizeBytes).toBeLessThanOrEqual(1232);
-    console.log(`[Task 15 size] USDC_LEND kamino_klend leashed, fee account present: ${noCreate.sizeBytes} B`);
+    if (process.env.PRINT_PLANTING_SIZES) console.log(`[Task 15 size] USDC_LEND kamino_klend leashed, fee account present: ${noCreate.sizeBytes} B`);
   });
 
   it("the same on Jupiter Lend (leg 3), with and without the fee account create, each within 1232 bytes", async () => {
@@ -772,7 +773,7 @@ describe("Task 15: the 0.5% USDC lending fee", () => {
       expect(creates.length).toBe(present ? 0 : 1);
       expect(b.leashMinOutRaw! >= b.leashFloorRaw!).toBe(true);
       expect(b.sizeBytes).toBeLessThanOrEqual(1232);
-      console.log(`[Task 15 size] USDC_LEND jupiter_lend leashed, ${present ? "fee account present" : "with the fee account create"}: ${b.sizeBytes} B`);
+      if (process.env.PRINT_PLANTING_SIZES) console.log(`[Task 15 size] USDC_LEND jupiter_lend leashed, ${present ? "fee account present" : "with the fee account create"}: ${b.sizeBytes} B`);
     }
   });
 
@@ -822,6 +823,40 @@ describe("Task 15: the 0.5% USDC lending fee", () => {
         const floor = floorRaw({ leg: 2, amountRaw: pull, rn: r.rn, rd: r.rd, priceLow: null, exponent: null, feeBps: 50, tolBps: 10, underlyingDecimals: 6 });
         expect(klendMinOut(pull - lendFeeRaw(pull), r) >= floor, `pull ${pull} rate ${r.rn}/${r.rd}`).toBe(true);
       }
+    }
+  });
+
+  it("J-Lend floor sweep (review): shares - 1 of pull - fee clears the leash floor at fee 50, tol 10 for every whole-cent pull up to $5; the sub-cent fail-closed zone ends where it did at fee 0", () => {
+    const { jlendShares } = jlendMath;
+    const SCALE = 1_000_000_000_000n;
+    const jPasses = (pull: bigint, rn: bigint, feeBps: 0 | 50) => {
+      const dep = pull - (feeBps ? lendFeeRaw(pull) : 0n);
+      const floor = floorRaw({ leg: 3, amountRaw: pull, rn, rd: SCALE, priceLow: null, exponent: null, feeBps, tolBps: 10, underlyingDecimals: 6 });
+      return floor > 0n && jlendShares(dep, rn) - 1n >= floor;
+    };
+    const kPasses = (pull: bigint, rn: bigint, rd: bigint) => {
+      const floor = floorRaw({ leg: 2, amountRaw: pull, rn, rd, priceLow: null, exponent: null, feeBps: 50, tolBps: 10, underlyingDecimals: 6 });
+      return floor > 0n && klendMinOut(pull - lendFeeRaw(pull), { rn, rd }) >= floor;
+    };
+    for (const x of [10_000n, 10_500n, 12_038n, 15_000n]) {
+      const rn = x * 100_000_000n;   // the same rate in J-Lend's 1e12 scale
+      // Every pull the run can make (whole cents, 1 cent .. $5) passes on both venues.
+      for (let pull = 10_000n; pull <= 5_000_000n; pull += 10_000n) {
+        expect(jPasses(pull, rn, 50), `J-Lend pull ${pull} rate ${x}`).toBe(true);
+        expect(kPasses(pull, x, 10_000n), `K-Lend pull ${pull} rate ${x}`).toBe(true);
+      }
+      // Sub-cent pulls (never made: pulls are whole cents): J-Lend fails closed up to ~3_000 raw (its 1-share and 2 bps haircut),
+      // K-Lend up to ~2_000 raw. Both zones pre-date the fee: at fee 0 they end at the same bounds (rounding inside them may flip
+      // single sub-cent pulls either way, e.g. 2_007 raw at rate 1.05 passes at fee 0 and fails at fee 50; such a pull fails closed).
+      let jLast = 0n, jLast0 = 0n, kLast = 0n;
+      for (let pull = 1n; pull < 10_000n; pull++) {
+        if (!jPasses(pull, rn, 50)) jLast = pull;
+        if (!jPasses(pull, rn, 0)) jLast0 = pull;
+        if (!kPasses(pull, x, 10_000n)) kLast = pull;
+      }
+      expect(jLast, `rate ${x}`).toBeLessThanOrEqual(3_000n);
+      expect(jLast0, `rate ${x} at fee 0`).toBeLessThanOrEqual(3_000n);
+      expect(kLast, `rate ${x}`).toBeLessThanOrEqual(2_000n);
     }
   });
 
@@ -893,6 +928,8 @@ describe("Task 15: the 0.5% USDC lending fee", () => {
       const { a, xfer, tx, feeAta } = await setup();
       const create = (ataAddr: string, mint: string) => getCreateAssociatedTokenIdempotentInstruction({ payer: puller, ata: address(ataAddr), owner: FEE_WALLET, mint: address(mint) }) as Instruction;
       expect(() => checkPlantingInstructions([create(feeAta, USDC_MINT), ...tx(xfer())], a)).not.toThrow();
+      // review: a 0 fee carries no create either; the fee wallet is then a third party, as on any other leg
+      expect(() => checkPlantingInstructions([create(feeAta, USDC_MINT), ...tx()], { ...a, fee: { ...a.fee, amountRaw: 0n } })).toThrow(/neither the puller nor this user/);
       const feeSkr = await ata(FEE_WALLET, SKR_MINT), userUsdc = await ata(USER, USDC_MINT);
       expect(() => checkPlantingInstructions([create(feeSkr, SKR_MINT), ...tx(xfer())], a)).toThrow(/Planting refused/);
       expect(() => checkPlantingInstructions([create(userUsdc, USDC_MINT), ...tx(xfer())], a)).toThrow(/Planting refused/);

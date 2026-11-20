@@ -143,6 +143,11 @@ export function planLines(raw: Uint8Array | null, want: LeashConfig): string[] {
   });
 }
 
+/** Task 15 review: what `plan` adds under its steps. Leg 0 in the ON list means `set` will ask for the SKR price proof. */
+export function planNotes(enabled: readonly LeashLegByte[]): string[] {
+  return enabled.includes(0) ? ["note: leg 0 (SKR) is in the ON list, so set needs --env-file=.env.local (the SKR price proof); plan did not check it"] : [];
+}
+
 /** Contracts 2.5 (amended): [2][header] 81 B, [4][header] 81 B, [5][leg][LegConfig] 178 B. */
 export const adminIxData = (step: AdminStep, c: LeashConfig): Uint8Array =>
   step.kind === "init" ? initConfigData(c) : step.kind === "header" ? setHeaderData(c) : setLegData(step.leg, c);
