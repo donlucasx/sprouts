@@ -39,6 +39,13 @@ export const TOPUP = {
  * read (whose Add USDC shows the coin picker) asks; Link a wallet and the background refresh read the plain path and get no list.
  */
 export const ME_USDC_WITH_SOURCES = '/api/me/usdc?sources=1'
+/**
+ * Task 17b (user rent), ruling 26: the setup count costs a Helius read, so it is asked only where its line shows: Link a wallet, and when
+ * the top-up opens or the re-link card shows. Never on Home's regular read above.
+ */
+export const ME_USDC_SETUP = '/api/me/usdc?setup=1'
+/** The most setup creates a top-up carries (api lib/user-setup.ts TOPUP_SETUP_MAX: a fourth would not fit beside Jupiter's route). */
+export const TOPUP_SETUP_MAX = 3
 
 /** GET /api/me/usdc topUpSources (0.1.12 API): a coin this phone's wallet can top up from; SOL first, absent from an older API. */
 export type TopUpSource = { mint: string; symbol: string; decimals: number; valueCents: number; offers: number[] }
@@ -127,16 +134,20 @@ export async function topUpThisPhone(a: {
   cents: number
   /** The coin to swap; absent or the wSOL mint = SOL (the build body is then exactly { cents }, as 0.1.11 sends it). */
   inputMint?: string
-  build: (body: { cents: number; inputMint?: string }) => Promise<{ transaction: string; usdcRaw: string; inputMint?: string }>
+  /** Task 17b: the setup count the screen showed (/api/me/usdc?setup=1); capped at TOPUP_SETUP_MAX; absent or 0 = today's body and flow. */
+  setupMax?: number
+  build: (body: { cents: number; inputMint?: string; setupMax?: number }) => Promise<{ transaction: string; usdcRaw: string; inputMint?: string }>
   sign: (flow: SignFlow) => (transaction: string) => Promise<string>
   confirm: (body: { signedTransaction: string }) => Promise<{ status?: string }>
   onSigned?: () => void
 }): Promise<'confirmed' | 'pending'> {
   const usdcRaw = String(BigInt(a.cents) * 10_000n)
   const token = a.inputMint !== undefined && a.inputMint !== WSOL_MINT ? a.inputMint : undefined
+  const setupMax = a.setupMax !== undefined && Number.isInteger(a.setupMax) && a.setupMax > 0 ? Math.min(a.setupMax, TOPUP_SETUP_MAX) : 0
+  const setup = setupMax > 0 ? { setupMax } : {}
   let built: { transaction: string; usdcRaw: string; inputMint?: string }
   try {
-    built = await a.build(token === undefined ? { cents: a.cents } : { cents: a.cents, inputMint: token })
+    built = await a.build(token === undefined ? { cents: a.cents, ...setup } : { cents: a.cents, inputMint: token, ...setup })
   } catch (e) {
     throw new TopUpFailed(apiStatus(e) !== null && apiStatus(e) !== 0 ? (e as Error).message : TOPUP.failedBefore)
   }
@@ -147,7 +158,7 @@ export async function topUpThisPhone(a: {
   if (echoed !== token) throw new TopUpFailed(REFUSED.plan)
   let signedTransaction: string
   try {
-    signedTransaction = await a.sign(token === undefined ? { kind: 'topup', user: a.user, usdcRaw } : { kind: 'topup', user: a.user, usdcRaw, inputMint: token })(built.transaction)
+    signedTransaction = await a.sign(token === undefined ? { kind: 'topup', user: a.user, usdcRaw, ...setup } : { kind: 'topup', user: a.user, usdcRaw, inputMint: token, ...setup })(built.transaction)
   } catch (e) {
     throw new TopUpFailed(e instanceof SignRefused ? e.message : DROPPED_NOTHING_SENT)
   }

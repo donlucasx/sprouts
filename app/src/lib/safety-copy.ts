@@ -37,7 +37,8 @@ export const LINKED_LINE = 'Its swaps now round up into your garden.'
  * enough or could not be read (the static point above still says it). `usdcRaw` is the balance in USDC base units (6 decimals).
  * Never blocks linking.
  */
-/** About what an approval costs in SOL: the one-time rent (refunded on revoke) and the fee; the API's own no-SOL error says the same. */
+/** About what an approval costs in SOL: the one-time rent and the fee; the API's own no-SOL error says the same. (That rent stays with
+ *  its account: it comes back only when an account is emptied and closed, never on revoke.) */
 export const LINK_SOL_LAMPORTS = 10_000_000n
 
 /**
@@ -47,7 +48,41 @@ export const LINK_SOL_LAMPORTS = 10_000_000n
 export function phoneSolNote(solLamports: string | null | undefined): string | null {
   if (solLamports == null || !/^\d+$/.test(solLamports)) return null
   if (BigInt(solLamports) >= LINK_SOL_LAMPORTS) return null
-  return 'This wallet needs about 0.01 SOL to approve. It covers a one-time deposit, refunded when you revoke, and the network fee. Add a little SOL first.'
+  return 'This wallet needs about 0.01 SOL to approve. It covers the one-time rent and the network fee. Add a little SOL first.'
+}
+
+/**
+ * Task 17b (user rent, design 6): a link, re-link or top-up may also set up the user's coin accounts from their own SOL. The count comes
+ * from /api/me/usdc?setup=1 (`setupAccounts`); the lamports and dollars are the phone's own (this constant, the phone's SOL price), never
+ * the API's. The count shown IS the bound: it goes to the build request and to the sign check (sign.ts takeSetup), so the wallet never
+ * signs more creates than the line said. The API adds a setup only when the wallet holds n x rent + 0.02 SOL (api lib/user-setup.ts
+ * SETUP_SOL_MARGIN), and drops it otherwise, so the line can only overstate (the user pays less, never more; founder D4).
+ */
+/** Rent for one 165-byte token account (api lib/user-setup.ts ATA_RENT_LAMPORTS), copied. */
+export const SETUP_RENT_LAMPORTS = 2_039_280n
+
+/** A setup count the API sent, as the whole number the screen may show: 0..cap; anything else is 0 (no line, no creates). */
+export function setupAccountsOf(raw: unknown, cap = 7): number {
+  if (typeof raw !== 'number' || !Number.isInteger(raw) || raw <= 0) return 0
+  return Math.min(raw, cap)
+}
+
+/** The link approval request: `&setup=N` only when the screen showed a count, so a count of 0 asks exactly what 0.1.12 asked. */
+export const linkApprovalPath = (code: string, wallet: string, setup: number): string =>
+  `/api/link/${code}?wallet=${wallet}${setup > 0 ? `&setup=${setup}` : ''}`
+
+/**
+ * The founder's line (D4): "Includes $X one-time setup for N coin account(s), paid in SOL. It's yours: you get it back if you empty and
+ * close them." $X = N x rent x the phone's SOL price, rounded to cents; no usable price shows the SOL. null = no line (no count).
+ */
+export function setupLine(n: number, solUsd: number | null | undefined): string | null {
+  if (!Number.isInteger(n) || n <= 0) return null
+  const sol = Number(BigInt(n) * SETUP_RENT_LAMPORTS) / 1e9
+  const accounts = n === 1 ? '1 coin account' : `${n} coin accounts`
+  const back = `It's yours: you get it back if you empty and close ${n === 1 ? 'it' : 'them'}.`
+  const cents = solUsd != null && Number.isFinite(solUsd) && solUsd > 0 ? Math.round(sol * solUsd * 100) : 0
+  if (cents >= 1) return `Includes $${(cents / 100).toFixed(2)} one-time setup for ${accounts}, paid in SOL. ${back}`
+  return `Includes about ${sol.toFixed(4)} SOL one-time setup for ${accounts}. ${back}`
 }
 
 export function phoneUsdcNote(usdcRaw: string | null | undefined, thresholdCents: number): string | null {

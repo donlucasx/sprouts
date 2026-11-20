@@ -92,7 +92,8 @@ const ATA_CREATE_IDEMPOTENT = 1
 export type SignFlow =
   | { kind: 'withdraw'; user: string; shares: string }
   | { kind: 'cancel'; user: string }
-  | { kind: 'link'; user: string }
+  /** setupMax (Task 17b, user rent): the setup count the screen showed; absent = 0 = today (any setup create refuses). */
+  | { kind: 'link'; user: string; setupMax?: number }
   | { kind: 'revoke'; user: string }
   /**
    * Spec 7, R264: one lending position back to the wallet. receiptRaw is the position the screen showed: /api/me positions[].receiptRaw
@@ -112,7 +113,7 @@ export type SignFlow =
   | { kind: 'move_klend_to_jlend'; user: string; asset: LendAsset; receiptRaw: string; depositRaw: string; depositCapRaw: string; part: MovePart }
   | { kind: 'move_jlend_to_klend'; user: string; asset: LendAsset; receiptRaw: string; depositRaw: string; depositCapRaw: string; part: MovePart }
   /** R287, contracts 6: the Seed Vault wallet (delegator == user) moves its approval to the leash; web-linked wallets re-link on the link page. */
-  | { kind: 'relink'; user: string }
+  | { kind: 'relink'; user: string; setupMax?: number }
   /** The 409 partial's `unwrapTransaction` (moves/confirm): one Token CloseAccount of the user's WSOL account, its lamports to the user. */
   | { kind: 'unwrap_wsol'; user: string }
   /**
@@ -120,7 +121,7 @@ export type SignFlow =
    * the button showed (USDC base units), never the build response's; the swap must deliver exactly that, to this wallet's USDC account.
    * inputMint (Task 3, any-coin top-up): the coin the user picked, set only when it is not SOL; absent = the SOL top-up, unchanged.
    */
-  | { kind: 'topup'; user: string; usdcRaw: string; inputMint?: string }
+  | { kind: 'topup'; user: string; usdcRaw: string; inputMint?: string; setupMax?: number }
 
 export type MovePart = 'redeem' | 'deposit' | 'whole'
 
@@ -402,11 +403,14 @@ const JUPITER_EVENT_AUTHORITY = 'D8cy77BBepLMngZx6ZukaTff5hCt1HrWyKk3Hnd9oitf'
  * The mints whose accounts this wallet may hold beside SOL and USDC (api domain/coins.ts and the lending receipts above), copied: none
  * of the user's accounts for them may appear anywhere in a top-up, under either token program.
  */
+export const STORE_MINT = 'storenSbvkfzircixnaosc5CbzNZVrHJ6S3EKrS1yqR'
+export const HSOL_MINT = 'he1iusmfkpAdwvxLNGV8Y1iSbj4rUy6yMhEA3fotn9A'
+export const CBBTC_MINT = 'cbbtcf3aa214zXHbiAZQwf4122FBYbraNdFqgw4iMij'
 const TOPUP_FOREIGN_MINTS: readonly string[] = Object.freeze([
   SKR_MINT,
-  'storenSbvkfzircixnaosc5CbzNZVrHJ6S3EKrS1yqR', // stORE
-  'he1iusmfkpAdwvxLNGV8Y1iSbj4rUy6yMhEA3fotn9A', // hSOL
-  'cbbtcf3aa214zXHbiAZQwf4122FBYbraNdFqgw4iMij', // cbBTC
+  STORE_MINT,
+  HSOL_MINT,
+  CBBTC_MINT,
   'J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn', // JitoSOL (retired, may still be held)
   'jupSoLaHXQiZZTSfEWMTRRgpnyFm8f6sZdosWBjx93v', // JupSOL (retired, may still be held)
   KLEND_RESERVE.USDC_LEND.collateralMint,
@@ -414,6 +418,45 @@ const TOPUP_FOREIGN_MINTS: readonly string[] = Object.freeze([
   JLEND.USDC_LEND.fTokenMint,
   JLEND.SOL_LEND.fTokenMint,
 ])
+
+/**
+ * Task 17b (user rent, design 4): the coin accounts a link, re-link or top-up may set up first, paid from the user's own SOL. The API's
+ * table order (api/src/lib/user-setup.ts SETUP_MINTS): stORE, hSOL, cbBTC, K-Lend USDC, Jupiter Lend USDC, K-Lend SOL, Jupiter Lend SOL.
+ * SKR (staked from the puller's account), USDC and wSOL are never setup mints.
+ */
+export const SETUP_MINTS: readonly string[] = Object.freeze([
+  STORE_MINT,
+  HSOL_MINT,
+  CBBTC_MINT,
+  KLEND_RESERVE.USDC_LEND.collateralMint,
+  JLEND.USDC_LEND.fTokenMint,
+  KLEND_RESERVE.SOL_LEND.collateralMint,
+  JLEND.SOL_LEND.fTokenMint,
+])
+/** The most setup creates any screen may show (all 7; a top-up's screen shows at most 3). */
+export const SETUP_MAX = 7
+
+/**
+ * The leading setup block: CreateIdempotent of this wallet's own classic ATA (derived here) for a SETUP_MINTS mint, paid by this wallet,
+ * each mint once, at most `max` (what the screen showed, never above SETUP_MAX). Only a LEADING run is peeled: the loop stops at the first
+ * instruction that is not an ATA-program instruction naming a setup mint, so a setup-mint create anywhere later stays in the rest, where
+ * the flow's own check refuses it as today. Returns the rest, which that check then reads unchanged. Mirrors the API's takeSetupPrefix.
+ */
+async function takeSetup(ixs: Ix[], user: string, max: number): Promise<Ix[]> {
+  if (!Number.isInteger(max) || max < 0 || max > SETUP_MAX) return refuse('plan')
+  const seen = new Set<string>()
+  let i = 0
+  while (i < ixs.length && ixs[i].program === ATA_PROGRAM && SETUP_MINTS.includes(ixs[i].accounts[3])) {
+    const ix = ixs[i]
+    const mint = ix.accounts[3]
+    if (ix.data.length !== 1 || ix.data[0] !== ATA_CREATE_IDEMPOTENT || seen.has(mint)) refuse('plan')
+    accountsAre(ix, [user, await ata(user, mint), user, mint, SYSTEM_PROGRAM, TOKEN_PROGRAM])
+    seen.add(mint)
+    i++
+  }
+  if (i > max) refuse('plan')
+  return ixs.slice(i)
+}
 
 /** Whether the phone could ever sign a top-up that swaps this mint: SOL (the wSOL entry) and SKR, any other coin not on the refusal list. */
 export const topUpSourceAllowed = (mint: string): boolean =>
@@ -695,6 +738,8 @@ async function checkInstructions(ixs: Ix[], flow: SignFlow, opts: CheckOptions):
   }
   // The unwrap: exactly the one close, nothing else (no ComputeBudget); it touches none of derived()'s PDAs either.
   if (flow.kind === 'unwrap_wsol') return steps(ixs, [closeWsol(await ata(user, WSOL_MINT), user)])
+  // Task 17b: the setup block is peeled off FIRST for these three kinds only; every check below then reads the rest unchanged.
+  if (flow.kind === 'link' || flow.kind === 'relink' || flow.kind === 'topup') ixs = await takeSetup(ixs, user, flow.setupMax ?? 0)
   if (flow.kind === 'topup')
     return flow.inputMint === undefined
       ? checkTopUp(ixs, user, amountOf(flow.usdcRaw), opts.solUsd ?? fetchSolUsd)

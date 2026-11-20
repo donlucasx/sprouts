@@ -1,13 +1,16 @@
 import { useEffect, useState } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Pressable, View } from 'react-native'
 import { MaterialCommunityIcons } from '@expo/vector-icons'
 import { useMobileWallet } from '@wallet-ui/react-native-kit'
 import { Card } from '@/components/Card'
 import { Button } from '@/components/Button'
 import { ThemedText } from '@/components/ThemedText'
-import { api, ApiError, type MeResponse } from '@/lib/api'
+import { api, ApiError, type MeResponse, type MeUsdcResponse } from '@/lib/api'
 import { makeSigner, SignRefused } from '@/lib/sign'
+import { setupAccountsOf, setupLine } from '@/lib/safety-copy'
+import { useSolUsd } from '@/lib/sol-usd'
+import { ME_USDC_SETUP } from '@/lib/topup'
 import { LEND_MOCK } from '@/lib/lend-mock'
 import { disclosureItems, RELINK, relinkCode, RelinkSent, relinkThisPhone, relinkView, relinkWebLines, short } from '@/lib/relink'
 import { oneAtATime } from '@/lib/withdraw-flow'
@@ -42,6 +45,11 @@ export function RelinkCard({ me }: { me: MeResponse }) {
   const [leashes, setLeashes] = useState<Record<string, string>>({})
   // Held until the refetch after a confirmed re-link lands: the button stays hidden in between (I1), then the read decides.
   const [settling, setSettling] = useState(false)
+  // Task 17b (ruling 26): the setup count is read only while this phone's re-link button shows; the number shown is the bound.
+  const { data: setupRead } = useQuery({ queryKey: ['me-usdc', user, 'setup'], queryFn: () => api<MeUsdcResponse>(ME_USDC_SETUP), enabled: view.thisPhone, retry: false, staleTime: 30_000 })
+  const setupCount = setupAccountsOf(setupRead?.setupAccounts)
+  const solUsd = useSolUsd(view.thisPhone && setupCount > 0)
+  const setupNote = setupLine(setupCount, solUsd)
 
   useEffect(() => {
     if (!webKey) return
@@ -78,7 +86,8 @@ export function RelinkCard({ me }: { me: MeResponse }) {
     try {
       await relinkThisPhone({
         user,
-        build: () => api<{ transaction: string }>('/api/relink/build', { method: 'POST', body: {} }),
+        setupMax: setupCount,
+        build: (body) => api<{ transaction: string }>('/api/relink/build', { method: 'POST', body }),
         sign: (flow) => makeSigner(signTransaction, flow),
         confirm: (body) => api('/api/relink/confirm', { method: 'POST', body }),
         onSigned: () => setRelinking('chain'),
@@ -122,6 +131,11 @@ export function RelinkCard({ me }: { me: MeResponse }) {
       {view.thisPhone ? (
         <>
           <ThemedText>{RELINK.body}</ThemedText>
+          {setupNote && !settling ? (
+            <ThemedText variant="caption" tone="secondary">
+              {setupNote}
+            </ThemedText>
+          ) : null}
           {settling ? null : <Button title={RELINK.button} loading={relinking !== null} onPress={relinkHere} />}
           {relinking ? (
             <ThemedText variant="caption" tone="secondary">

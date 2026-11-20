@@ -70,7 +70,11 @@ describe("user-setup constants (design 2, 3; founder D1: both lending venues' re
   it("every setup mint is one the app's top-up check already screens out (TOPUP_FOREIGN_MINTS, vendored)", async () => {
     const app = await import("node:fs").then((fs) => fs.readFileSync(new URL("../fixtures/app/sign.ts", import.meta.url), "utf8"));
     const foreign = app.slice(app.indexOf("const TOPUP_FOREIGN_MINTS"), app.indexOf("])", app.indexOf("const TOPUP_FOREIGN_MINTS")));
-    for (const m of [STORE, HSOL, CBBTC]) expect(foreign).toContain(m);
+    // Task 17b hoisted the three literals to named consts (shared with the app's SETUP_MINTS): an entry is the literal or a const holding it.
+    const entries = foreign.split("\n").map((l) => l.replace(/\/\/.*$/, "").trim().replace(/,$/, "")).filter(Boolean);
+    const valueOf = (e: string) => e.match(/^'(\w+)'$/)?.[1] ?? (/^\w+$/.test(e) ? app.match(new RegExp(`export const ${e} = '(\\w+)'`))?.[1] : undefined);
+    const values = entries.map(valueOf);
+    for (const m of [STORE, HSOL, CBBTC]) expect(values).toContain(m);
     for (const k of ["KLEND_RESERVE.USDC_LEND.collateralMint", "KLEND_RESERVE.SOL_LEND.collateralMint", "JLEND.USDC_LEND.fTokenMint", "JLEND.SOL_LEND.fTokenMint"]) expect(foreign).toContain(k);
   });
 });

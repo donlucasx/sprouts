@@ -2,10 +2,14 @@ import { describe, it, expect, vi } from "vitest";
 import { address, getBase64Encoder, getTransactionDecoder, getCompiledTransactionMessageDecoder, type Address, type Instruction } from "@solana/kit";
 import { buildLendWithdraw, buildMove, buildRelink, buildUnwrapWsol } from "@/lib/venues/user-builders";
 import { buildUserTransaction } from "@/lib/user-tx";
-import { delegationPda } from "@/lib/subscriptions";
+import { buildApproveOnceIxs, buildRevokeDelegationIx, delegationPda } from "@/lib/subscriptions";
 import { leashPda } from "@/lib/leash";
 import { receiptBalanceRaw, readLendingPositions } from "@/lib/holdings";
 import { setupCreates, SETUP_MINTS } from "@/lib/user-setup";
+import { parseSwapInstructions } from "@/lib/jupiter";
+import { withSetupCreates } from "@/lib/topup";
+import topupFixture from "../fixtures/jupiter-topup-exactout.json";
+import tokenTopupFixture from "../fixtures/jupiter-topup-exactout-token.json";
 // The APP's verifier (app/src/lib/sign.ts, vendored verbatim but for its coins import): what the Seed Vault refuses, run on our output.
 import { checkBeforeSigning, SignRefused, type SignFlow } from "../fixtures/app/sign";
 
@@ -101,5 +105,44 @@ describe("the app's sign.ts accepts what the API builds (contracts 6; AMEND s20 
       await expect(checkBeforeSigning(await wire([...(await setupCreates(USER, [mint])), ...ixs]), { kind: "relink", user: USER })).rejects.toBeInstanceOf(SignRefused);
     }
   });
-  it.todo("Task 17b: link, relink and both top-ups with 1..N setup creates pass the app check with setupMax N (after the fixture refresh)");
+
+  // Task 17b: the refreshed app check (fixtures/app/sign.ts = app/src/lib/sign.ts) takes `setupMax`, the count the screen showed.
+  it("Task 17b: link and relink with 1..7 of the API's setup creates pass the app check with setupMax N; N-1 and none are refused", async () => {
+    const leash = await leashPda(USER, USER);
+    const old = await delegationPda({ delegator: USER, delegatee: address("HJCJKRQLV2HVKfe3sFdTF5jjBY1xfWgnK8cLcjH7qnHd"), nonce: 1n });
+    // the link page's worst case: [revoke, USDC create, init, delegation create], the setup block unshifted after the revoke so it leads
+    const linkRest = [buildRevokeDelegationIx({ delegator: USER, delegationPda: old }), ...(await buildApproveOnceIxs({ delegator: USER, delegatee: leash, capRaw: 5_000_000n, nonce: 9n, createAta: true }))];
+    const relinkRest = await buildRelink({ user: USER, nonce: 8n, startTs: 1_791_200_000n, existingDelegationPda: old, existingInitId: 3n, createAta: false });
+    for (let n = 1; n <= SETUP_MINTS.length; n++) {
+      const creates = await setupCreates(USER, SETUP_MINTS.slice(0, n));
+      for (const [kind, rest] of [["link", linkRest], ["relink", relinkRest]] as const) {
+        const tx = await wire([...creates, ...rest]);
+        await expect(checkBeforeSigning(tx, { kind, user: USER, setupMax: n })).resolves.toBeUndefined();
+        await expect(checkBeforeSigning(tx, { kind, user: USER, setupMax: 7 })).resolves.toBeUndefined();
+        await expect(checkBeforeSigning(tx, { kind, user: USER, setupMax: n - 1 })).rejects.toBeInstanceOf(SignRefused);
+        await expect(checkBeforeSigning(tx, { kind, user: USER })).rejects.toBeInstanceOf(SignRefused);
+      }
+    }
+  });
+
+  it("Task 17b: both top-ups with 1..3 setup creates (withSetupCreates: before the compute budget, the limit bumped in place) pass with setupMax N", async () => {
+    const T_USER = address(topupFixture.user);
+    const built = (f: typeof topupFixture) => {
+      const p = parseSwapInstructions(JSON.parse(JSON.stringify(f.swapInstructions)));
+      return [...p.computeBudget, ...p.setup, p.swap, ...(p.cleanup ? [p.cleanup] : [])];
+    };
+    const tWire = async (ixs: Instruction[]) => getTransactionDecoder().decode(getBase64Encoder().encode(await buildUserTransaction(T_USER, ixs)));
+    const solUsd = async () => 5 / (Number(topupFixture.quote.inAmount) / 1e9);
+    const tokenMint = tokenTopupFixture.quote.inputMint;
+    const usdPrice = async () => ({ usd: 5 / (Number(tokenTopupFixture.quote.inAmount) / 1e6), decimals: 6 });
+    for (let n = 1; n <= 3; n++) {
+      const creates = await setupCreates(T_USER, SETUP_MINTS.slice(SETUP_MINTS.length - n));
+      const sol = await tWire(withSetupCreates(built(topupFixture), creates));
+      await expect(checkBeforeSigning(sol, { kind: "topup", user: T_USER, usdcRaw: "5000000", setupMax: n }, { solUsd })).resolves.toBeUndefined();
+      await expect(checkBeforeSigning(sol, { kind: "topup", user: T_USER, usdcRaw: "5000000", setupMax: n - 1 }, { solUsd })).rejects.toBeInstanceOf(SignRefused);
+      const tok = await tWire(withSetupCreates(built(tokenTopupFixture as unknown as typeof topupFixture), creates));
+      await expect(checkBeforeSigning(tok, { kind: "topup", user: T_USER, usdcRaw: "5000000", inputMint: tokenMint, setupMax: n }, { usdPrice })).resolves.toBeUndefined();
+      await expect(checkBeforeSigning(tok, { kind: "topup", user: T_USER, usdcRaw: "5000000", inputMint: tokenMint }, { usdPrice })).rejects.toBeInstanceOf(SignRefused);
+    }
+  });
 });

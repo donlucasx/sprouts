@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { REFUSED, SignRefused, type SignFlow } from '@/lib/sign'
 import { DROPPED_NOTHING_SENT } from '@/lib/wallet-errors'
-import { ME_USDC_WITH_SOURCES, postLinkUsdc, defaultSource, pickerSources, topUpChoices, TOPUP, TopUpFailed, topUpCentsFor, topUpOffer, topUpThisPhone } from '@/lib/topup'
+import { ME_USDC_SETUP, ME_USDC_WITH_SOURCES, postLinkUsdc, defaultSource, pickerSources, topUpChoices, TOPUP, TopUpFailed, topUpCentsFor, topUpOffer, topUpThisPhone } from '@/lib/topup'
 
 const ME = 'HJCJKRQLV2HVKfe3sFdTF5jjBY1xfWgnK8cLcjH7qnHd'
 const OTHER = '7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU'
@@ -237,11 +237,63 @@ describe('who asks /api/me/usdc for topUpSources', async () => {
     const home = read('app/(tabs)/home.tsx')
     expect(home).toContain("queryKey: ['me-usdc', me?.user.pubkey, 'sources'], queryFn: () => api<MeUsdcResponse>(ME_USDC_WITH_SOURCES)")
     expect(home).not.toContain("'/api/me/usdc'")
+    // Task 17b: Link a wallet now reads the setup path (ME_USDC_SETUP, its own key); still never the sources one.
+    expect(read('app/connect.tsx')).toContain("queryKey: ['me-usdc', session?.pubkey, 'setup'],\n    queryFn: () => api<MeUsdcResponse>(ME_USDC_SETUP)")
+    // Ruling 26: Home's regular read never asks for the setup count (each adds a Helius read)
+    expect(home).not.toContain('setup=1')
+    expect(home).not.toContain('ME_USDC_SETUP')
+    expect(read('lib/background.ts')).not.toContain('setup=1')
     for (const p of ['lib/background.ts', 'app/connect.tsx']) {
       const src = read(p)
-      expect(src).toMatch(/\/api\/me\/usdc["']/)
+      if (p === 'lib/background.ts') expect(src).toMatch(/\/api\/me\/usdc["']/)
       expect(src).not.toContain('sources=1')
       expect(src).not.toContain('ME_USDC_WITH_SOURCES')
     }
+  })
+})
+
+describe('Task 17b (user rent): the top-up carries the setup count the screen showed', () => {
+  const SKR = 'SKRbvo6Gf7GondiT3BbTfuRDPqLWei4j2Qy2NPGZhW3'
+  function go(setupMax: number | undefined, inputMint?: string) {
+    const flows: SignFlow[] = []
+    const bodies: unknown[] = []
+    const out = topUpThisPhone({
+      user: ME,
+      cents: 500,
+      ...(inputMint !== undefined ? { inputMint } : {}),
+      ...(setupMax !== undefined ? { setupMax } : {}),
+      build: async (body) => {
+        bodies.push(body)
+        return { transaction: 'TX', usdcRaw: '5000000', ...(inputMint ? { inputMint } : {}) }
+      },
+      sign: (flow) => {
+        flows.push(flow)
+        return async () => 'SIGNED'
+      },
+      confirm: async () => ({ status: 'confirmed' }),
+    })
+    return { out, flows, bodies }
+  }
+  it("none, 0 or junk: the body and the flow exactly as today (no setupMax key)", async () => {
+    for (const n of [undefined, 0, -1, 1.5, Number.NaN]) {
+      const r = go(n)
+      await r.out
+      expect(r.bodies).toEqual([{ cents: 500 }])
+      expect(r.flows).toEqual([{ kind: 'topup', user: ME, usdcRaw: '5000000' }])
+    }
+  })
+  it('a count: the body asks for it and the flow allows it, capped at 3 (a top-up never carries more)', async () => {
+    const r = go(2)
+    await r.out
+    expect(r.bodies).toEqual([{ cents: 500, setupMax: 2 }])
+    expect(r.flows).toEqual([{ kind: 'topup', user: ME, usdcRaw: '5000000', setupMax: 2 }])
+    const capped = go(7, SKR)
+    await capped.out
+    expect(capped.bodies).toEqual([{ cents: 500, inputMint: SKR, setupMax: 3 }])
+    expect(capped.flows).toEqual([{ kind: 'topup', user: ME, usdcRaw: '5000000', inputMint: SKR, setupMax: 3 }])
+  })
+  it('the setup read is its own path, never the regular Home read (ruling 26: each adds a Helius read)', () => {
+    expect(ME_USDC_WITH_SOURCES).toBe('/api/me/usdc?sources=1')
+    expect(ME_USDC_SETUP).toBe('/api/me/usdc?setup=1')
   })
 })

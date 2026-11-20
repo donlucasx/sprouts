@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import type { Address, Transaction } from '@solana/kit'
+import { AccountRole, address, getAddressEncoder, getProgramDerivedAddress, type Address, type Instruction, type Transaction } from '@solana/kit'
 import { disclosureItems, relinkCode, relinkView, relinkThisPhone, relinkWebLines, RelinkSent, RELINK, WEB_LINK_TRUST } from '@/lib/relink'
 import { confirmWithRetries, LINK_NOT_ON_CHAIN_YET, RELINK_NOT_ON_CHAIN_YET } from '@/lib/confirm-retry'
 import { leashPda, makeSigner, SignRefused } from '@/lib/sign'
@@ -190,5 +190,37 @@ describe('relinkThisPhone', () => {
     const err = new ApiError(409, 'x')
     const out = relinkThisPhone({ user: USER, build: async () => { throw err }, sign: () => async () => 'never', confirm: vi.fn() })
     await expect(out).rejects.toBe(err)
+  })
+})
+
+describe('Task 17b (user rent): the re-link carries the setup count the card showed', () => {
+  const setupCreate = async (mint: string) => {
+    const enc = (a: string) => getAddressEncoder().encode(address(a))
+    const ATA = 'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL', TOKEN = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA'
+    const [acct] = await getProgramDerivedAddress({ programAddress: address(ATA), seeds: [enc(USER), enc(TOKEN), enc(mint)] })
+    return { programAddress: address(ATA), accounts: [
+      { address: USER, role: AccountRole.WRITABLE_SIGNER }, { address: acct, role: AccountRole.WRITABLE }, { address: USER, role: AccountRole.READONLY },
+      { address: address(mint), role: AccountRole.READONLY }, { address: address('11111111111111111111111111111111'), role: AccountRole.READONLY }, { address: address(TOKEN), role: AccountRole.READONLY },
+    ], data: new Uint8Array([1]) } as Instruction
+  }
+  const STORE = 'storenSbvkfzircixnaosc5CbzNZVrHJ6S3EKrS1yqR'
+  it('no count: the build body is {} and a setup create is refused, as today', async () => {
+    const tx = wire([await setupCreate(STORE), ...(await linkIxs({ delegatee: (await leashPda(USER, USER)) as Address, revokeOld: true }))])
+    const build = vi.fn(async (_body: object) => ({ transaction: tx }))
+    const sign = vi.fn(async (t: Transaction) => t)
+    for (const n of [undefined, 0]) {
+      await expect(relinkThisPhone({ user: USER, ...(n !== undefined ? { setupMax: n } : {}), build, sign: (flow) => makeSigner(sign, flow), confirm: vi.fn() })).rejects.toThrow(SignRefused)
+    }
+    expect(build.mock.calls.map((c) => c[0])).toEqual([{}, {}])
+    expect(sign).not.toHaveBeenCalled()
+  })
+  it('a count: the body asks for it and the check allows that many', async () => {
+    const tx = wire([await setupCreate(STORE), ...(await linkIxs({ delegatee: (await leashPda(USER, USER)) as Address, revokeOld: true }))])
+    const build = vi.fn(async (_body: object) => ({ transaction: tx }))
+    const sign = vi.fn(async (t: Transaction) => t)
+    const confirm = vi.fn(async () => ({ relinked: true }))
+    await relinkThisPhone({ user: USER, setupMax: 1, build, sign: (flow) => makeSigner(sign, flow), confirm })
+    expect(build).toHaveBeenCalledWith({ setupMax: 1 })
+    expect(sign).toHaveBeenCalledTimes(1)
   })
 })

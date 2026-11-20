@@ -16,9 +16,10 @@ import { newlyLinked } from '@/lib/newly-linked'
 import { confirmWithRetries, LINK_NOT_ON_CHAIN_YET } from '@/lib/confirm-retry'
 import { useSession } from '@/lib/session'
 import { reportLinkFailure, type LinkFailure, type LinkStep } from '@/lib/link-report'
-import { APPROVAL_WARN_BODY, APPROVAL_WARN_TITLE, CAN, CANT, CODE_STEPS, LINK_FINISHING, SAFETY_HEADING, OTHER_WALLET_LINE, phoneSolNote, phoneUsdcNote } from '@/lib/safety-copy'
+import { APPROVAL_WARN_BODY, APPROVAL_WARN_TITLE, CAN, CANT, CODE_STEPS, LINK_FINISHING, SAFETY_HEADING, OTHER_WALLET_LINE, linkApprovalPath, phoneSolNote, phoneUsdcNote, setupAccountsOf, setupLine } from '@/lib/safety-copy'
 import { TopUpButton } from '@/components/TopUp'
-import { TOPUP, TOPUP_DEFAULT_CENTS } from '@/lib/topup'
+import { ME_USDC_SETUP, TOPUP, TOPUP_DEFAULT_CENTS } from '@/lib/topup'
+import { useSolUsd } from '@/lib/sol-usd'
 import { FONT, radius, spacing, useTheme } from '@/theme'
 
 /**
@@ -97,15 +98,21 @@ export default function Connect() {
   const linked = code && me ? newlyLinked(before, me.wallets) : null
   // This phone's wallet's USDC, read only, for a note that never blocks the approval; a failed read (or an API without the route)
   // is no note: the "before you link" point says it anyway.
+  // Task 17b (ruling 26): this read also asks for the setup count (?setup=1), since Link a wallet shows its line; the top-up below
+  // shares this cache key, so it adds no second read here.
   const { data: usdc } = useQuery({
-    queryKey: ['me-usdc', session?.pubkey],
-    queryFn: () => api<MeUsdcResponse>('/api/me/usdc'),
+    queryKey: ['me-usdc', session?.pubkey, 'setup'],
+    queryFn: () => api<MeUsdcResponse>(ME_USDC_SETUP),
     enabled: !!session,
     retry: false,
     staleTime: 30_000,
   })
   const usdcNote = phoneUsdcNote(usdc?.usdcRaw, me?.rules.plantThresholdCents ?? 200)
   const solNote = phoneSolNote(usdc?.solLamports)
+  // The count shown IS the bound: the same number goes to the approval request and to the sign check (design 6).
+  const setupCount = setupAccountsOf(usdc?.setupAccounts)
+  const solUsd = useSolUsd(setupCount > 0)
+  const setupNote = setupLine(setupCount, solUsd)
 
   // While a code is on screen, look for the wallet the web page links (the Saga, 2026-09-29: the app never noticed).
   useEffect(() => {
@@ -131,9 +138,11 @@ export default function Connect() {
     try {
       const { code } = await api<{ code: string }>('/api/link/new', { method: 'POST', body: {} })
       step = 'approval'
-      const t = await api<{ transaction: string; cap: number }>(`/api/link/${code}?wallet=${session.pubkey}`)
+      // The count on screen at the tap: 0 asks exactly what 0.1.12 asked (no setup param) and signs exactly what it signed.
+      const setupMax = setupCount
+      const t = await api<{ transaction: string; cap: number }>(linkApprovalPath(code, session.pubkey, setupMax))
       step = 'sign'
-      const signedTx = await makeSigner(signTransaction, { kind: 'link', user: session.pubkey })(t.transaction)
+      const signedTx = await makeSigner(signTransaction, setupMax > 0 ? { kind: 'link', user: session.pubkey, setupMax } : { kind: 'link', user: session.pubkey })(t.transaction)
       setSigned(true)
       step = 'confirm'
       await confirmLink(code, session.pubkey, signedTx)
@@ -194,6 +203,12 @@ export default function Connect() {
           </ThemedText>
         ) : null}
         <ApprovalWarning />
+        {/* Task 17b: the one-time setup of this wallet's coin accounts, paid from its SOL, said before the wallet asks */}
+        {setupNote ? (
+          <ThemedText variant="caption" tone="secondary">
+            {setupNote}
+          </ThemedText>
+        ) : null}
         <Button title="Approve" loading={approving} onPress={linkThisPhone} />
         {approving ? (
           <ThemedText variant="caption" tone="secondary">

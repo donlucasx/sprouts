@@ -1,7 +1,7 @@
 import type { MeResponse } from './api'
 import { confirmWithRetries, RELINK_NOT_ON_CHAIN_YET } from './confirm-retry'
 import { NEEDS_LIVE } from './lend-mock'
-import { leashPda, type SignFlow } from './sign'
+import { leashPda, SETUP_MAX, type SignFlow } from './sign'
 
 /**
  * Ruling C6 (contracts 5.5, audit Kimi #4): a web-linked wallet's re-link is built and checked by the link page, which the API serves;
@@ -101,15 +101,18 @@ export class RelinkSent extends Error {
  */
 export async function relinkThisPhone(a: {
   user: string
-  build: () => Promise<{ transaction: string }>
+  /** Task 17b: the setup count the card showed (/api/me/usdc?setup=1); absent or 0 = today's body ({}) and check. */
+  setupMax?: number
+  build: (body: { setupMax?: number }) => Promise<{ transaction: string }>
   sign: (flow: SignFlow) => (transaction: string) => Promise<string>
   confirm: (body: { signedTransaction: string }) => Promise<unknown>
   /** Called once the Seeker returned the signature, before the first confirm. */
   onSigned?: () => void
   sleep?: (ms: number) => Promise<void>
 }): Promise<void> {
-  const built = await a.build()
-  const signedTransaction = await a.sign({ kind: 'relink', user: a.user })(built.transaction)
+  const setupMax = a.setupMax !== undefined && Number.isInteger(a.setupMax) && a.setupMax > 0 ? Math.min(a.setupMax, SETUP_MAX) : 0
+  const built = await a.build(setupMax > 0 ? { setupMax } : {})
+  const signedTransaction = await a.sign(setupMax > 0 ? { kind: 'relink', user: a.user, setupMax } : { kind: 'relink', user: a.user })(built.transaction)
   a.onSigned?.()
   try {
     await confirmWithRetries(() => a.confirm({ signedTransaction }), { notOnChainYet: RELINK_NOT_ON_CHAIN_YET, sleep: a.sleep })

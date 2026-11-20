@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { SAFETY_HEADING, CAN, CANT, LINK_INTRO, APPROVAL_WARN_TITLE, APPROVAL_WARN_BODY, OTHER_WALLET_LINE, phoneUsdcNote, phoneSolNote } from '../../src/lib/safety-copy'
+import { SAFETY_HEADING, CAN, CANT, LINK_INTRO, APPROVAL_WARN_TITLE, APPROVAL_WARN_BODY, OTHER_WALLET_LINE, phoneUsdcNote, phoneSolNote, SETUP_RENT_LAMPORTS, setupLine, setupAccountsOf, linkApprovalPath } from '../../src/lib/safety-copy'
 import * as web from '../../../api/src/lib/link-safety-copy'
 
 describe('safety copy (mirrors api/src/app/safety.tsx)', () => {
@@ -47,5 +47,45 @@ describe('phoneSolNote (0.1.10)', () => {
     expect(phoneSolNote(null)).toBeNull()
     expect(phoneSolNote(undefined)).toBeNull()
     expect(phoneSolNote('abc')).toBeNull()
+  })
+})
+
+describe('Task 17b (user rent): the setup cost line and the count it binds', () => {
+  it('SETUP_RENT_LAMPORTS is one token account (165 bytes) of rent', () => {
+    expect(SETUP_RENT_LAMPORTS).toBe(2_039_280n)
+  })
+  it("says the founder's line (D4): dollars from the phone's own SOL price, rounded to cents; 1 is singular", () => {
+    // 3 x 2,039,280 lamports = 0.00611784 SOL; at $150 = $0.9177 -> $0.92
+    expect(setupLine(3, 150)).toBe("Includes $0.92 one-time setup for 3 coin accounts, paid in SOL. It's yours: you get it back if you empty and close them.")
+    // 1 x 0.00203928 SOL at $147.11 = $0.29999... -> $0.30
+    expect(setupLine(1, 147.11)).toBe("Includes $0.30 one-time setup for 1 coin account, paid in SOL. It's yours: you get it back if you empty and close it.")
+    expect(setupLine(7, 200)).toBe("Includes $2.85 one-time setup for 7 coin accounts, paid in SOL. It's yours: you get it back if you empty and close them.")
+  })
+  it('no price (or an unusable one): the SOL amount instead', () => {
+    for (const p of [null, undefined, 0, -5, Number.NaN, Infinity]) {
+      expect(setupLine(3, p)).toBe("Includes about 0.0061 SOL one-time setup for 3 coin accounts. It's yours: you get it back if you empty and close them.")
+    }
+    expect(setupLine(1, null)).toBe("Includes about 0.0020 SOL one-time setup for 1 coin account. It's yours: you get it back if you empty and close it.")
+  })
+  it('no line at 0 or for a count that is not a whole number; never an em dash', () => {
+    for (const n of [0, -1, 1.5, Number.NaN]) expect(setupLine(n, 150)).toBeNull()
+    for (const n of [1, 2, 3, 7]) for (const p of [150, null]) expect(setupLine(n, p)).not.toMatch(/—|–/)
+  })
+  it('setupAccountsOf: the count /api/me/usdc?setup=1 sent, as a whole number 0..cap (anything else is 0, no line, no creates)', () => {
+    expect(setupAccountsOf(3)).toBe(3)
+    expect(setupAccountsOf(7)).toBe(7)
+    expect(setupAccountsOf(12)).toBe(7)
+    expect(setupAccountsOf(5, 3)).toBe(3)
+    expect(setupAccountsOf(2, 3)).toBe(2)
+    for (const bad of [undefined, null, 0, -1, 1.5, '3', Number.NaN, Infinity, {}]) expect(setupAccountsOf(bad)).toBe(0)
+  })
+  it("linkApprovalPath: the setup param only when the screen showed a count (none = today's request exactly)", () => {
+    expect(linkApprovalPath('ABC123', 'W1', 0)).toBe('/api/link/ABC123?wallet=W1')
+    expect(linkApprovalPath('ABC123', 'W1', 3)).toBe('/api/link/ABC123?wallet=W1&setup=3')
+  })
+  it("the no-SOL note no longer says the deposit is refunded when you revoke (rent comes back when an account is emptied and closed)", () => {
+    const n = phoneSolNote('0')!
+    expect(n).not.toMatch(/revoke/i)
+    expect(n).toBe('This wallet needs about 0.01 SOL to approve. It covers the one-time rent and the network fee. Add a little SOL first.')
   })
 })

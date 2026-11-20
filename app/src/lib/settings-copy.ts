@@ -24,7 +24,7 @@ export const DISCLOSURES: [string, string][] = [
   ],
   [
     'What does it cost?',
-    'Sprouts takes 0.5% of each planting, in USDC, including USDC and SOL lending. There is nothing on interest, withdrawals or moves. Sprouts pays the network fee and the one-time account rent for your coin and lending accounts. Leftovers from rounding carry to your next planting. Fees are on every receipt. Pro (the Yield Manager, automatic lending and tax reports) is included free during launch.',
+    "Sprouts takes 0.5% of each planting, in USDC, including USDC and SOL lending. There is nothing on interest, withdrawals or moves. Sprouts pays the network fee for each planting. Your coin and lending accounts need a small one-time rent in SOL (about $0.30 each). When you link this phone's wallet or add USDC, the accounts for the coins you have switched on are set up from your wallet's SOL, and the screen shows the cost before you approve. Sprouts opens any others itself. It's yours: you get it back if you empty and close the account. Leftovers from rounding carry to your next planting. Fees are on every receipt. Pro (the Yield Manager, automatic lending and tax reports) is included free during launch.",
   ],
   [
     'Where does lending go?',
@@ -36,7 +36,7 @@ export const DISCLOSURES: [string, string][] = [
   ],
   [
     'What can Sprouts buy?',
-    `${ORE_DISCLOSURE} hSOL is SOL staked with Helius; its value moves with SOL. cbBTC is bitcoin held by Coinbase; its value moves with bitcoin. Both sit in your wallet, not locked; Sprouts cannot sell them for you, and pays each coin's one-time account rent. USDC and SOL lending sit at Kamino or Jupiter Lend with the receipt in your wallet; you withdraw them in Sprouts with one tap. The list is fixed in code; nothing else can be bought. The Yield Manager, if you turn it on, splits new round-ups across SKR, stORE, USDC lending, SOL lending, hSOL and cbBTC inside limits you set and limits in code. It never sets the amount, never sells anything you hold, and every change it makes shows in Activity with an undo.`,
+    `${ORE_DISCLOSURE} hSOL is SOL staked with Helius; its value moves with SOL. cbBTC is bitcoin held by Coinbase; its value moves with bitcoin. Both sit in your wallet, not locked; Sprouts cannot sell them for you. Each coin needs a one-time account rent (see What does it cost?). USDC and SOL lending sit at Kamino or Jupiter Lend with the receipt in your wallet; you withdraw them in Sprouts with one tap. The list is fixed in code; nothing else can be bought. The Yield Manager, if you turn it on, splits new round-ups across SKR, stORE, USDC lending, SOL lending, hSOL and cbBTC inside limits you set and limits in code. It never sets the amount, never sells anything you hold, and every change it makes shows in Activity with an undo.`,
   ],
   [
     'How do I stop it?',
