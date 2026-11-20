@@ -16,16 +16,16 @@ const paper = "#FFFBF5", ink = "#2B2622", muted = "#7A746B", leaf = "#1E6B44", r
 export const metadata: Metadata = { title: "Sprouts: FAQs", description: "How Sprouts works, what permission it needs, what it costs, and how to pause or stop it." };
 
 // His asks 10-28: a permissions answer holding the can / can't card, next to what Sprouts buys; "How do I stop it?" friendlier and shorter;
-// "The list is fixed in code" cut.
+// "The list is fixed in code" cut. 11-20: "How does it work?" and "What does it cost?" say the app's words (app settings-copy.test.ts checks).
 const QA: [string, ReactNode][] = [
-  ["How does it work?", "Each swap you make rounds up to the next dollar. Once a day Sprouts plants that change into your split, paid from the USDC in your linked wallet. Everything it buys stays in your own wallet."],
+  ["How does it work?", "Every swap you make rounds up to the next dollar. Once a day, Sprouts plants that change into your split, using USDC from the wallet that made the swap. What it buys stays in your own wallet."],
   ["What can Sprouts buy?", "SKR, staked under your Seeker's key. stORE, which keeps mining ORE. hSOL and cbBTC. USDC and SOL lending at Kamino or Jupiter Lend, with the receipt in your wallet."],
   ["What permission does Sprouts need?", <>
     When you link a wallet, you approve Sprouts&apos; on-chain program to use the USDC in it. Your wallet shows this as an &quot;unlimited
     USDC&quot; approval. The program caps it at $5 a day, and only into your own garden.
     <div style={{ marginTop: 14 }}><Safety ink={ink} muted={muted} leaf={leaf} rule={rule} intro={false} /></div>
   </>],
-  ["What does it cost?", "0.5% of each SKR, stORE, hSOL and cbBTC planting, in USDC, inside the swap. No fee on USDC or SOL lending, and nothing on interest, withdrawals or moves. Sprouts pays the network fee."],
+  ["What does it cost?", "Sprouts takes 0.5% of each planting, in USDC, including USDC and SOL lending. Sprouts takes nothing on interest, withdrawals or moves, and pays the network fee for every planting."],
   ["Can I pause or stop it?", <>
     Any time. Turn Sprouts off at the top of Rules and nothing moves until you turn it back on. To unlink a wallet, revoke it in Settings
     or <a href="/revoke" style={{ color: leaf }}>on the web</a>. What you&apos;ve planted stays yours, and you can withdraw it whenever you like.

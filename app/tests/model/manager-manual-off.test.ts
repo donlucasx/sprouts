@@ -51,7 +51,7 @@ describe("manual off switches (10-23)", () => {
     expect(ORE_DISCLOSURE).not.toMatch(/recommend/i);
     expect(ORE_DISCLOSURE).toMatch(/stORE starts at 10% of your split until you change it or switch it off in Rules\.$/);
     expect(HOW_IT_WORKS).not.toMatch(/coins you chose/);
-    expect(HOW_IT_WORKS).toMatch(/paid from the USDC in your linked wallet/);
+    expect(HOW_IT_WORKS).toMatch(/using USDC from the wallet that made the swap/);
     for (const s of [ORE_DISCLOSURE, HOW_IT_WORKS, STORE_FLOOR_LINE.off]) expect(s).not.toMatch(/—/);
   });
 });

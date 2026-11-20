@@ -8,11 +8,11 @@ import { api, type MeUsdcResponse } from '@/lib/api'
 import { makeSigner } from '@/lib/sign'
 import { setupAccountsOf, setupLine } from '@/lib/safety-copy'
 import { useSolUsd } from '@/lib/sol-usd'
-import { choiceFor, ME_USDC_SETUP, meUsdcSetupKey, TOPUP, TOPUP_SETUP_MAX, TopUpFailed, topUpChoices, topUpThisPhone, type TopUpSource } from '@/lib/topup'
+import { choiceFor, ME_USDC_SETUP, meUsdcSetupKey, TOPUP, TOPUP_SETUP_MAX, TopUpFailed, topUpChoices, topUpClosedView, topUpThisPhone, type TopUpSource } from '@/lib/topup'
 import { coverageLine } from '@/lib/usdc-runway'
 import { TwoWay } from '@/components/TwoWay'
 import { oneAtATime } from '@/lib/withdraw-flow'
-import { spacing } from '@/theme'
+import { spacing, TARGET } from '@/theme'
 
 /**
  * The SOL top-up button (10-22): one Seed Vault signature swaps this phone's wallet's SOL to `cents` of USDC. Shown wherever USDC is
@@ -80,16 +80,24 @@ export function TopUpButton({ user, cents: suggested, done, onDone, avgDailyCent
   }
 
   const landed = line !== null && !line.error && line.text === done(cents)
+  // 11-20: no coin can pay = the address straight away, no "Add USDC" button; else the button, its line naming only coins that can pay
+  const closed = topUpClosedView(sources, offers)
+  if (closed.kind === 'send' || choices.length === 0) return <SendUsdcHere address={user} copied={copied} onCopy={() => void copyAddress(user).then(() => setCopied(true))} />
   if (!open)
     return (
       <View style={{ gap: spacing.xs }}>
         <Button title={TOPUP.open} onPress={() => setOpen(true)} />
         <ThemedText variant="caption" tone="secondary">
-          {TOPUP.swapsLine(usable?.length ? usable.map((s) => s.symbol) : [symbol])}
+          {TOPUP.swapsLine(closed.symbols)}
         </ThemedText>
       </View>
     )
-  if (choices.length === 0) return <SendUsdcHere address={user} copied={copied} onCopy={() => void copyAddress(user).then(() => setCopied(true))} />
+  // 11-20: Back closes the top-up without sending anything (a wrong tap undone); hidden while the wallet or chain is busy and once landed
+  const back = () => {
+    setOpen(false)
+    setPickedMint(null)
+    setLine(null)
+  }
   return (
     <View style={{ gap: spacing.xs }}>
       {landed || phase || !usable || usable.length < 2 || !source ? null : (
@@ -119,6 +127,11 @@ export function TopUpButton({ user, cents: suggested, done, onDone, avgDailyCent
         <ThemedText tone={line.error ? 'error' : 'accentText'} style={{ fontSize: 14, lineHeight: 20 }}>
           {line.text}
         </ThemedText>
+      ) : null}
+      {compact && !phase && !landed ? (
+        <Pressable onPress={back} accessibilityRole="button" accessibilityLabel={TOPUP.back} style={({ pressed }) => ({ minHeight: TARGET, justifyContent: 'center', alignSelf: 'flex-start', opacity: pressed ? 0.7 : 1 })}>
+          <ThemedText tone="accentText">{TOPUP.back}</ThemedText>
+        </Pressable>
       ) : null}
     </View>
   )

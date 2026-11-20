@@ -23,8 +23,11 @@ export const TOPUP = {
     const list = symbols.length === 0 ? 'SOL' : symbols.length === 1 ? symbols[0] : `${symbols.slice(0, -1).join(', ')} or ${symbols[symbols.length - 1]}`
     return `Swaps a little of your ${list} into USDC. No Sprouts fee.`
   },
-  sendHere: 'Send USDC to this address from any wallet or exchange. Plantings start again once it arrives.',
+  // 11-20 (Kimi copy item 3): never a "not enough SOL" line; just where to send USDC
+  sendHere: 'Send USDC to this wallet from any wallet or exchange. Plantings start again once it arrives.',
   copy: 'Copy address',
+  /** 11-20: under the open top-up, back to the closed card; sends nothing. */
+  back: 'Back',
   copied: 'Copied',
   waiting: 'Waiting for your wallet.',
   checking: 'Approved. Checking the chain.',
@@ -78,6 +81,17 @@ export function topUpChoices(sources: readonly TopUpSource[] | null | undefined,
   const source = usable ? (usable.find((s) => s.mint === pickedMint) ?? defaultSource(usable)) : null
   const choices: readonly number[] = usable ? (source?.offers ?? []) : (offers ?? TOPUP_CHOICES)
   return { usable, source, symbol: source?.symbol ?? 'SOL', choices }
+}
+
+/**
+ * The closed card (11-20 copy pass): 'add' = the "Add USDC" button, its line naming only the coins that can pay (the usable sources with
+ * amounts; an older API with no list = SOL, as 0.1.11); 'send' = no coin can pay, so the address to send USDC to shows straight away,
+ * no button. Never names a coin that cannot pay (the empty-list SOL fallback was the bug).
+ */
+export function topUpClosedView(sources: readonly TopUpSource[] | null | undefined, offers: readonly number[] | null | undefined): { kind: 'send' } | { kind: 'add'; symbols: string[] } {
+  const { usable, choices } = topUpChoices(sources, offers, null)
+  if (choices.length === 0) return { kind: 'send' }
+  return { kind: 'add', symbols: usable ? usable.map((s) => s.symbol) : ['SOL'] }
 }
 
 export const TOPUP_DEFAULT_CENTS = 500

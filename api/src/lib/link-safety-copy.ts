@@ -9,7 +9,7 @@ export const LINK_INTRO = "Every swap rounds up. Once a day, Sprouts plants the 
 export const CAN: readonly string[] = ["Plants up to $5 of USDC a day, only into your own savings"];
 
 export const CANT: readonly string[] = [
-  "Can't send your money anywhere else, even if our server is hacked",
+  "Can't send your money anywhere else",
   "Can't touch other tokens or sell your garden",
 ];
 

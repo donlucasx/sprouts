@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { REFUSED, SignRefused, type SignFlow } from '@/lib/sign'
 import { DROPPED_NOTHING_SENT } from '@/lib/wallet-errors'
-import { ME_USDC_SETUP, meUsdcSetupKey, ME_USDC_WITH_SOURCES, postLinkUsdc, defaultSource, pickerSources, topUpChoices, TOPUP, TopUpFailed, topUpCentsFor, topUpOffer, topUpThisPhone } from '@/lib/topup'
+import { ME_USDC_SETUP, meUsdcSetupKey, ME_USDC_WITH_SOURCES, postLinkUsdc, defaultSource, pickerSources, topUpChoices, topUpClosedView, TOPUP, TopUpFailed, topUpCentsFor, topUpOffer, topUpThisPhone } from '@/lib/topup'
 
 const ME = 'HJCJKRQLV2HVKfe3sFdTF5jjBY1xfWgnK8cLcjH7qnHd'
 const OTHER = '7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU'
@@ -323,5 +323,45 @@ describe('Task 17b (user rent): the top-up carries the setup count the screen sh
   it('the setup read is its own path, never the regular Home read (ruling 26: each adds a Helius read)', () => {
     expect(ME_USDC_WITH_SOURCES).toBe('/api/me/usdc?sources=1')
     expect(ME_USDC_SETUP).toBe('/api/me/usdc?setup=1')
+  })
+})
+
+describe('11-20 copy pass: the closed card names only coins that can pay; none = the address straight away; Back', () => {
+  const SKR = 'SKRbvo6Gf7GondiT3BbTfuRDPqLWei4j2Qy2NPGZhW3'
+  const WSOL = 'So11111111111111111111111111111111111111112'
+  const c = (symbol: string, mint: string, offers: number[], valueCents = 900) => ({ mint, symbol, decimals: 6, valueCents, offers })
+  it('(a) the line names only the usable sources with amounts', () => {
+    expect(topUpClosedView([c('SOL', WSOL, []), c('SKR', SKR, [500, 1_000])], null)).toEqual({ kind: 'add', symbols: ['SKR'] })
+    expect(topUpClosedView([c('SOL', WSOL, [500]), c('SKR', SKR, [])], null)).toEqual({ kind: 'add', symbols: ['SOL'] })
+    expect(topUpClosedView([c('SOL', WSOL, [500]), c('SKR', SKR, [500])], null)).toEqual({ kind: 'add', symbols: ['SOL', 'SKR'] })
+    // a coin the phone would not sign never shows, even with amounts
+    expect(topUpClosedView([c('cbBTC', 'cbbtcf3aa214zXHbiAZQwf4122FBYbraNdFqgw4iMij', [500]), c('SKR', SKR, [500])], null)).toEqual({ kind: 'add', symbols: ['SKR'] })
+  })
+  it('(b) no coin can pay: the address view, never "Add USDC" and never a SOL fallback', () => {
+    expect(topUpClosedView([c('SOL', WSOL, []), c('SKR', SKR, [])], null)).toEqual({ kind: 'send' })
+    expect(topUpClosedView([], [])).toEqual({ kind: 'send' })
+    expect(topUpClosedView(null, [])).toEqual({ kind: 'send' })
+    expect(topUpClosedView([c('cbBTC', 'cbbtcf3aa214zXHbiAZQwf4122FBYbraNdFqgw4iMij', [500])], [500])).toEqual({ kind: 'send' })
+  })
+  it('an older API (no list): SOL with its offers, as 0.1.11; unknown offers = every amount', () => {
+    expect(topUpClosedView(null, [500])).toEqual({ kind: 'add', symbols: ['SOL'] })
+    expect(topUpClosedView(undefined, null)).toEqual({ kind: 'add', symbols: ['SOL'] })
+    expect(topUpClosedView([], null)).toEqual({ kind: 'add', symbols: ['SOL'] })
+  })
+  it('the empty state: just where to send USDC, never a SOL line (Kimi copy item 3)', () => {
+    expect(TOPUP.sendHere).toBe('Send USDC to this wallet from any wallet or exchange. Plantings start again once it arrives.')
+    expect(TOPUP.sendHere).not.toMatch(/SOL\b/)
+    expect(TOPUP.copy).toBe('Copy address')
+    expect(TOPUP.back).toBe('Back')
+  })
+  it('(b, c) TopUp.tsx: the address view comes before the closed button; Back closes without sending, hidden while busy or landed', () => {
+    const src = readFileSync(new URL('../../src/components/TopUp.tsx', import.meta.url), 'utf8')
+    const send = src.indexOf("if (closed.kind === 'send' || choices.length === 0) return <SendUsdcHere")
+    expect(send).toBeGreaterThan(0)
+    expect(send).toBeLessThan(src.indexOf('if (!open)'))
+    expect(src).toContain('{TOPUP.swapsLine(closed.symbols)}')
+    expect(src).toMatch(/const back = \(\) => \{\n\s+setOpen\(false\)\n\s+setPickedMint\(null\)\n\s+setLine\(null\)\n\s+\}/)
+    expect(src).toContain('{compact && !phase && !landed ? (')
+    expect(src).toContain('<Pressable onPress={back} accessibilityRole="button" accessibilityLabel={TOPUP.back}')
   })
 })

@@ -1,46 +1,48 @@
 import { ORE_DISCLOSURE } from './ore-copy'
-import { POOL_FULL_LINE } from './lend-withdraw'
-import { WEB_LINK_TRUST } from './relink'
-
-/** Spec 6.2, the precise guarantee, verbatim (Settings and README). */
+/** Copy pass 11-20 (founder-reviewed draft, Kimi copy audit): the precise guarantee in plain words, the hacked line moved here from the
+ *  Link a wallet card. Deltas from spec 6.2: "leg" is "coin", "leaves" is "arrives", the re-link precondition is its own paragraph,
+ *  remainders moved to What does it cost?. "or replace the program" stays (Kimi item 2, matches the Terms). */
 export const PRECISE_GUARANTEE =
-  "Once you re-link, Sprouts' server can only pull through the Sprouts program: at most your $5 daily limit, and only in a transaction that leaves at least 98.5% of that value (99.4% for USDC lending), at a live oracle price, in the coins Sprouts has enabled, lending positions or SKR stake; otherwise it reverts. The server still chooses when, which leg and how much up to the limit; rounding remainders carry to your next planting. Only Sprouts' offline admin key can change these rules or replace the program; your $5-a-day limit still holds."
+  "Sprouts' server can't send your money anywhere else, even if it were hacked. It can only pull through the Sprouts on-chain program, which allows at most your $5 daily limit, only into the coins, lending and SKR staking Sprouts offers, and only if at least 98.5% of the value arrives (99.4% for USDC lending) at a live oracle price. Otherwise nothing happens. The server picks when, which coin and how much, up to your limit. Only Sprouts' offline admin key can change these rules or replace the program, and your $5 limit still holds."
 
-/** Contracts 2.6 and R324: where the program's prices come from and cbBTC's looser age. Build-written copy, awaiting his ruling. The SKR price line waits on contracts 10 item 15 (fix round 1, I1). */
-export const PRICE_LINE = "Prices come from Pyth. cbBTC's price can be up to 10 minutes old."
+/** R299: where the admin key lives. Goes stale when the key moves to Squads. */
+export const ADMIN_KEY_LINE = "That key lives on the owner's laptop, not the server."
 
-/** R299, build-written (awaiting his ruling): where the admin key lives. Goes stale when the key moves to Squads. */
-export const ADMIN_KEY_LINE = "The admin key lives on the owner's laptop, not the server."
+/** Contracts 2.6 and R324: where the program's prices come from and cbBTC's looser age. */
+export const PRICE_LINE = "Prices come from Pyth; cbBTC's price can be up to 10 minutes old."
 
-/** R452 (10-08): About Sprouts = three lines on how it works, then six questions. Every fact of the 13 earlier disclosures is kept
- *  (spec 3.5 and 9; R60; RECONCILED rules 10 to 12; R81; R84; spec 6.2 and 11); only the grouping and the order changed. */
+/** R452 (10-08): About Sprouts = how it works, then six questions. Copy pass 11-20: the draft's wording. */
 export const HOW_IT_WORKS =
-  'Each swap you make rounds up to the next dollar. Once a day Sprouts plants that change into your split, paid from the USDC in your linked wallet. Everything it buys stays in your own wallet. It can never move more than your daily limit, and you can turn it off or revoke it any time.'
+  'Every swap you make rounds up to the next dollar. Once a day, Sprouts plants that change into your split, using USDC from the wallet that made the swap. What it buys stays in your own wallet. It never moves more than your daily limit, and you can pause or revoke it any time.'
+
+/** The cost answer's first paragraph; /faqs says it word for word (settings-copy.test.ts checks). */
+export const COST_LINE =
+  'Sprouts takes 0.5% of each planting, in USDC, including USDC and SOL lending. Sprouts takes nothing on interest, withdrawals or moves, and pays the network fee for every planting.'
 
 export const DISCLOSURES: [string, string][] = [
   [
     'Who holds my money?',
-    `${PRECISE_GUARANTEE} ${WEB_LINK_TRUST} Your SKR is staked under your Seeker's key; only that key can unstake it. Your coins and lending receipts sit in your wallet. An approval you made before re-linking stays on chain under the old rules until you re-link or revoke it.\n\n${PRICE_LINE} ${ADMIN_KEY_LINE}\n\nSigning in keeps you signed in for seven days on this phone; sign out ends it at once. Raising your daily limit or resuming a wallet asks your wallet for a fresh fingerprint. Watering moves no money and signs nothing.`,
+    `Your coins and lending receipts sit in your own wallet. Your SKR is staked under your Seeker's key, and only that key can unstake it.\n\n${PRECISE_GUARANTEE} ${ADMIN_KEY_LINE} ${PRICE_LINE}\n\nWallets linked on the web trust the link page when they link; your Seeker's own wallet doesn't. An approval made before you re-linked keeps the old rules until you re-link or revoke it.\n\nYou stay signed in for seven days on this phone, and signing out ends it right away. Raising your daily limit or resuming a wallet asks your wallet to sign again. Watering moves no money and signs nothing.`,
   ],
   [
     'What does it cost?',
-    "Sprouts takes 0.5% of each planting, in USDC, including USDC and SOL lending. There is nothing on interest, withdrawals or moves. Sprouts pays the network fee for each planting. Your coin and lending accounts need a small one-time rent in SOL (about $0.30 each). When you link or re-link this phone's wallet or add USDC, the accounts for the coins you have switched on are set up from your wallet's SOL, and the screen shows the cost before you approve. If your SOL is short, Sprouts pays it. It's yours: you get it back if you empty and close the account. Leftovers from rounding carry to your next planting. Fees are on every receipt. Pro (the Yield Manager, automatic lending and tax reports) is included free during launch.",
+    `${COST_LINE}\n\nEach coin and lending account needs a one-time rent in SOL, about $0.30 each. When you link or re-link this phone's wallet, or add USDC, the accounts for your switched-on coins are set up from your wallet's SOL, and the screen shows the cost before you approve. If your SOL is short, Sprouts pays. The rent stays yours: you get it back if you empty and close the account.\n\nRounding leftovers carry to your next planting, and every fee shows on its receipt. Pro (the Yield Manager, automatic lending and tax reports) is free during launch.`,
   ],
   [
     'Where does lending go?',
-    `New USDC and SOL go to Kamino Lend or Jupiter Lend, whichever has paid more over the last 7 days and is safe that day. Once you lend $20 or more, new money goes to a venue only if that keeps it at or under 60% of your lending. marginfi and Lulo are compared every day but get no money. The Yield Manager can skip a venue for a day and says why; see "Where lending goes today" in Rules. ${POOL_FULL_LINE} Withdraw says so, and you can withdraw once borrowers repay or new money comes in. Kamino restricts some regions on its own website. Sprouts deposits on-chain for you and you withdraw in Sprouts; check that using lending is allowed where you live.`,
+    'New USDC and SOL go to Kamino Lend or Jupiter Lend, whichever paid more over the last 7 days and is safe that day. Once you have $20 or more lent, new money only goes to a venue if that keeps it at or under 60% of your lending. marginfi and Lulo are compared every day but get no money. The Yield Manager can skip a venue for a day and says why in Rules, under "Where lending goes today". A venue can pause withdrawals when its pool is fully lent out; your money stays yours, and you can withdraw once borrowers repay or new money comes in. Kamino blocks some regions on its own website. Sprouts deposits on-chain for you and you withdraw inside Sprouts, so check that lending is allowed where you live.',
   ],
   [
     'What does "earned" mean?',
-    "Rewards are paid by the staking program every two days into the share price. Sprouts draws what the program shows and nothing else; a fruit is earned SKR since you joined, in SKR, with today's dollar value beside it. Lending earns from borrowers: your receipt is worth a little more USDC or SOL each day at the venue's rate. The dollar value of your garden moves with prices and can be lower than what you put in.",
+    "The staking program pays SKR rewards every two days, into the share price. Sprouts shows what the program reports and nothing else: a fruit is SKR earned since you joined, with today's dollar value beside it. Lending earns from borrowers: your receipt is worth a little more USDC or SOL each day, at the venue's rate. Your garden's dollar value moves with prices and can fall below what you put in.",
   ],
   [
     'What can Sprouts buy?',
-    `${ORE_DISCLOSURE} hSOL is SOL staked with Helius; its value moves with SOL. cbBTC is bitcoin held by Coinbase; its value moves with bitcoin. Both sit in your wallet, not locked; Sprouts cannot sell them for you. Each coin needs a one-time account rent (see What does it cost?). USDC and SOL lending sit at Kamino or Jupiter Lend with the receipt in your wallet; you withdraw them in Sprouts with one tap. The list is fixed in code; nothing else can be bought. The Yield Manager, if you turn it on, splits new round-ups across SKR, stORE, USDC lending, SOL lending, hSOL and cbBTC inside limits you set and limits in code. It never sets the amount, never sells anything you hold, and every change it makes shows in Activity with an undo.`,
+    `${ORE_DISCLOSURE} hSOL is SOL staked with Helius, so its value moves with SOL. cbBTC is bitcoin held by Coinbase, so its value moves with bitcoin. Both sit unlocked in your wallet, and Sprouts can't sell them for you. USDC and SOL lending sit at Kamino or Jupiter Lend with the receipt in your wallet; you withdraw them in Sprouts with one tap. Each coin needs a one-time account rent (see What does it cost?).\n\nIf you turn on the Yield Manager, it splits new round-ups across SKR, stORE, USDC lending, SOL lending, hSOL and cbBTC, inside limits you set and limits in code. It never sets the amount, never sells anything you hold, and every change shows in Activity with an undo.`,
   ],
   [
-    'How do I stop it?',
-    'Turn Sprouts off at the top of Rules: nothing moves until you turn it back on. Revoke a wallet in Settings to end Sprouts\' approval on chain. Withdraw any coin or lending position from your garden at any time.',
+    'Can I pause or stop it?',
+    "Turn Sprouts off at the top of Rules and nothing moves until you turn it back on. Revoke a wallet in Settings to end Sprouts' approval on chain. You can withdraw any coin or lending position at any time.",
   ],
 ]
 
