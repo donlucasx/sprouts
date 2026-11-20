@@ -9,6 +9,8 @@ import { leashPda } from "@/lib/leash";
 import { buildRelink } from "@/lib/venues/user-builders";
 import { rpc } from "@/lib/rpc";
 import { withAppErrorLog } from "@/lib/failure-log";
+import { rulesRowToRules } from "@/db/types";
+import { fitSetup, linkSetupCovered, plannedSetup, setupCount } from "@/lib/user-setup";
 
 export const runtime = "nodejs";
 
@@ -28,10 +30,30 @@ async function postHandler(request: Request) {
   const [authority, ataExists, current] = await Promise.all([readSubscriptionAuthority(me), readUsdcAtaExists(me), readDelegation(address(wallet.delegationPda))]);
   const live = current.exists;
   const ixs = await buildRelink({ user: me, nonce, startTs: BigInt(Math.floor(Date.now() / 1000)), existingDelegationPda: live ? address(wallet.delegationPda) : null, ...(authority.exists ? { existingInitId: authority.initId } : {}), createAta: !ataExists });
-  const transaction = await buildUserTransaction(me, ixs);
-  // Simulated before any wallet sees it (as link/[code]): a re-link that would fail asks nothing of the wallet.
-  const sim = await rpc().simulateTransaction(transaction as Parameters<ReturnType<typeof rpc>["simulateTransaction"]>[0], { encoding: "base64", sigVerify: false, replaceRecentBlockhash: true, commitment: "confirmed" }).send();
-  if (sim.value.err) return NextResponse.json({ error: "This re-link would fail on chain, so nothing was asked of your wallet. Try again in a minute." }, { status: 400 });
-  return NextResponse.json({ transaction, leashPda: leash, delegationPda: await delegationPda({ delegator: me, delegatee: leash, nonce }), revokes: live ? wallet.delegationPda : null, cap: 500 });
+  const simulate = (tx: string) => rpc().simulateTransaction(tx as Parameters<ReturnType<typeof rpc>["simulateTransaction"]>[0], { encoding: "base64", sigVerify: false, replaceRecentBlockhash: true, commitment: "confirmed" }).send();
+  // Task 17a (user rent): the opt-in setup creates lead, as link/[code] (SOL rule, fit, simulate, else today's re-link). An absent, empty
+  // or unreadable body (0.1.11 / 0.1.12 send none) or a setupMax that is not 1..7 is no setup: never a refusal.
+  const asked = (await request.json().catch(() => null)) as { setupMax?: unknown } | null;
+  const setupAsked = asked !== null && typeof asked === "object" && "setupMax" in asked;
+  const setup = setupAsked
+    ? await plannedSetup(me, async () => rulesRowToRules(await repo.getRules(user.seedVaultPubkey)), setupCount(typeof asked.setupMax === "number" ? asked.setupMax : 0),
+      async (n) => linkSetupCovered(BigInt((await rpc().getBalance(me, { commitment: "confirmed" }).send()).value), n))
+    : [];
+  let transaction: string | null = null;
+  let setupAccounts = 0;
+  if (setup.length > 0) {
+    const fit = await fitSetup((c) => buildUserTransaction(me, [...c, ...ixs]), setup);
+    if (fit.used > 0) {
+      if (!(await simulate(fit.transaction)).value.err) [transaction, setupAccounts] = [fit.transaction, fit.used];
+      else console.error(`relink: the re-link with ${fit.used} setup creates would fail for ${me}; built without them`);
+    }
+  }
+  if (transaction === null) {
+    transaction = await buildUserTransaction(me, ixs);
+    // Simulated before any wallet sees it (as link/[code]): a re-link that would fail asks nothing of the wallet.
+    const sim = await simulate(transaction);
+    if (sim.value.err) return NextResponse.json({ error: "This re-link would fail on chain, so nothing was asked of your wallet. Try again in a minute." }, { status: 400 });
+  }
+  return NextResponse.json({ transaction, leashPda: leash, delegationPda: await delegationPda({ delegator: me, delegatee: leash, nonce }), revokes: live ? wallet.delegationPda : null, cap: 500, ...(setupAsked ? { setupAccounts } : {}) });
 }
 export const POST = withAppErrorLog("relink/build", postHandler);

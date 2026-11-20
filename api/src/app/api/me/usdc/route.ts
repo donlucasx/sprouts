@@ -6,6 +6,9 @@ import { rpc } from "@/lib/rpc";
 import { priceUsd } from "@/lib/jupiter";
 import { affordableTopUps, topUpSources } from "@/lib/topup";
 import { WSOL_MINT } from "@/lib/constants";
+import { getRepo } from "@/db/repo";
+import { rulesRowToRules } from "@/db/types";
+import { linkSetupCovered, missingSetupMints, SETUP_MAX } from "@/lib/user-setup";
 
 export const runtime = "nodejs";
 
@@ -37,10 +40,37 @@ export async function GET(request: Request) {
   // 0.1.10: the wallet's SOL in lamports (null when unread), so Link a wallet can say BEFORE the approval that it needs a little SOL
   // (5 of 31 failed links 10-14 to 11-12 were wallets with no SOL for the rent and fee).
   const body = { usdcRaw: usdc, topUpCents, solLamports: sol === null ? null : sol.toString() };
-  if (new URL(request.url).searchParams.get("sources") !== "1") return NextResponse.json(body);
-  const sources = await topUpSources(me, sol, solUsd, topUpCents).catch((e) => {
-    console.error(`/api/me/usdc: the top-up coins could not be read (${e instanceof Error ? e.message : String(e)})`);
-    return null;
-  });
-  return NextResponse.json({ ...body, topUpSources: sources });
+  // Kimi (user rent): both opt-ins are read BEFORE either answers, so `?sources=1&setup=1` carries both keys.
+  const params = new URL(request.url).searchParams;
+  const wantSources = params.get("sources") === "1";
+  const wantSetup = params.get("setup") === "1";
+  if (!wantSources && !wantSetup) return NextResponse.json(body);
+  const [sources, setupAccounts] = await Promise.all([
+    wantSources
+      ? topUpSources(me, sol, solUsd, topUpCents).catch((e) => {
+        console.error(`/api/me/usdc: the top-up coins could not be read (${e instanceof Error ? e.message : String(e)})`);
+        return null;
+      })
+      : Promise.resolve(undefined),
+    wantSetup ? setupCount(me, sol) : Promise.resolve(undefined),
+  ]);
+  return NextResponse.json({ ...body, ...(wantSources ? { topUpSources: sources } : {}), ...(wantSetup ? { setupAccounts } : {}) });
+}
+
+/**
+ * Task 17a (user rent, design 6): `setupAccounts`, how many of this wallet's coin and receipt accounts for its switched-on coins are
+ * missing, at most SETUP_MAX; 0 when the SOL does not cover them by the link rule (so the line the app shows and the link it builds
+ * agree) or when the SOL, the rules or the accounts could not be read. The app shows the cost from this count and its own SOL price.
+ */
+async function setupCount(me: ReturnType<typeof address>, sol: bigint | null): Promise<number> {
+  if (sol === null) return 0;
+  try {
+    const repo = await getRepo();
+    const missing = await missingSetupMints(me, rulesRowToRules(await repo.getRules(me)));
+    const n = Math.min(missing.length, SETUP_MAX);
+    return n > 0 && linkSetupCovered(sol, n) ? n : 0;
+  } catch (e) {
+    console.error(`/api/me/usdc: the setup accounts could not be read (${e instanceof Error ? e.message : String(e)})`);
+    return 0;
+  }
 }

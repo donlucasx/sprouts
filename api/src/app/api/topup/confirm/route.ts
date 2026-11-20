@@ -12,6 +12,7 @@ import { rpc } from "@/lib/rpc";
 import { getRepo } from "@/db/repo";
 import { markTopUpSent, recordTopUpLanded } from "@/lib/topup-record";
 import { withAppErrorLog } from "@/lib/failure-log";
+import { takeSetupPrefix, TOPUP_SETUP_MAX } from "@/lib/user-setup";
 
 export const runtime = "nodejs";
 export const maxDuration = 60; // the send plus the confirm poll (up to 30 s)
@@ -39,9 +40,12 @@ async function postHandler(request: Request) {
     });
     // The swap's source mint picks the rules: the wSOL mint (or no swap, refused by the SOL rules) is today's check; any other mint the
     // token check, its source accounts refused for USDC, a garden coin or a receipt (SKR allowed).
-    const mint = posted.instructions.find((ix) => ix.program === JUPITER_AGGREGATOR)?.accounts[7];
+    // Task 17a (Kimi HIGH): the leading user-paid setup creates (at most 3, this wallet's own accounts for the 7 setup mints, paid by it)
+    // are peeled off first, as the app does; the top-up check then reads the rest unchanged, so a setup create anywhere else is refused.
+    const rest = await takeSetupPrefix(posted.instructions.map((ix) => ({ program: ix.program as string, accounts: ix.accounts as string[], data: ix.data })), me, TOPUP_SETUP_MAX);
+    const mint = rest.find((ix) => ix.program === JUPITER_AGGREGATOR)?.accounts[7];
     if (mint !== undefined && mint !== WSOL_MINT) source = await topUpSourceAccounts(me, address(mint));
-    plan = checkTopUp(posted.instructions.map((ix) => ({ program: ix.program, accounts: ix.accounts, data: ix.data })), { user: me, ...(await topUpAccounts(me)), source });
+    plan = checkTopUp(rest, { user: me, ...(await topUpAccounts(me)), source });
   } catch (e) {
     console.error(`/api/topup/confirm: refused for ${me}: ${e instanceof Error ? e.message : String(e)}`);
     return NextResponse.json({ error: TOPUP_CONFIRM.notTopUp }, { status: 400 });

@@ -5,13 +5,13 @@ import { AUTO_VENUES, isAutoVenue, moveQualifies, venueCandidates, type AutoVenu
 import { dayOf, addDays } from "@/domain/day";
 import type { LendPosition } from "./holdings";
 import { signatureStatus } from "./planting";
+import { ATA_RENT_LAMPORTS } from "./user-setup";
 
 const FEE_LAMPORTS = 2 * 5_000;
 /** C-I2 / K-I1 / K-I2: what build and dismiss answer for a move whose redeem signature is stored (served as `inFlight: true`). */
 /** R337: the moves step runs only when MOVES_ENABLED is exactly "true"; unset (or anything else) is off. */
 export const movesEnabled = (): boolean => process.env.MOVES_ENABLED === "true";
 export const IN_FLIGHT = "This move is on its way. Check Home in a minute.";
-const ATA_RENT_LAMPORTS = 2_039_280;
 
 /** Spec 7: lending-to-lending, same asset, Kamino <-> Jupiter Lend only; proposed when 30 days of the 7-day-average gap beat 3x the cost. */
 export type DepositStatus = "confirmed" | "failed" | "pending" | "expired";

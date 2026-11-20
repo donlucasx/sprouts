@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { addressOrNull, linkOwner, withFailureLog } from "@/lib/failure-log";
 import { address, createNoopSigner, pipe, createTransactionMessage, setTransactionMessageFeePayerSigner,
   setTransactionMessageLifetimeUsingBlockhash, appendTransactionMessageInstructions, compileTransaction,
-  getBase64EncodedWireTransaction, type Address } from "@solana/kit";
+  getBase64EncodedWireTransaction, type Address, type Instruction } from "@solana/kit";
 import { getRepo } from "@/db/repo";
 import { clientIp, rateLimited } from "@/lib/auth-guard";
 import { buildApproveOnceIxs, buildRevokeDelegationIx, delegationPda, readDelegation, readSubscriptionAuthority, readUsdcApproved, readUsdcAtaExists, readUsdcBalanceRaw } from "@/lib/subscriptions";
@@ -12,6 +12,7 @@ import { rpc } from "@/lib/rpc";
 import { ownerLabel } from "@/lib/owner-label";
 import { rulesRowToRules } from "@/db/types";
 import { plantThresholdFor } from "@/domain/threshold";
+import { fitSetup, linkSetupCovered, plannedSetup, setupCount } from "@/lib/user-setup";
 
 export const runtime = "nodejs";
 
@@ -73,17 +74,39 @@ async function getApproval(request: Request, ctx: { params: Promise<{ code: stri
     revokes = existing.delegationPda;
   }
   const { value: { blockhash, lastValidBlockHeight } } = await rpc().getLatestBlockhash().send();
-  const message = pipe(
+  const compile = (all: readonly Instruction[]) => getBase64EncodedWireTransaction(compileTransaction(pipe(
     createTransactionMessage({ version: 0 }),
     (m) => setTransactionMessageFeePayerSigner(createNoopSigner(wallet), m),
     (m) => setTransactionMessageLifetimeUsingBlockhash({ blockhash, lastValidBlockHeight }, m),
-    (m) => appendTransactionMessageInstructions(ixs, m),
-  );
-  const transaction = getBase64EncodedWireTransaction(compileTransaction(message));
-  // Simulated before any wallet sees it (MetaMask with no SOL, 2026-09-29): a wallet that cannot pay the rent hears it in plain
-  // words, and the code is bound only to a wallet whose approval would land, so a failed try leaves it free for another wallet.
-  const sim = await rpc().simulateTransaction(transaction, { encoding: "base64", sigVerify: false, replaceRecentBlockhash: true, commitment: "confirmed" }).send();
-  if (sim.value.err) return NextResponse.json({ error: simulationError(sim.value.err, sim.value.logs ?? []) }, { status: 400 });
+    (m) => appendTransactionMessageInstructions(all, m),
+  )));
+  const simulate = (transaction: ReturnType<typeof compile>) =>
+    rpc().simulateTransaction(transaction, { encoding: "base64", sigVerify: false, replaceRecentBlockhash: true, commitment: "confirmed" }).send();
+  // Task 17a (user rent): only when the app asks (`setup=N`, 1..7) and only for the Seeker's own key (founder D3: a web-linked wallet gets
+  // none). The creates LEAD (before the revoke), all or none by the SOL rule, dropped from the end to fit, and dropped entirely when the
+  // simulation with them fails: a setup is never why a link fails. No `setup` param: today's bytes and today's answer.
+  const setupParam = new URL(request.url).searchParams.get("setup");
+  const setup = setupParam !== null && wallet === link.userPubkey
+    ? await plannedSetup(wallet, async () => rulesRowToRules(await repo.getRules(link.userPubkey)), setupCount(setupParam),
+      async (n) => linkSetupCovered(BigInt((await rpc().getBalance(wallet, { commitment: "confirmed" }).send()).value), n))
+    : [];
+  let transaction: ReturnType<typeof compile> | null = null;
+  let setupAccounts = 0;
+  if (setup.length > 0) {
+    const fit = await fitSetup(async (c) => compile([...c, ...ixs]), setup);
+    if (fit.used > 0) {
+      const withSetup = await simulate(fit.transaction as ReturnType<typeof compile>);
+      if (!withSetup.value.err) [transaction, setupAccounts] = [fit.transaction as ReturnType<typeof compile>, fit.used];
+      else console.error(`link: the approval with ${fit.used} setup creates would fail for ${wallet}; built without them`);
+    }
+  }
+  if (transaction === null) {
+    transaction = compile(ixs);
+    // Simulated before any wallet sees it (MetaMask with no SOL, 2026-09-29): a wallet that cannot pay the rent hears it in plain
+    // words, and the code is bound only to a wallet whose approval would land, so a failed try leaves it free for another wallet.
+    const sim = await simulate(transaction);
+    if (sim.value.err) return NextResponse.json({ error: simulationError(sim.value.err, sim.value.logs ?? []) }, { status: 400 });
+  }
   if (!link.walletPubkey) await repo.bindLinkCode(link.code, wallet, pda);
   const owner = ownerLabel(await repo.getUser(link.userPubkey), link.userPubkey);
   // 10-26 (Kimi user-comms D): plantings are paid only from this wallet's USDC, and a wallet linked with none pauses on its first
@@ -95,14 +118,14 @@ async function getApproval(request: Request, ctx: { params: Promise<{ code: stri
   ]);
   // The run's own bar (plant-run.ts resume: threshold, lower for a first planting, + NETWORK_FEE_CENTS, which is 0).
   const usdcNeedCents = plantThresholdFor({ ruleCents: rules.plantThresholdCents, hasPlanted });
-  return NextResponse.json({ transaction, cap: DAILY_CAP_CENTS, puller, delegatee, delegationPda: pda, revokes, owner, usdcRaw, usdcNeedCents });
+  return NextResponse.json({ transaction, cap: DAILY_CAP_CENTS, puller, delegatee, delegationPda: pda, revokes, owner, usdcRaw, usdcNeedCents, ...(setupParam !== null ? { setupAccounts } : {}) });
 }
 
 /** A failed simulation in the words the user needs: no SOL for the rent and fee, or a failure that would happen on chain. */
 function simulationError(err: unknown, logs: readonly string[]): string {
   const text = JSON.stringify(err, (_k, v) => (typeof v === "bigint" ? v.toString() : v));
   const noSol = err === "AccountNotFound" || /InsufficientFundsFor(Fee|Rent)/.test(text) || logs.some((l) => /insufficient lamports/i.test(l));
-  if (noSol) return "This wallet needs a little SOL first: about 0.01 SOL covers the one-time rent (refunded when you revoke) and the fee. Nothing was signed.";
+  if (noSol) return "This wallet needs a little SOL first: about 0.01 SOL covers the one-time rent and the fee. Nothing was signed.";
   return `This approval would fail on chain (${text.slice(0, 120)}), so no wallet was asked to sign it. Try again, or get a new code.`;
 }
 

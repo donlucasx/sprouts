@@ -8,6 +8,8 @@ import { RECEIPT } from "./venues/addresses";
 import { buildUserTransaction } from "./user-tx";
 import { rpc } from "./rpc";
 import { cached } from "./memo";
+import type { Rules } from "@/domain/roundup";
+import { ATA_RENT_LAMPORTS, fitSetup, MAX_CU_LIMIT, plannedSetup, SETUP_CU_PER_CREATE, takeSetupPrefix, TOPUP_SETUP_MAX } from "./user-setup";
 
 /**
  * The SOL top-up (10-22, owner-approved): round-ups are pulled only as USDC, and most Seeker wallets hold SOL, so a wallet the daily run
@@ -363,12 +365,12 @@ export type BuiltTopUp = { transaction: string; usdcRaw: string; maxLamports?: s
  * The unsigned top-up (see buildSolTopUp and buildTokenTopUp). No `inputMint`, or the wSOL mint: today's SOL top-up exactly (the
  * answer adds inputMint = wSOL and maxInRaw = maxLamports; 0.1.11 reads neither). Any other coin: the token top-up.
  */
-export async function buildTopUp(user: Address, cents: number, inputMint?: Address): Promise<BuiltTopUp> {
+export async function buildTopUp(user: Address, cents: number, inputMint?: Address, setup: TopUpSetupAsk = NO_SETUP): Promise<BuiltTopUp> {
   if (inputMint === undefined || inputMint === WSOL_MINT) {
-    const built = await buildSolTopUp(user, cents);
+    const built = await buildSolTopUp(user, cents, setup);
     return { ...built, inputMint: WSOL_MINT, maxInRaw: built.maxLamports };
   }
-  return buildTokenTopUp(user, cents, inputMint);
+  return buildTokenTopUp(user, cents, inputMint, setup);
 }
 
 /** A coin Jupiter verified, of the classic Token program (the swap's fixed token program), and allowed as a source. */
@@ -429,13 +431,62 @@ async function compileAndSimulate(user: Address, ixs: Instruction[]): Promise<st
 }
 
 /**
+ * Task 17a (user rent): the app's opt-in for a top-up, `setupMax` 0..TOPUP_SETUP_MAX (0 or absent: today's bytes), and the user's rules
+ * (read only when asked) for which coins are switched on.
+ */
+export type TopUpSetupAsk = { max: number; rules: () => Promise<Pick<Rules, "allocation" | "pins" | "managed" | "stop">> };
+
+/**
+ * Jupiter's checked instructions with `creates` LEADING (before the compute budget: the app peels a leading run only) and Jupiter's own
+ * SetComputeUnitLimit rewritten IN PLACE, + SETUP_CU_PER_CREATE per create, at most MAX_CU_LIMIT (Kimi: a second limit is refused).
+ */
+export function withSetupCreates(ixs: readonly Instruction[], creates: readonly Instruction[]): Instruction[] {
+  if (creates.length === 0) return [...ixs];
+  const bumped = ixs.map((ix) => {
+    const d = ix.data;
+    if (ix.programAddress !== COMPUTE_BUDGET || !d || d.length !== 5 || d[0] !== 2) return ix;
+    const limit = Math.min(u32At(new Uint8Array(d), 1) + SETUP_CU_PER_CREATE * creates.length, MAX_CU_LIMIT);
+    const data = new Uint8Array(5);
+    data[0] = 2;
+    new DataView(data.buffer).setUint32(1, limit, true);
+    return { ...ix, data };
+  });
+  return [...creates, ...bumped];
+}
+
+/**
+ * compileAndSimulate with the setup (design 3, 5): `creates` dropped from the end until the wire fits, then held to what the confirm will
+ * check (the server's takeSetupPrefix, then `verify`, the flow's own checkTopUp, on the rest), then simulated. Any failure on that path,
+ * and none to add, is today's top-up exactly: compileAndSimulate(ixs), whose failure is the one the user hears.
+ */
+async function compileWithSetup(user: Address, ixs: Instruction[], creates: readonly Instruction[], verify: (rest: TopUpIx[]) => void): Promise<string> {
+  if (creates.length > 0) {
+    try {
+      const fit = await fitSetup((c) => buildUserTransaction(user, withSetupCreates(ixs, c)), creates, MAX_WIRE_BYTES);
+      if (fit.used > 0) {
+        verify(await takeSetupPrefix(withSetupCreates(ixs, creates.slice(0, fit.used)).map(toTopUpIx), user, TOPUP_SETUP_MAX));
+        const sim = await rpc().simulateTransaction(fit.transaction as Parameters<ReturnType<typeof rpc>["simulateTransaction"]>[0], { encoding: "base64", sigVerify: false, replaceRecentBlockhash: true, commitment: "confirmed" }).send();
+        if (!sim.value.err) return fit.transaction;
+        console.error(`topup: the top-up with ${fit.used} setup creates would fail for ${user}; built without them`);
+      }
+    } catch (e) {
+      console.error(`topup: no setup for ${user} (${e instanceof Error ? e.message : String(e)})`);
+    }
+  }
+  return compileAndSimulate(user, ixs);
+}
+
+const NO_SETUP: TopUpSetupAsk = { max: 0, rules: async () => { throw new Error("no setup asked"); } };
+const RENT = BigInt(ATA_RENT_LAMPORTS);
+
+/**
  * The token top-up for `user` (Task 7): refused 400 before any quote for USDC, a garden coin or receipt (SKR allowed); 409 before any
  * Jupiter call when the wallet holds none of the coin in its classic account; 400 for a coin Jupiter has not verified or one outside the
  * classic Token program; then a Jupiter ExactOut quote coin to USDC for `cents` through TOPUP_DEXES, the balance check (the coin covers
  * the quote's maximum, and TOPUP_TOKEN_SOL_RESERVE_LAMPORTS of SOL for the fee and a USDC account), the phone's price bound
  * (withinTopUpPriceBound at Jupiter's price), Jupiter's instructions (no wrap, shared accounts) checked with the token rules, compiled with no lookup table, and simulated.
  */
-async function buildTokenTopUp(user: Address, cents: number, inputMint: Address): Promise<BuiltTopUp> {
+async function buildTokenTopUp(user: Address, cents: number, inputMint: Address, setup: TopUpSetupAsk): Promise<BuiltTopUp> {
   const outRaw = BigInt(cents) * 10_000n;
   let source: TopUpSourceAccounts;
   try {
@@ -506,7 +557,12 @@ async function buildTokenTopUp(user: Address, cents: number, inputMint: Address)
     console.error(`topup: ${token.symbol} swap for ${user} above the price bound (max ${plan.maxIn} at $${price})`);
     throw new TopUpRefused(TOPUP_COPY.noFairPrice(token.symbol), 503);
   }
-  const transaction = await compileAndSimulate(user, ixs);
+  // Task 17a: the token rule, all or none: the fee reserve + n x rent + 0.01 SOL kept.
+  const creates = await plannedSetup(user, setup.rules, Math.min(setup.max, TOPUP_SETUP_MAX), (n) => lamports >= TOPUP_TOKEN_SOL_RESERVE_LAMPORTS + BigInt(n) * RENT + 10_000_000n);
+  const transaction = await compileWithSetup(user, ixs, creates, (rest) => {
+    const again = checkTopUp(rest, { user, ...accounts, outRaw, source });
+    if (!withinTopUpPriceBound(again.maxIn, outRaw, price, held.decimals!)) throw new Error("Top-up refused: above the price bound with the setup");
+  });
   return { transaction, usdcRaw: outRaw.toString(), inputMint, maxInRaw: maxIn.toString() };
 }
 
@@ -572,7 +628,7 @@ export async function topUpSources(user: Address, solLamports: bigint | null, so
  * the balance check (the quote's maximum SOL plus SOL_RESERVE_LAMPORTS), Jupiter's instructions checked (checkTopUp), compiled with no
  * lookup table, and simulated. Throws TopUpRefused with the sentence to show.
  */
-async function buildSolTopUp(user: Address, cents: number): Promise<{ transaction: string; usdcRaw: string; maxLamports: string }> {
+async function buildSolTopUp(user: Address, cents: number, setup: TopUpSetupAsk): Promise<{ transaction: string; usdcRaw: string; maxLamports: string }> {
   const outRaw = BigInt(cents) * 10_000n;
   const accounts = await topUpAccounts(user);
   let quote;
@@ -601,7 +657,11 @@ async function buildSolTopUp(user: Address, cents: number): Promise<{ transactio
     console.error(`topup: Jupiter's answer for ${user} refused (${e instanceof Error ? e.message : String(e)})`);
     throw new TopUpRefused(TOPUP_COPY.noRouteFor("SOL"), 503);
   }
-  const transaction = await compileAndSimulate(user, ixs);
+  // Task 17a: the SOL rule, all or none: the swap's maximum + n x rent + SOL_RESERVE_LAMPORTS + 0.001 SOL.
+  const creates = await plannedSetup(user, setup.rules, Math.min(setup.max, TOPUP_SETUP_MAX), (n) => BigInt(balance) >= maxIn + BigInt(n) * RENT + SOL_RESERVE_LAMPORTS + 1_000_000n);
+  const transaction = await compileWithSetup(user, ixs, creates, (rest) => {
+    if (checkTopUp(rest, { user, ...accounts, outRaw }).wrapLamports > maxIn) throw new Error("Top-up refused: the wrap is above the quote's maximum");
+  });
   return { transaction, usdcRaw: outRaw.toString(), maxLamports: maxIn.toString() };
 }
 

@@ -5,6 +5,7 @@ import { buildUserTransaction } from "@/lib/user-tx";
 import { delegationPda } from "@/lib/subscriptions";
 import { leashPda } from "@/lib/leash";
 import { receiptBalanceRaw, readLendingPositions } from "@/lib/holdings";
+import { setupCreates, SETUP_MINTS } from "@/lib/user-setup";
 // The APP's verifier (app/src/lib/sign.ts, vendored verbatim but for its coins import): what the Seed Vault refuses, run on our output.
 import { checkBeforeSigning, SignRefused, type SignFlow } from "../fixtures/app/sign";
 
@@ -90,4 +91,15 @@ describe("the app's sign.ts accepts what the API builds (contracts 6; AMEND s20 
     }
     expect(new Set(asked.many).size).toBe(4);
   });
+
+  // Task 17a (user rent): the setup is opt-in because TODAY's app (0.1.12, this vendored check) refuses any leading setup create on a link
+  // or re-link. So an old app must never be sent one; the Task 17b app takes `setupMax` (17b refreshes this fixture and adds the pass case).
+  it("Task 17a: today's app refuses a re-link that leads with a setup create (why the API adds it only when asked)", async () => {
+    const ixs = await buildRelink({ user: USER, nonce: 8n, startTs: 1_791_200_000n, existingDelegationPda: null, createAta: true });
+    await expect(checkBeforeSigning(await wire(ixs), { kind: "relink", user: USER })).resolves.toBeUndefined();
+    for (const mint of SETUP_MINTS) {
+      await expect(checkBeforeSigning(await wire([...(await setupCreates(USER, [mint])), ...ixs]), { kind: "relink", user: USER })).rejects.toBeInstanceOf(SignRefused);
+    }
+  });
+  it.todo("Task 17b: link, relink and both top-ups with 1..N setup creates pass the app check with setupMax N (after the fixture refresh)");
 });
