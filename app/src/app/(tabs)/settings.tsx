@@ -28,7 +28,6 @@ import type { NoticeKind } from '@/lib/notices'
 import { DISCLOSURES, HOW_IT_WORKS, NOT_ADVICE } from '@/lib/settings-copy'
 import { clearTaxFiles, prepareTaxCsv, shareTaxCsv, taxFileFresh, type TaxFile } from '@/lib/tax-export'
 import { notify } from '@/lib/notify'
-import { PUBLIC_GUARANTEE } from '@/lib/relink'
 import { QuestionCard } from '@/components/QuestionCard'
 import { dismiss, readDismissed, removedAskFor } from '@/lib/feedback'
 import { spacing, switchColors, useTheme } from '@/theme'
@@ -330,11 +329,8 @@ export default function Settings() {
       <Card style={{ gap: 0 }}>
         {/* R145 and R153: the disclosures as rows that open in place, grouped as About at the end; R300's promise above them, the precise rule inside. */}
         <ThemedText variant="heading">About Sprouts</ThemedText>
-        <ThemedText variant="caption" tone="secondary" style={{ marginTop: spacing.xs, marginBottom: spacing.sm }}>
-          {PUBLIC_GUARANTEE}
-        </ThemedText>
-        {/* R452: three lines on how it works before the questions */}
-        <ThemedText style={{ marginBottom: spacing.sm }}>{HOW_IT_WORKS}</ThemedText>
+        {/* R452: three lines on how it works before the questions. 11-20 (his): R300's promise moved into "Who holds my money?" */}
+        <ThemedText style={{ marginTop: spacing.xs, marginBottom: spacing.sm }}>{HOW_IT_WORKS}</ThemedText>
         <ThemedText style={{ marginBottom: spacing.sm }}>{`Swaps under $1 are counted but don't round up.`}</ThemedText>
         {DISCLOSURES.map(([h, p], i) => (
           <Disclosure key={h} title={h} first={i === 0}>

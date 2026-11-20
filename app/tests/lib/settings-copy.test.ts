@@ -17,7 +17,7 @@ describe('Settings > About Sprouts (spec 6.2, 11; R452: six questions)', () => {
     ]))
   it("Who holds my money (copy pass 11-20): where the money sits, then the guarantee in plain words, the hacked line, the admin key and prices; an old approval's rules", () => {
     expect(PRECISE_GUARANTEE).toBe(
-      "Sprouts' server can't send your money anywhere else, even if it were hacked. It can only pull through the Sprouts on-chain program, which allows at most your $5 daily limit, only into the coins, lending and SKR staking Sprouts offers, and only if at least 98.5% of the value arrives (99.4% for USDC lending) at a live oracle price. Otherwise nothing happens. The server picks when, which coin and how much, up to your limit. Only Sprouts' offline admin key can change these rules or replace the program, and your $5 limit still holds.",
+      "Even if our server were hacked, neither it nor the AI could send your money anywhere else or move more than your daily limit. It can only pull through the Sprouts on-chain program, which allows at most your $5 daily limit, only into the coins, lending and SKR staking Sprouts offers, and only if at least 98.5% of the value arrives (99.4% for USDC lending) at a live oracle price. Otherwise nothing happens. The server picks when, which coin and how much, up to your limit. Only Sprouts' offline admin key can change these rules or replace the program, and your $5 limit still holds.",
     )
     const [where, guarantee, trust, session] = DISCLOSURES[0][1].split('\n\n')
     expect(where).toBe("Your coins and lending receipts sit in your own wallet. Your SKR is staked under your Seeker's key, and only that key can unstake it.")

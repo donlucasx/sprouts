@@ -3,7 +3,7 @@ import { ORE_DISCLOSURE } from './ore-copy'
  *  Link a wallet card. Deltas from spec 6.2: "leg" is "coin", "leaves" is "arrives", the re-link precondition is its own paragraph,
  *  remainders moved to What does it cost?. "or replace the program" stays (Kimi item 2, matches the Terms). */
 export const PRECISE_GUARANTEE =
-  "Sprouts' server can't send your money anywhere else, even if it were hacked. It can only pull through the Sprouts on-chain program, which allows at most your $5 daily limit, only into the coins, lending and SKR staking Sprouts offers, and only if at least 98.5% of the value arrives (99.4% for USDC lending) at a live oracle price. Otherwise nothing happens. The server picks when, which coin and how much, up to your limit. Only Sprouts' offline admin key can change these rules or replace the program, and your $5 limit still holds."
+  "Even if our server were hacked, neither it nor the AI could send your money anywhere else or move more than your daily limit. It can only pull through the Sprouts on-chain program, which allows at most your $5 daily limit, only into the coins, lending and SKR staking Sprouts offers, and only if at least 98.5% of the value arrives (99.4% for USDC lending) at a live oracle price. Otherwise nothing happens. The server picks when, which coin and how much, up to your limit. Only Sprouts' offline admin key can change these rules or replace the program, and your $5 limit still holds."
 
 /** R299: where the admin key lives. Goes stale when the key moves to Squads. */
 export const ADMIN_KEY_LINE = "That key lives on the owner's laptop, not the server."
