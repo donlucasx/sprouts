@@ -5,7 +5,7 @@ import { checkQuoteMints, getQuote, getSwapInstructions, JUPITER_AGGREGATOR, jup
 import { SKR_MINT, SYSTEM_PROGRAM, USDC_MINT, WSOL_MINT } from "./constants";
 import { COINS } from "@/domain/coins";
 import { RECEIPT } from "./venues/addresses";
-import { buildUserTransaction } from "./user-tx";
+import { buildUserTransaction, userTransactionCompiler } from "./user-tx";
 import { rpc } from "./rpc";
 import { cached } from "./memo";
 import type { Rules } from "@/domain/roundup";
@@ -418,9 +418,10 @@ async function tokenBalance(ata: Address): Promise<{ raw: bigint; decimals: numb
 }
 
 /** Compiled with no lookup table, held to the wire limit, and simulated; throws TopUpRefused with the sentence to show. */
-async function compileAndSimulate(user: Address, ixs: Instruction[]): Promise<string> {
+async function compileAndSimulate(user: Address, ixs: Instruction[], compile?: (ixs: readonly Instruction[]) => string): Promise<string> {
   // Static accounts only (the app refuses a lookup table it cannot read): the route was asked for at most 20 accounts.
-  const transaction = await buildUserTransaction(user, ixs);
+  // `compile` (Task 17a review): the setup path's own compiler, so a fallback reuses its one blockhash; absent = today's build.
+  const transaction = compile ? compile(ixs) : await buildUserTransaction(user, ixs);
   if (getBase64Encoder().encode(transaction).length > MAX_WIRE_BYTES) throw new TopUpRefused(TOPUP_COPY.tooBig, 503);
   const sim = await rpc().simulateTransaction(transaction as Parameters<ReturnType<typeof rpc>["simulateTransaction"]>[0], { encoding: "base64", sigVerify: false, replaceRecentBlockhash: true, commitment: "confirmed" }).send();
   if (sim.value.err) {
@@ -460,10 +461,14 @@ export function withSetupCreates(ixs: readonly Instruction[], creates: readonly 
  * and none to add, is today's top-up exactly: compileAndSimulate(ixs), whose failure is the one the user hears.
  */
 async function compileWithSetup(user: Address, ixs: Instruction[], creates: readonly Instruction[], verify: (rest: TopUpIx[]) => void): Promise<string> {
+  let compile: ((ixs: readonly Instruction[]) => string) | undefined;
   if (creates.length > 0) {
     try {
-      const fit = await fitSetup((c) => buildUserTransaction(user, withSetupCreates(ixs, c)), creates, MAX_WIRE_BYTES);
-      if (fit.used > 0) {
+      // One blockhash for the whole build: the setup sizes tried and the plain fallback below all compile locally.
+      compile = await userTransactionCompiler(user);
+      const c = compile;
+      const fit = await fitSetup((k) => c(withSetupCreates(ixs, k)), creates, MAX_WIRE_BYTES);
+      if (fit.transaction !== null) {
         verify(await takeSetupPrefix(withSetupCreates(ixs, creates.slice(0, fit.used)).map(toTopUpIx), user, TOPUP_SETUP_MAX));
         const sim = await rpc().simulateTransaction(fit.transaction as Parameters<ReturnType<typeof rpc>["simulateTransaction"]>[0], { encoding: "base64", sigVerify: false, replaceRecentBlockhash: true, commitment: "confirmed" }).send();
         if (!sim.value.err) return fit.transaction;
@@ -473,7 +478,7 @@ async function compileWithSetup(user: Address, ixs: Instruction[], creates: read
       console.error(`topup: no setup for ${user} (${e instanceof Error ? e.message : String(e)})`);
     }
   }
-  return compileAndSimulate(user, ixs);
+  return compileAndSimulate(user, ixs, compile);
 }
 
 const NO_SETUP: TopUpSetupAsk = { max: 0, rules: async () => { throw new Error("no setup asked"); } };
@@ -559,9 +564,11 @@ async function buildTokenTopUp(user: Address, cents: number, inputMint: Address,
   }
   // Task 17a: the token rule, all or none: the fee reserve + n x rent + 0.01 SOL kept.
   const creates = await plannedSetup(user, setup.rules, Math.min(setup.max, TOPUP_SETUP_MAX), (n) => lamports >= TOPUP_TOKEN_SOL_RESERVE_LAMPORTS + BigInt(n) * RENT + 10_000_000n);
+  // Narrowed above (a null decimals refused before any build), held as a const so the check below needs no assertion.
+  const decimals = held.decimals;
   const transaction = await compileWithSetup(user, ixs, creates, (rest) => {
     const again = checkTopUp(rest, { user, ...accounts, outRaw, source });
-    if (!withinTopUpPriceBound(again.maxIn, outRaw, price, held.decimals!)) throw new Error("Top-up refused: above the price bound with the setup");
+    if (!withinTopUpPriceBound(again.maxIn, outRaw, price, decimals)) throw new Error("Top-up refused: above the price bound with the setup");
   });
   return { transaction, usdcRaw: outRaw.toString(), inputMint, maxInRaw: maxIn.toString() };
 }

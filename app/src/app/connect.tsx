@@ -18,7 +18,7 @@ import { useSession } from '@/lib/session'
 import { reportLinkFailure, type LinkFailure, type LinkStep } from '@/lib/link-report'
 import { APPROVAL_WARN_BODY, APPROVAL_WARN_TITLE, CAN, CANT, CODE_STEPS, LINK_FINISHING, SAFETY_HEADING, OTHER_WALLET_LINE, linkApprovalPath, phoneSolNote, phoneUsdcNote, setupAccountsOf, setupLine } from '@/lib/safety-copy'
 import { TopUpButton } from '@/components/TopUp'
-import { ME_USDC_SETUP, TOPUP, TOPUP_DEFAULT_CENTS } from '@/lib/topup'
+import { ME_USDC_SETUP, meUsdcSetupKey, TOPUP, TOPUP_DEFAULT_CENTS } from '@/lib/topup'
 import { useSolUsd } from '@/lib/sol-usd'
 import { FONT, radius, spacing, useTheme } from '@/theme'
 
@@ -101,7 +101,7 @@ export default function Connect() {
   // Task 17b (ruling 26): this read also asks for the setup count (?setup=1), since Link a wallet shows its line; the top-up below
   // shares this cache key, so it adds no second read here.
   const { data: usdc } = useQuery({
-    queryKey: ['me-usdc', session?.pubkey, 'setup'],
+    queryKey: meUsdcSetupKey(session?.pubkey),
     queryFn: () => api<MeUsdcResponse>(ME_USDC_SETUP),
     enabled: !!session,
     retry: false,

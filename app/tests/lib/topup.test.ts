@@ -1,7 +1,8 @@
 import { describe, it, expect, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
 import { REFUSED, SignRefused, type SignFlow } from '@/lib/sign'
 import { DROPPED_NOTHING_SENT } from '@/lib/wallet-errors'
-import { ME_USDC_SETUP, ME_USDC_WITH_SOURCES, postLinkUsdc, defaultSource, pickerSources, topUpChoices, TOPUP, TopUpFailed, topUpCentsFor, topUpOffer, topUpThisPhone } from '@/lib/topup'
+import { ME_USDC_SETUP, meUsdcSetupKey, ME_USDC_WITH_SOURCES, postLinkUsdc, defaultSource, pickerSources, topUpChoices, TOPUP, TopUpFailed, topUpCentsFor, topUpOffer, topUpThisPhone } from '@/lib/topup'
 
 const ME = 'HJCJKRQLV2HVKfe3sFdTF5jjBY1xfWgnK8cLcjH7qnHd'
 const OTHER = '7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU'
@@ -238,7 +239,7 @@ describe('who asks /api/me/usdc for topUpSources', async () => {
     expect(home).toContain("queryKey: ['me-usdc', me?.user.pubkey, 'sources'], queryFn: () => api<MeUsdcResponse>(ME_USDC_WITH_SOURCES)")
     expect(home).not.toContain("'/api/me/usdc'")
     // Task 17b: Link a wallet now reads the setup path (ME_USDC_SETUP, its own key); still never the sources one.
-    expect(read('app/connect.tsx')).toContain("queryKey: ['me-usdc', session?.pubkey, 'setup'],\n    queryFn: () => api<MeUsdcResponse>(ME_USDC_SETUP)")
+    expect(read('app/connect.tsx')).toContain("queryKey: meUsdcSetupKey(session?.pubkey),\n    queryFn: () => api<MeUsdcResponse>(ME_USDC_SETUP)")
     // Ruling 26: Home's regular read never asks for the setup count (each adds a Helius read)
     expect(home).not.toContain('setup=1')
     expect(home).not.toContain('ME_USDC_SETUP')
@@ -291,6 +292,30 @@ describe('Task 17b (user rent): the top-up carries the setup count the screen sh
     await capped.out
     expect(capped.bodies).toEqual([{ cents: 500, inputMint: SKR, setupMax: 3 }])
     expect(capped.flows).toEqual([{ kind: 'topup', user: ME, usdcRaw: '5000000', inputMint: SKR, setupMax: 3 }])
+  })
+  it("review fix (ruling 27): the setup read has its own key root, so Home's focus and app-active invalidation of ['me-usdc'] never re-reads it", () => {
+    expect(meUsdcSetupKey('W')).toEqual(['me-usdc-setup', 'W'])
+    expect(meUsdcSetupKey('W')[0]).not.toBe('me-usdc')
+    const src = (p: string) => readFileSync(new URL(`../../src/${p}`, import.meta.url), 'utf8')
+    // every setup read goes through the one key; none sits under the 'me-usdc' prefix
+    for (const p of ['app/connect.tsx', 'components/TopUp.tsx', 'components/RelinkCard.tsx']) {
+      expect(src(p)).toContain('queryKey: meUsdcSetupKey(')
+      expect(src(p)).not.toMatch(/\['me-usdc', [^\]]*'setup'\]/)
+    }
+    // the re-link card reads it once when it first shows: never stale, never refetched on focus, kept for the session
+    const relink = src('components/RelinkCard.tsx')
+    expect(relink).toMatch(/queryKey: meUsdcSetupKey\(user\)[^\n]*enabled: view\.thisPhone[^\n]*staleTime: Infinity, gcTime: Infinity, refetchOnWindowFocus: false, refetchOnReconnect: false/)
+    // a top-up re-reads both (the accounts it set up now exist)
+    expect(src('components/TopUp.tsx')).toContain("void qc.invalidateQueries({ queryKey: ['me-usdc-setup'] })")
+  })
+  it('review fix 8: Link a wallet sends the SAME count to the approval request and to the sign flow', () => {
+    const connect = readFileSync(new URL('../../src/app/connect.tsx', import.meta.url), 'utf8')
+    expect(connect).toContain('const setupMax = setupCount\n')
+    expect(connect).toContain('linkApprovalPath(code, session.pubkey, setupMax)')
+    expect(connect).toContain("setupMax > 0 ? { kind: 'link', user: session.pubkey, setupMax } : { kind: 'link', user: session.pubkey }")
+    expect(connect.match(/setupAccountsOf\(/g)).toHaveLength(1)
+    expect(connect).toContain('const setupCount = setupAccountsOf(usdc?.setupAccounts)')
+    expect(connect).toContain('setupLine(setupCount, solUsd)')
   })
   it('the setup read is its own path, never the regular Home read (ruling 26: each adds a Helius read)', () => {
     expect(ME_USDC_WITH_SOURCES).toBe('/api/me/usdc?sources=1')

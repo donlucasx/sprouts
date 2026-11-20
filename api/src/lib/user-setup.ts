@@ -113,15 +113,15 @@ export async function takeSetupPrefix<T extends { program: string; accounts: rea
 export const wireBytes = (b64: string): number => getBase64Encoder().encode(b64).length;
 
 /**
- * Compiles with all `creates`, and while the wire is over `maxBytes` drops the LAST create and compiles again; `used` 0 is the
- * transaction without any (whatever its size: the caller's own limit applies to it as today).
+ * Compiles with all `creates`, and while the wire is over `maxBytes` drops the LAST create and compiles again. None fits: `used` 0 and
+ * no transaction (the caller builds its own without any, as today; no throwaway compile here).
  */
-export async function fitSetup(compile: (creates: readonly Instruction[]) => Promise<string>, creates: readonly Instruction[], maxBytes = MAX_WIRE_BYTES): Promise<{ transaction: string; used: number }> {
+export async function fitSetup(compile: (creates: readonly Instruction[]) => Promise<string> | string, creates: readonly Instruction[], maxBytes = MAX_WIRE_BYTES): Promise<{ transaction: string; used: number } | { transaction: null; used: 0 }> {
   for (let k = creates.length; k > 0; k--) {
     const transaction = await compile(creates.slice(0, k));
     if (wireBytes(transaction) <= maxBytes) return { transaction, used: k };
   }
-  return { transaction: await compile([]), used: 0 };
+  return { transaction: null, used: 0 };
 }
 
 /** A link's `setup=N` (digits) or a relink's `setupMax` (a JSON number): an integer 1..SETUP_MAX, anything else 0. */

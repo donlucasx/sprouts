@@ -59,13 +59,28 @@ describe('Task 17b (user rent): the setup cost line and the count it binds', () 
     expect(setupLine(3, 150)).toBe("Includes $0.92 one-time setup for 3 coin accounts, paid in SOL. It's yours: you get it back if you empty and close them.")
     // 1 x 0.00203928 SOL at $147.11 = $0.29999... -> $0.30
     expect(setupLine(1, 147.11)).toBe("Includes $0.30 one-time setup for 1 coin account, paid in SOL. It's yours: you get it back if you empty and close it.")
-    expect(setupLine(7, 200)).toBe("Includes $2.85 one-time setup for 7 coin accounts, paid in SOL. It's yours: you get it back if you empty and close them.")
+    // 0.01427496 SOL at $200 = $2.854992: rounded UP (review fix: the line never understates)
+    expect(setupLine(7, 200)).toBe("Includes $2.86 one-time setup for 7 coin accounts, paid in SOL. It's yours: you get it back if you empty and close them.")
   })
   it('no price (or an unusable one): the SOL amount instead', () => {
     for (const p of [null, undefined, 0, -5, Number.NaN, Infinity]) {
-      expect(setupLine(3, p)).toBe("Includes about 0.0061 SOL one-time setup for 3 coin accounts. It's yours: you get it back if you empty and close them.")
+      expect(setupLine(3, p)).toBe("Includes about 0.0062 SOL one-time setup for 3 coin accounts. It's yours: you get it back if you empty and close them.")
     }
-    expect(setupLine(1, null)).toBe("Includes about 0.0020 SOL one-time setup for 1 coin account. It's yours: you get it back if you empty and close it.")
+    expect(setupLine(1, null)).toBe("Includes about 0.0021 SOL one-time setup for 1 coin account. It's yours: you get it back if you empty and close it.")
+  })
+  it('review fix: never understates (cents and SOL rounded up, in integers, no float noise)', () => {
+    // 1 x 2,039,280 lamports at $50 = $0.101964 -> $0.11 (round-to-nearest would say $0.10)
+    expect(setupLine(1, 50)).toMatch(/^Includes \$0\.11 /)
+    // 5 x 2,039,280 = 10,196,400 lamports at $100 = $1.01964 -> $1.02
+    expect(setupLine(5, 100)).toMatch(/^Includes \$1\.02 /)
+    // a price so small the cost is under a cent still shows a cent, never $0.00
+    expect(setupLine(1, 0.001)).toMatch(/^Includes \$0\.01 /)
+    // every count 1..7 and a spread of prices: the dollars shown are >= the exact cost
+    for (let n = 1; n <= 7; n++) for (const p of [0.5, 17.3, 99.99, 147.11, 150, 233.456, 1000]) {
+      const shown = Number(setupLine(n, p)!.match(/\$(\d+\.\d\d)/)![1])
+      expect(shown * 1e9).toBeGreaterThanOrEqual(n * 2_039_280 * p - 1e-3)
+      expect(shown).toBeLessThanOrEqual(Math.ceil((n * 2_039_280 * p) / 1e7) / 100 + 0.01)
+    }
   })
   it('no line at 0 or for a count that is not a whole number; never an em dash', () => {
     for (const n of [0, -1, 1.5, Number.NaN]) expect(setupLine(n, 150)).toBeNull()

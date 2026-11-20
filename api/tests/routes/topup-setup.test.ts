@@ -11,13 +11,13 @@ import token from "../fixtures/jupiter-topup-exactout-token.json";
 
 /** Task 17a (user rent, design 3, 5, 7): the top-up's opt-in setup. The fake chain is topup.test.ts's plus which accounts exist. */
 const { chain, simulateMock } = vi.hoisted(() => ({
-  chain: { lamports: 200_000_000n, existing: new Set<string>(), multiReads: 0, sent: 0 },
+  chain: { lamports: 200_000_000n, existing: new Set<string>(), multiReads: 0, sent: 0, blockhashes: 0, solSwap: null as unknown },
   simulateMock: vi.fn(async (..._a: unknown[]) => ({ value: { err: null as unknown, logs: [] as string[] } })),
 }));
 vi.mock("@/lib/rpc", () => ({ rpc: () => ({
   getBalance: () => ({ send: async () => ({ value: chain.lamports }) }),
   getTokenAccountBalance: () => ({ send: async () => ({ value: { amount: "100000000", decimals: 6 } }) }),
-  getLatestBlockhash: () => ({ send: async () => ({ value: { blockhash: "GHtXQBsoZHVnNFa9YevAzFr17DJjgHXk3ycTKD5xD3Zi", lastValidBlockHeight: 1n } }) }),
+  getLatestBlockhash: () => ({ send: async () => { chain.blockhashes++; return { value: { blockhash: "GHtXQBsoZHVnNFa9YevAzFr17DJjgHXk3ycTKD5xD3Zi", lastValidBlockHeight: 1n } }; } }),
   getMultipleAccounts: (as: string[]) => ({ send: async () => { chain.multiReads++; return { value: as.map((a) => (chain.existing.has(a) ? { lamports: 1n } : null)) }; } }),
   simulateTransaction: (tx: string) => ({ send: () => simulateMock(tx) }),
   sendTransaction: () => ({ send: async () => { chain.sent++; return "sig"; } }),
@@ -51,7 +51,7 @@ const fetchMock = vi.fn(async (url: string, init?: { body?: string }) => {
   if (url.includes("/swap/v1/quote")) return new Response(JSON.stringify(isToken ? token.quote : fixture.quote));
   if (url.includes("/swap/v1/swap-instructions")) {
     const asked = JSON.parse(String(init?.body ?? "{}"));
-    return new Response(JSON.stringify(asked.quoteResponse?.inputMint === JUP_MINT ? token.swapInstructions : fixture.swapInstructions));
+    return new Response(JSON.stringify(asked.quoteResponse?.inputMint === JUP_MINT ? token.swapInstructions : (chain.solSwap ?? fixture.swapInstructions)));
   }
   if (url.includes("/price/v3")) return new Response(JSON.stringify({ [JUP_MINT]: { usdPrice: 0.25, decimals: 6 } }));
   if (url.includes("/tokens/v2/search")) return new Response(JSON.stringify([{ id: JUP_MINT, symbol: "JUP", decimals: 6, tokenProgram: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", isVerified: true }]));
@@ -89,11 +89,44 @@ beforeEach(async () => {
   fetchMock.mockClear();
   simulateMock.mockReset();
   simulateMock.mockImplementation(async () => ({ value: { err: null, logs: [] } }));
-  Object.assign(chain, { lamports: 200_000_000n, multiReads: 0, sent: 0 });
+  Object.assign(chain, { lamports: 200_000_000n, multiReads: 0, sent: 0, blockhashes: 0, solSwap: null });
   chain.existing.clear();
 });
 
 describe("POST /api/topup/build with setupMax (Task 17a)", () => {
+  it("review fix: ONE blockhash per build: no setup, with the setup, and when the setup's simulation fails (rebuilt without)", async () => {
+    for (const body of [{}, { setupMax: 2 }, { setupMax: 2, inputMint: JUP_MINT }]) {
+      chain.blockhashes = 0;
+      expect((await call(build, body)).status).toBe(200);
+      expect(chain.blockhashes).toBe(1);
+    }
+    simulateMock.mockReset();
+    simulateMock.mockImplementationOnce(async () => ({ value: { err: "boom", logs: [] } })).mockImplementation(async () => ({ value: { err: null, logs: [] } }));
+    chain.blockhashes = 0;
+    const body = await (await call(build, { setupMax: 2 })).json();
+    expect(leadingMints(body.transaction)).toEqual([]);
+    expect(chain.blockhashes).toBe(1);
+  });
+
+  it("review fix: Jupiter's limit under 1.4M with a priority price at the 0.001 SOL bound: the +25k per create would pass the bound, so the setup is dropped and today's top-up is returned", async () => {
+    // limit 200k x price 5,000,000 micro-lamports = exactly 1,000,000 lamports (the bound, allowed); +50k for two creates = 1.25M lamports
+    const limitData = Buffer.from([2, 0, 0, 0, 0]); limitData.writeUInt32LE(200_000, 1);
+    const priceData = Buffer.alloc(9); priceData[0] = 3; priceData.writeBigUInt64LE(5_000_000n, 1);
+    chain.solSwap = { ...fixture.swapInstructions, computeBudgetInstructions: [
+      { ...fixture.swapInstructions.computeBudgetInstructions[0], data: limitData.toString("base64") },
+      { ...fixture.swapInstructions.computeBudgetInstructions[1], data: priceData.toString("base64") },
+    ] };
+    const today = await (await call(build, {})).json();
+    expect(cuLimits(today.transaction)).toEqual([200_000]);
+    const res = await call(build, { setupMax: 2 });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(chain.multiReads).toBeGreaterThan(0); // the setup was planned (accounts read) ...
+    expect(leadingMints(body.transaction)).toEqual([]); // ... and dropped
+    expect(cuLimits(body.transaction)).toEqual([200_000]);
+    expect(body.transaction).toBe(today.transaction);
+  });
+
   it("no setupMax (0.1.11 / 0.1.12): today's bytes, no setup read, same as setupMax 0", async () => {
     const old = await (await call(build, {})).json();
     const zero = await (await call(build, { setupMax: 0 })).json();

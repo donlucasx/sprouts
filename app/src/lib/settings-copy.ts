@@ -24,7 +24,7 @@ export const DISCLOSURES: [string, string][] = [
   ],
   [
     'What does it cost?',
-    "Sprouts takes 0.5% of each planting, in USDC, including USDC and SOL lending. There is nothing on interest, withdrawals or moves. Sprouts pays the network fee for each planting. Your coin and lending accounts need a small one-time rent in SOL (about $0.30 each). When you link this phone's wallet or add USDC, the accounts for the coins you have switched on are set up from your wallet's SOL, and the screen shows the cost before you approve. Sprouts opens any others itself. It's yours: you get it back if you empty and close the account. Leftovers from rounding carry to your next planting. Fees are on every receipt. Pro (the Yield Manager, automatic lending and tax reports) is included free during launch.",
+    "Sprouts takes 0.5% of each planting, in USDC, including USDC and SOL lending. There is nothing on interest, withdrawals or moves. Sprouts pays the network fee for each planting. Your coin and lending accounts need a small one-time rent in SOL (about $0.30 each). When you link or re-link this phone's wallet or add USDC, the accounts for the coins you have switched on are set up from your wallet's SOL, and the screen shows the cost before you approve. If your SOL is short, Sprouts pays it. It's yours: you get it back if you empty and close the account. Leftovers from rounding carry to your next planting. Fees are on every receipt. Pro (the Yield Manager, automatic lending and tax reports) is included free during launch.",
   ],
   [
     'Where does lending go?',

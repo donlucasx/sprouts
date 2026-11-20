@@ -180,6 +180,15 @@ describe('link and relink with a leading setup block', () => {
     }
   })
 
+  it('review fix 1: an instruction from another program with the exact setup shape ([user, ata, user, mint, system, token], data [1]) is not peeled and is refused', async () => {
+    for (const program of [TOKEN, SYSTEM, ATTACKER]) {
+      const lookAlike = { ...(await setup(USER, MINTS.stORE)), programAddress: address(program) }
+      await refused(wire([lookAlike, ...(await linkShape())]), link(7), null)
+      await refused(wire([lookAlike, ...(await relinkShape())]), relink(7), null)
+      await refused(wire([await setup(USER, MINTS.hSOL), lookAlike, ...(await linkShape())]), link(7), null)
+    }
+  })
+
   it('setupMax on another flow kind changes nothing (a setup create on revoke is refused)', async () => {
     const flow = { kind: 'revoke', user: USER, setupMax: 7 } as unknown as SignFlow
     await refused(wire([await setup(USER, MINTS.stORE)]), flow, 'program')

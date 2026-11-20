@@ -6,7 +6,7 @@ import { issueSession } from "@/lib/session";
 
 /** Task 17a (user rent, design 7): POST /api/relink/build { setupMax? }. */
 const { chain, simulateMock } = vi.hoisted(() => ({
-  chain: { lamports: 1_000_000_000n, multiReads: 0 },
+  chain: { lamports: 1_000_000_000n, multiReads: 0, blockhashes: 0 },
   simulateMock: vi.fn(async (..._a: unknown[]) => ({ value: { err: null as unknown, logs: [] as string[] } })),
 }));
 vi.mock("@/lib/subscriptions", async (orig) => ({
@@ -16,7 +16,7 @@ vi.mock("@/lib/subscriptions", async (orig) => ({
   readUsdcAtaExists: vi.fn(async () => true),
 }));
 vi.mock("@/lib/rpc", () => ({ rpc: () => ({
-  getLatestBlockhash: () => ({ send: async () => ({ value: { blockhash: "GHtXQBsoZHVnNFa9YevAzFr17DJjgHXk3ycTKD5xD3Zi", lastValidBlockHeight: 1n } }) }),
+  getLatestBlockhash: () => ({ send: async () => { chain.blockhashes++; return { value: { blockhash: "GHtXQBsoZHVnNFa9YevAzFr17DJjgHXk3ycTKD5xD3Zi", lastValidBlockHeight: 1n } }; } }),
   simulateTransaction: (tx: string) => ({ send: () => simulateMock(tx) }),
   getBalance: () => ({ send: async () => ({ value: chain.lamports }) }),
   getMultipleAccounts: (as: string[]) => ({ send: async () => { chain.multiReads++; return { value: as.map(() => null) }; } }),
@@ -43,13 +43,28 @@ const post = async (body?: unknown) =>
   build(new Request("http://x/api/relink/build", { method: "POST", headers: { authorization: `Bearer ${await issueSession(user.address, "M")}` }, ...(body === undefined ? {} : { body: typeof body === "string" ? body : JSON.stringify(body) }) }));
 
 describe("relink/build with setupMax (Task 17a)", () => {
+  it("review fix: ONE blockhash per build, with the setup, without it, and when the setup's simulation fails and it is rebuilt without", async () => {
+    for (const body of [undefined, { setupMax: 2 }]) {
+      chain.blockhashes = 0;
+      expect((await post(body)).status).toBe(200);
+      expect(chain.blockhashes).toBe(1);
+    }
+    simulateMock.mockReset();
+    simulateMock.mockImplementationOnce(async () => ({ value: { err: "boom", logs: [] } })).mockImplementation(async () => ({ value: { err: null, logs: [] } }));
+    chain.blockhashes = 0;
+    const res = await post({ setupMax: 2 });
+    expect(res.status).toBe(200);
+    expect((await res.json()).setupAccounts).toBe(0);
+    expect(chain.blockhashes).toBe(1);
+  });
+
   beforeEach(async () => {
     const repo = new MemoryRepo();
     setRepoForTests(repo);
     await repo.upsertUser({ seedVaultPubkey: user.address, sgtMint: "M", skrName: null });
     await repo.addWallet({ pubkey: user.address, userPubkey: user.address, delegationPda: OLD, dailyCapCents: 500 });
     await repo.saveRules(user.address, { allocation: { SKR: 80, stORE: 10, USDC_LEND: 0, SOL_LEND: 0, hSOL: 10, cbBTC: 0 } as never });
-    Object.assign(chain, { lamports: 1_000_000_000n, multiReads: 0 });
+    Object.assign(chain, { lamports: 1_000_000_000n, multiReads: 0, blockhashes: 0 });
     simulateMock.mockReset();
     simulateMock.mockImplementation(async () => ({ value: { err: null, logs: [] } }));
   });

@@ -94,7 +94,7 @@ async function getApproval(request: Request, ctx: { params: Promise<{ code: stri
   let setupAccounts = 0;
   if (setup.length > 0) {
     const fit = await fitSetup(async (c) => compile([...c, ...ixs]), setup);
-    if (fit.used > 0) {
+    if (fit.transaction !== null) {
       const withSetup = await simulate(fit.transaction as ReturnType<typeof compile>);
       if (!withSetup.value.err) [transaction, setupAccounts] = [fit.transaction as ReturnType<typeof compile>, fit.used];
       else console.error(`link: the approval with ${fit.used} setup creates would fail for ${wallet}; built without them`);

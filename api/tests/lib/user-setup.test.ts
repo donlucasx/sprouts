@@ -160,6 +160,14 @@ describe("takeSetupPrefix (the server mirror of the app's takeSetup)", () => {
     for (const ix of bad) await expect(takeSetupPrefix([ix, OTHER_IX], USER, 7)).rejects.toBeInstanceOf(SetupRefused);
     await expect(takeSetupPrefix([await create(STORE), await create(STORE), OTHER_IX], USER, 7)).rejects.toBeInstanceOf(SetupRefused);
   });
+  it("review fix 1: a NON-ATA program instruction with the exact setup shape is not peeled (it stays in the rest for the flow's check)", async () => {
+    for (const program of [TOKEN_PROGRAM_ADDRESS as string, SYSTEM as string, OTHER as string]) {
+      const lookAlike = { ...(await create(STORE)), program };
+      expect(await takeSetupPrefix([lookAlike, OTHER_IX], USER, 7)).toEqual([lookAlike, OTHER_IX]);
+      const real = await create(HSOL);
+      expect(await takeSetupPrefix([real, lookAlike, OTHER_IX], USER, 7)).toEqual([lookAlike, OTHER_IX]);
+    }
+  });
   it("a setup create after the first other instruction is not peeled (the flow's own check sees it)", async () => {
     const late = await create(STORE);
     expect(await takeSetupPrefix([OTHER_IX, late], USER, 7)).toEqual([OTHER_IX, late]);
@@ -169,7 +177,7 @@ describe("takeSetupPrefix (the server mirror of the app's takeSetup)", () => {
 });
 
 describe("fitSetup", () => {
-  it("keeps every create when the wire fits; drops from the END until it fits; 0 when none fit", async () => {
+  it("keeps every create when the wire fits; drops from the END until it fits; 0 (and no throwaway compile) when none fit", async () => {
     const creates = await setupCreates(USER, [STORE, HSOL, CBBTC]);
     const seen: number[] = [];
     const compile = async (c: readonly Instruction[]) => { seen.push(c.length); return buildUserTransaction(USER, [...c]); };
@@ -180,8 +188,8 @@ describe("fitSetup", () => {
     seen.length = 0;
     const none = await fitSetup(compile, creates, 10);
     expect(none.used).toBe(0);
-    expect(seen).toEqual([3, 2, 1, 0]);
-    expect(none.transaction).toBe(await buildUserTransaction(USER, []));
+    expect(seen).toEqual([3, 2, 1]);
+    expect(none.transaction).toBeNull();
   });
 });
 

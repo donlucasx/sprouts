@@ -5,16 +5,23 @@ import {
 import { rpc } from "./rpc";
 import { signatureStatus } from "./planting";
 
-/** A v0 transaction for a wallet to sign: the wallet as fee payer, no lookup table, compiled unsigned (the link GET's shape). */
-export async function buildUserTransaction(user: Address, ixs: Instruction[]): Promise<string> {
+/**
+ * One blockhash read, then any number of local compiles of buildUserTransaction's shape (Task 17a review: a build that tries several
+ * setup sizes, or falls back to none, reads the blockhash once, as link/[code] does).
+ */
+export async function userTransactionCompiler(user: Address): Promise<(ixs: readonly Instruction[]) => string> {
   const { value: { blockhash, lastValidBlockHeight } } = await rpc().getLatestBlockhash().send();
-  const message = pipe(
+  return (ixs) => getBase64EncodedWireTransaction(compileTransaction(pipe(
     createTransactionMessage({ version: 0 }),
     (m) => setTransactionMessageFeePayerSigner(createNoopSigner(user), m),
     (m) => setTransactionMessageLifetimeUsingBlockhash({ blockhash, lastValidBlockHeight }, m),
     (m) => appendTransactionMessageInstructions(ixs, m),
-  );
-  return getBase64EncodedWireTransaction(compileTransaction(message));
+  )));
+}
+
+/** A v0 transaction for a wallet to sign: the wallet as fee payer, no lookup table, compiled unsigned (the link GET's shape). */
+export async function buildUserTransaction(user: Address, ixs: Instruction[]): Promise<string> {
+  return (await userTransactionCompiler(user))(ixs);
 }
 
 /** Sends a wire transaction a wallet signed; the API never re-signs it. */

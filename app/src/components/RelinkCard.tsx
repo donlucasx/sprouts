@@ -10,7 +10,7 @@ import { api, ApiError, type MeResponse, type MeUsdcResponse } from '@/lib/api'
 import { makeSigner, SignRefused } from '@/lib/sign'
 import { setupAccountsOf, setupLine } from '@/lib/safety-copy'
 import { useSolUsd } from '@/lib/sol-usd'
-import { ME_USDC_SETUP } from '@/lib/topup'
+import { ME_USDC_SETUP, meUsdcSetupKey } from '@/lib/topup'
 import { LEND_MOCK } from '@/lib/lend-mock'
 import { disclosureItems, RELINK, relinkCode, RelinkSent, relinkThisPhone, relinkView, relinkWebLines, short } from '@/lib/relink'
 import { oneAtATime } from '@/lib/withdraw-flow'
@@ -45,8 +45,9 @@ export function RelinkCard({ me }: { me: MeResponse }) {
   const [leashes, setLeashes] = useState<Record<string, string>>({})
   // Held until the refetch after a confirmed re-link lands: the button stays hidden in between (I1), then the read decides.
   const [settling, setSettling] = useState(false)
-  // Task 17b (ruling 26): the setup count is read only while this phone's re-link button shows; the number shown is the bound.
-  const { data: setupRead } = useQuery({ queryKey: ['me-usdc', user, 'setup'], queryFn: () => api<MeUsdcResponse>(ME_USDC_SETUP), enabled: view.thisPhone, retry: false, staleTime: 30_000 })
+  // Task 17b (rulings 26, 27): the setup count is read ONCE, when this phone's re-link button first shows (never stale, no refetch on
+  // focus or polls, kept for the session; only a top-up invalidates it). The number shown is the bound.
+  const { data: setupRead } = useQuery({ queryKey: meUsdcSetupKey(user), queryFn: () => api<MeUsdcResponse>(ME_USDC_SETUP), enabled: view.thisPhone, retry: false, staleTime: Infinity, gcTime: Infinity, refetchOnWindowFocus: false, refetchOnReconnect: false })
   const setupCount = setupAccountsOf(setupRead?.setupAccounts)
   const solUsd = useSolUsd(view.thisPhone && setupCount > 0)
   const setupNote = setupLine(setupCount, solUsd)

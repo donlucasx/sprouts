@@ -8,7 +8,7 @@ import { api, type MeUsdcResponse } from '@/lib/api'
 import { makeSigner } from '@/lib/sign'
 import { setupAccountsOf, setupLine } from '@/lib/safety-copy'
 import { useSolUsd } from '@/lib/sol-usd'
-import { choiceFor, ME_USDC_SETUP, TOPUP, TOPUP_SETUP_MAX, TopUpFailed, topUpChoices, topUpThisPhone, type TopUpSource } from '@/lib/topup'
+import { choiceFor, ME_USDC_SETUP, meUsdcSetupKey, TOPUP, TOPUP_SETUP_MAX, TopUpFailed, topUpChoices, topUpThisPhone, type TopUpSource } from '@/lib/topup'
 import { coverageLine } from '@/lib/usdc-runway'
 import { TwoWay } from '@/components/TwoWay'
 import { oneAtATime } from '@/lib/withdraw-flow'
@@ -43,7 +43,7 @@ export function TopUpButton({ user, cents: suggested, done, onDone, avgDailyCent
   const [line, setLine] = useState<{ text: string; error: boolean } | null>(null)
   // Task 17b (ruling 26): the setup count is read only once the amounts are open (Link a wallet's read shares this key), never by Home's
   // regular read. A top-up carries at most 3; the number shown is the bound the build and the sign check get.
-  const { data: setupRead } = useQuery({ queryKey: ['me-usdc', user, 'setup'], queryFn: () => api<MeUsdcResponse>(ME_USDC_SETUP), enabled: open, retry: false, staleTime: 30_000 })
+  const { data: setupRead } = useQuery({ queryKey: meUsdcSetupKey(user), queryFn: () => api<MeUsdcResponse>(ME_USDC_SETUP), enabled: open, retry: false, staleTime: 30_000 })
   const setupCount = setupAccountsOf(setupRead?.setupAccounts, TOPUP_SETUP_MAX)
   const solUsd = useSolUsd(open && setupCount > 0)
   const setupNote = setupLine(setupCount, solUsd)
@@ -74,6 +74,7 @@ export function TopUpButton({ user, cents: suggested, done, onDone, avgDailyCent
       // Whatever happened, read the wallet again: a top-up that landed lifts the note and (at the next run) the pause.
       void qc.invalidateQueries({ queryKey: ['me'] })
       void qc.invalidateQueries({ queryKey: ['me-usdc'] })
+      void qc.invalidateQueries({ queryKey: ['me-usdc-setup'] })
       void qc.invalidateQueries({ queryKey: ['activity'] })
     }
   }

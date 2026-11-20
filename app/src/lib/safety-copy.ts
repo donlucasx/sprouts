@@ -56,7 +56,8 @@ export function phoneSolNote(solLamports: string | null | undefined): string | n
  * from /api/me/usdc?setup=1 (`setupAccounts`); the lamports and dollars are the phone's own (this constant, the phone's SOL price), never
  * the API's. The count shown IS the bound: it goes to the build request and to the sign check (sign.ts takeSetup), so the wallet never
  * signs more creates than the line said. The API adds a setup only when the wallet holds n x rent + 0.02 SOL (api lib/user-setup.ts
- * SETUP_SOL_MARGIN), and drops it otherwise, so the line can only overstate (the user pays less, never more; founder D4).
+ * SETUP_SOL_MARGIN), and may drop it (SOL, size or a failed simulation) after the line showed: the user then pays less than the line
+ * said, never more (founder D4). The line itself rounds UP (cents, or 0.0001 SOL), so it never states less than the rent.
  */
 /** Rent for one 165-byte token account (api lib/user-setup.ts ATA_RENT_LAMPORTS), copied. */
 export const SETUP_RENT_LAMPORTS = 2_039_280n
@@ -73,16 +74,25 @@ export const linkApprovalPath = (code: string, wallet: string, setup: number): s
 
 /**
  * The founder's line (D4): "Includes $X one-time setup for N coin account(s), paid in SOL. It's yours: you get it back if you empty and
- * close them." $X = N x rent x the phone's SOL price, rounded to cents; no usable price shows the SOL. null = no line (no count).
+ * close them." $X = N x rent x the phone's SOL price, rounded UP to the cent in integers (the price taken up to the micro-dollar); no
+ * usable price shows the SOL, rounded UP to 0.0001. null = no line (no count).
  */
 export function setupLine(n: number, solUsd: number | null | undefined): string | null {
   if (!Number.isInteger(n) || n <= 0) return null
-  const sol = Number(BigInt(n) * SETUP_RENT_LAMPORTS) / 1e9
+  const lamports = BigInt(n) * SETUP_RENT_LAMPORTS
   const accounts = n === 1 ? '1 coin account' : `${n} coin accounts`
   const back = `It's yours: you get it back if you empty and close ${n === 1 ? 'it' : 'them'}.`
-  const cents = solUsd != null && Number.isFinite(solUsd) && solUsd > 0 ? Math.round(sol * solUsd * 100) : 0
-  if (cents >= 1) return `Includes $${(cents / 100).toFixed(2)} one-time setup for ${accounts}, paid in SOL. ${back}`
-  return `Includes about ${sol.toFixed(4)} SOL one-time setup for ${accounts}. ${back}`
+  const ceilDiv = (a: bigint, b: bigint) => (a + b - 1n) / b
+  if (solUsd != null && Number.isFinite(solUsd) && solUsd > 0) {
+    // micro-dollars per SOL, rounded up; cents = lamports x micro-dollars / (1e9 lamports x 1e4 micro-dollars per cent), rounded up
+    const microUsd = BigInt(Math.ceil(solUsd * 1e6))
+    const cents = ceilDiv(lamports * microUsd, 10_000_000_000_000n)
+    const dollars = `${cents / 100n}.${String(cents % 100n).padStart(2, '0')}`
+    return `Includes $${dollars} one-time setup for ${accounts}, paid in SOL. ${back}`
+  }
+  // 0.0001 SOL = 100,000 lamports, rounded up
+  const tenThousandths = ceilDiv(lamports, 100_000n)
+  return `Includes about ${tenThousandths / 10_000n}.${String(tenThousandths % 10_000n).padStart(4, '0')} SOL one-time setup for ${accounts}. ${back}`
 }
 
 export function phoneUsdcNote(usdcRaw: string | null | undefined, thresholdCents: number): string | null {

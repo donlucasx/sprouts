@@ -44,6 +44,11 @@ export const ME_USDC_WITH_SOURCES = '/api/me/usdc?sources=1'
  * the top-up opens or the re-link card shows. Never on Home's regular read above.
  */
 export const ME_USDC_SETUP = '/api/me/usdc?setup=1'
+/**
+ * Ruling 27: the setup read's own query key, OUTSIDE the 'me-usdc' prefix, so Home's focus and app-active invalidation of ['me-usdc']
+ * never re-reads it. Link a wallet, the top-up and the re-link card share it; a top-up invalidates it (its accounts now exist).
+ */
+export const meUsdcSetupKey = (user: string | undefined) => ['me-usdc-setup', user] as const
 /** The most setup creates a top-up carries (api lib/user-setup.ts TOPUP_SETUP_MAX: a fourth would not fit beside Jupiter's route). */
 export const TOPUP_SETUP_MAX = 3
 

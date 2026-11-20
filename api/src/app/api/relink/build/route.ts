@@ -3,7 +3,7 @@ import { randomBytes } from "node:crypto";
 import { address } from "@solana/kit";
 import { getRepo } from "@/db/repo";
 import { requireSession } from "@/lib/auth-guard";
-import { buildUserTransaction } from "@/lib/user-tx";
+import { userTransactionCompiler } from "@/lib/user-tx";
 import { delegationPda, readDelegation, readSubscriptionAuthority, readUsdcAtaExists } from "@/lib/subscriptions";
 import { leashPda } from "@/lib/leash";
 import { buildRelink } from "@/lib/venues/user-builders";
@@ -39,17 +39,19 @@ async function postHandler(request: Request) {
     ? await plannedSetup(me, async () => rulesRowToRules(await repo.getRules(user.seedVaultPubkey)), setupCount(typeof asked.setupMax === "number" ? asked.setupMax : 0),
       async (n) => linkSetupCovered(BigInt((await rpc().getBalance(me, { commitment: "confirmed" }).send()).value), n))
     : [];
+  // One blockhash for the whole build (the setup sizes tried and the plain fallback all compile locally).
+  const compile = await userTransactionCompiler(me);
   let transaction: string | null = null;
   let setupAccounts = 0;
   if (setup.length > 0) {
-    const fit = await fitSetup((c) => buildUserTransaction(me, [...c, ...ixs]), setup);
-    if (fit.used > 0) {
+    const fit = await fitSetup((c) => compile([...c, ...ixs]), setup);
+    if (fit.transaction !== null) {
       if (!(await simulate(fit.transaction)).value.err) [transaction, setupAccounts] = [fit.transaction, fit.used];
       else console.error(`relink: the re-link with ${fit.used} setup creates would fail for ${me}; built without them`);
     }
   }
   if (transaction === null) {
-    transaction = await buildUserTransaction(me, ixs);
+    transaction = compile(ixs);
     // Simulated before any wallet sees it (as link/[code]): a re-link that would fail asks nothing of the wallet.
     const sim = await simulate(transaction);
     if (sim.value.err) return NextResponse.json({ error: "This re-link would fail on chain, so nothing was asked of your wallet. Try again in a minute." }, { status: 400 });
