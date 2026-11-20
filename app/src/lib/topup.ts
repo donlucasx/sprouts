@@ -20,7 +20,7 @@ export const TOPUP = {
     `Swaps ${symbol} already in this wallet for $${Math.round(cents / 100)} of USDC${covers ? `, ${covers.charAt(0).toLowerCase()}${covers.slice(1)}` : ''}. No Sprouts fee.`,
   /** The line under the closed "Add USDC" button (owner's copy, 11-19), the picked coin's symbol in it. */
   swapsLine: (symbols: string[]) => {
-    const list = symbols.length < 2 ? symbols.join('') : `${symbols.slice(0, -1).join(', ')} or ${symbols[symbols.length - 1]}`
+    const list = symbols.length === 0 ? 'SOL' : symbols.length === 1 ? symbols[0] : `${symbols.slice(0, -1).join(', ')} or ${symbols[symbols.length - 1]}`
     return `Swaps a little of your ${list} into USDC. No Sprouts fee.`
   },
   sendHere: 'Send USDC to this address from any wallet or exchange. Plantings start again once it arrives.',
