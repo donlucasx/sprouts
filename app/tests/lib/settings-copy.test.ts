@@ -34,8 +34,9 @@ describe('Settings > About Sprouts (spec 6.2, 11; R452: six questions)', () => {
   it("/faqs says the app's How it works and cost words (Kimi copy item 4): no lending fee waiver, no linked-wallet line", () => {
     const faqs = readFileSync(new URL('../../../api/src/app/faqs/page.tsx', import.meta.url), 'utf8')
     expect(faqs).toContain(`["How does it work?", "${HOW_IT_WORKS.split(' It never moves')[0]}"]`)
-    expect(faqs).toContain(`["What does it cost?", "${COST_LINE}"]`)
-    expect(faqs).not.toMatch(/No fee on USDC or SOL lending|paid from the USDC in your linked wallet/)
+    // 11-20 (his ruling): the web cost answer says today's fees until the Terms switch (Task 16 puts COST_LINE back and this test with it)
+    expect(faqs).toContain('No fee on USDC or SOL lending, and nothing on interest, withdrawals or moves.')
+    expect(faqs).not.toMatch(/paid from the USDC in your linked wallet/)
   })
   it('lists the venues and the cap, the geo line, free lending, the admin key, the full-pool line', () => {
     const all = DISCLOSURES.map(([, p]) => p).join(' ')
