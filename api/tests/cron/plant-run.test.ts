@@ -1076,6 +1076,17 @@ describe("lending legs never fall back to SKR (spec 2, R266); USDC lending pays 
     await runPlanting({ repo: repo2, now: NOW, chain: fakeChain() });
     expect(repo2.legs[0]).toMatchObject({ asset: "hSOL", feeAmountRaw: 0n });
   });
+
+  it("Task 15b: a SOL lending build's real fee (feeRaw) is recorded as the leg's feeAmountRaw, with feeCents at 0.5% of the pull", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await seedVenues(repo);
+    await repo.saveRules("U", { allocation: { ...lendOnly, USDC_LEND: 0, SOL_LEND: 100 } });
+    const base = fakeChain();
+    await runPlanting({ repo, now: NOW, chain: { ...base, buildPlantingTx: async (a) => ({ ...(await base.buildPlantingTx(a)), feeRaw: 10_750n }) } });
+    const pullCents = [...repo.plantings.values()][0].usdcPulledCents;
+    expect(repo.legs[0]).toMatchObject({ asset: "SOL_LEND", feeAmountRaw: 10_750n, feeCents: Math.round((pullCents * 50) / 10_000) });
+    expect(repo.legs[0].feeCents).toBeGreaterThan(0);
+  });
 });
 
 describe("venues, the leash and the carry in the run (contracts 3.2-3.4)", () => {

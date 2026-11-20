@@ -25,6 +25,7 @@ describe("the fee rides only on coin legs", () => {
   it("Task 15: USDC lending now carries a 50 bps fee, yet its swap params stay empty (a lending leg never carries a Jupiter platform fee)", async () => {
     const { COINS } = await import("@/domain/coins");
     expect(COINS.USDC_LEND.feeBps).toBe(50);
+    expect(COINS.SOL_LEND.feeBps).toBe(50);   // Task 15b: SOL lending pays the same pinned USDC transfer, still no Jupiter platform fee
     expect(await swapFeeParams("USDC_LEND")).toEqual({});
     expect(await swapFeeParams("SOL_LEND")).toEqual({});
   });

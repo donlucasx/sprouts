@@ -23,13 +23,13 @@ describe("leg bytes (contracts 2.4)", () => {
     expect(() => leashLegOf("SOL_LEND", null)).toThrow(/venue/);
     expect(() => leashLegOf("hSOL", "kamino_klend")).toThrow(/venue/);
   });
-  it("tolerances 100/150/10 with fee + tol <= 150; fees on coin legs and USDC lending (Task 15), none on SOL lending; the pinned feed per leg", () => {
+  it("tolerances 100/10 with fee + tol <= 150; fees on every leg (Task 15 USDC lending, Task 15b SOL lending); the pinned feed per leg", () => {
     const legs = [0, 1, 2, 3, 4, 5, 6, 7] as LeashLegByte[];
-    expect(legs.map((l) => LEG_SPEC[l].tolBps)).toEqual([100, 100, 10, 10, 150, 150, 100, 100]);
-    expect(legs.map((l) => LEG_SPEC[l].feeBps)).toEqual([50, 50, 50, 50, 0, 0, 50, 50]);
-    // Task 15: USDC lending at 0.5% keeps tol 10 (floor 99.4%); SOL lending stays fee 0 (Task 15b).
+    expect(legs.map((l) => LEG_SPEC[l].tolBps)).toEqual([100, 100, 10, 10, 100, 100, 100, 100]);
+    expect(legs.map((l) => LEG_SPEC[l].feeBps)).toEqual([50, 50, 50, 50, 50, 50, 50, 50]);
+    // Task 15: USDC lending at 0.5% keeps tol 10 (floor 99.4%). Task 15b: SOL lending fee 50, tol 150 -> 100 (floor still 98.5%).
     expect(LEG_SPEC[2].feeBps === 50 && LEG_SPEC[3].feeBps === 50 && LEG_SPEC[2].tolBps === 10 && LEG_SPEC[3].tolBps === 10).toBe(true);
-    expect(LEG_SPEC[4].feeBps === 0 && LEG_SPEC[5].feeBps === 0).toBe(true);
+    expect(LEG_SPEC[4].feeBps === 50 && LEG_SPEC[5].feeBps === 50 && LEG_SPEC[4].tolBps === 100 && LEG_SPEC[5].tolBps === 100).toBe(true);
     expect(legs.every((l) => LEG_SPEC[l].feeBps + LEG_SPEC[l].tolBps <= 150)).toBe(true);
     expect(legs.map((l) => LEG_SPEC[l].feed)).toEqual(["SKR", "ORE", null, null, "SOL", "SOL", "SOL", "CBBTC"]);
     expect(legs.map((l) => LEG_SPEC[l].decimals)).toEqual([6, 11, 6, 6, 9, 9, 9, 8]);
@@ -240,8 +240,9 @@ describe("byte-for-byte against the leash program (feat/leash-program)", () => {
     puller: PULLER_MAINNET, pullerUsdc: PULLER_MAINNET_USDC, maxPullRaw: 5_000_000n,
     legs: ([0, 1, 2, 3, 4, 5, 6, 7] as LeashLegByte[]).map((l) => {
       const s = LEG_SPEC[l];
-      // Task 15: the golden is the pre-fee body (USDC lending legs 2 and 3 at fee 0); LEG_SPEC now holds 50 there.
-      return { enabled: DAY1[l], reader: s.reader, feeBps: l === 2 || l === 3 ? 0 : s.feeBps, tolBps: s.tolBps, confCapBps: 100, maxAgeS: s.maxAgeS,
+      // Task 15 / 15b: the golden is the pre-fee body (USDC lending legs 2 and 3 at fee 0, SOL lending legs 4 and 5 at fee 0 tol 150);
+      // LEG_SPEC now holds fee 50 on 2-5 and tol 100 on 4-5.
+      return { enabled: DAY1[l], reader: s.reader, feeBps: l >= 2 && l <= 5 ? 0 : s.feeBps, tolBps: l === 4 || l === 5 ? 150 : s.tolBps, confCapBps: 100, maxAgeS: s.maxAgeS,
         receiptMint: s.receiptMint, rateAccount: s.rateAccount, extra: s.extra, feedId: s.feed ? PYTH_FEED[s.feed] : null, feedAccount: null };
     }),
   });
@@ -249,13 +250,28 @@ describe("byte-for-byte against the leash program (feat/leash-program)", () => {
     expect(Buffer.from(encodeConfig(golden())).toString("hex")).toBe(GOLDEN_BODY_HEX);
     expect(decodeConfig(Buffer.from(GOLDEN_BODY_HEX, "hex"))).toEqual(golden());
   });
-  it("Task 15: LEG_SPEC's body differs from the golden only in the fee u16 of legs 2 and 3 (0 -> 50)", () => {
-    const now = { ...golden(), legs: golden().legs.map((l, i) => ({ ...l, feeBps: LEG_SPEC[i as LeashLegByte].feeBps })) };
+  it("Task 15 / 15b: LEG_SPEC's body differs from the golden only in the fee u16 of legs 2-5 (0 -> 50) and the tol u16 of legs 4-5 (150 -> 100)", () => {
+    const now = { ...golden(), legs: golden().legs.map((l, i) => ({ ...l, feeBps: LEG_SPEC[i as LeashLegByte].feeBps, tolBps: LEG_SPEC[i as LeashLegByte].tolBps })) };
     const a = Buffer.from(encodeConfig(now)), g = Buffer.from(GOLDEN_BODY_HEX, "hex");
     const diff = [...a.keys()].filter((i) => a[i] !== g[i]);
     const fee = (leg: number) => CONFIG_HEADER_LEN + 176 * leg + 4;
-    expect(diff).toEqual([fee(2), fee(3)]);
-    expect([a.readUInt16LE(fee(2)), a.readUInt16LE(fee(3)), g.readUInt16LE(fee(2)), g.readUInt16LE(fee(3))]).toEqual([50, 50, 0, 0]);
+    const tol = (leg: number) => CONFIG_HEADER_LEN + 176 * leg + 6;
+    expect(diff).toEqual([fee(2), fee(3), fee(4), tol(4), fee(5), tol(5)]);
+    expect([2, 3, 4, 5].map((l) => [a.readUInt16LE(fee(l)), g.readUInt16LE(fee(l))])).toEqual([[50, 0], [50, 0], [50, 0], [50, 0]]);
+    expect([4, 5].map((l) => [a.readUInt16LE(tol(l)), g.readUInt16LE(tol(l))])).toEqual([[100, 150], [100, 150]]);
+  });
+  it("Task 15b: the exact set_leg 4 and set_leg 5 bytes the owner signs (enabled, fee 50, tol 100, the pinned SOL feed account), pinned as literal hex", () => {
+    // The program's golden set_leg_4/5 payloads with enabled = 1, the fee u16 at leg byte 4 set to 50 (0x3200) and the tol u16 at
+    // leg byte 6 set to 100 (0x6400, was 150 = 0x9600); nothing else differs (reader, decimals, conf cap 100, max age 60, receipt
+    // mint, rate account, SOL feed id, pinned SOL feed account).
+    const on = { ...golden(), legs: golden().legs.map((l, i) => (i === 4 || i === 5 ? { ...l, enabled: true, feeBps: LEG_SPEC[i as LeashLegByte].feeBps, tolBps: LEG_SPEC[i as LeashLegByte].tolBps, feedAccount: LEG_SPEC[i as LeashLegByte].feedAccount } : l)) };
+    expect(Buffer.from(setLegData(4, on)).toString("hex")).toBe("0504010309003200640064003c00000000001606c07f20b1bac6c472864428aae09c920677dd01f0dc542bcdb0255f08d6b8093c7a30a890051b38e708f1fc74369caea19b8b5a0adf3bc79deb89cd0b2d910000000000000000000000000000000000000000000000000000000000000000ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d60314704340deddf371fd42472148f248e9d1a6d1a5eb2ac3acd8b7fd5d6b243");
+    expect(Buffer.from(setLegData(5, on)).toString("hex")).toBe("0505010409003200640064003c00000000001c48e3967bc6617d446cfaeb8fc72c465f736de08e9063b38406de6955fb2e439e1a7ba851d7b5e25ea43f0c14bb8d44e3ac00d4604c3a4f50954cf7a05ff5de0000000000000000000000000000000000000000000000000000000000000000ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d60314704340deddf371fd42472148f248e9d1a6d1a5eb2ac3acd8b7fd5d6b243");
+    // floor_raw is bit-identical before and after: keep = 10_000 - fee - tol = 9_850 both ways, so a rollback to the old server stays safe.
+    for (const [leg, rn, rd] of [[4, 12_038n, 10_000n], [5, 1_050_000_000_000n, 1_000_000_000_000n]] as const) {
+      const f = (feeBps: number, tolBps: number) => floorRaw({ leg, amountRaw: 2_000_000n, rn, rd, priceLow: 12_137_000_000n, exponent: -8, feeBps, tolBps, underlyingDecimals: 9 });
+      expect(f(50, 100)).toBe(f(0, 150));
+    }
   });
   it("Task 15 review: the exact set_leg 2 and set_leg 3 bytes the owner signs (enabled, fee 50, tol 10), pinned as literal hex", () => {
     // The program's golden set_leg_2/3 payloads with enabled = 1 and the fee u16 at leg byte 4 set to 50 (0x3200); nothing else differs.

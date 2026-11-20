@@ -45,13 +45,15 @@ let postedRead: typeof SKR_PRICE | null = SKR_PRICE;
 const sendLog: string[] = [];
 /** Task 15: accounts getAccountInfo finds (default: none, so the fee wallet's USDC account is created idempotently). */
 const presentAccounts = new Set<string>();
+/** Task 15b: a present account's token amount (default 0), e.g. foreign dust in the puller's jl account (a Burn before the mint). */
+const presentBalances = new Map<string, bigint>();
 
 vi.mock("@/lib/puller", () => ({ pullerSigner: vi.fn(async () => puller) }));
 vi.mock("@/lib/config", () => ({ config: () => ({ feeWallet: "8KiTtZXjcpxUGuH93G12iMVNcTYteTbRvaovdeQdfjc6", heliusRpcUrl: "https://x", pythApiKey: "k" }) }));
 vi.mock("@/lib/rpc", () => ({ rpc: () => ({
   getLatestBlockhash: () => ({ send: async () => ({ value: { blockhash: "4wiD3N7FrBNJSmZUQDkGHM4CsvDrvyvx7G1FApLGEbJ1", lastValidBlockHeight: 1n } }) }),
   // Task 15: an address in `presentAccounts` exists (the fee wallet's USDC account, when a test says so); everything else is absent.
-  getAccountInfo: (a: string) => ({ send: async () => ({ value: presentAccounts.has(a) ? { data: [tokenAcct(0n), "base64"], owner: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", lamports: 2_039_280n, executable: false } : null }) }),
+  getAccountInfo: (a: string) => ({ send: async () => ({ value: presentAccounts.has(a) ? { data: [tokenAcct(presentBalances.get(a) ?? 0n), "base64"], owner: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", lamports: 2_039_280n, executable: false } : null }) }),
   getMultipleAccounts: (addrs: string[], cfg?: { encoding?: string }) => ({ send: async () => ({ value: addrs.map((a) => (a === ALT_ADDR && cfg?.encoding === "jsonParsed"
     ? { data: { parsed: { info: { addresses: altContent, authority: null, deactivationSlot: "18446744073709551615", lastExtendedSlot: "0", lastExtendedSlotStartIndex: 0 }, type: "lookupTable" }, program: "address-lookup-table", space: 56n + 32n * BigInt(altContent.length) }, executable: false, lamports: 1n, owner: "AddressLookupTab1e1111111111111111111111111", space: 56n + 32n * BigInt(altContent.length) }
     : chainPre.has(a) ? { data: [tokenAcct(chainPre.get(a)!), "base64"] } : null)) }) }),
@@ -201,7 +203,7 @@ describe("buildPlantingTx: one v0 tx, one pull/settle pair (contracts 3.2)", () 
     expect(u.leashFloorRaw).toBeNull();
   });
 
-  it("ruling A: lending legs keep today's swap (one quote, 100 bps) even leashed", async () => {
+  it("Task 15b: an ample SOL lending route keeps the 100 bps quote (one quote, no slippageBps) even leashed", async () => {
     await buildPlantingTx({ ...base, asset: "SOL_LEND", venue: "jupiter_lend", leashed: true });
     expect(getQuote).toHaveBeenCalledTimes(1);
     expect(vi.mocked(getQuote).mock.calls[0][0]).not.toHaveProperty("slippageBps");
@@ -938,5 +940,205 @@ describe("Task 15: the 0.5% USDC lending fee", () => {
       const hsol = { ...a, asset: "hSOL" as const, venue: null, userMints: [], fee: null };
       expect(() => checkPlantingInstructions([create(feeAta, USDC_MINT), pull, swap, settle], hsol)).toThrow(/neither the puller nor this user/);
     });
+  });
+});
+
+import { solLendSwapFloor } from "@/lib/planting";
+import { klendRate } from "@/lib/venues/klend";
+import { legRate } from "@/lib/leash";
+
+/** Task 15b: SOL lending pays the same 0.5% as one pinned USDC transfer before the swap; the swap's slippage adapts to the leg floor. */
+describe("Task 15b: the 0.5% SOL lending fee and the adaptive swap", () => {
+  const FEE_WALLET = address("8KiTtZXjcpxUGuH93G12iMVNcTYteTbRvaovdeQdfjc6");
+  const TOKEN = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+  const TOKEN_2022 = address("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb");
+  const A_TOKEN = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL";
+  const KLEND_ID = "KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD";
+  const JUP = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4";
+  const WSOL_Q = "So11111111111111111111111111111111111111112";
+  const isLeashPull = (ix: Instruction) => ix.programAddress === LEASH_PROGRAM && ix.data?.[0] === 0;
+  const amountOf = (ix: Instruction) => Buffer.from(ix.data!).readBigUInt64LE(1);
+  const VENUES = ["kamino_klend", "jupiter_lend"] as const;
+  const RATE = { kamino_klend: { rn: 12_038n, rd: 10_000n }, jupiter_lend: { rn: 1_050_000_000_000n, rd: 1_000_000_000_000n } } as const;
+  const LEG = { kamino_klend: 4, jupiter_lend: 5 } as const;
+  const SOL_LOW = 12_147_000_000n - 10_000_000n;   // the sponsored SOL price less its conf
+  const floorFor = (venue: (typeof VENUES)[number], pull = 2_000_000n) =>
+    floorRaw({ leg: LEG[venue], amountRaw: pull, rn: RATE[venue].rn, rd: RATE[venue].rd, priceLow: SOL_LOW, exponent: -8, feeBps: 50, tolBps: 100, underlyingDecimals: 9 });
+  const quoteCall = (i = 0) => vi.mocked(getQuote).mock.calls[i][0] as Record<string, unknown>;
+  const setRoute = (out: string, min: string) => { QUOTES[WSOL_Q] = [out, min]; };
+  beforeEach(async () => {
+    puller = await generateKeyPairSigner(); checks.length = 0; sentPre.length = 0; signedIxs.length = 0; vi.mocked(getQuote).mockClear(); vi.mocked(getSwapInstructions).mockClear();
+    vi.mocked(klendRate).mockClear();
+    const { jlendRate } = await import("@/lib/venues/jlend");
+    vi.mocked(jlendRate).mockClear(); vi.mocked(legRate).mockClear();
+    altContent = await sproutsAltAddresses(puller.address);
+    process.env.SPROUTS_ALT = ALT_ADDR;
+    presentAccounts.clear(); presentBalances.clear();
+    setRoute("16500000", "16335000");
+  });
+
+  it("leashed, both venues, pull 2_000_000: feeRaw 10_000; one tag-3 transfer to the fee wallet's USDC after the pull and before the Jupiter swap; the quote asks for 1_990_000 with no fee params", async () => {
+    const feeAta = await ata(FEE_WALLET, USDC_MINT);
+    const pullerUsdc = await ata(puller.address, USDC_MINT);
+    for (const [i, venue] of VENUES.entries()) {
+      const b = await buildPlantingTx({ ...base, asset: "SOL_LEND", venue, leashed: true });
+      const ixs = signedIxs[i];
+      expect(b.leg).toBe(LEG[venue]);
+      expect(b.feeRaw).toBe(10_000n);
+      const fee = ixs.filter((ix) => ix.programAddress === TOKEN && ix.data![0] === 3 && ix.accounts![1].address === feeAta);
+      expect(fee.length, venue).toBe(1);
+      expect(amountOf(fee[0])).toBe(10_000n);
+      expect(fee[0].accounts!.map((x) => x.address)).toEqual([pullerUsdc, feeAta, puller.address]);
+      const at = ixs.indexOf(fee[0]);
+      expect(at).toBeGreaterThan(ixs.findIndex(isLeashPull));
+      expect(at).toBeLessThan(ixs.findIndex((ix) => ix.programAddress === JUP));
+      const q = quoteCall(vi.mocked(getQuote).mock.calls.length - 1);
+      expect(q.amountRaw).toBe(1_990_000n);
+      expect(q).not.toHaveProperty("platformFeeBps");
+      expect(vi.mocked(getSwapInstructions).mock.calls.at(-1)![0]).not.toHaveProperty("feeAccount");
+      expect(checks.at(-1)).not.toHaveProperty("feeAccount");
+      // the floor at fee 50 / tol 100 from the venue rate read once (13_483_435 kTokens; 15_458_437 shares)
+      expect(b.leashFloorRaw).toBe(floorFor(venue));
+      expect(b.leashFloorRaw).toBe(venue === "kamino_klend" ? 13_483_435n : 15_458_437n);
+      expect(b.leashMinOutRaw! >= b.leashFloorRaw!).toBe(true);
+      expect(b.sizeBytes).toBeLessThanOrEqual(1232);
+    }
+    // the venue rate is read once per build (before the swap, reused for the deposit); legRate is not asked for legs 4/5
+    expect(vi.mocked(klendRate)).toHaveBeenCalledTimes(1);
+    const { jlendRate } = await import("@/lib/venues/jlend");
+    expect(vi.mocked(jlendRate)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(legRate).mock.calls.map((c) => c[0])).not.toContain(4);
+    expect(vi.mocked(legRate).mock.calls.map((c) => c[0])).not.toContain(5);
+  });
+
+  it("floats: the USDC float change is 0 (+pull -fee -swap input); the WSOL float falls by at most the carry (deposit = swap minimum + WSOL carry)", async () => {
+    for (const [i, venue] of VENUES.entries()) {
+      const b = await buildPlantingTx({ ...base, asset: "SOL_LEND", venue, leashed: true, carryIn: { WSOL: 9n, USDC: 500n } });
+      expect((quoteCall(i).amountRaw as bigint) + b.feeRaw! - base.pullRaw).toBe(0n);
+      const ixs = signedIxs[i];
+      const deposit = venue === "kamino_klend"
+        ? ixs.filter((ix) => ix.programAddress === KLEND_ID).map((ix) => Buffer.from(ix.data!)).find((x) => x.length === 16)!.readBigUInt64LE(8)
+        : Buffer.from(ixs.find((ix) => ix.programAddress === JLEND_PROGRAM)!.data!).readBigUInt64LE(16);   // max_assets
+      expect(deposit).toBe(16_335_000n + 9n);   // the swap minimum plus this user's WSOL carry; the USDC carry is not touched
+    }
+  });
+
+  it("adaptive slippage: an ample route keeps 100; a route where 100 bps lands under the swap floor re-quotes at the computed bps (threshold >= swap floor); a route under the swap floor throws 'route under floor'", async () => {
+    for (const venue of VENUES) {
+      const swapFloor = solLendSwapFloor(venue, floorFor(venue), RATE[venue]);
+      expect(swapFloor).toBe(16_234_607n);
+      vi.mocked(getQuote).mockClear();
+      setRoute("16500000", "16335000");   // roomBps 160 -> capped at 100: one quote
+      const ample = await buildPlantingTx({ ...base, asset: "SOL_LEND", venue, leashed: true });
+      expect(getQuote).toHaveBeenCalledTimes(1);
+      expect(quoteCall(0)).not.toHaveProperty("slippageBps");
+      expect(ample.leashMinOutRaw! >= ample.leashFloorRaw!).toBe(true);
+      // 16_300_000 x 0.99 = 16_137_000 < 16_234_607: roomBps = (16_300_000 - 16_234_607 - 1) x 10_000 / 16_300_000 = 40
+      vi.mocked(getQuote).mockClear();
+      setRoute("16300000", "16137000");
+      const tight = await buildPlantingTx({ ...base, asset: "SOL_LEND", venue, leashed: true });
+      expect(getQuote).toHaveBeenCalledTimes(2);
+      expect(quoteCall(1)).toMatchObject({ slippageBps: 40, amountRaw: 1_990_000n });
+      expect(quoteCall(1)).not.toHaveProperty("platformFeeBps");
+      const threshold = (16_300_000n * 9_960n) / 10_000n;   // 16_234_800
+      expect(threshold >= swapFloor).toBe(true);
+      expect(tight.leashMinOutRaw! >= tight.leashFloorRaw!).toBe(true);
+      expect(tight.leashMinOutRaw).toBe(venue === "kamino_klend" ? klendMinOut(threshold, RATE.kamino_klend) : jlendMath.jlendShares(threshold, RATE.jupiter_lend.rn) - 1n);
+      // the route itself under the swap floor: skip, no second quote, nothing signed
+      vi.mocked(getQuote).mockClear();
+      setRoute("16200000", "16038000");
+      await expect(buildPlantingTx({ ...base, asset: "SOL_LEND", venue, leashed: true })).rejects.toThrow(/SOL_LEND: route under floor \(route 16200000 < floor 16234607\)/);
+      expect(getQuote).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it("unleashed (an old link) pays the same fee and swaps pull - fee at today's 100 bps; a pull of 199 pays 0: no transfer, no fee account create, the quote is the whole pull", async () => {
+    const feeAta = await ata(FEE_WALLET, USDC_MINT);
+    const b = await buildPlantingTx({ ...base, asset: "SOL_LEND", venue: "kamino_klend", leashed: false });
+    expect(b.feeRaw).toBe(10_000n);
+    expect(b.leashFloorRaw).toBeNull();
+    expect(getQuote).toHaveBeenCalledTimes(1);
+    expect(quoteCall(0)).toMatchObject({ amountRaw: 1_990_000n });
+    expect(quoteCall(0)).not.toHaveProperty("slippageBps");
+    signedIxs.length = 0;
+    const small = await buildPlantingTx({ ...base, pullRaw: 199n, asset: "SOL_LEND", venue: "kamino_klend", leashed: true });
+    expect(small.feeRaw).toBe(0n);
+    expect(quoteCall(1)).toMatchObject({ amountRaw: 199n });
+    const ixs = signedIxs[0];
+    expect(ixs.filter((ix) => ix.programAddress === TOKEN && ix.accounts![1]?.address === feeAta)).toEqual([]);
+    expect(ixs.filter((ix) => ix.programAddress === A_TOKEN && ix.accounts?.[2]?.address === FEE_WALLET)).toEqual([]);
+  });
+
+  it("refused at the build: a quote carrying a platform fee, a swap naming the fee wallet's USDC account, and a second fee transfer from the route", async () => {
+    const feeAta = await ata(FEE_WALLET, USDC_MINT);
+    const usdc = await ata(puller.address, USDC_MINT);
+    vi.mocked(getQuote).mockImplementationOnce(async (a) => ({ inputMint: USDC_MINT, outputMint: a.outputMint, inAmount: "1990000", outAmount: "16500000", otherAmountThreshold: "16335000", priceImpactPct: "0", routePlan: [], platformFee: { amount: "82500", feeBps: 50 } }) as never);
+    await expect(buildPlantingTx({ ...base, asset: "SOL_LEND", venue: "kamino_klend", leashed: true })).rejects.toThrow(/Planting refused: .*platform fee/);
+    const withAccounts = (accounts: string[], setup: Instruction[] = []) => vi.mocked(getSwapInstructions).mockResolvedValueOnce({ computeBudget: [], setup, swap: { programAddress: address(JUP), accounts: accounts.map((x) => ({ address: address(x), role: AccountRole.WRITABLE })), data: new Uint8Array([229]) }, cleanup: null, lookupTables: [] } as never);
+    withAccounts([feeAta]);
+    await expect(buildPlantingTx({ ...base, asset: "SOL_LEND", venue: "jupiter_lend", leashed: true })).rejects.toThrow(/Planting refused: .*fee wallet's USDC account/);
+    // the route's own setup paying the fee wallet is caught by the same rule (it names the fee account)
+    withAccounts([], [getTransferInstruction({ source: usdc, destination: feeAta, authority: puller, amount: 10_000n }) as Instruction]);
+    await expect(buildPlantingTx({ ...base, asset: "SOL_LEND", venue: "kamino_klend", leashed: true })).rejects.toThrow(/Planting refused: .*fee wallet's USDC account/);
+    // a second exact fee transfer anywhere else in the tx (here: added by the venue builder) is refused by the allowlist
+    const { buildKlendDepositIxs } = await import("@/lib/venues/klend");
+    const real = (await vi.importActual<typeof import("@/lib/venues/klend")>("@/lib/venues/klend")).buildKlendDepositIxs;
+    vi.mocked(buildKlendDepositIxs).mockImplementationOnce(async (x) => [...(await real(x)), getTransferInstruction({ source: usdc, destination: feeAta, authority: puller, amount: 10_000n }) as Instruction]);
+    await expect(buildPlantingTx({ ...base, asset: "SOL_LEND", venue: "kamino_klend", leashed: true })).rejects.toThrow(/Planting refused: a second fee transfer/);
+    // positive control: the same build without the injections signs
+    await expect(buildPlantingTx({ ...base, asset: "SOL_LEND", venue: "kamino_klend", leashed: true })).resolves.toMatchObject({ feeRaw: 10_000n });
+  });
+
+  describe("checkPlantingInstructions on SOL lending (unit): Task 15's fee rule", () => {
+    const pull: Instruction = { programAddress: LEASH_PROGRAM, accounts: [], data: new Uint8Array([0]) };
+    const settle: Instruction = { programAddress: LEASH_PROGRAM, accounts: [], data: new Uint8Array([1]) };
+    const swap: Instruction = { programAddress: address(JUP), accounts: [], data: new Uint8Array([229]) };
+    const k1: Instruction = { programAddress: address(KLEND_ID), accounts: [], data: new Uint8Array([9]) };
+    const k2: Instruction = { programAddress: address(KLEND_ID), accounts: [], data: new Uint8Array([10]) };
+    const setup = async () => {
+      const pullerUsdc = await ata(puller.address, USDC_MINT);
+      const feeAta = await ata(FEE_WALLET, USDC_MINT);
+      const fee = { source: pullerUsdc, destination: feeAta, owner: FEE_WALLET, amountRaw: 10_000n };
+      const a = { puller: puller.address, user: USER, asset: "SOL_LEND" as const, venue: "kamino_klend" as const, leashed: true, pullerWsol: await ata(puller.address, WSOL_MINT), pullerJl: null,
+        userMints: [KLEND.SOL_LEND.collateralMint], posted: false, fee };
+      const xfer = (o: { source?: string; destination?: string; amount?: bigint } = {}) => getTransferInstruction({ source: address(o.source ?? pullerUsdc), destination: address(o.destination ?? feeAta), authority: puller, amount: o.amount ?? 10_000n }) as Instruction;
+      const tx = (...mid: Instruction[]) => [pull, ...mid, swap, k1, k2, settle];
+      return { a, xfer, tx, fee };
+    };
+    it("the exact transfer passes; refused: amount fee + 1, another destination, another source, Token-2022, two transfers, none when a fee is due", async () => {
+      const { a, xfer, tx } = await setup();
+      expect(() => checkPlantingInstructions(tx(xfer()), a)).not.toThrow();
+      const userUsdc = await ata(USER, USDC_MINT), pullerWsol = await ata(puller.address, WSOL_MINT);
+      expect(() => checkPlantingInstructions(tx(xfer({ amount: 10_001n })), a)).toThrow(/Planting refused/);
+      expect(() => checkPlantingInstructions(tx(xfer({ destination: userUsdc })), a)).toThrow(/Planting refused/);
+      expect(() => checkPlantingInstructions(tx(xfer({ source: pullerWsol })), a)).toThrow(/Planting refused/);
+      expect(() => checkPlantingInstructions(tx({ ...xfer(), programAddress: TOKEN_2022 }), a)).toThrow(/Planting refused/);
+      expect(() => checkPlantingInstructions(tx(xfer(), xfer()), a)).toThrow(/a second fee transfer/);
+      expect(() => checkPlantingInstructions(tx(), a)).toThrow(/the fee transfer is missing/);
+    });
+    it("a fee transfer on hSOL (fee null) is refused", async () => {
+      const { a, xfer } = await setup();
+      const hsol = { ...a, asset: "hSOL" as const, venue: null, userMints: [address("he1iusmfkpAdwvxLNGV8Y1iSbj4rUy6yMhEA3fotn9A")], fee: null };
+      expect(() => checkPlantingInstructions([pull, swap, settle], hsol)).not.toThrow();
+      expect(() => checkPlantingInstructions([pull, xfer(), swap, settle], hsol)).toThrow(/Planting refused: Token instruction 3/);
+    });
+  });
+
+  it("size (Kimi gate 3): the worst SOL lending tx on both venues, with the fee transfer and the fee account create, stays within 1232 bytes", async () => {
+    const feeAta = await ata(FEE_WALLET, USDC_MINT);
+    const pullerJl = await ata(puller.address, JLEND.SOL_LEND.fTokenMint);
+    const sizes: string[] = [];
+    for (const venue of VENUES) for (const present of [false, true]) for (const leftover of venue === "jupiter_lend" ? [0n, 1n] as const : [undefined]) for (const dust of venue === "jupiter_lend" ? [false, true] : [false]) {
+      presentAccounts.clear(); presentBalances.clear();
+      if (present) presentAccounts.add(feeAta);
+      if (dust) { presentAccounts.add(pullerJl); presentBalances.set(pullerJl, 3n); }
+      signedIxs.length = 0;
+      const b = await buildPlantingTx({ ...base, asset: "SOL_LEND", venue, leashed: true, carryIn: { WSOL: 9n }, ...(leftover !== undefined ? { jlLeftover: leftover } : {}) });
+      const creates = signedIxs[0].filter((ix) => ix.programAddress === A_TOKEN && ix.accounts?.[2]?.address === FEE_WALLET);
+      expect(creates.length).toBe(present ? 0 : 1);
+      expect(b.sizeBytes, `${venue} create ${!present} leftover ${leftover} dust ${dust}`).toBeLessThanOrEqual(1232);
+      sizes.push(`${venue}${present ? " fee account present" : " with the fee account create"}${leftover !== undefined ? ` leftover ${leftover}` : ""}${dust ? " + dust burn" : ""}: ${b.sizeBytes} B`);
+    }
+    if (process.env.PRINT_PLANTING_SIZES) for (const l of sizes) console.log(`[Task 15b size] SOL_LEND ${l}`);
   });
 });

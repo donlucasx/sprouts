@@ -62,6 +62,12 @@ describe("PLANTING_CU_LIMIT", () => {
   it("covers the highest measured leashed planting plus the 75,000 margin", () => {
     expect(PLANTING_CU_LIMIT).toBeGreaterThanOrEqual(238_591 + 75_000);
   });
+  it("Task 15b (Kimi gate 3): covers the worst SOL lending planting with the fee transfer and the fee account create, plus 75,000", () => {
+    // Mainnet simulations 11-19 (read-only): the fee transfer 76 CU, the fee wallet's USDC account create when absent 15,018 CU; the
+    // worst SOL lending planting ever measured 238,591 (J-Lend, 10-06), so 238,591 + 15,018 + 76 + 75,000 = 328,685 -> 330,000.
+    expect(PLANTING_CU_LIMIT).toBeGreaterThanOrEqual(238_591 + 15_018 + 76 + 75_000);
+    expect(PLANTING_CU_LIMIT % 10_000).toBe(0);
+  });
   it("stays under Solana's 1.4M per-transaction ceiling", () => {
     expect(PLANTING_CU_LIMIT).toBeLessThanOrEqual(1_400_000);
   });

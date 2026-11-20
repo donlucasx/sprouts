@@ -27,7 +27,7 @@ export type Coin = {
   pool: Address | null;
   plant: string;
   name: string;
-  /** R266: 0.5% on the four coin legs (a Jupiter platform fee); Task 15: 0.5% on USDC lending too (one USDC transfer, lendFeeInstructions); SOL lending 0. */
+  /** R266: 0.5% on the four coin legs (a Jupiter platform fee); Task 15: 0.5% on USDC lending too (one USDC transfer, lendFeeInstructions); Task 15b: SOL lending the same (the transfer before its swap). */
   feeBps: 0 | 50;
   live: boolean;
 };
@@ -36,7 +36,7 @@ export const COINS: Record<Asset, Coin> = {
   SKR: { asset: "SKR", mint: SKR_MINT, decimals: 6, kind: "skr", held: "staked", pool: null, plant: "skr", name: "SKR", feeBps: 50, live: true },
   stORE: { asset: "stORE", mint: STORE_MINT, decimals: 11, kind: "store", held: "wallet", pool: null, plant: "ore", name: "stORE", feeBps: 50, live: true },
   USDC_LEND: { asset: "USDC_LEND", mint: USDC_MINT, decimals: 6, kind: "lend", held: "venue", pool: null, plant: "jitosol", name: "USDC lending", feeBps: 50, live: true },
-  SOL_LEND: { asset: "SOL_LEND", mint: WSOL_MINT, decimals: 9, kind: "lend", held: "venue", pool: null, plant: "jupsol", name: "SOL lending", feeBps: 0, live: true },
+  SOL_LEND: { asset: "SOL_LEND", mint: WSOL_MINT, decimals: 9, kind: "lend", held: "venue", pool: null, plant: "jupsol", name: "SOL lending", feeBps: 50, live: true },
   hSOL: { asset: "hSOL", mint: address("he1iusmfkpAdwvxLNGV8Y1iSbj4rUy6yMhEA3fotn9A"), decimals: 9, kind: "lst", held: "wallet", pool: address("3wK2g8ZdzAH8FJ7PKr2RcvGh7V9VYson5hrVsJM5Lmws"), plant: "hsol", name: "hSOL", feeBps: 50, live: true },
   cbBTC: { asset: "cbBTC", mint: address("cbbtcf3aa214zXHbiAZQwf4122FBYbraNdFqgw4iMij"), decimals: 8, kind: "btc", held: "wallet", pool: null, plant: "cbbtc", name: "cbBTC", feeBps: 50, live: true },
   JitoSOL: { asset: "JitoSOL", mint: address("J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn"), decimals: 9, kind: "lst", held: "wallet", pool: address("Jito4APyf642JPZPx3hGc6WWJ8zPKtRbRs4P815Awbb"), plant: "jitosol", name: "JitoSOL", feeBps: 50, live: false },

@@ -59,7 +59,7 @@ export function assertInitSafe(raw: Uint8Array | null, want: LeashConfig): void 
     throw new Error("the on-chain header (puller / puller_usdc / max_pull) differs from init's default: init would undo it. Use set --puller <pubkey> explicitly. Nothing was sent.");
 }
 
-/** Amended contracts 2.3 per-leg values: tol 100/150/10, fee 50/0, confidence cap 100 bps, max age per leg (60 s; cbBTC 600 s, R324), the leg's pinned feed, and the pinned price account (legs 1, 4-7; zero on 0, 2, 3; leash e823503). */
+/** Amended contracts 2.3 per-leg values (from LEG_SPEC): tol 100/10, fee 50 on every leg since Task 15b, confidence cap 100 bps, max age per leg (60 s; cbBTC 600 s, R324), the leg's pinned feed, and the pinned price account (legs 1, 4-7; zero on 0, 2, 3; leash e823503). */
 export function legConfigFor(leg: LeashLegByte, enabled: boolean): LeashConfig["legs"][number] {
   const s = LEG_SPEC[leg];
   return { enabled, reader: s.reader, feeBps: s.feeBps, tolBps: s.tolBps, confCapBps: 100, maxAgeS: s.maxAgeS, receiptMint: s.receiptMint, rateAccount: s.rateAccount, extra: s.extra, feedId: s.feed ? PYTH_FEED[s.feed] : null, feedAccount: s.feedAccount };

@@ -23,9 +23,10 @@ const ALL_LEGS = [0, 1, 2, 3, 4, 5, 6, 7] as const;
 const DAY1 = [2, 6, 7] as const;
 /**
  * Task 15: the leash track's golden files are the bodies installed before the USDC lending fee (legs 2 and 3 at fee 0). LEG_SPEC now
- * holds fee 50 there; the goldens are compared against the same Config with only those two fee fields put back to 0.
+ * holds fee 50 there; the goldens are compared against the same Config with only those two fee fields put back to 0. Task 15b: the
+ * same for SOL lending legs 4 and 5 (fee 50 -> 0, tol 100 -> 150).
  */
-const preFee = <C extends { legs: { feeBps: number }[] }>(c: C): C => ({ ...c, legs: c.legs.map((l, i) => (i === 2 || i === 3 ? { ...l, feeBps: 0 } : l)) });
+const preFee = <C extends { legs: { feeBps: number; tolBps: number }[] }>(c: C): C => ({ ...c, legs: c.legs.map((l, i) => (i === 2 || i === 3 ? { ...l, feeBps: 0 } : i === 4 || i === 5 ? { ...l, feeBps: 0, tolBps: 150 } : l)) });
 const throwawayKeyFile = () => {
   const file = path.join(mkdtempSync(path.join(tmpdir(), "leash-admin-")), "not-admin.json");
   writeFileSync(file, JSON.stringify(Array.from(Keypair.generate().secretKey)));
@@ -52,9 +53,9 @@ describe("leash-admin helpers", () => {
     expect(legConfigFor(2, true)).toMatchObject({ enabled: true, reader: 3, feeBps: 50, tolBps: 10, confCapBps: 100, maxAgeS: 60, feedId: null, feedAccount: null, receiptMint: "B8V6WVjPxW1UGwVDfxH2d2r8SyT4cqn7dQRK6XneVa7D", rateAccount: "D6q6wuQSrifJKZYpR1M8R4YawnLDtDsMmWM1NbBmgJ59" });
     expect(legConfigFor(7, false)).toMatchObject({ enabled: false, reader: 0, feeBps: 50, tolBps: 100, maxAgeS: 600, feedId: "2817d7bfe5c64b8ea956e9a26f573ef64e72e4d7891f2d6af9bcc93f7aff9a97", rateAccount: null });
     expect(legConfigFor(1, true)).toMatchObject({ reader: 5, tolBps: 100, maxAgeS: 60, feedId: "142b804c658e14ff60886783e46e5a51bdf398b4871d9d8f7c28aa1585cad504", extra: "storenSbvkfzircixnaosc5CbzNZVrHJ6S3EKrS1yqR" });
-    expect(legConfigFor(4, true)).toMatchObject({ tolBps: 150, feeBps: 0 });
+    expect(legConfigFor(4, true)).toMatchObject({ tolBps: 100, feeBps: 50 });   // Task 15b
     expect(legConfigFor(3, true)).toMatchObject({ tolBps: 10, feeBps: 50 });   // Task 15
-    expect(legConfigFor(5, true)).toMatchObject({ tolBps: 150, feeBps: 0 });
+    expect(legConfigFor(5, true)).toMatchObject({ tolBps: 100, feeBps: 50 });   // Task 15b
     expect(parseLegs("2,6,7")).toEqual([2, 6, 7]);
     expect(parseLegs(" 7, 2,2 ")).toEqual([2, 7]);
     expect(parseLegs("")).toEqual([]);
@@ -129,7 +130,8 @@ describe("leash-admin helpers", () => {
       expect(g0.length, `set_leg_${n}`).toBe(356);
       // Task 15 review: legs 2/3 compare against the REAL fee-50 payload the owner signs: the golden with its fee u16 (payload byte 6)
       // set to 50 (0x3200), nothing else changed. Every other leg is the golden as built.
-      const g = n === 2 || n === 3 ? `${g0.slice(0, 12)}3200${g0.slice(16)}` : g0;
+      // Task 15b: legs 4/5 likewise, fee u16 50 (0x3200) and tol u16 (payload byte 8) 100 (0x6400, was 150 = 0x9600).
+      const g = n === 2 || n === 3 ? `${g0.slice(0, 12)}3200${g0.slice(16)}` : n === 4 || n === 5 ? `${g0.slice(0, 12)}32006400${g0.slice(20)}` : g0;
       expect(Buffer.from(encodeLeg(n, real.legs[n])).toString("hex"), `encodeLeg(${n})`).toBe(g.slice(4));
       expect(Buffer.from(adminIxData({ kind: "leg", leg: n }, real)).toString("hex"), `set_leg ${n}`).toBe(g);
     }
@@ -201,6 +203,18 @@ describe("leash-admin helpers", () => {
     // review: leg 0 in the ON list -> one line saying set needs --env-file=.env.local; otherwise nothing
     expect(planNotes([0, 1, 2, 3, 4, 5, 6, 7])).toEqual(["note: leg 0 (SKR) is in the ON list, so set needs --env-file=.env.local (the SKR price proof); plan did not check it"]);
     expect(planNotes([...enabled])).toEqual([]);
+  });
+  it("Task 15b: the chain as it stands (USDC lending fee 0, SOL lending fee 0 tol 150, all eight ON) plans set_leg 2, 3, 4, 5 in one session", async () => {
+    const all = [0, 1, 2, 3, 4, 5, 6, 7] as const;
+    const want = await configFor({ puller: address(PULLER_MAINNET), enabled: [...all] });
+    const raw = account(encodeConfig(preFee(want)));
+    expect(planAdminSteps(raw, want).map(stepName)).toEqual(["set_leg 2", "set_leg 3", "set_leg 4", "set_leg 5"]);
+    expect(planLines(raw, want)).toEqual([
+      "set_leg 2  fee 0 -> 50, tol 10 -> 10", "set_leg 3  fee 0 -> 50, tol 10 -> 10",
+      "set_leg 4  fee 0 -> 50, tol 150 -> 100", "set_leg 5  fee 0 -> 50, tol 150 -> 100",
+    ]);
+    // after the session the chain matches LEG_SPEC: nothing left to do
+    expect(planLines(account(encodeConfig(want)), want)).toEqual([]);
   });
   it("builds the contracts 2.5 instructions: tags, lengths, accounts", async () => {
     const c = await configFor({ puller: address(PULLER_MAINNET), enabled: DAY1 });

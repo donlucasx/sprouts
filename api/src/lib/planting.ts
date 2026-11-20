@@ -10,7 +10,7 @@ import { getQuote, getSwapInstructions, checkSwapInstructions, checkQuoteMints, 
 import { buildTransferRecurringIx } from "./subscriptions";
 import { buildStakeIx, sharePrice, skrAta } from "./staking";
 import { klendRate, klendMinOut, buildKlendDepositIxs, checkKlendDepositInstructions } from "./venues/klend";
-import { jlendRate, buildJlendDepositIxs, checkJlendDepositInstructions, JL_EXPECTED_LEFTOVER } from "./venues/jlend";
+import { jlendRate, jlendShares, buildJlendDepositIxs, checkJlendDepositInstructions, JL_EXPECTED_LEFTOVER } from "./venues/jlend";
 import { KLEND, JLEND } from "./venues/addresses";
 import { leashLegOf, legAccounts, legRate, readReceipt, buildPullIx, buildSettleIx, checkLeashInstructions, floorRaw, LEG_SPEC, priceSourceFor, sponsoredPriceRefusal, postedPriceRefusal, type LeashLegByte } from "./leash";
 import { buildPriceUpdate, readPostedPrice, readSponsoredPrice, sendPriceTxs, CONF_CAP_BPS, type ParsedPrice } from "./pyth";
@@ -52,8 +52,8 @@ export async function swapFeeParams(asset: LiveAsset): Promise<{ platformFeeBps?
 /** Task 15: the lending fee, 0.5% of the pull in USDC raw, floored (a pull under 200 raw pays 0 and carries no transfer). */
 export const LEND_FEE_BPS = 50n;
 export const lendFeeRaw = (pullRaw: bigint): bigint => (pullRaw * LEND_FEE_BPS) / 10_000n;
-/** The lending assets whose pull pays lendFeeRaw. Task 15: USDC lending only (SOL lending joins in Task 15b, with its own slippage). */
-export const LEND_FEE_ASSETS: ReadonlySet<LiveAsset> = new Set<LiveAsset>(["USDC_LEND"]);
+/** The lending assets whose pull pays lendFeeRaw: USDC lending (Task 15) and SOL lending (Task 15b, before its swap, with adaptive slippage). */
+export const LEND_FEE_ASSETS: ReadonlySet<LiveAsset> = new Set<LiveAsset>(["USDC_LEND", "SOL_LEND"]);
 /** The one fee transfer checkPlantingInstructions accepts (Task 15): from `source` to `destination` (owned by `owner`), exactly `amountRaw`. */
 export type LendFeePin = { source: Address; destination: Address; owner: Address; amountRaw: bigint };
 
@@ -95,6 +95,34 @@ export function leashSwapSlippageBps(expectedRaw: bigint, floorRaw: bigint): num
   return Math.min(SWAP_SLIPPAGE_BPS, roomBps);
 }
 
+/**
+ * Task 15b: the least swap output S (lamports into the puller's WSOL) whose venue min_out reaches the leash floor F, carry not
+ * counted (as on SKR). Each venue's min_out is inverted in its own order of rounding:
+ * - Kamino, klendMinOut(S) = floor(floor(S x rd / rn) x 9_998 / 10_000): the shave is undone first, A = ceil(F x 10_000 / 9_998),
+ *   then the rate, S = ceil(A x rn / rd).
+ * - Jupiter Lend, shares(S) - 1 with shares = floor(floor(S x 9_998 / 10_000) x 1e12 / rn): the rate first with the user's one-share
+ *   shortfall, B = ceil((F + 1) x rn / 1e12), then the shave, S = ceil(B x 10_000 / 9_998).
+ * Each closed form is exact (min_out(S) >= F > min_out(S - 1), golden-tested); a step up of at most 3 guards the rounding, else it throws.
+ */
+export function solLendSwapFloor(venue: AutoVenue, floorRaw: bigint, rate: { rn: bigint; rd: bigint }): bigint {
+  if (rate.rn <= 0n || rate.rd <= 0n) throw new Error(`SOL_LEND swap floor: the ${venue} rate ${rate.rn}/${rate.rd} is not positive`);
+  if (floorRaw < 0n) throw new Error(`SOL_LEND swap floor: the floor ${floorRaw} is negative`);
+  const minOut = (x: bigint) => (venue === "kamino_klend" ? klendMinOut(x, rate) : jlendShares(x, rate.rn) - 1n);
+  let s: bigint;
+  if (venue === "kamino_klend") {
+    const a = (floorRaw * 10_000n + 9_997n) / 9_998n;   // ceil, inline (see swapFloor below: no ceilDiv helper in this file)
+    s = (a * rate.rn + rate.rd - 1n) / rate.rd;
+  } else {
+    const b = ((floorRaw + 1n) * rate.rn + JL_PRICE_SCALE - 1n) / JL_PRICE_SCALE;
+    s = (b * 10_000n + 9_997n) / 9_998n;
+  }
+  for (let i = 0; i < 3 && minOut(s) < floorRaw; i++) s += 1n;
+  if (minOut(s) < floorRaw) throw new Error(`SOL_LEND swap floor: no swap output near ${s} reaches the ${venue} floor ${floorRaw}`);
+  return s;
+}
+/** Jupiter Lend's exchange-price scale (jlendShares divides by it). */
+const JL_PRICE_SCALE = 1_000_000_000_000n;
+
 /** The placeholder lookup-table address `measureAlt` compresses against (not on chain; never sent). */
 export const MEASURE_ALT = address("SproutsA1tMeasure11111111111111111111111111");
 /**
@@ -102,8 +130,11 @@ export const MEASURE_ALT = address("SproutsA1tMeasure11111111111111111111111111"
  * + 75_000 for the leash (pull + settle; Task 6's 72.6k worst case at 3,000 users, ruling B), rounded up to the next 10,000.
  * 10-06 ~23:1x PDT, legs 4/5 (SOL lending) switched on and re-measured leashed (Saga 887d, limit raised locally to 400k): highest
  * 238,591 (SOL_LEND jupiter_lend); at 230,000 about half the SOL builds ran out of compute. Same rule: 238,591 + 75,000 -> 320,000.
+ * Task 15b (Kimi gate 3), 11-19 read-only mainnet simulations: the SOL lending fee transfer costs 76 CU, the fee wallet's USDC account
+ * create (only when absent) 15,018; the leashed SOL lending plantings with the fee measured 148,752..198,765 (gate, 7 rounds). Against
+ * the worst ever measured: 238,591 + 15,018 + 76 + 75,000 = 328,685 -> 330,000.
  */
-export const PLANTING_CU_LIMIT = 320_000;
+export const PLANTING_CU_LIMIT = 330_000;
 
 export type BuiltPlanting = {
   tx: Awaited<ReturnType<typeof signTransactionMessageWithSigners>>;
@@ -125,7 +156,7 @@ export type BuiltPlanting = {
   pullerJl: Address | null; jlLeftover: 0n | 1n | null; cleanup: Instruction[]; carryIn: Partial<Record<CarryKind, bigint>>; sizeBytes: number;
   /** A posted price's pre-tx sizes (the go-live gate prints them); empty when nothing was posted. */
   priceTxBytes: number[];
-  /** Task 15: the lending fee this planting sends to the fee wallet, USDC raw (USDC lending: lendFeeRaw(pull), maybe 0); absent on every other leg. */
+  /** Task 15 / 15b: the lending fee this planting sends to the fee wallet, USDC raw (USDC and SOL lending: lendFeeRaw(pull), maybe 0); absent on every coin leg. */
   feeRaw?: bigint;
   /** The posted account as re-read after the pre-txs landed (the run re-checks its age right before the send); null when nothing landed. */
   postedPrice: ParsedPrice | null;
@@ -168,8 +199,10 @@ async function composePlanting(a: PlantingInput, posted: { reclaim: Instruction[
   const pullerUsdc = await ataOf(puller.address, USDC_MINT);
   const pullerWsol = await ataOf(puller.address, WSOL_MINT);
   const leg = a.leashed ? leashLegOf(a.asset, a.venue) : null;
-  // Task 15: the lending fee (USDC lending), taken from the pull before the deposit.
+  // Task 15 / 15b: the lending fee (USDC and SOL lending), taken from the pull right after it (before the swap or the deposit).
   const feeRaw = LEND_FEE_ASSETS.has(a.asset) ? lendFeeRaw(a.pullRaw) : null;
+  // Task 15b: a lending leg reads its venue rate ONCE, here: the floor, SOL lending's swap floor and the deposit all use this read.
+  const venueRate: { rn: bigint; rd: bigint } | null = a.venue === "kamino_klend" ? await klendRate(a.asset as LendAsset) : a.venue === "jupiter_lend" ? await jlendRate(a.asset as LendAsset) : null;
 
   // 2b. The price the leash reads (leashed priced legs only): the leg's sponsored account while fresh, else (SKR, the only "post"
   // answer since 10-05, contracts 10 item 15) a fresh post.
@@ -223,13 +256,17 @@ async function composePlanting(a: PlantingInput, posted: { reclaim: Instruction[
   let skrSharePrice: bigint | null = null;
   if (leg !== null) {
     const spec = LEG_SPEC[leg];
-    const { rn, rd } = await legRate(leg);
+    const { rn, rd } = venueRate ?? (await legRate(leg));
     if (leg === 0) skrSharePrice = rn;   // legRate(0) = { rn: sharePrice(), rd: 1e9 }: one read for the floor and the shares
     floor = floorRaw({ leg, amountRaw: a.pullRaw, rn, rd, priceLow: price ? price.price - price.conf : null, exponent: price ? price.exponent : null, feeBps: spec.feeBps, tolBps: spec.tolBps, underlyingDecimals: spec.decimals });
   }
-  // The floor in the swap's own output units (leashed coin legs only; lending legs keep the 100 bps swap, their floor is on the deposit).
+  // The floor in the swap's own output units (leashed swap legs; USDC lending has no swap, its floor is on the deposit).
   // Wallet coins: the receipt IS the swap output. SKR: leash min_out = out x 1e9 / sharePrice - 1 >= floor  <=>  out >= ceil((floor + 1) x sharePrice / 1e9).
-  const swapFloor: bigint | null = floor === null || isLendAsset(a.asset) ? null
+  // SOL lending (Task 15b): the least swap output whose venue min_out reaches the floor (solLendSwapFloor; carry not counted, as on SKR).
+  // With the fee out first the swap gets 99.5% of the pull and must still land 98.5% of it, so a fixed 100 bps swap would sit under the
+  // floor (0.995 x 0.99 x 0.9998 < 0.985, Kimi HIGH-1): the coin legs' adaptive slippage below tightens it to fit.
+  const swapFloor: bigint | null = floor === null || a.asset === "USDC_LEND" ? null
+    : a.asset === "SOL_LEND" ? solLendSwapFloor(a.venue as AutoVenue, floor, venueRate as { rn: bigint; rd: bigint })
     : a.asset === "SKR" ? ((floor + 1n) * (skrSharePrice as bigint) + 999_999_999n) / 1_000_000_000n : floor;   // ceil, written inline: a ceilDiv helper here broke next build's page-data step (minifier), 10-04
 
   const atas: Instruction[] = [...(await coinAccountInstructions({ asset: a.asset, payer: puller, user: a.user }))];
@@ -249,14 +286,15 @@ async function composePlanting(a: PlantingInput, posted: { reclaim: Instruction[
   let expectedOutRaw = 0n;
   let swapMin = 0n;
 
-  // 4. The swap: every leg but USDC lending. A lending leg's swap carries no fee (R266, swapFeeParams).
+  // 4. The swap: every leg but USDC lending. A lending leg's swap carries no fee (R266, swapFeeParams); SOL lending swaps the pull
+  // less its fee (Task 15b), so the USDC float moves by +pull -fee -(pull - fee) = 0.
   if (a.asset !== "USDC_LEND") {
     const fee = await swapFeeParams(a.asset);
     // Step 0 (T9) kept in the composition: every swap has a pinned destination chosen by what the leg holds, never by fallthrough.
     // A venue-held leg swaps only as SOL_LEND (into the puller's WSOL, then the venue deposit); any other venue-held leg is refused.
     const destination = coin.held === "wallet" ? await ataOf(a.user, coin.mint) : coin.held === "staked" ? await skrAta(puller.address)
       : a.asset === "SOL_LEND" ? pullerWsol : (() => { throw new Error(`${a.asset}: a venue-held leg other than SOL lending never swaps`); })();
-    const quoteArgs = { inputMint: USDC_MINT, outputMint: coin.mint, amountRaw: a.pullRaw, maxAccounts: SWAP_MAX_ACCOUNTS[a.asset], onlyDirectRoutes: a.asset === "SKR", ...(fee.platformFeeBps ? { platformFeeBps: fee.platformFeeBps } : {}) };
+    const quoteArgs = { inputMint: USDC_MINT, outputMint: coin.mint, amountRaw: a.pullRaw - (feeRaw ?? 0n), maxAccounts: SWAP_MAX_ACCOUNTS[a.asset], onlyDirectRoutes: a.asset === "SKR", ...(fee.platformFeeBps ? { platformFeeBps: fee.platformFeeBps } : {}) };
     let quote = await getQuote(quoteArgs);
     checkQuoteMints(quote, { inputMint: USDC_MINT, outputMint: coin.mint });
     // Ruling A as corrected (Task 12): on a LEASHED coin leg the swap's minimum is max(route less 100 bps, floor + 1). The route under
@@ -271,7 +309,15 @@ async function composePlanting(a: PlantingInput, posted: { reclaim: Instruction[
       }
       if (BigInt(quote.otherAmountThreshold) < swapFloor) throw new Error(`${a.asset}: route under floor (minimum ${quote.otherAmountThreshold} < floor ${swapFloor} after re-quote at ${bps} bps); the leg skips today`);
     }
+    // Task 15b: the fee wallet is paid on a lending leg ONLY by the pinned transfer: a quote carrying a platform fee, or a route naming
+    // the fee wallet's USDC account, is refused (we never ask for either; this catches an answer that adds one).
+    if (lendFee) {
+      const pf = (quote as { platformFee?: { amount?: string; feeBps?: number } | null }).platformFee;
+      if (pf && (Number(pf.feeBps ?? 0) !== 0 || BigInt(pf.amount ?? "0") !== 0n)) throw new Error(`Planting refused: the ${a.asset} quote carries a platform fee (${pf.feeBps ?? "?"} bps); a lending swap never pays one`);
+    }
     const swap = await getSwapInstructions({ quote, userPublicKey: puller.address, ...(fee.feeAccount ? { feeAccount: fee.feeAccount } : {}), ...(a.asset === "SKR" ? {} : { destinationTokenAccount: destination }) });
+    if (lendFee && [...swap.setup, swap.swap, ...(swap.cleanup ? [swap.cleanup] : [])].some((ix) => (ix.accounts ?? []).some((x) => x.address === lendFee.pin.destination)))
+      throw new Error(`Planting refused: the ${a.asset} swap names the fee wallet's USDC account ${lendFee.pin.destination}; a lending leg pays its fee only by the pinned transfer`);
     checkSwapInstructions(swap, { puller: puller.address, ...(fee.feeAccount ? { feeAccount: fee.feeAccount } : {}), wsolAccount: pullerWsol, destination, source: pullerUsdc, ...(coin.held === "wallet" ? { destinationOwner: a.user } : {}) });
     body.push(...swap.setup, swap.swap, ...(swap.cleanup ? [swap.cleanup] : []));
     lookupTables = swap.lookupTables;
@@ -290,7 +336,7 @@ async function composePlanting(a: PlantingInput, posted: { reclaim: Instruction[
   const depositRaw = a.asset === "USDC_LEND" ? a.pullRaw - (feeRaw ?? 0n) + carry("USDC") : a.asset === "SOL_LEND" ? swapMin + carry("WSOL") : 0n;
   if (a.venue === "kamino_klend") {
     const asset = a.asset as LendAsset;
-    const r = await klendRate(asset);
+    const r = venueRate as { rn: bigint; rd: bigint };
     minOutRaw = klendMinOut(depositRaw, r);
     expectedOutRaw = (depositRaw * r.rd) / r.rn;
     venueIxs(await buildKlendDepositIxs({ puller, user: a.user, asset, amountRaw: depositRaw }));
@@ -298,7 +344,7 @@ async function composePlanting(a: PlantingInput, posted: { reclaim: Instruction[
     leashMinOutRaw = leg === null ? null : minOutRaw;
   } else if (a.venue === "jupiter_lend") {
     const asset = a.asset as LendAsset;
-    const r = await jlendRate(asset);
+    const r = venueRate as { rn: bigint; rd: bigint };
     jlRn = r.rn;
     pullerJl = await ataOf(puller.address, JLEND[asset].fTokenMint);
     jlLeftover = a.jlLeftover ?? JL_EXPECTED_LEFTOVER;
