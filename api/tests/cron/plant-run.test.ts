@@ -969,7 +969,7 @@ describe("the delivery check on the simulation (R207 review)", () => {
   });
 });
 
-describe("lending legs pay nothing and never fall back to SKR (spec 2, R266)", () => {
+describe("lending legs never fall back to SKR (spec 2, R266); USDC lending pays 0.5% (Task 15)", () => {
   const lendOnly = { SKR: 0, stORE: 0, USDC_LEND: 100, SOL_LEND: 0, hSOL: 0, cbBTC: 0 };
 
   it("a lending leg that fails to build waits for the next run: no SKR planting, no pull, leg_skipped recorded", async () => {
@@ -1049,17 +1049,32 @@ describe("lending legs pay nothing and never fall back to SKR (spec 2, R266)", (
     expect(r.skipped[0].reason).toBe("leg failed");
   });
 
-  it("the leg's fee in cents follows the leg: 0 for lending, 0.5% of the pull for a coin", async () => {
+  it("the leg's fee in cents follows the leg: 0.5% of the pull for USDC lending (Task 15) and for a coin", async () => {
     const repo = await seeded([83, 62, 70]);
     await seedVenues(repo);
     await repo.saveRules("U", { allocation: lendOnly });
     await runPlanting({ repo, now: NOW, chain: fakeChain() });
-    expect(repo.legs[0]).toMatchObject({ asset: "USDC_LEND", feeCents: 0 });
+    expect(repo.legs[0]).toMatchObject({ asset: "USDC_LEND", feeCents: 1 });   // 218 cents x 50 / 10_000 = 1.09
     const repo2 = await seeded([83, 62, 70]);
     await seedVenues(repo2);
     await repo2.saveRules("U", { allocation: { SKR: 0, stORE: 0, USDC_LEND: 0, SOL_LEND: 0, hSOL: 100, cbBTC: 0 } });
     await runPlanting({ repo: repo2, now: NOW, chain: fakeChain() });
     expect(repo2.legs[0]).toMatchObject({ asset: "hSOL", feeCents: 1 });   // 218 cents x 50 / 10_000 = 1.09
+  });
+
+  it("Task 15: a USDC lending build's real fee (feeRaw) is recorded as the leg's feeAmountRaw; a coin leg (no feeRaw) records 0n as today", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await seedVenues(repo);
+    await repo.saveRules("U", { allocation: lendOnly });
+    const base = fakeChain();
+    await runPlanting({ repo, now: NOW, chain: { ...base, buildPlantingTx: async (a) => ({ ...(await base.buildPlantingTx(a)), feeRaw: 10_000n }) } });
+    const pullCents = [...repo.plantings.values()][0].usdcPulledCents;
+    expect(repo.legs[0]).toMatchObject({ asset: "USDC_LEND", feeAmountRaw: 10_000n, feeCents: Math.round((pullCents * 50) / 10_000) });
+    const repo2 = await seeded([83, 62, 70]);
+    await seedVenues(repo2);
+    await repo2.saveRules("U", { allocation: { SKR: 0, stORE: 0, USDC_LEND: 0, SOL_LEND: 0, hSOL: 100, cbBTC: 0 } });
+    await runPlanting({ repo: repo2, now: NOW, chain: fakeChain() });
+    expect(repo2.legs[0]).toMatchObject({ asset: "hSOL", feeAmountRaw: 0n });
   });
 });
 
@@ -1068,14 +1083,14 @@ describe("venues, the leash and the carry in the run (contracts 3.2-3.4)", () =>
   const lendOnly = { SKR: 0, stORE: 0, USDC_LEND: 100, SOL_LEND: 0, hSOL: 0, cbBTC: 0 };
   const recording = (builds: BuildArgs[], over: Partial<Chain> = {}) => { const base = fakeChain(over); return { ...base, buildPlantingTx: async (a: BuildArgs) => { builds.push(a); return base.buildPlantingTx(a); } } as Chain; };
 
-  it("USDC goes to the best eligible venue; the leg records the venue and its exchange rate, no fee", async () => {
+  it("USDC goes to the best eligible venue; the leg records the venue and its exchange rate and the 0.5% fee (Task 15)", async () => {
     const repo = await seeded([83, 62, 70]);
     await seedVenues(repo);
     await repo.saveRules("U", { allocation: lendOnly });
     const builds: BuildArgs[] = [];
     await runPlanting({ repo, now: NOW, chain: recording(builds) });
     expect(builds[0]).toMatchObject({ asset: "USDC_LEND", venue: "kamino_klend", leashed: false });
-    expect(repo.legs[0]).toMatchObject({ asset: "USDC_LEND", venue: "kamino_klend", rateAtPlanting: 1.2038, feeCents: 0 });
+    expect(repo.legs[0]).toMatchObject({ asset: "USDC_LEND", venue: "kamino_klend", rateAtPlanting: 1.2038, feeCents: 1 });
   });
 
   it("no eligible venue: the lending share goes to the next leg by the split (spec 3)", async () => {

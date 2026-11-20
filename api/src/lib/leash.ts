@@ -40,12 +40,16 @@ export type LegSpec = { asset: LiveAsset; venue: AutoVenue | null; reader: numbe
   feed: keyof typeof PYTH_FEED | null; decimals: number; feeBps: number; tolBps: number; maxAgeS: number; readers: Address[];
   /** Leash final review (e823503): the Config PINS the price account on legs 1, 4-7 (price.rs GUARD:P_FEED_ACCOUNT, else 6017); 0, 2, 3 stay zero. */
   feedAccount: Address | null };   // maxAgeS: AMEND 10-04 s20 (R324), mirrors the program's MAX_AGE_S_OF_LEG (60; cbBTC 600)
-/** Contracts 2.3, 2.4, 2.7 (tolerances as amended): the per-leg constants the config, the builders and the floor share, mirrored by the program. */
+/**
+ * Contracts 2.3, 2.4, 2.7 (tolerances as amended): the per-leg constants the config, the builders and the floor share, mirrored by the
+ * program. Task 15: USDC lending (legs 2, 3) at fee 50, tol 10 (floor 99.4%): the server's floor reads THIS table, so a fee-50 server
+ * against a fee-0 chain fails every USDC lending planting (6008); the owner's set_leg 2 and 3 land first (leash-admin plan).
+ */
 export const LEG_SPEC: Record<LeashLegByte, LegSpec> = {
   0: { asset: "SKR", venue: null, reader: READER.SKR_STAKE, receiptMint: null, rateAccount: STAKE_CONFIG, extra: GUARDIAN_POOL, feed: "SKR", decimals: 6, feeBps: 50, tolBps: 100, maxAgeS: 60, readers: [STAKE_CONFIG], feedAccount: null },
   1: { asset: "stORE", venue: null, reader: READER.STORE, receiptMint: STORE_MINT, rateAccount: ORE_STAKE_ACCOUNT, extra: STORE_MINT, feed: "ORE", decimals: 11, feeBps: 50, tolBps: 100, maxAgeS: 60, readers: [ORE_STAKE_ACCOUNT, STORE_MINT], feedAccount: PYTH_ACCOUNT.ORE },
-  2: { asset: "USDC_LEND", venue: "kamino_klend", reader: READER.KLEND, receiptMint: KLEND.USDC_LEND.collateralMint, rateAccount: KLEND.USDC_LEND.reserve, extra: null, feed: null, decimals: 6, feeBps: 0, tolBps: 10, maxAgeS: 60, readers: [KLEND.USDC_LEND.reserve], feedAccount: null },
-  3: { asset: "USDC_LEND", venue: "jupiter_lend", reader: READER.JLEND, receiptMint: JLEND.USDC_LEND.fTokenMint, rateAccount: JLEND.USDC_LEND.lending, extra: null, feed: null, decimals: 6, feeBps: 0, tolBps: 10, maxAgeS: 60, readers: [JLEND.USDC_LEND.lending], feedAccount: null },
+  2: { asset: "USDC_LEND", venue: "kamino_klend", reader: READER.KLEND, receiptMint: KLEND.USDC_LEND.collateralMint, rateAccount: KLEND.USDC_LEND.reserve, extra: null, feed: null, decimals: 6, feeBps: 50, tolBps: 10, maxAgeS: 60, readers: [KLEND.USDC_LEND.reserve], feedAccount: null },
+  3: { asset: "USDC_LEND", venue: "jupiter_lend", reader: READER.JLEND, receiptMint: JLEND.USDC_LEND.fTokenMint, rateAccount: JLEND.USDC_LEND.lending, extra: null, feed: null, decimals: 6, feeBps: 50, tolBps: 10, maxAgeS: 60, readers: [JLEND.USDC_LEND.lending], feedAccount: null },
   4: { asset: "SOL_LEND", venue: "kamino_klend", reader: READER.KLEND, receiptMint: KLEND.SOL_LEND.collateralMint, rateAccount: KLEND.SOL_LEND.reserve, extra: null, feed: "SOL", decimals: 9, feeBps: 0, tolBps: 150, maxAgeS: 60, readers: [KLEND.SOL_LEND.reserve], feedAccount: PYTH_ACCOUNT.SOL },
   5: { asset: "SOL_LEND", venue: "jupiter_lend", reader: READER.JLEND, receiptMint: JLEND.SOL_LEND.fTokenMint, rateAccount: JLEND.SOL_LEND.lending, extra: null, feed: "SOL", decimals: 9, feeBps: 0, tolBps: 150, maxAgeS: 60, readers: [JLEND.SOL_LEND.lending], feedAccount: PYTH_ACCOUNT.SOL },
   6: { asset: "hSOL", venue: null, reader: READER.STAKE_POOL, receiptMint: COINS.hSOL.mint, rateAccount: COINS.hSOL.pool, extra: null, feed: "SOL", decimals: 9, feeBps: 50, tolBps: 100, maxAgeS: 60, readers: [COINS.hSOL.pool as Address], feedAccount: PYTH_ACCOUNT.SOL },

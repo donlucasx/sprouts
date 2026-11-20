@@ -2,6 +2,9 @@
 //   cd api && pnpm tsx scripts/leash-admin.ts show --admin ~/.config/solana/sprouts-admin.json
 //   cd api && pnpm tsx scripts/leash-admin.ts init --admin ~/.config/solana/sprouts-admin.json
 //   cd api && pnpm tsx scripts/leash-admin.ts set  --admin ~/.config/solana/sprouts-admin.json --enable 2,6,7 [--puller <pubkey>]
+//   cd api && pnpm tsx scripts/leash-admin.ts plan --enable 2,6,7 [--puller <pubkey>]
+// `plan` (Task 15) prints the steps `set` would send, one per line (a leg step with its fee and tol, chain -> target). It reads the
+// chain's Config only: no key, no Hermes, nothing signed or sent.
 // Optional on every command: --rpc <url> (else HELIUS_RPC_URL if exported, else https://api.mainnet-beta.solana.com).
 // The admin key must be GrHSwzYpgiFzuTpwR6539NpNXktXNEUfVU9UYvHdDKLY or nothing happens; the key file is read by path and never printed.
 // One admin instruction per tx (contracts 2.5, R325): each is size-checked (<= 1,232 B) and simulated before it is sent; a failure stops
@@ -10,7 +13,7 @@
 //   cd api && pnpm tsx --env-file=.env.local scripts/leash-admin.ts set --admin ~/.config/solana/sprouts-admin.json --enable 0,1,2,3,6,7
 // (the scary flag SKR_OVERRIDE_FLAG still overrides without a key).
 import { address, createSolanaRpc, createSolanaRpcSubscriptions, sendAndConfirmTransactionFactory, assertIsTransactionWithBlockhashLifetime } from "@solana/kit";
-import { loadAdmin, configFor, parseLegs, assertInstallable, assertInitSafe, configAccountBytes, runAdminSteps, skrPriceProof, PULLER_MAINNET, SKR_OVERRIDE_FLAG, type AdminChain } from "./leash-admin-lib";
+import { loadAdmin, configFor, parseLegs, assertInstallable, assertInitSafe, configAccountBytes, runAdminSteps, skrPriceProof, planLines, PULLER_MAINNET, SKR_OVERRIDE_FLAG, type AdminChain } from "./leash-admin-lib";
 import { decodeConfig, leashConfigPda, LEASH_IX, type LeashConfig } from "../src/lib/leash";
 
 const fail = (msg: string, code = 1): never => { console.error(msg); process.exit(code); };
@@ -18,7 +21,28 @@ const fail = (msg: string, code = 1): never => { console.error(msg); process.exi
 async function main(): Promise<number> {
   const [cmd, ...rest] = process.argv.slice(2);
   const opt = (n: string) => { const i = rest.indexOf(`--${n}`); return i >= 0 ? rest[i + 1] : undefined; };
-  if (cmd !== "show" && cmd !== "init" && cmd !== "set") fail("usage: leash-admin.ts show|init|set --admin <path> [--enable <legs>] [--puller <pubkey>] [--rpc <url>]");
+  if (cmd !== "show" && cmd !== "init" && cmd !== "set" && cmd !== "plan") fail("usage: leash-admin.ts show|init|set|plan --admin <path> [--enable <legs>] [--puller <pubkey>] [--rpc <url>] (plan takes no --admin)");
+  const rpcUrl = opt("rpc") || process.env.HELIUS_RPC_URL || "https://api.mainnet-beta.solana.com";   // || : an exported-but-empty var falls through
+  const rpc = createSolanaRpc(rpcUrl);
+  const configPda = await leashConfigPda();
+  const readRaw = async (): Promise<Uint8Array | null> => {
+    const info = await rpc.getAccountInfo(configPda, { encoding: "base64", commitment: "confirmed" }).send();   // confirmed: sends confirm at "confirmed", so the final read sees them
+    // pre-funded (System-owned, empty) = no Config yet; any other foreign owner throws
+    return configAccountBytes(info.value ? { owner: info.value.owner, data: new Uint8Array(Buffer.from(info.value.data[0], "base64")) } : null);
+  };
+
+  // Task 15: plan reads the chain and prints; it never reads a key, never asks Hermes, never signs or sends.
+  if (cmd === "plan") {
+    const en = opt("enable");
+    if (en === undefined) fail("plan needs --enable <comma-separated legs> (the full list that should be on, as for set). Nothing was read or sent.");
+    const legs = parseLegs(en as string);
+    const raw = await readRaw();
+    const want = await configFor({ puller: address(opt("puller") ?? (raw ? decodeConfig(raw).puller : PULLER_MAINNET)), enabled: legs });
+    const lines = planLines(raw, want);
+    console.log(`plan against Config ${configPda}${raw ? "" : " (none yet)"}: ${lines.length ? `${lines.length} step(s)` : "nothing to send"}`);
+    for (const l of lines) console.log(l);
+    return 0;
+  }
 
   // Everything that can be refused offline is refused before the key is read or any RPC is made.
   const enable = cmd === "set" ? opt("enable") : undefined;
@@ -32,14 +56,6 @@ async function main(): Promise<number> {
   if (enabledLegs.includes(0) && !allowSkr) assertInstallable(await configFor({ puller: address(PULLER_MAINNET), enabled: enabledLegs }), false);
 
   const admin = await loadAdmin(opt("admin") ?? "");   // throws before any network call for any other key
-  const rpcUrl = opt("rpc") || process.env.HELIUS_RPC_URL || "https://api.mainnet-beta.solana.com";   // || : an exported-but-empty var falls through
-  const rpc = createSolanaRpc(rpcUrl);
-  const configPda = await leashConfigPda();
-  const readRaw = async (): Promise<Uint8Array | null> => {
-    const info = await rpc.getAccountInfo(configPda, { encoding: "base64", commitment: "confirmed" }).send();   // confirmed: sends confirm at "confirmed", so the final read sees them
-    // pre-funded (System-owned, empty) = no Config yet; any other foreign owner throws
-    return configAccountBytes(info.value ? { owner: info.value.owner, data: new Uint8Array(Buffer.from(info.value.data[0], "base64")) } : null);
-  };
   /** A leg init_config left alone (all zero): unusable until its set_leg lands (contracts 2.3). */
   const unset = (raw: Uint8Array, leg: number) => raw.subarray(96 + 176 * leg, 96 + 176 * (leg + 1)).every((b) => b === 0);
 

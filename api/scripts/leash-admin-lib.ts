@@ -6,7 +6,7 @@ import { AccountRole, compileTransaction, createKeyPairSignerFromBytes, createNo
   type Address, type Blockhash, type Instruction, type KeyPairSigner, type TransactionSigner } from "@solana/kit";
 import { getSetComputeUnitLimitInstruction, getSetComputeUnitPriceInstruction } from "@solana-program/compute-budget";
 import { findAssociatedTokenPda, TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
-import { LEG_BYTES, LEG_SPEC, leashConfigPda, encodeConfig, encodeHeader, encodeLeg, initConfigData, setHeaderData, setLegData, skrPriceSource, type LeashConfig, type LeashLegByte } from "../src/lib/leash";
+import { LEG_BYTES, LEG_SPEC, leashConfigPda, decodeConfig, encodeConfig, encodeHeader, encodeLeg, initConfigData, setHeaderData, setLegData, skrPriceSource, type LeashConfig, type LeashLegByte } from "../src/lib/leash";
 import { fetchHermesUpdate } from "../src/lib/pyth";
 import { PYTH_FEED } from "../src/lib/venues/addresses";
 import { LEASH_ADMIN, LEASH_PROGRAM, SYSTEM_PROGRAM, USDC_MINT } from "../src/lib/constants";
@@ -125,6 +125,22 @@ export function planAdminSteps(raw: Uint8Array | null, want: LeashConfig): Admin
     if (!raw || !sameBytes(raw.subarray(at, at + 176), encodeLeg(leg, want.legs[leg]))) steps.push({ kind: "leg", leg });
   }
   return steps;
+}
+
+/**
+ * Task 15, `leash-admin.ts plan`: the steps `set` would send for `want`, one line each, read-only. A leg step also shows its fee and
+ * tolerance, chain -> target ("-" when the chain has no Config, or the leg was never set), and its on/off when that changes too.
+ */
+export function planLines(raw: Uint8Array | null, want: LeashConfig): string[] {
+  const chain = raw ? decodeConfig(raw) : null;
+  const unset = (leg: number) => !raw || raw.subarray(96 + 176 * leg, 96 + 176 * (leg + 1)).every((b) => b === 0);
+  return planAdminSteps(raw, want).map((step) => {
+    if (step.kind !== "leg") return stepName(step);
+    const was = unset(step.leg) || !chain ? null : chain.legs[step.leg];
+    const w = want.legs[step.leg];
+    const onOff = (on: boolean) => (on ? "on" : "off");
+    return `${stepName(step)}  fee ${was ? was.feeBps : "-"} -> ${w.feeBps}, tol ${was ? was.tolBps : "-"} -> ${w.tolBps}${was && was.enabled !== w.enabled ? `, ${onOff(was.enabled)} -> ${onOff(w.enabled)}` : ""}`;
+  });
 }
 
 /** Contracts 2.5 (amended): [2][header] 81 B, [4][header] 81 B, [5][leg][LegConfig] 178 B. */

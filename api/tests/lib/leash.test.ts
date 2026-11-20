@@ -23,10 +23,13 @@ describe("leg bytes (contracts 2.4)", () => {
     expect(() => leashLegOf("SOL_LEND", null)).toThrow(/venue/);
     expect(() => leashLegOf("hSOL", "kamino_klend")).toThrow(/venue/);
   });
-  it("tolerances 100/150/10 with fee + tol <= 150; fees only on coin legs; the pinned feed per leg", () => {
+  it("tolerances 100/150/10 with fee + tol <= 150; fees on coin legs and USDC lending (Task 15), none on SOL lending; the pinned feed per leg", () => {
     const legs = [0, 1, 2, 3, 4, 5, 6, 7] as LeashLegByte[];
     expect(legs.map((l) => LEG_SPEC[l].tolBps)).toEqual([100, 100, 10, 10, 150, 150, 100, 100]);
-    expect(legs.map((l) => LEG_SPEC[l].feeBps)).toEqual([50, 50, 0, 0, 0, 0, 50, 50]);
+    expect(legs.map((l) => LEG_SPEC[l].feeBps)).toEqual([50, 50, 50, 50, 0, 0, 50, 50]);
+    // Task 15: USDC lending at 0.5% keeps tol 10 (floor 99.4%); SOL lending stays fee 0 (Task 15b).
+    expect(LEG_SPEC[2].feeBps === 50 && LEG_SPEC[3].feeBps === 50 && LEG_SPEC[2].tolBps === 10 && LEG_SPEC[3].tolBps === 10).toBe(true);
+    expect(LEG_SPEC[4].feeBps === 0 && LEG_SPEC[5].feeBps === 0).toBe(true);
     expect(legs.every((l) => LEG_SPEC[l].feeBps + LEG_SPEC[l].tolBps <= 150)).toBe(true);
     expect(legs.map((l) => LEG_SPEC[l].feed)).toEqual(["SKR", "ORE", null, null, "SOL", "SOL", "SOL", "CBBTC"]);
     expect(legs.map((l) => LEG_SPEC[l].decimals)).toEqual([6, 11, 6, 6, 9, 9, 9, 8]);
@@ -237,13 +240,22 @@ describe("byte-for-byte against the leash program (feat/leash-program)", () => {
     puller: PULLER_MAINNET, pullerUsdc: PULLER_MAINNET_USDC, maxPullRaw: 5_000_000n,
     legs: ([0, 1, 2, 3, 4, 5, 6, 7] as LeashLegByte[]).map((l) => {
       const s = LEG_SPEC[l];
-      return { enabled: DAY1[l], reader: s.reader, feeBps: s.feeBps, tolBps: s.tolBps, confCapBps: 100, maxAgeS: s.maxAgeS,
+      // Task 15: the golden is the pre-fee body (USDC lending legs 2 and 3 at fee 0); LEG_SPEC now holds 50 there.
+      return { enabled: DAY1[l], reader: s.reader, feeBps: l === 2 || l === 3 ? 0 : s.feeBps, tolBps: s.tolBps, confCapBps: 100, maxAgeS: s.maxAgeS,
         receiptMint: s.receiptMint, rateAccount: s.rateAccount, extra: s.extra, feedId: s.feed ? PYTH_FEED[s.feed] : null, feedAccount: null };
     }),
   });
   it("encodeConfig(LEG_SPEC + the pinned feeds) equals the program's encode_body of the golden Config", () => {
     expect(Buffer.from(encodeConfig(golden())).toString("hex")).toBe(GOLDEN_BODY_HEX);
     expect(decodeConfig(Buffer.from(GOLDEN_BODY_HEX, "hex"))).toEqual(golden());
+  });
+  it("Task 15: LEG_SPEC's body differs from the golden only in the fee u16 of legs 2 and 3 (0 -> 50)", () => {
+    const now = { ...golden(), legs: golden().legs.map((l, i) => ({ ...l, feeBps: LEG_SPEC[i as LeashLegByte].feeBps })) };
+    const a = Buffer.from(encodeConfig(now)), g = Buffer.from(GOLDEN_BODY_HEX, "hex");
+    const diff = [...a.keys()].filter((i) => a[i] !== g[i]);
+    const fee = (leg: number) => CONFIG_HEADER_LEN + 176 * leg + 4;
+    expect(diff).toEqual([fee(2), fee(3)]);
+    expect([a.readUInt16LE(fee(2)), a.readUInt16LE(fee(3)), g.readUInt16LE(fee(2)), g.readUInt16LE(fee(3))]).toEqual([50, 50, 0, 0]);
   });
   it("init_config and set_leg(7) data equal the program's [2][encode_header] and [5][7][encode_leg]", () => {
     expect(Buffer.from(initConfigData(golden())).toString("hex")).toBe("02f222a3d1d02bc821107e18142a705dd586481cfa72582c366767ad67785b95f81ec59ebce472327878d9c2e5b0df7c2a10e19136c8f6ae67e5952656d6fd36b5404b4c00000000000000000000000000");

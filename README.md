@@ -10,7 +10,7 @@ Public line: even if our server is hacked, it can only move your daily round-up 
 
 How that holds, on chain:
 
-- **The leash program** `GyBmDLN72kg6xwAnZfj9c7fjeaJ3GvhkHNhFns83f8f7` (pinocchio, in `leash/`). A linked wallet's delegation (Solana Foundation's Subscriptions program) is held by the leash's PDA, so the server cannot pull directly. `pull` must be followed in the same transaction by `settle`, which reverts unless the user's own savings receipt (SKR stake, a lending position or the coin account) grew by at least the leg's floor: 98.5% of the value at a live Pyth price, 99.9% for USDC lending.
+- **The leash program** `GyBmDLN72kg6xwAnZfj9c7fjeaJ3GvhkHNhFns83f8f7` (pinocchio, in `leash/`). A linked wallet's delegation (Solana Foundation's Subscriptions program) is held by the leash's PDA, so the server cannot pull directly. `pull` must be followed in the same transaction by `settle`, which reverts unless the user's own savings receipt (SKR stake, a lending position or the coin account) grew by at least the leg's floor: 98.5% of the value at a live Pyth price, 99.4% for USDC lending.
 - **The limit:** $5 a day per linked wallet, enforced on chain. The user can set it lower in the app.
 - **What the server still chooses:** when to plant, which enabled coin, and how much up to the limit.
 - **The admin key** lives on the owner's laptop, not the server. Only it can change the leash's config or replace the program; it cannot raise anyone's limit. A multisig is planned after the hackathon.

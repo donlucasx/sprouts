@@ -43,12 +43,15 @@ const BTC_PRICE = { ...SOL_PRICE, feedId: "2817d7bfe5c64b8ea956e9a26f573ef64e72e
 let postedRead: typeof SKR_PRICE | null = SKR_PRICE;
 /** Every puller-signed send in order: "pre:<n>" for a price pre-tx double, "tx" for a tx the builder signed itself (a reclaim). */
 const sendLog: string[] = [];
+/** Task 15: accounts getAccountInfo finds (default: none, so the fee wallet's USDC account is created idempotently). */
+const presentAccounts = new Set<string>();
 
 vi.mock("@/lib/puller", () => ({ pullerSigner: vi.fn(async () => puller) }));
 vi.mock("@/lib/config", () => ({ config: () => ({ feeWallet: "8KiTtZXjcpxUGuH93G12iMVNcTYteTbRvaovdeQdfjc6", heliusRpcUrl: "https://x", pythApiKey: "k" }) }));
 vi.mock("@/lib/rpc", () => ({ rpc: () => ({
   getLatestBlockhash: () => ({ send: async () => ({ value: { blockhash: "4wiD3N7FrBNJSmZUQDkGHM4CsvDrvyvx7G1FApLGEbJ1", lastValidBlockHeight: 1n } }) }),
-  getAccountInfo: () => ({ send: async () => ({ value: null }) }),
+  // Task 15: an address in `presentAccounts` exists (the fee wallet's USDC account, when a test says so); everything else is absent.
+  getAccountInfo: (a: string) => ({ send: async () => ({ value: presentAccounts.has(a) ? { data: [tokenAcct(0n), "base64"], owner: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", lamports: 2_039_280n, executable: false } : null }) }),
   getMultipleAccounts: (addrs: string[], cfg?: { encoding?: string }) => ({ send: async () => ({ value: addrs.map((a) => (a === ALT_ADDR && cfg?.encoding === "jsonParsed"
     ? { data: { parsed: { info: { addresses: altContent, authority: null, deactivationSlot: "18446744073709551615", lastExtendedSlot: "0", lastExtendedSlotStartIndex: 0 }, type: "lookupTable" }, program: "address-lookup-table", space: 56n + 32n * BigInt(altContent.length) }, executable: false, lamports: 1n, owner: "AddressLookupTab1e1111111111111111111111111", space: 56n + 32n * BigInt(altContent.length) }
     : chainPre.has(a) ? { data: [tokenAcct(chainPre.get(a)!), "base64"] } : null)) }) }),
@@ -112,13 +115,14 @@ describe("buildPlantingTx: one v0 tx, one pull/settle pair (contracts 3.2)", () 
     if (altOn) process.env.SPROUTS_ALT = ALT_ADDR; else delete process.env.SPROUTS_ALT;
   });
 
-  it("USDC lending on Kamino, leashed: no swap; deposit(pull + USDC carry); the USDC float is watched", async () => {
+  it("USDC lending on Kamino, leashed: no swap; deposit(pull - fee + USDC carry); the USDC float is watched", async () => {
     const b = await buildPlantingTx({ ...base, asset: "USDC_LEND", venue: "kamino_klend", leashed: true, carryIn: { USDC: 500n } });
     expect(getQuote).not.toHaveBeenCalled();
     expect(b.leg).toBe(2);
-    expect(b.minOutRaw).toBe(klendMinOut(2_000_500n, { rn: 12_038n, rd: 10_000n }));
-    expect(b.minOutRaw).toBe(1_661_487n);   // the floor at these numbers is 1_659_745
-    expect(b.leashMinOutRaw).toBe(1_661_487n);
+    expect(b.feeRaw).toBe(10_000n);
+    expect(b.minOutRaw).toBe(klendMinOut(1_990_500n, { rn: 12_038n, rd: 10_000n }));
+    expect(b.leashMinOutRaw).toBe(b.minOutRaw);
+    expect(b.leashMinOutRaw! >= b.leashFloorRaw!).toBe(true);
     expect(b.preRaw).toBe(0n);
     expect(b.deliveryAccount).toBe(await ata(USER, KLEND.USDC_LEND.collateralMint));
     expect(b.watched).toEqual([await ata(puller.address, USDC_MINT), await ata(puller.address, WSOL_MINT), await ata(puller.address, SKR_MINT)]);   // review I1: all three pooled floats on every leg
@@ -267,9 +271,9 @@ describe("T9 carry-ins at the composition", () => {
     return d!.readBigUInt64LE(8);
   };
 
-  it("BIND THE K-LEND DEPOSIT: the signed deposit is exactly the pull plus THIS user's carry (USDC), the swap minimum plus carry (SOL)", async () => {
+  it("BIND THE K-LEND DEPOSIT: the signed deposit is exactly the pull less the fee plus THIS user's carry (USDC), the swap minimum plus carry (SOL)", async () => {
     await buildPlantingTx({ ...base, asset: "USDC_LEND", venue: "kamino_klend", leashed: true, carryIn: { USDC: 500n, WSOL: 7n } });
-    expect(depositOf(signedIxs[0])).toBe(2_000_500n);
+    expect(depositOf(signedIxs[0])).toBe(1_990_500n);   // Task 15: the pull less the 0.5% fee (10_000), plus the carry
     await buildPlantingTx({ ...base, asset: "SOL_LEND", venue: "kamino_klend", leashed: true, carryIn: { WSOL: 9n, USDC: 500n } });
     expect(depositOf(signedIxs[1])).toBe(16_335_009n);
   });
@@ -278,7 +282,7 @@ describe("T9 carry-ins at the composition", () => {
     const { buildKlendDepositIxs } = await import("@/lib/venues/klend");
     const real = (await vi.importActual<typeof import("@/lib/venues/klend")>("@/lib/venues/klend")).buildKlendDepositIxs;
     vi.mocked(buildKlendDepositIxs).mockImplementationOnce(async (a) => real({ ...a, amountRaw: a.amountRaw + 1_000_000n }));
-    await expect(buildPlantingTx({ ...base, asset: "USDC_LEND", venue: "kamino_klend", leashed: true, carryIn: {} })).rejects.toThrow(/deposit of 3000000, not the leg's 2000000/);
+    await expect(buildPlantingTx({ ...base, asset: "USDC_LEND", venue: "kamino_klend", leashed: true, carryIn: {} })).rejects.toThrow(/deposit of 2990000, not the leg's 1990000/);
   });
 
   it("the user's receipt ATA is created in the same tx BEFORE the pull (the program's pre then reads it like readReceipt's 0)", async () => {
@@ -506,7 +510,7 @@ describe("Task 11 carry-ins at the builder: the second price read, the whole-tra
     const stake = { programAddress: address("SKRskrmtL83pcL4YqLWt6iPefDqwXQWHSw9S9vz94BZ"), accounts: [], data: new Uint8Array([1]) };
     const pull = { programAddress: address("De1egAFMkMWZSN5rYXRj9CAdheBamobVNubTsi9avR44"), accounts: [], data: new Uint8Array([5]) };
     const swap = { programAddress: address("JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4"), accounts: [], data: new Uint8Array([229]) };
-    const a = { puller: puller.address, user: USER, asset: "SKR" as const, venue: null, leashed: false, pullerWsol: await ata(puller.address, WSOL_MINT), pullerJl: null, userMints: [], posted: false };
+    const a = { puller: puller.address, user: USER, asset: "SKR" as const, venue: null, leashed: false, pullerWsol: await ata(puller.address, WSOL_MINT), pullerJl: null, userMints: [], posted: false, fee: null };
     expect(() => checkPlantingInstructions([pull, swap, stake], a)).not.toThrow();
     expect(() => checkPlantingInstructions([pull, swap, stake, stake], a)).toThrow(/2 instructions of SKRskrmt.*expected 1/);
     expect(() => checkPlantingInstructions([swap, stake], a)).toThrow(/0 instructions of De1eg.*expected 1/);
@@ -692,5 +696,210 @@ describe("the posted price (SKR, leg 0; contracts 3.2 row 2b, 10 item 15): pre-t
     expect(sendLog).toEqual([]);
     expect(b.priceTxBytes).toEqual([]);
     expect(b.postedPrice).toBeNull();
+  });
+});
+
+import { getTransferCheckedInstruction } from "@solana-program/token";
+import { lendFeeRaw, LEND_FEE_BPS } from "@/lib/planting";
+import { floorRaw } from "@/lib/leash";
+import { JLEND_PROGRAM } from "@/lib/constants";
+
+/** Task 15 (Review Focus 3 and 4): the USDC lending fee, one pinned transfer to the fee wallet's USDC account, before the deposit. */
+describe("Task 15: the 0.5% USDC lending fee", () => {
+  const FEE_WALLET = address("8KiTtZXjcpxUGuH93G12iMVNcTYteTbRvaovdeQdfjc6");
+  const TOKEN = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+  const TOKEN_2022 = address("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb");
+  const A_TOKEN = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL";
+  const KLEND_ID = "KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD";
+  const isLeashPull = (ix: Instruction) => ix.programAddress === LEASH_PROGRAM && ix.data?.[0] === 0;
+  const tokenIxs = (ixs: Instruction[]) => ixs.filter((ix) => ix.programAddress === TOKEN);
+  const amountOf = (ix: Instruction) => Buffer.from(ix.data!).readBigUInt64LE(1);
+  beforeEach(async () => {
+    puller = await generateKeyPairSigner(); checks.length = 0; sentPre.length = 0; signedIxs.length = 0; vi.mocked(getQuote).mockClear(); vi.mocked(getSwapInstructions).mockClear();
+    altContent = await sproutsAltAddresses(puller.address);
+    process.env.SPROUTS_ALT = ALT_ADDR;
+    presentAccounts.clear();
+  });
+
+  it("lendFeeRaw is floor(pull x 50 / 10_000)", () => {
+    expect(LEND_FEE_BPS).toBe(50n);
+    expect(lendFeeRaw(2_000_000n)).toBe(10_000n);
+    expect(lendFeeRaw(1_000_001n)).toBe(5_000n);
+    expect(lendFeeRaw(200n)).toBe(1n);
+    expect(lendFeeRaw(199n)).toBe(0n);
+  });
+
+  it("USDC lending on Kamino, leashed, fee 50: one Token Transfer of 10_000 from the puller's USDC to the fee wallet's USDC, after the pull and before the deposit", async () => {
+    const b = await buildPlantingTx({ ...base, asset: "USDC_LEND", venue: "kamino_klend", leashed: true, carryIn: { USDC: 500n } });
+    const ixs = signedIxs[0];
+    const feeAta = await ata(FEE_WALLET, USDC_MINT);
+    expect(b.feeRaw).toBe(10_000n);
+    const t = tokenIxs(ixs);
+    expect(t.length).toBe(1);
+    expect(t[0].data![0]).toBe(3);
+    expect(t[0].accounts![0].address).toBe(await ata(puller.address, USDC_MINT));
+    expect(t[0].accounts![1].address).toBe(feeAta);
+    expect(t[0].accounts![2].address).toBe(puller.address);
+    expect(amountOf(t[0])).toBe(10_000n);
+    const at = ixs.indexOf(t[0]);
+    expect(at).toBeGreaterThan(ixs.findIndex(isLeashPull));
+    expect(at).toBeLessThan(ixs.findIndex((ix) => ix.programAddress === KLEND_ID));
+    expect(b.minOutRaw).toBe(klendMinOut(1_990_500n, { rn: 12_038n, rd: 10_000n }));
+    expect(b.leashMinOutRaw! >= b.leashFloorRaw!).toBe(true);
+    expect(b.sizeBytes).toBeLessThanOrEqual(1232);
+    console.log(`[Task 15 size] USDC_LEND kamino_klend leashed, with the fee account create: ${b.sizeBytes} B`);
+    presentAccounts.add(feeAta);
+    const noCreate = await buildPlantingTx({ ...base, asset: "USDC_LEND", venue: "kamino_klend", leashed: true, carryIn: { USDC: 500n } });
+    expect(noCreate.sizeBytes).toBeLessThanOrEqual(1232);
+    console.log(`[Task 15 size] USDC_LEND kamino_klend leashed, fee account present: ${noCreate.sizeBytes} B`);
+  });
+
+  it("the same on Jupiter Lend (leg 3), with and without the fee account create, each within 1232 bytes", async () => {
+    const feeAta = await ata(FEE_WALLET, USDC_MINT);
+    for (const present of [false, true]) {
+      if (present) presentAccounts.add(feeAta);
+      signedIxs.length = 0;
+      const b = await buildPlantingTx({ ...base, asset: "USDC_LEND", venue: "jupiter_lend", leashed: true, carryIn: { USDC: 500n } });
+      const ixs = signedIxs[0];
+      expect(b.leg).toBe(3);
+      expect(b.feeRaw).toBe(10_000n);
+      const fee = tokenIxs(ixs).filter((ix) => ix.data![0] === 3 && ix.accounts![1].address === feeAta);
+      expect(fee.length).toBe(1);
+      expect(amountOf(fee[0])).toBe(10_000n);
+      expect(ixs.indexOf(fee[0])).toBeGreaterThan(ixs.findIndex(isLeashPull));
+      expect(ixs.indexOf(fee[0])).toBeLessThan(ixs.findIndex((ix) => ix.programAddress === JLEND_PROGRAM));
+      const creates = ixs.filter((ix) => ix.programAddress === A_TOKEN && ix.accounts?.[2]?.address === FEE_WALLET);
+      expect(creates.length).toBe(present ? 0 : 1);
+      expect(b.leashMinOutRaw! >= b.leashFloorRaw!).toBe(true);
+      expect(b.sizeBytes).toBeLessThanOrEqual(1232);
+      console.log(`[Task 15 size] USDC_LEND jupiter_lend leashed, ${present ? "fee account present" : "with the fee account create"}: ${b.sizeBytes} B`);
+    }
+  });
+
+  it("unleashed (an old link) pays the same fee: deposit pull - fee", async () => {
+    const { buildKlendDepositIxs } = await import("@/lib/venues/klend");
+    vi.mocked(buildKlendDepositIxs).mockClear();
+    const b = await buildPlantingTx({ ...base, asset: "USDC_LEND", venue: "kamino_klend", leashed: false });
+    expect(b.feeRaw).toBe(10_000n);
+    expect(b.leg).toBeNull();
+    expect(vi.mocked(buildKlendDepositIxs).mock.calls[0][0].amountRaw).toBe(1_990_000n);
+    expect(b.minOutRaw).toBe(klendMinOut(1_990_000n, { rn: 12_038n, rd: 10_000n }));
+  });
+
+  it("rounding: a pull of 1_000_001 pays 5_000; a pull of 199 pays 0 and carries no Token transfer and no fee account create; deposit = 199 + carry", async () => {
+    const big = await buildPlantingTx({ ...base, pullRaw: 1_000_001n, asset: "USDC_LEND", venue: "kamino_klend", leashed: true });
+    expect(big.feeRaw).toBe(5_000n);
+    expect(amountOf(tokenIxs(signedIxs[0])[0])).toBe(5_000n);
+    signedIxs.length = 0;
+    const small = await buildPlantingTx({ ...base, pullRaw: 199n, asset: "USDC_LEND", venue: "kamino_klend", leashed: true, carryIn: { USDC: 500n } });
+    expect(small.feeRaw).toBe(0n);
+    const ixs = signedIxs[0];
+    expect(tokenIxs(ixs)).toEqual([]);
+    expect(ixs.filter((ix) => ix.programAddress === A_TOKEN && ix.accounts?.[2]?.address === FEE_WALLET)).toEqual([]);
+    const d = ixs.filter((ix) => ix.programAddress === KLEND_ID).map((ix) => Buffer.from(ix.data!)).find((x) => x.length === 16)!;
+    expect(d.readBigUInt64LE(8)).toBe(699n);
+    expect(small.minOutRaw).toBe(klendMinOut(699n, { rn: 12_038n, rd: 10_000n }));
+  });
+
+  it("the fee account: absent -> one idempotent create for (fee wallet, USDC) paid by the puller in the ATA slot (before the pull); present -> no create", async () => {
+    const feeAta = await ata(FEE_WALLET, USDC_MINT);
+    await buildPlantingTx({ ...base, asset: "USDC_LEND", venue: "kamino_klend", leashed: true });
+    const ixs = signedIxs[0];
+    const creates = ixs.filter((ix) => ix.programAddress === A_TOKEN && ix.accounts?.[2]?.address === FEE_WALLET);
+    expect(creates.length).toBe(1);
+    expect(creates[0].data).toEqual(new Uint8Array([1]));   // CreateIdempotent
+    expect(creates[0].accounts!.map((x) => x.address).slice(0, 4)).toEqual([puller.address, feeAta, FEE_WALLET, USDC_MINT]);
+    expect(ixs.indexOf(creates[0])).toBeLessThan(ixs.findIndex(isLeashPull));
+    presentAccounts.add(feeAta);
+    signedIxs.length = 0;
+    await buildPlantingTx({ ...base, asset: "USDC_LEND", venue: "kamino_klend", leashed: true });
+    expect(signedIxs[0].filter((ix) => ix.programAddress === A_TOKEN && ix.accounts?.[2]?.address === FEE_WALLET)).toEqual([]);
+  });
+
+  it("floor sweep: the K-Lend minimum of pull - fee clears the leash floor at fee 50, tol 10 (pulls 0.50..5.00 USDC, rates 1.0, 1.2038, 1.5)", () => {
+    for (let pull = 500_000n; pull <= 5_000_000n; pull += 250_000n) {
+      for (const r of [{ rn: 10_000n, rd: 10_000n }, { rn: 12_038n, rd: 10_000n }, { rn: 15_000n, rd: 10_000n }]) {
+        const floor = floorRaw({ leg: 2, amountRaw: pull, rn: r.rn, rd: r.rd, priceLow: null, exponent: null, feeBps: 50, tolBps: 10, underlyingDecimals: 6 });
+        expect(klendMinOut(pull - lendFeeRaw(pull), r) >= floor, `pull ${pull} rate ${r.rn}/${r.rd}`).toBe(true);
+      }
+    }
+  });
+
+  it("the K-Lend injection test still refuses with the fee on, and so does an injected second fee transfer", async () => {
+    const { buildKlendDepositIxs } = await import("@/lib/venues/klend");
+    const real = (await vi.importActual<typeof import("@/lib/venues/klend")>("@/lib/venues/klend")).buildKlendDepositIxs;
+    const usdc = await ata(puller.address, USDC_MINT);
+    vi.mocked(buildKlendDepositIxs).mockImplementationOnce(async (x) => [...(await real(x)), getTransferInstruction({ source: usdc, destination: await ata(USER, USDC_MINT), authority: puller, amount: 5n }) as Instruction]);
+    await expect(buildPlantingTx({ ...base, asset: "USDC_LEND", venue: "kamino_klend", leashed: true })).rejects.toThrow(/Planting refused: Token instruction 3/);
+    const feeAta = await ata(FEE_WALLET, USDC_MINT);
+    vi.mocked(buildKlendDepositIxs).mockImplementationOnce(async (x) => [...(await real(x)), getTransferInstruction({ source: usdc, destination: feeAta, authority: puller, amount: 10_000n }) as Instruction]);
+    await expect(buildPlantingTx({ ...base, asset: "USDC_LEND", venue: "kamino_klend", leashed: true })).rejects.toThrow(/Planting refused: a second fee transfer/);
+  });
+
+  describe("checkPlantingInstructions with a fee (unit)", () => {
+    const pull: Instruction = { programAddress: LEASH_PROGRAM, accounts: [], data: new Uint8Array([0]) };
+    const settle: Instruction = { programAddress: LEASH_PROGRAM, accounts: [], data: new Uint8Array([1]) };
+    const k1: Instruction = { programAddress: address(KLEND_ID), accounts: [], data: new Uint8Array([9]) };
+    const k2: Instruction = { programAddress: address(KLEND_ID), accounts: [], data: new Uint8Array([10]) };
+    const setup = async () => {
+      const pullerUsdc = await ata(puller.address, USDC_MINT);
+      const feeAta = await ata(FEE_WALLET, USDC_MINT);
+      const fee = { source: pullerUsdc, destination: feeAta, owner: FEE_WALLET, amountRaw: 10_000n };
+      const a = { puller: puller.address, user: USER, asset: "USDC_LEND" as const, venue: "kamino_klend" as const, leashed: true, pullerWsol: await ata(puller.address, WSOL_MINT), pullerJl: null,
+        userMints: [KLEND.USDC_LEND.collateralMint], posted: false, fee };
+      const xfer = (o: { source?: string; destination?: string; amount?: bigint } = {}) => getTransferInstruction({ source: address(o.source ?? pullerUsdc), destination: address(o.destination ?? feeAta), authority: puller, amount: o.amount ?? 10_000n }) as Instruction;
+      const tx = (...mid: Instruction[]) => [pull, ...mid, k1, k2, settle];
+      return { pullerUsdc, feeAta, fee, a, xfer, tx };
+    };
+
+    it("the exact Transfer (tag 3) passes; the exact TransferChecked (tag 12, USDC, 6 decimals) passes", async () => {
+      const { a, xfer, tx, pullerUsdc, feeAta } = await setup();
+      expect(() => checkPlantingInstructions(tx(xfer()), a)).not.toThrow();
+      const checked = getTransferCheckedInstruction({ source: pullerUsdc, mint: USDC_MINT, destination: feeAta, authority: puller, amount: 10_000n, decimals: 6 }) as Instruction;
+      expect(() => checkPlantingInstructions(tx(checked), a)).not.toThrow();
+      const wrongDecimals = getTransferCheckedInstruction({ source: pullerUsdc, mint: USDC_MINT, destination: feeAta, authority: puller, amount: 10_000n, decimals: 9 }) as Instruction;
+      expect(() => checkPlantingInstructions(tx(wrongDecimals), a)).toThrow(/Planting refused/);
+      const wrongMint = getTransferCheckedInstruction({ source: pullerUsdc, mint: SKR_MINT, destination: feeAta, authority: puller, amount: 10_000n, decimals: 6 }) as Instruction;
+      expect(() => checkPlantingInstructions(tx(wrongMint), a)).toThrow(/Planting refused/);
+    });
+
+    it("refused: amount 10_001, the user's USDC account, any other account, another source, Token-2022, another authority", async () => {
+      const { a, xfer, tx } = await setup();
+      const userUsdc = await ata(USER, USDC_MINT), feeSkr = await ata(FEE_WALLET, SKR_MINT), pullerSkr = await ata(puller.address, SKR_MINT);
+      expect(() => checkPlantingInstructions(tx(xfer({ amount: 10_001n })), a)).toThrow(/Planting refused/);
+      expect(() => checkPlantingInstructions(tx(xfer({ destination: userUsdc })), a)).toThrow(/Planting refused/);
+      expect(() => checkPlantingInstructions(tx(xfer({ destination: feeSkr })), a)).toThrow(/Planting refused/);
+      expect(() => checkPlantingInstructions(tx(xfer({ destination: pullerSkr })), a)).toThrow(/Planting refused/);
+      expect(() => checkPlantingInstructions(tx(xfer({ source: userUsdc })), a)).toThrow(/Planting refused/);
+      expect(() => checkPlantingInstructions(tx({ ...xfer(), programAddress: TOKEN_2022 }), a)).toThrow(/Planting refused/);
+      const other = await generateKeyPairSigner();
+      const byOther = getTransferInstruction({ source: a.fee.source, destination: a.fee.destination, authority: other, amount: 10_000n }) as Instruction;
+      expect(() => checkPlantingInstructions(tx(byOther), a)).toThrow(/Planting refused/);
+    });
+
+    it("refused: two fee transfers; a fee due with no transfer; a transfer when the fee is 0; any fee transfer on a leg with fee null (hSOL)", async () => {
+      const { a, xfer, tx, fee } = await setup();
+      expect(() => checkPlantingInstructions(tx(xfer(), xfer()), a)).toThrow(/a second fee transfer/);
+      expect(() => checkPlantingInstructions(tx(), a)).toThrow(/the fee transfer is missing/);
+      expect(() => checkPlantingInstructions(tx(), { ...a, fee: { ...fee, amountRaw: 0n } })).not.toThrow();
+      expect(() => checkPlantingInstructions(tx(xfer({ amount: 0n })), { ...a, fee: { ...fee, amountRaw: 0n } })).toThrow(/Planting refused/);
+      const swap: Instruction = { programAddress: address("JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4"), accounts: [], data: new Uint8Array([229]) };
+      const hsol = { ...a, asset: "hSOL" as const, venue: null, userMints: [address("he1iusmfkpAdwvxLNGV8Y1iSbj4rUy6yMhEA3fotn9A")], fee: null };
+      expect(() => checkPlantingInstructions([pull, swap, settle], hsol)).not.toThrow();
+      expect(() => checkPlantingInstructions([pull, xfer(), swap, settle], hsol)).toThrow(/Planting refused: Token instruction 3/);
+    });
+
+    it("the fee wallet's account create: only (USDC, the fee account) passes; its SKR account, or a USDC account at another address, is refused", async () => {
+      const { a, xfer, tx, feeAta } = await setup();
+      const create = (ataAddr: string, mint: string) => getCreateAssociatedTokenIdempotentInstruction({ payer: puller, ata: address(ataAddr), owner: FEE_WALLET, mint: address(mint) }) as Instruction;
+      expect(() => checkPlantingInstructions([create(feeAta, USDC_MINT), ...tx(xfer())], a)).not.toThrow();
+      const feeSkr = await ata(FEE_WALLET, SKR_MINT), userUsdc = await ata(USER, USDC_MINT);
+      expect(() => checkPlantingInstructions([create(feeSkr, SKR_MINT), ...tx(xfer())], a)).toThrow(/Planting refused/);
+      expect(() => checkPlantingInstructions([create(userUsdc, USDC_MINT), ...tx(xfer())], a)).toThrow(/Planting refused/);
+      // fee null (any other leg): the fee wallet is a third party, as today
+      const swap: Instruction = { programAddress: address("JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4"), accounts: [], data: new Uint8Array([229]) };
+      const hsol = { ...a, asset: "hSOL" as const, venue: null, userMints: [], fee: null };
+      expect(() => checkPlantingInstructions([create(feeAta, USDC_MINT), pull, swap, settle], hsol)).toThrow(/neither the puller nor this user/);
+    });
   });
 });

@@ -5,7 +5,7 @@ import {
   createSolanaRpcSubscriptions, assertIsTransactionWithBlockhashLifetime, getTransactionEncoder, type Address, type Instruction, type TransactionSigner,
 } from "@solana/kit";
 import { getSetComputeUnitLimitInstruction, getSetComputeUnitPriceInstruction } from "@solana-program/compute-budget";
-import { ASSOCIATED_TOKEN_PROGRAM_ADDRESS, findAssociatedTokenPda, TOKEN_PROGRAM_ADDRESS, getCreateAssociatedTokenIdempotentInstruction } from "@solana-program/token";
+import { ASSOCIATED_TOKEN_PROGRAM_ADDRESS, findAssociatedTokenPda, TOKEN_PROGRAM_ADDRESS, getCreateAssociatedTokenIdempotentInstruction, getTransferInstruction } from "@solana-program/token";
 import { getQuote, getSwapInstructions, checkSwapInstructions, checkQuoteMints, JUPITER_AGGREGATOR } from "./jupiter";
 import { buildTransferRecurringIx } from "./subscriptions";
 import { buildStakeIx, sharePrice, skrAta } from "./staking";
@@ -37,15 +37,42 @@ export async function coinAccountInstructions(a: { asset: Asset; payer: Transact
 }
 
 /**
- * R266, contracts 3.2: the 0.5% rides only on the four coin legs. A lending leg's quote carries no platformFeeBps and its swap no
- * feeAccount: Jupiter answers 400 "platformFee must be greater than 0 when feeAccount is set" (Claude audit F1), which the run
- * used to turn into a charged SKR planting.
+ * R266, contracts 3.2: the Jupiter platform fee rides only on the four coin legs. A lending leg's quote carries no platformFeeBps and
+ * its swap no feeAccount: Jupiter answers 400 "platformFee must be greater than 0 when feeAccount is set" (Claude audit F1), which the
+ * run used to turn into a charged SKR planting. Task 15: a lending leg that pays a fee (COINS feeBps 50) pays it as one pinned USDC
+ * transfer (lendFeeInstructions), never as a swap fee, so this answers {} for every lending asset whatever its feeBps.
  */
 export async function swapFeeParams(asset: LiveAsset): Promise<{ platformFeeBps?: number; feeAccount?: Address }> {
   const bps = COINS[asset].feeBps;
-  if (bps === 0) return {};
+  if (bps === 0 || isLendAsset(asset)) return {};
   const [feeAccount] = await findAssociatedTokenPda({ owner: address(config().feeWallet), mint: USDC_MINT, tokenProgram: TOKEN_PROGRAM_ADDRESS });
   return { platformFeeBps: bps, feeAccount };
+}
+
+/** Task 15: the lending fee, 0.5% of the pull in USDC raw, floored (a pull under 200 raw pays 0 and carries no transfer). */
+export const LEND_FEE_BPS = 50n;
+export const lendFeeRaw = (pullRaw: bigint): bigint => (pullRaw * LEND_FEE_BPS) / 10_000n;
+/** The lending assets whose pull pays lendFeeRaw. Task 15: USDC lending only (SOL lending joins in Task 15b, with its own slippage). */
+export const LEND_FEE_ASSETS: ReadonlySet<LiveAsset> = new Set<LiveAsset>(["USDC_LEND"]);
+/** The one fee transfer checkPlantingInstructions accepts (Task 15): from `source` to `destination` (owned by `owner`), exactly `amountRaw`. */
+export type LendFeePin = { source: Address; destination: Address; owner: Address; amountRaw: bigint };
+
+/**
+ * Task 15: a lend leg's fee, reusable by any leg in LEND_FEE_ASSETS. The transfer (Token program, tag 3) moves `feeRaw` from the
+ * puller's USDC float to the fee wallet's USDC account; the caller places it after the pull and before the leg's body. The fee
+ * wallet's account is created idempotently (puller pays, ATA slot) only when the chain has no account there, so a closed or never
+ * created account heals itself (design review #10); never dropped to save bytes (Kimi plan review #6: the remedy is the ALT).
+ * Nothing at all is built when feeRaw is 0. `pin` is what the allowlist holds the transaction to.
+ */
+export async function lendFeeInstructions(a: { puller: TransactionSigner; pullerUsdc: Address; feeRaw: bigint }): Promise<{ pin: LendFeePin; create: Instruction | null; transfer: Instruction | null }> {
+  const owner = address(config().feeWallet);
+  const feeAta = await ataOf(owner, USDC_MINT);
+  const pin: LendFeePin = { source: a.pullerUsdc, destination: feeAta, owner, amountRaw: a.feeRaw };
+  if (a.feeRaw <= 0n) return { pin, create: null, transfer: null };
+  const info = await rpc().getAccountInfo(feeAta, { encoding: "base64", commitment: "confirmed" }).send();
+  const create = info.value ? null : getCreateAssociatedTokenIdempotentInstruction({ payer: a.puller, ata: feeAta, owner, mint: USDC_MINT });
+  const transfer = getTransferInstruction({ source: a.pullerUsdc, destination: feeAta, authority: a.puller, amount: a.feeRaw });
+  return { pin, create, transfer };
 }
 
 export const SWAP_MAX_ACCOUNTS: Record<LiveAsset, number> = { SKR: 24, stORE: 24, USDC_LEND: 24, SOL_LEND: 24, hSOL: 24, cbBTC: 24 };   // SOL_LEND PROVISIONAL(S1)
@@ -98,6 +125,8 @@ export type BuiltPlanting = {
   pullerJl: Address | null; jlLeftover: 0n | 1n | null; cleanup: Instruction[]; carryIn: Partial<Record<CarryKind, bigint>>; sizeBytes: number;
   /** A posted price's pre-tx sizes (the go-live gate prints them); empty when nothing was posted. */
   priceTxBytes: number[];
+  /** Task 15: the lending fee this planting sends to the fee wallet, USDC raw (USDC lending: lendFeeRaw(pull), maybe 0); absent on every other leg. */
+  feeRaw?: bigint;
   /** The posted account as re-read after the pre-txs landed (the run re-checks its age right before the send); null when nothing landed. */
   postedPrice: ParsedPrice | null;
 };
@@ -139,6 +168,8 @@ async function composePlanting(a: PlantingInput, posted: { reclaim: Instruction[
   const pullerUsdc = await ataOf(puller.address, USDC_MINT);
   const pullerWsol = await ataOf(puller.address, WSOL_MINT);
   const leg = a.leashed ? leashLegOf(a.asset, a.venue) : null;
+  // Task 15: the lending fee (USDC lending), taken from the pull before the deposit.
+  const feeRaw = LEND_FEE_ASSETS.has(a.asset) ? lendFeeRaw(a.pullRaw) : null;
 
   // 2b. The price the leash reads (leashed priced legs only): the leg's sponsored account while fresh, else (SKR, the only "post"
   // answer since 10-05, contracts 10 item 15) a fresh post.
@@ -203,6 +234,8 @@ async function composePlanting(a: PlantingInput, posted: { reclaim: Instruction[
 
   const atas: Instruction[] = [...(await coinAccountInstructions({ asset: a.asset, payer: puller, user: a.user }))];
   if (a.asset === "SOL_LEND") atas.push(getCreateAssociatedTokenIdempotentInstruction({ payer: puller, ata: pullerWsol, owner: puller.address, mint: WSOL_MINT }));
+  const lendFee = feeRaw === null ? null : await lendFeeInstructions({ puller, pullerUsdc, feeRaw });
+  if (lendFee?.create) atas.push(lendFee.create);
   const body: Instruction[] = [];
   // The venue builders' ATA creates move to the ATA slot (contracts 3.2 step 2); Jupiter's own setup stays where Jupiter put it.
   const isCreate = (ix: Instruction) => ix.programAddress === ASSOCIATED_TOKEN_PROGRAM_ADDRESS;
@@ -253,7 +286,8 @@ async function composePlanting(a: PlantingInput, posted: { reclaim: Instruction[
   let pullerJl: Address | null = null;
   let jlLeftover: 0n | 1n | null = null;
   let jlRn: bigint | null = null;
-  const depositRaw = a.asset === "USDC_LEND" ? a.pullRaw + carry("USDC") : a.asset === "SOL_LEND" ? swapMin + carry("WSOL") : 0n;
+  // Task 15: USDC lending deposits the pull less its fee, plus this user's carry (the float moves by -carry: +pull -fee -deposit).
+  const depositRaw = a.asset === "USDC_LEND" ? a.pullRaw - (feeRaw ?? 0n) + carry("USDC") : a.asset === "SOL_LEND" ? swapMin + carry("WSOL") : 0n;
   if (a.venue === "kamino_klend") {
     const asset = a.asset as LendAsset;
     const r = await klendRate(asset);
@@ -307,11 +341,11 @@ async function composePlanting(a: PlantingInput, posted: { reclaim: Instruction[
 
   const ixs: Instruction[] = [
     getSetComputeUnitLimitInstruction({ units: PLANTING_CU_LIMIT }), getSetComputeUnitPriceInstruction({ microLamports: 1_000n }),
-    ...atas, ...(postIx ? [postIx] : []), pull, ...body, ...(settle ? [settle] : []),
+    ...atas, ...(postIx ? [postIx] : []), pull, ...(lendFee?.transfer ? [lendFee.transfer] : []), ...body, ...(settle ? [settle] : []),
   ];
   // T7 carry: the whole transaction against an allowlist (every program, every ATA create, every Token instruction), then each part's own checker.
   checkPlantingInstructions(ixs, { puller: puller.address, user: a.user, asset: a.asset, venue: a.venue, leashed: leg !== null, pullerWsol, pullerJl,
-    userMints: lend ? [LEG_RECEIPT_MINT(a.asset as LendAsset, a.venue as AutoVenue)] : coin.held === "wallet" ? [coin.mint] : [], posted: postIx !== null });
+    userMints: lend ? [LEG_RECEIPT_MINT(a.asset as LendAsset, a.venue as AutoVenue)] : coin.held === "wallet" ? [coin.mint] : [], posted: postIx !== null, fee: lendFee?.pin ?? null });
   if (leg !== null) checkLeashInstructions(ixs, { user: a.user, leg, amountRaw: a.pullRaw, minOutRaw: leashMinOutRaw as bigint });
   // Carry-in (T6 review): the K-Lend deposit amount is BOUND to this leg's own amount (the pull, plus this user's own carry). The
   // puller's USDC / WSOL account is pooled across users, so a larger deposit would draw other users' float into this user's receipt.
@@ -339,6 +373,7 @@ async function composePlanting(a: PlantingInput, posted: { reclaim: Instruction[
   return {
     tx, signature: getSignatureFromTransaction(tx), expectedOutRaw, minOutRaw, lookupTables: tableAddrs, lastValidBlockHeight, deliveryAccount, watched, usdcFloat: pullerUsdc, wsolFloat: pullerWsol, skrFloat: a.asset === "SKR" ? null : pullerSkr,
     asset: a.asset, venue: a.venue, leg, preRaw, leashMinOutRaw, leashFloorRaw: floor, pullerJl, jlLeftover, cleanup, carryIn: a.carryIn, sizeBytes, priceTxBytes, postedPrice,
+    ...(feeRaw !== null ? { feeRaw } : {}),
   };
 }
 
@@ -354,8 +389,14 @@ const SYNC_NATIVE = 17;
  * or receipt mint. Every Token instruction is either on the puller's jl account (checkJlendDepositInstructions rules on each one)
  * or Jupiter's SyncNative on the puller's WSOL account; a Transfer, Approve, SetAuthority, Burn or Close on any other account
  * (another user's, the puller's USDC float), and any CloseAccount of the pooled WSOL account (review I1), is refused.
+ *
+ * Task 15, `fee` (a lend leg with a fee; null on every other leg, where any Token transfer stays refused as before): exactly one
+ * Token-program (never Token-2022) Transfer [source, destination, authority] or TransferChecked [source, USDC, destination,
+ * authority] with 6 decimals, from fee.source to fee.destination, signed by the puller, of exactly fee.amountRaw; none when the
+ * amount is 0. A second one is refused, and so is a missing one. The fee wallet (fee.owner) may get an account created only for
+ * USDC at fee.destination.
  */
-export function checkPlantingInstructions(ixs: readonly Instruction[], a: { puller: Address; user: Address; asset: LiveAsset; venue: AutoVenue | null; leashed: boolean; pullerWsol: Address; pullerJl: Address | null; userMints: Address[]; posted: boolean }): void {
+export function checkPlantingInstructions(ixs: readonly Instruction[], a: { puller: Address; user: Address; asset: LiveAsset; venue: AutoVenue | null; leashed: boolean; pullerWsol: Address; pullerJl: Address | null; userMints: Address[]; posted: boolean; fee: LendFeePin | null }): void {
   const refuse = (why: string): never => { throw new Error(`Planting refused: ${why}`); };
   // Each program this leg may call at the top level, and how many times (a range).
   const expected = new Map<string, [number, number]>([
@@ -367,6 +408,7 @@ export function checkPlantingInstructions(ixs: readonly Instruction[], a: { pull
     ...(a.posted ? [[PYTH_RECEIVER, [1, 1]] as [string, [number, number]]] : []),
   ]);
   const seen = new Map<string, number>();
+  let feeTransfers = 0;
   for (const ix of ixs) {
     const prog = ix.programAddress as string;
     const data = ix.data ?? new Uint8Array();
@@ -377,6 +419,10 @@ export function checkPlantingInstructions(ixs: readonly Instruction[], a: { pull
       if (acc(0) !== a.puller) refuse(`an account creation paid by ${acc(0)}, not the puller`);
       const owner = acc(2);
       if (owner === a.puller) continue;
+      if (a.fee && owner === a.fee.owner) {
+        if (acc(3) !== USDC_MINT || acc(1) !== a.fee.destination) refuse(`an account creation for the fee wallet's ${acc(3)} at ${acc(1)}, not its USDC account`);
+        continue;
+      }
       if (owner !== a.user) refuse(`an account creation for ${owner}, who is neither the puller nor this user`);
       if (!a.userMints.includes(acc(3) as Address)) refuse(`an account creation for this user's ${acc(3)}, not this leg's coin or receipt`);
       continue;
@@ -385,6 +431,10 @@ export function checkPlantingInstructions(ixs: readonly Instruction[], a: { pull
       const target = acc(0);
       if (a.pullerJl && target === a.pullerJl) continue;
       if (data.length === 1 && data[0] === SYNC_NATIVE && target === a.pullerWsol) continue;
+      if (a.fee && a.fee.amountRaw > 0n && isFeeTransfer(ix, a.fee, a.puller)) {
+        if (++feeTransfers > 1) refuse(`a second fee transfer to ${a.fee.destination}`);
+        continue;
+      }
       refuse(`Token instruction ${data[0]} on ${target} is not allowed in a planting`);
     }
     if (!expected.has(prog)) refuse(`program ${prog} is not allowed in a ${a.asset} planting`);
@@ -394,6 +444,21 @@ export function checkPlantingInstructions(ixs: readonly Instruction[], a: { pull
     const n = seen.get(prog) ?? 0;
     if (n < lo || n > hi) refuse(`${n} instructions of ${prog}, expected ${lo === hi ? lo : `${lo}-${hi}`}`);
   }
+  if (a.fee && a.fee.amountRaw > 0n && feeTransfers === 0) refuse(`the fee transfer is missing (${a.fee.amountRaw} to ${a.fee.destination})`);
+}
+
+const TRANSFER = 3;
+const TRANSFER_CHECKED = 12;
+/** Task 15: the exact fee transfer (Token program only): Transfer or TransferChecked (USDC, 6 decimals), pinned source, destination, authority and amount, no extra accounts. */
+function isFeeTransfer(ix: Instruction, fee: LendFeePin, puller: Address): boolean {
+  if (ix.programAddress !== TOKEN_PROGRAM_ADDRESS) return false;
+  const data = ix.data ?? new Uint8Array();
+  const accs = (ix.accounts ?? []).map((x) => x.address as string);
+  let source: string, destination: string, authority: string;
+  if (data[0] === TRANSFER && data.length === 9 && accs.length === 3) [source, destination, authority] = accs;
+  else if (data[0] === TRANSFER_CHECKED && data.length === 10 && data[9] === 6 && accs.length === 4 && accs[1] === USDC_MINT) [source, , destination, authority] = accs;
+  else return false;
+  return source === fee.source && destination === fee.destination && authority === puller && Buffer.from(data).readBigUInt64LE(1) === fee.amountRaw;
 }
 
 /** Mainnet simulation, no side effects; reads the delivery account and every watched account before, and as the simulation leaves them. */
