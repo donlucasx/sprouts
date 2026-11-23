@@ -122,7 +122,9 @@ describe("POST /api/webhooks/helius", () => {
     expect(callsForTwo).toBeGreaterThan(0);
     priceMock.mockClear();
     await deliverMany(mk(6));
-    expect(priceMock.mock.calls.length).toBe(callsForTwo);
+    // 11-23: a missing price is kept 10 s (shared-reads SHARED_PRICE_MISS_TTL_MS), so the six-item delivery may read even less; the
+    // rule is that reads never grow with the item count.
+    expect(priceMock.mock.calls.length).toBeLessThanOrEqual(callsForTwo);
     expect(await repo.unplantedSwaps("WALLET")).toEqual([]);
     expect(repo.events.filter((e) => e.kind === "zero_roundup").length).toBeGreaterThanOrEqual(6);
   });

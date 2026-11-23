@@ -60,7 +60,7 @@ export async function POST(request: Request) {
       recorded++;
       waitLeftMs -= await recordZeroRoundup(repo, { signature: String(signature ?? ""), walletPubkey }, Math.max(0, Math.min(REFUSAL_WAIT_MS, waitLeftMs)));
     };
-    // Per-delivery only (no negative cache: the display routes share the memo). The breaker is per mint, plus a 40 s read-time backstop.
+    // Per-delivery breaker, per mint, plus a 40 s read-time backstop. The shared memo keeps a missing price 10 s (11-23); the retry leg reads fresh.
     const deliveryPrice = deliveryPriceLookup(webhookPrice);
     for (const tx of items) {
       try {

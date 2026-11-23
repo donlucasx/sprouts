@@ -64,7 +64,7 @@ export function sendFailureText(e: unknown): string {
   const cause = (e as { cause?: { context?: Record<string, unknown> } } | null)?.cause;
   const causeCode = cause?.context?.__code;
   if (parts.length === 0 || ctx?.err === undefined || ctx?.err === null) {
-    if (typeof causeCode === "number" || typeof causeCode === "string") parts.unshift(`transaction error #${causeCode}`);
+    if (typeof causeCode === "number" || typeof causeCode === "string") parts.push(`transaction error #${causeCode}`);   // after the log line (Kimi nit: the 140 cap)
   }
   const text = parts.length ? parts.join("; ") : errorText(e);
   return redact(text).replace(/\s+/g, " ").slice(0, 140);

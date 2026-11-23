@@ -81,3 +81,12 @@ describe("sendFailureDetail (11-23: the whole send failure for the log)", async 
     expect(sendFailureDetail(new Error("x".repeat(5000))).length).toBeLessThanOrEqual(2000);
   });
 });
+
+describe("sendFailureText puts the cause code after the log line (11-23 Kimi day review)", async () => {
+  const { sendFailureText } = await import("@/lib/redact");
+  it("log line first, then the transaction error code", () => {
+    const cause = Object.assign(new Error("x"), { context: { __code: 7050003 } });
+    const e = Object.assign(new Error("Solana error #-32002", { cause }), { context: { logs: ["Program log: Error: insufficient funds"] } });
+    expect(sendFailureText(e)).toBe("Program log: Error: insufficient funds; transaction error #7050003");
+  });
+});

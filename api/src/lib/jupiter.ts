@@ -301,7 +301,7 @@ export async function priceUsd(mint: string): Promise<number | null> {
 
 export type PriceInfo = { usdPrice: number; liquidity: number | null; priceChange24h: number | null; decimals: number | null };
 
-/** Several mints' prices in one call (the daily snapshot, spec 5.2); a mint the API does not know is simply absent. Throws on a failed call so the snapshot marks the day. */
+/** Several mints' prices in one call (the top-up's price bound and its source list); a mint the API does not know is simply absent. Throws on a failed call; after three 429s it throws JupiterRateLimited (11-23). */
 export async function pricesUsd(mints: string[]): Promise<Record<string, PriceInfo>> {
   // 11-23: a 429 is retried (jupiterFetch); after the last attempt it throws "Jupiter price failed: 429 ..." as before.
   const res = await jupiterFetch(`${BASE}/price/v3?ids=${mints.join(",")}`, { headers: headers() }, "price");
