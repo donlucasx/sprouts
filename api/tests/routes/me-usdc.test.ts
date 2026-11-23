@@ -24,10 +24,18 @@ vi.mock("@/lib/jupiter", async (orig) => ({
   pricesUsd: vi.fn(async () => ({})),
   getQuote: vi.fn(async () => ({})),
   jupiterToken: vi.fn(async () => null),
+  // 11-23: the source probe also builds the swap and reads it like the real top-up; a Whirlpool step (variant 17) is one it may carry
+  getSwapInstructions: vi.fn(async () => ({ swap: { data: swapData(17) } })),
 }));
+vi.mock("@/lib/puller", () => ({ pullerSigner: async () => ({ address: "4wiD3N7FrBNJSmZUQDkGHM4CsvDrvyvx7G1FApLGEbJ1" }) }));
+/** Jupiter's shared-accounts ExactOut data with one route step of `variant` (17 = Whirlpool, 1 payload byte; 47 = one a top-up may not use). */
+function swapData(variant: number): Uint8Array {
+  const out = [...Buffer.from("b0d169a89a7d453e", "hex"), 0, 1, 0, 0, 0, variant, ...(variant === 17 ? [0] : []), 100, 0, 1];
+  return new Uint8Array([...out, ...new Array(8 + 8 + 2 + 1).fill(0)]);
+}
 
 import { readUsdcBalanceRaw } from "@/lib/subscriptions";
-import { getQuote, jupiterToken, pricesUsd } from "@/lib/jupiter";
+import { getQuote, getSwapInstructions, jupiterToken, pricesUsd } from "@/lib/jupiter";
 import { GET } from "@/app/api/me/usdc/route";
 import { address } from "@solana/kit";
 import { findAssociatedTokenPda, TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
@@ -106,7 +114,7 @@ describe("GET /api/me/usdc", () => {
       // $5 out: SKR's maximum 251 SKR = $5.02 (within $5.15); THIN's 275,000 = $5.50 (the phone would refuse it as overpriced)
       vi.mocked(getQuote).mockImplementation(async (a) => {
         if (a.inputMint === NOROUTE) throw new Error("no route");
-        return { otherAmountThreshold: a.inputMint === THIN ? "27500000000" : "251000000" } as never;
+        return { inputMint: a.inputMint, otherAmountThreshold: a.inputMint === THIN ? "27500000000" : "251000000" } as never;
       });
     });
 
@@ -164,6 +172,21 @@ describe("GET /api/me/usdc", () => {
         expect(quoted()).toContain(NOROUTE);
         expect(quoted()).not.toContain(SKR);
       } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("11-23: a coin whose route quotes but builds with a swap variant the top-up may not carry (SKR, variant 47) is not offered", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      try {
+        vi.advanceTimersByTime(3 * 60 * 60_000);   // past every cached probe
+        vi.mocked(getSwapInstructions).mockImplementation(async (a) => ({ swap: { data: swapData(a.quote.inputMint === SKR ? 47 : 17) } }) as never);
+        vi.mocked(readUsdcBalanceRaw).mockResolvedValueOnce(0n);
+        const body = await (await getSources(await issueSession(U, "M"))).json();
+        expect(body.topUpSources).toEqual([{ mint: WSOL, symbol: "SOL", decimals: 9, valueCents: 1_400, offers: [500, 1_000] }]);
+        expect(vi.mocked(getSwapInstructions).mock.calls.some((c) => c[0].useSharedAccounts === true && c[0].wrapAndUnwrapSol === false)).toBe(true);
+      } finally {
+        vi.mocked(getSwapInstructions).mockImplementation(async () => ({ swap: { data: swapData(17) } }) as never);
         vi.useRealTimers();
       }
     });

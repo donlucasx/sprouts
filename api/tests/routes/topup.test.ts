@@ -132,7 +132,7 @@ describe("POST /api/topup/build (the SOL top-up's unsigned transaction)", () => 
       fetchMock.mockImplementationOnce(async () => new Response("limit", { status: 429 })).mockImplementationOnce(async () => new Response("limit", { status: 429 })).mockImplementationOnce(async () => new Response("limit", { status: 429 }));
       const res = await call(build, {});
       expect(res.status).toBe(503);
-      expect((await res.json()).error).toMatch(/could not get a SOL to USDC price just now\. Nothing was asked of your wallet/);
+      expect((await res.json()).error).toMatch(/can't swap SOL to USDC right now\. Nothing was asked of your wallet\. Try again in a few minutes\./);
       expect(simulateMock).not.toHaveBeenCalled();
     } finally { st.mockRestore(); }
   });
@@ -256,7 +256,7 @@ describe("POST /api/topup/build (the SOL top-up's unsigned transaction)", () => 
     fetchMock.mockImplementationOnce(async () => new Response("no route", { status: 400 }));
     const res = await call(build, { cents: 500, inputMint: JUP_MINT });
     expect(res.status).toBe(503);
-    expect((await res.json()).error).toBe("Sprouts could not get a JUP to USDC price just now. Nothing was asked of your wallet. Try again in a minute.");
+    expect((await res.json()).error).toBe("Sprouts can't swap JUP to USDC right now. Nothing was asked of your wallet. Try SOL, or try again later.");
   });
 });
 

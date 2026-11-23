@@ -8,6 +8,7 @@ import { RECEIPT } from "./venues/addresses";
 import { buildUserTransaction, userTransactionCompiler } from "./user-tx";
 import { rpc } from "./rpc";
 import { cached } from "./memo";
+import { pullerSigner } from "./puller";
 import type { Rules } from "@/domain/roundup";
 import { ATA_RENT_LAMPORTS, fitSetup, MAX_CU_LIMIT, plannedSetup, SETUP_CU_PER_CREATE, takeSetupPrefix, TOPUP_SETUP_MAX } from "./user-setup";
 
@@ -337,8 +338,10 @@ export class TopUpRefused extends Error {
 export const TOPUP_COPY = {
   noSol: (cents: number, needLamports: bigint, haveLamports: bigint) =>
     `Not enough SOL. Adding ${dollars(cents)} of USDC needs about ${sol(needLamports)} SOL plus 0.01 SOL kept for fees, and this wallet has ${sol(haveLamports)} SOL.`,
-  /** SOL keeps the sentence it always had. */
-  noRouteFor: (symbol: string) => `Sprouts could not get a ${symbol} to USDC price just now. Nothing was asked of your wallet. Try again in a minute.`,
+  // 11-23: a route problem, said as one (it used to say "price"). SOL itself has no other coin to suggest.
+  noRouteFor: (symbol: string) =>
+    `Sprouts can't swap ${symbol} to USDC right now. Nothing was asked of your wallet. ${symbol === "SOL" ? "Try again in a few minutes." : "Try SOL, or try again later."}`,
+  noPriceFor: (symbol: string) => `Sprouts couldn't get a ${symbol} price just now. Nothing was asked of your wallet. Try again in a minute.`,
   noToken: (symbol: string, cents: number) => `Not enough ${symbol}. Adding ${dollars(cents)} of USDC needs more than this wallet holds.`,
   noSolForFee: (symbol: string) => `Not enough SOL for the network fee. Adding USDC from ${symbol} needs about ${sol(TOPUP_TOKEN_SOL_RESERVE_LAMPORTS)} SOL in this wallet.`,
   notSource: "Sprouts cannot add USDC from this coin. Pick another coin.",
@@ -387,13 +390,26 @@ const topUpToken = (mint: string): Promise<JupiterToken | null> =>
  */
 const TOPUP_PROBE_RAW = BigInt(TOPUP_DEFAULT_CENTS) * 10_000n;
 const topUpRouteMax = (mint: Address): Promise<bigint | null> =>
-  cached(
-    `topup-route:${mint}`,
-    () => getQuote({ inputMint: mint, outputMint: USDC_MINT, amountRaw: TOPUP_PROBE_RAW, slippageBps: TOPUP_SLIPPAGE_BPS, swapMode: "ExactOut", maxAccounts: 20, dexes: TOPUP_DEXES })
-      .then((q) => BigInt(q.otherAmountThreshold)).catch(() => null),
-    () => true,
-    (v) => (v === null ? NEGATIVE_TTL_MS : HOUR_MS),
-  );
+  cached(`topup-route:${mint}`, () => probeTopUpRoute(mint), () => true, (v) => (v === null ? NEGATIVE_TTL_MS : HOUR_MS));
+
+/**
+ * 11-23 (carousel day: SKR was offered, then every SKR top-up refused on swap variant 47): the probe is "the route BUILDS", not only "it
+ * quotes". The $5 quote, then Jupiter's swap instructions asked exactly as the real token build asks them, then the swap data read by
+ * the same parser the real build uses (parseSharedExactOut): a variant the top-up may not carry means the coin is not offered. The
+ * route's variants come from pool liquidity, not the wallet (Kimi), so the puller's public address stands in for the user.
+ */
+export async function probeTopUpRoute(mint: Address): Promise<bigint | null> {
+  try {
+    const quote = await getQuote({ inputMint: mint, outputMint: USDC_MINT, amountRaw: TOPUP_PROBE_RAW, slippageBps: TOPUP_SLIPPAGE_BPS, swapMode: "ExactOut", maxAccounts: 20, dexes: TOPUP_DEXES });
+    const probeUser = (await pullerSigner()).address;
+    const parsed = await getSwapInstructions({ quote, userPublicKey: probeUser, wrapAndUnwrapSol: false, maxPriorityLamports: TOPUP_PRIORITY_LAMPORTS, useSharedAccounts: true });
+    parseSharedExactOut(parsed.swap.data as Uint8Array);
+    return BigInt(quote.otherAmountThreshold);
+  } catch (e) {
+    console.error(`topup: ${mint} is not offered as a source (${e instanceof Error ? e.message : String(e)})`);
+    return null;
+  }
+}
 
 /**
  * The phone's bound (app sign.ts checkTokenTopUp), in integers: maxIn x usd / 10^decimals <= usdcRaw / 1e6 x 1.03, the price in 1e-12 USD
@@ -537,7 +553,7 @@ async function buildTokenTopUp(user: Address, cents: number, inputMint: Address,
   } catch (e) {
     console.error(`topup: no ${token.symbol} price (${e instanceof Error ? e.message : String(e)})`);
   }
-  if (price === undefined) throw new TopUpRefused(TOPUP_COPY.noRouteFor(token.symbol), 503);
+  if (price === undefined) throw new TopUpRefused(TOPUP_COPY.noPriceFor(token.symbol), 503);   // 11-23: its own line (Kimi)
   if (!withinTopUpPriceBound(maxIn, outRaw, price, held.decimals)) {
     console.error(`topup: ${token.symbol} quote for ${user} above the price bound (max ${maxIn} at $${price})`);
     throw new TopUpRefused(TOPUP_COPY.noFairPrice(token.symbol), 503);
