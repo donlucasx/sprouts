@@ -25,8 +25,7 @@ const QA: [string, ReactNode][] = [
     USDC&quot; approval. The program caps it at $5 a day, and only into your own garden.
     <div style={{ marginTop: 14 }}><Safety ink={ink} muted={muted} leaf={leaf} rule={rule} intro={false} /></div>
   </>],
-  // 11-20 (his ruling "Roll back until the switch"): today's fees until the Terms switch (season Task 16 restores the app's COST_LINE here).
-  ["What does it cost?", "0.5% of each SKR, stORE, hSOL and cbBTC planting, in USDC, inside the swap. No fee on USDC or SOL lending, and nothing on interest, withdrawals or moves. Sprouts pays the network fee."],
+  ["What does it cost?", "Sprouts takes 0.5% of each planting, in USDC, including USDC and SOL lending. Sprouts takes nothing on interest, withdrawals or moves, and pays the network fee for every planting."],
   ["Can I pause or stop it?", <>
     Any time. Turn Sprouts off at the top of Rules and nothing moves until you turn it back on. To unlink a wallet, revoke it in Settings
     or <a href="/revoke" style={{ color: leaf }}>on the web</a>. What you&apos;ve planted stays yours, and you can withdraw it whenever you like.
