@@ -43,10 +43,41 @@ describe("sendFailureText (11-01, Kimi MED: a refused link approval says why)", 
     });
     expect(sendFailureText(e)).toBe('{"InstructionError":[2,{"Custom":1}]}; Program log: Error: insufficient funds');
   });
+  it("names the transaction error kit puts on `cause` when the context has no err and no logs (11-23 carousel links)", () => {
+    const cause = Object.assign(new Error("Solana error #7050003"), { context: { __code: 7050003 } });
+    const e = Object.assign(new Error("Solana error #-32002; Decode this error by running ...", { cause }), {
+      context: { __code: -32002, accounts: null, fee: null, logs: null },
+    });
+    expect(sendFailureText(e)).toBe("transaction error #7050003");
+  });
+  it("keeps the context's own err and logs first when they are there, and adds no cause line then", () => {
+    const cause = Object.assign(new Error("x"), { context: { __code: 7050003 } });
+    const e = Object.assign(new Error("Solana error #-32002", { cause }), {
+      context: { err: "BlockhashNotFound", logs: ["Program log: hello"] },
+    });
+    expect(sendFailureText(e)).toBe("BlockhashNotFound; Program log: hello");
+  });
   it("redacts a key and stays short", () => {
     const e = new Error(`fetch failed https://rpc.example/?api-key=SECRETSECRET ${"x".repeat(300)}`);
     const t = sendFailureText(e);
     expect(t).not.toContain("SECRETSECRET");
     expect(t.length).toBeLessThanOrEqual(140);
+  });
+});
+
+describe("sendFailureDetail (11-23: the whole send failure for the log)", async () => {
+  const { sendFailureDetail } = await import("@/lib/redact");
+  it("walks the cause chain with each context, redacted and capped", () => {
+    const cause = Object.assign(new Error("Solana error #7050003"), { context: { __code: 7050003 } });
+    const e = Object.assign(new Error("Solana error #-32002 https://rpc.example/?api-key=SECRETSECRET", { cause }), {
+      context: { __code: -32002, logs: ["Program log: x"], unitsConsumed: 10n },
+    });
+    const d = sendFailureDetail(e);
+    expect(d).toContain('"logs":["Program log: x"]');
+    expect(d).toContain('"unitsConsumed":"10"');
+    expect(d).toContain("cause1:");
+    expect(d).toContain('"__code":7050003');
+    expect(d).not.toContain("SECRETSECRET");
+    expect(sendFailureDetail(new Error("x".repeat(5000))).length).toBeLessThanOrEqual(2000);
   });
 });

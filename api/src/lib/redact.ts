@@ -59,6 +59,28 @@ export function sendFailureText(e: unknown): string {
     const last = back.find((l) => /error:|insufficient/i.test(l)) ?? back.find((l) => /failed/i.test(l)) ?? logs[logs.length - 1];
     if (last) parts.push(last);
   }
+  // 11-23 (carousel day, 3 links refused with only "Solana error #-32002"): kit puts a preflight failure's TRANSACTION error on `cause`,
+  // not in `context.err`, and a failure before execution (blockhash, fee payer, account load) has no logs. Its code names the reason.
+  const cause = (e as { cause?: { context?: Record<string, unknown> } } | null)?.cause;
+  const causeCode = cause?.context?.__code;
+  if (parts.length === 0 || ctx?.err === undefined || ctx?.err === null) {
+    if (typeof causeCode === "number" || typeof causeCode === "string") parts.unshift(`transaction error #${causeCode}`);
+  }
   const text = parts.length ? parts.join("; ") : errorText(e);
   return redact(text).replace(/\s+/g, " ").slice(0, 140);
+}
+
+/**
+ * 11-23 (carousel day): the whole send failure for the server log, redacted: the outer context (simulation result: err, logs,
+ * unitsConsumed) and each cause's code and context, up to 3 levels. At most 2,000 characters. Never stored in an event.
+ */
+export function sendFailureDetail(e: unknown): string {
+  const levels: string[] = [];
+  let cur: unknown = e;
+  for (let i = 0; i < 4 && cur; i++) {
+    const ctx = (cur as { context?: unknown }).context;
+    levels.push(`${i === 0 ? "error" : `cause${i}`}: ${errorText(cur).slice(0, 160)}${ctx !== undefined ? ` ctx=${safeJson(ctx)}` : ""}`);
+    cur = (cur as { cause?: unknown }).cause;
+  }
+  return redact(levels.join(" | ")).replace(/\s+/g, " ").slice(0, 2000);
 }

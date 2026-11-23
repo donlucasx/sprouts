@@ -12,7 +12,7 @@ import { rpc } from "@/lib/rpc";
 import { SUBSCRIPTIONS_PROGRAM, USDC_MINT } from "@/lib/constants";
 import { findSubscriptionAuthorityPda } from "@solana/subscriptions";
 import { ASSOCIATED_TOKEN_PROGRAM_ADDRESS, TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
-import { errorText, sendFailureText } from "@/lib/redact";
+import { errorText, sendFailureDetail, sendFailureText } from "@/lib/redact";
 import { addressOrNull, linkOwner, withFailureLog } from "@/lib/failure-log";
 
 export const runtime = "nodejs";
@@ -86,6 +86,8 @@ async function confirm(request: Request) {
       // link_failed event (failure-log.ts) and the founder's alert carry it. An "already processed" here is the app's re-post of a landed approval.
       sendError = sendFailureText(e);
       console.error(`link confirm: send answered with an error for ${wallet}: ${sendError}`);
+      // 11-23 (carousel day): the whole failure, so the next refusal says why (the line above keeps only 140 characters).
+      console.error(`link confirm: send failure detail for ${wallet}: ${sendFailureDetail(e)}`);
     }
   }
 
