@@ -15,7 +15,9 @@ describe("the leg registry", () => {
     expect(COINS.SOL_LEND.mint).toBe("So11111111111111111111111111111111111111112");
     expect(COINS.cbBTC.mint).toBe("cbbtcf3aa214zXHbiAZQwf4122FBYbraNdFqgw4iMij");
     expect(DECIMALS).toEqual({ SKR: 6, stORE: 11, USDC_LEND: 6, SOL_LEND: 9, hSOL: 9, cbBTC: 8, JitoSOL: 9, JupSOL: 9 });
-    expect(ASSETS.map((a) => COINS[a].feeBps)).toEqual([50, 50, 0, 0, 50, 50]);
+    expect(ASSETS.map((a) => COINS[a].feeBps)).toEqual([50, 50, 50, 50, 50, 50]);
+    expect(COINS.USDC_LEND.feeBps).toBe(50);   // Task 15: 0.5% on USDC lending, taken as a USDC transfer (never a swap fee)
+    expect(COINS.SOL_LEND.feeBps).toBe(50);   // Task 15b: 0.5% on SOL lending, the same pinned USDC transfer before the swap
     expect(ASSETS.map((a) => COINS[a].held)).toEqual(["staked", "wallet", "venue", "venue", "wallet", "wallet"]);
     expect(COINS.USDC_LEND.kind).toBe("lend");
     expect(COINS.USDC_LEND.name).toBe("USDC lending");

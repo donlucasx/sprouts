@@ -70,7 +70,9 @@ export type DelegationState = { exists: boolean; amountPerPeriodRaw: bigint; pul
 export type Built = { tx: unknown; signature: string; expectedOutRaw: bigint; minOutRaw: bigint; lookupTables: unknown[]; lastValidBlockHeight: bigint;
   asset?: LiveAsset; venue?: AutoVenue | null; leg?: number | null; watched?: string[]; usdcFloat?: string; wsolFloat?: string | null; skrFloat?: string | null; pullerJl?: string | null; jlLeftover?: bigint | null; cleanup?: unknown[];
   /** A posted price as re-read after its pre-txs landed (SKR, contracts 10 item 15): judged again right before the send. */
-  postedPrice?: ParsedPrice | null };
+  postedPrice?: ParsedPrice | null;
+  /** Task 15: the lending fee the planting sends to the fee wallet (USDC raw), recorded as the leg's fee_amount_raw; absent = 0. */
+  feeRaw?: bigint };
 export type LendPosition = { asset: LendAsset; venue: AutoVenue; receiptRaw: bigint };
 export type PriceCfg = { confCapBps: number; maxAgeS: number };
 /** `delivery`: the balance of the account the planting delivers to (SKR: the puller's own SKR account; a wallet coin: the user's) right before the simulation and after it [R207 review]. */
@@ -993,7 +995,7 @@ async function plantOneOrThrow(a: RunArgs, w: WalletRow, ctx: RunCtx): Promise<P
     { userPubkey: w.userPubkey, walletPubkey: w.pubkey, signature: built.signature, usdcPulledCents: amount.pullCents, networkFeeCents: NETWORK_FEE_CENTS, status: "sent", aiLine: null, sharesBefore, ts: a.now,
       ...(carry.SKR ? { skrCarryInRaw: carry.SKR } : {}), ...(Object.keys(carryIn).length ? { carryIn } : {}),
       ...(part ? { swapParts: [{ signature: part.swap.signature, cents: part.cents }] } : {}) },
-    [{ asset, venue, usdcInCents: amount.changeCents, amountOutRaw: built.minOutRaw, staked: asset === "SKR", feeAmountRaw: 0n, feeCents: Math.round((amount.pullCents * COINS[asset].feeBps) / 10_000), rateAtPlanting }],
+    [{ asset, venue, usdcInCents: amount.changeCents, amountOutRaw: built.minOutRaw, staked: asset === "SKR", feeAmountRaw: built.feeRaw ?? 0n, feeCents: Math.round((amount.pullCents * COINS[asset].feeBps) / 10_000), rateAtPlanting }],
   );
   // R207 #2: the carry is reserved by the row just written; if another run spent the same remainder meanwhile, the user's credit is
   // now below zero and this planting stands down before claiming or sending (a failed read stands down too).

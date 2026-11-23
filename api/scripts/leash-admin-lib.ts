@@ -6,7 +6,7 @@ import { AccountRole, compileTransaction, createKeyPairSignerFromBytes, createNo
   type Address, type Blockhash, type Instruction, type KeyPairSigner, type TransactionSigner } from "@solana/kit";
 import { getSetComputeUnitLimitInstruction, getSetComputeUnitPriceInstruction } from "@solana-program/compute-budget";
 import { findAssociatedTokenPda, TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
-import { LEG_BYTES, LEG_SPEC, leashConfigPda, encodeConfig, encodeHeader, encodeLeg, initConfigData, setHeaderData, setLegData, skrPriceSource, type LeashConfig, type LeashLegByte } from "../src/lib/leash";
+import { LEG_BYTES, LEG_SPEC, leashConfigPda, decodeConfig, encodeConfig, encodeHeader, encodeLeg, initConfigData, setHeaderData, setLegData, skrPriceSource, type LeashConfig, type LeashLegByte } from "../src/lib/leash";
 import { fetchHermesUpdate } from "../src/lib/pyth";
 import { PYTH_FEED } from "../src/lib/venues/addresses";
 import { LEASH_ADMIN, LEASH_PROGRAM, SYSTEM_PROGRAM, USDC_MINT } from "../src/lib/constants";
@@ -59,7 +59,7 @@ export function assertInitSafe(raw: Uint8Array | null, want: LeashConfig): void 
     throw new Error("the on-chain header (puller / puller_usdc / max_pull) differs from init's default: init would undo it. Use set --puller <pubkey> explicitly. Nothing was sent.");
 }
 
-/** Amended contracts 2.3 per-leg values: tol 100/150/10, fee 50/0, confidence cap 100 bps, max age per leg (60 s; cbBTC 600 s, R324), the leg's pinned feed, and the pinned price account (legs 1, 4-7; zero on 0, 2, 3; leash e823503). */
+/** Amended contracts 2.3 per-leg values (from LEG_SPEC): tol 100/10, fee 50 on every leg since Task 15b, confidence cap 100 bps, max age per leg (60 s; cbBTC 600 s, R324), the leg's pinned feed, and the pinned price account (legs 1, 4-7; zero on 0, 2, 3; leash e823503). */
 export function legConfigFor(leg: LeashLegByte, enabled: boolean): LeashConfig["legs"][number] {
   const s = LEG_SPEC[leg];
   return { enabled, reader: s.reader, feeBps: s.feeBps, tolBps: s.tolBps, confCapBps: 100, maxAgeS: s.maxAgeS, receiptMint: s.receiptMint, rateAccount: s.rateAccount, extra: s.extra, feedId: s.feed ? PYTH_FEED[s.feed] : null, feedAccount: s.feedAccount };
@@ -125,6 +125,27 @@ export function planAdminSteps(raw: Uint8Array | null, want: LeashConfig): Admin
     if (!raw || !sameBytes(raw.subarray(at, at + 176), encodeLeg(leg, want.legs[leg]))) steps.push({ kind: "leg", leg });
   }
   return steps;
+}
+
+/**
+ * Task 15, `leash-admin.ts plan`: the steps `set` would send for `want`, one line each, read-only. A leg step also shows its fee and
+ * tolerance, chain -> target ("-" when the chain has no Config, or the leg was never set), and its on/off when that changes too.
+ */
+export function planLines(raw: Uint8Array | null, want: LeashConfig): string[] {
+  const chain = raw ? decodeConfig(raw) : null;
+  const unset = (leg: number) => !raw || raw.subarray(96 + 176 * leg, 96 + 176 * (leg + 1)).every((b) => b === 0);
+  return planAdminSteps(raw, want).map((step) => {
+    if (step.kind !== "leg") return stepName(step);
+    const was = unset(step.leg) || !chain ? null : chain.legs[step.leg];
+    const w = want.legs[step.leg];
+    const onOff = (on: boolean) => (on ? "on" : "off");
+    return `${stepName(step)}  fee ${was ? was.feeBps : "-"} -> ${w.feeBps}, tol ${was ? was.tolBps : "-"} -> ${w.tolBps}${was && was.enabled !== w.enabled ? `, ${onOff(was.enabled)} -> ${onOff(w.enabled)}` : ""}`;
+  });
+}
+
+/** Task 15 review: what `plan` adds under its steps. Leg 0 in the ON list means `set` will ask for the SKR price proof. */
+export function planNotes(enabled: readonly LeashLegByte[]): string[] {
+  return enabled.includes(0) ? ["note: leg 0 (SKR) is in the ON list, so set needs --env-file=.env.local (the SKR price proof); plan did not check it"] : [];
 }
 
 /** Contracts 2.5 (amended): [2][header] 81 B, [4][header] 81 B, [5][leg][LegConfig] 178 B. */
