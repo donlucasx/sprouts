@@ -3,7 +3,7 @@ import {
   createKeyPairSignerFromPrivateKeyBytes, createSolanaRpcSubscriptions, createTransactionMessage, getTransactionEncoder, pipe,
   sendAndConfirmTransactionFactory, setTransactionMessageFeePayerSigner, setTransactionMessageLifetimeUsingBlockhash,
   signTransactionMessageWithSigners, type Address, type Blockhash, type Instruction, type TransactionSigner,
-  getSignatureFromTransaction, isSolanaError, SOLANA_ERROR__JSON_RPC__SERVER_ERROR_SEND_TRANSACTION_PREFLIGHT_FAILURE, type Signature,
+  getSignatureFromTransaction, isSolanaError, SOLANA_ERROR__JSON_RPC__SERVER_ERROR_SEND_TRANSACTION_PREFLIGHT_FAILURE, SOLANA_ERROR__RPC__TRANSPORT_HTTP_ERROR, type Signature,
 } from "@solana/kit";
 import { getSetComputeUnitLimitInstruction, getSetComputeUnitPriceInstruction } from "@solana-program/compute-budget";
 import { PublicKey, type Signer, type TransactionInstruction } from "@solana/web3.js";
@@ -236,6 +236,20 @@ const sizeOf = (payer: TransactionSigner, ixs: Instruction[]) => getTransactionE
 export const PREFLIGHT_RETRIES = 3;
 export const PREFLIGHT_WAIT_MS = 1_000;
 
+/**
+ * 11-23 (carousel days, one SKR leg skipped on 11-21 and 11-23): the two transport failures seen while posting a price, retried like a
+ * refused preflight. 8100002 = RPC__TRANSPORT_HTTP_ERROR (the node answered an HTTP error); 8190004 =
+ * RPC_SUBSCRIPTIONS__TRANSPORT_FAILED_TO_CONNECT (the confirm websocket did not connect; this kit does not export the name). Nothing
+ * else: an expired blockhash or a tx that landed with an error is never retried (Kimi: no speculative codes).
+ */
+export const RPC_SUBSCRIPTIONS_TRANSPORT_FAILED_TO_CONNECT = 8190004;
+export function isTransportFailure(e: unknown): boolean {
+  // The code read directly (kit's isSolanaError reads `context` unguarded): a look-alike error without one is simply not a transport failure.
+  if (!(e instanceof Error) || e.name !== "SolanaError") return false;
+  const code = (e as { context?: { __code?: unknown } }).context?.__code;
+  return code === SOLANA_ERROR__RPC__TRANSPORT_HTTP_ERROR || code === RPC_SUBSCRIPTIONS_TRANSPORT_FAILED_TO_CONNECT;
+}
+
 export type PriceTxDeps = {
   send: (tx: SignedTx) => Promise<void>;
   /** True when the signature already landed without an error (confirmed or finalized): a resend would only fail as AlreadyProcessed. */
@@ -255,8 +269,8 @@ function livePriceTxDeps(): PriceTxDeps {
   };
 }
 
-/** Sends the pre-txs in order and waits for each (a later one needs the earlier one's account). Only a refused preflight is retried:
- *  any other failure (an expired blockhash, a tx that landed with an error, a timeout) throws at once, as before. */
+/** Sends the pre-txs in order and waits for each (a later one needs the earlier one's account). A refused preflight and the two transport
+ *  failures (isTransportFailure, 11-23) are retried: any other failure (an expired blockhash, a tx that landed with an error) throws at once. */
 export async function sendPriceTxs(txs: SignedTx[], deps: PriceTxDeps = livePriceTxDeps()): Promise<void> {
   for (const tx of txs) {
     for (let attempt = 1; ; attempt++) {
@@ -264,8 +278,12 @@ export async function sendPriceTxs(txs: SignedTx[], deps: PriceTxDeps = livePric
         await deps.send(tx);
         break;
       } catch (e) {
-        if (!isSolanaError(e, SOLANA_ERROR__JSON_RPC__SERVER_ERROR_SEND_TRANSACTION_PREFLIGHT_FAILURE)) throw e;
-        if (await deps.landed(getSignatureFromTransaction(tx))) break;
+        if (!isSolanaError(e, SOLANA_ERROR__JSON_RPC__SERVER_ERROR_SEND_TRANSACTION_PREFLIGHT_FAILURE) && !isTransportFailure(e)) throw e;
+        // 11-23 (Kimi scope): a landed() that itself fails on the transport is an unknown state, not "not landed": count the attempt and
+        // send the same signed tx again (same signature, so it cannot post twice).
+        let didLand = false;
+        try { didLand = await deps.landed(getSignatureFromTransaction(tx)); } catch (le) { if (!isTransportFailure(le)) throw le; }
+        if (didLand) break;
         if (attempt > PREFLIGHT_RETRIES) throw e;
         await deps.sleep(PREFLIGHT_WAIT_MS * attempt);
       }
