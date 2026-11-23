@@ -217,12 +217,12 @@ export const JUPITER_RETRY_MS: readonly number[] = [500, 1_500];
 const RETRY_AFTER_CAP_MS = 3_000;
 
 export function isJupiterRateLimit(e: unknown): boolean {
-  return e instanceof JupiterRateLimited || (e instanceof Error && /^Jupiter (quote|swap-instructions) failed: 429\b/.test(e.message));
+  return e instanceof JupiterRateLimited || (e instanceof Error && /^Jupiter (quote|swap-instructions|price) failed: 429\b/.test(e.message));
 }
 
 /** One Jupiter call, retried on 429 only. Any other status comes back to the caller, whose own error text stays as it was. */
 export async function jupiterFetch(
-  url: string, init: RequestInit, what: "quote" | "swap-instructions",
+  url: string, init: RequestInit, what: "quote" | "swap-instructions" | "price",
   sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
 ): Promise<Response> {
   for (let attempt = 0; ; attempt++) {
@@ -288,7 +288,8 @@ export async function getSwapInstructions(a: {
 /** Current USD price of a mint from Jupiter's price API, or null when unknown. */
 export async function priceUsd(mint: string): Promise<number | null> {
   try {
-    const res = await fetch(`${BASE}/price/v3?ids=${mint}`, { headers: headers(), signal: timeout() });
+    // 11-23 (carousel day, a top-up refused on "Jupiter price failed: 429"): prices retry a 429 like quotes do.
+    const res = await jupiterFetch(`${BASE}/price/v3?ids=${mint}`, { headers: headers() }, "price");
     if (!res.ok) return null;
     const j = (await res.json()) as Record<string, { usdPrice?: number } | undefined>;
     const p = j[mint]?.usdPrice;
@@ -302,7 +303,8 @@ export type PriceInfo = { usdPrice: number; liquidity: number | null; priceChang
 
 /** Several mints' prices in one call (the daily snapshot, spec 5.2); a mint the API does not know is simply absent. Throws on a failed call so the snapshot marks the day. */
 export async function pricesUsd(mints: string[]): Promise<Record<string, PriceInfo>> {
-  const res = await fetch(`${BASE}/price/v3?ids=${mints.join(",")}`, { headers: headers(), signal: timeout() });
+  // 11-23: a 429 is retried (jupiterFetch); after the last attempt it throws "Jupiter price failed: 429 ..." as before.
+  const res = await jupiterFetch(`${BASE}/price/v3?ids=${mints.join(",")}`, { headers: headers() }, "price");
   if (!res.ok) throw new Error(`Jupiter price failed: ${res.status}`);
   const j = (await res.json()) as Record<string, { usdPrice?: number; liquidity?: number; priceChange24h?: number; decimals?: number } | undefined>;
   const out: Record<string, PriceInfo> = {};

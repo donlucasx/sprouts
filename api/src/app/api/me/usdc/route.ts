@@ -3,7 +3,7 @@ import { address } from "@solana/kit";
 import { requireSession } from "@/lib/auth-guard";
 import { readUsdcBalanceRaw } from "@/lib/subscriptions";
 import { rpc } from "@/lib/rpc";
-import { priceUsd } from "@/lib/jupiter";
+import { sharedPriceUsd } from "@/lib/shared-reads";
 import { affordableTopUps, topUpSources } from "@/lib/topup";
 import { WSOL_MINT } from "@/lib/constants";
 import { getRepo } from "@/db/repo";
@@ -34,7 +34,7 @@ export async function GET(request: Request) {
       return null;
     }),
     Promise.resolve().then(() => rpc().getBalance(me).send()).then((r) => BigInt(r.value), () => null),
-    Promise.resolve().then(() => priceUsd(WSOL_MINT)).catch(() => null),
+    Promise.resolve().then(() => sharedPriceUsd(WSOL_MINT)).catch(() => null),   // 11-23: display only, the shared 120 s read
   ]);
   const topUpCents = sol !== null && solUsd !== null ? affordableTopUps(sol, solUsd) : null;
   // 0.1.10: the wallet's SOL in lamports (null when unread), so Link a wallet can say BEFORE the approval that it needs a little SOL

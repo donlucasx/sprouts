@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { rateLimited, requireSession } from "@/lib/auth-guard";
 import { getRepo } from "@/db/repo";
 import { rulesRowToRules } from "@/db/types";
-import { priceUsd } from "@/lib/jupiter";
+import { sharedPriceUsd } from "@/lib/shared-reads";
 import { heliusParsedPage } from "@/lib/helius";
 import { cached } from "@/lib/memo";
 import { PREVIEW_CACHE_MS, previewTotals, walletSwaps } from "@/lib/preview";
@@ -12,7 +12,7 @@ export const runtime = "nodejs";
 export const maxDuration = 30;
 
 const boundedPrice: PriceLookup = (mint) =>
-  Promise.race([priceUsd(mint), new Promise<null>((resolve) => setTimeout(() => resolve(null), 800))]);
+  Promise.race([sharedPriceUsd(mint), new Promise<null>((resolve) => setTimeout(() => resolve(null), 800))]);
 
 /**
  * 11-12 (his ruling): Home's preview for a user with no wallet linked: what the signed-in wallet's swaps of the last 30 days would

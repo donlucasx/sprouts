@@ -313,3 +313,33 @@ describe("jupiterFetch: 429 retries", () => {
     expect(order).toEqual(["read", "sleep"]);
   });
 });
+
+describe("prices retry a 429 like quotes (11-23 carousel day: a top-up refused on \"Jupiter price failed: 429\")", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const MINT = "So11111111111111111111111111111111111111112";
+  const priceBody = JSON.stringify({ [MINT]: { usdPrice: 73.5 } });
+  const script = (...rs: Array<{ status: number; body?: string }>) => {
+    const f = vi.fn(async () => { const r = rs.shift()!; return new Response(r.body ?? "x", { status: r.status }); });
+    vi.stubGlobal("fetch", f);
+    return f;
+  };
+  it("priceUsd: 429 then 200 answers the price after 2 fetches", async () => {
+    const f = script({ status: 429 }, { status: 200, body: priceBody });
+    expect(await priceUsd(MINT)).toBe(73.5);
+    expect(f).toHaveBeenCalledTimes(2);
+  });
+  it("priceUsd: three 429s answer null (never throws)", async () => {
+    const f = script({ status: 429 }, { status: 429 }, { status: 429 });
+    expect(await priceUsd(MINT)).toBeNull();
+    expect(f).toHaveBeenCalledTimes(3);
+  }, 10_000);
+  it("pricesUsd: 429 then 200 answers; three 429s throw a rate limit", async () => {
+    script({ status: 429 }, { status: 200, body: priceBody });
+    expect((await pricesUsd([MINT]))[MINT]?.usdPrice).toBe(73.5);
+    script({ status: 429 }, { status: 429 }, { status: 429 });
+    const e = await pricesUsd([MINT]).catch((x) => x);
+    expect(e.message).toMatch(/^Jupiter price failed: 429/);
+    expect(isJupiterRateLimit(e)).toBe(true);
+    expect(isJupiterRateLimit(new Error("Jupiter price failed: 429 x"))).toBe(true);
+  }, 10_000);
+});
