@@ -122,7 +122,7 @@ export type Planted = { wallet: string; asset: LiveAsset; pullCents: number; sig
  * waiting; it does not reconcile `sent` plantings (the daily run's job: two runs booking one planting would bump the ledger twice)
  * and resumes only first-time users' no-USDC pauses. Everything else is the daily run's own code path.
  */
-export type RunMode = { only?: "first" | "rescue"; rescue?: { wallets: string[]; since: Date } };
+export type RunMode = { only?: "first" | "rescue"; rescue?: { wallets: string[] | "all"; since: Date } };
 type RunArgs = { repo: Repo; now: Date; chain: Chain } & RunMode;
 export type Skipped = { wallet: string; reason: string };
 
@@ -246,8 +246,16 @@ async function userHasPlanted(repo: Repo, userPubkey: string): Promise<boolean> 
 /** 11-24: the skip reasons that mean the daily run did not get to the wallet (capacity), not that the wallet had nothing to do. */
 export const RESCUE_REASONS = ["run stopped", "run deadline", "rpc busy", "jupiter busy"] as const;
 
-/** The wallets a finished daily run skipped for capacity (its summary's planting.skipped); [] for anything unreadable or unfinished. */
-export function rescueCandidates(run: { finishedAt: Date | null; summary: unknown } | null): string[] {
+/** The daily route's own lock rule (cron/plant RUN_STALE_MS): a run claimed this long ago and not finished died. */
+export const RESCUE_STALE_MS = 6 * 60_000;
+
+/**
+ * The wallets a finished daily run skipped for capacity (its summary's planting.skipped); [] for anything unreadable or still running.
+ * 11-24 (Kimi audit finding 3): a run that died unfinished (Vercel's 300 s kill) wrote no summary, so every wallet is a candidate
+ * ("all"); rescueWallets then keeps those whose user has not planted since the run started.
+ */
+export function rescueCandidates(run: { startedAt?: Date; finishedAt: Date | null; summary: unknown } | null, nowMs: number = Date.now()): string[] | "all" {
+  if (run && !run.finishedAt) return run.startedAt && nowMs - run.startedAt.getTime() >= RESCUE_STALE_MS ? "all" : [];
   if (!run?.finishedAt) return [];
   const skipped = (run.summary as { planting?: { skipped?: unknown } } | null)?.planting?.skipped;
   if (!Array.isArray(skipped)) return [];
@@ -266,11 +274,11 @@ export function rescueCandidates(run: { finishedAt: Date | null; summary: unknow
  */
 export async function rescueWallets(repo: Repo, active: WalletRow[], rescue: RunMode["rescue"]): Promise<WalletRow[]> {
   if (!rescue || rescue.wallets.length === 0) return [];
-  const wanted = new Set(rescue.wallets);
+  const wanted = rescue.wallets === "all" ? null : new Set(rescue.wallets);
   const done = new Map<string, boolean>();
   const out: WalletRow[] = [];
   for (const w of active) {
-    if (!wanted.has(w.pubkey)) continue;
+    if (wanted && !wanted.has(w.pubkey)) continue;
     if (!done.has(w.userPubkey)) {
       try {
         const [last] = await repo.listPlantings(w.userPubkey, 1);

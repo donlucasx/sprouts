@@ -1,10 +1,11 @@
 import {
   AccountRole, address, appendTransactionMessageInstructions, assertIsTransactionWithBlockhashLifetime, compileTransaction,
-  createKeyPairSignerFromPrivateKeyBytes, createSolanaRpcSubscriptions, createTransactionMessage, getTransactionEncoder, pipe,
-  sendAndConfirmTransactionFactory, setTransactionMessageFeePayerSigner, setTransactionMessageLifetimeUsingBlockhash,
+  createKeyPairSignerFromPrivateKeyBytes, createTransactionMessage, getTransactionEncoder, pipe,
+  setTransactionMessageFeePayerSigner, setTransactionMessageLifetimeUsingBlockhash,
   signTransactionMessageWithSigners, type Address, type Blockhash, type Instruction, type TransactionSigner,
   getSignatureFromTransaction, isSolanaError, SOLANA_ERROR__JSON_RPC__SERVER_ERROR_SEND_TRANSACTION_PREFLIGHT_FAILURE, SOLANA_ERROR__RPC__TRANSPORT_HTTP_ERROR, type Signature,
 } from "@solana/kit";
+import { ConfirmError, sendAndConfirmByPolling } from "./confirm";
 import { getSetComputeUnitLimitInstruction, getSetComputeUnitPriceInstruction } from "@solana-program/compute-budget";
 import { PublicKey, type Signer, type TransactionInstruction } from "@solana/web3.js";
 import { createRequire } from "node:module";
@@ -258,9 +259,9 @@ export type PriceTxDeps = {
 };
 
 function livePriceTxDeps(): PriceTxDeps {
-  const send = sendAndConfirmTransactionFactory({ rpc: rpc(), rpcSubscriptions: createSolanaRpcSubscriptions(config().heliusRpcUrl.replace("https://", "wss://")) });
   return {
-    send: async (tx) => { assertIsTransactionWithBlockhashLifetime(tx); await send(tx, { commitment: "confirmed" }); },
+    // 11-24: confirmed by HTTP polling, not a websocket (lib/confirm.ts).
+    send: async (tx) => { assertIsTransactionWithBlockhashLifetime(tx); await sendAndConfirmByPolling(tx); },
     landed: async (sig) => {
       const s = (await rpc().getSignatureStatuses([sig]).send()).value[0];
       return !!s && s.err === null && (s.confirmationStatus === "confirmed" || s.confirmationStatus === "finalized");
@@ -278,7 +279,9 @@ export async function sendPriceTxs(txs: SignedTx[], deps: PriceTxDeps = livePric
         await deps.send(tx);
         break;
       } catch (e) {
-        if (!isSolanaError(e, SOLANA_ERROR__JSON_RPC__SERVER_ERROR_SEND_TRANSACTION_PREFLIGHT_FAILURE) && !isTransportFailure(e)) throw e;
+        // 11-24 (Kimi): an expired or unconfirmed poll (lib/confirm.ts) is an unknown state too: ask landed(), then resend the same tx.
+        const unknownConfirm = e instanceof ConfirmError && e.kind !== "failed";
+        if (!isSolanaError(e, SOLANA_ERROR__JSON_RPC__SERVER_ERROR_SEND_TRANSACTION_PREFLIGHT_FAILURE) && !isTransportFailure(e) && !unknownConfirm) throw e;
         // 11-23 (Kimi scope): a landed() that itself fails on the transport is an unknown state, not "not landed": count the attempt and
         // send the same signed tx again (same signature, so it cannot post twice).
         let didLand = false;

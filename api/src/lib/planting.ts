@@ -1,9 +1,9 @@
 import {
   address, pipe, createTransactionMessage, setTransactionMessageFeePayerSigner, setTransactionMessageLifetimeUsingBlockhash,
   appendTransactionMessageInstructions, compressTransactionMessageUsingAddressLookupTables, signTransactionMessageWithSigners,
-  getBase64EncodedWireTransaction, getSignatureFromTransaction, fetchAddressesForLookupTables, sendAndConfirmTransactionFactory,
-  createSolanaRpcSubscriptions, assertIsTransactionWithBlockhashLifetime, getTransactionEncoder, type Address, type Instruction, type TransactionSigner,
+  getBase64EncodedWireTransaction, getSignatureFromTransaction, fetchAddressesForLookupTables, assertIsTransactionWithBlockhashLifetime, getTransactionEncoder, type Address, type Instruction, type TransactionSigner,
 } from "@solana/kit";
+import { sendAndConfirmByPolling } from "./confirm";
 import { getSetComputeUnitLimitInstruction, getSetComputeUnitPriceInstruction } from "@solana-program/compute-budget";
 import { ASSOCIATED_TOKEN_PROGRAM_ADDRESS, findAssociatedTokenPda, TOKEN_PROGRAM_ADDRESS, getCreateAssociatedTokenIdempotentInstruction, getTransferInstruction } from "@solana-program/token";
 import { getQuote, getSwapInstructions, checkSwapInstructions, checkQuoteMints, JUPITER_AGGREGATOR } from "./jupiter";
@@ -620,12 +620,11 @@ export function tokenAmountOf(data: Uint8Array | null): bigint {
   return Buffer.from(data).readBigUInt64LE(64);
 }
 
-/** Send and wait for confirmation. May throw after the transaction landed (a dropped websocket): the caller asks the chain. */
+/** Send and wait for confirmation (11-24: by HTTP polling, lib/confirm.ts). May throw after the transaction landed: the caller asks the chain. */
 export async function sendPlanting(b: BuiltPlanting): Promise<void> {
   const tx = b.tx;
   assertIsTransactionWithBlockhashLifetime(tx);
-  const send = sendAndConfirmTransactionFactory({ rpc: rpc(), rpcSubscriptions: createSolanaRpcSubscriptions(config().heliusRpcUrl.replace("https://", "wss://")) });
-  await send(tx, { commitment: "confirmed" });
+  await sendAndConfirmByPolling(tx);
 }
 
 /** What the chain says about a signature: landed, landed and failed, or not seen (still in flight or never sent). */

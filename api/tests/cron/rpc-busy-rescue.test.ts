@@ -50,13 +50,24 @@ describe("createPace", () => {
 describe("same-day rescue", () => {
   const run = (skipped: { wallet: string; reason: string }[], finished = true) => ({ startedAt: NOW, finishedAt: finished ? new Date(NOW.getTime() + 278_000) : null, summary: { planting: { planted: [], skipped } } });
   it("takes only capacity skips from a finished run", () => {
-    expect(rescueCandidates(run([
+    expect((rescueCandidates(run([
       { wallet: "A", reason: "run stopped" }, { wallet: "B", reason: "run deadline" }, { wallet: "C", reason: "rpc busy" }, { wallet: "D", reason: "jupiter busy" },
       { wallet: "E", reason: "below threshold" }, { wallet: "F", reason: "build failed" }, { wallet: "G", reason: "no usdc" }, { wallet: "A", reason: "run stopped" },
-    ])).sort()).toEqual(["A", "B", "C", "D"]);
-    expect(rescueCandidates(run([{ wallet: "A", reason: "run stopped" }], false))).toEqual([]);
+    ])) as string[]).sort()).toEqual(["A", "B", "C", "D"]);
+    expect(rescueCandidates(run([{ wallet: "A", reason: "run stopped" }], false), NOW.getTime() + 60_000)).toEqual([]);
     expect(rescueCandidates(null)).toEqual([]);
     expect(rescueCandidates({ finishedAt: NOW, summary: { planting: null } })).toEqual([]);
+  });
+  it("a run that died unfinished (Vercel's 300 s kill) makes every wallet a candidate once it is stale; a running one, none", () => {
+    const dead = { startedAt: NOW, finishedAt: null, summary: null };
+    expect(rescueCandidates(dead, NOW.getTime() + 6 * 60_000)).toBe("all");
+    expect(rescueCandidates(dead, NOW.getTime() + 5 * 60_000)).toEqual([]);
+  });
+  it("'all' keeps every active wallet whose user has not planted since the run started", async () => {
+    const repo = await users(3);
+    await repo.insertPlanting({ userPubkey: "U0", walletPubkey: "W0", signature: "s0", usdcPulledCents: 100, networkFeeCents: 1, status: "confirmed", aiLine: null, ts: new Date(NOW.getTime() + 1000) } as never, []);
+    const out = await rescueWallets(repo, await repo.listActiveWallets(), { wallets: "all", since: NOW });
+    expect(out.map((w) => w.pubkey).sort()).toEqual(["W1", "W2"]);
   });
   it("keeps active candidates whose user has no planting since the run started", async () => {
     const repo = await users(4);

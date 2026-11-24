@@ -1,9 +1,10 @@
 import {
   getProgramDerivedAddress, getAddressEncoder, pipe, createTransactionMessage, setTransactionMessageFeePayerSigner,
   setTransactionMessageLifetimeUsingBlockhash, appendTransactionMessageInstructions, signTransactionMessageWithSigners,
-  assertIsTransactionWithBlockhashLifetime, sendAndConfirmTransactionFactory, createSolanaRpcSubscriptions, getSignatureFromTransaction,
+  assertIsTransactionWithBlockhashLifetime, getSignatureFromTransaction,
   type Address, type Instruction, type TransactionSigner, type Commitment,
 } from "@solana/kit";
+import { sendAndConfirmByPolling } from "./confirm";
 import { findAssociatedTokenPda, TOKEN_PROGRAM_ADDRESS, getCreateAssociatedTokenIdempotentInstruction } from "@solana-program/token";
 import { getStakeInstructionAsync, getWithdrawInstructionAsync, getUnstakeInstructionAsync, getCancelUnstakeInstructionAsync, fetchMaybeUserStake, fetchStakeConfig } from "@/generated/staking";
 import { SKR_STAKING_PROGRAM, STAKE_CONFIG, STAKE_VAULT, GUARDIAN_POOL, SKR_MINT } from "./constants";
@@ -95,8 +96,7 @@ export async function crankWithdraw(user: Address): Promise<string> {
   );
   const tx = await signTransactionMessageWithSigners(message);
   assertIsTransactionWithBlockhashLifetime(tx);
-  const send = sendAndConfirmTransactionFactory({ rpc: rpc(), rpcSubscriptions: createSolanaRpcSubscriptions(config().heliusRpcUrl.replace("https://", "wss://")) });
-  await send(tx, { commitment: "confirmed" });
+  await sendAndConfirmByPolling(tx);   // 11-24: HTTP polling, not a websocket (lib/confirm.ts)
   return getSignatureFromTransaction(tx);
 }
 

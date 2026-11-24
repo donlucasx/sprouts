@@ -7,6 +7,10 @@ name: first-planting
 on:
   schedule:
     - cron: "30 * * * *"   # :30, clear of the daily 14:00 run and of GitHub's top-of-hour queue
+    # 11-24 (the daily run met Helius 429s): two catch-ups after the daily run (it has fired ~14:11), which rescue the wallets it did
+    # not reach. Sequential through the concurrency group below, so the load on the RPC never doubles.
+    - cron: "41 14 * * *"
+    - cron: "56 14 * * *"
   workflow_dispatch: {}
 
 concurrency:
@@ -31,4 +35,4 @@ jobs:
             https://sprouts.money/api/cron/first-planting) || { echo "request failed (curl)"; exit 1; }
           echo "HTTP ${code}"
           if [ "${code}" != "200" ]; then exit 1; fi
-          jq -c '{planted, skipped, reasons}' body.json
+          jq -c '{planted, skipped, reasons, rescued}' body.json

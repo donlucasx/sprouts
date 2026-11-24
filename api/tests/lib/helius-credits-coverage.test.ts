@@ -10,9 +10,6 @@ const SRC = path.resolve(__dirname, "../../src");
 const BILLED = /heliusRpcUrl|api\.helius\.xyz|new Connection\(/;
 const ALLOW: Record<string, string> = {
   "lib/config.ts": "declares the URL and key, makes no call",
-  "lib/staking.ts": "heliusRpcUrl only for wss signature subscriptions; HTTP goes through rpc() (counted)",
-  "lib/planting.ts": "heliusRpcUrl only for wss signature subscriptions; HTTP goes through rpc() (counted)",
-  "lib/pyth.ts": "heliusRpcUrl only for wss signature subscriptions; HTTP goes through rpc() (counted)",
   "app/api/auth/verify/route.ts": "hands the URL to genesis.ts and skr.ts, which count each request",
 };
 
@@ -32,11 +29,10 @@ describe("Helius credit counting covers every billed call site", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("the allowlisted wss-only files use heliusRpcUrl only for wss subscriptions", () => {
-    for (const rel of ["lib/staking.ts", "lib/planting.ts", "lib/pyth.ts"]) {
-      const lines = readFileSync(path.join(SRC, rel), "utf8").split("\n").filter((l) => l.includes("heliusRpcUrl"));
-      expect(lines.length, rel).toBeGreaterThan(0);
-      for (const l of lines) expect(l, rel).toMatch(/createSolanaRpcSubscriptions\(config\(\)\.heliusRpcUrl\.replace\("https:\/\/", "wss:\/\/"\)\)/);
+  it("11-24: no file opens a Helius websocket any more (confirmation polls over HTTP, lib/confirm.ts), so none needs the wss allowance", () => {
+    for (const rel of ["lib/staking.ts", "lib/planting.ts", "lib/pyth.ts", "lib/confirm.ts"]) {
+      const text = readFileSync(path.join(SRC, rel), "utf8");
+      expect(text, rel).not.toMatch(/heliusRpcUrl|createSolanaRpcSubscriptions/);
     }
   });
 
