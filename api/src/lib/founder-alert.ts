@@ -135,6 +135,9 @@ const short = (k: string | null) => (k ? `${k.slice(0, 4)}...${k.slice(-4)}` : "
 const clip = (v: unknown) => errorText(v).slice(0, 160);
 
 /** The alert line for an event, or null for the events nobody needs to hear about. */
+/** 11-24: the busy-skip count (24 h, one wallet) at which a rate-limit skip is a founder card again, once (plant-run busyStreak). */
+export const BUSY_STREAK_ALERT = 3;
+
 export function founderAlertFor(e: Omit<EventRow, "id" | "ts">): string | null {
   const d = (e.detail ?? {}) as Record<string, unknown>;
   const who = `wallet ${short(e.walletPubkey)} (user ${short(e.userPubkey)})`;
@@ -148,6 +151,10 @@ export function founderAlertFor(e: Omit<EventRow, "id" | "ts">): string | null {
         ? `No USDC approval on this wallet: ${who}. Sprouts has stopped planting for it; a re-link (app 0.1.5 or later) restores it.`
         : `Revoked outside the app: ${who}. Sprouts has stopped planting for this wallet.`;
     case "pull_failed":
+      // 11-24 (his Discord: "Planting failed ... jupiter 429" pings): a rate-limit skip is "try later", retried by the next run with
+      // nothing pulled; it stays in the events table (ops dashboard) but is not a card. A real failure still is.
+      // Kimi: a wallet skipped busy 3 times in 24 h (detail.streak, plant-run busyStreak) is a card again, once.
+      if (d.err === "jupiter 429" || d.err === "rpc 429") return d.streak === BUSY_STREAK_ALERT ? `Planting skipped ${BUSY_STREAK_ALERT} times in 24 h (the ${d.err === "rpc 429" ? "RPC" : "Jupiter"} rate limit): ${who}. It keeps retrying; if it goes on, check that wallet's builds.` : null;
       return `Planting failed at ${String(d.stage ?? "?")}: ${who}: ${clip(d.err)}`;
     case "withdraw_failed":
       return `SKR withdrawal failed (retried next run): user ${short(e.userPubkey)}: ${clip(d.err)}`;

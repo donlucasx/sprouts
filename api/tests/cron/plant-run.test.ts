@@ -2830,7 +2830,13 @@ describe("rpc busy (an RPC 429 after retries, 11-24)", () => {
     expect(r.skipped.every((s) => s.reason === "rpc busy")).toBe(true);
     expect(repo.events.filter((e) => e.kind === "run_stopped")).toHaveLength(0);
     expect(repo.events.filter((e) => e.kind === "pull_failed" && (e.detail as { err?: string }).err === "rpc 429")).toHaveLength(12);
+    expect(repo.events.filter((e) => e.kind === "pull_failed").every((e) => (e.detail as { streak?: number }).streak === 1)).toBe(true);
     for (let i = 0; i < 12; i++) expect(await repo.unplantedSwaps(`W${i}`)).toHaveLength(1);
+  });
+  it("busy skips carry the wallet's 24 h streak, so the third one is a founder card (Kimi)", async () => {
+    const repo = await many(1);
+    for (let i = 0; i < 3; i++) await runPlanting({ repo, now: new Date(NOW.getTime() + i * 3_600_000), chain: fakeChain({ buildPlantingTx: async () => { throw http429(); } }) });
+    expect(repo.events.filter((e) => e.kind === "pull_failed").map((e) => (e.detail as { streak?: number }).streak)).toEqual([1, 2, 3]);
   });
   it("an RPC 429 between build failures neither counts nor resets", async () => {
     // One user's wallets run in series, so the order is fixed.

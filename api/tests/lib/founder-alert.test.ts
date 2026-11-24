@@ -11,6 +11,14 @@ afterEach(() => {
 });
 
 describe("founderAlertFor", () => {
+  it("11-24: a rate-limit skip (jupiter 429, rpc 429) is not a card; any other planting failure is", () => {
+    expect(founderAlertFor(ev("pull_failed", { stage: "build", err: "jupiter 429" }))).toBeNull();
+    expect(founderAlertFor(ev("pull_failed", { stage: "build", err: "rpc 429" }))).toBeNull();
+    expect(founderAlertFor(ev("pull_failed", { stage: "build", err: "rpc 429", streak: 2 }))).toBeNull();
+    expect(founderAlertFor(ev("pull_failed", { stage: "build", err: "jupiter 429", streak: 3 }))).toMatch(/skipped 3 times in 24 h \(the Jupiter rate limit\)/);
+    expect(founderAlertFor(ev("pull_failed", { stage: "build", err: "jupiter 429", streak: 4 }))).toBeNull();
+    expect(founderAlertFor(ev("pull_failed", { stage: "build", err: "Jupiter quote failed: 500" }))).toMatch(/^Planting failed at build/);
+  });
   it("names the wallet, the user and the amount on a no-USDC pause", () => {
     expect(founderAlertFor(ev("paused_no_usdc", { needCents: 50 }))).toBe(
       `Paused for no USDC: wallet ${W.slice(0, 4)}...${W.slice(-4)} (user ${U.slice(0, 4)}...${U.slice(-4)}), needs $0.50. Plantings resume on their own once USDC is there.`,

@@ -689,18 +689,29 @@ export function openingTarget(rules: Pick<Rules, "allocation" | "pins" | "manage
   return { target: plantingTarget(rules, disabled, shut), opening, shut };
 }
 
+/**
+ * 11-24 (Kimi): how many rate-limit skips this wallet has in the last 24 h, this one included. A busy skip is not a founder card
+ * (founder-alert.ts) until it reaches its BUSY_STREAK_ALERT, so a wallet stuck busy for a day is still seen. A failed read counts 1.
+ */
+async function busyStreak(a: RunArgs, w: WalletRow): Promise<number> {
+  const since = a.now.getTime() - 24 * 3_600_000;
+  const events = await a.repo.listEvents(w.userPubkey, ["pull_failed"], 50).catch(() => []);
+  const busy = events.filter((e) => e.walletPubkey === w.pubkey && e.ts.getTime() >= since && ["jupiter 429", "rpc 429"].includes(String((e.detail as { err?: unknown } | null)?.err)));
+  return busy.length + 1;
+}
+
 async function plantOne(a: RunArgs, w: WalletRow, ctx: RunCtx): Promise<Planted | Skipped> {
   try {
     return await plantOneOrThrow(a, w, ctx);
   } catch (e) {
     if (isJupiterRateLimit(e)) {
       console.error(`planting for ${w.pubkey} skipped: Jupiter is busy (429)`);
-      await a.repo.addEvent({ userPubkey: w.userPubkey, walletPubkey: w.pubkey, kind: "pull_failed", detail: { stage: "build", err: "jupiter 429" } });
+      await a.repo.addEvent({ userPubkey: w.userPubkey, walletPubkey: w.pubkey, kind: "pull_failed", detail: { stage: "build", err: "jupiter 429", streak: await busyStreak(a, w) } });
       return { wallet: w.pubkey, reason: "jupiter busy" };
     }
     if (isHttp429(e)) {
       console.error(`planting for ${w.pubkey} skipped: the RPC is busy (429)`);
-      await a.repo.addEvent({ userPubkey: w.userPubkey, walletPubkey: w.pubkey, kind: "pull_failed", detail: { stage: "build", err: "rpc 429" } });
+      await a.repo.addEvent({ userPubkey: w.userPubkey, walletPubkey: w.pubkey, kind: "pull_failed", detail: { stage: "build", err: "rpc 429", streak: await busyStreak(a, w) } });
       return { wallet: w.pubkey, reason: "rpc busy" };
     }
     // Review I1: a Jupiter 400, a lookup-table fetch or a blockhash error on one wallet must not abort everyone's day.
