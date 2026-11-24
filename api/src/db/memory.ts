@@ -85,6 +85,10 @@ export class MemoryRepo implements Repo {
     const r = this.cronRuns.get(day);
     if (r && r.startedAt.getTime() === startedAt.getTime()) Object.assign(r, { finishedAt: now, ok, summary });
   }
+  async getCronRun(day: string) {
+    const r = this.cronRuns.get(day);
+    return r ? { ...r } : null;
+  }
 
   async getRules(userPubkey: string): Promise<T.RulesRow> {
     // Mirrors the schema: rules.user_pubkey references users, so a first read for an unknown user fails (as it did in production).

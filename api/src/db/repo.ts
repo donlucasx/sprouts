@@ -168,6 +168,8 @@ export interface Repo {
   /** The run's record (free Vercel keeps no logs): when it ended, whether it got through, what it did. */
   /** `startedAt` is the `now` this invocation claimed with: a run that outlived its claim (day re-claimed) cannot finish the newer run's row. */
   finishCronRun(day: string, ok: boolean, summary: unknown, now: Date, startedAt: Date): Promise<void>;
+  /** 11-24: the day's run record (the hourly rescue reads which wallets the daily run could not reach); null when there is none. */
+  getCronRun(day: string): Promise<{ startedAt: Date; finishedAt: Date | null; ok: boolean | null; summary: unknown } | null>;
 
   // The watcher's budget (spec 6): every model call recorded; spend since a moment, calls by one user since a moment.
   addWatcherCall(c: NewWatcherCall): Promise<number>;

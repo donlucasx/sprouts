@@ -129,6 +129,14 @@ export class SupabaseRepo implements Repo {
     if (error) throw new Error(error.message);
   }
 
+  async getCronRun(day: string) {
+    const { data, error } = await this.db.from("cron_runs").select("started_at, finished_at, ok, summary").eq("day", day).maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!data) return null;
+    const r = data as { started_at: string; finished_at: string | null; ok: boolean | null; summary: unknown };
+    return { startedAt: new Date(r.started_at), finishedAt: r.finished_at ? new Date(r.finished_at) : null, ok: r.ok, summary: r.summary };
+  }
+
   async keepalive() {
     const { error } = await this.db.from("users").select("*", { head: true, count: "exact" });
     if (error) throw new Error(error.message);

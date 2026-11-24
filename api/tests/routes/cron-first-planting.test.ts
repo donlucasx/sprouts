@@ -61,7 +61,7 @@ describe("GET /api/cron/first-planting (owner 10-22)", () => {
     result.skipped = [{ wallet: "WalletB", reason: "no usdc" }, { wallet: "WalletC", reason: "no usdc" }, { wallet: "WalletD", reason: "below threshold" }];
     const res = await get();
     const text = await res.text();
-    expect(JSON.parse(text)).toEqual({ planted: 1, skipped: 3, reasons: { "no usdc": 2, "below threshold": 1 } });
+    expect(JSON.parse(text)).toEqual({ planted: 1, skipped: 3, reasons: { "no usdc": 2, "below threshold": 1 }, rescued: 0 });
     expect(text).not.toMatch(/Wallet|Sig/);
   });
 
@@ -88,12 +88,12 @@ describe("GET /api/cron/first-planting (owner 10-22)", () => {
     it("the heartbeat detail carries the reasons map", async () => {
       result.skipped = [{ wallet: "WalletB", reason: "send unknown" }, { wallet: "WalletC", reason: "no usdc" }, { wallet: "WalletD", reason: "no usdc" }];
       await get();
-      expect((await beats())[0].detail).toEqual({ planted: 0, skipped: 3, reasons: { "send unknown": 1, "no usdc": 2 } });
+      expect((await beats())[0].detail).toEqual({ planted: 0, skipped: 3, reasons: { "send unknown": 1, "no usdc": 2 }, rescue: { candidates: 0, planted: 0 } });
     });
 
     it("writes one even when nothing was planted", async () => {
       await get();
-      expect((await beats())[0].detail).toEqual({ planted: 0, skipped: 0, reasons: {} });
+      expect((await beats())[0].detail).toEqual({ planted: 0, skipped: 0, reasons: {}, rescue: { candidates: 0, planted: 0 } });
     });
 
     it("writes none when unauthorized or when the run throws", async () => {

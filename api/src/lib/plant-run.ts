@@ -18,6 +18,7 @@ export { lendingUsdByProtocol } from "./user-routing";
 import { AUTO_VENUES, VENUE_PROTOCOL, pickVenue, pickVenueSticky, venueCandidates, type AutoVenue, type Protocol } from "@/domain/venues";
 import { LEASH_PROGRAM } from "./constants";
 import { isJupiterRateLimit } from "./jupiter";
+import { isHttp429 } from "./http429";
 import { enabledLegs, leashAllowedVenues, leashLegOf, leashLive, LEASH_ERRORS, LEG_SPEC, postedPriceRefusal, skrPriceSource, type LeashConfig, type LeashLegByte } from "./leash";
 import type { ParsedPrice } from "./pyth";
 import { klendDeliveryShortfall } from "./venues/klend";
@@ -121,7 +122,7 @@ export type Planted = { wallet: string; asset: LiveAsset; pullCents: number; sig
  * waiting; it does not reconcile `sent` plantings (the daily run's job: two runs booking one planting would bump the ledger twice)
  * and resumes only first-time users' no-USDC pauses. Everything else is the daily run's own code path.
  */
-export type RunMode = { only?: "first" };
+export type RunMode = { only?: "first" | "rescue"; rescue?: { wallets: string[]; since: Date } };
 type RunArgs = { repo: Repo; now: Date; chain: Chain } & RunMode;
 export type Skipped = { wallet: string; reason: string };
 
@@ -141,14 +142,15 @@ export async function runPlanting(a: RunArgs & { deadlineMs?: number }): Promise
   const skipped: Skipped[] = [];
   const deadline = a.deadlineMs ?? Date.now() + RUN_BUDGET_MS;
 
-  if (a.only !== "first") await reconcileSentPlantings(a);
-  await resumePausedWallets(a);
+  // 11-24: a rescue pass is like a first-only one: no reconcile (the daily run's job), and no resumes (the daily run did them).
+  if (a.only === undefined) await reconcileSentPlantings(a);
+  if (a.only !== "rescue") await resumePausedWallets(a);
 
   // Read once per run (T8 carry): the leash config, today's and yesterday's venue rows, the lending prices.
   const day = dayOf(a.now);
   const leash = await a.chain.readLeashConfig().catch((e) => { console.error(`leash config unreadable: ${message(e)}`); return null; });
   const active = await a.repo.listActiveWallets();
-  const wallets = a.only === "first" ? await firstPlantingWallets(a.repo, active) : active;
+  const wallets = a.only === "first" ? await firstPlantingWallets(a.repo, active) : a.only === "rescue" ? await rescueWallets(a.repo, active, a.rescue) : active;
   const ctx: RunCtx = {
     leash,
     venueDays: await a.repo.listVenueDays(day),
@@ -178,7 +180,8 @@ export async function runPlanting(a: RunArgs & { deadlineMs?: number }): Promise
       return;
     }
     skipped.push(outcome);
-    // "jupiter busy" (a 429 after retries) neither counts toward the outage stop nor resets the count.
+    // "jupiter busy" and "rpc busy" (a 429 after retries) neither count toward the outage stop nor reset the count (11-24: the
+    // Helius free plan's 429s stopped the run for 56 wallets; a rate limit is "try later", not an outage).
     if (outcome.reason === "build failed" && ++buildFailures >= OUTAGE_AFTER && !stopped) {
       stopped = true;
       console.error(`planting run stopped: ${OUTAGE_AFTER} build failures in a row (Jupiter or RPC outage); the rest wait for the next run`);
@@ -238,6 +241,48 @@ async function userHasPlanted(repo: Repo, userPubkey: string): Promise<boolean> 
     console.error(`plantings of ${userPubkey} unreadable (${message(e)}); treated as planted (no first-planting threshold this run)`);
     return true;
   }
+}
+
+/** 11-24: the skip reasons that mean the daily run did not get to the wallet (capacity), not that the wallet had nothing to do. */
+export const RESCUE_REASONS = ["run stopped", "run deadline", "rpc busy", "jupiter busy"] as const;
+
+/** The wallets a finished daily run skipped for capacity (its summary's planting.skipped); [] for anything unreadable or unfinished. */
+export function rescueCandidates(run: { finishedAt: Date | null; summary: unknown } | null): string[] {
+  if (!run?.finishedAt) return [];
+  const skipped = (run.summary as { planting?: { skipped?: unknown } } | null)?.planting?.skipped;
+  if (!Array.isArray(skipped)) return [];
+  const out = new Set<string>();
+  for (const s of skipped) {
+    const x = s as { wallet?: unknown; reason?: unknown };
+    if (typeof x.wallet === "string" && (RESCUE_REASONS as readonly string[]).includes(String(x.reason))) out.add(x.wallet);
+  }
+  return [...out];
+}
+
+/**
+ * The rescue run's wallets (11-24): the given wallets that are still active and whose user has no planting of any status since the
+ * daily run started (a planting since then, sent or confirmed or failed, means the day already happened for that user). A failed
+ * read leaves the wallet to the next daily run.
+ */
+export async function rescueWallets(repo: Repo, active: WalletRow[], rescue: RunMode["rescue"]): Promise<WalletRow[]> {
+  if (!rescue || rescue.wallets.length === 0) return [];
+  const wanted = new Set(rescue.wallets);
+  const done = new Map<string, boolean>();
+  const out: WalletRow[] = [];
+  for (const w of active) {
+    if (!wanted.has(w.pubkey)) continue;
+    if (!done.has(w.userPubkey)) {
+      try {
+        const [last] = await repo.listPlantings(w.userPubkey, 1);
+        done.set(w.userPubkey, !!last && last.ts.getTime() >= rescue.since.getTime());
+      } catch (e) {
+        console.error(`plantings of ${w.userPubkey} unreadable (${message(e)}); left to the next daily run`);
+        done.set(w.userPubkey, true);
+      }
+    }
+    if (!done.get(w.userPubkey)) out.push(w);
+  }
+  return out;
 }
 
 /**
@@ -645,6 +690,11 @@ async function plantOne(a: RunArgs, w: WalletRow, ctx: RunCtx): Promise<Planted 
       await a.repo.addEvent({ userPubkey: w.userPubkey, walletPubkey: w.pubkey, kind: "pull_failed", detail: { stage: "build", err: "jupiter 429" } });
       return { wallet: w.pubkey, reason: "jupiter busy" };
     }
+    if (isHttp429(e)) {
+      console.error(`planting for ${w.pubkey} skipped: the RPC is busy (429)`);
+      await a.repo.addEvent({ userPubkey: w.userPubkey, walletPubkey: w.pubkey, kind: "pull_failed", detail: { stage: "build", err: "rpc 429" } });
+      return { wallet: w.pubkey, reason: "rpc busy" };
+    }
     // Review I1: a Jupiter 400, a lookup-table fetch or a blockhash error on one wallet must not abort everyone's day.
     console.error(`planting for ${w.pubkey} failed before send: ${message(e)}`);
     await a.repo.addEvent({ userPubkey: w.userPubkey, walletPubkey: w.pubkey, kind: "pull_failed", detail: { stage: "build", err: message(e) } });
@@ -932,8 +982,11 @@ async function plantOneOrThrow(a: RunArgs, w: WalletRow, ctx: RunCtx): Promise<P
     try {
       r = await attempt(leg);
     } catch (e) {
+      // 11-24 (Kimi): a rate limit (Jupiter's or the RPC's) is "try later" for the whole wallet: never a skipped leg, never a fallback
+      // leg (that would build a second transaction mid-throttle). It reaches plantOne as "jupiter busy" or "rpc busy".
+      if (isJupiterRateLimit(e) || isHttp429(e)) throw e;
       if (leg !== "SKR") return fallbackOrSkip(leg, message(e));
-      if (!leashed || isJupiterRateLimit(e)) throw e;   // a 429 reaches plantOne: "jupiter busy", not a skipped leg
+      if (!leashed) throw e;
       await legSkipped(a, w, leg, message(e));
       return null;
     }

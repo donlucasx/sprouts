@@ -2808,3 +2808,49 @@ describe("venue stickiness (Task 14): a new planting stays at the venue the user
     expect(builds[0]).toMatchObject({ asset: "USDC_LEND", venue: "jupiter_lend" });
   });
 });
+
+
+// 11-24 incident (Helius 429s past every retry stopped the run for 56 wallets): an RPC 429 is "rpc busy", like Jupiter's.
+describe("rpc busy (an RPC 429 after retries, 11-24)", () => {
+  const http429 = () => Object.assign(new Error("Solana error #8100002"), { name: "SolanaError", context: { __code: 8100002, statusCode: 429 } });
+  async function many(n: number) {
+    const repo = new MemoryRepo();
+    for (let i = 0; i < n; i++) {
+      await repo.upsertUser({ seedVaultPubkey: `U${i}`, sgtMint: `M${i}`, skrName: null });
+      await repo.addWallet({ pubkey: `W${i}`, userPubkey: `U${i}`, delegationPda: `D${i}`, dailyCapCents: 500 });
+      await repo.insertSwap({ signature: `x${i}`, walletPubkey: `W${i}`, ts: NOW, inMint: "a", inAmount: 1, outMint: "b", outAmount: 1, usdSizeCents: 100, class: "major", roundupCents: 215 });
+    }
+    return repo;
+  }
+  it("never stops the run: every wallet tried, each 'rpc busy' with an 'rpc 429' event, round-ups kept", async () => {
+    const repo = await many(12);
+    let builds = 0;
+    const r = await runPlanting({ repo, now: NOW, chain: fakeChain({ buildPlantingTx: async () => { builds++; throw http429(); } }) });
+    expect(builds).toBe(12);
+    expect(r.skipped.every((s) => s.reason === "rpc busy")).toBe(true);
+    expect(repo.events.filter((e) => e.kind === "run_stopped")).toHaveLength(0);
+    expect(repo.events.filter((e) => e.kind === "pull_failed" && (e.detail as { err?: string }).err === "rpc 429")).toHaveLength(12);
+    for (let i = 0; i < 12; i++) expect(await repo.unplantedSwaps(`W${i}`)).toHaveLength(1);
+  });
+  it("an RPC 429 between build failures neither counts nor resets", async () => {
+    // One user's wallets run in series, so the order is fixed.
+    const repo = new MemoryRepo();
+    await repo.upsertUser({ seedVaultPubkey: "U", sgtMint: "M", skrName: null });
+    for (let i = 0; i < 5; i++) {
+      await repo.addWallet({ pubkey: `W${i}`, userPubkey: "U", delegationPda: `D${i}`, dailyCapCents: 500 });
+      await repo.insertSwap({ signature: `x${i}`, walletPubkey: `W${i}`, ts: NOW, inMint: "a", inAmount: 1, outMint: "b", outAmount: 1, usdSizeCents: 100, class: "major", roundupCents: 215 });
+    }
+    let builds = 0;
+    const errs = [new Error("Jupiter quote failed: 500"), http429(), new Error("Jupiter quote failed: 500"), new Error("Jupiter quote failed: 500"), new Error("never reached")];
+    const r = await runPlanting({ repo, now: NOW, chain: fakeChain({ buildPlantingTx: async () => { throw errs[builds++]; } }) });
+    expect(r.skipped.map((s) => s.reason)).toEqual(["build failed", "rpc busy", "build failed", "build failed", "run stopped"]);
+  });
+  it("a rescue run plants only its wallets, and none whose user planted since the daily run started", async () => {
+    const repo = await many(3);
+    await repo.insertPlanting({ userPubkey: "U2", walletPubkey: "W2", signature: "s2", usdcPulledCents: 100, networkFeeCents: 1, status: "sent", aiLine: null, ts: new Date(NOW.getTime() + 1000) } as never, []);
+    const built: string[] = [];
+    const r = await runPlanting({ repo, now: NOW, only: "rescue", rescue: { wallets: ["W1", "W2"], since: NOW }, chain: fakeChain({ buildPlantingTx: async (a) => { built.push(String(a.delegator)); throw http429(); } }) });
+    expect(built).toEqual(["W1"]);
+    expect(r.skipped).toEqual([{ wallet: "W1", reason: "rpc busy" }]);
+  });
+});

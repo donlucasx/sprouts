@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { getRepo } from "@/db/repo";
 import { errorText } from "@/lib/redact";
-import { runPlanting } from "@/lib/plant-run";
+import { rescueCandidates, runPlanting } from "@/lib/plant-run";
+import { dayOf } from "@/domain/day";
 import { cronAuthorized, realPlantingChain } from "@/lib/cron-run";
 
 export const runtime = "nodejs";
@@ -21,7 +22,19 @@ export async function GET(request: Request) {
   const startedMs = Date.now();
   try {
     const repo = await getRepo();
-    const { planted, skipped } = await runPlanting({ repo, now: new Date(), chain: realPlantingChain(), deadlineMs: startedMs + 240_000, only: "first" });
+    const now = new Date();
+    const first = await runPlanting({ repo, now, chain: realPlantingChain(), deadlineMs: startedMs + 240_000, only: "first" });
+    // 11-24 (the daily run stopped on Helius 429s, 56 wallets waited a day): then, in the same budget, the wallets today's finished
+    // daily run could not reach (stopped, deadline, rate-limited), minus users who planted since it started. What does not fit waits
+    // for the next hour, until the next daily run.
+    const run = await repo.getCronRun(dayOf(now)).catch((e) => { console.error(`cron (first plantings): today's run unreadable, no rescue: ${errorText(e)}`); return null; });
+    const candidates = rescueCandidates(run);
+    const rescue = candidates.length && run && Date.now() < startedMs + 200_000
+      ? await runPlanting({ repo, now, chain: realPlantingChain(), deadlineMs: startedMs + 240_000, only: "rescue", rescue: { wallets: candidates, since: run.startedAt } })
+      : { planted: [], skipped: [] };
+    const planted = [...first.planted, ...rescue.planted];
+    const skipped = [...first.skipped, ...rescue.skipped];
+    if (candidates.length) console.log(`cron (rescue): ${candidates.length} wallet(s) the daily run missed; planted ${rescue.planted.length}, skipped ${rescue.skipped.length}`);
     for (const p of planted) console.log(`first planting: ${p.wallet} ${p.asset} ${p.pullCents}c ${p.signature}`);
     for (const s of skipped) console.log(`first planting skipped: ${s.wallet} ${s.reason}`);
     const reasons: Record<string, number> = {};
@@ -30,11 +43,11 @@ export async function GET(request: Request) {
     // Heartbeat for the ops dashboard's "First planting" light: one event per completed run, even with 0 planted. Counts and the fixed reason strings only (public log
     // rule). A run that threw writes none (the light going stale is the signal). A failed write is logged and never changes the answer.
     try {
-      await repo.addEvent({ kind: "first_planting_run", userPubkey: null, walletPubkey: null, detail: { planted: planted.length, skipped: skipped.length, reasons } });
+      await repo.addEvent({ kind: "first_planting_run", userPubkey: null, walletPubkey: null, detail: { planted: planted.length, skipped: skipped.length, reasons, rescue: { candidates: candidates.length, planted: rescue.planted.length } } });
     } catch (e) {
       console.error(`cron (first plantings) heartbeat not written: ${errorText(e)}`);
     }
-    return NextResponse.json({ planted: planted.length, skipped: skipped.length, reasons });
+    return NextResponse.json({ planted: planted.length, skipped: skipped.length, reasons, rescued: rescue.planted.length });
   } catch (e) {
     const message = errorText(e);   // K-M10: never the RPC URL's key
     console.error(`cron (first plantings) failed: ${message}`);
