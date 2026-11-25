@@ -1,3 +1,4 @@
+import { apiError } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getRepo } from "@/db/repo";
@@ -51,13 +52,13 @@ async function putHandler(request: Request) {
   if (!parsed.success) return badRequest("rules", parsed.error);
   const { reauth, managed, stop, pins: rawPins, off, ...rest } = parsed.data;
   if (off !== undefined) {
-    if (!off.every(isLiveAsset)) return NextResponse.json({ error: "Bad request: off." }, { status: 400 });
+    if (!off.every(isLiveAsset)) return apiError("bad_request", { error: "Bad request: off." }, { status: 400 });
   }
   const repo = await getRepo();
   const current = await repo.getRules(session.pubkey);
   if (rest.dailyCapCents !== undefined && rest.dailyCapCents > current.dailyCapCents) {
     const check = await verifyReauth(repo, session.pubkey, reauth, "Raising your daily limit");
-    if (!check.ok) return NextResponse.json({ error: check.error, reauth: true }, { status: 403 });
+    if (!check.ok) return apiError("reauth_required", { error: check.error, reauth: true }, { status: 403 });
   }
   // Any save clears the undo (spec 4.5): once you have changed something yourself there is nothing to undo.
   const patch: Partial<Omit<RulesRow, "userPubkey" | "updatedAt">> = { ...rest, prevAllocation: null, allocationDay: null };
@@ -68,7 +69,7 @@ async function putHandler(request: Request) {
     if (rawPins !== undefined) {
       pins = {};
       for (const [k, v] of Object.entries(rawPins)) {
-        if (!isLiveAsset(k)) return NextResponse.json({ error: "Bad request: pins." }, { status: 400 });
+        if (!isLiveAsset(k)) return apiError("bad_request", { error: "Bad request: pins." }, { status: 400 });
         pins[k as LiveAsset] = v; // zeros are sorted out below, once the switch's next state is known (R346)
       }
       pinsByUndo = false; // pins you send are yours
@@ -97,7 +98,7 @@ async function putHandler(request: Request) {
       for (const k of Object.keys(pins) as LiveAsset[]) if (pins[k] === 0 && (dropZeros && k !== "SKR")) delete pins[k];
     }
     const problem = validatePins(pins);
-    if (problem) return NextResponse.json({ error: PIN_COPY[problem] }, { status: 400 });
+    if (problem) return apiError("pin_invalid", { error: PIN_COPY[problem] }, { status: 400 });
     const stopSplit = nextManaged ? ((await repo.latestSplitDay(nextStop))?.split ?? STOP_DEFAULTS[nextStop]) : STOP_DEFAULTS[nextStop];
     const allocation = effectiveSplit({ managed: nextManaged, stop: nextStop, pins, stopSplit });
     Object.assign(patch, { managed: nextManaged, stop: nextStop, pins, pinsByUndo, allocation });
@@ -108,7 +109,7 @@ async function putHandler(request: Request) {
   } catch (e) {
     // Kimi 11-12: a new rule saved before migration 0012 reaches the database fails here; a clean answer, not a 500.
     console.error(`/api/rules: the save failed (${e instanceof Error ? e.message : String(e)})`);
-    return NextResponse.json({ error: "Your rules could not be saved right now. Try again in a minute." }, { status: 503 });
+    return apiError("rules_not_saved", { error: "Your rules could not be saved right now. Try again in a minute." }, { status: 503 });
   }
   // The event follows the save, so a failed save never leaves a change in Activity that did not happen.
   if (patch.allocation && (!sameSplit(patch.allocation, current.allocation) || patch.managed !== current.managed || patch.stop !== current.stop)) {

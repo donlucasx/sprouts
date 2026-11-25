@@ -1,3 +1,4 @@
+import { apiError, settleCode } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { forgetOwnerReads } from "@/lib/memo";
 import { z } from "zod";
@@ -31,24 +32,24 @@ async function postHandler(request: Request) {
   // 11-25 (load hotfix): this user's Home chain reads on this instance are read fresh after this write (memo.ts ownerCached).
   forgetOwnerReads(session.pubkey);
   const parsed = Body.safeParse(await request.json().catch(() => null));
-  if (!parsed.success) return NextResponse.json({ error: "Bad request." }, { status: 400 });
+  if (!parsed.success) return apiError("bad_request", { error: "Bad request." }, { status: 400 });
   const repo = await getRepo();
   const user = await repo.getUser(session.pubkey);
-  if (!user) return NextResponse.json({ error: "Sign in first." }, { status: 401 });
+  if (!user) return apiError("sign_in_first", { error: "Sign in first." }, { status: 401 });
   const owner = userAddress(user.seedVaultPubkey);
   let posted;
   try {
     posted = verifyPostedTransaction({ base64: parsed.data.signedTransaction, feePayer: owner, programs: [SKR_STAKING_PROGRAM] });
   } catch (e) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 400 });
+    return apiError("bad_transaction", { error: e instanceof Error ? e.message : String(e) }, { status: 400 });
   }
   // K-I4: this very unstake already recorded (a retry after a lost answer): the same basket, nothing sent again.
   const had = await repo.withdrawalBySignature(posted.signature);
   if (had && had.userPubkey === user.seedVaultPubkey) return basket(had, null);
-  if (await repo.pendingWithdrawal(user.seedVaultPubkey)) return NextResponse.json({ error: "One basket at a time." }, { status: 409 });
+  if (await repo.pendingWithdrawal(user.seedVaultPubkey)) return apiError("basket_busy", { error: "One basket at a time." }, { status: 409 });
   const ix = posted.instructions[0];
-  if (posted.instructions.length !== 1 || !same(ix.data.slice(0, 8), UNSTAKE_DISCRIMINATOR)) return NextResponse.json({ error: "That is not an unstake." }, { status: 400 });
-  if (!ix.accounts.includes(await userStakePda(owner))) return NextResponse.json({ error: "That unstake is for another position." }, { status: 400 });
+  if (posted.instructions.length !== 1 || !same(ix.data.slice(0, 8), UNSTAKE_DISCRIMINATOR)) return apiError("wrong_transaction", { error: "That is not an unstake." }, { status: 400 });
+  if (!ix.accounts.includes(await userStakePda(owner))) return apiError("wrong_transaction", { error: "That unstake is for another position." }, { status: 400 });
   const { shares } = getUnstakeInstructionDataDecoder().decode(ix.data);
   const price = await sharePrice();
   const amountRaw = sharesToRaw(shares, price);
@@ -63,13 +64,13 @@ async function postHandler(request: Request) {
   }
   // Item 8: an expired blockhash that never landed did not go through (a wallet approval after the build's blockhash ran out).
   const settled = status === "pending" ? await settleUnconfirmed(posted) : status;
-  if (settled !== "confirmed") return NextResponse.json({ error: settled === "failed" ? "The withdrawal failed on chain. Nothing moved." : settled === "expired" ? "It did not go through. Nothing moved. Try again." : STILL_WAITING.withdraw }, { status: 409 });
+  if (settled !== "confirmed") return apiError(settleCode(settled), { error: settled === "failed" ? "The withdrawal failed on chain. Nothing moved." : settled === "expired" ? "It did not go through. Nothing moved. Try again." : STILL_WAITING.withdraw }, { status: 409 });
   let after = await readPosition(owner);
   for (let i = 0; i < 3 && after.unstakingRaw === 0n; i++) {
     await new Promise((r) => setTimeout(r, 1_000));
     after = await readPosition(owner);
   }
-  if (after.unstakingRaw === 0n) return NextResponse.json({ error: "The chain has not shown the withdrawal yet. Check again in a minute." }, { status: 409 });
+  if (after.unstakingRaw === 0n) return apiError("chain_catching_up", { error: "The chain has not shown the withdrawal yet. Check again in a minute." }, { status: 409 });
 
   // Fruit first, the rest principal [A15]: earned as it stood before this unstake, which took `shares` from the position.
   const earnedNow = (await potForUser(repo, user, { position: { ...after, shares: after.shares + shares }, sharePrice: price })).skrEarnedRaw;

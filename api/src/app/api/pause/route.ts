@@ -1,3 +1,4 @@
+import { apiError } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getRepo } from "@/db/repo";
@@ -24,7 +25,7 @@ async function postHandler(request: Request) {
   const { paused } = parsed.data;
   if (!paused) {
     const check = await verifyReauth(repo, session.pubkey, parsed.data.reauth, "Turning Sprouts back on");
-    if (!check.ok) return NextResponse.json({ error: check.error, reauth: true }, { status: 403 });
+    if (!check.ok) return apiError("reauth_required", { error: check.error, reauth: true }, { status: 403 });
   }
   const next = paused ? "paused" : "active";
   // R207: the user's pause is recorded on every wallet it covers, one already paused by the run for want of USDC included (else the

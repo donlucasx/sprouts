@@ -57,6 +57,18 @@ describe('api(): an error body that is not JSON', () => {
     expect(e.message).toBe('Back in your wallet.')
     expect(e.body).toEqual({ error: 'Back in your wallet.', partial: true, unwrapTransaction: 'AAA' })
   })
+  it('P8: a JSON error surfaces its machine code; an older API without one leaves it undefined', async () => {
+    answer(409, JSON.stringify({ error: 'No delegation found for this wallet yet. Sign the approval first.', code: 'no_delegation' }))
+    const e = await failure(api('/x', { auth: false }))
+    expect(e.code).toBe('no_delegation')
+    expect(e.message).toBe('No delegation found for this wallet yet. Sign the approval first.')
+    answer(409, JSON.stringify({ error: 'No delegation found for this wallet yet. Sign the approval first.' }))
+    expect((await failure(api('/x', { auth: false }))).code).toBeUndefined()
+    answer(409, JSON.stringify({ error: 'x', code: 42 }))
+    expect((await failure(api('/x', { auth: false }))).code).toBeUndefined()
+    answer(504, '<html>timeout</html>')
+    expect((await failure(api('/x', { auth: false }))).code).toBeUndefined()
+  })
   it('a valid JSON success is returned', async () => {
     answer(200, '{"ok":1}')
     expect(await api('/x', { auth: false })).toEqual({ ok: 1 })

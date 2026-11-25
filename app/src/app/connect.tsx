@@ -13,7 +13,7 @@ import { linkErrorView, showStillStuck } from '@/lib/link-error'
 import { QuestionCard } from '@/components/QuestionCard'
 import { useInvalidateMe, useMe } from '@/lib/me'
 import { newlyLinked } from '@/lib/newly-linked'
-import { confirmWithRetries, LINK_NOT_ON_CHAIN_YET } from '@/lib/confirm-retry'
+import { confirmWithRetries, LINK_NOT_ON_CHAIN } from '@/lib/confirm-retry'
 import { useSession } from '@/lib/session'
 import { reportLinkFailure, type LinkFailure, type LinkStep } from '@/lib/link-report'
 import { CAN_KEYS, CANT_KEYS, LINK_STEP_KEYS, linkApprovalPath, phoneSolNote, phoneUsdcNote, setupAccountsOf, setupLine } from '@/lib/safety-copy'
@@ -33,7 +33,7 @@ import { useLang } from '@/i18n/useLang'
  */
 function confirmLink(code: string, wallet: string, signedTransaction: string) {
   return confirmWithRetries(() => api('/api/link/confirm', { method: 'POST', body: { code, wallet, signedTransaction } }), {
-    notOnChainYet: LINK_NOT_ON_CHAIN_YET,
+    notOnChainYet: LINK_NOT_ON_CHAIN,
   })
 }
 

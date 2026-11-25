@@ -1,3 +1,4 @@
+import { apiError } from "@/lib/api-error";
 import { withNetworkFee } from "@/lib/put-in";
 import { NextResponse } from "next/server";
 import { address } from "@solana/kit";
@@ -45,7 +46,7 @@ async function answer(request: Request) {
   if (session instanceof NextResponse) return session;
   const repo = await getRepo();
   const user = await repo.getUser(session.pubkey);
-  if (!user) return NextResponse.json({ error: "Sign in first." }, { status: 401 });
+  if (!user) return apiError("sign_in_first", { error: "Sign in first." }, { status: 401 });
 
   const owner = address(user.seedVaultPubkey);
   const day = dayOf(new Date());
@@ -247,7 +248,7 @@ export async function GET(request: Request) {
   // 11-25 (his ruling): a per-user ceiling. ~6 accounts signed up within 12 minutes read Home ~1.5/s nonstop (a farm, not the app);
   // a person reads once or twice per open. Past HOME_READS_PER_MIN in a minute: 429 with Retry-After (per instance, like every limit here).
   if (homeReadCapOn() && rateLimited(`home-read:me:${session.pubkey}`, HOME_READS_PER_MIN)) {
-    return NextResponse.json({ error: "Too many requests. Try again in a minute." }, { status: 429, headers: { "Retry-After": "30" } });
+    return apiError("rate_limited", { error: "Too many requests. Try again in a minute." }, { status: 429, headers: { "Retry-After": "30" } });
   }
   const url = new URL(request.url);
   const key = `me${url.search}|${request.headers.get("x-sprouts-app") ?? "-"}`;

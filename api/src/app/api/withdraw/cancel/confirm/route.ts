@@ -1,3 +1,4 @@
+import { apiError, settleCode } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { forgetOwnerReads } from "@/lib/memo";
 import { z } from "zod";
@@ -24,21 +25,21 @@ async function postHandler(request: Request) {
   // 11-25 (load hotfix): this user's Home chain reads on this instance are read fresh after this write (memo.ts ownerCached).
   forgetOwnerReads(session.pubkey);
   const parsed = Body.safeParse(await request.json().catch(() => null));
-  if (!parsed.success) return NextResponse.json({ error: "Bad request." }, { status: 400 });
+  if (!parsed.success) return apiError("bad_request", { error: "Bad request." }, { status: 400 });
   const repo = await getRepo();
   const pending = await repo.pendingWithdrawal(session.pubkey);
-  if (!pending) return NextResponse.json({ error: "Nothing in the basket." }, { status: 409 });
+  if (!pending) return apiError("basket_empty", { error: "Nothing in the basket." }, { status: 409 });
 
   const owner = userAddress(session.pubkey);
   let posted;
   try {
     posted = verifyPostedTransaction({ base64: parsed.data.signedTransaction, feePayer: owner, programs: [SKR_STAKING_PROGRAM] });
   } catch (e) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 400 });
+    return apiError("bad_transaction", { error: e instanceof Error ? e.message : String(e) }, { status: 400 });
   }
   const ix = posted.instructions[0];
-  if (posted.instructions.length !== 1 || !same(ix.data.slice(0, 8), CANCEL_UNSTAKE_DISCRIMINATOR)) return NextResponse.json({ error: "That is not a cancel." }, { status: 400 });
-  if (!ix.accounts.includes(await userStakePda(owner))) return NextResponse.json({ error: "That cancel is for another position." }, { status: 400 });
+  if (posted.instructions.length !== 1 || !same(ix.data.slice(0, 8), CANCEL_UNSTAKE_DISCRIMINATOR)) return apiError("wrong_transaction", { error: "That is not a cancel." }, { status: 400 });
+  if (!ix.accounts.includes(await userStakePda(owner))) return apiError("wrong_transaction", { error: "That cancel is for another position." }, { status: 400 });
 
   let status;
   try {
@@ -48,13 +49,13 @@ async function postHandler(request: Request) {
     status = await waitConfirmed(posted.signature, 3); // review I3: the send's answer was lost, the chain decides
   }
   const settled = status === "pending" ? await settleUnconfirmed(posted) : status;   // item 8
-  if (settled !== "confirmed") return NextResponse.json({ error: settled === "failed" ? "The cancel failed on chain. The basket stands." : settled === "expired" ? "It did not go through. Your SKR is still in the basket. Try again." : STILL_WAITING.cancel }, { status: 409 });
+  if (settled !== "confirmed") return apiError(settleCode(settled), { error: settled === "failed" ? "The cancel failed on chain. The basket stands." : settled === "expired" ? "It did not go through. Your SKR is still in the basket. Try again." : STILL_WAITING.cancel }, { status: 409 });
   let after = await readPosition(owner);
   for (let i = 0; i < 3 && after.unstakingRaw !== 0n; i++) {
     await new Promise((r) => setTimeout(r, 1_000));
     after = await readPosition(owner);
   }
-  if (after.unstakingRaw !== 0n) return NextResponse.json({ error: "The chain still shows the basket. Check again in a minute." }, { status: 409 });
+  if (after.unstakingRaw !== 0n) return apiError("chain_catching_up", { error: "The chain still shows the basket. Check again in a minute." }, { status: 409 });
   // 11-14 (ops #6): the row may have closed while the cancel was in flight (the crank closes a superseded row): never overwrite it.
   // The cancel did land (nothing unstaking on chain), so the user hears it worked; the founder checks the bookkeeping.
   if (!(await repo.setWithdrawalCancelled(pending.id, posted.signature))) {

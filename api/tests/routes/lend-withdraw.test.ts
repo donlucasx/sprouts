@@ -45,7 +45,7 @@ describe("Withdraw a lending position (contracts 5.3, R264)", () => {
     receipt = 1_661_072n; available = 1n;
     const res = await call(build, { asset: "USDC_LEND", venue: "kamino_klend" });
     expect(res.status).toBe(409);
-    expect(await res.json()).toEqual({ error: "A venue can pause withdrawals when its pool is fully lent out; your money stays yours.", poolFull: true });
+    expect(await res.json()).toEqual({ error: "A venue can pause withdrawals when its pool is fully lent out; your money stays yours.", code: "pool_full", poolFull: true });
   });
   it("confirm sends the user's signed redeem, records it with the underlying amount", async () => {
     const built = await (await call(build, { asset: "USDC_LEND", venue: "kamino_klend" })).json();
@@ -75,7 +75,7 @@ describe("Withdraw a lending position (contracts 5.3, R264)", () => {
     jlAvailable = 1_827_178n;   // 1_661_072 x 11 / 10 = 1_827_179: one short
     const res = await call(build, { asset: "USDC_LEND", venue: "jupiter_lend" });
     expect(res.status).toBe(409);
-    expect(await res.json()).toEqual({ error: "A venue can pause withdrawals when its pool is fully lent out; your money stays yours.", poolFull: true });
+    expect(await res.json()).toEqual({ error: "A venue can pause withdrawals when its pool is fully lent out; your money stays yours.", code: "pool_full", poolFull: true });
     jlAvailable = 1_827_179n;
     expect((await call(build, { asset: "USDC_LEND", venue: "jupiter_lend" })).status).toBe(200);
   });

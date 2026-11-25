@@ -1,3 +1,4 @@
+import { apiError } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { rateLimited, requireSession } from "@/lib/auth-guard";
 import { getRepo } from "@/db/repo";
@@ -26,10 +27,10 @@ export async function GET(request: Request) {
   if (session instanceof NextResponse) return session;
   // Up to 2 history pages per read share the Helius quota the swap webhook needs: 3 reads a minute per user (the app also
   // keeps the answer for 12 hours).
-  if (rateLimited(`preview:${session.pubkey}`, 3)) return NextResponse.json({ error: "Too many requests. Try again in a minute." }, { status: 429 });
+  if (rateLimited(`preview:${session.pubkey}`, 3)) return apiError("rate_limited", { error: "Too many requests. Try again in a minute." }, { status: 429 });
   const repo = await getRepo();
   // Only for a user with no wallet linked (Home asks only then; review 11-12: the route must not read history for anyone else).
-  if ((await repo.listWalletsOf(session.pubkey)).some((w) => w.status !== "revoked")) return NextResponse.json({ error: "Only for a user with no wallet linked." }, { status: 409 });
+  if ((await repo.listWalletsOf(session.pubkey)).some((w) => w.status !== "revoked")) return apiError("has_wallet", { error: "Only for a user with no wallet linked." }, { status: 409 });
   const rules = rulesRowToRules(await repo.getRules(session.pubkey));
   try {
     const { swaps, partial } = await cached(
@@ -41,6 +42,6 @@ export async function GET(request: Request) {
     return NextResponse.json(previewTotals(swaps, rules, partial));
   } catch (e) {
     console.error(`/api/me/preview: the history could not be read (${e instanceof Error ? e.message : String(e)})`);
-    return NextResponse.json({ error: "The preview is not available right now." }, { status: 503 });
+    return apiError("preview_unavailable", { error: "The preview is not available right now." }, { status: 503 });
   }
 }

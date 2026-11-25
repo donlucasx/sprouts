@@ -1,3 +1,4 @@
+import { apiError } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { getRepo } from "@/db/repo";
 import { errorText } from "@/lib/redact";
@@ -18,7 +19,7 @@ export const maxDuration = 800; // 11-25 (Pro): 300 s killed the run under Heliu
  * The answer carries counts and reasons only (the caller's log is public on GitHub): never a wallet or a signature.
  */
 export async function GET(request: Request) {
-  if (!cronAuthorized(request.headers.get("authorization"))) return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  if (!cronAuthorized(request.headers.get("authorization"))) return apiError("unauthorized", { error: "Unauthorized." }, { status: 401 });
   const startedMs = Date.now();
   try {
     const repo = await getRepo();
@@ -53,6 +54,6 @@ export async function GET(request: Request) {
   } catch (e) {
     const message = errorText(e);   // K-M10: never the RPC URL's key
     console.error(`cron (first plantings) failed: ${message}`);
-    return NextResponse.json({ error: "Cron failed." }, { status: 500 });
+    return apiError("internal", { error: "Cron failed." }, { status: 500 });
   }
 }

@@ -1,3 +1,4 @@
+import { apiError } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getRepo } from "@/db/repo";
@@ -19,11 +20,11 @@ export async function POST(request: Request) {
   const session = await requireSession(request);
   if (session instanceof NextResponse) return session;
   const parsed = Body.safeParse(await request.json().catch(() => null));
-  if (!parsed.success) return NextResponse.json({ error: "Bad request." }, { status: 400 });
+  if (!parsed.success) return apiError("bad_request", { error: "Bad request." }, { status: 400 });
   const repo = await getRepo();
   const held = await reserveWatcherCall(repo, { userPubkey: session.pubkey, now: new Date() });
-  if ("refused" in held && held.refused === "month") return NextResponse.json({ error: "The watcher is resting this month. The controls below still work." }, { status: 503 });
-  if ("refused" in held) return NextResponse.json({ error: "That is enough for today. The controls below still work." }, { status: 429 });
+  if ("refused" in held && held.refused === "month") return apiError("watcher_resting", { error: "The watcher is resting this month. The controls below still work." }, { status: 503 });
+  if ("refused" in held) return apiError("daily_limit", { error: "That is enough for today. The controls below still work." }, { status: 429 });
   try {
     const current = rulesRowToRules(await repo.getRules(session.pubkey));
     const r = await compileRule({ text: parsed.data.text, current, model: callTool });
@@ -35,6 +36,6 @@ export async function POST(request: Request) {
     if (!(e instanceof WatcherError)) throw e;
     if (e.usage) await repo.settleWatcherCall(held.id, { ...e.usage, costMicrocents: costMicrocents(e.usage) });
     else await repo.deleteWatcherCall(held.id);
-    return NextResponse.json({ error: "The watcher could not read that. Use the controls below." }, { status: 502 });
+    return apiError("watcher_unreadable", { error: "The watcher could not read that. Use the controls below." }, { status: 502 });
   }
 }

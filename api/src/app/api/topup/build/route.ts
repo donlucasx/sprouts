@@ -1,3 +1,4 @@
+import { apiError } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { address, isAddress } from "@solana/kit";
@@ -29,16 +30,16 @@ async function postHandler(request: Request) {
   const session = await requireSession(request);
   if (session instanceof NextResponse) return session;
   const parsed = Body.safeParse(await request.json().catch(() => ({})));
-  if (!parsed.success) return NextResponse.json({ error: "Pick an amount from $2 to $25." }, { status: 400 });
+  if (!parsed.success) return apiError("topup_bad_amount", { error: "Pick an amount from $2 to $25." }, { status: 400 });
   const { inputMint } = parsed.data;
-  if (inputMint !== undefined && !isAddress(inputMint)) return NextResponse.json({ error: TOPUP_COPY.notSource }, { status: 400 });
+  if (inputMint !== undefined && !isAddress(inputMint)) return apiError("topup_bad_source", { error: TOPUP_COPY.notSource }, { status: 400 });
   try {
     const setup = { max: parsed.data.setupMax ?? 0, rules: async () => rulesRowToRules(await (await getRepo()).getRules(session.pubkey)) };
     return NextResponse.json(await buildTopUp(address(session.pubkey), parsed.data.cents ?? TOPUP_DEFAULT_CENTS, inputMint === undefined ? undefined : address(inputMint), setup, topUpCapsFor(request)));
   } catch (e) {
-    if (e instanceof TopUpRefused) return NextResponse.json({ error: e.message }, { status: e.status });
+    if (e instanceof TopUpRefused) return apiError("topup_refused", { error: e.message }, { status: e.status });
     console.error(`/api/topup/build: ${e instanceof Error ? e.message : String(e)}`);
-    return NextResponse.json({ error: TOPUP_COPY.notNow }, { status: 503 });
+    return apiError("topup_not_now", { error: TOPUP_COPY.notNow }, { status: 503 });
   }
 }
 export const POST = withAppErrorLog("topup/build", postHandler);

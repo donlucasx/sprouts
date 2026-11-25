@@ -180,7 +180,7 @@ describe("Moves (spec 7, contracts 5.4 with S3 = ONE: [redeem, deposit] in one s
     vi.mocked(settleUnconfirmed).mockResolvedValue("pending");
     const res = await call(confirm, { id: p.id, signedTransactions: signed });
     expect(res.status).toBe(409);
-    expect(await res.json()).toEqual({ error: MAY_STILL });
+    expect(await res.json()).toEqual({ error: MAY_STILL, code: "move_unsure" });
     vi.mocked(sendPosted).mockClear();
     return { built, signed, card: (await repo.getMoveProposal(p.id))! };
   };
@@ -190,7 +190,7 @@ describe("Moves (spec 7, contracts 5.4 with S3 = ONE: [redeem, deposit] in one s
     expect(card.redeemSignature).toEqual(expect.any(String));
     const res = await call(dismiss, { id: p.id });
     expect(res.status).toBe(409);
-    expect(await res.json()).toEqual({ error: "This move is on its way. Check Home in a minute.", inFlight: true });
+    expect(await res.json()).toEqual({ error: "This move is on its way. Check Home in a minute.", code: "move_in_flight", inFlight: true });
     expect(await repo.getMoveProposal(p.id)).toMatchObject({ status: "open", redeemSignature: card.redeemSignature, depositSignature: card.depositSignature });
     expect(repo.events.some((e) => e.kind === "move_dismissed")).toBe(false);
   });
@@ -213,7 +213,7 @@ describe("Moves (spec 7, contracts 5.4 with S3 = ONE: [redeem, deposit] in one s
     const other = await Promise.all((["redeem", "deposit"] as const).map(async (part) => sign(await buildUserTransaction(owner, await buildMove({ user: owner, asset: "USDC_LEND", from: "jupiter_lend", to: "kamino_klend", receiptRaw: 1_661_072n, depositRaw: 1_825_350n, part })))));
     const res = await call(confirm, { id: p.id, signedTransactions: other });
     expect(res.status).toBe(409);
-    expect(await res.json()).toEqual({ error: MAY_STILL });
+    expect(await res.json()).toEqual({ error: MAY_STILL, code: "move_unsure" });
     expect(vi.mocked(sendPosted)).not.toHaveBeenCalled();
     expect(await repo.getMoveProposal(p.id)).toMatchObject({ status: "open", redeemSignature: card.redeemSignature, depositSignature: card.depositSignature });
   });
@@ -272,7 +272,7 @@ describe("Moves (spec 7, contracts 5.4 with S3 = ONE: [redeem, deposit] in one s
     vi.mocked(waitConfirmed).mockResolvedValueOnce("confirmed").mockResolvedValue("failed");
     const res = await call(confirm, { id: p.id, signedTransactions: await Promise.all(built.transactions.map(sign)) });
     expect(res.status).toBe(409);
-    expect(await res.json()).toEqual({ error: "Your USDC is back in your wallet; the move did not finish.", partial: true });
+    expect(await res.json()).toEqual({ error: "Your USDC is back in your wallet; the move did not finish.", code: "move_partial", partial: true });
     expect(await repo.getMoveProposal(p.id)).toMatchObject({ status: "failed" });
     // C-I2 5: Activity says the money came back to the wallet
     expect(repo.events.filter((e) => e.kind === "move_failed").map((e) => e.detail)).toEqual([{ id: p.id, asset: "USDC_LEND", from: "jupiter_lend", to: "kamino_klend", receiptRaw: "1661072", status: "failed" }]);
@@ -287,7 +287,7 @@ describe("Moves (spec 7, contracts 5.4 with S3 = ONE: [redeem, deposit] in one s
     const res = await call(confirm, { id: sol.id, signedTransactions: await Promise.all(built.transactions.map(sign)) });
     expect(res.status).toBe(409);
     const body = await res.json();
-    expect(body).toMatchObject({ error: "Your SOL is back in your wallet; the move did not finish.", partial: true });
+    expect(body).toMatchObject({ error: "Your SOL is back in your wallet; the move did not finish.", code: "move_partial", partial: true });
     // the unwrap: one Token CloseAccount of the user's WSOL account back to the user, the user paying
     const m = msgOf(body.unwrapTransaction);
     expect(m.staticAccounts[0]).toBe(user.address);
@@ -308,7 +308,7 @@ describe("Moves (spec 7, contracts 5.4 with S3 = ONE: [redeem, deposit] in one s
     vi.mocked(sendPosted).mockImplementation(async () => { storedAtDepositSend = (await repo.getMoveProposal(p.id))?.depositSignature ?? null; });
     const res = await call(confirm, { id: p.id, signedTransactions: await Promise.all(built.transactions.map(sign)) });
     expect(res.status).toBe(409);
-    expect(await res.json()).toEqual({ error: MAY_STILL });
+    expect(await res.json()).toEqual({ error: MAY_STILL, code: "move_unsure" });
     const card = (await repo.getMoveProposal(p.id))!;
     expect(card).toMatchObject({ status: "open" });
     expect(typeof card.redeemSignature).toBe("string");
@@ -341,7 +341,7 @@ describe("Moves (spec 7, contracts 5.4 with S3 = ONE: [redeem, deposit] in one s
     vi.mocked(settleUnconfirmed).mockResolvedValue("pending");
     const res = await call(confirm, { id: p.id, signedTransactions: await Promise.all(built.transactions.map(sign)) });
     expect(res.status).toBe(409);
-    expect(await res.json()).toEqual({ error: MAY_STILL });
+    expect(await res.json()).toEqual({ error: MAY_STILL, code: "move_unsure" });
     expect((await repo.getMoveProposal(p.id))?.depositSignature).toEqual(expect.any(String));
   });
 

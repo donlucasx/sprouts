@@ -1,3 +1,4 @@
+import { apiError } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { forgetOwnerReads } from "@/lib/memo";
 import { z } from "zod";
@@ -31,36 +32,36 @@ async function postHandler(request: Request) {
   // 11-25 (load hotfix): this user's Home chain reads on this instance are read fresh after this write (memo.ts ownerCached).
   forgetOwnerReads(session.pubkey);
   const parsed = Body.safeParse(await request.json().catch(() => null));
-  if (!parsed.success) return NextResponse.json({ error: "Bad request." }, { status: 400 });
+  if (!parsed.success) return apiError("bad_request", { error: "Bad request." }, { status: 400 });
   const repo = await getRepo();
   const user = await repo.getUser(session.pubkey);
-  if (!user) return NextResponse.json({ error: "Sign in first." }, { status: 401 });
+  if (!user) return apiError("sign_in_first", { error: "Sign in first." }, { status: 401 });
   const me = address(user.seedVaultPubkey);
   // Only this user's own linked Seed Vault wallet, still on the puller, is re-linked here (as the build checks).
   const wallet = await repo.getWallet(me);
-  if (!wallet || wallet.userPubkey !== me || wallet.status === "revoked") return NextResponse.json({ error: "Link this phone's wallet first." }, { status: 409 });
-  if (wallet.linkModel === "leash") return NextResponse.json({ error: "This wallet is already re-linked." }, { status: 409 });
+  if (!wallet || wallet.userPubkey !== me || wallet.status === "revoked") return apiError("link_wallet_first", { error: "Link this phone's wallet first." }, { status: 409 });
+  if (wallet.linkModel === "leash") return apiError("already_relinked", { error: "This wallet is already re-linked." }, { status: 409 });
   let posted;
   try {
     posted = verifyPostedTransaction({ base64: parsed.data.signedTransaction, feePayer: me, programs: [SUBSCRIPTIONS_PROGRAM, ASSOCIATED_TOKEN_PROGRAM_ADDRESS] });
   } catch (e) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 400 });
+    return apiError("bad_transaction", { error: e instanceof Error ? e.message : String(e) }, { status: 400 });
   }
   // Review I1: the create is checked in full BEFORE anything is sent: its data (u8 2, nonce, amount, period, start, expiry, init id;
   // 49 bytes) carries $5 per day with no expiry, and every account is the one derived here, the delegation from the posted nonce.
   const creates = posted.instructions.filter((ix) => ix.program === SUBSCRIPTIONS_PROGRAM && ix.data[0] === Number(CREATE_RECURRING_DELEGATION_DISCRIMINATOR));
-  if (creates.length !== 1) return NextResponse.json({ error: NOT_RELINK }, { status: 400 });
+  if (creates.length !== 1) return apiError("wrong_transaction", { error: NOT_RELINK }, { status: 400 });
   const [create] = creates;
   const leash = await leashPda(me, me);
   const [authority] = await findSubscriptionAuthorityPda({ user: me, tokenMint: USDC_MINT });
-  if (create.data.length !== 49 || u64At(create.data, 9) !== CAP_RAW || u64At(create.data, 17) !== DAY_S || i64At(create.data, 33) !== 0n) return NextResponse.json({ error: NOT_RELINK }, { status: 400 });
+  if (create.data.length !== 49 || u64At(create.data, 9) !== CAP_RAW || u64At(create.data, 17) !== DAY_S || i64At(create.data, 33) !== 0n) return apiError("wrong_transaction", { error: NOT_RELINK }, { status: 400 });
   const pda = await delegationPda({ delegator: me, delegatee: leash, nonce: u64At(create.data, 1) });
-  if (create.accounts[0] !== me || create.accounts[1] !== authority || create.accounts[2] !== pda || create.accounts[3] !== leash) return NextResponse.json({ error: NOT_RELINK }, { status: 400 });
+  if (create.accounts[0] !== me || create.accounts[1] !== authority || create.accounts[2] !== pda || create.accounts[3] !== leash) return apiError("wrong_transaction", { error: NOT_RELINK }, { status: 400 });
   // Review I2: a live old delegation must be revoked in this same transaction, so the puller never keeps its authority.
   const old = address(wallet.delegationPda);
   const oldLive = (await readDelegation(old)).exists;
   const revokesOld = posted.instructions.some((ix) => ix.program === SUBSCRIPTIONS_PROGRAM && ix.data.length === 1 && ix.data[0] === Number(REVOKE_DELEGATION_DISCRIMINATOR) && ix.accounts[0] === me && ix.accounts[1] === old);
-  if (oldLive && !revokesOld) return NextResponse.json({ error: "This re-link does not revoke your current approval. Nothing was sent; start the re-link again." }, { status: 400 });
+  if (oldLive && !revokesOld) return apiError("relink_keeps_old", { error: "This re-link does not revoke your current approval. Nothing was sent; start the re-link again." }, { status: 400 });
   try {
     await rpc().sendTransaction(posted.wire as Base64EncodedWireTransaction, { encoding: "base64", preflightCommitment: "confirmed" }).send();
   } catch (e) {
@@ -70,17 +71,17 @@ async function postHandler(request: Request) {
   // After the poll the chain itself must show the leash delegation (delegator, delegatee, $5 per day, no expiry) and the old one gone;
   // anything short of that records nothing.
   const d = await waitForDelegation(pda, 10_000);
-  if (!d.exists) return NextResponse.json({ error: LATE }, { status: 409 });
+  if (!d.exists) return apiError("relink_not_on_chain", { error: LATE }, { status: 409 });
   if (d.delegator !== me || d.delegatee !== leash || d.amountPerPeriodRaw !== CAP_RAW || d.periodLengthS !== DAY_S || d.expiryTs !== 0n) {
     console.error(`relink confirm: the delegation at ${pda} is not the leash delegation for ${me}`);
-    return NextResponse.json({ error: NOT_RELINK }, { status: 400 });
+    return apiError("wrong_transaction", { error: NOT_RELINK }, { status: 400 });
   }
   // Task 19 re-review: the delegation must be for USDC and sit under this user's USDC subscription authority.
   if (d.mint !== USDC_MINT || d.subscriptionAuthority !== authority) {
     console.error(`relink confirm: the delegation at ${pda} is not on the USDC mint / this user's authority for ${me}`);
-    return NextResponse.json({ error: WRONG_MINT }, { status: 409 });
+    return apiError("wrong_mint", { error: WRONG_MINT }, { status: 409 });
   }
-  if (old !== pda && (await readDelegation(old)).exists) return NextResponse.json({ error: LATE }, { status: 409 });
+  if (old !== pda && (await readDelegation(old)).exists) return apiError("relink_not_on_chain", { error: LATE }, { status: 409 });
   await repo.setWalletLink(me, { delegationPda: pda, linkModel: "leash", dailyCapCents: Number(d.amountPerPeriodRaw / 10_000n) });
   await repo.addEvent({ userPubkey: me, walletPubkey: me, kind: "relinked", detail: { delegationPda: pda, oldDelegationPda: old, revoked: oldLive } });
   return NextResponse.json({ relinked: true, linkModel: "leash", delegationPda: pda });

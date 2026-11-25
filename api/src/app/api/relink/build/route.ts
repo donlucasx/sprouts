@@ -1,3 +1,4 @@
+import { apiError } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { randomBytes } from "node:crypto";
 import { address } from "@solana/kit";
@@ -20,10 +21,10 @@ async function postHandler(request: Request) {
   if (session instanceof NextResponse) return session;
   const repo = await getRepo();
   const user = await repo.getUser(session.pubkey);
-  if (!user) return NextResponse.json({ error: "Sign in first." }, { status: 401 });
+  if (!user) return apiError("sign_in_first", { error: "Sign in first." }, { status: 401 });
   const wallet = await repo.getWallet(user.seedVaultPubkey);
-  if (!wallet || wallet.userPubkey !== user.seedVaultPubkey || wallet.status === "revoked") return NextResponse.json({ error: "Link this phone's wallet first." }, { status: 409 });
-  if (wallet.linkModel === "leash") return NextResponse.json({ error: "This wallet is already re-linked." }, { status: 409 });
+  if (!wallet || wallet.userPubkey !== user.seedVaultPubkey || wallet.status === "revoked") return apiError("link_wallet_first", { error: "Link this phone's wallet first." }, { status: 409 });
+  if (wallet.linkModel === "leash") return apiError("already_relinked", { error: "This wallet is already re-linked." }, { status: 409 });
   const me = address(user.seedVaultPubkey);
   const leash = await leashPda(me, me);
   const nonce = randomBytes(8).readBigUInt64LE();
@@ -54,7 +55,7 @@ async function postHandler(request: Request) {
     transaction = compile(ixs);
     // Simulated before any wallet sees it (as link/[code]): a re-link that would fail asks nothing of the wallet.
     const sim = await simulate(transaction);
-    if (sim.value.err) return NextResponse.json({ error: "This re-link would fail on chain, so nothing was asked of your wallet. Try again in a minute." }, { status: 400 });
+    if (sim.value.err) return apiError("relink_would_fail", { error: "This re-link would fail on chain, so nothing was asked of your wallet. Try again in a minute." }, { status: 400 });
   }
   return NextResponse.json({ transaction, leashPda: leash, delegationPda: await delegationPda({ delegator: me, delegatee: leash, nonce }), revokes: live ? wallet.delegationPda : null, cap: 500, ...(setupAsked ? { setupAccounts } : {}) });
 }

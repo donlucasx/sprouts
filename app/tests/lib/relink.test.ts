@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { AccountRole, address, getAddressEncoder, getProgramDerivedAddress, type Address, type Instruction, type Transaction } from '@solana/kit'
 import { disclosureItems, relinkCode, relinkView, relinkThisPhone, relinkWebLines, RelinkSent, RELINK, WEB_LINK_TRUST } from '@/lib/relink'
-import { confirmWithRetries, LINK_NOT_ON_CHAIN_YET, RELINK_NOT_ON_CHAIN_YET } from '@/lib/confirm-retry'
+import { confirmWithRetries, LINK_NOT_ON_CHAIN, LINK_NOT_ON_CHAIN_YET, RELINK_NOT_ON_CHAIN_YET } from '@/lib/confirm-retry'
 import { leashPda, makeSigner, SignRefused } from '@/lib/sign'
 import { linkIxs, OTHER, USER, wire } from '../fixtures/api-built'
 import type { MeResponse } from '@/lib/api'
@@ -115,7 +115,7 @@ describe('confirmWithRetries (shared with Connect, T9 review I3)', () => {
     const send = vi.fn(async (_n: number) => {
       throw new ApiError(409, LINK_LATE)
     })
-    await expect(confirmWithRetries(send, { notOnChainYet: LINK_NOT_ON_CHAIN_YET, sleep: async () => {} })).rejects.toThrow('No delegation found')
+    await expect(confirmWithRetries(send, { notOnChainYet: LINK_NOT_ON_CHAIN, sleep: async () => {} })).rejects.toThrow('No delegation found')
     expect(send.mock.calls.map((c) => c[0])).toEqual([0, 1, 2, 3, 4])
   })
   it('any other error (or a 409 that is not the late one) is thrown at once', async () => {
@@ -123,7 +123,7 @@ describe('confirmWithRetries (shared with Connect, T9 review I3)', () => {
       const send = vi.fn(async () => {
         throw err
       })
-      await expect(confirmWithRetries(send, { notOnChainYet: LINK_NOT_ON_CHAIN_YET, sleep: async () => {} })).rejects.toBe(err)
+      await expect(confirmWithRetries(send, { notOnChainYet: LINK_NOT_ON_CHAIN, sleep: async () => {} })).rejects.toBe(err)
       expect(send).toHaveBeenCalledTimes(1)
     }
   })

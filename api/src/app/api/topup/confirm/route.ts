@@ -1,3 +1,4 @@
+import { apiError } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { forgetOwnerReads } from "@/lib/memo";
 import { z } from "zod";
@@ -35,7 +36,7 @@ async function postHandler(request: Request) {
   // 11-25 (load hotfix): this user's Home chain reads on this instance are read fresh after this write (memo.ts ownerCached).
   forgetOwnerReads(session.pubkey);
   const parsed = Body.safeParse(await request.json().catch(() => null));
-  if (!parsed.success) return NextResponse.json({ error: "Bad request." }, { status: 400 });
+  if (!parsed.success) return apiError("bad_request", { error: "Bad request." }, { status: 400 });
   const me = address(session.pubkey);
   let posted;
   let plan;
@@ -59,7 +60,7 @@ async function postHandler(request: Request) {
     plan = checkTopUp(rest, { user: me, ...(await topUpAccounts(me)), source, allowV47: topUpCapsFor(request).allowV47 });
   } catch (e) {
     console.error(`/api/topup/confirm: refused for ${me}: ${e instanceof Error ? e.message : String(e)}`);
-    return NextResponse.json({ error: TOPUP_CONFIRM.notTopUp }, { status: 400 });
+    return apiError("wrong_transaction", { error: TOPUP_CONFIRM.notTopUp }, { status: 400 });
   }
   // 10-27: marked BEFORE the send, so the swap booking can never round the top-up up; no mark, no send (Kimi F1: answered 400,
   // whose message the app shows as it is, so the user reads "nothing moved", never the "sent" line a 500 would map to).
@@ -72,7 +73,7 @@ async function postHandler(request: Request) {
     await markTopUpSent(repo, mark);
   } catch (e) {
     console.error(`/api/topup/confirm: not marked, not sent, for ${me}: ${e instanceof Error ? e.message : String(e)}`);
-    return NextResponse.json({ error: TOPUP_CONFIRM.notMarked }, { status: 400 });
+    return apiError("wrong_transaction", { error: TOPUP_CONFIRM.notMarked }, { status: 400 });
   }
   // 11-25 (a $10 top-up was never broadcast: its send met Helius 429s past the transport's retries; Kimi hotfix #6-7): one deadline for
   // the whole answer, inside maxDuration 60; a send refused with 429 is tried twice more, then re-sent while the poll runs.
@@ -97,8 +98,8 @@ async function postHandler(request: Request) {
     await recordTopUpLanded(repo, { ...mark, sentAt });
     return NextResponse.json({ status, signature: posted.signature, usdcRaw: plan.outRaw.toString() });
   }
-  if (status === "failed") return NextResponse.json({ error: source ? TOPUP_CONFIRM.failedToken : TOPUP_CONFIRM.failed }, { status: 400 });
-  if (status === "expired") return NextResponse.json({ error: TOPUP_CONFIRM.expired }, { status: 409 });
+  if (status === "failed") return apiError("tx_failed", { error: source ? TOPUP_CONFIRM.failedToken : TOPUP_CONFIRM.failed }, { status: 400 });
+  if (status === "expired") return apiError("tx_expired", { error: TOPUP_CONFIRM.expired }, { status: 409 });
   return NextResponse.json({ status, signature: posted.signature, message: TOPUP_CONFIRM.pending }, { status: 202 });
 }
 export const POST = withAppErrorLog("topup/confirm", postHandler);

@@ -38,12 +38,12 @@ describe("GET /api/ops/health", () => {
   it("404 without a header, wrong token, or OPS_TOKEN unset, before gathering", async () => {
     for (const r of [await get(null), await get("Bearer nope")]) {
       expect(r.status).toBe(404);
-      expect(await r.json()).toEqual({ error: "Not found." });
+      expect(await r.json()).toEqual({ error: "Not found.", code: "not_found" });
     }
     delete process.env.OPS_TOKEN;
     const r = await get("Bearer undefined");
     expect(r.status).toBe(404);
-    expect(await r.json()).toEqual({ error: "Not found." });
+    expect(await r.json()).toEqual({ error: "Not found.", code: "not_found" });
     expect(gather).not.toHaveBeenCalled();
   });
   it("200 + no-store with the right token; body has no full-length wallet", async () => {
@@ -66,6 +66,6 @@ describe("GET /api/ops/health", () => {
     gather.mockRejectedValue(new Error("secret detail"));
     const r = await get();
     expect(r.status).toBe(500);
-    expect(await r.json()).toEqual({ error: "Could not build the snapshot." });
+    expect(await r.json()).toEqual({ error: "Could not build the snapshot.", code: "internal" });
   });
 });

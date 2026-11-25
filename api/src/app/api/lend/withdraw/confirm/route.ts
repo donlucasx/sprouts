@@ -1,3 +1,4 @@
+import { apiError, settleCode } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { forgetOwnerReads } from "@/lib/memo";
 import { z } from "zod";
@@ -26,10 +27,10 @@ async function postHandler(request: Request) {
   // 11-25 (load hotfix): this user's Home chain reads on this instance are read fresh after this write (memo.ts ownerCached).
   forgetOwnerReads(session.pubkey);
   const parsed = Body.safeParse(await request.json().catch(() => null));
-  if (!parsed.success) return NextResponse.json({ error: "Bad request." }, { status: 400 });
+  if (!parsed.success) return apiError("bad_request", { error: "Bad request." }, { status: 400 });
   const repo = await getRepo();
   const user = await repo.getUser(session.pubkey);
-  if (!user) return NextResponse.json({ error: "Sign in first." }, { status: 401 });
+  if (!user) return apiError("sign_in_first", { error: "Sign in first." }, { status: 401 });
   const { asset, venue } = parsed.data;
   const owner = userAddress(user.seedVaultPubkey);
   const program = venue === "kamino_klend" ? KLEND_PROGRAM : JLEND_PROGRAM;
@@ -37,20 +38,20 @@ async function postHandler(request: Request) {
   try {
     posted = verifyPostedTransaction({ base64: parsed.data.signedTransaction, feePayer: owner, programs: [program, ASSOCIATED_TOKEN_PROGRAM_ADDRESS, TOKEN_PROGRAM_ADDRESS] });
   } catch (e) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 400 });
+    return apiError("bad_transaction", { error: e instanceof Error ? e.message : String(e) }, { status: 400 });
   }
   // A replayed confirm (same signature) answers with the record already written and books nothing twice.
   const prior = (await repo.listEvents(user.seedVaultPubkey, ["lend_withdrawn"], 200)).find((e) => (e.detail as { signature?: string } | null)?.signature === posted.signature);
   if (prior) return NextResponse.json(json({ withdrawn: prior.detail }));
   const redeem = posted.instructions.filter((ix) => ix.program === program).at(-1);
-  if (!redeem || redeem.data.length !== 16) return NextResponse.json({ error: "That is not a withdrawal." }, { status: 400 });
+  if (!redeem || redeem.data.length !== 16) return apiError("wrong_transaction", { error: "That is not a withdrawal." }, { status: 400 });
   const receiptRaw = Buffer.from(redeem.data).readBigUInt64LE(8);
   const heldRaw = await receiptBalanceRaw(owner, asset, venue);
-  if (receiptRaw === 0n || receiptRaw > heldRaw) return NextResponse.json({ error: "That withdrawal is larger than your position." }, { status: 400 });
+  if (receiptRaw === 0n || receiptRaw > heldRaw) return apiError("withdraw_too_large", { error: "That withdrawal is larger than your position." }, { status: 400 });
   const expected = await buildLendWithdraw({ user: owner, asset, venue, receiptRaw });
   const want = expected.map((ix) => ({ program: ix.programAddress as string, data: Buffer.from(ix.data ?? []).toString("hex"), accounts: (ix.accounts ?? []).map((x) => x.address as string) }));
   const got = posted.instructions.map((ix) => ({ program: ix.program as string, data: Buffer.from(ix.data).toString("hex"), accounts: ix.accounts as string[] }));
-  if (want.length !== got.length || want.some((w, i) => w.program !== got[i].program || w.data !== got[i].data || !same(w.accounts, got[i].accounts))) return NextResponse.json({ error: "That withdrawal is not the one Sprouts built." }, { status: 400 });
+  if (want.length !== got.length || want.some((w, i) => w.program !== got[i].program || w.data !== got[i].data || !same(w.accounts, got[i].accounts))) return apiError("wrong_transaction", { error: "That withdrawal is not the one Sprouts built." }, { status: 400 });
   try {
     let status;
     try {
@@ -60,11 +61,11 @@ async function postHandler(request: Request) {
       status = await waitConfirmed(posted.signature, 3);
     }
     const settled = status === "pending" ? await settleUnconfirmed(posted) : status;
-    if (settled !== "confirmed") return NextResponse.json({ error: settled === "failed" ? "The withdrawal failed on chain. Nothing moved." : settled === "expired" ? "It did not go through. Nothing moved. Try again." : STILL_WAITING.withdraw }, { status: 409 });
+    if (settled !== "confirmed") return apiError(settleCode(settled), { error: settled === "failed" ? "The withdrawal failed on chain. Nothing moved." : settled === "expired" ? "It did not go through. Nothing moved. Try again." : STILL_WAITING.withdraw }, { status: 409 });
   } catch (e) {
     // The send may have gone out: whatever threw while sending or confirming, the answer is the "may still go through" one, never a bare 500.
     console.error(`lend withdraw confirm: failed during the send for ${user.seedVaultPubkey}: ${e instanceof Error ? e.message : String(e)}`);
-    return NextResponse.json({ error: STILL_WAITING.withdraw }, { status: 409 });
+    return apiError("still_waiting", { error: STILL_WAITING.withdraw }, { status: 409 });
   }
   // What came back in the underlying's units: the redeemed receipt at the venue's rate now [estimate: for SOL the WSOL account is created
   // and closed in the same tx, so the delivery is not in its token balances]. The money already moved: a failed rate read records null

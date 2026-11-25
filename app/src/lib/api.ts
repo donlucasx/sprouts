@@ -14,9 +14,14 @@ export type { Asset, AutoVenue, LendAsset, LiveAsset, Stop, Split, Pins, Venue }
 export const API_ORIGIN = process.env.EXPO_PUBLIC_API_ORIGIN ?? "https://sprouts.money";
 
 export class ApiError extends Error {
+  /** The API's machine code for this error (0.1.13 Spanish pass P8, api/src/lib/api-error.ts); undefined from an older API or when
+   *  the failure is the app's own (no answer). Match on it, never on `message`, which may be Spanish. */
+  public code?: string;
   /** `body` is the route's parsed JSON when it had one (the move's 409 carries `partial` and `unwrapTransaction`). */
   constructor(public status: number, message: string, public body?: Record<string, unknown>) {
     super(message);
+    const code = body?.code;
+    if (typeof code === "string" && code.length > 0) this.code = code;
   }
 }
 

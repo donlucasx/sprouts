@@ -1,15 +1,25 @@
 /**
- * Each confirm route's own 409 sentence for "your signed approval is not on chain yet" (T9 re-review: the routes do NOT share one).
- * The retry helper takes the route's sentence; a different 409 from that route is a real refusal and is thrown at once.
+ * Each confirm route's own 409 for "your signed approval is not on chain yet" (T9 re-review: the routes do NOT share one).
+ * 0.1.13 Spanish pass P8: the route sends a machine `code` beside its sentence, and its sentence may soon be Spanish. The retry
+ * matches the code when the answer has one, and falls back to the English stem for an older server (0.1.12-era API: `{ error }` only).
+ * A different 409 from that route is a real refusal and is thrown at once.
  */
-/** api/src/app/api/link/confirm/route.ts:75 ("No delegation found for this wallet yet. Sign the approval first."), matched on its stem. */
+export type NotOnChainMatch = { code: string; stem: string }
+
+/** api/src/app/api/link/confirm/route.ts ("No delegation found for this wallet yet. Sign the approval first." and its two siblings), matched on its stem. */
 export const LINK_NOT_ON_CHAIN_YET = 'No delegation found'
 /** docs/superpowers/plans/2026-10-05-lending-api.md:5675, `/api/relink/confirm` after `waitForDelegation(pda, 10_000)`. Track A: keep it. */
 export const RELINK_NOT_ON_CHAIN_YET = 'No re-link found on chain yet. Check again in a minute.'
+/** The codes the API sends with those sentences (api/src/lib/api-error.ts API_ERROR_CODES). */
+export const LINK_NOT_ON_CHAIN: NotOnChainMatch = { code: 'no_delegation', stem: LINK_NOT_ON_CHAIN_YET }
+export const RELINK_NOT_ON_CHAIN: NotOnChainMatch = { code: 'relink_not_on_chain', stem: RELINK_NOT_ON_CHAIN_YET }
 
-// Duck-typed on ApiError's shape so this module stays free of api.ts (and its native session store) for the node tests.
-export function isNotOnChainYet(e: unknown, sentence: string): boolean {
-  return e instanceof Error && (e as { status?: unknown }).status === 409 && e.message.includes(sentence)
+// Duck-typed on ApiError's shape (status, message, code) so this module stays free of api.ts (and its native session store) for the node tests.
+export function isNotOnChainYet(e: unknown, m: NotOnChainMatch): boolean {
+  if (!(e instanceof Error) || (e as { status?: unknown }).status !== 409) return false
+  const code = (e as { code?: unknown }).code
+  // A code decides alone (the text may be in another language); no code is an older server, read by its English stem.
+  return typeof code === 'string' && code.length > 0 ? code === m.code : e.message.includes(m.stem)
 }
 
 /**
@@ -19,7 +29,7 @@ export function isNotOnChainYet(e: unknown, sentence: string): boolean {
  */
 export async function confirmWithRetries(
   send: (attempt: number) => Promise<unknown>,
-  o: { notOnChainYet: string; tries?: number; waitMs?: number; sleep?: (ms: number) => Promise<void> },
+  o: { notOnChainYet: NotOnChainMatch; tries?: number; waitMs?: number; sleep?: (ms: number) => Promise<void> },
 ): Promise<void> {
   const tries = o.tries ?? 5
   const sleep = o.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)))

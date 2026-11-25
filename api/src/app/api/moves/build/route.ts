@@ -1,3 +1,4 @@
+import { apiError } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getRepo } from "@/db/repo";
@@ -31,15 +32,15 @@ async function postHandler(request: Request) {
   const session = await requireSession(request);
   if (session instanceof NextResponse) return session;
   const parsed = Body.safeParse(await request.json().catch(() => null));
-  if (!parsed.success) return NextResponse.json({ error: "Bad request." }, { status: 400 });
+  if (!parsed.success) return apiError("bad_request", { error: "Bad request." }, { status: 400 });
   const repo = await getRepo();
   const user = await repo.getUser(session.pubkey);
-  if (!user) return NextResponse.json({ error: "Sign in first." }, { status: 401 });
+  if (!user) return apiError("sign_in_first", { error: "Sign in first." }, { status: 401 });
   const p = await repo.getMoveProposal(parsed.data.id);
-  if (!p || p.userPubkey !== user.seedVaultPubkey) return NextResponse.json({ error: "No such move." }, { status: 404 });
-  if (p.status !== "open") return NextResponse.json({ error: "This move is no longer open." }, { status: 409 });
+  if (!p || p.userPubkey !== user.seedVaultPubkey) return apiError("move_not_found", { error: "No such move." }, { status: 404 });
+  if (p.status !== "open") return apiError("move_not_open", { error: "This move is no longer open." }, { status: 409 });
   // K-I2: a move in flight is never rebuilt with new amounts (its signed pair and the build it was pinned to settle it).
-  if (p.redeemSignature) return NextResponse.json({ error: IN_FLIGHT, inFlight: true }, { status: 409 });
+  if (p.redeemSignature) return apiError("move_in_flight", { error: IN_FLIGHT, inFlight: true }, { status: 409 });
   const owner = userAddress(user.seedVaultPubkey);
   const { asset, fromVenue: from, toVenue: to } = p;
   let balance: bigint;
@@ -48,25 +49,25 @@ async function postHandler(request: Request) {
   let withdrawable: bigint;
   try {
     balance = await receiptBalanceRaw(owner, asset, from);
-    if (balance === 0n) return NextResponse.json({ error: "Nothing to move here." }, { status: 409 });
+    if (balance === 0n) return apiError("nothing_to_move", { error: "Nothing to move here." }, { status: 409 });
     // What the source can pay right now (K-Lend: the reserve's available liquidity; Jupiter Lend: its API's withdrawable), as Withdraw reads it.
     if (from === "kamino_klend") { const k = await klendRate(asset); src = k; withdrawable = k.availableRaw; }
     else { src = await jlendRate(asset); withdrawable = await jupiterWithdrawableRaw(asset); }
     dst = await rateOf(to, asset);
   } catch (e) {
     console.error(`moves build: venue read failed for ${asset} ${from} -> ${to}: ${e instanceof Error ? e.message : String(e)}`);
-    return NextResponse.json({ error: "Could not read the venue just now. Try again in a minute." }, { status: 503 });
+    return apiError("venue_unreadable", { error: "Could not read the venue just now. Try again in a minute." }, { status: 503 });
   }
   const receiptRaw = p.receiptRaw < balance ? p.receiptRaw : balance;
   const expectedOutRaw = (receiptRaw * src.rn) / src.rd;
-  if (withdrawable < expectedOutRaw) return NextResponse.json({ error: POOL_FULL, poolFull: true }, { status: 409 });
+  if (withdrawable < expectedOutRaw) return apiError("pool_full", { error: POOL_FULL, poolFull: true }, { status: 409 });
   // What /api/me serves for this position (same receipt account, same rows, same carried legs): the app's deposit cap.
   const day = dayOf(new Date());
   const rows = await latestVenueRows(repo, day);
   const legs = carryMoves((await Promise.all((await repo.listConfirmedPlantings(user.seedVaultPubkey)).map((x) => repo.plantingLegs(x.id)))).flat(), await moveCarriesFor(repo, user.seedVaultPubkey));
   const served = lendingFrom({ positions: [{ asset, venue: from, receiptRaw: balance }], legs, rows, prices: {} })[0].underlyingRaw;
   const depositRaw = moveDepositRaw({ expectedOutRaw, servedUnderlyingRaw: served });
-  if (depositRaw <= 0n) return NextResponse.json({ error: "Could not size this move just now. Try again tomorrow." }, { status: 409 });
+  if (depositRaw <= 0n) return apiError("move_unsized", { error: "Could not size this move just now. Try again tomorrow." }, { status: 409 });
   const parts = { user: owner, asset, from, to, receiptRaw, depositRaw };
   const transactions = [
     await buildUserTransaction(owner, await buildMove({ ...parts, part: "redeem" })),

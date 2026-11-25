@@ -1,3 +1,4 @@
+import { apiError } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { getRepo } from "@/db/repo";
 import { rulesRowToRules } from "@/db/types";
@@ -20,7 +21,7 @@ async function postHandler(request: Request) {
   const repo = await getRepo();
   const current = await repo.getRules(session.pubkey);
   const prev = current.prevAllocation;
-  if (!prev) return NextResponse.json({ error: "Nothing to undo." }, { status: 409 });
+  if (!prev) return apiError("nothing_to_undo", { error: "Nothing to undo." }, { status: 409 });
   const pins: Pins = {};
   for (const c of ASSETS) if (c !== "SKR" && prev[c] > 0) pins[c] = prev[c];
   // 10-23: a coin switched off stays off through the undo (a 0 pin means off with the manager off too now).

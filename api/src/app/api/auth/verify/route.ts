@@ -1,3 +1,4 @@
+import { apiError } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getRepo } from "@/db/repo";
@@ -35,32 +36,32 @@ const Body = z.object({
  */
 async function verify(request: Request) {
   // 10-31 (Kimi MED-1): a failed verify now writes an event, so an anonymous loop is slowed here like the nonce route (a 429 is not recorded).
-  if (rateLimited(`verify:${clientIp(request)}`, 20)) return NextResponse.json({ error: "Too many requests. Try again in a minute." }, { status: 429 });
+  if (rateLimited(`verify:${clientIp(request)}`, 20)) return apiError("rate_limited", { error: "Too many requests. Try again in a minute." }, { status: 429 });
   const parsed = Body.safeParse(await request.json().catch(() => null));
-  if (!parsed.success) return NextResponse.json({ error: "Bad request." }, { status: 400 });
+  if (!parsed.success) return apiError("bad_request", { error: "Bad request." }, { status: 400 });
   const { input, output } = parsed.data;
 
   const signedMessage = new Uint8Array(Buffer.from(output.signedMessage, "base64"));
   const signature = new Uint8Array(Buffer.from(output.signature, "base64"));
-  if (signature.length !== 64 || signedMessage.length === 0) return NextResponse.json({ error: "Bad signature." }, { status: 400 });
+  if (signature.length !== 64 || signedMessage.length === 0) return apiError("bad_signature", { error: "Bad signature." }, { status: 400 });
 
   const verified = await verifySignIn({ input: input as SignInInput, output: { address: output.address, signedMessage, signature } });
-  if (!verified.ok) return NextResponse.json({ error: "The signature did not verify." }, { status: 401 });
+  if (!verified.ok) return apiError("signature_invalid", { error: "The signature did not verify." }, { status: 401 });
 
   const repo = await getRepo();
-  if (!(await repo.useNonce(input.nonce, output.address))) return NextResponse.json({ error: "This sign-in request expired. Try again." }, { status: 401 });
+  if (!(await repo.useNonce(input.nonce, output.address))) return apiError("nonce_expired", { error: "This sign-in request expired. Try again." }, { status: 401 });
 
   const rpcUrl = config().heliusRpcUrl;
   // K-M10: these two take the URL itself (web3.js Connection, a raw fetch); an error that quotes it is redacted before it propagates.
   const genesis = await verifyAnyGenesisHolder(rpcUrl, output.address).catch((e: unknown) => { throw redactError(e); });
-  if (!genesis) return NextResponse.json({ error: "This wallet holds no Genesis Token. The vault needs a Seeker or a Saga." }, { status: 403 });
+  if (!genesis) return apiError("no_genesis_token", { error: "This wallet holds no Genesis Token. The vault needs a Seeker or a Saga." }, { status: 403 });
 
   const skrName = await skrNameOf(rpcUrl, output.address).catch((e: unknown) => { throw redactError(e); });
   let created: boolean;
   try {
     ({ created } = await repo.upsertUser({ seedVaultPubkey: output.address, sgtMint: genesis.mint, skrName }));
   } catch (e) {
-    if (e instanceof Error && e.message === "This phone is already registered.") return NextResponse.json({ error: e.message }, { status: 409 });
+    if (e instanceof Error && e.message === "This phone is already registered.") return apiError("phone_registered", { error: e.message }, { status: 409 });
     throw e;
   }
   // The first acceptance of this version stands: a later sign-in neither moves its time nor adds an event.

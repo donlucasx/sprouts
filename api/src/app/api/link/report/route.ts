@@ -1,3 +1,4 @@
+import { apiError } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireSession, rateLimited } from "@/lib/auth-guard";
@@ -23,7 +24,7 @@ export async function POST(request: Request) {
   if (session instanceof NextResponse) return session;
   if (rateLimited(`link-report:${session.pubkey}`, 5)) return NextResponse.json({ ok: true });
   const parsed = Body.safeParse(await request.json().catch(() => null));
-  if (!parsed.success) return NextResponse.json({ error: "Bad request." }, { status: 400 });
+  if (!parsed.success) return apiError("bad_request", { error: "Bad request." }, { status: 400 });
   const { step, reason, error, wallet } = parsed.data;
   // The error text is the app's (client-written): stored for reading, never put in an alert (founder-alert.ts sends step and reason only).
   await recordFailure("link_failed", step, { status: 0, error, reason, from: "app" }, async () => ({ userPubkey: session.pubkey, walletPubkey: addressOrNull(wallet) }));

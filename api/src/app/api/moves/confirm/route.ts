@@ -1,3 +1,4 @@
+import { apiError } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { forgetOwnerReads } from "@/lib/memo";
 import { z } from "zod";
@@ -55,7 +56,7 @@ async function partial(p: MoveProposalRow, owner: ReturnType<typeof userAddress>
   if (p.asset === "SOL_LEND") {
     try { unwrapTransaction = await buildUserTransaction(owner, await buildUnwrapWsol({ user: owner })); } catch { unwrapTransaction = undefined; }
   }
-  return NextResponse.json({ error: `Your ${coinOf(p)} is back in your wallet; the move did not finish.`, partial: true, ...(unwrapTransaction ? { unwrapTransaction } : {}) }, { status: 409 });
+  return apiError("move_partial", { error: `Your ${coinOf(p)} is back in your wallet; the move did not finish.`, partial: true, ...(unwrapTransaction ? { unwrapTransaction } : {}) }, { status: 409 });
 }
 
 /** A compare-and-set lost (C-I2: the cron's settle, a second confirm): read the card again and answer from the winner's state, never a 500. */
@@ -63,8 +64,8 @@ async function fromState(repo: Repo, id: string, owner: ReturnType<typeof userAd
   const now = await repo.getMoveProposal(id);
   if (now?.status === "done") return done(now);
   if (now?.status === "failed" && now.redeemSignature) return partial(now, owner);
-  if (now?.status === "open" && now.redeemSignature) return NextResponse.json({ error: MAY_STILL }, { status: 409 });
-  return NextResponse.json({ error: "This move is no longer open." }, { status: 409 });
+  if (now?.status === "open" && now.redeemSignature) return apiError("move_unsure", { error: MAY_STILL }, { status: 409 });
+  return apiError("move_not_open", { error: "This move is no longer open." }, { status: 409 });
 }
 
 /**
@@ -80,12 +81,12 @@ async function postHandler(request: Request) {
   // 11-25 (load hotfix): this user's Home chain reads on this instance are read fresh after this write (memo.ts ownerCached).
   forgetOwnerReads(session.pubkey);
   const parsed = Body.safeParse(await request.json().catch(() => null));
-  if (!parsed.success) return NextResponse.json({ error: "Bad request." }, { status: 400 });
+  if (!parsed.success) return apiError("bad_request", { error: "Bad request." }, { status: 400 });
   const repo = await getRepo();
   const user = await repo.getUser(session.pubkey);
-  if (!user) return NextResponse.json({ error: "Sign in first." }, { status: 401 });
+  if (!user) return apiError("sign_in_first", { error: "Sign in first." }, { status: 401 });
   const p = await repo.getMoveProposal(parsed.data.id);
-  if (!p || p.userPubkey !== user.seedVaultPubkey) return NextResponse.json({ error: "No such move." }, { status: 404 });
+  if (!p || p.userPubkey !== user.seedVaultPubkey) return apiError("move_not_found", { error: "No such move." }, { status: 404 });
   const owner = userAddress(user.seedVaultPubkey);
   if (p.status !== "open") return fromState(repo, p.id, owner);
   // Review minor 4: any recent build of this move (each is the server's own amounts), newest first; none recent, the newest one.
@@ -93,7 +94,7 @@ async function postHandler(request: Request) {
   // In flight: the build the stored pair was pinned to is a candidate too, however old.
   const pinned = p.redeemSignature ? await latestMoveBuild(repo, user.seedVaultPubkey, p.id, p.redeemSignature) : null;
   const latest = recent[0] ?? pinned ?? (await latestMoveBuild(repo, user.seedVaultPubkey, p.id));
-  if (!latest) return NextResponse.json({ error: "Build this move first." }, { status: 409 });
+  if (!latest) return apiError("move_not_built", { error: "Build this move first." }, { status: 409 });
   const candidates = [...(recent.length ? recent : [latest]), ...(pinned ? [pinned] : [])];
   let redeem: PostedTx;
   let deposit: PostedTx;
@@ -101,18 +102,18 @@ async function postHandler(request: Request) {
     redeem = verifyPostedTransaction({ base64: parsed.data.signedTransactions[0], feePayer: owner, programs: PROGRAMS });
     deposit = verifyPostedTransaction({ base64: parsed.data.signedTransactions[1], feePayer: owner, programs: PROGRAMS });
   } catch (e) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 400 });
+    return apiError("bad_transaction", { error: e instanceof Error ? e.message : String(e) }, { status: 400 });
   }
   const samePair = (c: MoveProposalRow) => c.redeemSignature === redeem.signature && c.depositSignature === deposit.signature;
   // In flight (K-I2): only the stored pair goes on (the same signatures: the chain sends each at most once); any other pair would be
   // a second redeem under one card, so it is refused before anything is checked or sent.
-  if (p.redeemSignature && !samePair(p)) return NextResponse.json({ error: MAY_STILL }, { status: 409 });
+  if (p.redeemSignature && !samePair(p)) return apiError("move_unsure", { error: MAY_STILL }, { status: 409 });
   let built: MoveCarry | null = null;
   for (const c of candidates) {
     const parts = { user: owner, asset: c.asset, from: c.from, to: c.to, receiptRaw: c.receiptRaw, depositRaw: c.depositRaw };
     if (matches(redeem, await buildMove({ ...parts, part: "redeem" })) && matches(deposit, await buildMove({ ...parts, part: "deposit" }))) { built = c; break; }
   }
-  if (!built) return NextResponse.json({ error: "That move is not the one Sprouts built. Try the move again." }, { status: 400 });
+  if (!built) return apiError("wrong_transaction", { error: "That move is not the one Sprouts built. Try the move again." }, { status: 400 });
 
   if (!p.redeemSignature) {
     // C-I2 1 + 2: both signatures BEFORE the redeem goes out, and only onto an open card that has none (never over a stored one).
@@ -130,23 +131,23 @@ async function postHandler(request: Request) {
     redeemStatus = await land(redeem);
   } catch (e) {
     console.error(`moves confirm: the redeem send failed for ${p.id}: ${e instanceof Error ? e.message : String(e)}`);
-    return NextResponse.json({ error: MAY_STILL }, { status: 409 });
+    return apiError("move_unsure", { error: MAY_STILL }, { status: 409 });
   }
   if (redeemStatus === "failed" || redeemStatus === "expired") {
     // Nothing moved: the card is an ordinary open card again (retry, Not now, or the cron's expiry all work as before).
     await repo.clearMoveSignatures(p.id, redeem.signature);
-    return NextResponse.json({ error: redeemStatus === "failed" ? "The move failed on chain. Nothing moved." : "It did not go through. Nothing moved. Try again." }, { status: 409 });
+    return apiError(redeemStatus === "failed" ? "tx_failed" : "tx_expired", { error: redeemStatus === "failed" ? "The move failed on chain. Nothing moved." : "It did not go through. Nothing moved. Try again." }, { status: 409 });
   }
-  if (redeemStatus !== "confirmed") return NextResponse.json({ error: MAY_STILL }, { status: 409 });
+  if (redeemStatus !== "confirmed") return apiError("move_unsure", { error: MAY_STILL }, { status: 409 });
 
   let depositStatus;
   try {
     depositStatus = await land(deposit);
   } catch (e) {
     console.error(`moves confirm: redeem ${redeem.signature} CONFIRMED; the deposit send failed for ${p.id}: ${e instanceof Error ? e.message : String(e)}`);
-    return NextResponse.json({ error: MAY_STILL }, { status: 409 });
+    return apiError("move_unsure", { error: MAY_STILL }, { status: 409 });
   }
-  if (depositStatus === "pending") return NextResponse.json({ error: MAY_STILL }, { status: 409 });
+  if (depositStatus === "pending") return apiError("move_unsure", { error: MAY_STILL }, { status: 409 });
   if (depositStatus !== "confirmed") {
     if (!(await failMove(repo, card))) return fromState(repo, p.id, owner);
     return partial(card, owner);

@@ -1,3 +1,4 @@
+import { apiError } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { address } from "@solana/kit";
 import { getRepo, type Repo } from "@/db/repo";
@@ -103,7 +104,7 @@ const json = (v: unknown) => JSON.parse(JSON.stringify(v, (_k, x) => (typeof x =
 
 /** Once a day (Vercel cron, bearer = CRON_SECRET): plant, crank withdrawals, reconcile the Seed Vaults' own stakes, clean up, keep the database awake. */
 export async function GET(request: Request) {
-  if (!cronAuthorized(request.headers.get("authorization"))) return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  if (!cronAuthorized(request.headers.get("authorization"))) return apiError("unauthorized", { error: "Unauthorized." }, { status: 401 });
   // Review M1: the planting run starts no new wallet past 240 s from here, so the crank, the reconcile and the cleanup always run.
   const startedMs = Date.now();
   let run: { repo: Repo; day: string; startedAt: Date } | null = null;
@@ -114,7 +115,7 @@ export async function GET(request: Request) {
     const day = dayOf(now);
     if (!(await repo.claimCronRun(day, now, new Date(now.getTime() - RUN_STALE_MS)))) {
       console.log(`cron: ${day} is already running, this trigger stopped`);
-      return NextResponse.json({ error: "Another run is going." }, { status: 409 });
+      return apiError("busy", { error: "Another run is going." }, { status: 409 });
     }
     run = { repo, day, startedAt: now };
     // The Yield Manager's steps before the planting run (spec 6.1): snapshot the venues, then the coins (its lending legs read today's
@@ -190,6 +191,6 @@ export async function GET(request: Request) {
     console.error(`cron failed: ${message}`);
     if (run) await finishRun(run.repo, run.day, run.startedAt, false, { error: message.slice(0, 500), seconds: Math.round((Date.now() - startedMs) / 1000) });
     await alertFounder({ channel: "ops", title: "Daily job failed", text: message.slice(0, 300), todo: "Check the Vercel logs for /api/cron/plant; nothing was planted today until it is re-run" });
-    return NextResponse.json({ error: `Cron failed: ${message}` }, { status: 500 });
+    return apiError("internal", { error: `Cron failed: ${message}` }, { status: 500 });
   }
 }

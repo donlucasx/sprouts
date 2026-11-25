@@ -1,3 +1,4 @@
+import { apiError } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { getRepo } from "@/db/repo";
 import type { VenueDayRow } from "@/db/types";
@@ -25,7 +26,7 @@ export async function GET(request: Request) {
   if (session instanceof NextResponse) return session;
   const repo = await getRepo();
   const user = await repo.getUser(session.pubkey);
-  if (!user) return NextResponse.json({ error: "Sign in first." }, { status: 401 });
+  if (!user) return apiError("sign_in_first", { error: "Sign in first." }, { status: 401 });
   const today = dayOf(new Date());
   // Today's rows, and for a (venue, asset) with no row today (its snapshot failed) its newest rated row of the last 7 days.
   const [todays, latest] = await Promise.all([repo.listVenueDays(today), latestVenueRows(repo, today)]);

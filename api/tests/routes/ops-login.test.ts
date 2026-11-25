@@ -30,7 +30,7 @@ describe("POST /api/ops/login", () => {
       delete process.env[k];
       const r = await post({ password: PW });
       expect(r.status).toBe(404);
-      expect(await r.json()).toEqual({ error: "Not found." });
+      expect(await r.json()).toEqual({ error: "Not found.", code: "not_found" });
       process.env[k] = was;
     }
   });
@@ -38,7 +38,7 @@ describe("POST /api/ops/login", () => {
   it("400 on an unparseable body", async () => {
     const r = await post("not json", true);
     expect(r.status).toBe(400);
-    expect(await r.json()).toEqual({ error: "Bad request." });
+    expect(await r.json()).toEqual({ error: "Bad request.", code: "bad_request" });
     expect((await post({ nope: 1 })).status).toBe(401);
   });
 
@@ -46,7 +46,7 @@ describe("POST /api/ops/login", () => {
     for (let i = 0; i < 8; i++) {
       const r = await POST(new Request("http://x/api/ops/login", { method: "POST", headers: { "x-real-ip": ip, "content-type": "text/plain" }, body: JSON.stringify({ password: PW }) }));
       expect(r.status).toBe(400);
-      expect(await r.json()).toEqual({ error: "Bad request." });
+      expect(await r.json()).toEqual({ error: "Bad request.", code: "bad_request" });
     }
     expect((await post({ password: PW })).status).toBe(204);
   });
@@ -54,7 +54,7 @@ describe("POST /api/ops/login", () => {
   it("401 on a wrong password, with no cookie", async () => {
     const r = await post({ password: "wrong" });
     expect(r.status).toBe(401);
-    expect(await r.json()).toEqual({ error: "Wrong password." });
+    expect(await r.json()).toEqual({ error: "Wrong password.", code: "wrong_password" });
     expect(r.headers.get("set-cookie")).toBeNull();
   });
 

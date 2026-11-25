@@ -330,7 +330,7 @@ describe("link flow", () => {
     await getTx(new Request(`http://x/api/link/${c.code}?wallet=${WALLET}`), { params: Promise.resolve({ code: c.code }) });
     const r = await confirm(new Request("http://x/api/link/confirm", { method: "POST", body: JSON.stringify({ code: c.code, wallet: WALLET, waitMs: 0 }) }));
     expect(r.status).toBe(409);
-    expect((await r.json()).error).toBe("No delegation found for this wallet yet. Sign the approval first.");
+    expect(await r.json()).toEqual({ error: "No delegation found for this wallet yet. Sign the approval first.", code: "no_delegation" });   // P8: English text unchanged (0.1.12 matches its stem), code added
     expect(await repo.peekLinkCode(c.code)).not.toBeNull();
     const { chainRead } = (await import("@/lib/subscriptions")) as unknown as { chainRead: (p?: unknown) => Promise<unknown> };
     (readDelegation as unknown as { mockImplementation: (v: unknown) => void }).mockImplementation(chainRead);
@@ -348,7 +348,9 @@ describe("link flow", () => {
     const signed = getBase64EncodedWireTransaction(await signTransaction([walletKeyPair.keyPair], getTransactionDecoder().decode(getBase64Encoder().encode(t.transaction))));
     const r = await confirm(new Request("http://x/api/link/confirm", { method: "POST", body: JSON.stringify({ code: c.code, wallet: WALLET, signedTransaction: signed, waitMs: 0 }) }));
     expect(r.status).toBe(409);
-    const error = (await r.json()).error as string;
+    const body = (await r.json()) as { error: string; code?: string };
+    expect(body.code).toBe("no_delegation");
+    const error = body.error;
     expect(error).toBe("No delegation found: the network did not accept the approval (BlockhashNotFound; Transaction simulation failed: Blockhash not found). Nothing was linked. Try again.");
     expect(error.startsWith("No delegation found")).toBe(true);
     const e = repo.events.find((x) => x.kind === "link_failed")!;
@@ -364,7 +366,7 @@ describe("link flow", () => {
     const signed = getBase64EncodedWireTransaction(await signTransaction([walletKeyPair.keyPair], getTransactionDecoder().decode(getBase64Encoder().encode(t.transaction))));
     const r = await confirm(new Request("http://x/api/link/confirm", { method: "POST", body: JSON.stringify({ code: c.code, wallet: WALLET, signedTransaction: signed, waitMs: 0 }) }));
     expect(r.status).toBe(409);
-    expect((await r.json()).error).toBe("No delegation found yet: your approval was sent but is not on chain. Trying again is safe.");
+    expect(await r.json()).toEqual({ error: "No delegation found yet: your approval was sent but is not on chain. Trying again is safe.", code: "no_delegation" });
     readDelegation.mockImplementation(chainRead);
   });
 

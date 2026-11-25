@@ -1,3 +1,4 @@
+import { apiError } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { createNoopSigner } from "@solana/kit";
 import { getRepo } from "@/db/repo";
@@ -13,7 +14,7 @@ async function postHandler(request: Request) {
   const session = await requireSession(request);
   if (session instanceof NextResponse) return session;
   const repo = await getRepo();
-  if (!(await repo.pendingWithdrawal(session.pubkey))) return NextResponse.json({ error: "Nothing in the basket." }, { status: 409 });
+  if (!(await repo.pendingWithdrawal(session.pubkey))) return apiError("basket_empty", { error: "Nothing in the basket." }, { status: 409 });
   const owner = userAddress(session.pubkey);
   const transaction = await buildUserTransaction(owner, [await buildCancelUnstakeIx({ user: createNoopSigner(owner) })]);
   return NextResponse.json({ transaction });

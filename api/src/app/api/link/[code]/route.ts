@@ -1,3 +1,4 @@
+import { apiError } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { addressOrNull, linkOwner, withFailureLog } from "@/lib/failure-log";
 import { address, createNoopSigner, pipe, createTransactionMessage, setTransactionMessageFeePayerSigner,
@@ -26,31 +27,31 @@ const DAILY_CAP_RAW = 5_000_000n;
  * `owner`, so the page can check the approval is for the garden the user confirmed.
  */
 async function getApproval(request: Request, ctx: { params: Promise<{ code: string }> }) {
-  if (rateLimited(`link:${clientIp(request)}`)) return NextResponse.json({ error: "Too many requests. Try again in a minute." }, { status: 429 });
+  if (rateLimited(`link:${clientIp(request)}`)) return apiError("rate_limited", { error: "Too many requests. Try again in a minute." }, { status: 429 });
 
   const { code } = await ctx.params;
   const walletParam = new URL(request.url).searchParams.get("wallet");
   const repo = await getRepo();
   const link = await repo.peekLinkCode(code.toUpperCase());
   if (walletParam === null) {
-    if (!link) return NextResponse.json({ error: "This code is unknown, expired or already used." }, { status: 404 });
+    if (!link) return apiError("code_unknown", { error: "This code is unknown, expired or already used." }, { status: 404 });
     return NextResponse.json({ owner: ownerLabel(await repo.getUser(link.userPubkey), link.userPubkey) });
   }
   let wallet: Address;
   try {
     wallet = address(walletParam);
   } catch {
-    return NextResponse.json({ error: "That does not look like a Solana address." }, { status: 400 });
+    return apiError("bad_address", { error: "That does not look like a Solana address." }, { status: 400 });
   }
 
-  if (!link) return NextResponse.json({ error: "This code is unknown, expired or already used." }, { status: 404 });
-  if (link.walletPubkey && link.walletPubkey !== wallet) return NextResponse.json({ error: "This code was already used with another wallet. Get a new code in the app, then try again." }, { status: 409 });
+  if (!link) return apiError("code_unknown", { error: "This code is unknown, expired or already used." }, { status: 404 });
+  if (link.walletPubkey && link.walletPubkey !== wallet) return apiError("code_other_wallet", { error: "This code was already used with another wallet. Get a new code in the app, then try again." }, { status: 409 });
 
   // A wallet another Seeker still holds cannot be taken over; a revoked one can be linked again, by anyone (review I3). The 409
   // tells a code holder the wallet is linked elsewhere (R207 #9); the chain says so too (the delegation names delegator and puller).
   const existing = await repo.getWallet(wallet);
   if (existing && existing.userPubkey !== link.userPubkey && existing.status !== "revoked") {
-    return NextResponse.json({ error: "This wallet is linked to another Seeker. Revoke it there first." }, { status: 409 });
+    return apiError("wallet_taken", { error: "This wallet is linked to another Seeker. Revoke it there first." }, { status: 409 });
   }
 
   const puller = (await pullerSigner()).address;
@@ -59,7 +60,7 @@ async function getApproval(request: Request, ctx: { params: Promise<{ code: stri
   const pda = await delegationPda({ delegator: wallet, delegatee, nonce: link.nonce });
   if (link.walletPubkey && link.delegationPda && link.delegationPda !== pda) {
     // Bound before the go-live switch flipped (or the puller rotated): the confirm would look for the old delegation, so stop here.
-    return NextResponse.json({ error: "This code was made before Sprouts changed how links work. Get a new code in the app, then try again." }, { status: 409 });
+    return apiError("code_outdated", { error: "This code was made before Sprouts changed how links work. Get a new code in the app, then try again." }, { status: 409 });
   }
 
   // A wallet that linked before already has its USDC authority on chain: re-init would fail, so the create carries its init id.
@@ -105,7 +106,7 @@ async function getApproval(request: Request, ctx: { params: Promise<{ code: stri
     // Simulated before any wallet sees it (MetaMask with no SOL, 2026-09-29): a wallet that cannot pay the rent hears it in plain
     // words, and the code is bound only to a wallet whose approval would land, so a failed try leaves it free for another wallet.
     const sim = await simulate(transaction);
-    if (sim.value.err) return NextResponse.json({ error: simulationError(sim.value.err, sim.value.logs ?? []) }, { status: 400 });
+    if (sim.value.err) return apiError("link_would_fail", { error: simulationError(sim.value.err, sim.value.logs ?? []) }, { status: 400 });
   }
   if (!link.walletPubkey) await repo.bindLinkCode(link.code, wallet, pda);
   const owner = ownerLabel(await repo.getUser(link.userPubkey), link.userPubkey);

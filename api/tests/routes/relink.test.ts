@@ -116,7 +116,7 @@ describe("re-link the Seed Vault wallet to the leash (contracts 5.5, R287)", () 
     chain.sendLands = false;   // a failed or never-landing send
     const res = await call(confirm, { signedTransaction: await sign(built.transaction) });
     expect(res.status).toBe(409);
-    expect((await res.json()).error).toBe("No re-link found on chain yet. Check again in a minute.");
+    expect(await res.json()).toEqual({ error: "No re-link found on chain yet. Check again in a minute.", code: "relink_not_on_chain" });
     expect(await repo.getWallet(user.address)).toMatchObject({ linkModel: "puller", delegationPda: OLD });
     expect(repo.events.map((e) => e.kind)).not.toContain("relinked");
   });
@@ -224,7 +224,7 @@ describe("re-link the Seed Vault wallet to the leash (contracts 5.5, R287)", () 
     chain.sendLands = false;
     const res = await call(confirm, { signedTransaction: wire });
     expect(res.status).toBe(409);
-    expect((await res.json()).error).toBe("No re-link found on chain yet. Check again in a minute.");
+    expect(await res.json()).toEqual({ error: "No re-link found on chain yet. Check again in a minute.", code: "relink_not_on_chain" });
     expect((await repo.getWallet(user.address))!.linkModel).toBe("puller");
     chain.oldLive = false;
     expect((await call(confirm, { signedTransaction: wire })).status).toBe(200);

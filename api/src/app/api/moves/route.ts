@@ -1,3 +1,4 @@
+import { apiError } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { getRepo } from "@/db/repo";
 import { requireSession } from "@/lib/auth-guard";
@@ -12,7 +13,7 @@ async function getHandler(request: Request) {
   if (session instanceof NextResponse) return session;
   const repo = await getRepo();
   const user = await repo.getUser(session.pubkey);
-  if (!user) return NextResponse.json({ error: "Sign in first." }, { status: 401 });
+  if (!user) return apiError("sign_in_first", { error: "Sign in first." }, { status: 401 });
   const open = await repo.openMoveProposal(user.seedVaultPubkey);
   return NextResponse.json(json({
     proposal: open

@@ -1,3 +1,4 @@
+import { apiError } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { getRepo } from "@/db/repo";
 import { dayOf } from "@/domain/day";
@@ -24,9 +25,9 @@ export async function GET(request: Request) {
   const session = await requireSession(request);
   if (session instanceof NextResponse) return session;
   // The heaviest read per call (audit 10-08): a few exports a minute per user is plenty
-  if (rateLimited(`export-tax:${session.pubkey}`, 10)) return NextResponse.json({ error: "Too many requests. Try again in a minute." }, { status: 429 });
+  if (rateLimited(`export-tax:${session.pubkey}`, 10)) return apiError("rate_limited", { error: "Too many requests. Try again in a minute." }, { status: 429 });
   const yearParam = new URL(request.url).searchParams.get("year");
-  if (yearParam !== null && !/^\d{4}$/.test(yearParam)) return NextResponse.json({ error: "year must be four digits, like 2026." }, { status: 400 });
+  if (yearParam !== null && !/^\d{4}$/.test(yearParam)) return apiError("bad_year", { error: "year must be four digits, like 2026." }, { status: 400 });
   const year = yearParam === null ? null : Number(yearParam);
 
   const repo = await getRepo();
@@ -38,7 +39,7 @@ export async function GET(request: Request) {
     repo.listEvents(session.pubkey, ["withdraw_skipped"], MAX_ROWS),
   ]);
   if (plantings.length >= MAX_ROWS || withdrawals.length >= MAX_ROWS || lendEvents.length >= MAX_ROWS || skippedEvents.length >= MAX_ROWS) {
-    return NextResponse.json({ error: "Your history is too long for one export yet. Contact support for the full file." }, { status: 503 });
+    return apiError("export_too_long", { error: "Your history is too long for one export yet. Contact support for the full file." }, { status: 503 });
   }
   // Every leg in one batched read (audit 10-08: was one read per planting, up to 999 at once), grouped back per planting.
   const legRows = plantings.length ? await repo.plantingLegsFor(plantings.map((p) => p.id)) : [];

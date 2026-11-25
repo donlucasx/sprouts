@@ -49,7 +49,7 @@ describe("POST /api/feedback", () => {
       const res = await post(body, token);
       expect(res.status).toBe(400);
     }
-    expect((await (await post({ question: "brought_you", choice: "nope" }, token)).json())).toEqual({ error: "Pick one of the answers." });
+    expect((await (await post({ question: "brought_you", choice: "nope" }, token)).json())).toEqual({ error: "Pick one of the answers.", code: "pick_answer" });
     expect(answers()).toHaveLength(0);
   });
 

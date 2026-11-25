@@ -1,6 +1,6 @@
 import { en } from '@/i18n/en'
 import type { MeResponse } from './api'
-import { confirmWithRetries, RELINK_NOT_ON_CHAIN_YET } from './confirm-retry'
+import { confirmWithRetries, RELINK_NOT_ON_CHAIN } from './confirm-retry'
 import { NEEDS_LIVE } from './lend-mock'
 import { leashPda, SETUP_MAX, type SignFlow } from './sign'
 import { t } from '@/i18n'
@@ -117,7 +117,7 @@ export async function relinkThisPhone(a: {
   const signedTransaction = await a.sign(setupMax > 0 ? { kind: 'relink', user: a.user, setupMax } : { kind: 'relink', user: a.user })(built.transaction)
   a.onSigned?.()
   try {
-    await confirmWithRetries(() => a.confirm({ signedTransaction }), { notOnChainYet: RELINK_NOT_ON_CHAIN_YET, sleep: a.sleep })
+    await confirmWithRetries(() => a.confirm({ signedTransaction }), { notOnChainYet: RELINK_NOT_ON_CHAIN, sleep: a.sleep })
   } catch (e) {
     throw new RelinkSent(e)
   }

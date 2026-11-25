@@ -1,3 +1,4 @@
+import { apiError } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getRepo } from "@/db/repo";
@@ -27,19 +28,19 @@ const Body = z.object({
 export async function POST(request: Request) {
   const session = await requireSession(request);
   if (session instanceof NextResponse) return session;
-  if (rateLimited(`feedback:${session.pubkey}`, 6)) return NextResponse.json({ error: "Wait a minute and send it again." }, { status: 429 });
+  if (rateLimited(`feedback:${session.pubkey}`, 6)) return apiError("rate_limited", { error: "Wait a minute and send it again." }, { status: 429 });
   const parsed = Body.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
     const pickIssue = parsed.error.issues.some((i) => i.path[0] === "choice" || i.path[0] === "question");
-    return NextResponse.json({ error: pickIssue ? "Pick one of the answers." : "Bad request." }, { status: 400 });
+    return apiError(pickIssue ? "pick_answer" : "bad_request", { error: pickIssue ? "Pick one of the answers." : "Bad request." }, { status: 400 });
   }
   const { question, ref, choice, text, email } = parsed.data;
-  if (!(FEEDBACK_OPTIONS[question] as readonly string[]).includes(choice)) return NextResponse.json({ error: "Pick one of the answers." }, { status: 400 });
+  if (!(FEEDBACK_OPTIONS[question] as readonly string[]).includes(choice)) return apiError("pick_answer", { error: "Pick one of the answers." }, { status: 400 });
   const repo = await getRepo();
   const dayAgo = Date.now() - 24 * 3600_000;
   const sent = await repo.listEvents(session.pubkey, ["feedback_answer"], FEEDBACK_DAILY_CAP);
   if (sent.filter((e) => e.ts.getTime() > dayAgo).length >= FEEDBACK_DAILY_CAP) {
-    return NextResponse.json({ error: "That is enough answers for today. Thank you." }, { status: 429 });
+    return apiError("daily_limit", { error: "That is enough answers for today. Thank you." }, { status: 429 });
   }
   // 11-08 (his ask): an answer that carries a note or an email is a message: it gets a reference like Message us and shows in Help.
   const messageRef = text || email ? newSupportRef() : undefined;

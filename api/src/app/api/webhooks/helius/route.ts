@@ -1,3 +1,4 @@
+import { apiError } from "@/lib/api-error";
 import { NextResponse, after } from "next/server";
 import { timingSafeEqual } from "node:crypto";
 import { getRepo } from "@/db/repo";
@@ -35,7 +36,7 @@ function authorized(header: string | null): boolean {
  * have succeeded, be signed by the linked wallet, be recent, carry the event's block time and amounts no larger than the chain's.
  */
 export async function POST(request: Request) {
-  if (!authorized(request.headers.get("authorization"))) return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  if (!authorized(request.headers.get("authorization"))) return apiError("unauthorized", { error: "Unauthorized." }, { status: 401 });
   const body = (await request.json().catch(() => null)) as unknown;
   const items = Array.isArray(body) ? (body as HeliusEnhancedTx[]) : [];
   countHelius(items.length);   // 11-19: Helius bills 1 credit per delivered event
