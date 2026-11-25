@@ -238,11 +238,11 @@ describe("Withdraw a lending position (contracts 5.3, R264)", () => {
   const appSign = new URL("../../../app/src/lib/sign.ts", import.meta.url); // this repo's app (Task 17a: was a sibling worktree, absent, so the test always skipped)
   // Skipped (shown as skipped in the run) when the app worktree is not on this machine: the vendored copy was then not compared.
   it.skipIf(!existsSync(appSign))("the vendored copy of the app's sign.ts equals the app's file byte for byte, bar the one documented import edit (skipped only when the app folder is absent)", () => {
-    // The vendored header says what was changed: the app's `import { isLend, type LendAsset } from './coins'` is inlined as two lines
-    // (and a comment). Undo exactly that edit, then every other byte must match.
+    // The vendored header says what was changed: the app's coins import is inlined as two lines and its i18n import becomes a t() over
+    // the app's en.ts (11-25, Spanish pass P5). Undo exactly that edit, then every other byte must match.
     const vendored = readFileSync(new URL("../fixtures/app/sign.ts", import.meta.url), "utf8");
-    const edit = /\/\/ VENDORED \(API Task 18\)[^\n]*\n\/\/ except this import[^\n]*\ntype LendAsset = [^\n]*\nconst isLend = [^\n]*\n/;
+    const edit = /\/\/ VENDORED \(API Task 18\)[^\n]*\n\/\/ except these imports[^\n]*\ntype LendAsset = [^\n]*\nconst isLend = [^\n]*\nimport \{ en \}[^\n]*\nconst t = [^\n]*\n/;
     expect(edit.test(vendored)).toBe(true);
-    expect(vendored.replace(edit, "import { isLend, type LendAsset } from './coins'\n")).toBe(readFileSync(appSign, "utf8"));
+    expect(vendored.replace(edit, "import { isLend, type LendAsset } from './coins'\nimport { t } from '@/i18n'\n")).toBe(readFileSync(appSign, "utf8"));
   });
 });

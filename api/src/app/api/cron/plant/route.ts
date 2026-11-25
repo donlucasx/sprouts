@@ -7,7 +7,7 @@ import { retryUnrecordedRemainders, runPlanting } from "@/lib/plant-run";
 import { cronAuthorized, realPlantingChain } from "@/lib/cron-run";
 import { runWithdrawCrank } from "@/lib/withdraw-run";
 import { readPosition, crankWithdraw, sharePrice } from "@/lib/staking";
-import { reconcileOwnStakes } from "@/lib/reconcile";
+import { previousDeferred, reconcileOwnStakes } from "@/lib/reconcile";
 import { signaturesFinalized } from "@/lib/finality";
 import { snapshotCoins, IMPACT_LIMIT_PCT, type CoinReads } from "@/lib/coin-data";
 import { snapshotVenues, scoutYields, realVenueReads } from "@/lib/venues/rates";
@@ -29,30 +29,33 @@ import { checkMissedSwaps, realSwapCheckReads } from "@/lib/swap-check";
 import { excludedWallets } from "@/lib/ops/sources";
 
 export const runtime = "nodejs";
-export const maxDuration = 800; // 11-25 (Pro): 300 s killed the run under Helius 429 slowdowns (19 of ~45 planted); internal deadlines unchanged
+export const maxDuration = 800; // 11-25 (Pro): 300 s killed the run under Helius 429 slowdowns (19 of ~45 planted); the reconcile and swap check now use it (S-HJAK); planting/crank/remainder deadlines unchanged
 /** The moves step reads no position past this many ms from the run's start (the planting's own cutoff is 240 s). */
 const MOVES_DEADLINE_MS = 150_000;
 /**
  * 11-13: the withdrawal crank starts no new withdrawal past this many ms, so a started one's send and confirm have ~50 s before the
- * 300 s kill. The ladder: planting starts no wallet past 240 s, the crank none past 250 s, the remainder retry none past 260 s, the
- * reconcile none past 275 s; 300 s kill.
+ * old 300 s kill (now 800 s). The ladder: planting starts no wallet past 240 s, the crank none past 250 s, the remainder retry none past 260 s, the
+ * reconcile none past 700 s (11-25); 800 s kill.
  */
 const WITHDRAW_DEADLINE_MS = 250_000;
 /**
  * Audit F1: the retry of unrecorded remainders (after the crank, before the reconcile) starts no new read past this many ms. At most
- * 20 reads of one transaction each; one in flight at 260 s ends well before the reconcile's own 275 s stop and the 300 s kill.
+ * 20 reads of one transaction each; one in flight at 260 s ends well before the reconcile's own 700 s stop and the 800 s kill.
  */
 const REMAINDERS_DEADLINE_MS = 260_000;
 /**
- * Ops #9: the missed-swap check runs LAST (after the reconcile and the coverage pass) and starts no wallet past 255 s from the run's
- * start, 45 s before the 300 s kill; a run whose reconcile went long skips it (every wallet deferred). A wallet still being read at
- * 280 s is stopped and counted deferred (never concluded), leaving the cleanup and the keepalive their time.
+ * Ops #9: the missed-swap check runs LAST (after the reconcile and the coverage pass) and starts no wallet past 730 s from the run's
+ * start, 70 s before the 800 s kill (11-25; was 255 s of 300 s); a run whose reconcile went long skips it (every wallet deferred). A wallet still being read at
+ * 755 s is stopped and counted deferred (never concluded), leaving the cleanup and the keepalive their time.
  */
-const SWAPCHECK_DEADLINE_MS = 255_000;
-const SWAPCHECK_HARD_STOP_MS = 280_000;
-/** M1: the step itself returns by 285 s whatever read is still in flight (the rest of its wallets deferred), so the record is written. */
-const SWAPCHECK_BOUND_MS = 285_000;
-/** 11-07 run lock: a claimed run not finished after this long died (the route's limit is 300 s), so its day can be claimed again. */
+/** 11-25 (S-HJAK, his ruling): the reconcile starts no user past 700 s (it was 275 s and deferred ~360 of ~480 users daily); Kimi: its
+ * tail (last read + booking) ends by ~715 s, coverage ~20 s more, then the swap check below. */
+const RECONCILE_DEADLINE_MS = 700_000;
+const SWAPCHECK_DEADLINE_MS = 730_000;
+const SWAPCHECK_HARD_STOP_MS = 755_000;
+/** M1: the step itself returns by 760 s (11-25; was 285 s) whatever read is still in flight (the rest of its wallets deferred), so the record is written. */
+const SWAPCHECK_BOUND_MS = 760_000;
+/** 11-07 run lock: a claimed run not finished after this long died (the route's limit is 800 s), so its day can be claimed again. */
 const RUN_STALE_MS = 15 * 60_000;   // 11-25 (Kimi): above maxDuration 800 s, so a live run is never taken for dead
 
 /** The run's record is best effort: failing to write it never fails the run (its outcome is already decided). */
@@ -117,7 +120,7 @@ export async function GET(request: Request) {
     // The Yield Manager's steps before the planting run (spec 6.1): snapshot the venues, then the coins (its lending legs read today's
     // venue rows), decide each stop's split, apply to users, propose moves. Budgets: decide 90 s (DECIDE_BUDGET_MS); the moves step
     // reads no position past 150 s from the start; planting starts no new wallet past 240 s, the crank none past 250 s, the
-    // remainder retry none past 260 s, the reconcile none past 275 s, the swap check (last) no wallet past 255 s; the whole route has 300 s.
+    // remainder retry none past 260 s, the reconcile none past 700 s, the swap check (last) no wallet past 730 s; the whole route has 800 s (11-25).
     // realVenueReads() is built inside each step, so a missing JUPITER_API_KEY or RPC fails that step loudly in the log, not the run.
     const venues = await step("venues", () => snapshotVenues({ repo, now, reads: realVenueReads() }));
     const coins = await step("snapshot", () => snapshotCoins({ repo, now, reads: realCoinReads(repo, now) }));
@@ -157,11 +160,13 @@ export async function GET(request: Request) {
     // Audit F1: leftover change a booking could not record (an SKR or WSOL/USDC surplus still NULL), retried for 14 days, written once.
     const remainders = await step("remainders", () => retryUnrecordedRemainders({ repo, now, chain, deadlineMs: startedMs + REMAINDERS_DEADLINE_MS }));
     // R61: stakes and unstakes the Seed Vault made from its own wallet, found by comparing the chain's share count with the ledger's.
-    // R499 F4: the reconcile stops starting users 25 s before the route's 300 s limit (the last one may still spend ~10 s on its
+    // R499 F4 / 11-25: the reconcile stops starting users at 700 s of the route's 800 s limit (the last one may still spend ~10 s on its
     // final status call); as a step, a throw is logged and the cleanup and the keepalive still run (round 2, R2-1).
-    const reconciled = (await step("reconcile", () => reconcileOwnStakes({ repo, now: new Date(), deadlineMs: startedMs + 275_000, chain: { readPosition: (u) => readPosition(address(u), "finalized"), sharePrice, finalized: signaturesFinalized } })));
+    // 11-25 (S-HJAK): yesterday's deferred users go first; no usable record (killed or failed run) means a day-rotated order.
+    const lastDeferred = previousDeferred(await repo.getCronRun(dayOf(new Date(startedMs - 86_400_000))).catch(() => null));
+    const reconciled = (await step("reconcile", () => reconcileOwnStakes({ repo, now: new Date(), deadlineMs: startedMs + RECONCILE_DEADLINE_MS, previousDeferred: lastDeferred, chain: { readPosition: (u) => readPosition(address(u), "finalized"), sharePrice, finalized: signaturesFinalized } })));
     // 10-26: every linked wallet still on the swap webhook (founder alert when not).
-    const coverage = await step("webhook coverage", () => checkWebhookCoverage({ repo, watched: () => heliusWebhookAddresses(config().heliusWebhookId), repair: (missing) => heliusEnsureAddresses(config().heliusWebhookId, missing, { tries: 2, settleMs: 500 }), prune: (extras) => heliusRemoveAddresses(config().heliusWebhookId, extras, { tries: 2, settleMs: 500, stillRevoked: stillRevokedCheck(repo) }) }));   // short: the reconcile may run to 275 s of the 300
+    const coverage = await step("webhook coverage", () => checkWebhookCoverage({ repo, watched: () => heliusWebhookAddresses(config().heliusWebhookId), repair: (missing) => heliusEnsureAddresses(config().heliusWebhookId, missing, { tries: 2, settleMs: 500 }), prune: (extras) => heliusRemoveAddresses(config().heliusWebhookId, extras, { tries: 2, settleMs: 500, stillRevoked: stillRevokedCheck(repo) }) }));   // short: the reconcile may run to ~715 s of the 800
     // Ops #9: on-chain swaps of the last 48 h that are not in swaps (DETECTION ONLY: nothing is booked; ops light "Every swap counted").
     const swapCheck = await step("swap check", async () => checkMissedSwaps({ repo, now: new Date(), reads: await realSwapCheckReads(), exclude: excludedWallets(config().opsExcludeWallets), deadlineMs: startedMs + SWAPCHECK_DEADLINE_MS, hardStopMs: startedMs + SWAPCHECK_HARD_STOP_MS, boundAt: startedMs + SWAPCHECK_BOUND_MS }));
     // 11-19: this run's own Helius count is written, then this cycle's total is checked (ops post once at 70% and once at 90% of 1M).

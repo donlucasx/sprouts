@@ -8,10 +8,12 @@ import {
   type Address,
   type Transaction,
 } from '@solana/kit'
-// VENDORED (API Task 18): app/src/lib/sign.ts byte for byte from this repo's app (refreshed 2026-11-25, 0.1.13 Plant my SKR, feat/0.1.13),
-// except this import: app/src/lib/coins.ts's two lines, inlined. Refresh with `cp` + this one edit when the app's sign.ts changes.
+// VENDORED (API Task 18): app/src/lib/sign.ts byte for byte from this repo's app (refreshed 2026-11-25, 0.1.13 Spanish pass P5, feat/0.1.13),
+// except these imports: app/src/lib/coins.ts's two lines inlined, and t() reading the app's English (en.ts) directly. Refresh with `cp` + this one edit.
 type LendAsset = 'USDC_LEND' | 'SOL_LEND'
 const isLend = (a: string): a is LendAsset => a === 'USDC_LEND' || a === 'SOL_LEND'
+import { en } from '../../../../app/src/i18n/en'
+const t = (k: keyof typeof en, v?: Record<string, string | number>): string => en[k].replace(/\{(\w+)\}/g, (m, n: string) => (v && n in v ? String(v[n]) : m))
 
 /**
  * Security R207 #3 (10-03): the API builds every transaction and the Seed Vault key signs it, so a compromised API (or its domain)
@@ -136,24 +138,25 @@ export type SignFlow =
 export type MovePart = 'redeem' | 'deposit' | 'whole'
 
 /** The sentences a refusal shows; each ends "Nothing was signed." so the screen needs no wording of its own. */
+// 0.1.13 Spanish pass P5 (d): each refusal is read at throw time in the current language (getters), so the screen shows it as is.
 export const REFUSED = {
-  unreadable: 'Sprouts could not read this transaction. Nothing was signed.',
-  payer: 'This transaction was not built for your wallet. Nothing was signed.',
-  signer: 'This transaction asks for a signature besides yours. Nothing was signed.',
-  lookup: 'This transaction uses a lookup table Sprouts did not build. Nothing was signed.',
-  program: 'This transaction touches a program Sprouts does not use here. Nothing was signed.',
-  plan: 'This transaction does not match what the screen shows. Nothing was signed.',
-  amount: 'This transaction moves more than your position holds. Nothing was signed.',
+  get unreadable() { return t('sign.refused.unreadable') },
+  get payer() { return t('sign.refused.payer') },
+  get signer() { return t('sign.refused.signer') },
+  get lookup() { return t('sign.refused.lookup') },
+  get program() { return t('sign.refused.program') },
+  get plan() { return t('sign.refused.plan') },
+  get amount() { return t('sign.refused.amount') },
   /** The top-up: the phone could not read the SOL price itself, so the amount could not be held to it. */
-  price: 'Sprouts could not check the SOL price, so nothing was asked of your wallet. Try again.',
+  get price() { return t('sign.refused.price', { symbol: 'SOL' }) },
   /** The top-up: the swap may spend more SOL than the USDC is worth at the phone's own price (or over 1 SOL). */
-  overpriced: 'This swap asks for more SOL than the USDC is worth right now. Nothing was signed.',
-} as const
+  get overpriced() { return t('sign.refused.overpriced', { symbol: 'SOL' }) },
+}
 
 /** The top-up's two price refusals, naming the coin swapped (REFUSED.price and .overpriced are these for SOL, word for word). */
 export const REFUSED_COIN = {
-  price: (symbol: string) => `Sprouts could not check the ${symbol} price, so nothing was asked of your wallet. Try again.`,
-  overpriced: (symbol: string) => `This swap asks for more ${symbol} than the USDC is worth right now. Nothing was signed.`,
+  price: (symbol: string) => t('sign.refused.price', { symbol }),
+  overpriced: (symbol: string) => t('sign.refused.overpriced', { symbol }),
 } as const
 
 /** A check before signing failed; `message` is one of REFUSED, safe to show as is. */
