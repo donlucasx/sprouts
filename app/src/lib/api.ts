@@ -141,6 +141,9 @@ export type MeResponse = {
   ask?: { question: "wallet_removed" | "brought_you"; ref: string } | null;
   reminder?: { id: string; kind: "link_new" | "usdc_waiting" | "relink" | "idle" | "link_unfinished"; title: string; body: string; route: "/connect" | "/home" } | null;
   moveProposal?: MoveProposal | null;
+  /** 0.1.13 Plant my SKR: the Seed Vault wallet's own liquid SKR (raw base units) and its dollars (cents), from $5; null under it, when
+   * unread or switched off; absent from an older API (read as null: no marker). */
+  idleSkr?: { raw: string; usdCents: number } | null;
 };
 
 /** As GET /api/activity answers (Plan 2 Task 2), newest first, fifty of each. Contracts 5.7 adds the optional lists. */
@@ -165,6 +168,8 @@ export type ActivityResponse = {
   topUps?: { ts: string; signature: string; usdcRaw: string; coin?: string | null }[];
   /** 10-28: links and revokes; absent from an older API. `why` on a revoke: the user, the USDC approval removed, or unlinked outside. */
   wallets?: { ts: string; kind: 'linked' | 'revoked'; wallet: string; why: 'user' | 'approval' | 'outside' | null; signature: string | null }[];
+  /** 0.1.13 Plant my SKR: the stakes from this wallet that landed (amountRaw: SKR base units); absent from an older API. */
+  skrPlants?: { ts: string; signature: string; amountRaw: string }[];
 };
 
 /** 0.1.10 (API GET /api/me/preview): what the signed-in wallet's last 30 days of swaps would have saved. Read from the chain. */

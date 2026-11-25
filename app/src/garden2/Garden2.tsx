@@ -14,6 +14,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
+import { MaterialCommunityIcons } from '@expo/vector-icons'
 import { ThemedText } from '@/components/ThemedText'
 import { FONT, GARDEN_INK, radius, spacing, useTheme } from '@/theme'
 import { pinchOffset } from '@/model/motion'
@@ -459,6 +460,15 @@ export function Garden2({
               <ThemedText variant="caption" tone="secondary">
                 {label.card.next}
               </ThemedText>
+            ) : null}
+            {label.card.marker && label.card.row && onCard ? (
+              // 0.1.13 Plant my SKR: the card's small marker; the tap opens the SKR sheet, where the section is
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <MaterialCommunityIcons name="sprout" size={12} color={colors.accentText} />
+                <ThemedText variant="caption" style={{ color: colors.accentText }} numberOfLines={1}>
+                  {label.card.marker}
+                </ThemedText>
+              </View>
             ) : null}
             {label.card.row && onCard ? (
               <ThemedText variant="caption" style={{ color: colors.accentText, fontFamily: FONT.label }}>

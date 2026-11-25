@@ -8,7 +8,7 @@ import {
   type Address,
   type Transaction,
 } from '@solana/kit'
-// VENDORED (API Task 18): app/src/lib/sign.ts byte for byte from this repo's app (refreshed 2026-11-19, Task 17b, feat/user-rent),
+// VENDORED (API Task 18): app/src/lib/sign.ts byte for byte from this repo's app (refreshed 2026-11-25, 0.1.13 Plant my SKR, feat/0.1.13),
 // except this import: app/src/lib/coins.ts's two lines, inlined. Refresh with `cp` + this one edit when the app's sign.ts changes.
 type LendAsset = 'USDC_LEND' | 'SOL_LEND'
 const isLend = (a: string): a is LendAsset => a === 'USDC_LEND' || a === 'SOL_LEND'
@@ -80,9 +80,11 @@ export const PULLER = 'HJCJKRQLV2HVKfe3sFdTF5jjBY1xfWgnK8cLcjH7qnHd'
 export const LINK_DAILY_CAP_RAW = 5_000_000n
 const DAY_S = 86_400n
 
-// Anchor discriminators from api/src/generated/staking (unstake, cancel_unstake); one-byte ones from @solana/subscriptions 0.5.0
+// Anchor discriminators from api/src/generated/staking (unstake, cancel_unstake, stake); one-byte ones from @solana/subscriptions 0.5.0
 // (init authority 0, create recurring delegation 2, revoke delegation 3, revoke authority 14) and the ATA program (CreateIdempotent 1).
 const UNSTAKE = [90, 95, 107, 42, 205, 124, 50, 225]
+/** 0.1.13 Plant my SKR: stake(amount u64), api/src/generated/staking STAKE_DISCRIMINATOR. */
+const STAKE = [206, 176, 202, 18, 200, 209, 179, 108]
 const CANCEL_UNSTAKE = [64, 65, 53, 227, 125, 153, 3, 167]
 const SUB_INIT = 0, SUB_CREATE_RECURRING = 2, SUB_REVOKE_DELEGATION = 3, SUB_REVOKE_AUTHORITY = 14
 const ATA_CREATE_IDEMPOTENT = 1
@@ -125,6 +127,11 @@ export type SignFlow =
    * inputMint (Task 3, any-coin top-up): the coin the user picked, set only when it is not SOL; absent = the SOL top-up, unchanged.
    */
   | { kind: 'topup'; user: string; usdcRaw: string; inputMint?: string; setupMax?: number }
+  /**
+   * 0.1.13 Plant my SKR: this wallet's own liquid SKR staked into its garden position, one SKR staking `stake` (payer = user = this key).
+   * amountRaw is the amount the button showed (SKR base units), never the build response's; the stake must carry exactly that.
+   */
+  | { kind: 'stake'; user: string; amountRaw: string }
 
 export type MovePart = 'redeem' | 'deposit' | 'whole'
 
@@ -570,6 +577,23 @@ function topUpComputeBudget(ixs: Ix[]): number {
 }
 
 /**
+ * 0.1.13 Plant my SKR (Kimi scope check #4, #8), in this order and nothing else: the top-up's compute budget (at most one limit and one
+ * price, no accounts, the priority fee at most 0.001 SOL), then ONE SKR staking `stake`: the discriminator and exactly `amountRaw` (u64),
+ * its 12 accounts pinned as api/src/generated/staking orders them: this wallet's position PDA, the stake config, the guardian pool, this
+ * wallet as payer AND as user, this wallet's own SKR account, the stake vault, the SKR mint, the token program, the system program, the
+ * staking program's event authority, the program. Every address is derived or copied here, never taken from the API.
+ */
+async function checkStake(ixs: Ix[], user: string, amountRaw: bigint): Promise<void> {
+  if (ixs.some((ix) => ix.program !== COMPUTE_BUDGET_PROGRAM && ix.program !== SKR_STAKING_PROGRAM)) refuse('program')
+  const i = topUpComputeBudget(ixs)
+  const [position, events, skrAta] = await Promise.all([userStakePda(user), pda(SKR_STAKING_PROGRAM, ['__event_authority']), ata(user, SKR_MINT)])
+  steps(ixs.slice(i), [{
+    program: SKR_STAKING_PROGRAM, data: STAKE, length: 16, amount: amountRaw,
+    accounts: [position, STAKE_CONFIG, GUARDIAN_POOL, user, user, skrAta, STAKE_VAULT, SKR_MINT, TOKEN_PROGRAM, SYSTEM_PROGRAM, events, SKR_STAKING_PROGRAM],
+  }])
+}
+
+/**
  * The accounts no top-up may touch: this wallet's accounts for every TOPUP_FOREIGN_MINTS mint under both token programs (its classic
  * account for `exemptMint` left out: the token top-up's chosen source, SKR by ruling), its wSOL and USDC accounts under Token-2022, and
  * its Token-2022 accounts for `extraToken2022Mints`.
@@ -750,6 +774,8 @@ async function checkInstructions(ixs: Ix[], flow: SignFlow, opts: CheckOptions):
       return movePart(ixs, flow.part, await jlendRedeemSteps(user, flow.asset, receipt, false), await klendDepositSteps(user, flow.asset, deposit))
     return refuse('plan')
   }
+  // 0.1.13 Plant my SKR: the top-up's capped compute budget, then exactly the one stake (checkStake).
+  if (flow.kind === 'stake') return checkStake(ixs, user, amountOf(flow.amountRaw))
   // The unwrap: exactly the one close, nothing else (no ComputeBudget); it touches none of derived()'s PDAs either.
   if (flow.kind === 'unwrap_wsol') return steps(ixs, [closeWsol(await ata(user, WSOL_MINT), user)])
   // Task 17b: the setup block is peeled off FIRST for these three kinds only; every check below then reads the rest unchanged.

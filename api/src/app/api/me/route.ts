@@ -7,7 +7,8 @@ import { requireSession } from "@/lib/auth-guard";
 import { readPosition } from "@/lib/staking";
 import { storeBalanceRaw } from "@/lib/store";
 import { readDelegation } from "@/lib/subscriptions";
-import { readHoldings, holdingsFrom, readLendingPositions, lendingFrom, lendHoldings } from "@/lib/holdings";
+import { readHoldings, holdingsFrom, readLendingPositions, lendingFrom, lendHoldings, assetBalanceRaw } from "@/lib/holdings";
+import { idleSkrFrom, stakePlantOff } from "@/lib/plant-skr";
 import { lendSignsFor, underlyingOutRaw, receiptOutRaw } from "@/lib/lend-view";
 import { enabledLegs, LEG_SPEC, leashLive, relinkPilot, type LeashConfig } from "@/lib/leash";
 import { ownerCached } from "@/lib/memo";
@@ -46,6 +47,9 @@ export async function GET(request: Request) {
 
   const owner = address(user.seedVaultPubkey);
   const day = dayOf(new Date());
+  // 0.1.13 Plant my SKR: the wallet's own liquid SKR (kept 15 s per instance like Home's other chain reads; a display read, never the
+  // build's); a failed read is no marker, never an error. Not read at all while STAKE_PLANT_OFF=1.
+  const walletSkr = stakePlantOff() ? Promise.resolve(null) : ownerCached(owner, "walletSkr", () => assetBalanceRaw(owner, "SKR")).catch(() => null);
   // Every read that needs only the user runs at once. Reads the same for every user (share price, coin prices, snapshot rows)
   // come from a short server-side memo (`shared-reads`); this user's chain reads (position, balances, receipts) stay fresh.
   // Spec 8, contracts 5.2: each lending position valued at the newest venue snapshot of the last 7 days (`latestVenueRows`):
@@ -192,6 +196,8 @@ export async function GET(request: Request) {
       picks, legsEnabled,
     },
     relink: relinkBlock,
+    // 0.1.13 Plant my SKR: { raw, usdCents } from $5 of liquid SKR in the Seed Vault wallet, else null (off, unread, under $5). Old apps ignore it.
+    idleSkr: idleSkrFrom(await walletSkr, skrUsd),
     terms: { currentVersion: TERMS_VERSION, acceptedVersion: user.termsVersion, acceptedAt: user.termsAcceptedAt },
     reminder, message: CURRENT_MESSAGE, ask,
     moveProposal: open

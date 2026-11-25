@@ -50,6 +50,9 @@ import { useSession } from '@/lib/session'
 import { LINKED_LINE, LINKED_TITLE } from '@/lib/safety-copy'
 import { PHONE_WALLET, gardenTotals, pauseState, pausedOnlyForNoUsdc, stoppedNotice, showLinkPrompt, LINK_PROMPT, previewLine, usdcNotice, coinRows, valueBlock, walletsLine, lastPlantingLine, staleLine, type CoinRow } from '@/lib/me-state'
 import { FONT, radius, spacing, TARGET, useTheme } from '@/theme'
+import { showPlantMarker } from '@/lib/plant-skr'
+import { t } from '@/i18n'
+import { useLang } from '@/i18n/useLang'
 /** Canvas px of extra sky above the plants inside the dark-mode bamboo frame (10-27, his note: "more negative space above the plants"). */
 const FRAMED_SKY = 110
 
@@ -80,6 +83,7 @@ function devSplitLending(me: MeResponse): MeResponse {
 
 export default function Home() {
   const { setSession } = useSession()
+  useLang() // 0.1.13: the Plant my SKR marker reads the language
   const { colors, dark } = useTheme()
   const { data: me, stale, fresh, refetch, asOf, loading, unauthorized, errorStatus } = useMe()
   const { data: activity } = useQuery(activityQuery)
@@ -260,6 +264,10 @@ export default function Home() {
   // one top-up on screen: the linked card's Add USDC replaces the amber notice's
   const notice = postLink?.topUp ? null : usdcNotice(me, { usdcCents, low: low !== null })
   const stopped = stoppedNotice(me)
+  // 0.1.13 Plant my SKR (his ruling 11-25, Kimi #12): an SKR top-up's quiet "Plant my SKR instead" opens the SKR sheet, here on Home only
+  // (Link a wallet has no sheet); only while the SKR row carries the marker.
+  const skrRow = coinRows(me).find((r) => r.asset === 'SKR' && r.venue === null)
+  const plantSkrOpen = skrRow && showPlantMarker(me, skrRow) ? () => setSheetRow(skrRow) : undefined
   const noWallet = showLinkPrompt(me)
   // R96, R184 and R186: the one line and the can decided together, so they always agree; the can is in colour only while a bud waits.
   // R186: the Next planting row draws inside the garden (directly under it, the can at its bar's end). R199: the line rides in that
@@ -344,7 +352,7 @@ export default function Home() {
           </View>
           <ThemedText style={{ fontSize: 14, lineHeight: 20 }}>{LINKED_LINE}</ThemedText>
           {postLink?.line ? <ThemedText style={{ fontSize: 14, lineHeight: 20 }}>{postLink.line}</ThemedText> : null}
-          {postLink?.topUp ? <TopUpButton compact user={me.user.pubkey} cents={TOPUP_DEFAULT_CENTS} done={TOPUP.done} avgDailyCents={avg} offers={usdcRead?.topUpCents ?? null} sources={usdcRead?.topUpSources ?? null} /> : null}
+          {postLink?.topUp ? <TopUpButton compact user={me.user.pubkey} cents={TOPUP_DEFAULT_CENTS} done={TOPUP.done} avgDailyCents={avg} offers={usdcRead?.topUpCents ?? null} sources={usdcRead?.topUpSources ?? null} onPlantSkr={plantSkrOpen} /> : null}
           <Button title="OK" kind="quiet" onPress={() => router.setParams({ linked: undefined })} style={{ alignSelf: 'flex-start' }} />
         </View>
       ) : null}
@@ -361,7 +369,7 @@ export default function Home() {
               {line}
             </ThemedText>
           ))}
-          {notice.topUp ? <TopUpButton compact user={me.user.pubkey} cents={topUp.phoneCents ?? 500} done={TOPUP.done} avgDailyCents={avg} offers={usdcRead?.topUpCents ?? null} sources={usdcRead?.topUpSources ?? null} /> : null}
+          {notice.topUp ? <TopUpButton compact user={me.user.pubkey} cents={topUp.phoneCents ?? 500} done={TOPUP.done} avgDailyCents={avg} offers={usdcRead?.topUpCents ?? null} sources={usdcRead?.topUpSources ?? null} onPlantSkr={plantSkrOpen} /> : null}
         </View>
       ) : null}
       {stopped ? (
@@ -583,6 +591,15 @@ export default function Home() {
                     <MaterialCommunityIcons name={r.locked ? 'lock-outline' : r.venue ? 'bank-outline' : 'pickaxe'} size={12} color={colors.textSecondary} />
                     <ThemedText variant="caption" tone="secondary" numberOfLines={1} style={{ flexShrink: 1 }}>
                       {r.where}
+                    </ThemedText>
+                  </View>
+                ) : null}
+                {showPlantMarker(me, r) ? (
+                  // 0.1.13 Plant my SKR (his ruling 11-25): a small marker while the wallet holds $5+ of liquid SKR; the row opens the sheet
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    <MaterialCommunityIcons name="sprout" size={12} color={colors.accentText} />
+                    <ThemedText variant="caption" numberOfLines={1} style={{ flexShrink: 1, color: colors.accentText }}>
+                      {t('plant.title')}
                     </ThemedText>
                   </View>
                 ) : null}

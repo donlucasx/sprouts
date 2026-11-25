@@ -11,7 +11,7 @@ import { ApiError } from '@/lib/api'
 import { useMe, useInvalidateMe, useApplyRules } from '@/lib/me'
 import { coinColor } from '@/lib/coin-colors'
 import { activityQuery } from '@/lib/activity-query'
-import { filterRows, foundRow, groupByDay, KIND_FILTERS, KIND_TAG, lendWithdrawalRow, mergeRows, moveRow, plantingRow, rowTime, spokenLabel, splitRow, swapRow, topUpRow, visibleRows, walletNamer, walletRow, withdrawalRow, type ActivityKind, type ActivityRow } from '@/model/activity'
+import { filterRows, foundRow, groupByDay, KIND_FILTERS, KIND_TAG, lendWithdrawalRow, mergeRows, moveRow, plantingRow, rowTime, spokenLabel, splitRow, swapRow, skrPlantRow, topUpRow, visibleRows, walletNamer, walletRow, withdrawalRow, type ActivityKind, type ActivityRow } from '@/model/activity'
 import { undoSplit } from '@/lib/manager-api'
 import { radius, spacing, TARGET, useTheme } from '@/theme'
 
@@ -159,8 +159,10 @@ export default function Activity() {
   const moves = a?.moves ? a.moves.flatMap((m) => { const r = moveRow(m); return r ? [{ row: r }] : [] }) : []
   const found = a?.found ? a.found.map((f) => ({ row: foundRow(f) })) : []
   const topUps = a?.topUps ? a.topUps.map((t) => ({ row: topUpRow(t, name !== null) })) : []
+  // 0.1.13 Plant my SKR: a stake from this wallet is a planting (the Plant chip); absent from an older API
+  const skrPlants = (a?.skrPlants ?? []).flatMap((p) => { const row = skrPlantRow(p); return row ? [{ row }] : [] })
   const walletRows = a?.wallets && me ? a.wallets.map((e) => ({ row: walletRow(e, me.user.pubkey) })) : []
-  const all = mergeRows({ plant: plantings, split: splits, swap: swaps, withdraw: withdrawals, move: moves, found, topup: topUps, wallet: walletRows })
+  const all = mergeRows({ plant: [...plantings, ...skrPlants], split: splits, swap: swaps, withdraw: withdrawals, move: moves, found, topup: topUps, wallet: walletRows })
   const rows = filterRows(all, filter)
   const { shown, hidden } = visibleRows(rows, more, 25)
   // The undo sits on the newest split row when the manager made it (as before, now in the one list)

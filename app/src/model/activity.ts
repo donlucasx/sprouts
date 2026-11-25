@@ -4,6 +4,7 @@ import { isRetired, VENUE_NAME, type LiveAsset, type Stop } from '@/lib/coins'
 import { arrivalLine, COIN_NAME, COIN_NAME_LONG, formatSkr, formatUsd, plantedLine, timeOf, underlyingAmount } from '@/lib/format'
 import { changeSummary, STOP_LABEL } from './manager'
 import { PHONE_WALLET } from '@/lib/me-state'
+import { skrAmountText } from '@/lib/plant-skr'
 
 /**
  * R284 + R362: every Activity row is ONE line: its time, a short label, an amount on the right. The rows sit under day headers;
@@ -18,6 +19,7 @@ type Withdrawal = Pick<ActivityResponse['withdrawals'][number], 'id' | 'ts' | 'a
 type LendWithdrawal = NonNullable<ActivityResponse['lendWithdrawals']>[number]
 type Move = NonNullable<ActivityResponse['moves']>[number]
 type TopUp = NonNullable<ActivityResponse['topUps']>[number]
+type SkrPlant = NonNullable<ActivityResponse['skrPlants']>[number]
 
 /** "Planted SKR" and its dollars; several legs as "Planted 2 coins". A retired coin's planting is not a row (R281). */
 export function plantingRow(p: Planting): ActivityRow | null {
@@ -109,6 +111,12 @@ export function topUpNote(coin: string | null | undefined, named: boolean): stri
 }
 export function topUpRow(t: TopUp, named = false): ActivityRow {
   return { key: `tu-${t.signature}`, ts: t.ts, label: `Added ${formatUsd(Number(BigInt(t.usdcRaw) / 10_000n))} of USDC`, amount: null, details: [topUpNote(t.coin, named)], signature: t.signature }
+}
+
+/** 0.1.13 Plant my SKR (his copy): "Planted {amount} SKR" / "From this wallet.", the stake's transaction behind the tap; null when malformed. */
+export function skrPlantRow(p: SkrPlant): ActivityRow | null {
+  if (!/^\d{1,20}$/.test(p.amountRaw)) return null
+  return { key: `ps-${p.signature}`, ts: p.ts, label: tr('activity.planted', { amount: skrAmountText(BigInt(p.amountRaw)) }), amount: null, details: [tr('activity.planted.from')], signature: p.signature }
 }
 
 /**

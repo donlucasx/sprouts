@@ -4,6 +4,8 @@ import { COIN_FULL_NAME } from './coin-names'
 import { earnedLabel } from './coin-sheet'
 import { formatUsd } from './format'
 import { coinRows, type CoinRow } from './me-state'
+import { showPlantMarker } from './plant-skr'
+import { t } from '@/i18n'
 
 /** What a tapped plant's card shows (Garden2 draws it, Home adds the coin's logo): Home's coin row in small, plus the next planting
  * when it is this coin's. */
@@ -17,6 +19,8 @@ export type PlantCard = {
   next: string | null
   /** The row the card's Details opens in the coin sheet; null for a coin with nothing in it. */
   row: CoinRow | null
+  /** 0.1.13 Plant my SKR: the small marker on the SKR card while the wallet holds $5+ of liquid SKR (its Details opens the section). */
+  marker?: string | null
 }
 
 /**
@@ -24,7 +28,7 @@ export type PlantCard = {
  * list is drawn from (coinRows): its value and what it earned, where it is, and the change waiting for its next planting. Replaces
  * R250's label lines (the next fruit token is gone with R584, the bud to water with Garden2).
  */
-export function plantCard(me: Pick<MeResponse, 'pot' | 'holdings' | 'positions' | 'nextPlanting'>, asset: LiveAsset): PlantCard {
+export function plantCard(me: Pick<MeResponse, 'pot' | 'holdings' | 'positions' | 'nextPlanting' | 'idleSkr'>, asset: LiveAsset): PlantCard {
   const row = coinRows(me).find((r) => r.asset === asset) ?? null
   const n = me.nextPlanting
   return {
@@ -34,5 +38,6 @@ export function plantCard(me: Pick<MeResponse, 'pot' | 'holdings' | 'positions' 
     earned: row ? earnedLabel(row.earnedUsd) : null,
     next: n.asset === asset && n.pendingCents > 0 ? `Next planting: ${formatUsd(n.pendingCents)} of ${formatUsd(n.thresholdCents)}` : null,
     row,
+    marker: showPlantMarker(me, row) ? t('plant.title') : null,
   }
 }

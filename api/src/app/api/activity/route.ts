@@ -11,6 +11,7 @@ import { isAutoVenue } from "@/domain/venues";
 import type { EventKind, MoveStatus } from "@/db/types";
 import { SKR_MINT, STORE_MINT } from "@/lib/constants";
 import { settleTopUps } from "@/lib/topup-record";
+import { settlePlants } from "@/lib/plant-skr";
 
 export const runtime = "nodejs";
 
@@ -24,7 +25,7 @@ export async function GET(request: Request) {
   const repo = await getRepo();
   // Everything that needs only the user starts at once: the lists, both event reads, the scout's finds and the live SKR price.
   const skrUsdRead = sharedPriceUsd(SKR_MINT).catch(() => null);
-  const [swaps, plantings, withdrawals, events, lendEvents, foundRows, topUpEvents, walletEvents] = await Promise.all([
+  const [swaps, plantings, withdrawals, events, lendEvents, foundRows, topUpEvents, walletEvents, plantRows] = await Promise.all([
     repo.listSwaps(session.pubkey, LIMIT), repo.listPlantings(session.pubkey, LIMIT), repo.listWithdrawals(session.pubkey, LIMIT),
     repo.listEvents(session.pubkey, ["split_changed", "split_undone"], LIMIT),
     // Contracts 5.7: a lending position back to the wallet (underlyingRaw = what came back, from the confirmed tx; null when unknown),
@@ -38,6 +39,11 @@ export async function GET(request: Request) {
     }),
     // 10-28 (his note: "revoked wallets should appear on the activity tab"): each wallet's links and revokes
     repo.listEvents(session.pubkey, ["wallet_linked", "relinked", "revoke_seen"], LIMIT),
+    // 0.1.13 Plant my SKR: the stakes from this wallet, any that landed after their confirm given their row first (Kimi #6).
+    settlePlants(repo, session.pubkey).catch((e) => {
+      console.error(`/api/activity: SKR plantings not read: ${e instanceof Error ? e.message : String(e)}`);
+      return [];
+    }),
   ]);
   // Every leg of the listed plantings in one read (was one read per planting), grouped back per planting in list order.
   const legRows = plantings.length ? await repo.plantingLegsFor(plantings.map((p) => p.id)) : [];
@@ -121,5 +127,7 @@ export async function GET(request: Request) {
     found,
     topUps,
     wallets,
+    // 0.1.13: "Planted {amount} SKR / From this wallet." rows; absent from an older API.
+    skrPlants: plantRows.slice(0, LIMIT).map((r) => ({ ts: r.ts, signature: r.signature, amountRaw: r.amountRaw })),
   }));
 }

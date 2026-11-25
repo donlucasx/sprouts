@@ -154,6 +154,8 @@ export type EventKind =
   | "terms_accepted"
   | "topup_sent"   // 10-27: written before a top-up is sent, so the swap booking never rounds it up (detail: signature, usdcRaw)
   | "topped_up"   // 10-27: the top-up landed; Activity's row (detail: signature, usdcRaw, sentAt)
+  | "skr_plant_sent"   // 0.1.13 Plant my SKR: written before the stake is sent, so a stake that lands after the confirm's deadline still gets its row (detail: signature, amountRaw)
+  | "skr_planted"   // 0.1.13 Plant my SKR: the stake landed; Activity's row "Planted {amount} SKR" (detail: signature, amountRaw, sentAt), once per signature
   | "link_started"   // 10-31: a link code was made (the app's Approve or Another wallet); a link_started with no wallet_linked = a drop-off
   | "link_failed"   // 10-31: a link route answered a failure or threw, or the app reported one it saw (detail: step, status, error, from)
   | "signin_failed"   // 10-31: the sign-in verify answered a failure or threw (detail: step, status, error)

@@ -27,6 +27,21 @@ export const en = {
   'activity.topup.coinNamed': 'From {coin} in your {wallet}.',
   'activity.topup.plain': 'From this wallet.',
   'activity.topup.plainNamed': 'From your {wallet}.',
+  // 0.1.13 Plant my SKR (his rulings 11-25, verbatim): the SKR coin sheet's section, the marker, the top-up's line, Activity's row
+  'plant.title': 'Plant my SKR',
+  'plant.instead': 'Plant my SKR instead',
+  'plant.all': 'All',
+  'plant.amount': '{amount} SKR (about ${usd})',
+  'plant.button': 'Plant {amount} SKR',
+  'plant.line': 'Stakes this SKR in your garden, where it earns staking rewards. Taking it out later takes 48 hours.',
+  // build-written (his review owed): the steps and outcomes, as the top-up says them; no fee wording
+  'plant.waiting': 'Waiting for your wallet.',
+  'plant.checking': 'Approved. Checking the chain.',
+  'plant.done': 'Planted {amount} SKR. It shows in your garden now.',
+  'plant.sent': 'Your SKR was sent but is not confirmed yet. Check Home in a minute before you try again.',
+  'plant.failedBefore': 'Could not start planting. Nothing moved. Try again.',
+  'activity.planted': 'Planted {amount} SKR',
+  'activity.planted.from': 'From this wallet.',
 } as const
 
 export type Key = keyof typeof en

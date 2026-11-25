@@ -242,8 +242,11 @@ function screen(ixs: TopUpIx[], user: string, foreign: ReadonlySet<string>): voi
   }
 }
 
-/** Every top-up's leading compute budget: at most one limit and one price, no accounts, the priority fee at most 0.001 SOL. Returns the next index. */
-function computeBudget(ixs: TopUpIx[]): number {
+/**
+ * Every top-up's leading compute budget: at most one limit and one price, no accounts, the priority fee at most 0.001 SOL. Returns the next
+ * index. 0.1.13: Plant my SKR's stake holds its compute budget to this same rule (lib/plant-skr.ts).
+ */
+export function computeBudget(ixs: TopUpIx[]): number {
   let i = 0;
   let cuLimit: bigint | null = null, cuPrice: bigint | null = null;
   for (; i < ixs.length && ixs[i].program === COMPUTE_BUDGET; i++) {

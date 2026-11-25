@@ -12,7 +12,7 @@ export type ReconcileChain = {
 };
 
 /** Share dust from share-price rounding on a stake; anything under this is not a stake or an unstake. */
-const DUST_SHARES = 10_000n;
+export const DUST_SHARES = 10_000n;
 
 /**
  * The position is read at `finalized`, which trails `confirmed` by seconds; Sprouts books its own plantings and picks at `confirmed`.
@@ -30,12 +30,24 @@ const CANCEL_MS = 30 * 86_400_000;
 const FINALITY_WAIT_MS = 30_000;
 
 /** Every ledger fact the expected share count is built from; a change between the two reads means a move landed meanwhile. */
-function ledgerKey(plantings: PlantingRow[], withdrawals: WithdrawalRow[], adjustments: StakeAdjustmentRow[]): string {
+export function ledgerKey(plantings: PlantingRow[], withdrawals: WithdrawalRow[], adjustments: StakeAdjustmentRow[]): string {
   return JSON.stringify([
     plantings.map((p) => [p.id, String(p.sharesMinted)]),
     withdrawals.map((w) => [w.id, w.source, w.cancelSignature, String(w.sharesUnstaked)]),
     adjustments.map((x) => String(x.sharesDelta)),
   ]);
+}
+
+/**
+ * The share count the ledger expects: the shares at join, plus each confirmed planting's minted shares, minus the shares Sprouts' own
+ * picks burned (non-cancelled), plus every adjustment booked before. 0.1.13 (Plant my SKR, Kimi #2): the stake confirm books its own
+ * adjustment with this same rule, so the next reconcile counts it here and finds nothing more to book.
+ */
+export function expectedShares(joinedShares: bigint, plantings: PlantingRow[], withdrawals: WithdrawalRow[], adjustments: StakeAdjustmentRow[]): bigint {
+  const minted = plantings.reduce((s, p) => s + (p.sharesMinted ?? 0n), 0n);
+  const burned = withdrawals.filter((w) => w.source === "sprouts" && w.cancelSignature === null).reduce((s, w) => s + (w.sharesUnstaked ?? 0n), 0n);
+  const own = adjustments.reduce((s, x) => s + x.sharesDelta, 0n);
+  return joinedShares + minted - burned + own;
 }
 
 /**
@@ -117,10 +129,7 @@ export async function reconcileOwnStakes(a: { repo: Repo; chain: ReconcileChain;
         deferred.push(user.seedVaultPubkey);
         continue;
       }
-      const minted = plantings.reduce((s, p) => s + (p.sharesMinted ?? 0n), 0n);
-      const burned = sprouts.filter((w) => w.cancelSignature === null).reduce((s, w) => s + (w.sharesUnstaked ?? 0n), 0n);
-      const own = adjustments.reduce((s, x) => s + x.sharesDelta, 0n);
-      const expected = user.joinedShares + minted - burned + own;
+      const expected = expectedShares(user.joinedShares, plantings, withdrawals, adjustments);
       const delta = position.shares - expected;
       if (delta > -DUST_SHARES && delta < DUST_SHARES) {
         await coverCooldown(a.repo, user.seedVaultPubkey, position);
