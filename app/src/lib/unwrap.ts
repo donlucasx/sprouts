@@ -1,10 +1,17 @@
 import { getAddressEncoder, getBase64Encoder, getProgramDerivedAddress, getTransactionDecoder, type Address, type Transaction } from '@solana/kit'
 import { ATA_PROGRAM, checkBeforeSigning, SignRefused, REFUSED, WSOL_MINT } from './sign'
+import { t } from '@/i18n'
 
-export const UNWRAP_BUTTON = 'Unwrap your SOL'
-export const UNWRAP_DONE = 'Your SOL is back in your wallet.'
-/** Only for an on-chain failure the chain itself reported. */
-export const UNWRAP_FAILED = 'Could not unwrap it. Your next withdraw or move closes it too.'
+/** The unwrap's lines, read in the current language at use time (0.1.13). `failed` only for an on-chain failure the chain itself reported. */
+export const UNWRAP = {
+  get button() { return t('unwrap.button') },
+  get done() { return t('unwrap.done') },
+  get failed() { return t('unwrap.failed') },
+  get sent() { return t('unwrap.sent') },
+  get notSent() { return t('unwrap.notSent') },
+  get notYet() { return t('unwrap.notYet') },
+  get unsure() { return t('unwrap.unsure') },
+}
 
 /**
  * The SOL move's partial failure (moves/confirm 409): the redeem landed and the deposit did not, so the SOL sits in the user's WSOL
@@ -18,10 +25,6 @@ export function partialUnwrap(e: unknown): string | null {
   return typeof body.unwrapTransaction === 'string' && body.unwrapTransaction.length > 0 ? body.unwrapTransaction : null
 }
 
-export const UNWRAP_SENT = 'Sent. Check Home in a minute.'
-export const UNWRAP_NOT_SENT = 'Not sent. Tap again to try once more.'
-export const UNWRAP_NOT_YET = 'Not unwrapped yet. Check Home in a minute.'
-export const UNWRAP_UNSURE = 'Sent? Check Home in a minute.'
 /**
  * The unwrap carries a blockhash that lives 60 to 90 s; past the short end of it a retry cannot land. The age is measured from the moment
  * the app RECEIVED the unwrapTransaction (the 409), the closest the app can get to when the API took the blockhash.
@@ -96,13 +99,13 @@ export type UnwrapAfterError = { text: string; error: boolean; keepButton: boole
  */
 export async function unwrapAfterError(a: { error: unknown; ageMs: number; accountExists: () => Promise<boolean> }): Promise<UnwrapAfterError> {
   if (a.error instanceof SignRefused) return { text: a.error.message, error: true, keepButton: false, invalidate: false }
-  if (isWalletDecline(a.error)) return { text: UNWRAP_NOT_SENT, error: true, keepButton: unwrapRetryable(a.ageMs), invalidate: false }
+  if (isWalletDecline(a.error)) return { text: UNWRAP.notSent, error: true, keepButton: unwrapRetryable(a.ageMs), invalidate: false }
   let exists: boolean
   try {
     exists = await a.accountExists()
   } catch {
-    return { text: UNWRAP_UNSURE, error: false, keepButton: false, invalidate: true }
+    return { text: UNWRAP.unsure, error: false, keepButton: false, invalidate: true }
   }
-  if (!exists) return { text: UNWRAP_DONE, error: false, keepButton: false, invalidate: true }
-  return { text: UNWRAP_NOT_YET, error: true, keepButton: unwrapRetryable(a.ageMs), invalidate: true }
+  if (!exists) return { text: UNWRAP.done, error: false, keepButton: false, invalidate: true }
+  return { text: UNWRAP.notYet, error: true, keepButton: unwrapRetryable(a.ageMs), invalidate: true }
 }

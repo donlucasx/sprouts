@@ -1,9 +1,10 @@
 import type { MeResponse } from "./api";
-import { COIN_NAME_LONG, DECIMALS, formatUsd } from "./format";
+import { coinNameLong, DECIMALS, formatUsd } from "./format";
+import { t } from "@/i18n";
 import { ASSET_OF, fruitLadder, type PlantId } from "@/model/garden";
 
 /** Dollars for a label: cents, and "under 1¢" for a positive amount that rounds to nothing. */
-const usd = (v: number) => (v > 0 && v < 0.005 ? "under 1¢" : formatUsd(Math.round(v * 100)));
+const usd = (v: number) => (v > 0 && v < 0.005 ? t("garden.label.under1c") : formatUsd(Math.round(v * 100)));
 
 /**
  * R250 (10-04, "whats that red thing on the hsol plant? ... should a user be able to tap on them to collect?", ruled: a label, read
@@ -23,9 +24,9 @@ export function plantLabel(me: Pick<MeResponse, "pot" | "holdings" | "nextPlanti
     const h = me.holdings.find((x) => x.asset === asset);
     if (h) { value = h.valueUsd; earned = h.earnedUsd; if (h.earnedUsd !== null) progress = fruitLadder(h.earnedUsd, h.putInCents).progress; }
   }
-  lines.push(value === null ? COIN_NAME_LONG[asset] : `${COIN_NAME_LONG[asset]} · ${usd(value)}`);
-  if (earned !== null && earned > 0) lines.push(`Earned ${usd(earned)}${progress > 0 ? `, next token ${Math.round(progress * 100)}% grown` : ""}`);
-  if (me.nextPlanting.asset === asset && me.nextPlanting.pendingCents > 0) lines.push(`Your change: ${formatUsd(me.nextPlanting.pendingCents)} of ${formatUsd(me.nextPlanting.thresholdCents)} for the next planting`);
-  if (budWaiting) lines.push("A new sprout: water it to open");
+  lines.push(value === null ? coinNameLong(asset) : `${coinNameLong(asset)} · ${usd(value)}`);
+  if (earned !== null && earned > 0) lines.push(progress > 0 ? t("garden.label.earnedNext", { amount: usd(earned), pct: Math.round(progress * 100) }) : t("garden.label.earned", { amount: usd(earned) }));
+  if (me.nextPlanting.asset === asset && me.nextPlanting.pendingCents > 0) lines.push(t("garden.label.change", { pending: formatUsd(me.nextPlanting.pendingCents), threshold: formatUsd(me.nextPlanting.thresholdCents) }));
+  if (budWaiting) lines.push(t("garden.label.bud"));
   return lines;
 }

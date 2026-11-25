@@ -38,7 +38,8 @@ export const IDLE_SKR_ROW_KEY = 'SKR:idle'
  */
 export function idleSkrRow(me: Pick<MeResponse, 'pot' | 'holdings' | 'positions' | 'idleSkr'>): CoinRow | null {
   if (idleSkrOf(me) === null || coinRows(me).some((r) => r.asset === 'SKR')) return null
-  return { key: IDLE_SKR_ROW_KEY, asset: 'SKR', venue: null, amount: '0 SKR ($0.00)', qty: '0 SKR', usd: '$0.00', locked: false, note: null, lead: true, earnedUsd: null, putInCents: 0, where: 'Nothing planted here yet' }
+  const usd = formatUsd(0)
+  return { key: IDLE_SKR_ROW_KEY, asset: 'SKR', venue: null, amount: `0 SKR (${usd})`, qty: '0 SKR', usd, locked: false, note: null, lead: true, earnedUsd: null, putInCents: 0, where: t('home.where.nothing') }
 }
 
 /** Home's coin list: coinRows, led by the $0 SKR row when idleSkrRow gives one. */

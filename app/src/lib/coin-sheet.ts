@@ -1,9 +1,10 @@
 import type { MeResponse } from './api'
-import { formatUsd, plantedWhat } from './format'
+import { formatUsd, plantedParts } from './format'
 import { skrPutInCents, type CoinRow } from './me-state'
 import { withdrawRows } from './withdraw-list'
 import { IDLE_SKR_ROW_KEY } from './plant-skr'
 import { dayMonth } from "@/i18n/format"
+import { t } from '@/i18n'
 
 /** R563: a row's earned as Home shows it, "+$0.03" (null when unknown); green only above zero (`positive`). */
 export function earnedLabel(usd: number | null): { text: string; positive: boolean } | null {
@@ -35,13 +36,14 @@ export function coinSheet(me: Pick<MeResponse, 'pot' | 'basket' | 'holdings' | '
   const putIn = row.putInCents ?? (row.asset === 'SKR' ? skrPutInCents(me) : null)
   const earned = earnedLabel(row.earnedUsd)
   const lines: CoinSheet['lines'] = []
-  if (putIn !== null) lines.push({ label: 'Put in', value: formatUsd(putIn) })
-  if (earned) lines.push({ label: 'Earned', value: earned.text, positive: earned.positive })
+  if (putIn !== null) lines.push({ label: t('home.value.putIn'), value: formatUsd(putIn) })
+  if (earned) lines.push({ label: t('home.value.earned'), value: earned.text, positive: earned.positive })
   if (row.parts) for (const p of row.parts) lines.push({ label: p.where ?? '', value: p.usd ?? p.qty })   // R568: each venue, its share
-  else if (row.where) lines.push({ label: 'Where', value: row.where })
+  else if (row.where) lines.push({ label: t('sheet.where'), value: row.where })
   const plantings = mine.slice(0, 3).map((p) => {
     const day = dayMonth(new Date(p.ts))
-    return `${day}: ${plantedWhat({ usdcInCents: p.usdcInCents, asset: row.asset, amountOutRaw: p.amountOutRaw, usdPrice: null, venue: p.venue })}`
+    const w = plantedParts({ usdcInCents: p.usdcInCents, asset: row.asset, amountOutRaw: p.amountOutRaw, usdPrice: null, venue: p.venue })
+    return w.kind === 'went' ? t('sheet.planting.went', { day, ...w.vars }) : t('sheet.planting.became', { day, ...w.vars })
   })
   if (row.parts) return { lines, plantings, withdrawKey: null, walletNote: null }   // R568: Withdraw opens the list, one row per venue
   // 0.1.13: the $0 SKR row (liquid SKR, nothing staked): Put in and Where only, no Withdraw and no wallet line; the sheet's Plant my SKR does the rest
@@ -49,5 +51,5 @@ export function coinSheet(me: Pick<MeResponse, 'pot' | 'basket' | 'holdings' | '
   const w = withdrawRows(me, now).find((r) => r.key === row.key)
   return w?.opens
     ? { lines, plantings, withdrawKey: w.key, walletNote: null }
-    : { lines, plantings, withdrawKey: undefined, walletNote: 'In your wallet. Trade or send it from your wallet app.' }
+    : { lines, plantings, withdrawKey: undefined, walletNote: t('sheet.walletNote') }
 }

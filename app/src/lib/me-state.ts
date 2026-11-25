@@ -1,7 +1,8 @@
 import type { MeResponse, LendingPosition } from './api'
-import { DECIMALS, formatUsd, formatSkr, plantedWhat, holdingAmount, positionAmount, positionNote, positionWhere } from './format'
+import { DECIMALS, formatUsd, formatSkr, plantedParts, holdingAmount, positionAmount, positionNote, positionWhere, asOfParts } from './format'
 import { ASSETS, isRetired, isLend, liveSplit, livePins, type LiveAsset, type AutoVenue, type LendAsset } from './coins'
 import { dayMonth, usdFromCents, usdTrimmed } from "@/i18n/format"
+import { t } from '@/i18n'
 
 /** A cached read from before the Yield Manager build has no holdings, manager or rules.allocation and would crash every screen that reads them: it counts as no cache (10-01 whole-branch review, I2). */
 export function usableMe(cached: MeResponse | null | undefined): MeResponse | null {
@@ -9,9 +10,13 @@ export function usableMe(cached: MeResponse | null | undefined): MeResponse | nu
 }
 
 /** His note 10-22: the stale line names the cause. `status` is the failed read's ApiError status: 0 is no answer at all (the phone
- *  is offline, or the server could not be reached), anything else is the server's own failure. `asOf` is formatAsOf's "as of ...". */
-export function staleLine(asOf: string, status: number | null): string {
-  return status === 0 ? `You're offline. Showing your garden ${asOf}.` : `Sprouts couldn't load your garden just now. Showing it ${asOf}.`
+ *  is offline, or the server could not be reached), anything else is the server's own failure. `asOf` is the last verified read's
+ *  time, said as formatAsOf says it ("as of 9:41 AM", "as of yesterday 9:41 AM", "as of Sep 20"); 0.1.13: one whole line per case. */
+export function staleLine(asOf: Date, now: Date, status: number | null): string {
+  const a = asOfParts(asOf, now)
+  const vars = { time: a.value, day: a.value }
+  if (status === 0) return a.kind === 'time' ? t('home.stale.offline.time', vars) : a.kind === 'yesterday' ? t('home.stale.offline.yesterday', vars) : t('home.stale.offline.day', vars)
+  return a.kind === 'time' ? t('home.stale.server.time', vars) : a.kind === 'yesterday' ? t('home.stale.server.yesterday', vars) : t('home.stale.server.day', vars)
 }
 
 /** Review Focus 2, as a pure decision: a failed read keeps the last verified state and says so; never a zero garden. */
@@ -75,12 +80,13 @@ export function pauseState(wallets: { status: string }[]): { shown: boolean; on:
   return {
     shown: true,
     on,
-    line: on ? 'Sprouts is on' : 'Sprouts is paused'   // R448: the switch turns the round-ups on and off; "planting" names the daily step only   // one line (his note 10-05); the Next planting row says Paused too,
+    line: on ? t('home.pause.on') : t('home.pause.paused')   // R448: the switch turns the round-ups on and off; "planting" names the daily step only   // one line (his note 10-05); the Next planting row says Paused too,
   }
 }
 
 
-/** What this phone's own wallet is called in the USDC notice: Home's line under the title says "Held in your Seed Vault wallet". */
+/** What this phone's own wallet is called in the USDC notice: Home's line under the title says "Held in your Seed Vault wallet".
+ *  0.1.13: English only (Activity's lines); Home's sentences carry it inside whole keys (the .mine variants). */
 export const PHONE_WALLET = 'Seed Vault wallet'
 
 /**
@@ -88,26 +94,24 @@ export const PHONE_WALLET = 'Seed Vault wallet'
  * the app looked unlinked): the wallets Sprouts stopped on its own, by name, with what happened and the one fix, a re-link.
  * Build-written copy, his look owed. null when none.
  */
-export const STOPPED = {
-  title: (name: string) => `Sprouts stopped planting from ${name}`,
-  titleMany: (n: number) => `Sprouts stopped planting from ${n} wallets`,
-  approval: (name: string) => `${name}'s USDC approval is gone, so Sprouts can't plant your round-ups from it.`,
-  outside: (name: string) => `${name} was unlinked outside the app, so Sprouts can't plant your round-ups from it.`,
-  fix: 'Link it again to restart plantings.',
-  fixMany: 'Link them again to restart plantings.',
-  button: 'Link it again',
-  buttonMany: 'Link wallets',
-} as const
 export function stoppedNotice(me: Pick<MeResponse, 'wallets' | 'user'>): { title: string; lines: string[]; button: string } | null {
   const stopped = me.wallets.filter((w) => w.status === 'revoked' && w.stopped)
   if (!stopped.length) return null
-  const name = (w: { pubkey: string }) => (w.pubkey === me.user.pubkey ? `Your ${PHONE_WALLET}` : `${w.pubkey.slice(0, 4)}...${w.pubkey.slice(-4)}`)
-  const lines = stopped.map((w) => (w.stopped === 'approval' ? STOPPED.approval(name(w)) : STOPPED.outside(name(w))))
+  // 0.1.13: this phone's wallet and another wallet (by its short address) are separate whole lines, never a name spliced in
+  const mine = (w: { pubkey: string }) => w.pubkey === me.user.pubkey
+  const wallet = (w: { pubkey: string }) => `${w.pubkey.slice(0, 4)}...${w.pubkey.slice(-4)}`
+  const lines = stopped.map((w) =>
+    w.stopped === 'approval'
+      ? mine(w) ? t('home.stopped.approval.mine') : t('home.stopped.approval.other', { wallet: wallet(w) })
+      : mine(w) ? t('home.stopped.outside.mine') : t('home.stopped.outside.other', { wallet: wallet(w) }),
+  )
   const one = stopped.length === 1
   return {
-    title: one ? STOPPED.title(name(stopped[0]).replace(/^Your /, 'your ')) : STOPPED.titleMany(stopped.length),
-    lines: [...lines, one ? STOPPED.fix : STOPPED.fixMany],
-    button: one ? STOPPED.button : STOPPED.buttonMany,
+    title: one
+      ? mine(stopped[0]) ? t('home.stopped.title.mine') : t('home.stopped.title.other', { wallet: wallet(stopped[0]) })
+      : t('home.stopped.title.many', { n: stopped.length }),
+    lines: [...lines, one ? t('home.stopped.fix.one') : t('home.stopped.fix.many')],
+    button: one ? t('home.stopped.button.one') : t('home.stopped.button.many'),
   }
 }
 
@@ -137,21 +141,28 @@ export function usdcNotice(me: Pick<MeResponse, 'wallets' | 'user' | 'nextPlanti
   const usd = (c: number) => usdTrimmed(c)
   const topUp = entries.some((e) => e.mine)
   // the name alone: 'Your Seed Vault wallet has no USDC' wrapped to two lines on the Saga (10-27)
-  const the = (e: Entry) => e.name
+  // 0.1.13: the Seed Vault wallet's lines and another wallet's are separate whole keys (.mine / .other); `wallet` is the short address
+  const state = (e: Entry) => (e.state === 'paused' ? 'needs' : e.state)
+  const vars = (e: Entry) => ({ wallet: e.name, amount: usd(e.cents) })
   // 10-27 (his note: say "WHY sprouts needs USDC on such wallets... brief and simple"): the why leads every line, in the words of the
   // approved intro ("Sprouts plants the change with USDC from your wallet")
-  const WHY = 'Sprouts plants your round-ups with USDC from this wallet.'
   if (entries.length === 1) {
     const [e] = entries
     // 10-27 (his question: can "your round-ups are still counted" fit, simply?): "they wait" says nothing is lost, in two words
-    if (e.state === 'zero') return { title: `${the(e)} has no USDC`, lines: [`${WHY} Until you add some, they wait.`], topUp }
-    if (e.state === 'low') return { title: `${the(e)} is low on USDC`, lines: [`${WHY} ${usd(e.cents)} left, so add more before plantings pause.`], topUp }
-    return { title: `${the(e)} needs USDC`, lines: [`${WHY} They wait until it has ${usd(e.cents)}.`], topUp }
+    const s = state(e)
+    return {
+      title: e.mine ? t(`home.usdc.${s}.mine` as const) : t(`home.usdc.${s}.other` as const, vars(e)),
+      lines: [t(`home.usdc.${s}.line` as const, vars(e))],
+      topUp,
+    }
   }
-  const brief = (e: Entry) => (e.state === 'zero' ? 'no USDC' : e.state === 'low' ? `${usd(e.cents)} left` : `needs ${usd(e.cents)}`)
   return {
-    title: `${entries.length} wallets need USDC`,
-    lines: ['Sprouts plants your round-ups with USDC from each wallet.', ...entries.map((e) => `${e.name}: ${brief(e)}`), 'Your round-ups wait until they have it.'],
+    title: t('home.usdc.many.title', { n: entries.length }),
+    lines: [
+      t('home.usdc.many.why'),
+      ...entries.map((e) => (e.mine ? t(`home.usdc.many.${state(e)}.mine` as const, vars(e)) : t(`home.usdc.many.${state(e)}.other` as const, vars(e)))),
+      t('home.usdc.many.wait'),
+    ],
     topUp,
   }
 }
@@ -184,7 +195,7 @@ function split(amount: string): { qty: string; usd: string | null } {
 /** R198: the coins whose rows lead Home's list, one type step up. */
 export const LEAD_COINS: readonly LiveAsset[] = ['SKR', 'stORE']
 export function storeNote(growthPct: number | null | undefined): string | null {
-  return growthPct != null && Math.round(growthPct) >= 1 ? `grows from ORE mining, ~${Math.round(growthPct)}%/yr` : null
+  return growthPct != null && Math.round(growthPct) >= 1 ? t('home.where.store', { pct: Math.round(growthPct) }) : null
 }
 const VENUE_ORDER: readonly AutoVenue[] = ['kamino_klend', 'jupiter_lend']
 /** A lending leg's positions with something in them, Kamino first. */
@@ -196,7 +207,7 @@ export function livePositions(me: Pick<MeResponse, 'positions'>, asset: LendAsse
 export function coinRows(me: Pick<MeResponse, 'pot' | 'holdings' | 'positions'>): CoinRow[] {
   const staked = BigInt(me.pot.skrStakedRaw)
   const skrEarned = me.pot.skrUsd === null ? null : (Number(BigInt(me.pot.skrEarnedRaw)) / 10 ** DECIMALS.SKR) * me.pot.skrUsd
-  const rows: CoinRow[] = staked > 0n ? [{ key: 'SKR', asset: 'SKR', venue: null, amount: formatSkr(staked, me.pot.skrUsd), ...split(formatSkr(staked, me.pot.skrUsd)), locked: true, note: null, lead: true, earnedUsd: skrEarned, putInCents: null, where: 'Locked to your Seed Vault' }] : []
+  const rows: CoinRow[] = staked > 0n ? [{ key: 'SKR', asset: 'SKR', venue: null, amount: formatSkr(staked, me.pot.skrUsd), ...split(formatSkr(staked, me.pot.skrUsd)), locked: true, note: null, lead: true, earnedUsd: skrEarned, putInCents: null, where: t('home.where.locked') }] : []
   for (const asset of ASSETS) {
     // Spec 11: a lending leg lists each venue position (venue, rate, value, earned) in place of its aggregated holding (Review Focus 4)
     const positions = isLend(asset) ? livePositions(me, asset) : []
@@ -206,7 +217,7 @@ export function coinRows(me: Pick<MeResponse, 'pot' | 'holdings' | 'positions'>)
       continue
     }
     const h = me.holdings.find((x) => x.asset === asset)
-    if (h) rows.push({ key: asset, asset, venue: null, amount: holdingAmount(h), ...split(holdingAmount(h)), locked: false, note: asset === 'stORE' ? storeNote(h.growthPct) : null, lead: LEAD_COINS.includes(asset), earnedUsd: h.earnedUsd, putInCents: h.putInCents, where: asset === 'stORE' ? (storeNote(h.growthPct) ?? 'In your wallet') : 'In your wallet' })
+    if (h) rows.push({ key: asset, asset, venue: null, amount: holdingAmount(h), ...split(holdingAmount(h)), locked: false, note: asset === 'stORE' ? storeNote(h.growthPct) : null, lead: LEAD_COINS.includes(asset), earnedUsd: h.earnedUsd, putInCents: h.putInCents, where: asset === 'stORE' ? (storeNote(h.growthPct) ?? t('home.where.wallet')) : t('home.where.wallet') })
   }
   return rows
 }
@@ -227,19 +238,23 @@ function groupRow(asset: LendAsset, positions: LendingPosition[], parts: CoinRow
 }
 
 /** The two stats under the big number (R150): Put in, and Earned when it is known. */
-export function statTiles(t: GardenTotals): { label: string; value: string }[] {
-  const tiles = [{ label: 'Put in', value: formatUsd(t.putInCents) }]
-  if (t.earnedUsd !== null) tiles.push({ label: 'Earned', value: formatUsd(Math.round(t.earnedUsd * 100)) })
+/** 0.1.13: `id` names the tile whatever the language (Home colours the earned one). */
+export function statTiles(g: GardenTotals): { id: 'putIn' | 'earned'; label: string; value: string }[] {
+  const tiles: { id: 'putIn' | 'earned'; label: string; value: string }[] = [{ id: 'putIn', label: t('home.value.putIn'), value: formatUsd(g.putInCents) }]
+  if (g.earnedUsd !== null) tiles.push({ id: 'earned', label: t('home.value.earned'), value: formatUsd(Math.round(g.earnedUsd * 100)) })
   return tiles
 }
 
 /** R355 (10-05, "Value on top"): Home's compact block right under the status line: the whole garden in dollars big with "in your
  * garden" under it, Put in and Earned small beside it (statTiles), and the block's one spoken line. With no price known the staked
  * SKR is the big number, as the pot card had it (R146). */
-export function valueBlock(t: GardenTotals, skrStakedRaw: bigint): { big: string; label: string; side: { label: string; value: string }[]; a11y: string } {
-  const big = t.valueUsd === null ? formatSkr(skrStakedRaw, null) : formatUsd(Math.round(t.valueUsd * 100))
-  const side = statTiles(t)
-  return { big, label: 'in your garden', side, a11y: [`${big} in your garden.`, ...side.map((s) => `${s.label} ${s.value}.`)].join(' ') }
+export function valueBlock(g: GardenTotals, skrStakedRaw: bigint): { big: string; label: string; side: ReturnType<typeof statTiles>; a11y: string } {
+  const big = g.valueUsd === null ? formatSkr(skrStakedRaw, null) : formatUsd(Math.round(g.valueUsd * 100))
+  const side = statTiles(g)
+  const putIn = side.find((s) => s.id === 'putIn')!.value
+  const earned = side.find((s) => s.id === 'earned')?.value
+  const a11y = earned === undefined ? t('home.value.a11y', { big, putIn }) : t('home.value.a11y.earned', { big, putIn, earned })
+  return { big, label: t('home.value.label'), side, a11y }
 }
 
 /** Home's one wallets row (R150, in his words): the count of linked wallets, revoked ones aside; null when none is linked. */
@@ -247,21 +262,22 @@ export function valueBlock(t: GardenTotals, skrStakedRaw: bigint): { big: string
  * 11-01 (his ruling "A", mock previews/support/home-link-v1.png): Home's one green line above the garden, only while no wallet is
  * linked (none live, and no stopped one: a stopped wallet has its own re-link notice). It replaces the bottom Linked wallets card.
  */
-export const LINK_PROMPT = 'Link a wallet to start saving'
+// 0.1.13: the prompt's line is the key home.linkPrompt ("Link a wallet to start saving").
 export function showLinkPrompt(me: Pick<MeResponse, 'wallets' | 'user'>): boolean {
   return walletsLine(me.wallets) === null && stoppedNotice(me) === null
 }
 
 export function walletsLine(wallets: { status: string }[]): string | null {
   const n = wallets.filter((w) => w.status !== 'revoked').length
-  return n === 0 ? null : `${n} ${n === 1 ? 'wallet' : 'wallets'} linked`
+  return n === 0 ? null : n === 1 ? t('home.wallets.one') : t('home.wallets.other', { n })
 }
 
 /** The last planting as one row that opens Activity (R150): the date and what the change became; the fee clause lives in Activity. */
 export function lastPlantingLine(r: MeResponse['lastReceipt']): string | null {
   if (!r || isRetired(r.asset)) return null   // a retired coin shows nowhere (R281)
   const day = dayMonth(new Date(r.ts))
-  return `Last planting ${day}: ${plantedWhat({ usdcInCents: r.usdcPulledCents, asset: r.asset, amountOutRaw: r.amountOutRaw, usdPrice: r.usdPrice, venue: r.venue })}`
+  const w = plantedParts({ usdcInCents: r.usdcPulledCents, asset: r.asset, amountOutRaw: r.amountOutRaw, usdPrice: r.usdPrice, venue: r.venue })
+  return w.kind === 'went' ? t('home.lastPlanting.went', { day, ...w.vars }) : t('home.lastPlanting.became', { day, ...w.vars })
 }
 
 /**
@@ -299,8 +315,7 @@ export function normalizeMe(me: MeResponse): MeResponse {
 export function previewLine(p: { swaps: number; savedCents: number; perSwapSavedCents: number; partial?: boolean } | null | undefined): string | null {
   if (!p || p.swaps === 0) return null
   // Kimi 11-12: a busy wallet is read only in part (its newest 500 transactions), so the total is a floor.
-  const usd = (c: number) => `${p.partial ? 'at least ' : ''}${usdFromCents(c)}`
-  if (p.savedCents > 0) return `Your swaps from the last 30 days would have saved ${usd(p.savedCents)}.`
-  if (p.perSwapSavedCents > 0) return `Your swaps from the last 30 days were whole dollars. With "Add 10\u00a2 to every swap" in Rules, they would have saved ${usd(p.perSwapSavedCents)}.`
+  if (p.savedCents > 0) return t(p.partial ? 'home.preview.savedAtLeast' : 'home.preview.saved', { amount: usdFromCents(p.savedCents) })
+  if (p.perSwapSavedCents > 0) return t(p.partial ? 'home.preview.perSwapAtLeast' : 'home.preview.perSwap', { amount: usdFromCents(p.perSwapSavedCents) })
   return null
 }

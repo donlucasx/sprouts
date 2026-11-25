@@ -1,6 +1,6 @@
 import type { MeResponse } from './api'
 import type { LiveAsset } from './coins'
-import { COIN_FULL_NAME } from './coin-names'
+import { coinFullName } from './coin-names'
 import { earnedLabel } from './coin-sheet'
 import { formatUsd } from './format'
 import type { CoinRow } from './me-state'
@@ -33,11 +33,11 @@ export function plantCard(me: Pick<MeResponse, 'pot' | 'holdings' | 'positions' 
   const row = homeCoinRows(me).find((r) => r.asset === asset) ?? null
   const n = me.nextPlanting
   return {
-    title: COIN_FULL_NAME[asset],
-    where: row ? row.where : 'Nothing planted here yet',
+    title: coinFullName(asset),
+    where: row ? row.where : t('home.where.nothing'),
     value: row ? (row.usd ?? row.qty) : null,
     earned: row ? earnedLabel(row.earnedUsd) : null,
-    next: n.asset === asset && n.pendingCents > 0 ? `Next planting: ${formatUsd(n.pendingCents)} of ${formatUsd(n.thresholdCents)}` : null,
+    next: n.asset === asset && n.pendingCents > 0 ? t('garden.card.next', { pending: formatUsd(n.pendingCents), threshold: formatUsd(n.thresholdCents) }) : null,
     row,
     marker: showPlantMarker(me, row) ? t('plant.marker') : null,
   }

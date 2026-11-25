@@ -1,3 +1,4 @@
+import { t } from "@/i18n";
 /** What Home knows about the can beyond the scene: what the user did and what the API said. */
 export type WatcherInput = {
   unrevealed: number;      // buds waiting to be opened (Scene.unrevealed)
@@ -20,8 +21,8 @@ export type Watcher = { line: string | null; can: "ready" | "grey" };
 export function watcherLine(w: WatcherInput): Watcher {
   const one = w.unrevealed === 1;
   if (w.unrevealed > 0) {
-    const line = w.failed ? "Could not water. Try again." : `Your change was planted. Drag the can onto the new ${one ? "sprout to open it" : "sprouts to open them"}.`;
+    const line = w.failed ? t("garden.watch.failed") : one ? t("garden.watch.one") : t("garden.watch.many");
     return { line, can: "ready" };
   }
-  return { line: w.nudged ? "Nothing to water yet." : null, can: "grey" };
+  return { line: w.nudged ? t("garden.watch.nothing") : null, can: "grey" };
 }

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import type { Transaction } from '@solana/kit'
-import { isWalletDecline, partialUnwrap, unwrapAfterError, unwrapAtTap, wsolAccount, UNWRAP_DONE, UNWRAP_NOT_SENT, UNWRAP_NOT_YET, UNWRAP_UNSURE, UNWRAP_FAILED, unwrapRetryable, UNWRAP_VALID_MS, type UnwrapStatus } from '@/lib/unwrap'
+import { isWalletDecline, partialUnwrap, unwrapAfterError, unwrapAtTap, wsolAccount, UNWRAP, unwrapRetryable, UNWRAP_VALID_MS, type UnwrapStatus } from '@/lib/unwrap'
 import { SignRefused } from '@/lib/sign'
 import { ATTACKER, USER, wire } from '../fixtures/api-built'
 import { ataOf, closeAcct, ix, L } from '../fixtures/lend-built'
@@ -77,23 +77,23 @@ describe('unwrapAfterError: state, not the error', () => {
   })
   it('a decline: Not sent, button kept while valid and gone after; the chain is not read', async () => {
     const read = exists(true)
-    expect(await unwrapAfterError({ error: decline, ageMs: 5_000, accountExists: read })).toEqual({ text: UNWRAP_NOT_SENT, error: true, keepButton: true, invalidate: false })
+    expect(await unwrapAfterError({ error: decline, ageMs: 5_000, accountExists: read })).toEqual({ text: UNWRAP.notSent, error: true, keepButton: true, invalidate: false })
     expect((await unwrapAfterError({ error: decline, ageMs: UNWRAP_VALID_MS, accountExists: read })).keepButton).toBe(false)
     expect(read).not.toHaveBeenCalled()
   })
   it('any other error and the account is gone: the unwrap landed', async () =>
-    expect(await unwrapAfterError({ error: new Error('timeout'), ageMs: 5_000, accountExists: exists(false) })).toEqual({ text: UNWRAP_DONE, error: false, keepButton: false, invalidate: true }))
+    expect(await unwrapAfterError({ error: new Error('timeout'), ageMs: 5_000, accountExists: exists(false) })).toEqual({ text: UNWRAP.done, error: false, keepButton: false, invalidate: true }))
   it('any other error and the account is still there: not yet, never "Not sent", button only while valid', async () => {
     const fresh = await unwrapAfterError({ error: new Error('timeout'), ageMs: 5_000, accountExists: exists(true) })
-    expect(fresh).toEqual({ text: UNWRAP_NOT_YET, error: true, keepButton: true, invalidate: true })
+    expect(fresh).toEqual({ text: UNWRAP.notYet, error: true, keepButton: true, invalidate: true })
     const late = await unwrapAfterError({ error: new Error('timeout'), ageMs: UNWRAP_VALID_MS + 1, accountExists: exists(true) })
     expect(late.keepButton).toBe(false)
-    for (const r of [fresh, late]) expect(r.text).not.toBe(UNWRAP_NOT_SENT)
+    for (const r of [fresh, late]) expect(r.text).not.toBe(UNWRAP.notSent)
   })
   it('a read that fails: Sent?, button gone, refresh', async () =>
-    expect(await unwrapAfterError({ error: new Error('timeout'), ageMs: 5_000, accountExists: exists(new Error('rpc down')) })).toEqual({ text: UNWRAP_UNSURE, error: false, keepButton: false, invalidate: true }))
-  it('UNWRAP_FAILED is never chosen here (only a confirmed on-chain failure uses it)', async () => {
-    for (const e of [new Error('x'), decline, new SignRefused('s')]) for (const v of [true, false, new Error('r')]) expect((await unwrapAfterError({ error: e, ageMs: 1, accountExists: exists(v) })).text).not.toBe(UNWRAP_FAILED)
+    expect(await unwrapAfterError({ error: new Error('timeout'), ageMs: 5_000, accountExists: exists(new Error('rpc down')) })).toEqual({ text: UNWRAP.unsure, error: false, keepButton: false, invalidate: true }))
+  it('UNWRAP.failed is never chosen here (only a confirmed on-chain failure uses it)', async () => {
+    for (const e of [new Error('x'), decline, new SignRefused('s')]) for (const v of [true, false, new Error('r')]) expect((await unwrapAfterError({ error: e, ageMs: 1, accountExists: exists(v) })).text).not.toBe(UNWRAP.failed)
   })
   it('wsolAccount is the user WSOL associated token account the check pins', async () =>
     expect(await wsolAccount(USER)).toBe(await ataOf(USER, L.WSOL)))

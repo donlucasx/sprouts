@@ -3,7 +3,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
 import { ThemedText } from '@/components/ThemedText'
 import { Button } from '@/components/Button'
-import { COIN_FULL_NAME, COIN_LOGO } from '@/lib/coin-icons'
+import { COIN_LOGO } from '@/lib/coin-icons'
+import { coinFullName } from '@/lib/coin-names'
+import { t } from '@/i18n'
 import { coinSheet } from '@/lib/coin-sheet'
 import { idleSkrOf, showPlantMarker } from '@/lib/plant-skr'
 import { PlantSkr } from '@/components/PlantSkr'
@@ -25,7 +27,7 @@ export function CoinSheet({ me, row, onClose }: { me: MeResponse; row: CoinRow |
   const sheet = row ? coinSheet(me, row) : null
   return (
     <Modal visible={row !== null} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
-      <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.32)' }} onPress={onClose} accessibilityLabel="Close" />
+      <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.32)' }} onPress={onClose} accessibilityLabel={t('sheet.close')} />
       {row && sheet ? (
         <View
           style={{
@@ -43,7 +45,7 @@ export function CoinSheet({ me, row, onClose }: { me: MeResponse; row: CoinRow |
             <Image source={COIN_LOGO[row.asset]} style={{ width: 48, height: 48, borderRadius: 24 }} />
             <View style={{ flex: 1, gap: 2 }}>
               <ThemedText variant="heading" numberOfLines={1}>
-                {COIN_FULL_NAME[row.asset]}
+                {coinFullName(row.asset)}
               </ThemedText>
               <ThemedText variant="caption" tone="secondary" numeric numberOfLines={1}>
                 {row.qty}
@@ -83,7 +85,7 @@ export function CoinSheet({ me, row, onClose }: { me: MeResponse; row: CoinRow |
           {sheet.plantings.length > 0 ? (
             <View style={{ gap: spacing.xs }}>
               <ThemedText variant="label" tone="secondary">
-                Last plantings
+                {t('sheet.lastPlantings')}
               </ThemedText>
               {sheet.plantings.map((p, i) => (
                 <ThemedText key={i} variant="caption" numeric>
@@ -96,7 +98,7 @@ export function CoinSheet({ me, row, onClose }: { me: MeResponse; row: CoinRow |
           {row.asset === 'SKR' && row.venue === null ? <PlantSkr user={me.user.pubkey} idle={showPlantMarker(me, row) ? idleSkrOf(me) : null} /> : null}
           {sheet.withdrawKey !== undefined ? (
             <Button
-              title="Withdraw"
+              title={t('home.withdraw')}
               kind="quiet"
               onPress={() => {
                 onClose()

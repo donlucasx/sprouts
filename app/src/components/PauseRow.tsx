@@ -71,7 +71,7 @@ export function PauseRow({
       ) : null}
       {busy ? (
         <ThemedText variant="caption" tone="secondary">
-          {shown ? t('wallet.waiting') : 'Pausing.'}
+          {shown ? t('wallet.waiting') : t('pause.pausing')}
         </ThemedText>
       ) : null}
       {error ? <ThemedText tone="error">{error}</ThemedText> : null}

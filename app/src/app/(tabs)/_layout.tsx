@@ -3,6 +3,8 @@ import { MaterialCommunityIcons } from '@expo/vector-icons'
 import type { ComponentProps } from 'react'
 import { FONT, useTheme } from '@/theme'
 import { Mark } from '@/components/Mark'
+import { t } from '@/i18n'
+import { useLang } from '@/i18n/useLang'
 
 type IconName = ComponentProps<typeof MaterialCommunityIcons>['name']
 function icon(on: IconName, off: IconName) {
@@ -23,6 +25,7 @@ function icon(on: IconName, off: IconName) {
  * The order is the declaration order below (R197: Garden | Rules | Activity | Settings).
  */
 export default function TabsLayout() {
+  useLang() // 0.1.13: the tab names follow the language
   const { colors } = useTheme()
   return (
     <Tabs
@@ -37,14 +40,14 @@ export default function TabsLayout() {
       }}
     >
       {/* R163: the Garden tab carries the Sprouts mark in the tab bar's tint (the label already says Garden). */}
-      <Tabs.Screen name="home" options={{ title: 'Garden', tabBarIcon: ({ color }) => <Mark size={24} color={String(color)} decorative /> }} />
+      <Tabs.Screen name="home" options={{ title: t('tabs.garden'), tabBarIcon: ({ color }) => <Mark size={24} color={String(color)} decorative /> }} />
       {/* R197 (device check 2, his note): Rules before Activity, so the bar reads Garden | Rules | Activity | Settings. */}
-      <Tabs.Screen name="rules" options={{ title: 'Rules', tabBarIcon: icon('tune-variant', 'tune-variant') }} />
+      <Tabs.Screen name="rules" options={{ title: t('tabs.rules'), tabBarIcon: icon('tune-variant', 'tune-variant') }} />
       <Tabs.Screen
         name="activity"
-        options={{ title: 'Activity', tabBarIcon: icon('format-list-bulleted', 'format-list-bulleted') }}
+        options={{ title: t('tabs.activity'), tabBarIcon: icon('format-list-bulleted', 'format-list-bulleted') }}
       />
-      <Tabs.Screen name="settings" options={{ title: 'Settings', tabBarIcon: icon('cog', 'cog-outline') }} />
+      <Tabs.Screen name="settings" options={{ title: t('tabs.settings'), tabBarIcon: icon('cog', 'cog-outline') }} />
     </Tabs>
   )
 }

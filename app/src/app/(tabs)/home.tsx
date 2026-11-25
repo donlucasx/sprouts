@@ -24,7 +24,8 @@ import { packScene } from '@/model/spread'
 import { plantLayouts } from '@/model/scene-to-layout'
 import { watcherLine } from '@/model/watcher'
 import { Garden } from '@/garden/Garden'
-import { COIN_FULL_NAME, COIN_LOGO } from '@/lib/coin-icons'
+import { COIN_LOGO } from '@/lib/coin-icons'
+import { coinFullName } from '@/lib/coin-names'
 import type { LendingPosition, MeResponse, MeUsdcResponse, PreviewResponse } from '@/lib/api'
 import { earnedLabel } from '@/lib/coin-sheet'
 import { CoinSheet } from '@/components/CoinSheet'
@@ -45,10 +46,10 @@ import { BambooFrame } from '@/garden2/BambooFrame'
 import { ME_USDC_WITH_SOURCES, TOPUP, TOPUP_DEFAULT_CENTS, postLinkUsdc, topUpOffer } from '@/lib/topup'
 import { MoveCard } from '@/components/MoveCard'
 import { termsNeeded, termsSummary } from '@/lib/terms'
-import { arrivalLine, formatSkr, formatAsOf } from '@/lib/format'
+import { arrivalParts, formatSkr } from '@/lib/format'
 import { useSession } from '@/lib/session'
 import { LINKED_LINE, LINKED_TITLE } from '@/lib/safety-copy'
-import { PHONE_WALLET, gardenTotals, pauseState, pausedOnlyForNoUsdc, stoppedNotice, showLinkPrompt, LINK_PROMPT, previewLine, usdcNotice, coinRows, valueBlock, walletsLine, lastPlantingLine, staleLine, type CoinRow } from '@/lib/me-state'
+import { PHONE_WALLET, gardenTotals, pauseState, pausedOnlyForNoUsdc, stoppedNotice, showLinkPrompt, previewLine, usdcNotice, coinRows, valueBlock, walletsLine, lastPlantingLine, staleLine, type CoinRow } from '@/lib/me-state'
 import { FONT, radius, spacing, TARGET, useTheme } from '@/theme'
 import { homeCoinRows, showPlantMarker } from '@/lib/plant-skr'
 import { SeedMark } from '@/components/Mark'
@@ -69,6 +70,19 @@ const RECEIPT_SLOP = spacing.sm
 /** R587: how far a plant card may hang below the garden, over the saved line (Garden2 cardOverflow). */
 const CARD_OVERFLOW = 120
 
+/** 0.1.13: a coin row's spoken label, one whole line per case (earned known or not, the Plant my SKR marker or not). */
+function coinA11y(name: string, amount: string, earned: string | null, marker: boolean): string {
+  const m = t('plant.marker')
+  if (earned !== null) return marker ? t('home.coin.a11y.earnedMarker', { name, amount, earned, marker: m }) : t('home.coin.a11y.earned', { name, amount, earned })
+  return marker ? t('home.coin.a11y.marker', { name, amount, marker: m }) : t('home.coin.a11y', { name, amount })
+}
+
+/** 0.1.13: the basket card's line, whole: arriving today, or the day and hour it arrives. */
+function basketLine(amount: string, readyAt: string, now: Date): string {
+  const a = arrivalParts(readyAt, now)
+  return a.today ? t('home.basket.today', { amount }) : t('home.basket.arrives', { amount, when: a.when })
+}
+
 function devSplitLending(me: MeResponse): MeResponse {
   const other = { kamino_klend: 'jupiter_lend', jupiter_lend: 'kamino_klend' } as const
   const half = (p: LendingPosition): LendingPosition[] => {
@@ -84,7 +98,7 @@ function devSplitLending(me: MeResponse): MeResponse {
 
 export default function Home() {
   const { setSession } = useSession()
-  useLang() // 0.1.13: the Plant my SKR marker reads the language
+  useLang() // 0.1.13: every line on Home reads the language
   const { colors, dark } = useTheme()
   const { data: me, stale, fresh, refetch, asOf, loading, unauthorized, errorStatus } = useMe()
   const { data: activity } = useQuery(activityQuery)
@@ -243,8 +257,8 @@ export default function Home() {
   if (!loading && !me)
     return (
       <Screen inset="top">
-        <ThemedText tone="secondary">Sprouts could not reach your garden just now.</ThemedText>
-        <Button title="Try again" kind="quiet" onPress={() => void refetch()} style={{ alignSelf: 'flex-start' }} />
+        <ThemedText tone="secondary">{t('home.unreachable')}</ThemedText>
+        <Button title={t('home.tryAgain')} kind="quiet" onPress={() => void refetch()} style={{ alignSelf: 'flex-start' }} />
       </Screen>
     )
   if (loading || !me || !scene) return <View style={{ flex: 1, backgroundColor: colors.background }} />
@@ -291,7 +305,7 @@ export default function Home() {
           <Pressable
             onPress={() => router.push('/activity')}
             accessibilityRole="button"
-            accessibilityLabel={`${receiptLine}. Opens Activity.`}
+            accessibilityLabel={t('home.receipt.a11y', { line: receiptLine })}
             hitSlop={{ top: 0, bottom: RECEIPT_SLOP, left: RECEIPT_SLOP, right: RECEIPT_SLOP }}
             style={({ pressed }) => ({
               flexDirection: 'row',
@@ -328,13 +342,13 @@ export default function Home() {
       }
     >
       <View style={{ gap: 2 }}>
-        <MarkedTitle size={22}>{name ? `${name}'s garden` : 'Your garden'}</MarkedTitle>
+        <MarkedTitle size={22}>{name ? t('home.title.named', { name }) : t('home.title')}</MarkedTitle>
         {/* R589 (his note: "make sure the user understands the garden is in their wallet- the tokens are held in their solana mobile
             wallet"; ruled: a line under the title): indented to the title's words (MarkedTitle's mark 26 + gap 6 at size 22) */}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginLeft: 32 }}>
           <MaterialCommunityIcons name="wallet-outline" size={13} color={colors.textSecondary} />
           <ThemedText variant="caption" tone="secondary">
-            Held in your Seed Vault wallet
+            {t('home.heldIn')}
           </ThemedText>
         </View>
       </View>
@@ -354,7 +368,7 @@ export default function Home() {
           <ThemedText style={{ fontSize: 14, lineHeight: 20 }}>{LINKED_LINE}</ThemedText>
           {postLink?.line ? <ThemedText style={{ fontSize: 14, lineHeight: 20 }}>{postLink.line}</ThemedText> : null}
           {postLink?.topUp ? <TopUpButton compact user={me.user.pubkey} cents={TOPUP_DEFAULT_CENTS} done={TOPUP.done} avgDailyCents={avg} offers={usdcRead?.topUpCents ?? null} sources={usdcRead?.topUpSources ?? null} onPlantSkr={plantSkrOpen} /> : null}
-          <Button title="OK" kind="quiet" onPress={() => router.setParams({ linked: undefined })} style={{ alignSelf: 'flex-start' }} />
+          <Button title={t('home.ok')} kind="quiet" onPress={() => router.setParams({ linked: undefined })} style={{ alignSelf: 'flex-start' }} />
         </View>
       ) : null}
       {notice ? (
@@ -393,7 +407,7 @@ export default function Home() {
         <Pressable
           onPress={() => router.push('/rules')}
           accessibilityRole="button"
-          accessibilityLabel={`${pause.line}. Open Rules to change it.`}
+          accessibilityLabel={t('home.pause.a11y', { line: pause.line })}
           style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: TARGET, backgroundColor: colors.warningSurface, borderColor: colors.warning, borderWidth: 1, borderRadius: radius.lg, borderCurve: 'continuous', padding: spacing.md, opacity: pressed ? 0.7 : 1 })}
         >
           {/* 10-27 (his notes "Should it be red?" then "should it be orange then?... I worry a user may not notice its paused"): no red, a
@@ -403,7 +417,7 @@ export default function Home() {
             <ThemedText variant="heading" style={{ color: colors.warning }}>
               {pause.line}
             </ThemedText>
-            <ThemedText style={{ fontSize: 14, lineHeight: 20 }}>Nothing plants until you turn it back on.</ThemedText>
+            <ThemedText style={{ fontSize: 14, lineHeight: 20 }}>{t('home.pause.body')}</ThemedText>
           </View>
           <MaterialCommunityIcons name="chevron-right" size={20} color={colors.warning} />
         </Pressable>
@@ -423,12 +437,12 @@ export default function Home() {
                   <ThemedText variant="heading" style={{ flex: 1 }}>
                     {message.heading}
                   </ThemedText>
-                  <Pressable onPress={() => close(message.id)} accessibilityRole="button" accessibilityLabel="Dismiss this message" hitSlop={12}>
+                  <Pressable onPress={() => close(message.id)} accessibilityRole="button" accessibilityLabel={t('home.dismiss')} hitSlop={12}>
                     <MaterialCommunityIcons name="close" size={20} color={colors.textSecondary} />
                   </Pressable>
                 </View>
                 <ThemedText tone="secondary">{message.body}</ThemedText>
-                <Button title="Message Lucas" onPress={() => router.push('/support')} />
+                <Button title={t('home.messageLucas')} onPress={() => router.push('/support')} />
               </Card>
             ) : null}
             {ask ? <QuestionCard key={ask.ref} question={ask.question} askRef={ask.ref} onDone={() => close(ask.ref)} /> : null}
@@ -437,11 +451,11 @@ export default function Home() {
       })()}
       {termsNeeded(me) ? (
         <Card>
-          <ThemedText variant="heading">Terms and Privacy</ThemedText>
+          <ThemedText variant="heading">{t('home.terms.title')}</ThemedText>
           {termsSummary().map((l) => (
             <ThemedText key={l} tone="secondary">{`• ${l}`}</ThemedText>
           ))}
-          <Button title="Read and agree" onPress={() => router.push('/terms')} />
+          <Button title={t('home.terms.agree')} onPress={() => router.push('/terms')} />
         </Card>
       ) : null}
       {/* 11-01 (his ruling "A"): with no wallet linked, one green line at the top says what starts the garden; gone once one links */}
@@ -454,12 +468,12 @@ export default function Home() {
         <Pressable
           onPress={() => router.push('/connect')}
           accessibilityRole="button"
-          accessibilityLabel={`${LINK_PROMPT}. Opens Link a wallet.`}
+          accessibilityLabel={t('home.linkPrompt.a11y')}
           style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: TARGET, paddingHorizontal: spacing.lg, backgroundColor: colors.accent, borderRadius: radius.lg, borderCurve: 'continuous', opacity: pressed ? 0.8 : 1 })}
         >
           <MaterialCommunityIcons name="link-variant" size={20} color={colors.onAccent} />
           <ThemedText variant="button" style={{ flex: 1, color: colors.onAccent }}>
-            {LINK_PROMPT}
+            {t('home.linkPrompt')}
           </ThemedText>
           <MaterialCommunityIcons name="chevron-right" size={22} color={colors.onAccent} />
         </Pressable>
@@ -477,11 +491,11 @@ export default function Home() {
             </ThemedText>
           </View>
           <View style={{ alignItems: 'flex-end', gap: 2, flexShrink: 0, maxWidth: '50%' }}>
-            {value.side.map((t) => (
-              <ThemedText key={t.label} variant="label" tone="secondary" numeric numberOfLines={1}>
-                {`${t.label} `}
-                <ThemedText variant="label" numeric style={t.label === 'Earned' && earnedLabel(totals.earnedUsd)?.positive ? { color: colors.success } : undefined /* R563: green above zero, as the rows (s6 review K5) */}>
-                  {t.value}
+            {value.side.map((tile) => (
+              <ThemedText key={tile.id} variant="label" tone="secondary" numeric numberOfLines={1}>
+                {`${tile.label} `}
+                <ThemedText variant="label" numeric style={tile.id === 'earned' && earnedLabel(totals.earnedUsd)?.positive ? { color: colors.success } : undefined /* R563: green above zero, as the rows (s6 review K5) */}>
+                  {tile.value}
                 </ThemedText>
               </ThemedText>
             ))}
@@ -489,7 +503,7 @@ export default function Home() {
         </View>
         {stale && asOf ? (
           <ThemedText variant="caption" tone="error">
-            {staleLine(formatAsOf(asOf, now), errorStatus)}
+            {staleLine(asOf, now, errorStatus)}
           </ThemedText>
         ) : null}
       </View>
@@ -567,7 +581,7 @@ export default function Home() {
             <Pressable
               onPress={() => setSheetRow(r)}
               accessibilityRole="button"
-              accessibilityLabel={`${COIN_FULL_NAME[r.asset]}, ${r.amount}${earned ? `, earned ${earned.text}` : ''}.${showPlantMarker(me, r) ? ` ${t('plant.marker')}.` : ''} Opens its details.`}
+              accessibilityLabel={coinA11y(coinFullName(r.asset), r.amount, earned?.text ?? null, showPlantMarker(me, r))}
               style={({ pressed }) => ({
                 opacity: pressed ? 0.7 : 1,
                 flexDirection: 'row',
@@ -581,7 +595,7 @@ export default function Home() {
               <View style={{ flex: 1, gap: 2 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                   <ThemedText variant="body" style={{ fontFamily: FONT.label, flexShrink: 1 }} numberOfLines={1}>
-                    {COIN_FULL_NAME[r.asset]}
+                    {coinFullName(r.asset)}
                   </ThemedText>
                   {/* 0.1.13 Plant my SKR (his ruling 11-25): the seed marker while the wallet holds $5+ of liquid SKR; the row opens the sheet */}
                   {showPlantMarker(me, r) ? <SeedMark size={15} /> : null}
@@ -607,7 +621,7 @@ export default function Home() {
                 {earned ? (
                   // R563: what this coin earned, green above zero; where it lives moved into the sheet (R564)
                   <ThemedText variant="caption" numeric numberOfLines={1} style={{ color: earned.positive ? colors.success : colors.textSecondary }}>
-                    {`${earned.text} earned`}
+                    {t('home.coin.earned', { amount: earned.text })}
                   </ThemedText>
                 ) : null}
               </View>
@@ -621,7 +635,7 @@ export default function Home() {
                   key={p.key}
                   onPress={() => setSheetRow(p)}
                   accessibilityRole="button"
-                  accessibilityLabel={`${p.where}, ${p.amount}${pe ? `, earned ${pe.text}` : ''}. Opens its details.`}
+                  accessibilityLabel={coinA11y(p.where ?? '', p.amount, pe?.text ?? null, false)}
                   style={({ pressed }) => ({
                     opacity: pressed ? 0.7 : 1,
                     flexDirection: 'row',
@@ -650,19 +664,19 @@ export default function Home() {
         </View>
         <View style={{ flexDirection: 'row', gap: spacing.sm }}>
           <Link href="/withdraw" asChild>
-            <Button title="Withdraw" kind="quiet" onPress={() => {}} style={{ flex: 1 }} />
+            <Button title={t('home.withdraw')} kind="quiet" onPress={() => {}} style={{ flex: 1 }} />
           </Link>
           <Button
-            title="Add money"
+            title={t('home.addMoney')}
             kind="quiet"
             onPress={() => setAddMoneyNote((v) => !v)}
-            accessibilityLabel="Add money, coming with Pro"
+            accessibilityLabel={t('home.addMoney.a11y')}
             style={{ flex: 1, opacity: 0.45 }}
           />
         </View>
         {addMoneyNote ? (
           <ThemedText variant="caption" tone="secondary" style={{ textAlign: 'center' }}>
-            Coming with Pro: add money to your garden anytime.
+            {t('home.addMoney.note')}
           </ThemedText>
         ) : null}
       </Card>
@@ -671,7 +685,7 @@ export default function Home() {
         <Pressable
           onPress={() => router.push('/settings')}
           accessibilityRole="button"
-          accessibilityLabel={`${walletsRow}. Opens Settings.`}
+          accessibilityLabel={t('home.wallets.a11y', { line: walletsRow })}
           style={({ pressed }) => ({
             flexDirection: 'row',
             alignItems: 'center',
@@ -690,9 +704,7 @@ export default function Home() {
       ) : null /* 11-01: no wallet linked = the green line at the top (ruling "A"); this bottom card is gone */}
       {me.basket ? (
         <Card>
-          <ThemedText>
-            In the basket: {formatSkr(BigInt(me.basket.amountRaw), skrUsd)}, {arrivalLine(me.basket.readyAt, now)}
-          </ThemedText>
+          <ThemedText>{basketLine(formatSkr(BigInt(me.basket.amountRaw), skrUsd), me.basket.readyAt, now)}</ThemedText>
         </Card>
       ) : null}
       <CoinSheet me={me} row={sheetRow} onClose={() => setSheetRow(null)} />

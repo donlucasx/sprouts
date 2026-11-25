@@ -20,6 +20,8 @@ import { FONT, GARDEN_INK, radius, spacing, useTheme } from '@/theme'
 import { pinchOffset } from '@/model/motion'
 import { Wind } from '@/garden/Wind'
 import type { PlantCard } from '@/lib/plant-card'
+import { t } from '@/i18n'
+import { useLang } from '@/i18n/useLang'
 import { CANVAS } from './layout'
 import { LoopImage } from './loop-image'
 import { DECOR_SRC, FRUIT_SRC, GROWTH_SRC, LOOP_SRC, OVERLAY_SRC, OVERLAY_SRC_DARK, PLATE, PLATE_DARK, STAGE_SRC, STAGE_SRC_DARK } from './sources'
@@ -109,6 +111,7 @@ export function Garden2({
   skyPad?: number
 }) {
   const { colors, dark } = useTheme()
+  useLang()
   // R530 (option B): dark draws the light plate full bleed and square; a dark plate, if one is ever exported, replaces it (R529 plumbing).
   const night = dark && PLATE_DARK !== null
   const reduced = useReducedMotion()
@@ -337,7 +340,7 @@ export function Garden2({
             backgroundColor: night ? colors.background : '#FFFCF6',
           }}
           accessible
-          accessibilityLabel="Your garden"
+          accessibilityLabel={t('home.title')}
         >
           <Animated.View style={[{ width, height: h, transformOrigin: [0, 0, 0] }, zoomed]}>
             {layers.map((l) =>
@@ -454,7 +457,7 @@ export function Garden2({
                   </ThemedText>
                   {label.card.earned ? (
                     <ThemedText variant="caption" numeric style={{ color: label.card.earned.positive ? colors.success : colors.textSecondary }}>
-                      {`${label.card.earned.text} earned`}
+                      {t('home.coin.earned', { amount: label.card.earned.text })}
                     </ThemedText>
                   ) : null}
                 </View>
@@ -467,7 +470,7 @@ export function Garden2({
             ) : null}
             {label.card.row && onCard ? (
               <ThemedText variant="caption" style={{ color: colors.accentText, fontFamily: FONT.label }}>
-                {'Details \u203A'}
+                {t('garden.details')}
               </ThemedText>
             ) : null}
           </Pressable>

@@ -3,23 +3,29 @@ import { COIN_NAME, formatUsd } from './format'
 import { REFUSED, SignRefused, type MovePart, type SignFlow } from './sign'
 import type { LendingPosition, MoveProposal } from './api'
 import { percent } from "@/i18n/format"
+import { t } from "@/i18n"
 
 /** S3 result (Task 0, docs/superpowers/plans/2026-10-05-lending-spike-s3-result.md): VERDICT ONE, so one or two transactions. */
 export const MOVE_TXS_ALLOWED: readonly number[] = [1, 2]
 /** What POST /api/moves/build answers (contracts 5.4). */
 export type MoveBuild = { transactions: string[]; receiptRaw: string; depositRaw: string; brief: string }
-export const MOVE_CHANGED = 'Your position changed since this was proposed. Nothing moved.'
-/** The API's IN_FLIGHT sentence (a stored redeem signature): the card shows it instead of the buttons, and build / dismiss answer it as a 409 with `inFlight: true`. */
-export const MOVE_IN_FLIGHT = 'This move is on its way. Check Home in a minute.'
-export const MOVED_LINE = 'Moved.'
-export const MOVE_FAILED = 'The move did not go through. Nothing moved.'
-/** As the re-link card's: once the Seeker signed, a failed confirm may still have sent the move. */
-export const MOVE_SENT = 'Your move was sent but is not confirmed yet. Pull down in a minute to check before you try again.'
+/**
+ * The card's lines, read in the current language at use time (0.1.13). `inFlight` is the API's IN_FLIGHT sentence (a stored redeem
+ * signature): the card shows it instead of the buttons, and build / dismiss answer it as a 409 with `inFlight: true` (detected by that
+ * flag, never by matching the text). `sent`, as the re-link card's: once the Seeker signed, a failed confirm may still have sent the move.
+ */
+export const MOVE = {
+  get changed() { return t('move.changed') },
+  get inFlight() { return t('move.inFlight') },
+  get moved() { return t('move.moved') },
+  get failed() { return t('move.failed') },
+  get sent() { return t('move.sent') },
+}
 
 /** A confirm that failed after the Seed Vault signed, with no answer from the route itself: the move may still land. */
 export class MoveSent extends Error {
   constructor(public reason: unknown) {
-    super(MOVE_SENT)
+    super(MOVE.sent)
     this.name = 'MoveSent'
   }
 }
@@ -36,8 +42,8 @@ export function depositCap(p: MoveProposal, positions: readonly Pick<LendingPosi
 export function moveCopy(p: MoveProposal): { title: string; line: string } {
   const to = VENUE_NAME[p.to], from = VENUE_NAME[p.from]
   return {
-    title: `Move your ${COIN_NAME[p.asset]} to ${to}?`,
-    line: `${to} has paid ${percent(p.toAvg7Pct, 1)} over 7 days, ${from} ${percent(p.fromAvg7Pct, 1)}. About ${formatUsd(Math.round(p.gain30dUsd * 100))} more in 30 days, after a network cost of ${formatUsd(Math.round(p.costUsd * 100))}. One approval.`,
+    title: t('move.title', { coin: COIN_NAME[p.asset], venue: to }),
+    line: t('move.line', { to, toPct: percent(p.toAvg7Pct, 1), from, fromPct: percent(p.fromAvg7Pct, 1), gain: formatUsd(Math.round(p.gain30dUsd * 100)), cost: formatUsd(Math.round(p.costUsd * 100)) }),
   }
 }
 
@@ -69,7 +75,7 @@ export async function moveAtTap(a: {
   onSigned?: () => void
 }): Promise<{ done: true } | { stopped: string }> {
   const built = await a.build(a.proposal.id)
-  if (built.receiptRaw !== a.proposal.receiptRaw) return { stopped: MOVE_CHANGED }
+  if (built.receiptRaw !== a.proposal.receiptRaw) return { stopped: MOVE.changed }
   const signedTransactions = await a.signAll(moveFlows(a.user, a.proposal, built, depositCap(a.proposal, a.positions)))(built.transactions)
   a.onSigned?.()
   try {

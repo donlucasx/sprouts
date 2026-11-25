@@ -259,10 +259,10 @@ describe('Home as numbers (R150)', () => {
   })
   it('statTiles: Put in and Earned as two tiles; Earned left out when unknown', () => {
     expect(statTiles({ valueUsd: 12.4, earnedUsd: 2.4, putInCents: 1000 })).toEqual([
-      { label: 'Put in', value: '$10.00' },
-      { label: 'Earned', value: '$2.40' },
+      { id: 'putIn', label: 'Put in', value: '$10.00' },
+      { id: 'earned', label: 'Earned', value: '$2.40' },
     ])
-    expect(statTiles({ valueUsd: null, earnedUsd: null, putInCents: 1000 })).toEqual([{ label: 'Put in', value: '$10.00' }])
+    expect(statTiles({ valueUsd: null, earnedUsd: null, putInCents: 1000 })).toEqual([{ id: 'putIn', label: 'Put in', value: '$10.00' }])
   })
   it('walletsLine: counts the linked wallets in his words, revoked ones aside; null when none', () => {
     expect(walletsLine([{ status: 'active' }, { status: 'paused' }, { status: 'revoked' }])).toBe('2 wallets linked')
@@ -296,8 +296,8 @@ describe('valueBlock (R355)', () => {
       big: '$420.69',
       label: 'in your garden',
       side: [
-        { label: 'Put in', value: '$395.00' },
-        { label: 'Earned', value: '$25.69' },
+        { id: 'putIn', label: 'Put in', value: '$395.00' },
+        { id: 'earned', label: 'Earned', value: '$25.69' },
       ],
       a11y: '$420.69 in your garden. Put in $395.00. Earned $25.69.',
     })
@@ -305,18 +305,21 @@ describe('valueBlock (R355)', () => {
   it('no price known: the staked SKR is the big number (grouped), Earned left out', () => {
     const b = valueBlock({ valueUsd: null, earnedUsd: null, putInCents: 1000 }, 12_980_460_000n)
     expect(b.big).toBe('12,980.46 SKR')
-    expect(b.side).toEqual([{ label: 'Put in', value: '$10.00' }])
+    expect(b.side).toEqual([{ id: 'putIn', label: 'Put in', value: '$10.00' }])
     expect(b.a11y).toBe('12,980.46 SKR in your garden. Put in $10.00.')
   })
 })
 
 describe('staleLine (his note 10-22: name the cause)', () => {
+  // 0.1.13: staleLine takes the read's time and says formatAsOf's phrase inside one whole line
+  const NOW = new Date('2026-10-20T15:00:00-07:00')
   it('says offline when the read got no answer', () => {
-    expect(staleLine('as of Oct 16', 0)).toBe("You're offline. Showing your garden as of Oct 16.")
+    expect(staleLine(new Date('2026-10-16T09:12:00-07:00'), NOW, 0)).toBe("You're offline. Showing your garden as of Oct 16.")
+    expect(staleLine(new Date('2026-10-19T09:12:00-07:00'), NOW, 0)).toBe("You're offline. Showing your garden as of yesterday 9:12 AM.")
   })
   it('says Sprouts could not load it when the server answered with a failure', () => {
-    expect(staleLine('as of 9:12 AM', 500)).toBe("Sprouts couldn't load your garden just now. Showing it as of 9:12 AM.")
-    expect(staleLine('as of Oct 16', -1)).toBe("Sprouts couldn't load your garden just now. Showing it as of Oct 16.")
+    expect(staleLine(new Date('2026-10-20T09:12:00-07:00'), NOW, 500)).toBe("Sprouts couldn't load your garden just now. Showing it as of 9:12 AM.")
+    expect(staleLine(new Date('2026-10-16T09:12:00-07:00'), NOW, -1)).toBe("Sprouts couldn't load your garden just now. Showing it as of Oct 16.")
   })
 })
 

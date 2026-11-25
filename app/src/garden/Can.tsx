@@ -8,6 +8,7 @@ import { SPRITES } from "./sprites";
 import { WATER } from "./parts";
 import { Stream } from "./Pour";
 import { REDUCED_MS } from "@/model/opening";
+import { t as tr } from "@/i18n";
 import { canArt, canHit, canSeat, clampDrag, dropSize, grabAt, roseAt, roseOnScreen, CAN_MS, DRIP, POUR_SHARE, STREAM, SWEEP_TAIL, WOBBLE_WAIT_MS } from "@/model/can";
 
 const TILT = -40, LIFT = 1.08, MOVED = 8, HOVER_STEP = 3, TILT_MS = 350;
@@ -273,7 +274,7 @@ export function Can({ ready, reduced, tempo, width, s, wobbleKey, overlayW, view
           style={[{ position: "absolute", left: 0, top: 0, width: hit.w, height: hit.h }, place]}
           accessible
           accessibilityRole="button"
-          accessibilityLabel={inColour ? "Water the garden" : "Nothing to water yet"}
+          accessibilityLabel={inColour ? tr("garden.can.water") : tr("garden.can.nothing")}
           accessibilityActions={[{ name: "activate" }]}
           onAccessibilityAction={() => (inColour ? tap() : onNudge())}
         >

@@ -10,8 +10,8 @@ import { ThemedText } from './ThemedText'
 import { api, ApiError, type MeResponse } from '@/lib/api'
 import { makeBatchSigner, SignRefused } from '@/lib/sign'
 import { useInvalidateMe } from '@/lib/me'
-import { isMoveInFlight, MOVE_FAILED, MOVE_IN_FLIGHT, MOVED_LINE, moveAtTap, moveCopy, MoveSent, type MoveBuild } from '@/lib/moves'
-import { partialUnwrap, UNWRAP_BUTTON, UNWRAP_DONE, UNWRAP_FAILED, UNWRAP_SENT, unwrapAfterError, unwrapAtTap, wsolAccount } from '@/lib/unwrap'
+import { isMoveInFlight, MOVE, moveAtTap, moveCopy, MoveSent, type MoveBuild } from '@/lib/moves'
+import { partialUnwrap, UNWRAP, unwrapAfterError, unwrapAtTap, wsolAccount } from '@/lib/unwrap'
 import { oneAtATime } from '@/lib/withdraw-flow'
 import { spacing } from '@/theme'
 import { t } from '@/i18n'
@@ -51,13 +51,13 @@ export function MoveCard({ me }: { me: MeResponse }) {
       if ('stopped' in out) setLine({ text: out.stopped, error: true })
       else {
         setGone(p.id)
-        setLine({ text: MOVED_LINE, error: false })
+        setLine({ text: MOVE.moved, error: false })
       }
     } catch (e) {
       const u = partialUnwrap(e)
       setUnwrap(u)
       setUnwrapAt(Date.now())
-      setLine({ text: isMoveInFlight(e) ? MOVE_IN_FLIGHT : e instanceof ApiError || e instanceof SignRefused || e instanceof MoveSent ? e.message : MOVE_FAILED, error: true })
+      setLine({ text: isMoveInFlight(e) ? MOVE.inFlight : e instanceof ApiError || e instanceof SignRefused || e instanceof MoveSent ? e.message : MOVE.failed, error: true })
     } finally {
       setPhase(null)
       gate.leave()
@@ -81,9 +81,9 @@ export function MoveCard({ me }: { me: MeResponse }) {
       })
       // Sent: the one try is spent either way (a retry would be a second send of the same transaction).
       setUnwrap(null)
-      if (out === 'confirmed') setLine({ text: UNWRAP_DONE, error: false })
-      else if (out === 'failed') setLine({ text: UNWRAP_FAILED, error: true })
-      else setLine({ text: UNWRAP_SENT, error: false })
+      if (out === 'confirmed') setLine({ text: UNWRAP.done, error: false })
+      else if (out === 'failed') setLine({ text: UNWRAP.failed, error: true })
+      else setLine({ text: UNWRAP.sent, error: false })
       void invalidate()
     } catch (e) {
       // Read state, not the error (unwrapAfterError): only a refusal or the wallet's explicit decline means nothing was sent.
@@ -109,7 +109,7 @@ export function MoveCard({ me }: { me: MeResponse }) {
       setGone(p.id)
       void invalidate()
     } catch (e) {
-      setLine({ text: isMoveInFlight(e) ? MOVE_IN_FLIGHT : e instanceof ApiError ? e.message : 'Could not dismiss it. Try again.', error: true })
+      setLine({ text: isMoveInFlight(e) ? MOVE.inFlight : e instanceof ApiError ? e.message : t('move.dismissFailed'), error: true })
     } finally {
       setPhase(null)
       gate.leave()
@@ -120,17 +120,17 @@ export function MoveCard({ me }: { me: MeResponse }) {
     return line || unwrap ? (
       <View style={{ gap: spacing.sm }}>
         {line ? <ThemedText tone={line.error ? 'error' : 'accentText'}>{line.text}</ThemedText> : null}
-        {unwrap ? <Button title={UNWRAP_BUTTON} loading={unwrapping} disabled={unwrapping} onPress={unwrapSol} /> : null}
+        {unwrap ? <Button title={UNWRAP.button} loading={unwrapping} disabled={unwrapping} onPress={unwrapSol} /> : null}
       </View>
     ) : null
   const c = moveCopy(p)
   if (p.inFlight)
     return (
       <Card>
-        <ThemedText variant="heading">{`Moving your ${COIN_NAME[p.asset]} to ${VENUE_NAME[p.to]}.`}</ThemedText>
-        <ThemedText tone="secondary">{MOVE_IN_FLIGHT}</ThemedText>
+        <ThemedText variant="heading">{t('move.moving', { coin: COIN_NAME[p.asset], venue: VENUE_NAME[p.to] })}</ThemedText>
+        <ThemedText tone="secondary">{MOVE.inFlight}</ThemedText>
         {line ? <ThemedText tone={line.error ? 'error' : 'accentText'}>{line.text}</ThemedText> : null}
-        {unwrap ? <Button title={UNWRAP_BUTTON} loading={unwrapping} disabled={unwrapping} onPress={unwrapSol} /> : null}
+        {unwrap ? <Button title={UNWRAP.button} loading={unwrapping} disabled={unwrapping} onPress={unwrapSol} /> : null}
       </Card>
     )
   return (
@@ -138,16 +138,16 @@ export function MoveCard({ me }: { me: MeResponse }) {
       <ThemedText variant="heading">{c.title}</ThemedText>
       <ThemedText tone="secondary">{c.line}</ThemedText>
       <View style={{ flexDirection: 'row', gap: spacing.sm }}>
-        <Button title="Move" loading={phase === 'seeker' || phase === 'chain'} disabled={phase !== null} onPress={move} />
-        <Button title="Not now" kind="quiet" loading={phase === 'dismiss'} disabled={phase !== null} onPress={dismiss} />
+        <Button title={t('move.button')} loading={phase === 'seeker' || phase === 'chain'} disabled={phase !== null} onPress={move} />
+        <Button title={t('move.notNow')} kind="quiet" loading={phase === 'dismiss'} disabled={phase !== null} onPress={dismiss} />
       </View>
       {phase === 'seeker' || phase === 'chain' ? (
         <ThemedText variant="caption" tone="secondary">
-          {phase === 'seeker' ? t('wallet.waiting') : 'Moving. This can take a minute.'}
+          {phase === 'seeker' ? t('wallet.waiting') : t('move.progress')}
         </ThemedText>
       ) : null}
       {line ? <ThemedText tone={line.error ? 'error' : 'accentText'}>{line.text}</ThemedText> : null}
-      {unwrap ? <Button title={UNWRAP_BUTTON} loading={unwrapping} disabled={unwrapping || phase !== null} onPress={unwrapSol} /> : null}
+      {unwrap ? <Button title={UNWRAP.button} loading={unwrapping} disabled={unwrapping || phase !== null} onPress={unwrapSol} /> : null}
     </Card>
   )
 }

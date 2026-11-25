@@ -113,11 +113,11 @@ describe('the app helpers follow the language', () => {
       expect(dayTime('2026-10-05T21:11:34.294Z')).toBe('5 oct, 14:11')
       expect(dayLabel('2026-10-05')).toBe('5 oct')
       expect(holdingAmount({ asset: 'SKR', heldRaw: '12980460000', valueUsd: 1234.5 } as never)).toBe('12.980,46 SKR ($1.234,50)')
-      expect(formatAsOf(new Date('2026-09-20T09:41:00-07:00'), new Date('2026-09-28T16:41:00-07:00'))).toBe('as of 20 sep')
-      expect(nextRunLabel(new Date('2026-10-05T10:00:00Z'))).toBe('Today, 7:00')
+      expect(formatAsOf(new Date('2026-09-20T09:41:00-07:00'), new Date('2026-09-28T16:41:00-07:00'))).toBe('del 20 sep')
+      expect(nextRunLabel(new Date('2026-10-05T10:00:00Z'))).toBe('Hoy, 7:00')
       expect(dayHeader('2025-12-30', new Date(2026, 9, 5))).toBe('30 dic 2025')
       expect(spokenLabel({ key: 'k', ts: '2026-10-03T20:00:00Z', label: 'L', amount: '$1,00', details: [], signature: null })).toBe('3 de octubre de 2026, 13:00, L, $1,00')
-      expect(arrivalLine(new Date('2026-10-04T22:00:00Z'), new Date('2026-10-03T12:00:00Z'))).toBe('arrives 4 oct, 15:00')
+      expect(arrivalLine(new Date('2026-10-04T22:00:00Z'), new Date('2026-10-03T12:00:00Z'))).toBe('llega el 4 oct, 15:00')
     } finally {
       writeLangChoice('auto')
     }
