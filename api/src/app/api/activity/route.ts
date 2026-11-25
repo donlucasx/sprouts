@@ -89,7 +89,9 @@ export async function GET(request: Request) {
     const d = (e.detail ?? {}) as EvDetail;
     if (!str_(d.signature) || !digits(d.usdcRaw)) return [];
     const sentAt = typeof d.sentAt === "string" && !Number.isNaN(Date.parse(d.sentAt)) ? new Date(d.sentAt) : e.ts;
-    return [{ ts: sentAt, signature: d.signature, usdcRaw: d.usdcRaw }];
+    // 11-24: the coin that paid (recorded from this day on); older top-ups carry none and the app names no coin.
+    const coin = typeof d.coin === "string" && /^[A-Za-z0-9.$]{1,12}$/.test(d.coin) ? d.coin : null;
+    return [{ ts: sentAt, signature: d.signature, usdcRaw: d.usdcRaw, coin }];
   });
   // A revoke's `by`: "user" (in the app or on /revoke), "token_revoke" (the USDC approval was removed in the wallet), else Sprouts
   // found the link gone (unlinked outside the app). Rows without a wallet are skipped.

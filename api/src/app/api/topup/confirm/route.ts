@@ -5,7 +5,7 @@ import { ASSOCIATED_TOKEN_PROGRAM_ADDRESS, TOKEN_PROGRAM_ADDRESS } from "@solana
 import { requireSession } from "@/lib/auth-guard";
 import { verifyPostedTransaction } from "@/lib/verify-tx";
 import { settleUnconfirmed, waitConfirmed } from "@/lib/user-tx";
-import { checkTopUp, COMPUTE_BUDGET, topUpAccounts, topUpSourceAccounts, TOPUP_CONFIRM, type TopUpSourceAccounts } from "@/lib/topup";
+import { checkTopUp, COMPUTE_BUDGET, topUpAccounts, topUpCoinSymbol, topUpSourceAccounts, TOPUP_CONFIRM, type TopUpSourceAccounts } from "@/lib/topup";
 import { JUPITER_AGGREGATOR } from "@/lib/jupiter";
 import { SYSTEM_PROGRAM, WSOL_MINT } from "@/lib/constants";
 import { rpc } from "@/lib/rpc";
@@ -33,6 +33,7 @@ async function postHandler(request: Request) {
   let posted;
   let plan;
   let source: TopUpSourceAccounts | undefined;
+  let inputMint: string = WSOL_MINT;
   try {
     posted = verifyPostedTransaction({
       base64: parsed.data.signedTransaction, feePayer: me,
@@ -44,7 +45,10 @@ async function postHandler(request: Request) {
     // are peeled off first, as the app does; the top-up check then reads the rest unchanged, so a setup create anywhere else is refused.
     const rest = await takeSetupPrefix(posted.instructions.map((ix) => ({ program: ix.program as string, accounts: ix.accounts as string[], data: ix.data })), me, TOPUP_SETUP_MAX);
     const mint = rest.find((ix) => ix.program === JUPITER_AGGREGATOR)?.accounts[7];
-    if (mint !== undefined && mint !== WSOL_MINT) source = await topUpSourceAccounts(me, address(mint));
+    if (mint !== undefined && mint !== WSOL_MINT) {
+      source = await topUpSourceAccounts(me, address(mint));
+      inputMint = mint;
+    }
     plan = checkTopUp(rest, { user: me, ...(await topUpAccounts(me)), source });
   } catch (e) {
     console.error(`/api/topup/confirm: refused for ${me}: ${e instanceof Error ? e.message : String(e)}`);
@@ -54,7 +58,9 @@ async function postHandler(request: Request) {
   // whose message the app shows as it is, so the user reads "nothing moved", never the "sent" line a 500 would map to).
   const repo = await getRepo();
   const sentAt = new Date();
-  const mark = { user: session.pubkey, signature: posted.signature, usdcRaw: plan.outRaw.toString() };
+  // 11-24: what paid, for Activity ("From SKR in this wallet"); a failed symbol lookup only leaves the coin unnamed.
+  const coin = await topUpCoinSymbol(inputMint).catch(() => null);
+  const mark = { user: session.pubkey, signature: posted.signature, usdcRaw: plan.outRaw.toString(), inputMint, coin };
   try {
     await markTopUpSent(repo, mark);
   } catch (e) {
