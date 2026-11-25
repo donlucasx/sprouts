@@ -1,6 +1,6 @@
 import type { MeResponse, WalletPause } from './api'
 import { REFUSED, SignRefused, topUpSourceAllowed, WSOL_MINT, type SignFlow } from './sign'
-import { DROPPED_NOTHING_SENT } from './wallet-errors'
+import { droppedNothingSent } from './wallet-errors'
 import { t } from '@/i18n'
 import { usdFromCents } from "@/i18n/format"
 
@@ -212,7 +212,7 @@ export async function topUpThisPhone(a: {
   try {
     signedTransaction = await a.sign(token === undefined ? { kind: 'topup', user: a.user, usdcRaw, ...setup } : { kind: 'topup', user: a.user, usdcRaw, inputMint: token, ...setup })(built.transaction)
   } catch (e) {
-    throw new TopUpFailed(e instanceof SignRefused ? e.message : DROPPED_NOTHING_SENT)
+    throw new TopUpFailed(e instanceof SignRefused ? e.message : droppedNothingSent())
   }
   a.onSigned?.()
   let answer: { status?: string }

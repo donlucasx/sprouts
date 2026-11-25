@@ -3,7 +3,7 @@ import { coinRows, type CoinRow } from './me-state'
 import { grouped, formatUsd } from './format'
 import { decimalSeparator } from '@/i18n/format'
 import { REFUSED, SignRefused, type SignFlow } from './sign'
-import { DROPPED_NOTHING_SENT } from './wallet-errors'
+import { droppedNothingSent } from './wallet-errors'
 import { t } from '@/i18n'
 
 /**
@@ -123,7 +123,7 @@ export async function plantSkrThisPhone(a: {
   try {
     signedTransaction = await a.sign({ kind: 'stake', user: a.user, amountRaw })(built.transaction)
   } catch (e) {
-    throw new PlantFailed(e instanceof SignRefused ? e.message : DROPPED_NOTHING_SENT)
+    throw new PlantFailed(e instanceof SignRefused ? e.message : droppedNothingSent())
   }
   a.onSigned?.()
   let answer: { status?: string }

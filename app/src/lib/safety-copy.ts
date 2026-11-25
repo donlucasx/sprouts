@@ -1,5 +1,6 @@
+import { t } from '@/i18n'
 import { en } from '@/i18n/en'
-import { usdFromCents } from "@/i18n/format"
+import { decimalNumber, usdFromCents } from "@/i18n/format"
 
 /**
  * What Sprouts can and can't do with a linked wallet, shown on Link a wallet before anyone signs. His note 10-22 ("too much text,
@@ -8,7 +9,7 @@ import { usdFromCents } from "@/i18n/format"
  */
 /** The line above the card. His note 10-28: "Your USDC stays in your wallet until then." cut. */
 /** Heading of the Link a wallet screen; the same string as the heading on /link (api/src/app/link/page.tsx). */
-export const SAFETY_HEADING = "What Sprouts can and can't do"
+export const SAFETY_HEADING = en['link.safety.heading']
 /** 11-25 (his ruling, store reviews: "don't get how it works"): three steps at the top of Link a wallet; English here for the web drift test. */
 export const LINK_STEP_KEYS = ['link.step.1', 'link.step.2', 'link.step.3'] as const
 export const LINK_STEPS: readonly string[] = LINK_STEP_KEYS.map((k) => en[k])
@@ -29,15 +30,19 @@ export const CANT: readonly string[] = CANT_KEYS.map((k) => en[k])
 export const APPROVAL_WARN_TITLE = en['link.approval.title']
 export const APPROVAL_WARN_BODY = en['link.approval.body']
 
-/** Under "Another wallet" (his note 10-22: make clear more than one wallet can be linked). Its balance is not read here. */
-export const OTHER_WALLET_LINE = 'Link a wallet from your computer, or from the browser inside any mobile wallet app. Each wallet plants from its own USDC.'
-/** 10-28: under the code. Plain text, no link: a tap would open the phone's own browser, which has no wallet. */
-export const CODE_STEPS = 'Go to sprouts.money/link and enter this code. It works once, for 15 minutes.'
-/** 10-28: after the wallet signs, while the link is confirmed on chain. */
-export const LINK_FINISHING = 'Approved. Finishing the link (a few seconds).'
-/** 10-28 (his note): Home's notice after a link, until OK. */
-export const LINKED_TITLE = (short: string) => `Linked ${short}`
-export const LINKED_LINE = 'Its swaps now round up into your garden.'
+/**
+ * 0.1.13 Spanish pass P5 (d): the English constants below stay for tests (en.ts is their source); every screen shows t() of the key.
+ * Under "Another wallet" (his note 10-22: make clear more than one wallet can be linked). Its balance is not read here.
+ */
+export const OTHER_WALLET_LINE = en['link.other.line']
+/** 10-28: under the code (link.code.steps). Plain text, no link: a tap would open the phone's own browser, which has no wallet. */
+export const CODE_STEPS = en['link.code.steps']
+/** 10-28: after the wallet signs, while the link is confirmed on chain (link.finishing). */
+export const LINK_FINISHING = en['link.finishing']
+/** 10-28 (his note): Home's notice after a link, until OK: "Linked your Seed Vault wallet" or "Linked Abcd...wxyz", whole sentences. */
+export const linkedTitle = (mine: boolean, short: string): string =>
+  mine ? t('activity.wallet.linked.mine') : t('activity.wallet.linked.other', { wallet: short })
+export const LINKED_LINE = en['link.linked.line']
 
 /**
  * The note under "This phone's wallet" when its USDC is below one planting (the threshold), or null: no note when the balance is
@@ -55,7 +60,7 @@ export const LINK_SOL_LAMPORTS = 10_000_000n
 export function phoneSolNote(solLamports: string | null | undefined): string | null {
   if (solLamports == null || !/^\d+$/.test(solLamports)) return null
   if (BigInt(solLamports) >= LINK_SOL_LAMPORTS) return null
-  return 'This wallet needs about 0.01 SOL to approve. It covers the one-time rent and the network fee. Add a little SOL first.'
+  return t('link.note.sol')
 }
 
 /**
@@ -87,19 +92,17 @@ export const linkApprovalPath = (code: string, wallet: string, setup: number): s
 export function setupLine(n: number, solUsd: number | null | undefined): string | null {
   if (!Number.isInteger(n) || n <= 0) return null
   const lamports = BigInt(n) * SETUP_RENT_LAMPORTS
-  const accounts = n === 1 ? '1 coin account' : `${n} coin accounts`
-  const back = `It's yours: you get it back if you empty and close ${n === 1 ? 'it' : 'them'}.`
+  const form = n === 1 ? 'one' : 'other'
   const ceilDiv = (a: bigint, b: bigint) => (a + b - 1n) / b
   if (solUsd != null && Number.isFinite(solUsd) && solUsd > 0) {
     // micro-dollars per SOL, rounded up; cents = lamports x micro-dollars / (1e9 lamports x 1e4 micro-dollars per cent), rounded up
     const microUsd = BigInt(Math.ceil(solUsd * 1e6))
     const cents = ceilDiv(lamports * microUsd, 10_000_000_000_000n)
-    const dollars = `${cents / 100n}.${String(cents % 100n).padStart(2, '0')}`
-    return `Includes $${dollars} one-time setup for ${accounts}, paid in SOL. ${back}`
+    return t(`setup.usd.${form}`, { usd: usdFromCents(Number(cents)), n })
   }
   // 0.0001 SOL = 100,000 lamports, rounded up
   const tenThousandths = ceilDiv(lamports, 100_000n)
-  return `Includes about ${tenThousandths / 10_000n}.${String(tenThousandths % 10_000n).padStart(4, '0')} SOL one-time setup for ${accounts}. ${back}`
+  return t(`setup.sol.${form}`, { sol: decimalNumber(Number(tenThousandths) / 10_000, 4), n })
 }
 
 export function phoneUsdcNote(usdcRaw: string | null | undefined, thresholdCents: number): string | null {
@@ -108,6 +111,6 @@ export function phoneUsdcNote(usdcRaw: string | null | undefined, thresholdCents
   if (cents >= thresholdCents) return null
   // 10-26 copy review row 2: the wallet named, the amount to add (the threshold less what it holds)
   const add = usdFromCents(thresholdCents - cents)
-  if (cents === 0) return `This wallet has no USDC. Add at least ${add} to it so Sprouts can plant.`
-  return `This wallet has ${usdFromCents(cents)} of USDC. Add at least ${add} to it so Sprouts can plant.`
+  if (cents === 0) return t('link.note.usdc.none', { add })
+  return t('link.note.usdc.some', { held: usdFromCents(cents), add })
 }

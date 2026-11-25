@@ -14,7 +14,7 @@ import { api, ApiError } from '@/lib/api'
 import { useMe, useInvalidateMe } from '@/lib/me'
 import { useSession } from '@/lib/session'
 import { makeSigner, SignRefused } from '@/lib/sign'
-import { DROPPED_NOTHING_SENT, isSessionDropped } from '@/lib/wallet-errors'
+import { droppedNothingSent, isSessionDropped } from '@/lib/wallet-errors'
 import { arrivalParts, formatSkr } from '@/lib/format'
 import { withdrawRows } from '@/lib/withdraw-list'
 import { oneAtATime, withdrawAtTap, type WithdrawPlan, type WithdrawRequest } from '@/lib/withdraw-flow'
@@ -117,7 +117,7 @@ export default function Withdraw() {
       await invalidate()
       router.replace('/home')
     } catch (e) {
-      setError(e instanceof ApiError || e instanceof SignRefused ? e.message : isSessionDropped(e) ? DROPPED_NOTHING_SENT : t('withdraw.failed'))
+      setError(e instanceof ApiError || e instanceof SignRefused ? e.message : isSessionDropped(e) ? droppedNothingSent() : t('withdraw.failed'))
     } finally {
       gate.leave()
       setBusy(false)
@@ -134,7 +134,7 @@ export default function Withdraw() {
       await invalidate()
       router.replace('/home')
     } catch (e) {
-      setError(e instanceof ApiError || e instanceof SignRefused ? e.message : isSessionDropped(e) ? DROPPED_NOTHING_SENT : t('withdraw.putBackFailed'))
+      setError(e instanceof ApiError || e instanceof SignRefused ? e.message : isSessionDropped(e) ? droppedNothingSent() : t('withdraw.putBackFailed'))
     } finally {
       gate.leave()
       setBusy(false)

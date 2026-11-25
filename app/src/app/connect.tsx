@@ -16,7 +16,7 @@ import { newlyLinked } from '@/lib/newly-linked'
 import { confirmWithRetries, LINK_NOT_ON_CHAIN_YET } from '@/lib/confirm-retry'
 import { useSession } from '@/lib/session'
 import { reportLinkFailure, type LinkFailure, type LinkStep } from '@/lib/link-report'
-import { CAN_KEYS, CANT_KEYS, LINK_STEP_KEYS, CODE_STEPS, LINK_FINISHING, SAFETY_HEADING, OTHER_WALLET_LINE, linkApprovalPath, phoneSolNote, phoneUsdcNote, setupAccountsOf, setupLine } from '@/lib/safety-copy'
+import { CAN_KEYS, CANT_KEYS, LINK_STEP_KEYS, linkApprovalPath, phoneSolNote, phoneUsdcNote, setupAccountsOf, setupLine } from '@/lib/safety-copy'
 import { TopUpButton } from '@/components/TopUp'
 import { ME_USDC_SETUP, meUsdcSetupKey, TOPUP, TOPUP_DEFAULT_CENTS } from '@/lib/topup'
 import { useSolUsd } from '@/lib/sol-usd'
@@ -43,7 +43,7 @@ function LinkError({ error, title, help = true }: { error: string; title?: strin
     <>
       {title ? <ThemedText variant="heading" tone="error">{title}</ThemedText> : null}
       <ThemedText tone="error">{error}</ThemedText>
-      {help ? <Button title="Still stuck? Message us" kind="quiet" onPress={() => router.push('/support?topic=link')} style={{ alignSelf: 'flex-start' }} /> : null}
+      {help ? <Button title={t('link.stuck')} kind="quiet" onPress={() => router.push('/support?topic=link')} style={{ alignSelf: 'flex-start' }} /> : null}
     </>
   )
 }
@@ -165,28 +165,28 @@ export default function Connect() {
       setCode((await api<{ code: string }>('/api/link/new', { method: 'POST', body: {} })).code)
     } catch (e) {
       setErrorFrom('code')
-      setError(e instanceof ApiError ? e.message : 'Could not make a code. Try again.')
+      setError(e instanceof ApiError ? e.message : t('link.code.failed'))
     } finally {
       setCoding(false)
     }
   }
 
   return (
-    <Screen back title="Link a wallet" keyboard keyboardAnchor={() => askBottom.current}>
+    <Screen back title={t('link.title')} keyboard keyboardAnchor={() => askBottom.current}>
       {/* 11-25 (his ruling): how it works, in three steps, before anything else */}
       <View style={{ gap: spacing.xs }}>
         {LINK_STEP_KEYS.map((k, i) => (
           <ThemedText key={k}>{`${i + 1}. ${t(k)}`}</ThemedText>
         ))}
       </View>
-      <ThemedText variant="heading">{SAFETY_HEADING}</ThemedText>
+      <ThemedText variant="heading">{t('link.safety.heading')}</ThemedText>
       <Card>
         {CAN_KEYS.map((k) => <Mark key={k} ok text={t(k)} />)}
         {CANT_KEYS.map((k) => <Mark key={k} ok={false} text={t(k)} />)}
       </Card>
       <View onLayout={(e) => (askBottom.current = e.nativeEvent.layout.y + e.nativeEvent.layout.height)}>
       <Card>
-        <ThemedText variant="heading">{"This phone's wallet"}</ThemedText>
+        <ThemedText variant="heading">{t('link.phone.title')}</ThemedText>
         {usdcNote ? (
           <ThemedText tone="attention" style={{ fontSize: 14, lineHeight: 20 }}>
             {usdcNote}
@@ -216,11 +216,11 @@ export default function Connect() {
         {confirming ? (
           <ApprovalStep busy={approving} onContinue={linkThisPhone} onBack={() => setConfirming(false)} />
         ) : (
-          <Button title="Approve" loading={approving} onPress={() => setConfirming(true)} />
+          <Button title={t('link.approve')} loading={approving} onPress={() => setConfirming(true)} />
         )}
         {approving ? (
           <ThemedText variant="caption" tone="secondary">
-            {signed ? LINK_FINISHING : t('wallet.waiting')}
+            {signed ? t('link.finishing') : t('wallet.waiting')}
           </ThemedText>
         ) : null}
         {error && errorFrom === 'phone' ? (
@@ -228,9 +228,9 @@ export default function Connect() {
             {/* 11-08 (his Saga note): one help line, from the second failure. A wallet that closed opens What happened? in place
                 (with Message us inside); any other error keeps "Still stuck? Message us". */}
             <LinkError error={error} title={errorTitle} help={!canAsk && showStillStuck(failures)} />
-            {canAsk && !confirming ? <Button title="Try again" loading={approving} onPress={() => setConfirming(true)} style={{ alignSelf: 'flex-start' }} /> : null}
+            {canAsk && !confirming ? <Button title={t('home.tryAgain')} loading={approving} onPress={() => setConfirming(true)} style={{ alignSelf: 'flex-start' }} /> : null}
             {canAsk && showStillStuck(failures) && !asked ? (
-              <Button title="Still stuck? Tell us what happened" kind="quiet" onPress={() => { setAsking(true); setAsked(true) }} style={{ alignSelf: 'flex-start' }} />
+              <Button title={t('link.stuck.ask')} kind="quiet" onPress={() => { setAsking(true); setAsked(true) }} style={{ alignSelf: 'flex-start' }} />
             ) : null}
             {asking ? <QuestionCard question="link_failed" onDone={() => setAsking(false)} /> : null}
           </>
@@ -238,20 +238,20 @@ export default function Connect() {
       </Card>
       </View>
       <Card>
-        <ThemedText variant="heading">Another wallet</ThemedText>
+        <ThemedText variant="heading">{t('link.other.title')}</ThemedText>
         <ThemedText tone="secondary" style={{ fontSize: 14, lineHeight: 20 }}>
-          {OTHER_WALLET_LINE}
+          {t('link.other.line')}
         </ThemedText>
         {code ? (
           <View style={{ gap: spacing.sm }}>
             <ThemedText variant="display" numeric style={{ fontFamily: FONT.displayBold, letterSpacing: 6 }}>
               {code}
             </ThemedText>
-            <ThemedText tone="secondary">{CODE_STEPS}</ThemedText>
-            <Button title="Get a new code" kind="quiet" loading={coding} onPress={codeForAnotherWallet} />
+            <ThemedText tone="secondary">{t('link.code.steps')}</ThemedText>
+            <Button title={t('link.code.new')} kind="quiet" loading={coding} onPress={codeForAnotherWallet} />
           </View>
         ) : (
-          <Button title="Get a code" kind="quiet" loading={coding} onPress={codeForAnotherWallet} />
+          <Button title={t('link.code.get')} kind="quiet" loading={coding} onPress={codeForAnotherWallet} />
         )}
         {error && errorFrom === 'code' ? <LinkError error={error} /> : null}
       </Card>

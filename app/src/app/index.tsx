@@ -7,10 +7,9 @@ import { Button } from '@/components/Button'
 import { ThemedText } from '@/components/ThemedText'
 import { Wordmark } from '@/components/Lockup'
 import { SigninSprout } from '@/components/SigninSprout'
-import { SLOGAN_LINES } from '@/lib/slogan'
 import { useSession } from '@/lib/session'
 import { signInWithSeeker } from '@/lib/signin'
-import { isSessionDropped, isWalletDeclined, SIGN_IN_DID_NOT_FINISH } from '@/lib/wallet-errors'
+import { isSessionDropped, isWalletDeclined } from '@/lib/wallet-errors'
 import { ApiError } from '@/lib/api'
 import { clearLastMe, readLastMe, writeLastMe } from '@/lib/me'
 import { stampSignIn } from '@/lib/terms'
@@ -43,6 +42,8 @@ export function WelcomeView() {
   }, [])
   const [error, setError] = useState<string | null>(null)
   const { colors } = useTheme()
+  // 0.1.13 P5 (d): the agreement is one sentence with the Terms link in its {terms} slot, so each language places the link itself
+  const [agreeBefore, agreeAfter = ''] = t('signin.agree').split('{terms}')
   return (
     <Screen scroll={false}>
       {/* 10-07 redesign (R440-R445): the sprout, the wordmark and the slogan centred in the open space (B2's spacing: the art (its clip has 15 dp of paper below the soil), 17 dp,
@@ -53,24 +54,24 @@ export function WelcomeView() {
         <Wordmark size={48} />
         <View style={{ height: 10 }} />
         <ThemedText variant="label" style={{ fontSize: 19, lineHeight: 27, textAlign: 'center' }}>
-          {SLOGAN_LINES.join('\n')}
+          {`${t('signin.slogan.1')}\n${t('signin.slogan.2')}`}
         </ThemedText>
       </View>
       <View style={{ alignSelf: 'stretch', gap: spacing.md, paddingBottom: spacing.xl }}>
         {/* R283 + R440: signing in accepts the Terms; the notice sits right above the button, the full page one tap away */}
         <ThemedText variant="caption" tone="secondary" style={{ textAlign: 'center' }}>
-          {'By signing in you agree to the '}
+          {agreeBefore}
           <Text
             accessibilityRole="link"
             onPress={() => router.push('/terms')}
             style={{ color: colors.accentText, textDecorationLine: 'underline' }}
           >
-            Terms and Privacy
+            {t('home.terms.title')}
           </Text>
-          .
+          {agreeAfter}
         </ThemedText>
         <Button
-          title="Sign in with your Seeker"
+          title={t('signin.button')}
           loading={busy}
             onPress={async () => {
               setBusy(true)
@@ -99,10 +100,10 @@ export function WelcomeView() {
                 // send a user's cancel as a drop too (audits/signin-drop, 10-06).
                 setError(
                   isSessionDropped(e) || isWalletDeclined(e)
-                    ? SIGN_IN_DID_NOT_FINISH
+                    ? t('signin.didNotFinish')
                     : e instanceof ApiError
                       ? e.message
-                      : 'Sign-in did not go through. Try again.',
+                      : t('signin.failed'),
                 )
               } finally {
                 setBusy(false)

@@ -48,8 +48,8 @@ import { MoveCard } from '@/components/MoveCard'
 import { termsNeeded, termsSummary } from '@/lib/terms'
 import { arrivalParts, formatSkr } from '@/lib/format'
 import { useSession } from '@/lib/session'
-import { LINKED_LINE, LINKED_TITLE } from '@/lib/safety-copy'
-import { PHONE_WALLET, gardenTotals, pauseState, pausedOnlyForNoUsdc, stoppedNotice, showLinkPrompt, previewLine, usdcNotice, coinRows, valueBlock, walletsLine, lastPlantingLine, staleLine, type CoinRow } from '@/lib/me-state'
+import { linkedTitle } from '@/lib/safety-copy'
+import { gardenTotals, pauseState, pausedOnlyForNoUsdc, stoppedNotice, showLinkPrompt, previewLine, usdcNotice, coinRows, valueBlock, walletsLine, lastPlantingLine, staleLine, type CoinRow } from '@/lib/me-state'
 import { FONT, radius, spacing, TARGET, useTheme } from '@/theme'
 import { homeCoinRows, showPlantMarker } from '@/lib/plant-skr'
 import { SeedMark } from '@/components/Mark'
@@ -362,10 +362,10 @@ export default function Home() {
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
             <MaterialCommunityIcons name="check-circle" size={20} color={colors.accentText} />
             <ThemedText variant="heading" style={{ flex: 1, color: colors.accentText }}>
-              {LINKED_TITLE(linked === me.user.pubkey ? `your ${PHONE_WALLET}` : `${linked.slice(0, 4)}...${linked.slice(-4)}`)}
+              {linkedTitle(linked === me.user.pubkey, `${linked.slice(0, 4)}...${linked.slice(-4)}`)}
             </ThemedText>
           </View>
-          <ThemedText style={{ fontSize: 14, lineHeight: 20 }}>{LINKED_LINE}</ThemedText>
+          <ThemedText style={{ fontSize: 14, lineHeight: 20 }}>{t('link.linked.line')}</ThemedText>
           {postLink?.line ? <ThemedText style={{ fontSize: 14, lineHeight: 20 }}>{postLink.line}</ThemedText> : null}
           {postLink?.topUp ? <TopUpButton compact user={me.user.pubkey} cents={TOPUP_DEFAULT_CENTS} done={TOPUP.done} avgDailyCents={avg} offers={usdcRead?.topUpCents ?? null} sources={usdcRead?.topUpSources ?? null} onPlantSkr={plantSkrOpen} /> : null}
           <Button title={t('home.ok')} kind="quiet" onPress={() => router.setParams({ linked: undefined })} style={{ alignSelf: 'flex-start' }} />

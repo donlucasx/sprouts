@@ -1,3 +1,5 @@
+import { t } from '@/i18n';
+import { en } from '@/i18n/en';
 /**
  * The two ways a wallet request ends without a result (audits/signin-drop, 10-06). A DROP is the wallet closing its session without
  * answering: a cold, locked Solflare does it after the user approved (the retry works), and BOTH wallets we have (Solflare 2.29.1 on
@@ -22,7 +24,9 @@ export function isWalletDeclined(e: unknown): boolean {
  * For a signing flow (withdraw, link, revoke): the phone only signs and the API sends, so a drop means nothing was sent. Never
  * retried on its own: the user approved a spend, and one more prompt is theirs to start.
  */
-export const DROPPED_NOTHING_SENT = "Your wallet didn't sign, so nothing was sent. Try again.";
+export const DROPPED_NOTHING_SENT = en['wallet.dropped'];
+/** 0.1.13 Spanish pass P5 (d): what a screen shows (the constant above is the English, for tests). */
+export const droppedNothingSent = (): string => t('wallet.dropped');
 
 /** A sign-in that ended without a signature, whether the wallet dropped it or the user cancelled (the wallets send both alike). */
-export const SIGN_IN_DID_NOT_FINISH = "Sign-in didn't finish in your wallet. Tap Sign in to try again.";
+export const SIGN_IN_DID_NOT_FINISH = en['signin.didNotFinish'];

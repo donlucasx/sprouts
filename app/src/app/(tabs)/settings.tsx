@@ -18,7 +18,7 @@ import { useSession } from '@/lib/session'
 import { useMobileWallet } from '@wallet-ui/react-native-kit'
 import { formatWallet, holdingsNote } from '@/lib/format'
 import { makeSigner, SignRefused } from '@/lib/sign'
-import { DROPPED_NOTHING_SENT, isSessionDropped } from '@/lib/wallet-errors'
+import { droppedNothingSent, isSessionDropped } from '@/lib/wallet-errors'
 import { freshSignIn } from '@/lib/signin'
 import { freshWalletSignIn } from '@/lib/reauth'
 import { identity } from '@/lib/identity'
@@ -130,7 +130,7 @@ export default function Settings() {
       setRemovedRef(`${wallet}:${new Date().toISOString().slice(0, 10)}`)
       await invalidate()
     } catch (e) {
-      setWalletError(e instanceof ApiError || e instanceof SignRefused ? e.message : isSessionDropped(e) ? DROPPED_NOTHING_SENT : t('settings.wallets.revokeFailed'))
+      setWalletError(e instanceof ApiError || e instanceof SignRefused ? e.message : isSessionDropped(e) ? droppedNothingSent() : t('settings.wallets.revokeFailed'))
     } finally {
       setWalletBusy(false)
       setSigning(false)

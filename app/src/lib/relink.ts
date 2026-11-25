@@ -9,7 +9,7 @@ import { t } from '@/i18n'
  * Ruling C6 (contracts 5.5, audit Kimi #4): a web-linked wallet's re-link is built and checked by the link page, which the API serves;
  * the Seed Vault checks its own on the phone. Shared with the Settings guarantee (Task 13): one constant, never retyped.
  */
-export const WEB_LINK_TRUST = "Web-linked wallets trust the link page at link time; your Seeker's own wallet does not."
+export const WEB_LINK_TRUST = en['relink.trust']
 
 /** R300's public promise verbatim (the controller's one sentence plus its three-word close): the re-link card and Settings (Task 13). */
 export const PUBLIC_GUARANTEE = en['promise.public']
@@ -19,31 +19,32 @@ export const PUBLIC_GUARANTEE = en['promise.public']
  * revoked), C6. T9 fix round 1 (controller ruling, "too much text, simplify"): closed, the card is the title, ONE guarantee sentence and
  * the Re-link button; everything about web-linked wallets opens in place under `disclosure`.
  */
+/** 0.1.13 Spanish pass P5 (d): each line is read at use time in the current language (getters), so a card re-render shows it. */
 export const RELINK = {
-  title: 'Re-link to keep planting',
-  body: PUBLIC_GUARANTEE,
-  button: 'Re-link',
+  get title() { return t('relink.title') },
+  get body() { return t('promise.public') },
+  get button() { return t('relink.button') },
   get waiting() { return t('wallet.waiting') },
   /** After the signature returned, while the confirm (and its retries) runs: the Seeker is done. */
   get checking() { return t('wallet.checking') },
-  disclosure: 'Linked a wallet on a computer?',
-  web: (short: string) => `${short}: open sprouts.money/link on the computer with that wallet, enter the code, and approve.`,
+  get disclosure() { return t('relink.disclosure') },
+  web: (short: string) => t('relink.web', { wallet: short }),
   /** Contracts 5.5 verbatim: the link page shows this sentence beside the same address. */
-  leashLine: 'Your delegation names this Sprouts program address, not a Sprouts server key.',
+  get leashLine() { return t('relink.leashLine') },
   /** Build-invented (Task 9, awaiting his ruling): tells the user why the address is on the card. */
-  compare: 'Approve on the link page only if it shows this same address.',
-  codeRule: 'It lasts 15 minutes, one wallet.',
-  getCode: 'Get a code',
-  newCode: 'Get a new code',
-  exposed: 'Until you re-link, your old approval stays on chain under the old rules. Re-link or revoke it to end it.',
-  done: 'Re-linked. Your round-ups plant through the Sprouts program now.',
-  webDone: (short: string) => `Re-linked ${short}.`,
+  get compare() { return t('relink.compare') },
+  get codeRule() { return t('relink.codeRule') },
+  get getCode() { return t('link.code.get') },
+  get newCode() { return t('link.code.new') },
+  get exposed() { return t('relink.exposed') },
+  get done() { return t('relink.done') },
+  webDone: (short: string) => t('relink.webDone', { wallet: short }),
   /** Before the Seed Vault is asked: nothing was signed, nothing moved. */
-  failedBefore: 'The re-link did not go through. Nothing changed.',
+  get failedBefore() { return t('relink.failedBefore') },
   /** T9 review I3: after a signature went out, never claim nothing changed. */
-  sent: 'Your approval was sent but is not confirmed yet. Pull down in a minute to check before you try again.',
-  codeFailed: 'Could not make a code. Try again.',
-} as const
+  get sent() { return t('relink.sent') },
+  get codeFailed() { return t('link.code.failed') },
+}
 
 export const short = (pk: string) => `${pk.slice(0, 4)}...${pk.slice(-4)}`
 
@@ -83,7 +84,7 @@ export function disclosureItems(web: string[], leashes: Record<string, string>):
       items.push({ kind: 'note', text: `${RELINK.leashLine} ${RELINK.compare}`, key: `${pk}-note` })
     }
   }
-  if (web.some((pk) => leashes[pk])) items.push({ kind: 'note', text: WEB_LINK_TRUST, key: 'trust' })
+  if (web.some((pk) => leashes[pk])) items.push({ kind: 'note', text: t('relink.trust'), key: 'trust' })
   items.push({ kind: 'note', text: RELINK.exposed, key: 'exposed' })
   return items
 }
