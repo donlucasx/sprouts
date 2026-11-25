@@ -3,7 +3,7 @@ import type { Key } from './en'
 /** Spanish. Lucas reviews every line before release (his ruling 11-24). Missing keys fall back to English. */
 export const es: Partial<Record<Key, string>> = {
   'settings.language': 'Idioma',
-  'settings.language.auto': 'Automático (teléfono)',
+  'settings.language.auto': 'Sistema',
   'settings.language.en': 'English',
   'settings.language.es': 'Español',
   'link.approval.title': 'Una aprobación y los redondeos van solos',
@@ -64,6 +64,14 @@ export const es: Partial<Record<Key, string>> = {
   'activity.kind.found': 'Hallazgo',
   'activity.kind.topup': 'Agregar',
   'activity.kind.wallet': 'Billetera',
+  'activity.tag.plant': 'Planta',
+  'activity.tag.swap': 'Swap',
+  'activity.tag.withdraw': 'Retiro',
+  'activity.tag.split': 'Reparto',
+  'activity.tag.move': 'Traslado',
+  'activity.tag.found': 'Hallazgo',
+  'activity.tag.topup': 'Agregar',
+  'activity.tag.wallet': 'Billetera',
   'activity.tag.ai': 'IA',
   'activity.planting.failed': 'La plantación no se completó',
   'activity.planting.nothingMoved': 'No se movió nada.',

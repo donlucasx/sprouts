@@ -4,7 +4,7 @@
  */
 export const en = {
   'settings.language': 'Language',
-  'settings.language.auto': 'Automatic (phone)',
+  'settings.language.auto': 'System',  // 11-25 his note: same word as Appearance
   'settings.language.en': 'English',
   'settings.language.es': 'Español',
   // 0.1.13 step 3 (his copy, 11-25): the wallet approval, said as the last step before the wallet opens
@@ -75,6 +75,15 @@ export const en = {
   'activity.kind.topup': 'Top up',
   'activity.kind.wallet': 'Wallet',
   'activity.tag.ai': 'AI',
+  // 11-25 (his device note: Spanish rows cramped): the row tag has its own short word per kind; the chips keep activity.kind.*
+  'activity.tag.plant': 'Plant',
+  'activity.tag.swap': 'Swap',
+  'activity.tag.withdraw': 'Withdraw',
+  'activity.tag.split': 'Split',
+  'activity.tag.move': 'Move',
+  'activity.tag.found': 'Found',
+  'activity.tag.topup': 'Top up',
+  'activity.tag.wallet': 'Wallet',
   'activity.planting.failed': 'Planting did not land',
   'activity.planting.nothingMoved': 'Nothing moved.',
   'activity.planting.onItsWay': 'Planting on its way',

@@ -5,6 +5,18 @@ import { FONT, useTheme } from '@/theme'
 import { Mark } from '@/components/Mark'
 import { t } from '@/i18n'
 import { useLang } from '@/i18n/useLang'
+import { Text, type ColorValue } from 'react-native'
+import type { Key } from '@/i18n/en'
+
+/**
+ * 11-25 (his device test: the tab names stayed English until a restart): the bar does not re-read `title` when the language changes,
+ * so each label is its own small component that subscribes to the language and re-renders by itself.
+ */
+function TabLabel({ k, color }: { k: Key; color: ColorValue }) {
+  useLang()
+  return <Text style={{ fontFamily: FONT.label, fontSize: 12, color }}>{t(k)}</Text>
+}
+const label = (k: Key) => function Label({ color }: { color: ColorValue }) { return <TabLabel k={k} color={color} /> }
 
 type IconName = ComponentProps<typeof MaterialCommunityIcons>['name']
 function icon(on: IconName, off: IconName) {
@@ -40,14 +52,14 @@ export default function TabsLayout() {
       }}
     >
       {/* R163: the Garden tab carries the Sprouts mark in the tab bar's tint (the label already says Garden). */}
-      <Tabs.Screen name="home" options={{ title: t('tabs.garden'), tabBarIcon: ({ color }) => <Mark size={24} color={String(color)} decorative /> }} />
+      <Tabs.Screen name="home" options={{ title: t('tabs.garden'), tabBarLabel: label('tabs.garden'), tabBarIcon: ({ color }) => <Mark size={24} color={String(color)} decorative /> }} />
       {/* R197 (device check 2, his note): Rules before Activity, so the bar reads Garden | Rules | Activity | Settings. */}
-      <Tabs.Screen name="rules" options={{ title: t('tabs.rules'), tabBarIcon: icon('tune-variant', 'tune-variant') }} />
+      <Tabs.Screen name="rules" options={{ title: t('tabs.rules'), tabBarLabel: label('tabs.rules'), tabBarIcon: icon('tune-variant', 'tune-variant') }} />
       <Tabs.Screen
         name="activity"
-        options={{ title: t('tabs.activity'), tabBarIcon: icon('format-list-bulleted', 'format-list-bulleted') }}
+        options={{ title: t('tabs.activity'), tabBarLabel: label('tabs.activity'), tabBarIcon: icon('format-list-bulleted', 'format-list-bulleted') }}
       />
-      <Tabs.Screen name="settings" options={{ title: t('tabs.settings'), tabBarIcon: icon('cog', 'cog-outline') }} />
+      <Tabs.Screen name="settings" options={{ title: t('tabs.settings'), tabBarLabel: label('tabs.settings'), tabBarIcon: icon('cog', 'cog-outline') }} />
     </Tabs>
   )
 }

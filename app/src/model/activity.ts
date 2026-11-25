@@ -239,7 +239,8 @@ export const filterLabel = (f: { key: Key }): string => tr(f.key)
 /** R480: the tag on each row, spelled out so no legend is needed (the colour comes from the screen); a split the AI made carries "AI".
  *  KIND_TAG is the English, for tests; the screen reads kindTag(). */
 export const KIND_TAG: Record<ActivityKind, string> = Object.fromEntries(Object.entries(KIND_KEY).map(([k, key]) => [k, en[key]])) as Record<ActivityKind, string>
-export const kindTag = (kind: ActivityKind): string => tr(KIND_KEY[kind])
+/** The row's tag: a short word per kind (11-25: Spanish needs shorter words than the chips for the fixed tag column). */
+export const kindTag = (kind: ActivityKind): string => tr(`activity.tag.${kind}`)
 
 export function mergeRows(groups: Partial<Record<ActivityKind, { row: ActivityRow; walletAccount?: boolean }[]>>): TaggedRow[] {
   const all: TaggedRow[] = []

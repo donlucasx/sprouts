@@ -68,7 +68,7 @@ function Row({ row, kind, accountPubkey, right }: { row: ActivityRow; kind: Acti
           style={({ pressed }) => ({ flex: 1, minHeight: TARGET - spacing.sm, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, opacity: pressed ? 0.6 : 1 })}
         >
           {/* R482: no box; a thin colour bar and the word in small caps, in one fixed column so the labels line up */}
-          <View style={{ width: 84, flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+          <View style={{ width: 92, flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
             <View style={{ width: 3, height: 22, borderRadius: 2, backgroundColor: tint }} />
             <ThemedText
               numberOfLines={1}
@@ -78,7 +78,7 @@ function Row({ row, kind, accountPubkey, right }: { row: ActivityRow; kind: Acti
             </ThemedText>
           </View>
           <View style={{ flex: 1 }}>
-            <ThemedText variant="label" numberOfLines={1} ellipsizeMode="tail">
+            <ThemedText variant="label" numberOfLines={2} ellipsizeMode="tail">
               {row.label}
             </ThemedText>
             <ThemedText variant="caption" tone="secondary" numeric numberOfLines={1}>
