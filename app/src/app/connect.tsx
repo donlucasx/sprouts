@@ -209,11 +209,10 @@ export default function Connect() {
           </ThemedText>
         ) : null}
         {/* 11-25 (his ruling): the link fee, said before the wallet asks */}
-        {confirming ? null : (
-          <ThemedText variant="caption" tone="secondary">
-            {t('link.fees')}
-          </ThemedText>
-        )}
+        {/* Kimi round 2 #6: shown above Approve and above the approval step's Continue to wallet alike */}
+        <ThemedText variant="caption" tone="secondary">
+          {t('link.fees')}
+        </ThemedText>
         {confirming ? (
           <ApprovalStep busy={approving} onContinue={linkThisPhone} onBack={() => setConfirming(false)} />
         ) : (
