@@ -88,8 +88,6 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const key = `usdc${url.search}|${request.headers.get("x-sprouts-app") ?? "-"}`;
   const again = repeatAnswer(session.pubkey, key);
-  // TEMP 11-25 (loop diagnosis, remove after the device check): who reads, how often; a 6-char prefix only.
-  console.log(`load-diag ${key} u=${session.pubkey.slice(0, 6)} ${again !== undefined ? "repeat" : "fresh"}`);
   if (again !== undefined) return NextResponse.json(again);
   const res = await answer(request);
   if (res.status === 200) rememberAnswer(session.pubkey, key, await res.clone().json());

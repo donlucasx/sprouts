@@ -312,8 +312,10 @@ describe("cron route", () => {
       expect(order).toContain("plant");
     });
 
-    it("a run that died (claimed over 6 minutes ago, never finished) does not hold the lock", async () => {
+    it("a run that died (claimed over 15 minutes ago, never finished) does not hold the lock; one 7 minutes old still does (11-25: maxDuration 800 s)", async () => {
       repo.cronRuns.set(today(), { startedAt: new Date(Date.now() - 7 * 60_000), finishedAt: null, ok: null, summary: null });
+      expect((await get()).status).not.toBe(200);
+      repo.cronRuns.set(today(), { startedAt: new Date(Date.now() - 16 * 60_000), finishedAt: null, ok: null, summary: null });
       expect((await get()).status).toBe(200);
       expect(repo.cronRuns.get(today())?.ok).toBe(true);
     });
