@@ -42,8 +42,8 @@ export const en = {
   'plant.button': 'Plant {amount} SKR',
   'plant.line': 'Stakes this SKR in your garden, where it earns staking rewards. Taking it out later takes 48 hours.',
   // the steps as the top-up says them (build-written); done and sent are his (11-25); no fee wording
-  'plant.waiting': 'Waiting for your wallet.',
-  'plant.checking': 'Approved. Checking the chain.',
+  'wallet.waiting': 'Waiting for your wallet.',
+  'wallet.checking': 'Approved. Checking the chain.',
   'plant.done': 'Planted {amount} SKR. Your garden updates within a minute.',
   'plant.sent': 'Not confirmed yet. Check your SKR plant in a minute before trying again.',
   'plant.failedBefore': 'Could not start planting. Nothing moved. Try again.',

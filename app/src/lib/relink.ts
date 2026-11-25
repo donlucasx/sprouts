@@ -3,6 +3,7 @@ import type { MeResponse } from './api'
 import { confirmWithRetries, RELINK_NOT_ON_CHAIN_YET } from './confirm-retry'
 import { NEEDS_LIVE } from './lend-mock'
 import { leashPda, SETUP_MAX, type SignFlow } from './sign'
+import { t } from '@/i18n'
 
 /**
  * Ruling C6 (contracts 5.5, audit Kimi #4): a web-linked wallet's re-link is built and checked by the link page, which the API serves;
@@ -22,9 +23,9 @@ export const RELINK = {
   title: 'Re-link to keep planting',
   body: PUBLIC_GUARANTEE,
   button: 'Re-link',
-  waiting: 'Waiting for your wallet.',
+  get waiting() { return t('wallet.waiting') },
   /** After the signature returned, while the confirm (and its retries) runs: the Seeker is done. */
-  checking: 'Approved. Checking the chain.',
+  get checking() { return t('wallet.checking') },
   disclosure: 'Linked a wallet on a computer?',
   web: (short: string) => `${short}: open sprouts.money/link on the computer with that wallet, enter the code, and approve.`,
   /** Contracts 5.5 verbatim: the link page shows this sentence beside the same address. */

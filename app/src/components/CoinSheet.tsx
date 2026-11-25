@@ -10,6 +10,7 @@ import { PlantSkr } from '@/components/PlantSkr'
 import type { MeResponse } from '@/lib/api'
 import type { CoinRow } from '@/lib/me-state'
 import { FONT, radius, spacing, useTheme } from '@/theme'
+import { useLang } from '@/i18n/useLang'
 
 /**
  * R564: tapping a coin on Home opens this sheet from the bottom: the coin's logo, value and amount, Put in / Earned (green above
@@ -18,6 +19,7 @@ import { FONT, radius, spacing, useTheme } from '@/theme'
  * 0.1.13: the SKR row's sheet carries "Plant my SKR" (PlantSkr) while /api/me idleSkr is set.
  */
 export function CoinSheet({ me, row, onClose }: { me: MeResponse; row: CoinRow | null; onClose: () => void }) {
+  useLang()
   const { colors } = useTheme()
   const insets = useSafeAreaInsets()
   const sheet = row ? coinSheet(me, row) : null

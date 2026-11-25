@@ -14,6 +14,8 @@ import {
   lendAmountProblem, lendMaxText, lendRequest, lendScreenLines, prepareLendWithdraw, withdrawLendAtTap, type LendRequest, type LendWithdrawBuild,
 } from '@/lib/lend-withdraw'
 import { spacing, type as ramp, useTheme } from '@/theme'
+import { t } from '@/i18n'
+import { useLang } from '@/i18n/useLang'
 
 /**
  * One lending position's withdraw screen (R359), the same shape as SKR's: the position's value, All or an amount (with Max), the venue
@@ -29,6 +31,7 @@ export function LendWithdraw(props: {
   onBack: () => void
   onDone: (line: string) => void
 }) {
+  useLang()
   const { position: p, busy, setBusy, gate } = props
   const { colors } = useTheme()
   const { signTransaction } = useMobileWallet()
@@ -154,7 +157,7 @@ export function LendWithdraw(props: {
           <Button title="Withdraw" loading={busy} onPress={sign} />
           {busy ? (
             <ThemedText variant="caption" tone="secondary">
-              Waiting for your wallet.
+              {t('wallet.waiting')}
             </ThemedText>
           ) : null}
           <Button title="Change amount" kind="quiet" disabled={busy} onPress={() => setPlan(null)} />

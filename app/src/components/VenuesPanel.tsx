@@ -7,6 +7,7 @@ import { venueCard, venueGroups } from '@/model/venues'
 import { VENUES_EMPTY } from '@/lib/settings-copy'
 import { spacing, TARGET, useTheme } from '@/theme'
 import { ThemedText } from './ThemedText'
+import { useLang } from '@/i18n/useLang'
 
 function Line({ title, detail }: { title: string; detail: string }) {
   return (
@@ -23,6 +24,7 @@ function Line({ title, detail }: { title: string; detail: string }) {
  *  lists the venues Sprouts can use, then the ones it only compares. The rates and the AI's verdicts come from the daily run
  *  (GET /api/venues, R275, R276). */
 export function VenuesPanel() {
+  useLang()
   const { colors } = useTheme()
   const [open, setOpen] = useState(false)
   const venues = useQuery({ queryKey: ['venues'], queryFn: () => api<VenuesResponse>('/api/venues'), retry: false, enabled: open })

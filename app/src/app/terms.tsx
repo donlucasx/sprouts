@@ -10,9 +10,11 @@ import { useSession } from '@/lib/session'
 import { readLastMe, useMe, writeLastMe } from '@/lib/me'
 import { TERMS_VERSION, agreedLine, termsAction, termsBlocks, termsSummary, withAccepted } from '@/lib/terms'
 import { spacing } from '@/theme'
+import { useLang } from '@/i18n/useLang'
 
 /** R283: the one plain page (the final text, verbatim), linked from Welcome, Home and Settings. A signed-in user who has not accepted this version agrees here. */
 export default function Terms() {
+  useLang()
   const { session } = useSession()
   const queryClient = useQueryClient()
   // The same read Home's card is driven by: the live read, or the last verified one when the live fetch failed.

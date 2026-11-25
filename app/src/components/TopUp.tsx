@@ -14,6 +14,7 @@ import { coverageLine } from '@/lib/usdc-runway'
 import { TwoWay } from '@/components/TwoWay'
 import { oneAtATime } from '@/lib/withdraw-flow'
 import { spacing, TARGET } from '@/theme'
+import { useLang } from '@/i18n/useLang'
 
 /**
  * The SOL top-up button (10-22): one Seed Vault signature swaps this phone's wallet's SOL to `cents` of USDC. Shown wherever USDC is
@@ -30,6 +31,7 @@ import { spacing, TARGET } from '@/theme'
 /** `onPlantSkr` (0.1.13 Plant my SKR, his ruling 11-25): an SKR top-up gets a quiet "Plant my SKR instead" line that calls it (Home opens
  *  the SKR coin sheet). Only Home passes it (Link a wallet has no sheet, Kimi #12), and only while the wallet holds $5+ of liquid SKR. */
 export function TopUpButton({ user, cents: suggested, done, onDone, avgDailyCents = null, compact = false, offers = null, sources = null, onPlantSkr }: { user: string; cents: number; done: (cents: number) => string; onDone?: () => void; avgDailyCents?: number | null; compact?: boolean; offers?: readonly number[] | null; sources?: readonly TopUpSource[] | null; onPlantSkr?: () => void }) {
+  useLang()
   const [open, setOpen] = useState(!compact)
   // Only coins with an amount to offer are picked or shown; none at all = the address to send USDC to.
   const [pickedMint, setPickedMint] = useState<string | null>(null)

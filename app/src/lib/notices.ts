@@ -2,6 +2,7 @@ import { LOW_DAYS } from "./usdc-runway";
 import { plantedWhat, formatSkr, COIN_NAME_LONG } from "./format";
 import { ASSETS, isRetired, type AutoVenue, type LiveAsset, type Split } from "./coins";
 import type { MeResponse } from "./api";
+import { usdFromCents } from "@/i18n/format"
 
 /** The planting push (R172, 10-02): one line, the change and what it became, with the coin's value. The "where it sits" and "a new
  * sprout is waiting" clauses are gone: they ran past one line, and he picked the plain line over "a new sprout grows". */
@@ -80,6 +81,6 @@ export function lowUsdcNotice(usdcCents: number | null, avg: number | null, wasL
   if (!low || wasLow || paused) return { notice: null, low };
   const notice: Notice = usdcCents <= 0
     ? { kind: "paused", title: "Seed Vault wallet has no USDC", body: "Your round-ups wait until it has some. Open Sprouts to add USDC." }
-    : { kind: "paused", title: "Seed Vault wallet is low on USDC", body: `$${(usdcCents / 100).toFixed(2)} left. Open Sprouts to add more before plantings pause.` };
+    : { kind: "paused", title: "Seed Vault wallet is low on USDC", body: `${usdFromCents(usdcCents)} left. Open Sprouts to add more before plantings pause.` };
   return { notice, low };
 }

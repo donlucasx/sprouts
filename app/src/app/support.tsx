@@ -10,6 +10,7 @@ import { Disclosure } from '@/components/Disclosure'
 import { ApiError } from '@/lib/api'
 import { canSend, fetchSupportLog, isTopic, logLine, MESSAGE_MAX, previewOf, readSupportEmail, sendSupport, SUPPORT_LOG_KEY, SUPPORT_TOPICS, type SupportTopic } from '@/lib/support'
 import { radius, spacing, TARGET, useTheme } from '@/theme'
+import { useLang } from '@/i18n/useLang'
 
 /** What the "Sent with your message" row says: everything attached, in plain words (the API's support route adds the server half). */
 export const ATTACHED =
@@ -20,6 +21,7 @@ export const ATTACHED =
  * back into the app, so the email is required. Opened from Settings > Help, and from the link screen with the topic picked (?topic=link).
  */
 export default function Support() {
+  useLang()
   const { colors } = useTheme()
   const params = useLocalSearchParams<{ topic?: string }>()
   const [topic, setTopic] = useState<SupportTopic | null>(isTopic(params.topic) ? params.topic : null)

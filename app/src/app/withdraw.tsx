@@ -20,12 +20,17 @@ import { withdrawRows } from '@/lib/withdraw-list'
 import { oneAtATime, withdrawAtTap, type WithdrawPlan, type WithdrawRequest } from '@/lib/withdraw-flow'
 import { LendWithdraw } from '@/components/LendWithdraw'
 import { spacing, TARGET, type as ramp, useTheme } from '@/theme'
+import { t } from '@/i18n'
+import { useLang } from '@/i18n/useLang'
 
-const Waiting = () => (
+const Waiting = () => {
+  useLang()
+  return (
   <ThemedText variant="caption" tone="secondary">
-    Waiting for your wallet.
+    {t('wallet.waiting')}
   </ThemedText>
-)
+  )
+}
 
 export default function Withdraw() {
   const { data: me } = useMe()

@@ -5,6 +5,7 @@ import { arrivalLine, COIN_NAME, COIN_NAME_LONG, formatSkr, formatUsd, plantedLi
 import { changeSummary, STOP_LABEL } from './manager'
 import { PHONE_WALLET } from '@/lib/me-state'
 import { skrAmountText } from '@/lib/plant-skr'
+import { dayMonthParts, dayMonthYearLong, dayMonthYearParts, percent } from "@/i18n/format"
 
 /**
  * R284 + R362: every Activity row is ONE line: its time, a short label, an amount on the right. The rows sit under day headers;
@@ -145,15 +146,13 @@ export function foundRow(f: FoundVenue): ActivityRow {
     key: `f-${f.day}-${f.project}-${f.symbol}`,
     ts: f.day,
     label: `Found ${f.project} ${f.symbol}`,
-    amount: f.apyBasePct !== null ? `${f.apyBasePct.toFixed(1)}%` : null,
+    amount: f.apyBasePct !== null ? percent(f.apyBasePct, 1) : null,
     details: [f.note ?? '', FOUND_NOTE].filter(Boolean),
     signature: null,
   }
 }
 
 const DAY_ONLY = /^\d{4}-\d{2}-\d{2}$/
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-const MONTHS_LONG = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 const pad = (n: number) => String(n).padStart(2, '0')
 const localKey = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 
@@ -173,7 +172,7 @@ export function dayHeader(day: string, now: Date = new Date()): string {
   if (day === localKey(now)) return 'Today'
   if (day === localKey(yesterday)) return 'Yesterday'
   const [y, m, d] = day.split('-').map(Number)
-  return `${MONTHS[m - 1]} ${d}${y === now.getFullYear() ? '' : `, ${y}`}`
+  return y === now.getFullYear() ? dayMonthParts(m - 1, d) : dayMonthYearParts(y, m - 1, d)
 }
 
 /** R362: rows (newest first) under their local day, in order. One group per day: a found venue's day-only stamp sorts as UTC
@@ -197,7 +196,7 @@ export function groupByDay(rows: ActivityRow[], now: Date = new Date()): { key: 
 /** What TalkBack reads for a row: the full date (the header is not repeated on the row), the time, the label, the amount. */
 export function spokenLabel(r: ActivityRow): string {
   const [y, m, d] = rowDay(r.ts).split('-').map(Number)
-  return [`${MONTHS_LONG[m - 1]} ${d}, ${y}`, rowTime(r.ts), r.label, r.amount ?? ''].filter(Boolean).join(', ')
+  return [dayMonthYearLong(y, m - 1, d), rowTime(r.ts), r.label, r.amount ?? ''].filter(Boolean).join(', ')
 }
 
 /** The list shows its latest `limit` rows (the API serves fifty, newest first); "Show N more" opens the rest in place (his note 6). */

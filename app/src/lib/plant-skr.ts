@@ -1,6 +1,7 @@
 import type { MeResponse } from './api'
 import { coinRows, type CoinRow } from './me-state'
 import { grouped, formatUsd } from './format'
+import { decimalSeparator } from '@/i18n/format'
 import { REFUSED, SignRefused, type SignFlow } from './sign'
 import { DROPPED_NOTHING_SENT } from './wallet-errors'
 import { t } from '@/i18n'
@@ -68,7 +69,7 @@ export function plantAmountRaw(idleRaw: bigint, share: PlantShare): bigint {
 export function skrAmountText(raw: bigint): string {
   const whole = grouped(String(raw / 1_000_000n))
   const hundredths = (raw % 1_000_000n) / HUNDREDTH
-  return hundredths === 0n ? whole : `${whole}.${String(hundredths).padStart(2, '0')}`
+  return hundredths === 0n ? whole : `${whole}${decimalSeparator()}${String(hundredths).padStart(2, '0')}`
 }
 
 /** The amount's dollars at the price /api/me's own numbers imply (usdCents for raw), "24.80" (no "$": the line has it). */

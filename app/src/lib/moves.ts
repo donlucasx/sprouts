@@ -2,6 +2,7 @@ import { VENUE_NAME } from './coins'
 import { COIN_NAME, formatUsd } from './format'
 import { REFUSED, SignRefused, type MovePart, type SignFlow } from './sign'
 import type { LendingPosition, MoveProposal } from './api'
+import { percent } from "@/i18n/format"
 
 /** S3 result (Task 0, docs/superpowers/plans/2026-10-05-lending-spike-s3-result.md): VERDICT ONE, so one or two transactions. */
 export const MOVE_TXS_ALLOWED: readonly number[] = [1, 2]
@@ -36,7 +37,7 @@ export function moveCopy(p: MoveProposal): { title: string; line: string } {
   const to = VENUE_NAME[p.to], from = VENUE_NAME[p.from]
   return {
     title: `Move your ${COIN_NAME[p.asset]} to ${to}?`,
-    line: `${to} has paid ${p.toAvg7Pct.toFixed(1)}% over 7 days, ${from} ${p.fromAvg7Pct.toFixed(1)}%. About ${formatUsd(Math.round(p.gain30dUsd * 100))} more in 30 days, after a network cost of ${formatUsd(Math.round(p.costUsd * 100))}. One approval.`,
+    line: `${to} has paid ${percent(p.toAvg7Pct, 1)} over 7 days, ${from} ${percent(p.fromAvg7Pct, 1)}. About ${formatUsd(Math.round(p.gain30dUsd * 100))} more in 30 days, after a network cost of ${formatUsd(Math.round(p.costUsd * 100))}. One approval.`,
   }
 }
 

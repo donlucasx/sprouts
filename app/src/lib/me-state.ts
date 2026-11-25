@@ -1,6 +1,7 @@
 import type { MeResponse, LendingPosition } from './api'
 import { DECIMALS, formatUsd, formatSkr, plantedWhat, holdingAmount, positionAmount, positionNote, positionWhere } from './format'
 import { ASSETS, isRetired, isLend, liveSplit, livePins, type LiveAsset, type AutoVenue, type LendAsset } from './coins'
+import { dayMonth, usdFromCents, usdTrimmed } from "@/i18n/format"
 
 /** A cached read from before the Yield Manager build has no holdings, manager or rules.allocation and would crash every screen that reads them: it counts as no cache (10-01 whole-branch review, I2). */
 export function usableMe(cached: MeResponse | null | undefined): MeResponse | null {
@@ -133,7 +134,7 @@ export function usdcNotice(me: Pick<MeResponse, 'wallets' | 'user' | 'nextPlanti
     entries.unshift({ name: PHONE_WALLET, mine: true, state: phone.usdcCents <= 0 ? 'zero' : 'low', cents: phone.usdcCents })
   entries.sort((x, y) => Number(y.mine) - Number(x.mine))
   if (!entries.length) return null
-  const usd = (c: number) => `$${(c / 100).toFixed(c % 100 ? 2 : 0)}`
+  const usd = (c: number) => usdTrimmed(c)
   const topUp = entries.some((e) => e.mine)
   // the name alone: 'Your Seed Vault wallet has no USDC' wrapped to two lines on the Saga (10-27)
   const the = (e: Entry) => e.name
@@ -259,7 +260,7 @@ export function walletsLine(wallets: { status: string }[]): string | null {
 /** The last planting as one row that opens Activity (R150): the date and what the change became; the fee clause lives in Activity. */
 export function lastPlantingLine(r: MeResponse['lastReceipt']): string | null {
   if (!r || isRetired(r.asset)) return null   // a retired coin shows nowhere (R281)
-  const day = new Date(r.ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  const day = dayMonth(new Date(r.ts))
   return `Last planting ${day}: ${plantedWhat({ usdcInCents: r.usdcPulledCents, asset: r.asset, amountOutRaw: r.amountOutRaw, usdPrice: r.usdPrice, venue: r.venue })}`
 }
 
@@ -298,7 +299,7 @@ export function normalizeMe(me: MeResponse): MeResponse {
 export function previewLine(p: { swaps: number; savedCents: number; perSwapSavedCents: number; partial?: boolean } | null | undefined): string | null {
   if (!p || p.swaps === 0) return null
   // Kimi 11-12: a busy wallet is read only in part (its newest 500 transactions), so the total is a floor.
-  const usd = (c: number) => `${p.partial ? 'at least ' : ''}$${(c / 100).toFixed(2)}`
+  const usd = (c: number) => `${p.partial ? 'at least ' : ''}${usdFromCents(c)}`
   if (p.savedCents > 0) return `Your swaps from the last 30 days would have saved ${usd(p.savedCents)}.`
   if (p.perSwapSavedCents > 0) return `Your swaps from the last 30 days were whole dollars. With "Add 10\u00a2 to every swap" in Rules, they would have saved ${usd(p.perSwapSavedCents)}.`
   return null

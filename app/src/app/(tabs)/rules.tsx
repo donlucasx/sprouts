@@ -53,6 +53,8 @@ import { coinColor } from '@/lib/coin-colors'
 import { PauseRow } from '@/components/PauseRow'
 import { VenuesPanel } from '@/components/VenuesPanel'
 import { radius, spacing, switchColors, TARGET, useTheme } from '@/theme'
+import { t } from '@/i18n'
+import { useLang } from '@/i18n/useLang'
 
 type RulesShape = MeResponse['rules']
 
@@ -135,6 +137,7 @@ const PCT_START_OPTIONS = [100, 1_000, 10_000] as const
 const cents = (c: number) => `${c}\u00a2`
 
 export default function Rules() {
+  useLang()
   const { data: me } = useMe()
   const { colors } = useTheme()
   const toggle = switchColors(colors)
@@ -295,7 +298,7 @@ export default function Rules() {
             ) : null}
             {signing ? (
               <ThemedText variant="caption" tone="secondary">
-                Waiting for your wallet.
+                {t('wallet.waiting')}
               </ThemedText>
             ) : null}
             {error ? <ThemedText tone="error">{error}</ThemedText> : null}

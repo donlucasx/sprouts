@@ -220,7 +220,7 @@ export default function Connect() {
         )}
         {approving ? (
           <ThemedText variant="caption" tone="secondary">
-            {signed ? LINK_FINISHING : 'Waiting for your wallet.'}
+            {signed ? LINK_FINISHING : t('wallet.waiting')}
           </ThemedText>
         ) : null}
         {error && errorFrom === 'phone' ? (

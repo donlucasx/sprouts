@@ -3,6 +3,7 @@ import Constants from "expo-constants";
 import { api } from "./api";
 import { store } from "./store";
 import { QUESTIONS, type Question } from "./feedback";
+import { dayMonth } from "@/i18n/format"
 
 /** 11-01: Settings > Message us. The topics as the API knows them (api/src/app/api/support/route.ts), in the order they show. */
 export const SUPPORT_TOPICS = [
@@ -52,7 +53,7 @@ export async function fetchSupportLog(): Promise<SupportLogEntry[]> {
 
 /** "S-7K3Q · Nov 1 · Linking a wallet": the log row's first line. */
 export function logLine(e: SupportLogEntry): string {
-  const day = new Date(e.ts).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  const day = dayMonth(new Date(e.ts));
   const topic = SUPPORT_TOPICS.find((t) => t.value === e.topic)?.label ?? asQuestion(e.topic)?.title;
   return [e.ref, day, topic].filter(Boolean).join(" \u00b7 ");
 }

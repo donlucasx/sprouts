@@ -1,5 +1,6 @@
 import type { VenuesResponse, VenueRow } from '@/lib/api'
 import { VENUE_NAME } from '@/lib/coins'
+import { percent } from "@/i18n/format"
 
 /** R275: the AI's reason for skipping a venue for the day, in plain words. A reason this build does not know reads plainly too. */
 const REASON: Record<string, string> = {
@@ -9,7 +10,7 @@ const REASON: Record<string, string> = {
   data_suspect: 'Skipped today: its numbers look off',
 }
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
-const pct = (n: number) => `${n.toFixed(2)}%`
+const pct = (n: number) => percent(n, 2)
 /** A venue this build does not know (the API is ahead of a cached phone) keeps the name the API sends. */
 const venueName = (r: VenueRow) => (VENUE_NAME as Record<string, string>)[r.venue] ?? r.name
 

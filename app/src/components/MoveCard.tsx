@@ -14,9 +14,12 @@ import { isMoveInFlight, MOVE_FAILED, MOVE_IN_FLIGHT, MOVED_LINE, moveAtTap, mov
 import { partialUnwrap, UNWRAP_BUTTON, UNWRAP_DONE, UNWRAP_FAILED, UNWRAP_SENT, unwrapAfterError, unwrapAtTap, wsolAccount } from '@/lib/unwrap'
 import { oneAtATime } from '@/lib/withdraw-flow'
 import { spacing } from '@/theme'
+import { t } from '@/i18n'
+import { useLang } from '@/i18n/useLang'
 
 /** R258, R280: at most one move card, only when the API proposes one (no faked card, spec 7); one approval for both transactions (S3). */
 export function MoveCard({ me }: { me: MeResponse }) {
+  useLang()
   const p = me.moveProposal ?? null
   const { signTransactions, signAndSendTransactions, client } = useMobileWallet()
   const invalidate = useInvalidateMe()
@@ -140,7 +143,7 @@ export function MoveCard({ me }: { me: MeResponse }) {
       </View>
       {phase === 'seeker' || phase === 'chain' ? (
         <ThemedText variant="caption" tone="secondary">
-          {phase === 'seeker' ? 'Waiting for your wallet.' : 'Moving. This can take a minute.'}
+          {phase === 'seeker' ? t('wallet.waiting') : 'Moving. This can take a minute.'}
         </ThemedText>
       ) : null}
       {line ? <ThemedText tone={line.error ? 'error' : 'accentText'}>{line.text}</ThemedText> : null}

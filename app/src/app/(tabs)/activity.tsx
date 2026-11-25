@@ -14,6 +14,7 @@ import { activityQuery } from '@/lib/activity-query'
 import { filterRows, foundRow, groupByDay, KIND_FILTERS, KIND_TAG, lendWithdrawalRow, mergeRows, moveRow, plantingRow, rowTime, spokenLabel, splitRow, swapRow, skrPlantRow, topUpRow, visibleRows, walletNamer, walletRow, withdrawalRow, type ActivityKind, type ActivityRow } from '@/model/activity'
 import { undoSplit } from '@/lib/manager-api'
 import { radius, spacing, TARGET, useTheme } from '@/theme'
+import { useLang } from '@/i18n/useLang'
 
 /** R450: the type tag's colour per kind (plantings take the coin green; lending tones for moves and finds). */
 const KIND_COLOR: Record<ActivityKind, string> = {
@@ -120,6 +121,7 @@ function Row({ row, kind, accountPubkey, right }: { row: ActivityRow; kind: Acti
 
 /** Every planting, split change, swap, withdrawal, move and found venue of the signed-in Seeker, newest first, one line each. */
 export default function Activity() {
+  useLang()
   const { data: me } = useMe()
   const { colors } = useTheme()
   const skrUsd = me?.pot.skrUsd ?? null

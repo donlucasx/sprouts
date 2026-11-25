@@ -3,6 +3,7 @@ import { formatUsd, plantedWhat } from './format'
 import { skrPutInCents, type CoinRow } from './me-state'
 import { withdrawRows } from './withdraw-list'
 import { IDLE_SKR_ROW_KEY } from './plant-skr'
+import { dayMonth } from "@/i18n/format"
 
 /** R563: a row's earned as Home shows it, "+$0.03" (null when unknown); green only above zero (`positive`). */
 export function earnedLabel(usd: number | null): { text: string; positive: boolean } | null {
@@ -39,7 +40,7 @@ export function coinSheet(me: Pick<MeResponse, 'pot' | 'basket' | 'holdings' | '
   if (row.parts) for (const p of row.parts) lines.push({ label: p.where ?? '', value: p.usd ?? p.qty })   // R568: each venue, its share
   else if (row.where) lines.push({ label: 'Where', value: row.where })
   const plantings = mine.slice(0, 3).map((p) => {
-    const day = new Date(p.ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    const day = dayMonth(new Date(p.ts))
     return `${day}: ${plantedWhat({ usdcInCents: p.usdcInCents, asset: row.asset, amountOutRaw: p.amountOutRaw, usdPrice: null, venue: p.venue })}`
   })
   if (row.parts) return { lines, plantings, withdrawKey: null, walletNote: null }   // R568: Withdraw opens the list, one row per venue

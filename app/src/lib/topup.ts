@@ -2,6 +2,7 @@ import type { MeResponse, WalletPause } from './api'
 import { REFUSED, SignRefused, topUpSourceAllowed, WSOL_MINT, type SignFlow } from './sign'
 import { DROPPED_NOTHING_SENT } from './wallet-errors'
 import { t } from '@/i18n'
+import { usdFromCents } from "@/i18n/format"
 
 /**
  * The SOL top-up (10-22, owner-approved): round-ups are pulled only as USDC and most Seeker wallets hold SOL, so wherever USDC is short
@@ -32,10 +33,10 @@ export const TOPUP = {
   /** 11-20: under the open top-up, back to the closed card; sends nothing. */
   back: 'Back',
   copied: 'Copied',
-  waiting: 'Waiting for your wallet.',
-  checking: 'Approved. Checking the chain.',
-  done: (cents: number) => `Your wallet now has $${(cents / 100).toFixed(2)} more USDC. Sprouts plants again at the next daily planting.`,
-  doneLink: (cents: number) => `Your wallet now has $${(cents / 100).toFixed(2)} more USDC.`,
+  get waiting() { return t('wallet.waiting') },
+  get checking() { return t('wallet.checking') },
+  done: (cents: number) => `Your wallet now has ${usdFromCents(cents)} more USDC. Sprouts plants again at the next daily planting.`,
+  doneLink: (cents: number) => `Your wallet now has ${usdFromCents(cents)} more USDC.`,
   /** After the signature went out and no final answer came back: never "nothing moved". */
   sent: 'Your top-up was sent but is not confirmed yet. Check Home in a minute before you try again.',
   /** Before the wallet was asked (the build failed for a reason the API did not word). */

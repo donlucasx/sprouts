@@ -1,5 +1,6 @@
 import type { MeResponse } from "./api";
 import { TERMS_MD } from "./terms-text";
+import { dayMonthYear } from "@/i18n/format"
 
 /** Contracts 5.6 (DECIDED 10-04): the version the API records at sign-in and on POST /api/terms. */
 export const TERMS_VERSION = "2026-11-23";
@@ -49,5 +50,5 @@ export function agreedLine(me: Pick<MeResponse, "terms"> | null | undefined, tim
   if (!at || termsNeeded(me)) return null;
   const d = new Date(at);
   if (Number.isNaN(d.getTime())) return null;
-  return `You agreed to these Terms on ${d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone })}.`;
+  return `You agreed to these Terms on ${dayMonthYear(d, undefined, timeZone)}.`;
 }

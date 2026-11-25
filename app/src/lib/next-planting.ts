@@ -1,4 +1,4 @@
-import { formatUsd } from "./format";
+import { clockShort, formatUsd } from "./format";
 import { pauseState } from "./me-state";
 import type { MeResponse } from "./api";
 import type { Scene } from "@/model/garden";
@@ -17,12 +17,8 @@ export type NextPlantingRow = {
   line: string;
 };
 
-/** "7 AM" on the hour, "7:30 AM" otherwise: the phone's own clock. */
-function clock(d: Date): string {
-  const h = d.getHours();
-  const m = d.getMinutes();
-  return `${h % 12 === 0 ? 12 : h % 12}${m === 0 ? "" : `:${String(m).padStart(2, "0")}`} ${h < 12 ? "AM" : "PM"}`;
-}
+/** "7 AM" on the hour, "7:30 AM" otherwise (es "7:00"): the phone's own clock. */
+const clock = (d: Date): string => clockShort(d);
 
 /** The job's next run after `now`, in the phone's time zone: "Today, 7 AM" when it is later today there, else "Tomorrow, 7 AM". */
 function nextRun(now: Date): Date {

@@ -3,6 +3,8 @@ import { Switch, View } from 'react-native'
 import { MaterialCommunityIcons } from '@expo/vector-icons'
 import { radius, spacing, switchColors, useTheme } from '@/theme'
 import { ThemedText } from './ThemedText'
+import { t } from '@/i18n'
+import { useLang } from '@/i18n/useLang'
 
 /**
  * Sprouts' own switch (R147), at the top of Rules since 10-08 (R448): a dot, "Sprouts is on / paused", a native switch, and one
@@ -28,6 +30,7 @@ export function PauseRow({
   error: string | null
   onChange: (on: boolean) => void
 }) {
+  useLang()
   const { colors } = useTheme()
   // the tapped position, held until the answer lands (then `on`, from the wallets, says what happened; a failure snaps back)
   const [target, setTarget] = useState<boolean | null>(null)
@@ -68,7 +71,7 @@ export function PauseRow({
       ) : null}
       {busy ? (
         <ThemedText variant="caption" tone="secondary">
-          {shown ? 'Waiting for your wallet.' : 'Pausing.'}
+          {shown ? t('wallet.waiting') : 'Pausing.'}
         </ThemedText>
       ) : null}
       {error ? <ThemedText tone="error">{error}</ThemedText> : null}

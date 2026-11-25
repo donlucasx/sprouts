@@ -1,4 +1,5 @@
 import { en } from '@/i18n/en'
+import { usdFromCents } from "@/i18n/format"
 
 /**
  * What Sprouts can and can't do with a linked wallet, shown on Link a wallet before anyone signs. His note 10-22 ("too much text,
@@ -106,7 +107,7 @@ export function phoneUsdcNote(usdcRaw: string | null | undefined, thresholdCents
   const cents = Number(BigInt(usdcRaw) / 10_000n)
   if (cents >= thresholdCents) return null
   // 10-26 copy review row 2: the wallet named, the amount to add (the threshold less what it holds)
-  const add = `$${((thresholdCents - cents) / 100).toFixed(2)}`
+  const add = usdFromCents(thresholdCents - cents)
   if (cents === 0) return `This wallet has no USDC. Add at least ${add} to it so Sprouts can plant.`
-  return `This wallet has $${(cents / 100).toFixed(2)} of USDC. Add at least ${add} to it so Sprouts can plant.`
+  return `This wallet has ${usdFromCents(cents)} of USDC. Add at least ${add} to it so Sprouts can plant.`
 }

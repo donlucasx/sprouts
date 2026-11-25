@@ -1,3 +1,5 @@
+import { usdFromCents } from "@/i18n/format"
+
 /**
  * How long a wallet's USDC lasts at its owner's own pace (10-26 copy review rows 10-11 and the top-up's coverage hint, his rulings:
  * "coverage hint is good, just ensure its subtle"): computed on the phone from Activity's recent swaps, for this phone's wallet only
@@ -40,5 +42,5 @@ export function lowUsdcLine(balanceCents: number | null, avg: number | null): st
   // needs no average (the Saga's wallet at $0 showed nothing while it had too little history for one)
   if (balanceCents != null && balanceCents <= 0) return "Your wallet has no USDC, so nothing plants until you add some. Your round-ups are still counted.";
   if (balanceCents == null || !avg || balanceCents >= avg * LOW_DAYS) return null;
-  return `Your wallet has $${(balanceCents / 100).toFixed(2)} of USDC left. Top it up so plantings don't pause.`;
+  return `Your wallet has ${usdFromCents(balanceCents)} of USDC left. Top it up so plantings don't pause.`;
 }

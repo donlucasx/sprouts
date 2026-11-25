@@ -232,7 +232,7 @@ export default function Settings() {
         </ThemedText>
         {signing ? (
           <ThemedText variant="caption" tone="secondary">
-            Waiting for your wallet.
+            {t('wallet.waiting')}
           </ThemedText>
         ) : null}
         {walletError ? <ThemedText tone="error">{walletError}</ThemedText> : null}

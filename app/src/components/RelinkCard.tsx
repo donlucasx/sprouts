@@ -16,6 +16,8 @@ import { LEND_MOCK } from '@/lib/lend-mock'
 import { disclosureItems, RELINK, relinkCode, RelinkSent, relinkThisPhone, relinkView, relinkWebLines, short } from '@/lib/relink'
 import { oneAtATime } from '@/lib/withdraw-flow'
 import { FONT, spacing, TARGET, useTheme } from '@/theme'
+import { t } from '@/i18n'
+import { useLang } from '@/i18n/useLang'
 
 const CODE_LIFE_MS = 15 * 60_000 // api/link/new: a code lasts 15 minutes and binds to one wallet
 
@@ -25,6 +27,7 @@ const CODE_LIFE_MS = 15 * 60_000 // api/link/new: a code lasts 15 minutes and bi
  * any web wallet is still listed.
  */
 export function RelinkCard({ me }: { me: MeResponse }) {
+  useLang()
   const view = relinkView(me)
   const user = me.user.pubkey
   const webKey = view.web.join(',')

@@ -15,6 +15,8 @@ import { ApiError } from '@/lib/api'
 import { clearLastMe, readLastMe, writeLastMe } from '@/lib/me'
 import { stampSignIn } from '@/lib/terms'
 import { spacing, useTheme } from '@/theme'
+import { t } from '@/i18n'
+import { useLang } from '@/i18n/useLang'
 
 
 /** Welcome (R445, design B2 of 10-07): the swaying sprout over the wordmark, the slogan under it, the agreement and the one button. */
@@ -26,6 +28,7 @@ export default function Welcome() {
 
 /** The screen itself, apart from the redirect, so a dev build can preview it signed in (src/app/dev-welcome.tsx). */
 export function WelcomeView() {
+  useLang()
   const { session, setSession } = useSession()
   const [busy, setBusy] = useState(false)
   const { signIn, disconnect } = useMobileWallet()
@@ -108,7 +111,7 @@ export function WelcomeView() {
           />
         {busy ? (
           <ThemedText variant="caption" tone="secondary" style={{ textAlign: 'center' }}>
-            Waiting for your wallet.
+            {t('wallet.waiting')}
           </ThemedText>
         ) : null}
         {error ? (

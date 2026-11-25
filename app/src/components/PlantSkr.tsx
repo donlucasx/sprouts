@@ -74,7 +74,7 @@ export function PlantSkr({ user, idle }: { user: string; idle: IdleSkr | null })
           </ThemedText>
           <Button title={t('plant.button', { amount })} loading={phase !== null} onPress={plant} />
           <ThemedText variant="caption" tone="secondary">
-            {phase === 'wallet' ? t('plant.waiting') : phase === 'chain' ? t('plant.checking') : t('plant.line')}
+            {phase === 'wallet' ? t('wallet.waiting') : phase === 'chain' ? t('wallet.checking') : t('plant.line')}
           </ThemedText>
         </>
       )}

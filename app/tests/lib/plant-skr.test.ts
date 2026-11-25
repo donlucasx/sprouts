@@ -186,7 +186,7 @@ describe("Activity's row: 'Planted {amount} SKR' / 'From this wallet.'", () => {
     writeLangChoice('en')
     expect(skrPlantRow({ ts: '2026-11-25T10:00:00Z', signature: 'S', amountRaw: '1240000000' })).toMatchObject({ label: 'Planted 1,240 SKR', details: ['From this wallet.'], signature: 'S', amount: null })
     writeLangChoice('es')
-    expect(skrPlantRow({ ts: '2026-11-25T10:00:00Z', signature: 'S', amountRaw: '1240000000' })?.label).toBe('Plantaste 1,240 SKR')
+    expect(skrPlantRow({ ts: '2026-11-25T10:00:00Z', signature: 'S', amountRaw: '1240000000' })?.label).toBe('Plantaste 1.240 SKR')
     writeLangChoice('en')
     expect(skrPlantRow({ ts: '2026-11-25T10:00:00Z', signature: 'S', amountRaw: 'nope' })).toBeNull()
   })

@@ -1,5 +1,9 @@
 import { isLend, VENUE_NAME, type AutoVenue, type LendAsset, type LiveAsset } from "./coins";
 import type { Holding, LendingPosition } from "./api";
+import { dayHourOf, decimalSeparator, dayMonth, dayMonthParts, dayTimeOf, fixedNumber, groupedNumber, percent, timeOfDay, usdFromCents } from "@/i18n/format";
+
+// 0.1.13 P1: the formatters live in @/i18n/format (language-aware); the names the app already imports stay here.
+export { clockShort, dayMonth, dayMonthYear, decimalNumber, percent, usdTrimmed, weekday } from "@/i18n/format";
 
 /** Display decimals per leg (the mints', read on chain; stORE is 11; lending legs show the UNDERLYING, USDC 6 and SOL 9, never the receipt). Never money math: the API computes, the app formats. */
 export const DECIMALS: Record<LiveAsset, number> = { SKR: 6, stORE: 11, USDC_LEND: 6, SOL_LEND: 9, hSOL: 9, cbBTC: 8 };
@@ -12,23 +16,18 @@ const SHOWN: Record<LiveAsset, number> = { SKR: 2, stORE: 4, USDC_LEND: 2, SOL_L
 export function legLabel(asset: LiveAsset, venue?: AutoVenue | null): string {
   return `${COIN_NAME_LONG[asset]}${venue ? ` (${VENUE_NAME[venue]})` : ""}`;
 }
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const decimalSep = () => decimalSeparator();
 const SKR_DECIMALS = DECIMALS.SKR;
 
-/** R355 (10-05): a coin amount's whole part grouped by thousands, "12980.46" as "12,980.46"; the decimals untouched. */
+/** R355 (10-05): a coin amount's whole part grouped by thousands, "12980.46" as "12,980.46" (es "12.980,46"); the decimals untouched. */
 export function grouped(n: string): string {
-  const [whole, frac] = n.split(".");
-  const g = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-  return frac === undefined ? g : `${g}.${frac}`;
+  return groupedNumber(n);
 }
 /** A coin amount at `places` decimals, grouped (R355). */
-const fixed = (amount: number, places: number) => grouped(amount.toFixed(places));
+const fixed = (amount: number, places: number) => fixedNumber(amount, places);
 
 export function formatUsd(cents: number): string {
-  const sign = cents < 0 ? "-" : "";
-  const abs = Math.abs(Math.round(cents));
-  const dollars = String(Math.floor(abs / 100)).replace(/\B(?=(\d{3})+(?!\d))/g, ",");   // "$11,407.00" (10-05)
-  return `${sign}$${dollars}.${String(abs % 100).padStart(2, "0")}`;
+  return usdFromCents(cents);
 }
 
 /** SKR with its dollar value beside it (R44); the dollar part is left out only when no price is known. */
@@ -36,7 +35,7 @@ export function formatSkr(raw: bigint, skrUsd: number | null): string {
   const whole = raw / 10n ** BigInt(SKR_DECIMALS);
   const frac = raw % 10n ** BigInt(SKR_DECIMALS);
   const hundredths = Number(frac / 10_000n);
-  const skr = `${grouped(String(whole))}.${String(hundredths).padStart(2, "0")} SKR`;
+  const skr = `${grouped(String(whole))}${decimalSep()}${String(hundredths).padStart(2, "0")} SKR`;
   if (skrUsd === null) return skr;
   const cents = Math.round((Number(raw) / 10 ** SKR_DECIMALS) * skrUsd * 100);
   return `${skr} (${formatUsd(cents)})`;
@@ -47,7 +46,7 @@ export function formatStore(raw: bigint, storeUsd: number | null): string {
   const unit = 10n ** BigInt(DECIMALS.stORE);
   const whole = raw / unit;
   const tenThousandths = Number((raw % unit) / 10n ** BigInt(DECIMALS.stORE - 4));
-  const store = `${grouped(String(whole))}.${String(tenThousandths).padStart(4, "0")} stORE`;
+  const store = `${grouped(String(whole))}${decimalSep()}${String(tenThousandths).padStart(4, "0")} stORE`;
   if (storeUsd === null) return store;
   const cents = Math.round((Number(raw) / 10 ** DECIMALS.stORE) * storeUsd * 100);
   return `${store} (${formatUsd(cents)})`;
@@ -112,19 +111,16 @@ export function potHeadline(raw: bigint, skrUsd: number | null): { big: string; 
 /** A UTC `YYYY-MM-DD` as "Mon D", read as given: the API's day is the day, whatever the phone's zone. */
 export function dayLabel(day: string): string {
   const [, m, d] = day.split("-");
-  return `${MONTHS[Number(m) - 1]} ${Number(d)}`;
+  return dayMonthParts(Number(m) - 1, Number(d));
 }
 
 export function timeOf(d: Date): string {
-  const h = d.getHours();
-  const m = String(d.getMinutes()).padStart(2, "0");
-  return `${h % 12 === 0 ? 12 : h % 12}:${m} ${h < 12 ? "AM" : "PM"}`;
+  return timeOfDay(d);
 }
 
-/** R350: an Activity row's when, "Oct 5, 7:11 AM", in the phone's zone. */
+/** R350: an Activity row's when, "Oct 5, 7:11 AM" (es "5 oct, 7:11"), in the phone's zone. */
 export function dayTime(iso: string): string {
-  const d = new Date(iso);
-  return `${MONTHS[d.getMonth()]} ${d.getDate()}, ${timeOf(d)}`;
+  return dayTimeOf(new Date(iso));
 }
 
 /** "as of 9:41 AM" today, "as of yesterday 9:41 AM", else "as of Sep 20": the last verified read, never a guess. */
@@ -134,11 +130,11 @@ export function formatAsOf(date: Date, now: Date = new Date()): string {
   yesterday.setDate(now.getDate() - 1);
   if (sameDay(date, now)) return `as of ${timeOf(date)}`;
   if (sameDay(date, yesterday)) return `as of yesterday ${timeOf(date)}`;
-  return `as of ${date.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
+  return `as of ${dayMonth(date)}`;
 }
 
 /** A time as the staking withdrawals show it: "Oct 4, 3 PM", in the phone's zone. */
-const arrivalTime = (d: Date) => d.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric" });
+const arrivalTime = (d: Date) => dayHourOf(d);
 
 /**
  * When a withdrawal arrives (R156), as a phrase: "arrives Oct 4, 3 PM" while that time is ahead; "arriving today" once readyAt has
@@ -168,7 +164,7 @@ export function positionAmount(p: LendingPosition): string {
 }
 /** The row's status under the dollars: the venue and today's rate, then what it earned once that is a cent. */
 export function positionWhere(p: LendingPosition): string {
-  return p.ratePct === null ? VENUE_NAME[p.venue] : `${VENUE_NAME[p.venue]} ${p.ratePct.toFixed(1)}%`;
+  return p.ratePct === null ? VENUE_NAME[p.venue] : `${VENUE_NAME[p.venue]} ${percent(p.ratePct, 1)}`;
 }
 export function positionNote(p: LendingPosition): string {
   const where = positionWhere(p);

@@ -6,6 +6,7 @@ import { ThemedText } from './ThemedText'
 import type { NextPlantingRow } from '@/lib/next-planting'
 import type { CanRow } from '@/garden/Garden'
 import { canRoomBelow, canSlot } from '@/model/can'
+import { useLang } from '@/i18n/useLang'
 
 /** R169: the baked strokes' box height at 1x (both are the same box); the painted stroke inside is about 5.5 tall. */
 const BAR_H = Math.ceil(Math.max(SPRITES['bar-track']?.h ?? 12, SPRITES['bar-fill']?.h ?? 12))
@@ -26,6 +27,7 @@ const DARK_TRACK_OPACITY = 0.35
  * reports where its bar's centre lies and its own height, so the can is seated on the bar.
  */
 export function NextPlanting({ row, pendingCents, thresholdCents, can }: { row: NextPlantingRow; pendingCents: number; thresholdCents: number; can?: CanRow }) {
+  useLang()
   const { dark } = useTheme()
   const [width, setWidth] = useState(0)
   const [barY, setBarY] = useState<number | null>(null)
