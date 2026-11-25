@@ -15,6 +15,11 @@ export const en = {
   // 11-25 (his ruling: "less a 0.5% fee"; CAN as two lines)
   'link.can.plants': 'Plants up to $5 of USDC a day into your own savings',
   'link.can.fee': 'Takes 0.5% per planting',
+  // 11-25 (his rulings on the store-review themes): how it works, and the link fee, on Link a wallet
+  'link.step.1': 'Link a wallet that has a little USDC.',
+  'link.step.2': 'Swap like you normally do.',
+  'link.step.3': 'Sprouts rounds up each swap and plants the change once a day.',
+  'link.fees': 'Linking and unlinking each cost a small Solana network fee. Sprouts gets none of it.',
   'link.cant.send': "Can't send your money anywhere else",
   'link.cant.touch': "Can't touch other tokens or sell your garden",
   'promise.public': 'Even if our server is hacked, neither it nor the AI can move more than your daily round-up (max $5), and only into your own savings, less a 0.5% fee.',

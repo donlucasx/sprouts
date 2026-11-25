@@ -4,7 +4,8 @@
  * note 10-28: "match it so the messaging is always the same"). The app keeps its own copy in
  * app/src/lib/safety-copy.ts; app/tests/lib/safety-copy.test.ts fails if the two drift.
  */
-export const LINK_INTRO = "Every swap rounds up. Once a day, Sprouts plants the change using USDC in your wallet.";
+// 11-25 (his ruling): three steps, the same as the app's Link a wallet.
+export const LINK_STEPS: readonly string[] = ["Link a wallet that has a little USDC.", "Swap like you normally do.", "Sprouts rounds up each swap and plants the change once a day."];
 
 // 11-25 (his ruling): two lines, the fee named.
 export const CAN: readonly string[] = ["Plants up to $5 of USDC a day into your own savings", "Takes 0.5% per planting"];

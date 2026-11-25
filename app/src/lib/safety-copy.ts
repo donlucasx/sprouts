@@ -8,7 +8,11 @@ import { en } from '@/i18n/en'
 /** The line above the card. His note 10-28: "Your USDC stays in your wallet until then." cut. */
 /** Heading of the Link a wallet screen; the same string as the heading on /link (api/src/app/link/page.tsx). */
 export const SAFETY_HEADING = "What Sprouts can and can't do"
-export const LINK_INTRO = 'Every swap rounds up. Once a day, Sprouts plants the change using USDC in your wallet.'
+/** 11-25 (his ruling, store reviews: "don't get how it works"): three steps at the top of Link a wallet; English here for the web drift test. */
+export const LINK_STEP_KEYS = ['link.step.1', 'link.step.2', 'link.step.3'] as const
+export const LINK_STEPS: readonly string[] = LINK_STEP_KEYS.map((k) => en[k])
+/** 11-25 (his ruling, 4 reviews surprised by link/unlink fees): one line above Approve. */
+export const LINK_FEES = en['link.fees']
 
 /** 11-25 (his ruling): two lines, the fee named. English here for the app/web drift test; screens show t() of CAN_KEYS. */
 export const CAN_KEYS = ['link.can.plants', 'link.can.fee'] as const

@@ -1,4 +1,4 @@
-import { APPROVAL_WARN_BODY, APPROVAL_WARN_TITLE, CAN, CANT, LINK_INTRO } from "@/lib/link-safety-copy";
+import { APPROVAL_WARN_BODY, APPROVAL_WARN_TITLE, CAN, CANT, LINK_STEPS } from "@/lib/link-safety-copy";
 
 /** The leash program, for the OtterSec verified-build link. */
 const PROGRAM = "GyBmDLN72kg6xwAnZfj9c7fjeaJ3GvhkHNhFns83f8f7";
@@ -21,7 +21,7 @@ export function Safety({ ink = "#2B2622", muted = "#7A746B", leaf = "#1E6B44", r
       {/* off inside the /faqs permissions answer, where "How does it work?" already says it */}
       {/* 11-12 (his note): /link says what the card is with a heading instead of the intro line */}
       {heading ? <p style={{ margin: 0, fontWeight: 600, textAlign: "center" }}>{heading}</p> : null}
-      {intro ? <p style={{ margin: 0 }}>{LINK_INTRO}</p> : null}
+      {intro ? <ol style={{ margin: 0, paddingLeft: 20, display: "grid", gap: 4 }}>{LINK_STEPS.map((l) => <li key={l}>{l}</li>)}</ol> : null}
       <ul style={{ listStyle: "none", margin: 0, border: `1.5px solid ${rule}`, borderRadius: 16, padding: "16px 18px", background: "#fff", display: "grid", gap: 10 }}>
         {CAN.map((l) => mark(true, l))}
         {CANT.map((l) => mark(false, l))}

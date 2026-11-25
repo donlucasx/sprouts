@@ -1,19 +1,19 @@
 import { describe, it, expect } from 'vitest'
-import { SAFETY_HEADING, CAN, CANT, LINK_INTRO, APPROVAL_WARN_TITLE, APPROVAL_WARN_BODY, OTHER_WALLET_LINE, phoneUsdcNote, phoneSolNote, SETUP_RENT_LAMPORTS, setupLine, setupAccountsOf, linkApprovalPath } from '../../src/lib/safety-copy'
+import { SAFETY_HEADING, CAN, CANT, LINK_STEPS, LINK_FEES, APPROVAL_WARN_TITLE, APPROVAL_WARN_BODY, OTHER_WALLET_LINE, phoneUsdcNote, phoneSolNote, SETUP_RENT_LAMPORTS, setupLine, setupAccountsOf, linkApprovalPath } from '../../src/lib/safety-copy'
 import * as web from '../../../api/src/lib/link-safety-copy'
 
 describe('safety copy (mirrors api/src/app/safety.tsx)', () => {
   it('keeps the phone-sized shape: two can, two can\'t, and no em dashes', () => {
     expect(CAN).toHaveLength(2)   // 11-25 (his ruling): the fee is its own line
     expect(CANT).toHaveLength(2)
-    for (const l of [...CAN, ...CANT, LINK_INTRO, APPROVAL_WARN_TITLE, APPROVAL_WARN_BODY, OTHER_WALLET_LINE]) expect(l).not.toMatch(/—/)
+    for (const l of [...CAN, ...CANT, ...LINK_STEPS, LINK_FEES, APPROVAL_WARN_TITLE, APPROVAL_WARN_BODY, OTHER_WALLET_LINE]) expect(l).not.toMatch(/—/)
   })
   // his ask 10-28: /link says the app's Link a wallet lines word for word
   it('heading matches /link', () => {
     expect(SAFETY_HEADING).toBe("What Sprouts can and can't do")
   })
   it('matches the lines under the code box on /link', () => {
-    expect(web.LINK_INTRO).toBe(LINK_INTRO)
+    expect(web.LINK_STEPS).toEqual(LINK_STEPS)
     expect(web.CAN).toEqual(CAN)
     expect(web.CANT).toEqual(CANT)
     expect(web.APPROVAL_WARN_TITLE).toBe(APPROVAL_WARN_TITLE)

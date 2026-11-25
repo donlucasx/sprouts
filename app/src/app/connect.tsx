@@ -16,7 +16,7 @@ import { newlyLinked } from '@/lib/newly-linked'
 import { confirmWithRetries, LINK_NOT_ON_CHAIN_YET } from '@/lib/confirm-retry'
 import { useSession } from '@/lib/session'
 import { reportLinkFailure, type LinkFailure, type LinkStep } from '@/lib/link-report'
-import { CAN_KEYS, CANT_KEYS, CODE_STEPS, LINK_FINISHING, SAFETY_HEADING, OTHER_WALLET_LINE, linkApprovalPath, phoneSolNote, phoneUsdcNote, setupAccountsOf, setupLine } from '@/lib/safety-copy'
+import { CAN_KEYS, CANT_KEYS, LINK_STEP_KEYS, CODE_STEPS, LINK_FINISHING, SAFETY_HEADING, OTHER_WALLET_LINE, linkApprovalPath, phoneSolNote, phoneUsdcNote, setupAccountsOf, setupLine } from '@/lib/safety-copy'
 import { TopUpButton } from '@/components/TopUp'
 import { ME_USDC_SETUP, meUsdcSetupKey, TOPUP, TOPUP_DEFAULT_CENTS } from '@/lib/topup'
 import { useSolUsd } from '@/lib/sol-usd'
@@ -173,6 +173,12 @@ export default function Connect() {
 
   return (
     <Screen back title="Link a wallet" keyboard keyboardAnchor={() => askBottom.current}>
+      {/* 11-25 (his ruling): how it works, in three steps, before anything else */}
+      <View style={{ gap: spacing.xs }}>
+        {LINK_STEP_KEYS.map((k, i) => (
+          <ThemedText key={k}>{`${i + 1}. ${t(k)}`}</ThemedText>
+        ))}
+      </View>
       <ThemedText variant="heading">{SAFETY_HEADING}</ThemedText>
       <Card>
         {CAN_KEYS.map((k) => <Mark key={k} ok text={t(k)} />)}
@@ -202,6 +208,12 @@ export default function Connect() {
             {setupNote}
           </ThemedText>
         ) : null}
+        {/* 11-25 (his ruling): the link fee, said before the wallet asks */}
+        {confirming ? null : (
+          <ThemedText variant="caption" tone="secondary">
+            {t('link.fees')}
+          </ThemedText>
+        )}
         {confirming ? (
           <ApprovalStep busy={approving} onContinue={linkThisPhone} onBack={() => setConfirming(false)} />
         ) : (
