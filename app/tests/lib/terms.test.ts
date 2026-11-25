@@ -8,11 +8,9 @@ import { currentLang, t, writeLangChoice } from '@/i18n'
 const FINAL = new URL('../../../../../docs/legal/2026-11-23-terms.md', import.meta.url) // the project's docs/legal, outside the repo
 
 describe('Terms + Privacy (R283; R365, the text of 10-07)', () => {
-  // P10 (his ruling 11-25): the bundled text is the final file without its "To be completed" line (and that line's blank line), same version.
-  const REMOVED = 'To be completed: the parts in brackets are not final yet.\n\n'
-  it.skipIf(!existsSync(FINAL))('is the final file, byte for byte (never paraphrased), less the removed line', () => {
-    const final = readFileSync(FINAL, 'utf8')
-    expect(TERMS_MD).toBe(final.includes(REMOVED) ? final.replace(REMOVED, '') : final)
+  // P10 (his ruling 11-25): the "To be completed" line was removed from the final file too (same version), so this stays byte for byte.
+  it.skipIf(!existsSync(FINAL))('is the final file, byte for byte (never paraphrased)', () => {
+    expect(TERMS_MD).toBe(readFileSync(FINAL, 'utf8'))
   })
   it('P10: the "To be completed" line is gone and the version is unchanged', () => {
     expect(TERMS_MD).not.toContain('To be completed')
