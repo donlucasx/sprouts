@@ -107,7 +107,7 @@ describe('P10: the Spanish courtesy translation', () => {
     for (const bad of ['<!--', 'Para revisar', 'Pendiente de completar', 'corchetes', '---', '—']) expect(TERMS_MD_ES).not.toContain(bad)
   })
   it('the headings in the same order as the English (the section each one translates)', () => {
-    expect(termsPage(TERMS_MD_ES).body.filter((b) => b.kind === 'heading').map((b) => b.text)).toEqual(['Qué es Sprouts', 'Sprouts no es un banco', 'Quién puede usar Sprouts', 'Tu dinero se queda en tu billetera', 'Qué autoriza vincular una billetera', 'Sacar dinero', 'El gestor de rendimiento', 'Riesgos', 'Comisiones', 'Datos que guardamos', 'Si Sprouts cierra', 'Responsabilidad y ley aplicable', 'Cambios a estos términos', 'Contacto'])
+    expect(termsPage(TERMS_MD_ES).body.filter((b) => b.kind === 'heading').map((b) => b.text)).toEqual(['Qué es Sprouts', 'Sprouts no es un banco', 'Quién puede usar Sprouts', 'Tu dinero se queda en tu billetera', 'Qué autoriza vincular una billetera', 'Sacar dinero', 'El Gestor IA', 'Riesgos', 'Comisiones', 'Datos que guardamos', 'Si Sprouts cierra', 'Responsabilidad y ley aplicable', 'Cambios a estos términos', 'Contacto'])
     expect(termsBlocks(TERMS_MD_ES).filter((b) => b.kind === 'bullet')).toHaveLength(termsBlocks().filter((b) => b.kind === 'bullet').length)
   })
   it('the Spanish page: its title found after the courtesy line; its summary is the es Home lines word for word', () => {

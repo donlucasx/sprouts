@@ -125,7 +125,7 @@ describe('Home in Spanish, through the same functions', () => {
     expect(formatWallet({ pubkey: WEB, status: 'paused', dailyCapCents: 500 })).toBe('7xKX...gAsU, en pausa, límite diario $5,00')
     expect(moveCopy(FIXTURE_MOVE).title).toMatch(/^¿Mover tu \w+ a \w+\?$/)
     expect(MOVE.moved).toBe('Movido.')
-    expect(UNWRAP.button).toBe('Desenvolver tu SOL')
+    expect(UNWRAP.button).toBe('Recuperar tu SOL')
     expect(lowUsdcNotice(0, null, false, false).notice).toEqual({ kind: 'paused', title: 'La billetera Seed Vault no tiene USDC', body: 'Tus redondeos esperan hasta que tenga USDC. Abre Sprouts para agregar USDC.' })
     expect(coinFullName('USDC_LEND')).toBe('USDC en préstamo')
     expect(coinFullName('hSOL')).toBe('Helius Staked SOL')

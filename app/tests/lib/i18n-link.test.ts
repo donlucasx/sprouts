@@ -39,7 +39,7 @@ describe('link area in Spanish', () => {
   })
   it('notes, setup line (one / other, dollars / SOL) with Spanish numbers', () => {
     writeLangChoice('es')
-    expect(phoneSolNote('0')).toBe('Esta billetera necesita alrededor de 0,01 SOL para aprobar. Cubre el depósito único (rent) y la comisión de red. Primero agrega un poco de SOL.')
+    expect(phoneSolNote('0')).toBe('Esta billetera necesita alrededor de 0,01 SOL para aprobar. Cubre el depósito único y la comisión de red. Primero agrega un poco de SOL.')
     expect(phoneUsdcNote('0', 200)).toBe('Esta billetera no tiene USDC. Agrégale al menos $2,00 para que Sprouts pueda plantar.')
     expect(phoneUsdcNote('400000', 200)).toBe('Esta billetera tiene $0,40 en USDC. Agrégale al menos $1,60 para que Sprouts pueda plantar.')
     expect(setupLine(1, 147.11)).toBe('Incluye $0,30 de costo único por la apertura de 1 cuenta de moneda, que se paga en SOL. Es tuyo: lo recuperas si la vacías y la cierras.')

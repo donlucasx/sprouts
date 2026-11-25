@@ -126,7 +126,7 @@ export const ES_ERRORS = {
     "This wallet is linked to another Seeker. Revoke it there first.": "Esta billetera está vinculada a otro Seeker. Primero revócala allí.",
   },
   link_would_fail: {
-    "This wallet needs a little SOL first: about 0.01 SOL covers the one-time rent and the fee. Nothing was signed.": "Esta billetera primero necesita un poco de SOL: unos 0,01 SOL cubren el depósito único (rent) y la comisión. No se firmó nada.",
+    "This wallet needs a little SOL first: about 0.01 SOL covers the one-time rent and the fee. Nothing was signed.": "Esta billetera primero necesita un poco de SOL: unos 0,01 SOL cubren el depósito único y la comisión. No se firmó nada.",
     "This approval would fail on chain ({detail}), so no wallet was asked to sign it. Try again, or get a new code.": "Esta aprobación fallaría on-chain ({detail}), así que no se le pidió a ninguna billetera que la firmara. Inténtalo de nuevo o pide un código nuevo.",
   },
   // A 0.1.13 app matches this code, never the text; a 0.1.12 app sends no accept-language and so always gets the English stem.
