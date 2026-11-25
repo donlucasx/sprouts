@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { address } from "@solana/kit";
 import { getRepo } from "@/db/repo";
 import { rulesRowToRules } from "@/db/types";
-import { requireSession } from "@/lib/auth-guard";
+import { requireSession, rateLimited } from "@/lib/auth-guard";
 import { readPosition } from "@/lib/staking";
 import { storeBalanceRaw } from "@/lib/store";
 import { readDelegation } from "@/lib/subscriptions";
@@ -11,7 +11,9 @@ import { readHoldings, holdingsFrom, readLendingPositions, lendingFrom, lendHold
 import { idleSkrFrom, stakePlantOff } from "@/lib/plant-skr";
 import { lendSignsFor, underlyingOutRaw, receiptOutRaw } from "@/lib/lend-view";
 import { enabledLegs, LEG_SPEC, leashLive, relinkPilot, type LeashConfig } from "@/lib/leash";
-import { ownerCached, rememberAnswer, repeatAnswer } from "@/lib/memo";
+import { homeReadCapOn, ownerCached, rememberAnswer, repeatAnswer } from "@/lib/memo";
+/** 11-25: a person reads Home once or twice per open; 30 a minute is far above that and far below the ~90 a looping account sends. */
+const HOME_READS_PER_MIN = 30;
 import { sharedSharePrice, sharedPriceUsd, sharedStoreRedeemRate, sharedLeashConfig, sharedLatestCoinDays, sharedRateFacts, sharedLatestVenueRows } from "@/lib/shared-reads";
 import { TERMS_VERSION } from "@/lib/terms";
 import { carryMoves, moveCarriesFor } from "@/lib/moves";
@@ -242,6 +244,11 @@ async function answer(request: Request) {
 export async function GET(request: Request) {
   const session = await requireSession(request);
   if (session instanceof NextResponse) return session;
+  // 11-25 (his ruling): a per-user ceiling. ~6 accounts signed up within 12 minutes read Home ~1.5/s nonstop (a farm, not the app);
+  // a person reads once or twice per open. Past HOME_READS_PER_MIN in a minute: 429 with Retry-After (per instance, like every limit here).
+  if (homeReadCapOn() && rateLimited(`home-read:me:${session.pubkey}`, HOME_READS_PER_MIN)) {
+    return NextResponse.json({ error: "Too many requests. Try again in a minute." }, { status: 429, headers: { "Retry-After": "30" } });
+  }
   const url = new URL(request.url);
   const key = `me${url.search}|${request.headers.get("x-sprouts-app") ?? "-"}`;
   const again = repeatAnswer(session.pubkey, key);
