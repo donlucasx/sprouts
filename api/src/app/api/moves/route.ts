@@ -1,3 +1,4 @@
+import { langOf } from "@/lib/i18n";
 import { apiError } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { getRepo } from "@/db/repo";
@@ -9,11 +10,12 @@ export const runtime = "nodejs";
 
 /** Contracts 5.4: the user's open move card (the same shape /api/me serves as moveProposal), or null. */
 async function getHandler(request: Request) {
+  const lang = langOf(request);
   const session = await requireSession(request);
   if (session instanceof NextResponse) return session;
   const repo = await getRepo();
   const user = await repo.getUser(session.pubkey);
-  if (!user) return apiError("sign_in_first", { error: "Sign in first." }, { status: 401 });
+  if (!user) return apiError("sign_in_first", { error: "Sign in first." }, { status: 401 }, lang);
   const open = await repo.openMoveProposal(user.seedVaultPubkey);
   return NextResponse.json(json({
     proposal: open

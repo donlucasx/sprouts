@@ -1,3 +1,4 @@
+import { langOf } from "@/lib/i18n";
 import { apiError } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { isSupportRef, newSupportRef } from "@/lib/support-ref";
@@ -34,16 +35,17 @@ const plain = (v: unknown, max: number) => (typeof v === "string" ? v.replace(/[
  * The reply goes by email from hello@sprouts.money; nothing comes back into the app.
  */
 export async function POST(request: Request) {
+  const lang = langOf(request);
   const session = await requireSession(request);
   if (session instanceof NextResponse) return session;
-  if (rateLimited(`support:${session.pubkey}`, 3)) return apiError("rate_limited", { error: "Wait a minute and send it again." }, { status: 429 });
+  if (rateLimited(`support:${session.pubkey}`, 3)) return apiError("rate_limited", { error: "Wait a minute and send it again." }, { status: 429 }, lang);
   const parsed = Body.safeParse(await request.json().catch(() => null));
-  if (!parsed.success) return apiError("bad_request", { error: "Bad request." }, { status: 400 });
+  if (!parsed.success) return apiError("bad_request", { error: "Bad request." }, { status: 400 }, lang);
   const repo = await getRepo();
   const dayAgo = Date.now() - 24 * 3600_000;
   const sent = await repo.listEvents(session.pubkey, ["support_message"], SUPPORT_DAILY_CAP);
   if (sent.filter((e) => e.ts.getTime() > dayAgo).length >= SUPPORT_DAILY_CAP) {
-    return apiError("daily_limit", { error: "You have sent 5 messages today. We read them all and will reply by email." }, { status: 429 });
+    return apiError("daily_limit", { error: "You have sent 5 messages today. We read them all and will reply by email." }, { status: 429 }, lang);
   }
   const [user, wallets, recent] = await Promise.all([repo.getUser(session.pubkey), repo.listWalletsOf(session.pubkey), repo.listEvents(session.pubkey, RECENT, 3)]);
   const { topic, message, email, app } = parsed.data;

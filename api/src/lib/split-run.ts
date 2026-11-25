@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { esFixed, esNumbersIn, type Lang } from "./i18n";
 import type { Repo } from "@/db/repo";
 import type { FoundVenueRow, SplitDayRow, VenueDayRow } from "@/db/types";
 import { ASSETS, LEND_ASSETS, STOP_ORDER, isLendAsset, sameSplit, zeroSplit, type LendAsset, type LiveAsset, type Split, type Stop } from "@/domain/coins";
@@ -167,6 +168,12 @@ const usdShort = (n: number) => (n >= 1e9 ? `$${(n / 1e9).toFixed(1)}B` : n >= 1
 /** The Found row's note, from the pool's own numbers: "9.1% base, $45.2M deposited". */
 export const foundNote = (f: { apyBasePct: number | null; tvlUsd: number | null }): string =>
   [f.apyBasePct !== null ? `${f.apyBasePct.toFixed(1)}% base` : null, f.tvlUsd !== null ? `${usdShort(f.tvlUsd)} deposited` : null].filter(Boolean).join(", ");
+/** P9: the same note in Spanish, from the same numbers ("9,1% base, $45,2M depositados"); the stored note stays English. */
+export const foundNoteEs = (f: { apyBasePct: number | null; tvlUsd: number | null }): string =>
+  [f.apyBasePct !== null ? `${esFixed(f.apyBasePct, 1)}% base` : null, f.tvlUsd !== null ? `${esNumbersIn(usdShort(f.tvlUsd))} depositados` : null].filter(Boolean).join(", ");
+/** A found venue's note for this request: the stored English as it is, or for Spanish the note rebuilt from its numbers. */
+export const foundNoteFor = (f: { apyBasePct: number | null; tvlUsd: number | null; note: string | null }, lang: Lang): string | null =>
+  lang === "es" && f.note !== null && f.note === foundNote(f) ? foundNoteEs(f) : f.note;
 /** A find counts only when its base rate beats the best rate Sprouts' own venues show today for that coin (unknown rates: not a find). */
 export function beatsSprouts(f: { asset: "USDC" | "SOL"; apyBasePct: number | null }, venueRows: VenueDayRow[]): boolean {
   const lend: LendAsset = f.asset === "USDC" ? "USDC_LEND" : "SOL_LEND";

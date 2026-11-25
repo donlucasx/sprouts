@@ -1,3 +1,4 @@
+import { langOf } from "@/lib/i18n";
 import { apiError } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { getRepo } from "@/db/repo";
@@ -16,12 +17,13 @@ export const runtime = "nodejs";
  * the change. One level: only the manager's latest change, and only until the user saves anything. Nothing on chain moves.
  */
 async function postHandler(request: Request) {
+  const lang = langOf(request);
   const session = await requireSession(request);
   if (session instanceof NextResponse) return session;
   const repo = await getRepo();
   const current = await repo.getRules(session.pubkey);
   const prev = current.prevAllocation;
-  if (!prev) return apiError("nothing_to_undo", { error: "Nothing to undo." }, { status: 409 });
+  if (!prev) return apiError("nothing_to_undo", { error: "Nothing to undo." }, { status: 409 }, lang);
   const pins: Pins = {};
   for (const c of ASSETS) if (c !== "SKR" && prev[c] > 0) pins[c] = prev[c];
   // 10-23: a coin switched off stays off through the undo (a 0 pin means off with the manager off too now).

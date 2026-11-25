@@ -1,3 +1,4 @@
+import { langOf } from "@/lib/i18n";
 import { apiError, settleCode } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -32,10 +33,11 @@ function parseWallet(raw: string): Address | null {
  * not already show, so the route is rate limited per caller IP as well as per wallet, which stops cheap enumeration through it.
  */
 async function getHandler(request: Request, ctx: { params: Promise<{ wallet: string }> }) {
+  const lang = langOf(request);
   const { wallet: raw } = await ctx.params;
   const wallet = parseWallet(raw);
-  if (!wallet) return apiError("bad_address", { error: "That does not look like a Solana address." }, { status: 400 });
-  if (rateLimited(`revoke-ip:${clientIp(request)}`, 20) || rateLimited(`revoke:${wallet}`)) return apiError("rate_limited", { error: "Too many requests. Try again in a minute." }, { status: 429 });
+  if (!wallet) return apiError("bad_address", { error: "That does not look like a Solana address." }, { status: 400 }, lang);
+  if (rateLimited(`revoke-ip:${clientIp(request)}`, 20) || rateLimited(`revoke:${wallet}`)) return apiError("rate_limited", { error: "Too many requests. Try again in a minute." }, { status: 429 }, lang);
   const row = await (await getRepo()).getWallet(wallet);
   if (!row || row.status === "revoked") return NextResponse.json({ transaction: null });
   const transaction = await buildUserTransaction(wallet, await buildRevokeIxs({ delegator: wallet, delegationPda: address(row.delegationPda) }));
@@ -44,25 +46,26 @@ async function getHandler(request: Request, ctx: { params: Promise<{ wallet: str
 
 /** Sends the revoke the wallet signed [A3]; once the delegation is gone from the chain, the wallet is marked revoked. */
 async function postHandler(request: Request, ctx: { params: Promise<{ wallet: string }> }) {
+  const lang = langOf(request);
   const { wallet: raw } = await ctx.params;
   const wallet = parseWallet(raw);
-  if (!wallet) return apiError("bad_address", { error: "That does not look like a Solana address." }, { status: 400 });
+  if (!wallet) return apiError("bad_address", { error: "That does not look like a Solana address." }, { status: 400 }, lang);
   // Per caller IP (R207 #7): a send holds a function for up to 30 s of polling, so a loop from one address is slowed here.
-  if (rateLimited(`revoke-post:${clientIp(request)}`)) return apiError("rate_limited", { error: "Too many requests. Try again in a minute." }, { status: 429 });
+  if (rateLimited(`revoke-post:${clientIp(request)}`)) return apiError("rate_limited", { error: "Too many requests. Try again in a minute." }, { status: 429 }, lang);
   const parsed = Body.safeParse(await request.json().catch(() => null));
-  if (!parsed.success) return apiError("bad_request", { error: "Bad request." }, { status: 400 });
+  if (!parsed.success) return apiError("bad_request", { error: "Bad request." }, { status: 400 }, lang);
   const repo = await getRepo();
   const row = await repo.getWallet(wallet);
-  if (!row || row.status === "revoked") return apiError("nothing_to_revoke", { error: "Nothing to revoke." }, { status: 409 });
+  if (!row || row.status === "revoked") return apiError("nothing_to_revoke", { error: "Nothing to revoke." }, { status: 409 }, lang);
 
   let posted;
   try {
     posted = verifyPostedTransaction({ base64: parsed.data.signedTransaction, feePayer: wallet, programs: [SUBSCRIPTIONS_PROGRAM] });
   } catch (e) {
-    return apiError("bad_transaction", { error: e instanceof Error ? e.message : String(e) }, { status: 400 });
+    return apiError("bad_transaction", { error: e instanceof Error ? e.message : String(e) }, { status: 400 }, lang);
   }
   const pda = address(row.delegationPda);
-  if (!posted.instructions.some((ix) => ix.accounts.includes(pda))) return apiError("wrong_transaction", { error: "This revoke is for another delegation." }, { status: 400 });
+  if (!posted.instructions.some((ix) => ix.accounts.includes(pda))) return apiError("wrong_transaction", { error: "This revoke is for another delegation." }, { status: 400 }, lang);
   let status;
   try {
     await sendPosted(posted.wire);
@@ -71,13 +74,13 @@ async function postHandler(request: Request, ctx: { params: Promise<{ wallet: st
     status = await waitConfirmed(posted.signature, 3); // review I3
   }
   const settled = status === "pending" ? await settleUnconfirmed(posted) : status;   // item 8
-  if (settled !== "confirmed") return apiError(settleCode(settled), { error: settled === "failed" ? "The revoke failed on chain." : settled === "expired" ? "It did not go through. Nothing changed. Try again." : STILL_WAITING.revoke }, { status: 409 });
+  if (settled !== "confirmed") return apiError(settleCode(settled), { error: settled === "failed" ? "The revoke failed on chain." : settled === "expired" ? "It did not go through. Nothing changed. Try again." : STILL_WAITING.revoke }, { status: 409 }, lang);
   let d = await readDelegation(pda);
   for (let i = 0; i < 3 && d.exists; i++) {
     await new Promise((r) => setTimeout(r, 1_000));
     d = await readDelegation(pda);
   }
-  if (d.exists) return apiError("chain_catching_up", { error: "The chain still shows the delegation. Check again in a minute." }, { status: 409 });
+  if (d.exists) return apiError("chain_catching_up", { error: "The chain still shows the delegation. Check again in a minute." }, { status: 409 }, lang);
   await repo.setWalletStatus(wallet, "revoked");
   await repo.addEvent({ userPubkey: row.userPubkey, walletPubkey: wallet, kind: "revoke_seen", detail: { signature: posted.signature, by: "user" } });
   return NextResponse.json({ revoked: true });

@@ -1,6 +1,7 @@
 import { after } from "next/server";
 import { getRepo } from "@/db/repo";
 import { errorText, redact } from "./redact";
+import { englishErrorOf } from "./api-error";
 import { readSession } from "./session";
 
 /**
@@ -50,7 +51,7 @@ export function withFailureLog<A extends unknown[]>(kind: Kind, step: string, wh
     }
     if (res.status >= 400 && res.status !== 429) {
       // Kimi LOW-2: a body's text is redacted like a throw's, in case a route ever quotes an upstream error.
-      const error = redact(String(((await res.clone().json().catch(() => ({}))) as { error?: unknown }).error ?? ""));
+      const error = redact(englishErrorOf(res) ?? String(((await res.clone().json().catch(() => ({}))) as { error?: unknown }).error ?? ""));   // P9: the English, whatever the user read
       if (!(res.status === 400 && error === "Bad request.")) await boundedLog(recordFailure(kind, step, { status: res.status, error }, () => who(copy, { status: res.status, error }, ...rest)));
     }
     return res;
@@ -82,7 +83,7 @@ export function withAppErrorLog<A extends unknown[]>(step: string, handler: (req
       throw e;
     }
     if (res.status >= 500) {
-      const error = redact(String(((await res.clone().json().catch(() => ({}))) as { error?: unknown }).error ?? ""));
+      const error = redact(englishErrorOf(res) ?? String(((await res.clone().json().catch(() => ({}))) as { error?: unknown }).error ?? ""));   // P9: the English, whatever the user read
       await boundedLog(recordFailure("app_error", step, { status: res.status, error }, whoOf({ status: res.status, error })));
     }
     return res;

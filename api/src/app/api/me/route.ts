@@ -1,3 +1,4 @@
+import { langOf, lineText } from "@/lib/i18n";
 import { apiError } from "@/lib/api-error";
 import { withNetworkFee } from "@/lib/put-in";
 import { NextResponse } from "next/server";
@@ -42,11 +43,12 @@ const str = (v: unknown) => JSON.parse(JSON.stringify(v, (_k, x) => (typeof x ==
 
 /** Everything Home needs, computed in one place from the chain and the ledger. The app never computes money from chain reads itself. */
 async function answer(request: Request) {
+  const lang = langOf(request);
   const session = await requireSession(request);
   if (session instanceof NextResponse) return session;
   const repo = await getRepo();
   const user = await repo.getUser(session.pubkey);
-  if (!user) return apiError("sign_in_first", { error: "Sign in first." }, { status: 401 });
+  if (!user) return apiError("sign_in_first", { error: "Sign in first." }, { status: 401 }, lang);
 
   const owner = address(user.seedVaultPubkey);
   const day = dayOf(new Date());
@@ -202,7 +204,10 @@ async function answer(request: Request) {
     // 0.1.13 Plant my SKR: { raw, usdCents } from $5 of liquid SKR in the Seed Vault wallet, else null (off, unread, under $5). Old apps ignore it.
     idleSkr: idleSkrFrom(await walletSkr, skrUsd),
     terms: { currentVersion: TERMS_VERSION, acceptedVersion: user.termsVersion, acceptedAt: user.termsAcceptedAt },
-    reminder, message: CURRENT_MESSAGE, ask,
+    // P9: the reminder and the note in the asking app's language (computed per request; ids, kinds and routes unchanged).
+    reminder: reminder && lang === "es" ? { ...reminder, title: lineText(reminder.title, lang), body: lineText(reminder.body, lang) } : reminder,
+    message: lang === "es" ? { ...CURRENT_MESSAGE, heading: lineText(CURRENT_MESSAGE.heading, lang), body: lineText(CURRENT_MESSAGE.body, lang) } : CURRENT_MESSAGE,
+    ask,
     moveProposal: open
       ? { id: open.id, ts: open.ts, asset: open.asset, from: open.fromVenue, to: open.toVenue, receiptRaw: open.receiptRaw, valueUsd: open.valueUsd,
           fromAvg7Pct: open.fromAvg7Pct, toAvg7Pct: open.toAvg7Pct, gain30dUsd: open.gain30dUsd, costUsd: open.costUsd,
@@ -243,15 +248,16 @@ async function answer(request: Request) {
  * they just had (memo.ts repeatAnswer), with no DB or Helius work; any write they make clears it (auth-guard). Only 200 answers kept.
  */
 export async function GET(request: Request) {
+  const lang = langOf(request);
   const session = await requireSession(request);
   if (session instanceof NextResponse) return session;
   // 11-25 (his ruling): a per-user ceiling. ~6 accounts signed up within 12 minutes read Home ~1.5/s nonstop (a farm, not the app);
   // a person reads once or twice per open. Past HOME_READS_PER_MIN in a minute: 429 with Retry-After (per instance, like every limit here).
   if (homeReadCapOn() && rateLimited(`home-read:me:${session.pubkey}`, HOME_READS_PER_MIN)) {
-    return apiError("rate_limited", { error: "Too many requests. Try again in a minute." }, { status: 429, headers: { "Retry-After": "30" } });
+    return apiError("rate_limited", { error: "Too many requests. Try again in a minute." }, { status: 429, headers: { "Retry-After": "30" } }, lang);
   }
   const url = new URL(request.url);
-  const key = `me${url.search}|${request.headers.get("x-sprouts-app") ?? "-"}`;
+  const key = `me${url.search}|${request.headers.get("x-sprouts-app") ?? "-"}|${langOf(request)}`;   // P9: an answer carries its language
   const again = repeatAnswer(session.pubkey, key);
   if (again !== undefined) return NextResponse.json(again);
   const res = await answer(request);

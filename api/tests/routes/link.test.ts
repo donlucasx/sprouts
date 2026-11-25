@@ -336,6 +336,28 @@ describe("link flow", () => {
     (readDelegation as unknown as { mockImplementation: (v: unknown) => void }).mockImplementation(chainRead);
   });
 
+  // P9 (Spanish): a 0.1.13 app asking in Spanish reads Spanish with the same code and status; a 0.1.12-shaped request (no
+  // accept-language) gets exactly the English stem the old app's retry matches.
+  it("P9: the not-on-chain 409 is Spanish for accept-language es, the 0.1.12 English stem without the header", async () => {
+    const { readDelegation, chainRead } = (await import("@/lib/subscriptions")) as unknown as { readDelegation: { mockResolvedValue: (v: unknown) => void; mockImplementation: (v: unknown) => void }; chainRead: unknown };
+    readDelegation.mockResolvedValue({ exists: false, amountPerPeriodRaw: 0n, pulledInPeriodRaw: 0n, periodStartTs: 0n, periodLengthS: 0n });
+    const c = await mintCode(repo);
+    await getTx(new Request(`http://x/api/link/${c.code}?wallet=${WALLET}`), { params: Promise.resolve({ code: c.code }) });
+    const body = JSON.stringify({ code: c.code, wallet: WALLET, waitMs: 0 });
+    const es = await confirm(new Request("http://x/api/link/confirm", { method: "POST", headers: { "accept-language": "es", "x-sprouts-app": "0.1.13" }, body }));
+    expect(es.status).toBe(409);
+    expect(await es.json()).toEqual({ error: "Aún no se encontró una delegación para esta billetera. Primero firma la aprobación.", code: "no_delegation" });
+    const old = await confirm(new Request("http://x/api/link/confirm", { method: "POST", body }));
+    expect(old.status).toBe(409);
+    const oldBody = await old.text();
+    expect(oldBody).toBe(JSON.stringify({ error: "No delegation found for this wallet yet. Sign the approval first.", code: "no_delegation" }));
+    expect((JSON.parse(oldBody) as { error: string }).error.startsWith("No delegation found")).toBe(true);
+    // the link_failed events stay English whatever the user read (ops and alerts read them)
+    const failed = repo.events.filter((x) => x.kind === "link_failed").map((x) => (x.detail as { error: string }).error);
+    expect(failed.every((e) => e.startsWith("No delegation found"))).toBe(true);
+    readDelegation.mockImplementation(chainRead);
+  });
+
   // 11-01 (Kimi MED, user-d.skr): the send's reason was only logged and lost; the user was told to sign what they had signed.
   it("a posted approval the network refused: the 409 keeps the retry's stem, says why, and the link_failed event stores it", async () => {
     const { readDelegation, chainRead } = (await import("@/lib/subscriptions")) as unknown as { readDelegation: { mockResolvedValue: (v: unknown) => void; mockImplementation: (v: unknown) => void }; chainRead: unknown };

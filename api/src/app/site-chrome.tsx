@@ -12,6 +12,8 @@ export const X_URL = "https://x.com/sproutsonseeker";
 export const STORE_URL = "solanadappstore://details?id=money.sprouts.app";
 
 const LINKS = [["/deck", "DECK"], ["/faqs", "FAQs"], ["/link", "LINK"], ["/terms", "TERMS"], ["/revoke", "REVOKE"]] as const;
+/** P9: the same links in Spanish, on a page the browser asked for in Spanish (/terms itself stays English here). */
+const LINKS_ES = [["/deck", "DECK"], ["/faqs", "PREGUNTAS"], ["/link", "VINCULAR"], ["/terms", "TÉRMINOS"], ["/revoke", "REVOCAR"]] as const;
 
 const CSS = `
 .sc { --sc-ink: var(--ink, #2B2622); --sc-muted: var(--muted, #8A847B); }
@@ -44,12 +46,12 @@ export function SiteHeader({ darkOk = false }: { darkOk?: boolean }) {
 }
 
 /** DECK | FAQs | LINK | TERMS | REVOKE, then the X icon and the email. */
-export function SiteFooter() {
+export function SiteFooter({ lang = "en" }: { lang?: "en" | "es" } = {}) {
   return (
     <footer className={`sc sc-foot ${outfit.className}`}>
       <style>{CSS}</style>
       <nav className="sc-nav">
-        {LINKS.map(([href, label], i) => (
+        {(lang === "es" ? LINKS_ES : LINKS).map(([href, label], i) => (
           <span key={href} style={{ display: "inline-flex", alignItems: "center" }}>
             {i > 0 ? <span aria-hidden className="sc-sep" /> : null}
             <a href={href}>{label}</a>
@@ -57,7 +59,7 @@ export function SiteFooter() {
         ))}
       </nav>
       <div className="sc-contact">
-        <a href={X_URL} aria-label="Sprouts on X" title="@sproutsonseeker">
+        <a href={X_URL} aria-label={lang === "es" ? "Sprouts en X" : "Sprouts on X"} title="@sproutsonseeker">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" /></svg>
         </a>
         <span aria-hidden className="sc-sep" style={{ margin: 0 }} />

@@ -1,3 +1,4 @@
+import { langOf } from "@/lib/i18n";
 import { apiError } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -27,19 +28,20 @@ const Body = z.object({
  * with a sentence the app shows as it is. Moves nothing and records nothing: the user signs, POST /api/topup/confirm sends.
  */
 async function postHandler(request: Request) {
+  const lang = langOf(request);
   const session = await requireSession(request);
   if (session instanceof NextResponse) return session;
   const parsed = Body.safeParse(await request.json().catch(() => ({})));
-  if (!parsed.success) return apiError("topup_bad_amount", { error: "Pick an amount from $2 to $25." }, { status: 400 });
+  if (!parsed.success) return apiError("topup_bad_amount", { error: "Pick an amount from $2 to $25." }, { status: 400 }, lang);
   const { inputMint } = parsed.data;
-  if (inputMint !== undefined && !isAddress(inputMint)) return apiError("topup_bad_source", { error: TOPUP_COPY.notSource }, { status: 400 });
+  if (inputMint !== undefined && !isAddress(inputMint)) return apiError("topup_bad_source", { error: TOPUP_COPY.notSource }, { status: 400 }, lang);
   try {
     const setup = { max: parsed.data.setupMax ?? 0, rules: async () => rulesRowToRules(await (await getRepo()).getRules(session.pubkey)) };
     return NextResponse.json(await buildTopUp(address(session.pubkey), parsed.data.cents ?? TOPUP_DEFAULT_CENTS, inputMint === undefined ? undefined : address(inputMint), setup, topUpCapsFor(request)));
   } catch (e) {
-    if (e instanceof TopUpRefused) return apiError("topup_refused", { error: e.message }, { status: e.status });
+    if (e instanceof TopUpRefused) return apiError("topup_refused", { error: e.message }, { status: e.status }, lang);
     console.error(`/api/topup/build: ${e instanceof Error ? e.message : String(e)}`);
-    return apiError("topup_not_now", { error: TOPUP_COPY.notNow }, { status: 503 });
+    return apiError("topup_not_now", { error: TOPUP_COPY.notNow }, { status: 503 }, lang);
   }
 }
 export const POST = withAppErrorLog("topup/build", postHandler);

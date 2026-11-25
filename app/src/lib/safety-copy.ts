@@ -8,7 +8,7 @@ import { decimalNumber, usdFromCents } from "@/i18n/format"
  * so the messaging is always the same"); change both, the test checks they match.
  */
 /** The line above the card. His note 10-28: "Your USDC stays in your wallet until then." cut. */
-/** Heading of the Link a wallet screen; the same string as the heading on /link (api/src/app/link/page.tsx). */
+/** Heading of the Link a wallet screen; the same string as the heading on /link (api/src/lib/link-safety-copy.ts SAFETY_HEADING). */
 export const SAFETY_HEADING = en['link.safety.heading']
 /** 11-25 (his ruling, store reviews: "don't get how it works"): three steps at the top of Link a wallet; English here for the web drift test. */
 export const LINK_STEP_KEYS = ['link.step.1', 'link.step.2', 'link.step.3'] as const

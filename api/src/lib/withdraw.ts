@@ -1,4 +1,5 @@
 import { rawToShares, sharesToRaw } from "./pot";
+import { esFixed, type Lang } from "./i18n";
 
 const MIN_PICK_RAW = 1_000_000n; // 1 SKR (the program's own minimum stake; RECONCILED rule 7)
 
@@ -8,9 +9,13 @@ const skr = (raw: bigint, usd: number | null) => {
   const n = Number(raw) / 1e6;
   return usd === null ? `${n.toFixed(2)} SKR` : `${n.toFixed(2)} SKR ($${(n * usd).toFixed(2)})`;
 };
+const skrEs = (raw: bigint, usd: number | null) => {
+  const n = Number(raw) / 1e6;
+  return usd === null ? `${esFixed(n, 2)} SKR` : `${esFixed(n, 2)} SKR ($${esFixed(n * usd, 2)})`;
+};
 
 /** What a withdraw does, in numbers and in the sentences the brief shows before the fingerprint (spec 6, R60: "Withdraw", never "harvest"). */
-export function planPick(a: { mode: "earned" | "amount"; amountRaw?: bigint; pot: { skrStakedRaw: bigint; skrEarnedRaw: bigint }; sharePrice: bigint; skrUsd: number | null }): PickPlan {
+export function planPick(a: { mode: "earned" | "amount"; amountRaw?: bigint; pot: { skrStakedRaw: bigint; skrEarnedRaw: bigint }; sharePrice: bigint; skrUsd: number | null }, lang: Lang = "en"): PickPlan {
   const wanted = a.mode === "earned" ? a.pot.skrEarnedRaw : (a.amountRaw ?? 0n);
   if (wanted > a.pot.skrStakedRaw) throw new Error("That is more than your garden holds.");
   if (wanted < MIN_PICK_RAW) throw new Error(a.mode === "earned" ? "You can withdraw once your earnings reach 1 SKR." : "The smallest withdrawal is 1 SKR.");
@@ -25,5 +30,15 @@ export function planPick(a: { mode: "earned" | "amount"; amountRaw?: bigint; pot
     "Arrives in your wallet in 48 hours. You can put it back until then.",
     "Network fee about $0.001.",
   ];
+  // 0.1.13 Spanish pass P9: the same three lines in Spanish for an app that asks in Spanish (English above unchanged).
+  if (lang === "es") {
+    const amt = skrEs(amountRaw, a.skrUsd);
+    const headEs = a.mode === "earned" ? `Retirar tus ganancias: ${amt}.` : `Retirar ${amt}.`;
+    return { shares, amountRaw, prunes, brief: [
+      prunes ? `${headEs} Tu planta de SKR se hace más pequeña.` : headEs,
+      "Llega a tu billetera en 48 horas. Puedes devolverlo hasta entonces.",
+      "Comisión de red de unos $0,001.",
+    ] };
+  }
   return { shares, amountRaw, prunes, brief };
 }

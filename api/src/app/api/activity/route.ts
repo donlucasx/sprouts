@@ -1,4 +1,6 @@
 import { withNetworkFee } from "@/lib/put-in";
+import { langOf } from "@/lib/i18n";
+import { foundNoteFor } from "@/lib/split-run";
 import { NextResponse } from "next/server";
 import { getRepo } from "@/db/repo";
 import type { Asset, LiveAsset, Split } from "@/domain/coins";
@@ -20,6 +22,7 @@ const str = (v: unknown) => JSON.parse(JSON.stringify(v, (_k, x) => (typeof x ==
 
 /** The recent swaps, plantings and withdrawals of the signed-in Seeker, newest first, for the Activity list. */
 export async function GET(request: Request) {
+  const lang = langOf(request);
   const session = await requireSession(request);
   if (session instanceof NextResponse) return session;
   const repo = await getRepo();
@@ -109,7 +112,7 @@ export async function GET(request: Request) {
     const why = d.by === "user" ? ("user" as const) : d.by === "token_revoke" ? ("approval" as const) : ("outside" as const);
     return [{ ts: e.ts, kind: "revoked" as const, wallet: e.walletPubkey, why, signature: str_(d.signature) ? d.signature : null }];
   });
-  const found = foundRows.map((f) => ({ day: f.day, project: f.project, symbol: f.symbol, asset: f.asset, apyBasePct: f.apyBasePct, tvlUsd: f.tvlUsd, note: f.note }));
+  const found = foundRows.map((f) => ({ day: f.day, project: f.project, symbol: f.symbol, asset: f.asset, apyBasePct: f.apyBasePct, tvlUsd: f.tvlUsd, note: foundNoteFor(f, lang) }));
   return NextResponse.json(str({
     splits,
     swaps: swaps.map((s) => ({ signature: s.signature, ts: s.ts, walletPubkey: s.walletPubkey, usdSizeCents: s.usdSizeCents, class: s.class, roundupCents: s.roundupCents, plantingId: s.plantingId })),

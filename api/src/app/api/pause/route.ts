@@ -1,3 +1,4 @@
+import { langOf } from "@/lib/i18n";
 import { apiError } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -17,15 +18,16 @@ const Body = z.object({ paused: z.boolean(), reauth: ReauthSchema.optional() }).
  * where the per-wallet route would ask one per wallet (the nonce is single use). A revoked wallet is left alone (it links again).
  */
 async function postHandler(request: Request) {
+  const lang = langOf(request);
   const session = await requireSession(request);
   if (session instanceof NextResponse) return session;
   const parsed = Body.safeParse(await request.json().catch(() => null));
-  if (!parsed.success) return badRequest("pause", parsed.error);
+  if (!parsed.success) return badRequest("pause", parsed.error, lang);
   const repo = await getRepo();
   const { paused } = parsed.data;
   if (!paused) {
     const check = await verifyReauth(repo, session.pubkey, parsed.data.reauth, "Turning Sprouts back on");
-    if (!check.ok) return apiError("reauth_required", { error: check.error, reauth: true }, { status: 403 });
+    if (!check.ok) return apiError("reauth_required", { error: check.error, reauth: true }, { status: 403 }, lang);
   }
   const next = paused ? "paused" : "active";
   // R207: the user's pause is recorded on every wallet it covers, one already paused by the run for want of USDC included (else the

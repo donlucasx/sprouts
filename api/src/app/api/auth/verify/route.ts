@@ -1,3 +1,4 @@
+import { langOf } from "@/lib/i18n";
 import { apiError } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -35,33 +36,34 @@ const Body = z.object({
  * Every entitlement decision happens here, never on the phone.
  */
 async function verify(request: Request) {
+  const lang = langOf(request);
   // 10-31 (Kimi MED-1): a failed verify now writes an event, so an anonymous loop is slowed here like the nonce route (a 429 is not recorded).
-  if (rateLimited(`verify:${clientIp(request)}`, 20)) return apiError("rate_limited", { error: "Too many requests. Try again in a minute." }, { status: 429 });
+  if (rateLimited(`verify:${clientIp(request)}`, 20)) return apiError("rate_limited", { error: "Too many requests. Try again in a minute." }, { status: 429 }, lang);
   const parsed = Body.safeParse(await request.json().catch(() => null));
-  if (!parsed.success) return apiError("bad_request", { error: "Bad request." }, { status: 400 });
+  if (!parsed.success) return apiError("bad_request", { error: "Bad request." }, { status: 400 }, lang);
   const { input, output } = parsed.data;
 
   const signedMessage = new Uint8Array(Buffer.from(output.signedMessage, "base64"));
   const signature = new Uint8Array(Buffer.from(output.signature, "base64"));
-  if (signature.length !== 64 || signedMessage.length === 0) return apiError("bad_signature", { error: "Bad signature." }, { status: 400 });
+  if (signature.length !== 64 || signedMessage.length === 0) return apiError("bad_signature", { error: "Bad signature." }, { status: 400 }, lang);
 
   const verified = await verifySignIn({ input: input as SignInInput, output: { address: output.address, signedMessage, signature } });
-  if (!verified.ok) return apiError("signature_invalid", { error: "The signature did not verify." }, { status: 401 });
+  if (!verified.ok) return apiError("signature_invalid", { error: "The signature did not verify." }, { status: 401 }, lang);
 
   const repo = await getRepo();
-  if (!(await repo.useNonce(input.nonce, output.address))) return apiError("nonce_expired", { error: "This sign-in request expired. Try again." }, { status: 401 });
+  if (!(await repo.useNonce(input.nonce, output.address))) return apiError("nonce_expired", { error: "This sign-in request expired. Try again." }, { status: 401 }, lang);
 
   const rpcUrl = config().heliusRpcUrl;
   // K-M10: these two take the URL itself (web3.js Connection, a raw fetch); an error that quotes it is redacted before it propagates.
   const genesis = await verifyAnyGenesisHolder(rpcUrl, output.address).catch((e: unknown) => { throw redactError(e); });
-  if (!genesis) return apiError("no_genesis_token", { error: "This wallet holds no Genesis Token. The vault needs a Seeker or a Saga." }, { status: 403 });
+  if (!genesis) return apiError("no_genesis_token", { error: "This wallet holds no Genesis Token. The vault needs a Seeker or a Saga." }, { status: 403 }, lang);
 
   const skrName = await skrNameOf(rpcUrl, output.address).catch((e: unknown) => { throw redactError(e); });
   let created: boolean;
   try {
     ({ created } = await repo.upsertUser({ seedVaultPubkey: output.address, sgtMint: genesis.mint, skrName }));
   } catch (e) {
-    if (e instanceof Error && e.message === "This phone is already registered.") return apiError("phone_registered", { error: e.message }, { status: 409 });
+    if (e instanceof Error && e.message === "This phone is already registered.") return apiError("phone_registered", { error: e.message }, { status: 409 }, lang);
     throw e;
   }
   // The first acceptance of this version stands: a later sign-in neither moves its time nor adds an event.
@@ -70,11 +72,11 @@ async function verify(request: Request) {
     await repo.addEvent({ userPubkey: output.address, walletPubkey: null, kind: "terms_accepted", detail: { version: TERMS_VERSION, at: "sign-in" } });
   }
   // 0.1.13: one language_seen event when a user's phone language is new or changed (the code only, nothing derived from it).
-  const lang = parsed.data.lang?.toLowerCase();
-  if (lang && /^[a-z]{2,3}$/.test(lang)) {
+  const phoneLang = parsed.data.lang?.toLowerCase();
+  if (phoneLang && /^[a-z]{2,3}$/.test(phoneLang)) {
     try {
       const [last] = await repo.listEvents(output.address, ["language_seen"], 1);
-      if ((last?.detail as { lang?: unknown } | null)?.lang !== lang) await repo.addEvent({ userPubkey: output.address, walletPubkey: null, kind: "language_seen", detail: { lang } });
+      if ((last?.detail as { lang?: unknown } | null)?.lang !== phoneLang) await repo.addEvent({ userPubkey: output.address, walletPubkey: null, kind: "language_seen", detail: { lang: phoneLang } });
     } catch (e) {
       console.error(`sign-in: language not recorded: ${e instanceof Error ? e.message : String(e)}`);   // never fails a sign-in
     }

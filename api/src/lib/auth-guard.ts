@@ -1,4 +1,5 @@
 import { apiError } from "@/lib/api-error";
+import { langOf } from "./i18n";
 import { forgetOwnerReads } from "./memo";
 import { NextResponse } from "next/server";
 import { readSession, type Session } from "./session";
@@ -8,7 +9,7 @@ export async function requireSession(request: Request): Promise<Session | NextRe
   const header = request.headers.get("authorization") ?? "";
   const token = header.startsWith("Bearer ") ? header.slice(7) : "";
   const session = token ? await readSession(token) : null;
-  if (!session) return apiError("sign_in_first", { error: "Sign in first." }, { status: 401 });
+  if (!session) return apiError("sign_in_first", { error: "Sign in first." }, { status: 401 }, langOf(request));
   // 11-25: any write this user makes (a save, a watering, Terms, a confirm) clears their cached Home answers and chain reads here.
   if (request.method !== "GET") forgetOwnerReads(session.pubkey);
   return session;

@@ -104,3 +104,24 @@ describe('Task 17b (user rent): the setup cost line and the count it binds', () 
     expect(n).toBe('This wallet needs about 0.01 SOL to approve. It covers the one-time rent and the network fee. Add a little SOL first.')
   })
 })
+
+// 0.1.13 Spanish pass P9: /link and /faqs in Spanish say the app's es lines word for word (the same drift rule as English above).
+describe('safety copy in Spanish (mirrors api/src/lib/link-safety-copy.ts SAFETY_ES)', () => {
+  it('the web Spanish equals the app es lines for the shared keys', async () => {
+    const { es } = await import('../../src/i18n/es')
+    expect(web.SAFETY_ES.heading).toBe(es['link.safety.heading'])
+    expect(web.SAFETY_ES.steps).toEqual(['link.step.1', 'link.step.2', 'link.step.3'].map((k) => es[k as keyof typeof es]))
+    expect(web.SAFETY_ES.can).toEqual(['link.can.plants', 'link.can.fee'].map((k) => es[k as keyof typeof es]))
+    expect(web.SAFETY_ES.cant).toEqual(['link.cant.send', 'link.cant.touch'].map((k) => es[k as keyof typeof es]))
+    expect(web.SAFETY_ES.warnTitle).toBe(es['link.approval.title'])
+    expect(web.SAFETY_ES.warnBody).toBe(es['link.approval.body'])
+    expect(web.safetyCopy('en')).toEqual({ heading: SAFETY_HEADING, steps: LINK_STEPS, can: CAN, cant: CANT, warnTitle: APPROVAL_WARN_TITLE, warnBody: APPROVAL_WARN_BODY })
+  })
+  it("/faqs in Spanish says the app's es How it works and cost words", async () => {
+    const { es } = await import('../../src/i18n/es')
+    const { readFileSync } = await import('node:fs')
+    const faqs = readFileSync(new URL('../../../api/src/app/faqs/faqs-view.tsx', import.meta.url), 'utf8')
+    expect(faqs).toContain(`["¿Cómo funciona?", "${es['about.how']!.split(' Nunca mueve')[0]}"]`)
+    expect(faqs).toContain(`["${es['about.cost.title']}", "${es['about.cost']}"]`)
+  })
+})

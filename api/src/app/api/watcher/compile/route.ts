@@ -1,3 +1,4 @@
+import { langOf } from "@/lib/i18n";
 import { apiError } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -17,14 +18,15 @@ const Body = z.object({ text: z.string().trim().min(1).max(300) }).strict();
  * read-then-record budget let a burst of concurrent requests all through) and settled to its real cost after.
  */
 export async function POST(request: Request) {
+  const lang = langOf(request);
   const session = await requireSession(request);
   if (session instanceof NextResponse) return session;
   const parsed = Body.safeParse(await request.json().catch(() => null));
-  if (!parsed.success) return apiError("bad_request", { error: "Bad request." }, { status: 400 });
+  if (!parsed.success) return apiError("bad_request", { error: "Bad request." }, { status: 400 }, lang);
   const repo = await getRepo();
   const held = await reserveWatcherCall(repo, { userPubkey: session.pubkey, now: new Date() });
-  if ("refused" in held && held.refused === "month") return apiError("watcher_resting", { error: "The watcher is resting this month. The controls below still work." }, { status: 503 });
-  if ("refused" in held) return apiError("daily_limit", { error: "That is enough for today. The controls below still work." }, { status: 429 });
+  if ("refused" in held && held.refused === "month") return apiError("watcher_resting", { error: "The watcher is resting this month. The controls below still work." }, { status: 503 }, lang);
+  if ("refused" in held) return apiError("daily_limit", { error: "That is enough for today. The controls below still work." }, { status: 429 }, lang);
   try {
     const current = rulesRowToRules(await repo.getRules(session.pubkey));
     const r = await compileRule({ text: parsed.data.text, current, model: callTool });
@@ -36,6 +38,6 @@ export async function POST(request: Request) {
     if (!(e instanceof WatcherError)) throw e;
     if (e.usage) await repo.settleWatcherCall(held.id, { ...e.usage, costMicrocents: costMicrocents(e.usage) });
     else await repo.deleteWatcherCall(held.id);
-    return apiError("watcher_unreadable", { error: "The watcher could not read that. Use the controls below." }, { status: 502 });
+    return apiError("watcher_unreadable", { error: "The watcher could not read that. Use the controls below." }, { status: 502 }, lang);
   }
 }

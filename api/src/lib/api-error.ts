@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { errorText, type Lang } from "./i18n";
 
 /**
  * 0.1.13 Spanish pass P8: every JSON error a route answers carries a stable machine `code` next to its `error` sentence. The app
@@ -92,13 +93,22 @@ export const API_ERROR_CODES = {
 
 export type ApiErrorCode = keyof typeof API_ERROR_CODES;
 
+/** The English sentence of each error answer, for the failure log and alerts (they stay English whatever the user reads). */
+const englishOfAnswer = new WeakMap<Response, string>();
+/** The English `error` an apiError answer was built from, or undefined for any other response. */
+export const englishErrorOf = (res: Response): string | undefined => englishOfAnswer.get(res);
+
 /**
  * The one way a route answers an error: `body` is exactly what the route answered before (its English `error` and any extra fields,
  * e.g. `partial`, `inFlight`, `reauth`), `init` its status and headers. The answer is `{ error, code, ...extras }`.
+ * P9: `lang` is the request's language (langOf). For "es" the `error` is the Spanish line for this code and sentence when one exists
+ * (lib/i18n/es.ts), else the English. No lang, or "en": the English exactly as before. `vars` gives a slot's Spanish (e.g. a date).
  */
-export function apiError(code: ApiErrorCode, body: { error: string } & Record<string, unknown>, init: ResponseInit): NextResponse {
+export function apiError(code: ApiErrorCode, body: { error: string } & Record<string, unknown>, init: ResponseInit, lang?: Lang, vars?: Record<string, string>): NextResponse {
   const { error, ...extras } = body;
-  return NextResponse.json({ error, code, ...extras }, init);
+  const res = NextResponse.json({ error: errorText(code, error, lang, vars), code, ...extras }, init);
+  englishOfAnswer.set(res, error);
+  return res;
 }
 
 /** The code for a confirm route's settle outcome that is not "confirmed". */

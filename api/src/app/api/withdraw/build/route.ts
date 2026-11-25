@@ -1,3 +1,4 @@
+import { esDayHourUtc, langOf } from "@/lib/i18n";
 import { apiError } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -21,31 +22,35 @@ const when = (d: Date) => d.toLocaleString("en-US", { month: "short", day: "nume
 
 /** The unstake transaction for the Seed Vault to sign, with the brief: what leaves, what stays, when it arrives (spec 6). */
 async function postHandler(request: Request) {
+  const lang = langOf(request);
   const session = await requireSession(request);
   if (session instanceof NextResponse) return session;
   const parsed = Body.safeParse(await request.json().catch(() => null));
-  if (!parsed.success || (parsed.data.mode === "amount" && !parsed.data.amountRaw)) return apiError("bad_request", { error: "Bad request." }, { status: 400 });
+  if (!parsed.success || (parsed.data.mode === "amount" && !parsed.data.amountRaw)) return apiError("bad_request", { error: "Bad request." }, { status: 400 }, lang);
   const repo = await getRepo();
   const user = await repo.getUser(session.pubkey);
-  if (!user) return apiError("sign_in_first", { error: "Sign in first." }, { status: 401 });
+  if (!user) return apiError("sign_in_first", { error: "Sign in first." }, { status: 401 }, lang);
 
   const pending = await repo.pendingWithdrawal(user.seedVaultPubkey);
-  if (pending) return apiError("basket_busy", { error: `One basket at a time. Your last withdrawal arrives ${when(new Date(pending.unstakeTs.getTime() + COOLDOWN_MS))}.` }, { status: 409 });
+  if (pending) {
+    const arrives = new Date(pending.unstakeTs.getTime() + COOLDOWN_MS);
+    return apiError("basket_busy", { error: `One basket at a time. Your last withdrawal arrives ${when(arrives)}.` }, { status: 409 }, lang, { when: esDayHourUtc(arrives) });
+  }
 
   const owner = userAddress(user.seedVaultPubkey);
   const [position, price, skrUsd] = await Promise.all([readPosition(owner), sharePrice(), priceUsd(SKR_MINT)]);
   // The program allows one cooldown per position: a cooldown the wallet started refuses a second before any signature is asked (review I2).
   if (position.unstakingRaw > 0n) {
     const readyAt = position.unstakeTs === null ? null : new Date(Number(position.unstakeTs) * 1000 + COOLDOWN_MS);
-    return apiError("basket_busy", { error: `One basket at a time. Your Seeker's wallet is already ripening a withdrawal${readyAt ? `; it arrives ${when(readyAt)}` : ""}.` }, { status: 409 });
+    return apiError("basket_busy", { error: `One basket at a time. Your Seeker's wallet is already ripening a withdrawal${readyAt ? `; it arrives ${when(readyAt)}` : ""}.` }, { status: 409 }, lang, readyAt ? { when: esDayHourUtc(readyAt) } : undefined);
   }
   const pot = await potForUser(repo, user, { position, sharePrice: price });
   let plan;
   try {
-    plan = planPick({ mode: parsed.data.mode, amountRaw: parsed.data.amountRaw ? BigInt(parsed.data.amountRaw) : undefined, pot, sharePrice: price, skrUsd });
+    plan = planPick({ mode: parsed.data.mode, amountRaw: parsed.data.amountRaw ? BigInt(parsed.data.amountRaw) : undefined, pot, sharePrice: price, skrUsd }, lang);
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    return apiError(message.includes("more than") ? "withdraw_too_large" : "withdraw_refused", { error: message }, { status: message.includes("more than") ? 400 : 409 });
+    return apiError(message.includes("more than") ? "withdraw_too_large" : "withdraw_refused", { error: message }, { status: message.includes("more than") ? 400 : 409 }, lang);
   }
   const ix = await buildUnstakeIx({ user: createNoopSigner(owner), shares: plan.shares });
   const transaction = await buildUserTransaction(owner, [ix]);

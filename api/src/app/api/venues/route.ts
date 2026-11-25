@@ -1,3 +1,5 @@
+import { langOf, lineText } from "@/lib/i18n";
+import { foundNoteFor } from "@/lib/split-run";
 import { apiError } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { getRepo } from "@/db/repo";
@@ -22,11 +24,12 @@ const ALWAYS: { venue: Venue; asset: LendAsset }[] = [{ venue: "marginfi", asset
  * scout's finds of the last 7 days. One row per (venue, asset) that has a row; marginfi USDC is always listed.
  */
 export async function GET(request: Request) {
+  const lang = langOf(request);
   const session = await requireSession(request);
   if (session instanceof NextResponse) return session;
   const repo = await getRepo();
   const user = await repo.getUser(session.pubkey);
-  if (!user) return apiError("sign_in_first", { error: "Sign in first." }, { status: 401 });
+  if (!user) return apiError("sign_in_first", { error: "Sign in first." }, { status: 401 }, lang);
   const today = dayOf(new Date());
   // Today's rows, and for a (venue, asset) with no row today (its snapshot failed) its newest rated row of the last 7 days.
   const [todays, latest] = await Promise.all([repo.listVenueDays(today), latestVenueRows(repo, today)]);
@@ -54,9 +57,9 @@ export async function GET(request: Request) {
       return {
         venue, asset, name: VENUE_NAME[venue], auto: isAutoVenue(venue), supplyPct, rewardsPct: r?.rewardsPct ?? null, avg7Pct: r?.avg7Pct ?? null, daysMeasured: r?.daysMeasured ?? 0,
         utilizationPct: r?.utilizationPct ?? null, tvlUsd: r?.tvlUsd ?? null, withdrawableUsd: r?.withdrawableUsd ?? null, eligible: r?.eligible ?? false, verdict: r?.verdict ?? null, reason: r?.reason ?? null,
-        picked: isAutoVenue(venue) && picks[asset] === venue, note: venue === "marginfi" && supplyPct === null ? "rate unavailable" : null,
+        picked: isAutoVenue(venue) && picks[asset] === venue, note: venue === "marginfi" && supplyPct === null ? lineText("rate unavailable", lang) : null,
       };
     });
-  const found = (await repo.listFoundVenues(addDays(today, -7), 20)).map((f) => ({ day: f.day, project: f.project, symbol: f.symbol, asset: f.asset, apyBasePct: f.apyBasePct, tvlUsd: f.tvlUsd, note: f.note }));
+  const found = (await repo.listFoundVenues(addDays(today, -7), 20)).map((f) => ({ day: f.day, project: f.project, symbol: f.symbol, asset: f.asset, apyBasePct: f.apyBasePct, tvlUsd: f.tvlUsd, note: foundNoteFor(f, lang) }));
   return NextResponse.json(json({ day, venues, picks: routing.picks, why: routing.why, found }));
 }

@@ -32,7 +32,7 @@ describe('Settings > About Sprouts (spec 6.2, 11; R452: six questions)', () => {
     expect(DISCLOSURES[5][1]).toBe("Turn Sprouts off at the top of Rules and nothing moves until you turn it back on. Revoke a wallet in Settings to end Sprouts' approval on chain. You can withdraw any coin or lending position at any time.")
   })
   it("/faqs says the app's How it works and cost words (Kimi copy item 4): no lending fee waiver, no linked-wallet line", () => {
-    const faqs = readFileSync(new URL('../../../api/src/app/faqs/page.tsx', import.meta.url), 'utf8')
+    const faqs = readFileSync(new URL('../../../api/src/app/faqs/faqs-view.tsx', import.meta.url), 'utf8')
     expect(faqs).toContain(`["How does it work?", "${HOW_IT_WORKS.split(' It never moves')[0]}"]`)
     expect(faqs).toContain(`["What does it cost?", "${COST_LINE}"]`)
     expect(faqs).not.toMatch(/No fee on USDC or SOL lending|paid from the USDC in your linked wallet/)

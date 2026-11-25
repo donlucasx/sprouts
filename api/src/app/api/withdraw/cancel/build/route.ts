@@ -1,3 +1,4 @@
+import { langOf } from "@/lib/i18n";
 import { apiError } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { createNoopSigner } from "@solana/kit";
@@ -11,10 +12,11 @@ export const runtime = "nodejs";
 
 /** "Put it back": the cancel-unstake transaction for the Seed Vault to sign, while the basket is still ripening. */
 async function postHandler(request: Request) {
+  const lang = langOf(request);
   const session = await requireSession(request);
   if (session instanceof NextResponse) return session;
   const repo = await getRepo();
-  if (!(await repo.pendingWithdrawal(session.pubkey))) return apiError("basket_empty", { error: "Nothing in the basket." }, { status: 409 });
+  if (!(await repo.pendingWithdrawal(session.pubkey))) return apiError("basket_empty", { error: "Nothing in the basket." }, { status: 409 }, lang);
   const owner = userAddress(session.pubkey);
   const transaction = await buildUserTransaction(owner, [await buildCancelUnstakeIx({ user: createNoopSigner(owner) })]);
   return NextResponse.json({ transaction });

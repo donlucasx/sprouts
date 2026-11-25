@@ -1,3 +1,4 @@
+import { langOf, lineText } from "@/lib/i18n";
 import { apiError } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -30,15 +31,16 @@ const SEND_RETRIES_ON_429 = 2;
  * writes nothing). A failure the chain reports is 400; an expired blockhash 409 (nothing moved); still unknown 202 { status: "pending" }.
  */
 async function postHandler(request: Request) {
-  if (stakePlantOff()) return apiError("plant_off", { error: PLANT_COPY.off }, { status: 503 });
+  const lang = langOf(request);
+  if (stakePlantOff()) return apiError("plant_off", { error: PLANT_COPY.off }, { status: 503 }, lang);
   const session = await requireSession(request);
   if (session instanceof NextResponse) return session;
   forgetOwnerReads(session.pubkey);
   const parsed = Body.safeParse(await request.json().catch(() => null));
-  if (!parsed.success) return apiError("bad_request", { error: "Bad request." }, { status: 400 });
+  if (!parsed.success) return apiError("bad_request", { error: "Bad request." }, { status: 400 }, lang);
   const repo = await getRepo();
   const user = await repo.getUser(session.pubkey);
-  if (!user) return apiError("sign_in_first", { error: "Sign in first." }, { status: 401 });
+  if (!user) return apiError("sign_in_first", { error: "Sign in first." }, { status: 401 }, lang);
   const me = address(user.seedVaultPubkey);
   let posted;
   let amountRaw: bigint;
@@ -47,7 +49,7 @@ async function postHandler(request: Request) {
     ({ amountRaw } = checkPlantSkr(posted.instructions.map((ix) => ({ program: ix.program as string, accounts: ix.accounts as string[], data: ix.data })), { user: me, ...(await plantSkrAccounts(me)) }));
   } catch (e) {
     console.error(`/api/stake/confirm: refused for ${me}: ${e instanceof Error ? e.message : String(e)}`);
-    return apiError("wrong_transaction", { error: PLANT_CONFIRM.notStake }, { status: 400 });
+    return apiError("wrong_transaction", { error: PLANT_CONFIRM.notStake }, { status: 400 }, lang);
   }
   // Kimi #5: this very stake already landed and was recorded (a retry after a lost answer): the same answer, nothing sent or written again.
   if (await plantRecorded(repo, user.seedVaultPubkey, posted.signature)) {
@@ -59,7 +61,7 @@ async function postHandler(request: Request) {
     await markPlantSent(repo, mark);
   } catch (e) {
     console.error(`/api/stake/confirm: not marked, not sent, for ${me}: ${e instanceof Error ? e.message : String(e)}`);
-    return apiError("wrong_transaction", { error: PLANT_CONFIRM.notMarked }, { status: 400 });
+    return apiError("wrong_transaction", { error: PLANT_CONFIRM.notMarked }, { status: 400 }, lang);
   }
   const deadlineMs = Date.now() + CONFIRM_DEADLINE_MS;
   const send = () => rpc().sendTransaction(posted.wire as Base64EncodedWireTransaction, { encoding: "base64", preflightCommitment: "confirmed" }).send().then(() => undefined);
@@ -85,8 +87,8 @@ async function postHandler(request: Request) {
     }
     return NextResponse.json({ status, signature: posted.signature, amountRaw: amountRaw.toString() });
   }
-  if (status === "failed") return apiError("tx_failed", { error: PLANT_CONFIRM.failed }, { status: 400 });
-  if (status === "expired") return apiError("tx_expired", { error: PLANT_CONFIRM.expired }, { status: 409 });
-  return NextResponse.json({ status, signature: posted.signature, message: PLANT_CONFIRM.pending }, { status: 202 });
+  if (status === "failed") return apiError("tx_failed", { error: PLANT_CONFIRM.failed }, { status: 400 }, lang);
+  if (status === "expired") return apiError("tx_expired", { error: PLANT_CONFIRM.expired }, { status: 409 }, lang);
+  return NextResponse.json({ status, signature: posted.signature, message: lineText(PLANT_CONFIRM.pending, lang) }, { status: 202 });
 }
 export const POST = withAppErrorLog("stake/confirm", postHandler);

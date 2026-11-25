@@ -111,6 +111,17 @@ describe("re-link the Seed Vault wallet to the leash (contracts 5.5, R287)", () 
 
   // ---- beyond the brief: the app's exact strings, the phone's verifier, the simulation gate ----
 
+  it("P9: a late re-link in Spanish for accept-language es (same code, same 409); without the header the 0.1.12 English sentence", async () => {
+    const built = await (await call(build, {})).json();
+    chain.sendLands = false;
+    const signed = await sign(built.transaction);
+    const es = await confirm(new Request("http://x", { method: "POST", headers: { authorization: `Bearer ${await issueSession(user.address, "M")}`, "accept-language": "es-419,es;q=0.9,en;q=0.5" }, body: JSON.stringify({ signedTransaction: signed }) }));
+    expect(es.status).toBe(409);
+    expect(await es.json()).toEqual({ error: "Aún no aparece la nueva vinculación on-chain. Vuelve a revisar en un minuto.", code: "relink_not_on_chain" });
+    const old = await call(confirm, { signedTransaction: signed });
+    expect(old.status).toBe(409);
+    expect(await old.text()).toBe(JSON.stringify({ error: "No re-link found on chain yet. Check again in a minute.", code: "relink_not_on_chain" }));
+  });
   it("a late re-link answers 409 with the sentence the app matches, and nothing is recorded", async () => {
     const built = await (await call(build, {})).json();
     chain.sendLands = false;   // a failed or never-landing send

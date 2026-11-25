@@ -1,3 +1,4 @@
+import { langOf } from "@/lib/i18n";
 import { apiError } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -26,21 +27,22 @@ const Body = z.object({
  * feedback_answer event; /api/me reads the question and ref back so each ref is asked once.
  */
 export async function POST(request: Request) {
+  const lang = langOf(request);
   const session = await requireSession(request);
   if (session instanceof NextResponse) return session;
-  if (rateLimited(`feedback:${session.pubkey}`, 6)) return apiError("rate_limited", { error: "Wait a minute and send it again." }, { status: 429 });
+  if (rateLimited(`feedback:${session.pubkey}`, 6)) return apiError("rate_limited", { error: "Wait a minute and send it again." }, { status: 429 }, lang);
   const parsed = Body.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
     const pickIssue = parsed.error.issues.some((i) => i.path[0] === "choice" || i.path[0] === "question");
-    return apiError(pickIssue ? "pick_answer" : "bad_request", { error: pickIssue ? "Pick one of the answers." : "Bad request." }, { status: 400 });
+    return apiError(pickIssue ? "pick_answer" : "bad_request", { error: pickIssue ? "Pick one of the answers." : "Bad request." }, { status: 400 }, lang);
   }
   const { question, ref, choice, text, email } = parsed.data;
-  if (!(FEEDBACK_OPTIONS[question] as readonly string[]).includes(choice)) return apiError("pick_answer", { error: "Pick one of the answers." }, { status: 400 });
+  if (!(FEEDBACK_OPTIONS[question] as readonly string[]).includes(choice)) return apiError("pick_answer", { error: "Pick one of the answers." }, { status: 400 }, lang);
   const repo = await getRepo();
   const dayAgo = Date.now() - 24 * 3600_000;
   const sent = await repo.listEvents(session.pubkey, ["feedback_answer"], FEEDBACK_DAILY_CAP);
   if (sent.filter((e) => e.ts.getTime() > dayAgo).length >= FEEDBACK_DAILY_CAP) {
-    return apiError("daily_limit", { error: "That is enough answers for today. Thank you." }, { status: 429 });
+    return apiError("daily_limit", { error: "That is enough answers for today. Thank you." }, { status: 429 }, lang);
   }
   // 11-08 (his ask): an answer that carries a note or an email is a message: it gets a reference like Message us and shows in Help.
   const messageRef = text || email ? newSupportRef() : undefined;

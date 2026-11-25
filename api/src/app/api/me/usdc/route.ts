@@ -1,3 +1,4 @@
+import { langOf } from "@/lib/i18n";
 import { apiError } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { address } from "@solana/kit";
@@ -104,15 +105,16 @@ async function setupCount(me: ReturnType<typeof address>, sol: bigint | null): P
  * they just had (memo.ts repeatAnswer), with no DB or Helius work; any write they make clears it (auth-guard). Only 200 answers kept.
  */
 export async function GET(request: Request) {
+  const lang = langOf(request);
   const session = await requireSession(request);
   if (session instanceof NextResponse) return session;
   // 11-25 (his ruling): a per-user ceiling. ~6 accounts signed up within 12 minutes read Home ~1.5/s nonstop (a farm, not the app);
   // a person reads once or twice per open. Past HOME_READS_PER_MIN in a minute: 429 with Retry-After (per instance, like every limit here).
   if (homeReadCapOn() && rateLimited(`home-read:usdc:${session.pubkey}`, HOME_READS_PER_MIN)) {
-    return apiError("rate_limited", { error: "Too many requests. Try again in a minute." }, { status: 429, headers: { "Retry-After": "30" } });
+    return apiError("rate_limited", { error: "Too many requests. Try again in a minute." }, { status: 429, headers: { "Retry-After": "30" } }, lang);
   }
   const url = new URL(request.url);
-  const key = `usdc${url.search}|${request.headers.get("x-sprouts-app") ?? "-"}`;
+  const key = `usdc${url.search}|${request.headers.get("x-sprouts-app") ?? "-"}|${langOf(request)}`;   // P9: an answer carries its language
   const again = repeatAnswer(session.pubkey, key);
   if (again !== undefined) return NextResponse.json(again);
   const res = await answer(request);
