@@ -4,7 +4,7 @@ import { requireSession } from "@/lib/auth-guard";
 import { readUsdcBalanceRaw } from "@/lib/subscriptions";
 import { rpc } from "@/lib/rpc";
 import { sharedPriceUsd } from "@/lib/shared-reads";
-import { affordableTopUps, topUpSources } from "@/lib/topup";
+import { affordableTopUps, topUpSources, topUpCapsFor } from "@/lib/topup";
 import { WSOL_MINT } from "@/lib/constants";
 import { getRepo } from "@/db/repo";
 import { rulesRowToRules } from "@/db/types";
@@ -47,7 +47,7 @@ export async function GET(request: Request) {
   if (!wantSources && !wantSetup) return NextResponse.json(body);
   const [sources, setupAccounts] = await Promise.all([
     wantSources
-      ? topUpSources(me, sol, solUsd, topUpCents).catch((e) => {
+      ? topUpSources(me, sol, solUsd, topUpCents, topUpCapsFor(request)).catch((e) => {
         console.error(`/api/me/usdc: the top-up coins could not be read (${e instanceof Error ? e.message : String(e)})`);
         return null;
       })

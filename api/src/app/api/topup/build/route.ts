@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { address, isAddress } from "@solana/kit";
 import { requireSession } from "@/lib/auth-guard";
-import { buildTopUp, TopUpRefused, TOPUP_COPY, TOPUP_DEFAULT_CENTS, TOPUP_MAX_CENTS, TOPUP_MIN_CENTS } from "@/lib/topup";
+import { buildTopUp, topUpCapsFor, TopUpRefused, TOPUP_COPY, TOPUP_DEFAULT_CENTS, TOPUP_MAX_CENTS, TOPUP_MIN_CENTS } from "@/lib/topup";
 import { withAppErrorLog } from "@/lib/failure-log";
 import { getRepo } from "@/db/repo";
 import { rulesRowToRules } from "@/db/types";
@@ -34,7 +34,7 @@ async function postHandler(request: Request) {
   if (inputMint !== undefined && !isAddress(inputMint)) return NextResponse.json({ error: TOPUP_COPY.notSource }, { status: 400 });
   try {
     const setup = { max: parsed.data.setupMax ?? 0, rules: async () => rulesRowToRules(await (await getRepo()).getRules(session.pubkey)) };
-    return NextResponse.json(await buildTopUp(address(session.pubkey), parsed.data.cents ?? TOPUP_DEFAULT_CENTS, inputMint === undefined ? undefined : address(inputMint), setup));
+    return NextResponse.json(await buildTopUp(address(session.pubkey), parsed.data.cents ?? TOPUP_DEFAULT_CENTS, inputMint === undefined ? undefined : address(inputMint), setup, topUpCapsFor(request)));
   } catch (e) {
     if (e instanceof TopUpRefused) return NextResponse.json({ error: e.message }, { status: e.status });
     console.error(`/api/topup/build: ${e instanceof Error ? e.message : String(e)}`);

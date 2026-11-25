@@ -391,11 +391,19 @@ export const TOPUP_PRICE_MARGIN_BPS = 300n
  */
 const SHARED_EXACT_OUT = [0xb0, 0xd1, 0x69, 0xa8, 0x9a, 0x7d, 0x45, 0x3e]
 /**
- * The Swap enum variants a top-up route may use, with the size of their payload (Jupiter v6 IDL, @jup-ag/instruction-parser 6.0.28;
- * every payload byte here is a bool, 0 or 1). Any other variant is refused: its payload size is not pinned here, so the data after it
- * could not be read safely. Whirlpool and Raydium CLMM are the dexes the API asks for (Meteora DLMM has no ExactOut route).
+ * The Swap enum variants a top-up route may use, with their payload pinned byte by byte (Jupiter v6 IDL, @jup-ag/instruction-parser
+ * 6.0.28; 47 read from Jupiter's on-chain IDL 11-24). "bool" is 0 or 1; "none" is exactly 0, an Option that must be None. Any other
+ * variant is refused: its payload is not pinned here, so the data after it could not be read safely. Whirlpool and Raydium CLMM are the
+ * dexes the API asks for (Meteora DLMM has no ExactOut route). 0.1.13: WhirlpoolSwapV2 { a_to_b, remaining_accounts_info: None } (47),
+ * the route SKR and WIF moved to in November; with Some (a transfer-hook token's extra accounts) it is refused.
  */
-const SWAP_VARIANTS: Readonly<Record<number, number>> = Object.freeze({ 17: 1 /* Whirlpool { a_to_b } */, 26: 0 /* RaydiumClmm */, 40: 0 /* RaydiumClmmV2 */ })
+type PayloadByte = 'bool' | 'none'
+const SWAP_VARIANTS: Readonly<Record<number, readonly PayloadByte[]>> = Object.freeze({
+  17: ['bool'] /* Whirlpool { a_to_b } */,
+  26: [] /* RaydiumClmm */,
+  40: [] /* RaydiumClmmV2 */,
+  47: ['bool', 'none'] /* WhirlpoolSwapV2 { a_to_b, remaining_accounts_info: None } */,
+})
 /** Jupiter's program authorities are ids 0..7 (PDA ["authority", id]); a route plan longer than this does not fit a top-up's 20 accounts. */
 const JUPITER_AUTHORITIES = 8
 const MAX_ROUTE_STEPS = 4
@@ -481,9 +489,12 @@ export function parseSharedExactOut(d: Uint8Array): { id: number; steps: number;
     const payload = SWAP_VARIANTS[d[at]]
     if (payload === undefined) return refuse('plan')
     at++
-    if (at + payload + 3 > d.length) return refuse('plan')
-    for (let b = 0; b < payload; b++) if (d[at + b] > 1) return refuse('plan')
-    at += payload
+    if (at + payload.length + 3 > d.length) return refuse('plan')
+    for (const [b, kind] of payload.entries()) {
+      if (kind === 'bool' && d[at + b] > 1) return refuse('plan')
+      if (kind === 'none' && d[at + b] !== 0) return refuse('plan')
+    }
+    at += payload.length
     const percent = d[at]
     if (percent < 1 || percent > 100) return refuse('plan')
     at += 3 // percent, input_index, output_index

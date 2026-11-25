@@ -5,7 +5,7 @@ import { ASSOCIATED_TOKEN_PROGRAM_ADDRESS, TOKEN_PROGRAM_ADDRESS } from "@solana
 import { requireSession } from "@/lib/auth-guard";
 import { verifyPostedTransaction } from "@/lib/verify-tx";
 import { settleUnconfirmed, waitConfirmed } from "@/lib/user-tx";
-import { checkTopUp, COMPUTE_BUDGET, topUpAccounts, topUpCoinSymbol, topUpSourceAccounts, TOPUP_CONFIRM, type TopUpSourceAccounts } from "@/lib/topup";
+import { checkTopUp, COMPUTE_BUDGET, topUpAccounts, topUpCapsFor, topUpCoinSymbol, topUpSourceAccounts, TOPUP_CONFIRM, type TopUpSourceAccounts } from "@/lib/topup";
 import { JUPITER_AGGREGATOR } from "@/lib/jupiter";
 import { SYSTEM_PROGRAM, WSOL_MINT } from "@/lib/constants";
 import { rpc } from "@/lib/rpc";
@@ -49,7 +49,7 @@ async function postHandler(request: Request) {
       source = await topUpSourceAccounts(me, address(mint));
       inputMint = mint;
     }
-    plan = checkTopUp(rest, { user: me, ...(await topUpAccounts(me)), source });
+    plan = checkTopUp(rest, { user: me, ...(await topUpAccounts(me)), source, allowV47: topUpCapsFor(request).allowV47 });
   } catch (e) {
     console.error(`/api/topup/confirm: refused for ${me}: ${e instanceof Error ? e.message : String(e)}`);
     return NextResponse.json({ error: TOPUP_CONFIRM.notTopUp }, { status: 400 });

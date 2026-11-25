@@ -312,3 +312,99 @@ describe("the top-up's foreign mints match the app's", async () => {
     expect([...app].sort()).toEqual([...FOREIGN_MINTS].map(String).sort());
   });
 });
+
+// 0.1.13: WhirlpoolSwapV2 (Jupiter Swap variant 47, read from Jupiter's on-chain IDL 11-24). The fixtures are Jupiter's real answers
+// (api.jup.ag swap/v1, 2026-11-24) for SKR (one 47 step) and WIF (a 47 step then a Whirlpool 17 step), same public placeholder wallet.
+describe("WhirlpoolSwapV2 (variant 47) in a token top-up", async () => {
+  const skr = (await import("../fixtures/jupiter-topup-exactout-skr-v47.json")).default;
+  const wif = (await import("../fixtures/jupiter-topup-exactout-wif-v47.json")).default;
+  const { topUpSourceAccounts } = await import("@/lib/topup");
+  const ixs = (f: { swapInstructions: unknown }): TopUpIx[] => {
+    const p = parseSwapInstructions(JSON.parse(JSON.stringify(f.swapInstructions)));
+    return [...p.computeBudget, ...p.setup, p.swap, ...(p.cleanup ? [p.cleanup] : [])].map(toTopUpIx);
+  };
+  const swapData = (f: { swapInstructions: { swapInstruction: { data: string } } }) => Uint8Array.from(Buffer.from(f.swapInstructions.swapInstruction.data, "base64"));
+
+  it("the fixtures are what they say: variant 47 with a_to_b and None, decoded field by field", () => {
+    for (const f of [skr, wif]) expect(f.user).toBe(USER);
+    const d = swapData(skr);
+    expect(Buffer.from(d.slice(0, 8)).toString("hex")).toBe("b0d169a89a7d453e");
+    expect(new DataView(d.buffer).getUint32(9, true)).toBe(1);   // one route step
+    expect([...d.slice(13, 19)]).toEqual([47, 1, 0, 100, 0, 1]);   // WhirlpoolSwapV2, a_to_b true, None, 100%, in 0, out 1
+    const w = swapData(wif);
+    expect(new DataView(w.buffer).getUint32(9, true)).toBe(2);
+    expect([...w.slice(13, 19)]).toEqual([47, 0, 0, 100, 0, 1]);   // WhirlpoolSwapV2, a_to_b false, None
+    expect([...w.slice(19, 24)]).toEqual([17, 1, 100, 1, 2]);   // then Whirlpool, a_to_b true
+  });
+
+  it("parses both routes and reads the same amounts as the quote", () => {
+    for (const f of [skr, wif]) {
+      const r = parseSharedExactOut(swapData(f));
+      expect(r.outAmount).toBe(5_000_000n);
+      expect(r.slippageBps).toBe(50);
+      expect(r.feeBps).toBe(0);
+      expect(r.quotedIn).toBe(BigInt(f.quote.inAmount));
+    }
+  });
+
+  it("the whole check accepts Jupiter's real SKR and WIF answers for a 0.1.13 phone, and refuses them for an older one", async () => {
+    for (const f of [skr, wif]) {
+      const src = await topUpSourceAccounts(address(USER), address(f.quote.inputMint));
+      const plan = checkTopUp(ixs(f), { user: USER, ...acc, outRaw: 5_000_000n, source: src, allowV47: true });
+      expect(plan.outRaw).toBe(5_000_000n);
+      expect(plan.wrapLamports).toBe(0n);
+      expect(() => checkTopUp(ixs(f), { user: USER, ...acc, outRaw: 5_000_000n, source: src })).toThrow(/variant 47/);
+    }
+  });
+
+  it("topUpCapsFor: only an x-sprouts-app of 0.1.13 or later can sign variant 47", async () => {
+    const { topUpCapsFor } = await import("@/lib/topup");
+    const caps = (v?: string) => topUpCapsFor(new Request("http://x", { headers: v ? { "x-sprouts-app": v } : {} })).allowV47;
+    expect(caps()).toBe(false);
+    expect(caps("0.1.12")).toBe(false);
+    expect(caps("garbage")).toBe(false);
+    expect(caps("0.1.13")).toBe(true);
+    expect(caps("0.1.20")).toBe(true);
+    expect(caps("0.2.0")).toBe(true);
+    expect(caps("1.0.0")).toBe(true);
+  });
+
+  it("refuses 47 with remaining accounts (Some), a non-bool direction, or a cut payload", () => {
+    const base = swapData(skr);
+    const some = Uint8Array.from(base); some[15] = 1;   // remaining_accounts_info: Some(...)
+    expect(() => parseSharedExactOut(some)).toThrow(/extra accounts/);
+    const flag = Uint8Array.from(base); flag[14] = 2;
+    expect(() => parseSharedExactOut(flag)).toThrow(/not a bool/);
+    const cut = Uint8Array.from([...base.slice(0, 15), ...base.slice(16)]);   // the None byte dropped
+    expect(() => parseSharedExactOut(cut)).toThrow();
+  });
+
+  it("the server's off switch (TOPUP_V47_OFF=1) refuses 47 and leaves the older variants alone", () => {
+    process.env.TOPUP_V47_OFF = "1";
+    try {
+      expect(() => parseSharedExactOut(swapData(skr))).toThrow(/variant 47/);
+      const old = Uint8Array.from(swapData(wif));   // turn its 47 step into a 17 step: still accepted
+      const asOld = Uint8Array.from([...old.slice(0, 13), 17, 0, ...old.slice(16)]);
+      expect(parseSharedExactOut(asOld).outAmount).toBe(5_000_000n);
+    } finally {
+      delete process.env.TOPUP_V47_OFF;
+    }
+  });
+});
+
+// 0.1.13 (his ruling 11-24): the short list of top-up coins, on the server.
+describe("the top-up coin list", async () => {
+  const { isTopUpSource, TOPUP_SOURCE_LIST } = await import("@/lib/topup");
+  const { COINS } = await import("@/domain/coins");
+  it("is exactly the approved coins, JitoSOL left out as a (retired) garden coin", () => {
+    expect(Object.keys(TOPUP_SOURCE_LIST).sort()).toEqual(["BONK", "JUP", "PYTH", "RAY", "SKR", "USDT", "WIF", "mSOL"].sort());
+    expect(Object.values(TOPUP_SOURCE_LIST)).not.toContain(COINS.JitoSOL.mint);
+  });
+  it("every listed coin is a source; an unlisted verified coin (POPCAT), JitoSOL, USDC and wSOL are not", () => {
+    for (const m of Object.values(TOPUP_SOURCE_LIST)) expect(isTopUpSource(m)).toBe(true);
+    expect(isTopUpSource("7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr")).toBe(false);
+    expect(isTopUpSource(COINS.JitoSOL.mint)).toBe(false);
+    expect(isTopUpSource("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v")).toBe(false);
+    expect(isTopUpSource("So11111111111111111111111111111111111111112")).toBe(false);
+  });
+});

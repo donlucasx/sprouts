@@ -1,5 +1,8 @@
 import { loadSession } from "./session";
 import { currentLang } from "@/i18n";
+import Constants from "expo-constants";
+/** The app's own version (app.json), sent with every request. */
+const APP_VERSION: string = Constants.expoConfig?.version ?? "0.0.0";
 import { LEND_MOCK, mockAfter, mockBefore } from "./lend-mock";
 import type { Asset, AutoVenue, LendAsset, LiveAsset, Stop, Split, Pins, Venue } from "./coins";
 import type { TopUpSource } from "./topup";
@@ -27,7 +30,8 @@ export async function api<T>(path: string, init: { method?: "GET" | "POST" | "PU
     if (m) return m.answer as T;
   }
   // 0.1.13: the language the app shows, so the server answers its messages in it (English when it has none).
-  const headers: Record<string, string> = { "content-type": "application/json", "accept-language": currentLang() };
+  // x-sprouts-app (0.1.13): the server offers a top-up route only to a version that can sign it (WhirlpoolSwapV2).
+  const headers: Record<string, string> = { "content-type": "application/json", "accept-language": currentLang(), "x-sprouts-app": APP_VERSION };
   if (init.auth !== false) {
     const s = await loadSession();
     if (s) headers.authorization = `Bearer ${s.token}`;

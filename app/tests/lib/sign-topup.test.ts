@@ -353,3 +353,41 @@ describe("the phone's own token price", () => {
     await expect(fetchUsdPrice(MINT)).rejects.toThrow()
   })
 })
+
+// 0.1.13: WhirlpoolSwapV2 (Jupiter Swap variant 47). Jupiter's real answers (api.jup.ag swap/v1, 2026-11-24) for SKR (one 47 step)
+// and WIF (47 then Whirlpool 17), same placeholder wallet: the phone signs both, and refuses 47 carrying extra accounts (Some).
+describe('topup through WhirlpoolSwapV2 (variant 47): SKR and WIF', async () => {
+  const skrV47 = (await import('../fixtures/jupiter-topup-exactout-skr-v47.json')).default
+  const wifV47 = (await import('../fixtures/jupiter-topup-exactout-wif-v47.json')).default
+  const fairOf = (f: { quote: { inAmount: string } }, decimals: number) => 5 / (Number(f.quote.inAmount) / 10 ** decimals)
+  const cases = [
+    { name: 'SKR', f: skrV47, decimals: 6 },
+    { name: 'WIF', f: wifV47, decimals: 6 },
+  ]
+  for (const c of cases) {
+    it(`signs Jupiter's ${c.name} answer (variant 47, no extra accounts)`, async () => {
+      expect(c.f.user).toBe(USER)
+      const f: SignFlow = { kind: 'topup', user: USER, usdcRaw: '5000000', inputMint: c.f.quote.inputMint }
+      const sign = vi.fn(async (tx: Transaction) => tx)
+      const usdPrice: UsdPriceSource = async () => ({ usd: fairOf(c.f, c.decimals), decimals: c.decimals })
+      const b64 = wire(built(c.f as unknown as Fixture), USER)
+      expect(await makeSigner(sign, f, { usdPrice, solUsd: async () => { throw new Error('the token path never reads the SOL price') } })(b64)).toBe(b64)
+      expect(sign).toHaveBeenCalledTimes(1)
+    })
+  }
+  it('refuses variant 47 with remaining accounts (Some), and with a non-bool direction', async () => {
+    const f: SignFlow = { kind: 'topup', user: USER, usdcRaw: '5000000', inputMint: skrV47.quote.inputMint }
+    const usdPrice: UsdPriceSource = async () => ({ usd: fairOf(skrV47, 6), decimals: 6 })
+    for (const [byte, value] of [[15, 1], [14, 2]] as const) {
+      const ixs = built(skrV47 as unknown as Fixture)
+      const jup = ixs.find((ix) => ix.programAddress === JUP)!
+      const data = Uint8Array.from(jup.data as Uint8Array)
+      expect(data[13]).toBe(47)
+      data[byte] = value
+      const bent = ixs.map((ix) => (ix === jup ? { ...ix, data } : ix))
+      const sign = vi.fn(async (tx: Transaction) => tx)
+      await expect(makeSigner(sign, f, { usdPrice, solUsd: async () => 1 })(wire(bent, USER))).rejects.toThrow(SignRefused)
+      expect(sign).not.toHaveBeenCalled()
+    }
+  })
+})

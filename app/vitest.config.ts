@@ -8,6 +8,7 @@ export default defineConfig({
       // 0.1.13 i18n: native modules the language code reaches, stubbed for node.
       "expo-localization": path.resolve(__dirname, "tests/stubs/expo-localization.ts"),
       "react-native-mmkv": path.resolve(__dirname, "tests/stubs/react-native-mmkv.ts"),
+      "expo-constants": path.resolve(__dirname, "tests/stubs/expo-constants.ts"),
     },
   },
 });

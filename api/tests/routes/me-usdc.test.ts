@@ -30,7 +30,7 @@ vi.mock("@/lib/jupiter", async (orig) => ({
 vi.mock("@/lib/puller", () => ({ pullerSigner: async () => ({ address: "4wiD3N7FrBNJSmZUQDkGHM4CsvDrvyvx7G1FApLGEbJ1" }) }));
 /** Jupiter's shared-accounts ExactOut data with one route step of `variant` (17 = Whirlpool, 1 payload byte; 47 = one a top-up may not use). */
 function swapData(variant: number): Uint8Array {
-  const out = [...Buffer.from("b0d169a89a7d453e", "hex"), 0, 1, 0, 0, 0, variant, ...(variant === 17 ? [0] : []), 100, 0, 1];
+  const out = [...Buffer.from("b0d169a89a7d453e", "hex"), 0, 1, 0, 0, 0, variant, ...(variant === 17 ? [0] : variant === 47 ? [1, 0] : []), 100, 0, 1];   // 47: a_to_b, None
   return new Uint8Array([...out, ...new Array(8 + 8 + 2 + 1).fill(0)]);
 }
 
@@ -42,6 +42,8 @@ import { findAssociatedTokenPda, TOKEN_PROGRAM_ADDRESS } from "@solana-program/t
 
 const get = async (token?: string, query = "") => GET(new Request(`http://x/api/me/usdc${query}`, token ? { headers: { authorization: `Bearer ${token}` } } : {}));
 const getSources = async (token: string) => get(token, "?sources=1");
+/** 0.1.13: the same read from a phone that names its version (x-sprouts-app). */
+const getSourcesAs = async (token: string, version: string) => GET(new Request("http://x/api/me/usdc?sources=1", { headers: { authorization: `Bearer ${token}`, "x-sprouts-app": version } }));
 
 // Link a wallet's note before "This phone's wallet" approves: the signed-in Seeker's own USDC, read only.
 describe("GET /api/me/usdc", () => {
@@ -187,6 +189,23 @@ describe("GET /api/me/usdc", () => {
         expect(vi.mocked(getSwapInstructions).mock.calls.some((c) => c[0].useSharedAccounts === true && c[0].wrapAndUnwrapSol === false)).toBe(true);
       } finally {
         vi.mocked(getSwapInstructions).mockImplementation(async () => ({ swap: { data: swapData(17) } }) as never);
+        vi.useRealTimers();
+      }
+    });
+
+    it("0.1.13: a route through WhirlpoolSwapV2 (47) is offered to a 0.1.13 phone, never to an older one", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      try {
+        vi.advanceTimersByTime(6 * 60 * 60_000);   // past every cached probe
+        vi.mocked(getSwapInstructions).mockImplementation(async (a) => ({ swap: { data: swapData(a.quote.inputMint === SKR ? 47 : 17) } }) as never);
+        vi.mocked(readUsdcBalanceRaw).mockResolvedValue(0n);
+        const symbols = async (r: Response) => ((await r.json()).topUpSources as { symbol: string }[]).map((x) => x.symbol);
+        expect(await symbols(await getSourcesAs(await issueSession(U, "M"), "0.1.13"))).toContain("SKR");
+        expect(await symbols(await getSourcesAs(await issueSession(U, "M"), "0.1.12"))).not.toContain("SKR");
+        expect(await symbols(await getSources(await issueSession(U, "M")))).not.toContain("SKR");
+      } finally {
+        vi.mocked(getSwapInstructions).mockImplementation(async () => ({ swap: { data: swapData(17) } }) as never);
+        vi.mocked(readUsdcBalanceRaw).mockReset();
         vi.useRealTimers();
       }
     });
