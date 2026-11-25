@@ -75,6 +75,10 @@ export const REPEAT_MS = 5_000;   // 5 s (Kimi guard #6): another instance can s
 /** Off under vitest (route tests change the DB between reads, like the RPC pace); its own test turns it on. */
 let repeatMs = process.env.VITEST ? 0 : REPEAT_MS;
 export function setRepeatMsForTests(ms: number): void { repeatMs = ms; }
+/** 11-25: the per-user Home read cap (auth-guard rateLimited in the /api/me GETs) is off under vitest unless a test turns it on. */
+let homeCap = !process.env.VITEST;
+export const homeReadCapOn = (): boolean => homeCap;
+export function setHomeReadCapForTests(on: boolean): void { homeCap = on; }
 const answers = new Map<string, { at: number; body: unknown }>();
 export function repeatAnswer(owner: string, key: string): unknown | undefined {
   const hit = answers.get(`owner:${owner}:${key}`);

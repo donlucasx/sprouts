@@ -34,3 +34,23 @@ describe("Home answer repeat guard", () => {
     vi.doUnmock("@/lib/session");
   });
 });
+
+describe("Home read cap (11-25, his ruling): 30 reads a minute per user, then 429", () => {
+  it("the 31st /api/me read in a minute for one user is refused; another user is not", async () => {
+    vi.resetModules();
+    const { setRepoForTests } = await import("@/db/repo");
+    const { MemoryRepo } = await import("@/db/memory");
+    const { issueSession } = await import("@/lib/session");
+    const { GET } = await import("@/app/api/me/route");
+    (await import("@/lib/memo")).setHomeReadCapForTests(true);
+    setRepoForTests(new MemoryRepo());
+    const tokenA = await issueSession("HJCJKRQLV2HVKfe3sFdTF5jjBY1xfWgnK8cLcjH7qnHd", "M");
+    const tokenB = await issueSession("4wiD3N7FrBNJSmZUQDkGHM4CsvDrvyvx7G1FApLGEbJ1", "M2");
+    const read = (t: string) => GET(new Request("http://x/api/me", { headers: { authorization: `Bearer ${t}` } }));
+    for (let i = 0; i < 30; i++) expect((await read(tokenA)).status).not.toBe(429);
+    const refused = await read(tokenA);
+    expect(refused.status).toBe(429);
+    expect(refused.headers.get("Retry-After")).toBe("30");
+    expect((await read(tokenB)).status).not.toBe(429);
+  });
+});
