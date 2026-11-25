@@ -141,8 +141,8 @@ describe("errorText / apiError", () => {
     const when = esDayHourUtc(new Date("2026-11-27T15:00:00Z"));
     expect(errorText("basket_busy", "One basket at a time. Your last withdrawal arrives Nov 27, 3 PM UTC.", "es", { when })).toBe("Una canasta a la vez. Tu último retiro llega el 27 nov, 15:00 UTC.");
     expect(errorText("basket_busy", "One basket at a time. Your Seeker's wallet is already ripening a withdrawal; it arrives Nov 27, 3 PM UTC.", "es", { when }))
-      .toBe("Una canasta a la vez. La billetera de tu Seeker ya está madurando un retiro; llega el 27 nov, 15:00 UTC.");
-    expect(errorText("basket_busy", "One basket at a time. Your Seeker's wallet is already ripening a withdrawal.", "es")).toBe("Una canasta a la vez. La billetera de tu Seeker ya está madurando un retiro.");
+      .toBe("Una canasta a la vez. La billetera de tu Seeker ya tiene un retiro en la canasta; llega el 27 nov, 15:00 UTC.");
+    expect(errorText("basket_busy", "One basket at a time. Your Seeker's wallet is already ripening a withdrawal.", "es")).toBe("Una canasta a la vez. La billetera de tu Seeker ya tiene un retiro en la canasta.");
   });
 });
 

@@ -208,8 +208,8 @@ export const ES_ERRORS = {
   // {when} comes from the route in Spanish (esDayHourUtc); the English match only finds the line.
   basket_busy: {
     "One basket at a time.": "Una canasta a la vez.",
-    "One basket at a time. Your Seeker's wallet is already ripening a withdrawal.": "Una canasta a la vez. La billetera de tu Seeker ya está madurando un retiro.",
-    "One basket at a time. Your Seeker's wallet is already ripening a withdrawal; it arrives {when}.": "Una canasta a la vez. La billetera de tu Seeker ya está madurando un retiro; llega el {when}.",
+    "One basket at a time. Your Seeker's wallet is already ripening a withdrawal.": "Una canasta a la vez. La billetera de tu Seeker ya tiene un retiro en la canasta.",
+    "One basket at a time. Your Seeker's wallet is already ripening a withdrawal; it arrives {when}.": "Una canasta a la vez. La billetera de tu Seeker ya tiene un retiro en la canasta; llega el {when}.",
     "One basket at a time. Your last withdrawal arrives {when}.": "Una canasta a la vez. Tu último retiro llega el {when}.",
   },
   basket_empty: {
@@ -258,7 +258,7 @@ export const ES_ERRORS = {
   // ---- Rules, terms, preview, feedback, export, watcher ----
   pin_invalid: {
     "Your coins add up to more than 100%.": "Tus monedas suman más de 100%.",
-    "Pins go up to 100%.": "Los porcentajes fijos llegan hasta 100%.",
+    "Pins go up to 100%.": "Los porcentajes llegan hasta 100%.",
     "Keep at least one coin on.": "Deja al menos una moneda activada.",
   },
   rules_not_saved: {
@@ -280,16 +280,16 @@ export const ES_ERRORS = {
     "Pick one of the answers.": "Elige una de las respuestas.",
   },
   bad_year: {
-    "year must be four digits, like 2026.": "El año (year) debe tener cuatro dígitos, como 2026.",
+    "year must be four digits, like 2026.": "El año debe tener cuatro dígitos, como 2026.",
   },
   export_too_long: {
     "Your history is too long for one export yet. Contact support for the full file.": "Tu historial todavía es demasiado largo para una sola exportación. Escríbenos para recibir el archivo completo.",
   },
   watcher_resting: {
-    "The watcher is resting this month. The controls below still work.": "El vigilante descansa este mes. Los controles de abajo siguen funcionando.",
+    "The watcher is resting this month. The controls below still work.": "Sprouts no puede leer reglas nuevas este mes. Los controles de abajo siguen funcionando.",
   },
   watcher_unreadable: {
-    "The watcher could not read that. Use the controls below.": "El vigilante no pudo leer eso. Usa los controles de abajo.",
+    "The watcher could not read that. Use the controls below.": "Sprouts no pudo entender eso. Usa los controles de abajo.",
   },
 } as const satisfies Partial<Record<import("../api-error").ApiErrorCode, Record<string, string>>>;
 
