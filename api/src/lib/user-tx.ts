@@ -4,6 +4,7 @@ import {
 } from "@solana/kit";
 import { rpc } from "./rpc";
 import { signatureStatus } from "./planting";
+import { isHttp429 } from "./http429";
 
 /**
  * One blockhash read, then any number of local compiles of buildUserTransaction's shape (Task 17a review: a build that tries several
@@ -30,9 +31,23 @@ export async function sendPosted(wire: string): Promise<void> {
 }
 
 /** Polls the signature until it confirms, fails, or the tries run out (20 x 1.5 s by default). */
-export async function waitConfirmed(signature: string, tries = 20, everyMs = 1_500): Promise<"confirmed" | "failed" | "pending"> {
+/**
+ * 11-25 (3 top-up confirms answered 500 "Too Many Requests" seconds after the send; Kimi hotfix #6-8): a status read Helius refuses
+ * with 429 counts as "pending" for that round and the poll goes on, so a rate limit can only turn an outcome into "pending" (202),
+ * never into a 500 or a false "nothing moved". `deadlineMs` (a Date.now() value) ends the poll early so the route answers inside its
+ * maxDuration; `resend` (the top-up: its first send was refused) runs every 3rd round, errors ignored (same signed bytes: harmless).
+ */
+export async function waitConfirmed(signature: string, tries = 20, everyMs = 1_500, opts: { deadlineMs?: number; resend?: () => Promise<void> } = {}): Promise<"confirmed" | "failed" | "pending"> {
   for (let i = 0; i < tries; i++) {
-    const s = await signatureStatus(signature);
+    if (opts.deadlineMs !== undefined && Date.now() >= opts.deadlineMs) return "pending";
+    if (opts.resend && i > 0 && i % 3 === 0) await opts.resend().catch(() => undefined);
+    let s: "confirmed" | "failed" | "pending";
+    try {
+      s = await signatureStatus(signature);
+    } catch (e) {
+      if (!isHttp429(e)) throw e;
+      s = "pending";
+    }
     if (s !== "pending") return s;
     if (i < tries - 1) await new Promise((r) => setTimeout(r, everyMs));
   }
@@ -47,10 +62,15 @@ export async function waitConfirmed(signature: string, tries = 20, everyMs = 1_5
  * (kit's default): the finalized bank runs about 32 slots behind and does not know a young blockhash, so it would read as expired.
  */
 export async function settleUnconfirmed(posted: { signature: string; blockhash: string }): Promise<"confirmed" | "failed" | "pending" | "expired"> {
-  const { value: valid } = await rpc().isBlockhashValid(posted.blockhash as Blockhash, { commitment: "confirmed" }).send();
-  if (valid) return "pending";
-  const s = await signatureStatus(posted.signature);
-  return s === "pending" ? "expired" : s;
+  try {
+    const { value: valid } = await rpc().isBlockhashValid(posted.blockhash as Blockhash, { commitment: "confirmed" }).send();
+    if (valid) return "pending";
+    const s = await signatureStatus(posted.signature);
+    return s === "pending" ? "expired" : s;
+  } catch (e) {
+    if (isHttp429(e)) return "pending";   // 11-25: a rate limit never reads as "expired" (nothing moved) while it might have landed
+    throw e;
+  }
 }
 
 /** The plain answer while a send has not confirmed and its blockhash is still valid (his device round 3, item 7): it may still land,

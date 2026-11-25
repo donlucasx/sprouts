@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { forgetOwnerReads } from "@/lib/memo";
 import { z } from "zod";
 import { address, type Base64EncodedWireTransaction } from "@solana/kit";
 import { ASSOCIATED_TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
@@ -27,6 +28,8 @@ const i64At = (d: Uint8Array, at: number) => new DataView(d.buffer, d.byteOffset
 async function postHandler(request: Request) {
   const session = await requireSession(request);
   if (session instanceof NextResponse) return session;
+  // 11-25 (load hotfix): this user's Home chain reads on this instance are read fresh after this write (memo.ts ownerCached).
+  forgetOwnerReads(session.pubkey);
   const parsed = Body.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Bad request." }, { status: 400 });
   const repo = await getRepo();

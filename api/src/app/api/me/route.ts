@@ -10,6 +10,7 @@ import { readDelegation } from "@/lib/subscriptions";
 import { readHoldings, holdingsFrom, readLendingPositions, lendingFrom, lendHoldings } from "@/lib/holdings";
 import { lendSignsFor, underlyingOutRaw, receiptOutRaw } from "@/lib/lend-view";
 import { enabledLegs, LEG_SPEC, leashLive, relinkPilot, type LeashConfig } from "@/lib/leash";
+import { ownerCached } from "@/lib/memo";
 import { sharedSharePrice, sharedPriceUsd, sharedStoreRedeemRate, sharedLeashConfig, sharedLatestCoinDays, sharedRateFacts, sharedLatestVenueRows } from "@/lib/shared-reads";
 import { TERMS_VERSION } from "@/lib/terms";
 import { carryMoves, moveCarriesFor } from "@/lib/moves";
@@ -50,9 +51,11 @@ export async function GET(request: Request) {
   // Spec 8, contracts 5.2: each lending position valued at the newest venue snapshot of the last 7 days (`latestVenueRows`):
   // underlyingRaw = receipt x that exchange rate, floored. The rate only rises, so this never overstates what a redeem returns.
   const [position, price, skrUsd, storeUsd, storeRaw, inputs, held, days, facts, venueRows, lendRead, carries, wallets, rules, pendingBasket, open] = await Promise.all([
-    readPosition(owner), sharedSharePrice(), sharedPriceUsd(SKR_MINT), sharedPriceUsd(STORE_MINT), storeBalanceRaw(owner), potInputs(repo, user), readHoldings(owner),
+    // 11-25 (carousel load, Kimi hotfix): this owner's chain reads kept 15 s per instance (memo.ts ownerCached); DB reads stay fresh.
+    ownerCached(owner, "position", () => readPosition(owner)), sharedSharePrice(), sharedPriceUsd(SKR_MINT), sharedPriceUsd(STORE_MINT),
+    ownerCached(owner, "storeBalance", () => storeBalanceRaw(owner)), potInputs(repo, user), ownerCached(owner, "holdings", () => readHoldings(owner)),
     sharedLatestCoinDays(repo, day), sharedRateFacts(repo, day), sharedLatestVenueRows(repo, day),
-    readLendingPositions(owner).catch((e: unknown) => {
+    ownerCached(owner, "lending", () => readLendingPositions(owner)).catch((e: unknown) => {
       console.error(`/api/me: the lending receipts could not be read (${e instanceof Error ? e.message : String(e)})`);
       return null;
     }),
@@ -105,7 +108,7 @@ export async function GET(request: Request) {
     (async () => {
       if (!ledgerWallet) return capLeftCents(rules.dailyCapCents, 0);
       try {
-        const d = await readDelegation(address(ledgerWallet.delegationPda));
+        const d = await ownerCached(owner, `delegation:${ledgerWallet.delegationPda}`, () => readDelegation(address(ledgerWallet.delegationPda)));
         const periodEndMs = Number(d.periodStartTs + d.periodLengthS) * 1000;
         const pulled = d.exists && Date.now() < periodEndMs ? Number(d.pulledInPeriodRaw / 10_000n) : 0;
         return capLeftCents(Math.min(rules.dailyCapCents, ledgerWallet.dailyCapCents, d.exists ? Number(d.amountPerPeriodRaw / 10_000n) : rules.dailyCapCents), pulled);

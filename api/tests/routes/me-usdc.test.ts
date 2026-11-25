@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { MemoryRepo } from "@/db/memory";
 import { setRepoForTests } from "@/db/repo";
 import { issueSession } from "@/lib/session";
+import { clearSharedReads } from "@/lib/memo";
 
 const U = "HJCJKRQLV2HVKfe3sFdTF5jjBY1xfWgnK8cLcjH7qnHd";
 vi.mock("@/lib/subscriptions", () => ({ readUsdcBalanceRaw: vi.fn(async () => 0n) }));
@@ -68,17 +69,17 @@ describe("GET /api/me/usdc", () => {
 
   // 10-27: the "Add USDC" amounts this wallet's SOL covers; unknown (no SOL read) is null, so the app offers all and the build decides
   it("answers which top-up amounts the wallet's SOL covers, null when the SOL cannot be read", async () => {
-    solLamports.v = 20_000_000n;
+    solLamports.v = 20_000_000n;  clearSharedReads();   // 11-25: Home's chain reads are kept 15 s; a new wallet state reads fresh
     expect((await (await get(await issueSession(U, "M"))).json()).topUpCents).toEqual([]);
-    solLamports.v = null;
+    solLamports.v = null;  clearSharedReads();   // 11-25: Home's chain reads are kept 15 s; a new wallet state reads fresh
     expect((await (await get(await issueSession(U, "M"))).json()).topUpCents).toBeNull();
     solLamports.v = 70_000_000n;
   });
 
   it('0.1.10: answers the SOL in lamports for the no-SOL note, null when it cannot be read', async () => {
-    solLamports.v = 1_000n;
+    solLamports.v = 1_000n;  clearSharedReads();   // 11-25: Home's chain reads are kept 15 s; a new wallet state reads fresh
     expect((await (await get(await issueSession(U, 'M'))).json()).solLamports).toBe('1000');
-    solLamports.v = null;
+    solLamports.v = null;  clearSharedReads();   // 11-25: Home's chain reads are kept 15 s; a new wallet state reads fresh
     expect((await (await get(await issueSession(U, 'M'))).json()).solLamports).toBeNull();
     solLamports.v = 70_000_000n;
   });

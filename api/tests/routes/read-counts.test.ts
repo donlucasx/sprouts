@@ -65,7 +65,7 @@ describe("read counts per request (perf 10-08)", () => {
     expect(c.calls.listEvents).toBe(4); // splits, lending, the top-ups (10-27: one read, the settle included), wallet links/revokes (10-28), all in parallel
   });
 
-  it("/api/me: legs in one read; the shared reads (share price, prices, snapshot rows) once per TTL, the user's chain reads every call", async () => {
+  it("/api/me: legs in one read; the shared reads (share price, prices, snapshot rows) once per TTL, the user's chain reads once per OWNER_TTL_MS (11-25 load hotfix), fresh after a write", async () => {
     expect((await me(new Request("http://x/api/me", await auth()))).status).toBe(200);
     const first = { repo: c.total(), chain: chainCalls(), jupiter: vi.mocked(priceUsd).mock.calls.length };
     console.log(`/api/me 1st call: repo ${first.repo} ${JSON.stringify(c.calls)}, chain RPC ${first.chain}, Jupiter ${first.jupiter}`);
@@ -79,7 +79,15 @@ describe("read counts per request (perf 10-08)", () => {
     expect(vi.mocked(storeRedeemRate)).not.toHaveBeenCalled();
     expect(c.calls.listCoinDays ?? 0).toBe(0);
     expect(c.calls.listVenueHistory ?? 0).toBe(0);
-    // per-user chain reads stay fresh
+    // 11-25 (carousel load): a second Home read within 15 s reuses this owner's chain reads
+    expect(vi.mocked(readPosition)).not.toHaveBeenCalled();
+    expect(vi.mocked(readHoldings)).not.toHaveBeenCalled();
+    expect(vi.mocked(readLendingPositions)).not.toHaveBeenCalled();
+    expect(vi.mocked(storeBalanceRaw)).not.toHaveBeenCalled();
+    // after a write the owner made (a confirm route calls forgetOwnerReads), the next read is fresh
+    const { forgetOwnerReads } = await import("@/lib/memo");
+    forgetOwnerReads(U);
+    expect((await me(new Request("http://x/api/me", await auth()))).status).toBe(200);
     expect(vi.mocked(readPosition)).toHaveBeenCalledTimes(1);
     expect(vi.mocked(readHoldings)).toHaveBeenCalledTimes(1);
     expect(vi.mocked(readLendingPositions)).toHaveBeenCalledTimes(1);
