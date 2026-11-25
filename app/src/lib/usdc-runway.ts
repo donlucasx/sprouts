@@ -35,8 +35,9 @@ export type Coverage = { kind: "one" | "days" | "weeks" | "months"; n: number };
 export function coverage(cents: number, avg: number | null): Coverage | null {
   if (!avg) return null;
   const days = cents / avg;
-  if (days < 10) return Math.round(days) <= 1 ? { kind: "one", n: 1 } : { kind: "days", n: Math.round(days) };
   const weeks = Math.round(days / 7);
+  // 11-25: 10-13 days rounded to "1 weeks"; under 2 weeks it stays in days ("about 12 days").
+  if (days < 10 || weeks < 2) return Math.round(days) <= 1 ? { kind: "one", n: 1 } : { kind: "days", n: Math.round(days) };
   if (weeks <= 8) return { kind: "weeks", n: weeks };
   return { kind: "months", n: 2 };
 }

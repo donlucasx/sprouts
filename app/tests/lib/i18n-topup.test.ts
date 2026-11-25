@@ -105,3 +105,14 @@ describe("Home's Terms lines and the app's own error lines", () => {
     expect(requestFailed(404)).toBe('La solicitud falló (404).')
   })
 })
+
+describe("coverage never says '1 weeks' (11-25)", async () => {
+  const { coverage } = await import("@/lib/usdc-runway");
+  it("10 days stays in days (it used to round to 1 week); 11 days and up round to 2 weeks", () => {
+    expect(coverage(1000, 100)).toEqual({ kind: "days", n: 10 });
+    expect(coverage(1040, 100)).toEqual({ kind: "days", n: 10 });
+    expect(coverage(1100, 100)).toEqual({ kind: "weeks", n: 2 });
+    expect(coverage(1400, 100)).toEqual({ kind: "weeks", n: 2 });
+    expect(coverage(900, 100)).toEqual({ kind: "days", n: 9 });
+  });
+});
