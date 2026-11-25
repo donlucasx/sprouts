@@ -15,7 +15,7 @@ import { useMe, useInvalidateMe } from '@/lib/me'
 import { useSession } from '@/lib/session'
 import { makeSigner, SignRefused } from '@/lib/sign'
 import { DROPPED_NOTHING_SENT, isSessionDropped } from '@/lib/wallet-errors'
-import { arrivalLine, formatSkr } from '@/lib/format'
+import { arrivalParts, formatSkr } from '@/lib/format'
 import { withdrawRows } from '@/lib/withdraw-list'
 import { oneAtATime, withdrawAtTap, type WithdrawPlan, type WithdrawRequest } from '@/lib/withdraw-flow'
 import { LendWithdraw } from '@/components/LendWithdraw'
@@ -33,6 +33,8 @@ const Waiting = () => {
 }
 
 export default function Withdraw() {
+  // P1 carry-over (Kimi): this screen renders formatSkr and the arrival line, so a language change must re-render it
+  useLang()
   const { data: me } = useMe()
   const { session } = useSession()
   const { colors } = useTheme()
@@ -70,8 +72,8 @@ export default function Withdraw() {
   }, [picked, busy])
   if (!me)
     return (
-      <Screen back title="Withdraw">
-        <ThemedText tone="secondary">Loading your garden.</ThemedText>
+      <Screen back title={t('home.withdraw')}>
+        <ThemedText tone="secondary">{t('withdraw.loading')}</ThemedText>
       </Screen>
     )
   const skrUsd = me.pot.skrUsd
@@ -89,7 +91,7 @@ export default function Withdraw() {
       const request: WithdrawRequest = { mode, amountRaw: mode === 'amount' ? String(parseSkr(amount)) : undefined }
       setPlan({ ...(await buildPlan(request)), request })
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Could not prepare the withdrawal.')
+      setError(e instanceof ApiError ? e.message : t('withdraw.prepareFailed'))
     } finally {
       setBusy(false)
     }
@@ -115,7 +117,7 @@ export default function Withdraw() {
       await invalidate()
       router.replace('/home')
     } catch (e) {
-      setError(e instanceof ApiError || e instanceof SignRefused ? e.message : isSessionDropped(e) ? DROPPED_NOTHING_SENT : 'The withdrawal did not go through. Nothing moved.')
+      setError(e instanceof ApiError || e instanceof SignRefused ? e.message : isSessionDropped(e) ? DROPPED_NOTHING_SENT : t('withdraw.failed'))
     } finally {
       gate.leave()
       setBusy(false)
@@ -126,13 +128,13 @@ export default function Withdraw() {
     setBusy(true)
     setError(null)
     try {
-      const t = await api<{ transaction: string }>('/api/withdraw/cancel/build', { method: 'POST', body: {} })
-      const signed = await makeSigner(signTransaction, { kind: 'cancel', user: session.pubkey })(t.transaction)
+      const built = await api<{ transaction: string }>('/api/withdraw/cancel/build', { method: 'POST', body: {} })
+      const signed = await makeSigner(signTransaction, { kind: 'cancel', user: session.pubkey })(built.transaction)
       await api('/api/withdraw/cancel/confirm', { method: 'POST', body: { signedTransaction: signed } })
       await invalidate()
       router.replace('/home')
     } catch (e) {
-      setError(e instanceof ApiError || e instanceof SignRefused ? e.message : isSessionDropped(e) ? DROPPED_NOTHING_SENT : 'Could not put it back. Try again.')
+      setError(e instanceof ApiError || e instanceof SignRefused ? e.message : isSessionDropped(e) ? DROPPED_NOTHING_SENT : t('withdraw.putBackFailed'))
     } finally {
       gate.leave()
       setBusy(false)
@@ -143,11 +145,11 @@ export default function Withdraw() {
   if (picked === null || pickedGone) {
     const rows = withdrawRows(me)
     return (
-      <Screen back title="Withdraw">
+      <Screen back title={t('home.withdraw')}>
         <Card style={{ gap: 0 }}>
-          <ThemedText style={{ marginBottom: spacing.sm }}>What do you want to withdraw?</ThemedText>
+          <ThemedText style={{ marginBottom: spacing.sm }}>{t('withdraw.what')}</ThemedText>
           {lendDone ? <ThemedText tone="accentText">{lendDone}</ThemedText> : null}
-          {rows.length === 0 ? <ThemedText tone="secondary">Nothing in your garden yet.</ThemedText> : null}
+          {rows.length === 0 ? <ThemedText tone="secondary">{t('withdraw.empty')}</ThemedText> : null}
           {rows.map((r, i) => {
             const inner = (
               <>
@@ -182,8 +184,8 @@ export default function Withdraw() {
     // The position is gone (withdrawn in full, or moved): back to the list.
     if (!position || !session)
       return (
-        <Screen back onBack={backToList} title="Withdraw">
-          <ThemedText tone="secondary">Loading your garden.</ThemedText>
+        <Screen back onBack={backToList} title={t('home.withdraw')}>
+          <ThemedText tone="secondary">{t('withdraw.loading')}</ThemedText>
         </Screen>
       )
     return (
@@ -205,46 +207,49 @@ export default function Withdraw() {
 
   if (me.basket) {
     return (
-      <Screen back onBack={busy ? () => {} : backToList} title="In the basket">
+      <Screen back onBack={busy ? () => {} : backToList} title={t('withdraw.basket.title')}>
         <Card>
           <ThemedText variant="heading" numeric>
             {formatSkr(BigInt(me.basket.amountRaw), skrUsd)}
           </ThemedText>
           <ThemedText tone="secondary">
-            {arrivalLine(me.basket.readyAt, new Date(), true)}. It stopped earning when you signed. One withdrawal at a time.
+            {(() => {
+              const a = arrivalParts(me.basket.readyAt, new Date())
+              return a.today ? t('withdraw.basket.today') : t('withdraw.basket.arrives', { when: a.when })
+            })()}
           </ThemedText>
-          <Button title="Put it back" kind="quiet" loading={busy} onPress={putBack} />
+          <Button title={t('withdraw.putBack')} kind="quiet" loading={busy} onPress={putBack} />
           {busy ? <Waiting /> : null}
         </Card>
-        <Button title="Back to the list" kind="quiet" disabled={busy} onPress={backToList} />
+        <Button title={t('withdraw.backToList')} kind="quiet" disabled={busy} onPress={backToList} />
         {error ? <ThemedText tone="error">{error}</ThemedText> : null}
       </Screen>
     )
   }
 
   return (
-    <Screen back onBack={busy ? () => {} : backToList} title="Withdraw SKR">
+    <Screen back onBack={busy ? () => {} : backToList} title={t('withdraw.skr')}>
       {!plan ? (
         <Card>
-          <ThemedText>What do you want to withdraw?</ThemedText>
+          <ThemedText>{t('withdraw.what')}</ThemedText>
           <TwoWay
             options={[
-              { value: 'earned', label: 'Your earnings' },
-              { value: 'amount', label: 'An amount' },
+              { value: 'earned', label: t('withdraw.earnings') },
+              { value: 'amount', label: t('withdraw.anAmount') },
             ]}
             value={mode}
             onChange={setMode}
           />
           <ThemedText tone="secondary">
             {mode === 'earned'
-              ? 'Only your earnings. What you put in keeps earning.'
-              : 'Up to everything. Going past your earnings prunes a plant.'}
+              ? t('withdraw.earnedOnly')
+              : t('withdraw.upTo')}
           </ThemedText>
           {mode === 'earned' ? (
             <>
-              <ThemedText numeric>Earned so far: {formatSkr(earned, skrUsd)}</ThemedText>
+              <ThemedText numeric>{t('withdraw.earnedSoFar', { amount: formatSkr(earned, skrUsd) })}</ThemedText>
               {!canEarned ? (
-                <ThemedText tone="secondary">You can withdraw once your earnings reach 1 SKR.</ThemedText>
+                <ThemedText tone="secondary">{t('withdraw.min1')}</ThemedText>
               ) : null}
             </>
           ) : (
@@ -253,19 +258,19 @@ export default function Withdraw() {
                 style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm }}
               >
                 <ThemedText numeric style={{ flex: 1 }}>
-                  Available: {formatSkr(held, skrUsd)}
+                  {t('withdraw.available', { amount: formatSkr(held, skrUsd) })}
                 </ThemedText>
-                <Button title="Max" kind="quiet" onPress={() => setAmount(maxAmountText(held))} />
+                <Button title={t('withdraw.max')} kind="quiet" onPress={() => setAmount(maxAmountText(held))} />
               </View>
               <TextInput
                 value={amount}
                 onChangeText={setAmount}
                 keyboardType="decimal-pad"
-                placeholder="Amount in SKR"
+                placeholder={t('withdraw.amountIn', { coin: 'SKR' })}
                 placeholderTextColor={colors.textSecondary}
                 cursorColor={colors.accent}
                 selectionColor={colors.accent}
-                accessibilityLabel="Amount in SKR"
+                accessibilityLabel={t('withdraw.amountIn', { coin: 'SKR' })}
                 style={{
                   ...ramp.title,
                   borderBottomWidth: 1,
@@ -282,10 +287,10 @@ export default function Withdraw() {
             </>
           )}
           <ThemedText variant="caption" tone="secondary">
-            {"It arrives in your wallet 48 hours after you sign."}
+            {t('withdraw.48h')}
           </ThemedText>
           <Button
-            title="Continue"
+            title={t('withdraw.continue')}
             disabled={busy || (mode === 'earned' && !canEarned) || problem !== null}
             onPress={prepare}
           />
@@ -295,12 +300,12 @@ export default function Withdraw() {
           {plan.brief.map((l, i) => (
             <ThemedText key={i}>{l}</ThemedText>
           ))}
-          <Button title="Withdraw" kind={plan.prunes ? 'danger' : 'primary'} loading={busy} onPress={sign} />
+          <Button title={t('home.withdraw')} kind={plan.prunes ? 'danger' : 'primary'} loading={busy} onPress={sign} />
           {busy ? <Waiting /> : null}
-          <Button title="Change amount" kind="quiet" disabled={busy} onPress={() => setPlan(null)} />
+          <Button title={t('withdraw.changeAmount')} kind="quiet" disabled={busy} onPress={() => setPlan(null)} />
         </Card>
       )}
-      <Button title="Back to the list" kind="quiet" disabled={busy} onPress={backToList} />
+      <Button title={t('withdraw.backToList')} kind="quiet" disabled={busy} onPress={backToList} />
       {error ? <ThemedText tone="error">{error}</ThemedText> : null}
     </Screen>
   )

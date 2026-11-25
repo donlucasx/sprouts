@@ -14,7 +14,8 @@ import { useMe, useInvalidateMe, useApplyRules } from '@/lib/me'
 import { freshSignIn } from '@/lib/signin'
 import { freshWalletSignIn } from '@/lib/reauth'
 import { identity } from '@/lib/identity'
-import { formatUsd, COIN_NAME_LONG } from '@/lib/format'
+import { formatUsd, coinNameLong } from '@/lib/format'
+import { usdTrimmed } from '@/i18n/format'
 import { undoSplit } from '@/lib/manager-api'
 import {
   splitRows,
@@ -27,14 +28,7 @@ import {
   pinsForOn,
   pinsForOff,
   undoLine,
-  SWITCH_LABEL,
-  MANAGER_LINE,
-  PRO_LINE,
-  ROWS_LINE,
-  STOP_LINE,
-  UNDONE_TEXT,
-  STORE_ROW_NOTE,
-  STORE_FLOOR_LINE,
+  stopLabel,
   STORE_FLOOR,
   canStepUp,
   canSwitchOff,
@@ -43,7 +37,6 @@ import {
   splitTotal,
 } from '@/model/manager'
 import type { Pins } from '@/lib/coins'
-import { ORE_DISCLOSURE } from '@/lib/ore-copy'
 import { rulesChanges } from '@/lib/forms'
 import { pauseState } from '@/lib/me-state'
 import { usePauseToggle } from '@/lib/use-pause'
@@ -68,8 +61,8 @@ const Row = ({ label, children }: { label: string; children: React.ReactNode }) 
   </View>
 )
 
-/** "$5" for whole dollars, "$0.10" otherwise: the chips fit side by side (device 10-08). */
-const chipUsd = (c: number) => (c % 100 === 0 ? `$${c / 100}` : formatUsd(c))
+/** "$5" for whole dollars, "$0.10" otherwise (es "$0,10"): the chips fit side by side (device 10-08). */
+const chipUsd = (c: number) => usdTrimmed(c)
 
 /** A setting shown as its value; a tap opens its stepper under the chips (10-08 Rules redesign). */
 function Chip({ label, open, onPress }: { label: string; open: boolean; onPress: () => void }) {
@@ -98,7 +91,7 @@ function Chip({ label, open, onPress }: { label: string; open: boolean; onPress:
 }
 
 /** 0.1.10: a small set of choices shown side by side, the picked one outlined (the add-to-every-swap amount, the 1% start). */
-function OptionChips<T extends number>({ options, value, format, onChange, label }: { options: readonly T[]; value: number; format: (v: T) => string; onChange: (v: T) => void; label: string }) {
+function OptionChips<T extends number>({ options, value, format, onChange, label, optionLabel }: { options: readonly T[]; value: number; format: (v: T) => string; onChange: (v: T) => void; label: string; optionLabel: (v: T) => string }) {
   const { colors } = useTheme()
   return (
     <View accessibilityRole="radiogroup" accessibilityLabel={label} style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: -spacing.xs }}>
@@ -110,7 +103,7 @@ function OptionChips<T extends number>({ options, value, format, onChange, label
             onPress={() => onChange(o)}
             accessibilityRole="radio"
             accessibilityState={{ selected: on }}
-            accessibilityLabel={`${label} ${format(o)}`}
+            accessibilityLabel={optionLabel(o)}
             style={{
               minHeight: TARGET,
               minWidth: TARGET,
@@ -164,8 +157,8 @@ export default function Rules() {
   const activity = useQuery(activityQuery)
   if (!me)
     return (
-      <Screen inset="top" title="Rules">
-        <ThemedText tone="secondary">Loading your rules.</ThemedText>
+      <Screen inset="top" title={t('tabs.rules')}>
+        <ThemedText tone="secondary">{t('rules.loading')}</ThemedText>
       </Screen>
     )
   const saved = me.rules
@@ -241,7 +234,7 @@ export default function Rules() {
       // Dev builds only: the real error for Metro's terminal (09-29: a save after the sign-in failed with only the generic line).
       if (typeof __DEV__ !== 'undefined' && __DEV__)
         console.warn(`[rules] save failed: ${e instanceof Error ? `${e.name}: ${e.message}` : String(e)}`)
-      setError(e instanceof ApiError ? e.message : 'Could not save. Try again.')
+      setError(e instanceof ApiError ? e.message : t('rules.saveFailed'))
     } finally {
       setBusy(false)
       setSigning(false)
@@ -259,7 +252,7 @@ export default function Rules() {
       setUndone(true)
       void invalidate()
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Could not undo. Try again.')
+      setError(e instanceof ApiError ? e.message : t('activity.undoFailed'))
     } finally {
       setBusy(false)
       setSigning(false)
@@ -278,7 +271,7 @@ export default function Rules() {
       setDraft((d) => ({ ...d, ...r.patch }))
       setWatcher({ understood: r.understood, notes: r.notes })
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Sprouts could not read that. Use the controls below.')
+      setError(e instanceof ApiError ? e.message : t('rules.box.failed'))
     } finally {
       setAsking(false)
     }
@@ -287,13 +280,13 @@ export default function Rules() {
   return (
     <Screen
       inset="top"
-      title="Rules"
+      title={t('tabs.rules')}
       footer={
         dirty ? (
           <>
             {raises ? (
               <ThemedText variant="caption" tone="secondary">
-                Raising the daily limit asks your wallet to sign in once.
+                {t('rules.raises')}
               </ThemedText>
             ) : null}
             {signing ? (
@@ -303,9 +296,9 @@ export default function Rules() {
             ) : null}
             {error ? <ThemedText tone="error">{error}</ThemedText> : null}
             <View style={{ flexDirection: 'row', gap: spacing.sm }}>
-              <Button title="Discard" kind="quiet" disabled={busy} onPress={clearDraft} style={{ flex: 1 }} />
+              <Button title={t('rules.discard')} kind="quiet" disabled={busy} onPress={clearDraft} style={{ flex: 1 }} />
               {/* Addendum 11-15: manager off, Save waits for a total of exactly 100 */}
-              <Button title="Save changes" loading={busy} disabled={total !== null && !total.ok} onPress={saveAll} style={{ flex: 2 }} />
+              <Button title={t('rules.save')} loading={busy} disabled={total !== null && !total.ok} onPress={saveAll} style={{ flex: 2 }} />
             </View>
           </>
         ) : null
@@ -313,15 +306,15 @@ export default function Rules() {
     >
       {SHOW_BOX && (
         <Card>
-          <ThemedText>Say it in your words</ThemedText>
+          <ThemedText>{t('rules.box.title')}</ThemedText>
           <TextInput
             value={ask}
             onChangeText={setAsk}
             multiline
             maxLength={300}
-            placeholder="Add 1% of swaps over $50"
+            placeholder={t('rules.box.placeholder')}
             placeholderTextColor={colors.textSecondary}
-            accessibilityLabel="Your rule in plain English"
+            accessibilityLabel={t('rules.box.a11y')}
             editable={!busy && !asking}
             style={{
               fontFamily: 'AlbertSans_400Regular',
@@ -335,7 +328,7 @@ export default function Rules() {
             }}
           />
           <Button
-            title="Ask Sprouts"
+            title={t('rules.box.ask')}
             kind="quiet"
             loading={asking}
             disabled={busy || ask.trim() === ''}
@@ -343,7 +336,7 @@ export default function Rules() {
           />
           {watcher ? <ThemedText>{[watcher.understood, ...watcher.notes].join(' ')}</ThemedText> : null}
           <ThemedText variant="caption" tone="secondary">
-            Sprouts sets the controls below. Nothing changes until you save.
+            {t('rules.box.note')}
           </ThemedText>
         </Card>
       )}
@@ -353,7 +346,7 @@ export default function Rules() {
           <PauseRow
             on={pause.on}
             line={pause.line}
-            detail={pause.on ? weekLine(activity.data?.swaps) : 'Round-ups are off. Nothing moves until you turn it back on.'}
+            detail={pause.on ? weekLine(activity.data?.swaps) : t('rules.off.detail')}
             busy={pausing}
             error={pauseError}
             onChange={togglePaused}
@@ -361,69 +354,69 @@ export default function Rules() {
         </Card>
       ) : null}
       <Card>
-        <ThemedText variant="heading">Round-ups</ThemedText>
+        <ThemedText variant="heading">{t('rules.roundups')}</ThemedText>
         {/* R460: any swap rounds up, the daily limit caps it; an example says what that means */}
-        <Row label="Round up every swap">
+        <Row label={t('rules.every')}>
           <Switch
             {...toggle}
             value={r.roundupOn}
             onValueChange={(v) => edit({ roundupOn: v })}
-            accessibilityLabel="Round up every swap"
+            accessibilityLabel={t('rules.every')}
           />
         </Row>
         <ThemedText variant="caption" tone="secondary" style={{ marginTop: -spacing.sm }}>
-          A $3.40 swap saves $0.60.
+          {t('rules.every.example', { swap: formatUsd(340), saved: formatUsd(60) })}
         </ThemedText>
         {/* 0.1.10 (his rulings 11-12): swaps under $1 count when this is on; under 10 cents never does (dust) */}
-        <Row label="Round up swaps under $1">
+        <Row label={t('rules.small', { one: chipUsd(100) })}>
           <Switch
             {...toggle}
             value={r.smallOn}
             onValueChange={(v) => edit({ smallOn: v })}
-            accessibilityLabel="Round up swaps under $1"
+            accessibilityLabel={t('rules.small', { one: chipUsd(100) })}
           />
         </Row>
         <ThemedText variant="caption" tone="secondary" style={{ marginTop: -spacing.sm }}>
-          {`A $0.40 swap saves $0.60. Swaps under ${cents(10)} don't count.`}
+          {t('rules.small.example', { swap: formatUsd(40), saved: formatUsd(60), dust: cents(10) })}
         </ThemedText>
         {/* 0.1.10: a set amount on every swap, for small regular buys in whole dollars (a daily DCA saves nothing by rounding) */}
-        <Row label={`Add ${cents(r.perSwapCents)} to every swap`}>
+        <Row label={t('rules.perSwap', { amount: cents(r.perSwapCents) })}>
           <Switch
             {...toggle}
             value={r.perSwapOn}
             onValueChange={(v) => edit({ perSwapOn: v })}
-            accessibilityLabel="Add an amount to every swap"
+            accessibilityLabel={t('rules.perSwap.a11y')}
           />
         </Row>
         {r.perSwapOn ? (
-          <OptionChips options={PER_SWAP_OPTIONS} value={r.perSwapCents} format={cents} onChange={(v) => edit({ perSwapCents: v })} label="Add to every swap" />
+          <OptionChips options={PER_SWAP_OPTIONS} value={r.perSwapCents} format={cents} onChange={(v) => edit({ perSwapCents: v })} label={t('rules.perSwap.group')} optionLabel={(v) => t('rules.perSwap.option', { amount: cents(v) })} />
         ) : null}
         <ThemedText variant="caption" tone="secondary" style={{ marginTop: r.perSwapOn ? 0 : -spacing.sm }}>
-          {`For small, regular buys: 20 swaps a day at ${cents(10)} saves $2.`}
+          {t('rules.perSwap.example', { amount: cents(10), total: chipUsd(200) })}
         </ThemedText>
-        <Row label={`Add 1% of swaps over ${chipUsd(r.pctThresholdCents)}`}>
+        <Row label={t('rules.pct', { amount: chipUsd(r.pctThresholdCents) })}>
           <Switch
             {...toggle}
             value={r.pctOn}
             onValueChange={(v) => edit({ pctOn: v })}
-            accessibilityLabel="Add 1% of larger swaps"
+            accessibilityLabel={t('rules.pct.a11y')}
           />
         </Row>
         {r.pctOn ? (
-          <OptionChips options={PCT_START_OPTIONS} value={r.pctThresholdCents} format={chipUsd} onChange={(v) => edit({ pctThresholdCents: v })} label="Add 1% of swaps over" />
+          <OptionChips options={PCT_START_OPTIONS} value={r.pctThresholdCents} format={chipUsd} onChange={(v) => edit({ pctThresholdCents: v })} label={t('rules.pct.group')} optionLabel={(v) => t('rules.pct', { amount: chipUsd(v) })} />
         ) : null}
         {/* The limit as a chip; a tap opens the stepper under it. R466: the planting amount left Rules (the saved value stands). */}
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }}>
           <Chip
-            label={`Daily limit ${chipUsd(r.dailyCapCents)}`}
+            label={t('rules.cap.chip', { amount: chipUsd(r.dailyCapCents) })}
             open={picker === 'cap'}
             onPress={() => setPicker((p) => (p === 'cap' ? null : 'cap'))}
           />
         </View>
         {picker === 'cap' ? (
           <Stepper
-            label="Daily limit"
-            what="daily limit"
+            label={t('rules.cap')}
+            what={t('rules.cap.what')}
             value={r.dailyCapCents}
             step={100}
             min={100}
@@ -435,15 +428,15 @@ export default function Rules() {
         ) : null}
         {/* R466: what "planting" means, once, where the change is set aside */}
         <ThemedText variant="caption" tone="secondary">
-          Each morning, saved change is planted: Sprouts buys the coins in your split below.
+          {t('rules.planted.note')}
         </ThemedText>
       </Card>
       <Card>
-        <ThemedText variant="heading">Where it grows</ThemedText>
+        <ThemedText variant="heading">{t('rules.grows')}</ThemedText>
         {/* One bar for the split: where the money goes at a glance */}
         <View
           accessible
-          accessibilityLabel={rows.map((row) => `${COIN_NAME_LONG[row.asset]} ${row.pct}%`).join(', ')}
+          accessibilityLabel={rows.map((row) => t('rules.bar.item', { coin: coinNameLong(row.asset), pct: row.pct })).join(', ')}
           style={{ flexDirection: 'row', height: 10, borderRadius: 5, overflow: 'hidden', backgroundColor: colors.hairline }}
         >
           {rows
@@ -453,8 +446,13 @@ export default function Rules() {
             ))}
         </View>
         <ThemedText variant="caption" tone="secondary">
-          {r.managed && saved.managed && !coinsChanged ? "Today's split. " : r.managed ? 'The split after you save. ' : ''}
-          {r.managed ? ROWS_LINE.on : ROWS_LINE.off} {r.managed ? STORE_FLOOR_LINE.on : STORE_FLOOR_LINE.off}
+          {[
+            r.managed && saved.managed && !coinsChanged ? t('rules.split.today') : r.managed ? t('rules.split.after') : null,
+            r.managed ? t('manager.rows.on') : t('manager.rows.off'),
+            t('manager.storeFloor'),
+          ]
+            .filter(Boolean)
+            .join(' ')}
         </ThemedText>
         {shownRows.map((row) => (
           <View
@@ -466,13 +464,13 @@ export default function Rules() {
             <View style={{ flex: 1 }}>
               {/* 10-23 device check: with steppers beside it, the Pro badge ran into the percent; it wraps under the name instead. */}
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.xs }}>
-                <ThemedText>{COIN_NAME_LONG[row.asset]}</ThemedText>
+                <ThemedText>{coinNameLong(row.asset)}</ThemedText>
                 {/* R446: automatic lending is part of Pro (free during launch) */}
                 {row.asset === 'USDC_LEND' || row.asset === 'SOL_LEND' ? <ProBadge /> : null}
               </View>
               {row.asset === 'stORE' ? (
                 <ThemedText variant="caption" tone="secondary">
-                  {STORE_ROW_NOTE}
+                  {t('manager.storeNote')}
                 </ThemedText>
               ) : null}
               {row.mode !== 'off' && joinsLine(me, row.asset) ? (
@@ -487,7 +485,7 @@ export default function Rules() {
             {/* R346, and 10-23 with the manager off too: 11-15 ruling: every coin has its switch, SKR included; at least one stays on. */}
             <Switch
               {...toggle}
-              accessibilityLabel={`Use ${COIN_NAME_LONG[row.asset]}`}
+              accessibilityLabel={t('rules.use', { coin: coinNameLong(row.asset) })}
               value={row.mode !== 'off'}
               disabled={busy || (row.mode !== 'off' && !canSwitchOff(r, row.asset))}
               onValueChange={(on) =>
@@ -496,7 +494,7 @@ export default function Rules() {
             />
             {!r.managed && row.mode === 'pinned' && (
               <StepButtons
-                what={COIN_NAME_LONG[row.asset]}
+                what={coinNameLong(row.asset)}
                 onLess={() => editManual((p) => stepPin(p, row.asset, -1))}
                 onMore={() => editManual((p) => stepPin(p, row.asset, 1))}
                 lessDisabled={busy || row.pct <= 0}
@@ -514,14 +512,14 @@ export default function Rules() {
         {hiddenRows.length > 0 ? (
           <Pressable onPress={() => setShowAll(true)} accessibilityRole="button" style={{ minHeight: TARGET, justifyContent: 'center' }}>
             <ThemedText variant="caption" style={{ color: colors.accentText }}>
-              {`${hiddenRows.map((row) => COIN_NAME_LONG[row.asset]).join(', ')} at 0%. Show`}
+              {t('rules.hidden', { coins: hiddenRows.map((row) => coinNameLong(row.asset)).join(', ') })}
             </ThemedText>
           </Pressable>
         ) : null}
         <View style={{ height: 1, backgroundColor: colors.hairline, marginVertical: spacing.xs }} />
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
           <ThemedText variant="heading" style={{ flex: 1 }}>
-            {SWITCH_LABEL}
+            {t('manager.switch')}
           </ThemedText>
           <ProBadge />
           <Switch
@@ -547,25 +545,25 @@ export default function Rules() {
               setExplicit(true)
               edit({ managed: false, pins: pinsForOff(planted, managedPins(r.pins)) })
             }}
-            accessibilityLabel={SWITCH_LABEL}
+            accessibilityLabel={t('manager.switch')}
           />
         </View>
         <ThemedText variant="caption" tone="secondary">
-          {MANAGER_LINE} {PRO_LINE}
+          {`${t('manager.line')} ${t('manager.proLine')}`}
         </ThemedText>
         {r.managed && (
           <>
             <TwoWay
               options={[
-                { value: 'careful', label: 'Careful' },
-                { value: 'balanced', label: 'Balanced' },
-                { value: 'bold', label: 'Bold' },
+                { value: 'careful', label: stopLabel('careful') },
+                { value: 'balanced', label: stopLabel('balanced') },
+                { value: 'bold', label: stopLabel('bold') },
               ]}
               value={r.stop}
               onChange={(v) => edit({ stop: v })}
             />
             <ThemedText variant="caption" tone="secondary">
-              {STOP_LINE}
+              {t('manager.stopLine')}
             </ThemedText>
           </>
         )}
@@ -578,7 +576,7 @@ export default function Rules() {
         ) : null}
         {undone ? (
           <ThemedText variant="caption" tone="secondary">
-            {UNDONE_TEXT}
+            {t('manager.undone')}
           </ThemedText>
         ) : null}
         {!undone && me.manager.undoAvailable && undoLine(me.manager.changedDay) ? (
@@ -593,12 +591,12 @@ export default function Rules() {
             <ThemedText variant="caption" tone="secondary">
               {undoLine(me.manager.changedDay)}
             </ThemedText>
-            <Button title="Undo" kind="quiet" loading={busy} onPress={undo} />
+            <Button title={t('activity.undo')} kind="quiet" loading={busy} onPress={undo} />
           </View>
         ) : null}
         {showDisclosure ? (
           <ThemedText variant="caption" tone="secondary">
-            {ORE_DISCLOSURE}
+            {t('ore.disclosure')}
           </ThemedText>
         ) : null}
         <VenuesPanel />
@@ -607,7 +605,7 @@ export default function Rules() {
       {!dirty ? (
         <View style={{ gap: spacing.sm }}>
           <ThemedText variant="caption" tone="secondary">
-            Change what you like, then save.
+            {t('rules.hint')}
           </ThemedText>
           {error ? <ThemedText tone="error">{error}</ThemedText> : null}
         </View>

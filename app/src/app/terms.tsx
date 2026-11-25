@@ -11,6 +11,7 @@ import { readLastMe, useMe, writeLastMe } from '@/lib/me'
 import { TERMS_VERSION, agreedLine, termsAction, termsBlocks, termsSummary, withAccepted } from '@/lib/terms'
 import { spacing } from '@/theme'
 import { useLang } from '@/i18n/useLang'
+import { t } from '@/i18n'
 
 /** R283: the one plain page (the final text, verbatim), linked from Welcome, Home and Settings. A signed-in user who has not accepted this version agrees here. */
 export default function Terms() {
@@ -40,7 +41,7 @@ export default function Terms() {
       void queryClient.invalidateQueries({ queryKey: ['me'] })
       router.back()
     } catch (e) {
-      setError(ctl.signal.aborted ? 'That took too long. Try again.' : e instanceof ApiError ? e.message : 'Could not save that. Try again.')
+      setError(ctl.signal.aborted ? t('terms.slow') : e instanceof ApiError ? e.message : t('terms.saveFailed'))
     } finally {
       clearTimeout(timer)
       setBusy(false)
@@ -63,9 +64,9 @@ export default function Terms() {
             <ThemedText key={l}>{`• ${l}`}</ThemedText>
           ))}
           {action === 'agree' ? (
-            <Button title="I agree" loading={busy} onPress={accept} />
+            <Button title={t('terms.agree')} loading={busy} onPress={accept} />
           ) : (
-            <ThemedText>Update the app to read the new Terms.</ThemedText>
+            <ThemedText>{t('terms.update')}</ThemedText>
           )}
           {error ? <ThemedText tone="error">{error}</ThemedText> : null}
         </Card>

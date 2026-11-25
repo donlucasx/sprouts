@@ -8,13 +8,15 @@ import { Button } from '@/components/Button'
 import { ThemedText } from '@/components/ThemedText'
 import { Disclosure } from '@/components/Disclosure'
 import { ApiError } from '@/lib/api'
-import { canSend, fetchSupportLog, isTopic, logLine, MESSAGE_MAX, previewOf, readSupportEmail, sendSupport, SUPPORT_LOG_KEY, SUPPORT_TOPICS, type SupportTopic } from '@/lib/support'
+import { canSend, fetchSupportLog, isTopic, logLine, MESSAGE_MAX, previewOf, readSupportEmail, sendSupport, SUPPORT_LOG_KEY, SUPPORT_TOPICS, topicLabel, type SupportTopic } from '@/lib/support'
 import { radius, spacing, TARGET, useTheme } from '@/theme'
 import { useLang } from '@/i18n/useLang'
+import { en } from '@/i18n/en'
+import { t } from '@/i18n'
 
-/** What the "Sent with your message" row says: everything attached, in plain words (the API's support route adds the server half). */
-export const ATTACHED =
-  'Your .skr name, the app version, your phone model, your linked wallets and the last few errors Sprouts saw. Never your keys or seed phrase.'
+/** What the "Sent with your message" row says: everything attached, in plain words (the API's support route adds the server half).
+ *  0.1.13: the English (tests); the screen shows t('support.attached'). */
+export const ATTACHED = en['support.attached']
 
 /**
  * 11-01 (his ask, draft v1 approved, email required by his ruling): one message to the team. Replies come by email only; nothing comes
@@ -58,7 +60,7 @@ export default function Support() {
       void queryClient.invalidateQueries({ queryKey: SUPPORT_LOG_KEY })
     } catch (e) {
       // 11-01 (his Seeker was offline): Home's generic "didn't answer" line points at Home; here, say what to do. Your text stays put.
-      setError(e instanceof ApiError && e.status !== 0 ? e.message : 'Could not send it. Check your connection and try again. Your message is still here.')
+      setError(e instanceof ApiError && e.status !== 0 ? e.message : t('support.sendFailed'))
     } finally {
       setBusy(false)
     }
@@ -66,42 +68,43 @@ export default function Support() {
 
   if (sentTo) {
     return (
-      <Screen back title="Message us">
+      <Screen back title={t('support.title')}>
         <View style={{ alignItems: 'center', gap: spacing.md, paddingTop: spacing.xxl * 2 }}>
           <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' }}>
             <MaterialCommunityIcons name="check" size={36} color={colors.onAccent} />
           </View>
           <ThemedText variant="heading" accessibilityRole="header">
-            Message sent
+            {t('support.sent')}
           </ThemedText>
           <ThemedText tone="secondary" style={{ textAlign: 'center' }}>
-            {`Thanks. We will reply to ${sentTo}, usually within a day.`}
+            {t('support.thanks', { email: sentTo })}
           </ThemedText>
           {sentRef ? (
             <ThemedText variant="label" numeric style={{ textAlign: 'center' }}>
-              {`Reference ${sentRef}`}
+              {t('support.ref', { ref: sentRef })}
             </ThemedText>
           ) : null}
-          <Button title="Done" onPress={() => router.back()} style={{ alignSelf: 'stretch', marginTop: spacing.lg }} />
+          <Button title={t('support.done')} onPress={() => router.back()} style={{ alignSelf: 'stretch', marginTop: spacing.lg }} />
         </View>
       </Screen>
     )
   }
 
   return (
-    <Screen back title="Message us" keyboard keyboardAnchor={() => sendBottom.current}>
-      <ThemedText tone="secondary">Tell us what happened. We reply by email, usually within a day.</ThemedText>
+    <Screen back title={t('support.title')} keyboard keyboardAnchor={() => sendBottom.current}>
+      <ThemedText tone="secondary">{t('support.intro')}</ThemedText>
 
-      <ThemedText variant="label">What is it about?</ThemedText>
+      <ThemedText variant="label">{t('support.about')}</ThemedText>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }}>
-        {SUPPORT_TOPICS.map((t) => {
-          const on = t.value === topic
+        {SUPPORT_TOPICS.map((tp) => {
+          const on = tp.value === topic
+          const label = topicLabel(tp.value)
           return (
             <Pressable
-              key={t.value}
-              onPress={() => setTopic(on ? null : t.value)}
+              key={tp.value}
+              onPress={() => setTopic(on ? null : tp.value)}
               accessibilityRole="button"
-              accessibilityLabel={t.label}
+              accessibilityLabel={label}
               accessibilityState={{ selected: on }}
               hitSlop={4}
               style={({ pressed }) => ({
@@ -116,34 +119,34 @@ export default function Support() {
               })}
             >
               <ThemedText variant="button" style={{ color: on ? colors.onAccent : colors.text }}>
-                {t.label}
+                {label}
               </ThemedText>
             </Pressable>
           )
         })}
       </View>
 
-      <ThemedText variant="label">Your message</ThemedText>
+      <ThemedText variant="label">{t('support.message')}</ThemedText>
       <TextInput
         value={message}
         onChangeText={setMessage}
         multiline
         maxLength={MESSAGE_MAX}
-        placeholder="What were you trying to do?"
+        placeholder={t('support.placeholder')}
         placeholderTextColor={colors.textSecondary}
-        accessibilityLabel="Your message"
+        accessibilityLabel={t('support.message')}
         editable={!busy}
         textAlignVertical="top"
         style={{ ...field, minHeight: 120 }}
       />
 
-      <ThemedText variant="label">Your email</ThemedText>
+      <ThemedText variant="label">{t('support.email')}</ThemedText>
       <TextInput
         value={email}
         onChangeText={setEmail}
-        placeholder="you@example.com"
+        placeholder={t('support.email.placeholder')}
         placeholderTextColor={colors.textSecondary}
-        accessibilityLabel="Your email, for our reply"
+        accessibilityLabel={t('support.email.a11y')}
         editable={!busy}
         keyboardType="email-address"
         autoCapitalize="none"
@@ -152,29 +155,29 @@ export default function Support() {
         style={{ ...field, minHeight: TARGET }}
       />
       <ThemedText variant="caption" tone="secondary">
-        Only used to reply to you.
+        {t('support.email.note')}
       </ThemedText>
 
       <View>
-        <Disclosure title="Sent with your message" first>
-          {ATTACHED}
+        <Disclosure title={t('support.attached.title')} first>
+          {t('support.attached')}
         </Disclosure>
       </View>
 
       {error ? <ThemedText tone="error">{error}</ThemedText> : null}
       <View onLayout={(e) => (sendBottom.current = e.nativeEvent.layout.y + e.nativeEvent.layout.height)}>
-        <Button title="Send" loading={busy} disabled={!canSend(message, email)} onPress={send} />
+        <Button title={t('support.send')} loading={busy} disabled={!canSend(message, email)} onPress={send} />
       </View>
       <ThemedText variant="caption" tone="secondary">
-        Sprouts will never ask for your seed phrase or ask you to sign anything by email.
+        {t('support.neverAsk')}
       </ThemedText>
       {/* 11-01 (his note: the Settings footer email goes, "ensure the email can be found elsewhere relevant"): here, beside the form */}
       <ThemedText variant="caption" tone="secondary">
-        Prefer email? Write to hello@sprouts.money.
+        {t('support.preferEmail')}
       </ThemedText>
       {log && log.length > 0 ? (
         <View style={{ gap: spacing.sm, marginTop: spacing.md }}>
-          <ThemedText variant="heading">Your messages</ThemedText>
+          <ThemedText variant="heading">{t('support.yours')}</ThemedText>
           {log.map((e, i) => (
             <View key={`${e.ref ?? ''}${e.ts}`} style={{ gap: 2, paddingTop: i === 0 ? 0 : spacing.sm, borderTopWidth: i === 0 ? 0 : 1, borderTopColor: colors.hairline }}>
               <ThemedText variant="label" tone="secondary" numeric>
@@ -184,7 +187,7 @@ export default function Support() {
             </View>
           ))}
           <ThemedText variant="caption" tone="secondary">
-            Replies come to your email. Quote the reference if you write back.
+            {t('support.replies')}
           </ThemedText>
         </View>
       ) : null}

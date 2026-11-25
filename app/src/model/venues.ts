@@ -1,14 +1,12 @@
 import type { VenuesResponse, VenueRow } from '@/lib/api'
 import { VENUE_NAME } from '@/lib/coins'
 import { percent } from "@/i18n/format"
+import { t } from "@/i18n"
 
 /** R275: the AI's reason for skipping a venue for the day, in plain words. A reason this build does not know reads plainly too. */
-const REASON: Record<string, string> = {
-  incentive_spike: 'Skipped today: mostly a short-term bonus',
-  near_full: 'Skipped today: almost fully lent out',
-  deposits_fleeing: 'Skipped today: money is leaving fast',
-  data_suspect: 'Skipped today: its numbers look off',
-}
+const REASONS = ['incentive_spike', 'near_full', 'deposits_fleeing', 'data_suspect'] as const
+const reasonLine = (r: string | null | undefined): string | null =>
+  r && (REASONS as readonly string[]).includes(r) ? t(`venues.state.${r as (typeof REASONS)[number]}`) : null
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 const pct = (n: number) => percent(n, 2)
 /** A venue this build does not know (the API is ahead of a cached phone) keeps the name the API sends. */
@@ -20,26 +18,28 @@ const venueName = (r: VenueRow) => (VENUE_NAME as Record<string, string>)[r.venu
  */
 export function venueLines(v: VenuesResponse): { key: string; title: string; detail: string }[] {
   return v.venues.map((r) => {
-    const avg =
-      r.avg7Pct !== null && r.daysMeasured >= 2
-        ? `, 7-day ${pct(r.avg7Pct)}`
-        : r.daysMeasured === 1
-          ? ', measured 1 day'
-          : ''
-    const rewards = r.rewardsPct !== null && r.rewardsPct > 0 ? ` + ${pct(r.rewardsPct)} rewards` : ''
-    const rate = r.supplyPct === null ? cap(r.note ?? 'rate unavailable') : `This morning ${pct(r.supplyPct)}${rewards}${avg}`
+    // 0.1.13: one whole line per variant (rewards or not, 7-day average / one day measured / none); the venue's own note is server text
+    const avg = r.avg7Pct !== null && r.daysMeasured >= 2 ? 'avg' : r.daysMeasured === 1 ? 'day1' : null
+    const rewards = r.rewardsPct !== null && r.rewardsPct > 0
+    const vars = { pct: r.supplyPct === null ? '' : pct(r.supplyPct), rewards: rewards ? pct(r.rewardsPct!) : '', avg: avg === 'avg' ? pct(r.avg7Pct!) : '' }
+    const rate =
+      r.supplyPct === null
+        ? r.note != null ? cap(r.note) : t('venues.rate.none')
+        : rewards
+          ? t(avg === 'avg' ? 'venues.rate.rewards.avg' : avg === 'day1' ? 'venues.rate.rewards.day1' : 'venues.rate.rewards', vars)
+          : t(avg === 'avg' ? 'venues.rate.avg' : avg === 'day1' ? 'venues.rate.day1' : 'venues.rate', vars)
     const state = !r.auto
-      ? 'Compared only'
+      ? t('venues.state.compared')
       : r.verdict === 'avoid'
-        ? (r.reason && REASON[r.reason]) || 'Skipped today'
+        ? reasonLine(r.reason) ?? t('venues.state.skipped')
         : r.picked
-          ? "Today's pick"
+          ? t('venues.state.picked')
           : r.eligible
-            ? 'Not picked today'
-            : 'Not used today'
+            ? t('venues.state.notPicked')
+            : t('venues.state.notUsed')
     return {
       key: `${r.venue}:${r.asset}`,
-      title: `${r.asset === 'USDC_LEND' ? 'USDC' : 'SOL'} on ${venueName(r)}`,
+      title: t('venues.line.title', { coin: r.asset === 'USDC_LEND' ? 'USDC' : 'SOL', venue: venueName(r) }),
       detail: `${rate}. ${state}.`,
     }
   })
@@ -52,7 +52,7 @@ export function venueCard(
   empty: string,
 ): { why: string | null; lines: ReturnType<typeof venueLines> } | { message: string } {
   if (data && data.venues.length > 0) return { why: data.why, lines: venueLines(data) }
-  return { message: isError || data ? empty : 'Loading the venues.' }
+  return { message: isError || data ? empty : t('venues.loading') }
 }
 
 /**

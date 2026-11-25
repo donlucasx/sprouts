@@ -4,7 +4,6 @@ import { Link, router } from 'expo-router'
 import { Screen } from '@/components/Screen'
 import { Card } from '@/components/Card'
 import { ProBadge } from '@/components/ProBadge'
-import { PRO_LINE } from '@/model/manager'
 import { Button } from '@/components/Button'
 import { ThemedText } from '@/components/ThemedText'
 import { Disclosure } from '@/components/Disclosure'
@@ -17,7 +16,7 @@ import { refreshWidget } from '@/lib/widget-refresh'
 import { unregisterBackgroundRefresh } from '@/lib/background'
 import { useSession } from '@/lib/session'
 import { useMobileWallet } from '@wallet-ui/react-native-kit'
-import { formatWallet, HOLDINGS_NOTE } from '@/lib/format'
+import { formatWallet, holdingsNote } from '@/lib/format'
 import { makeSigner, SignRefused } from '@/lib/sign'
 import { DROPPED_NOTHING_SENT, isSessionDropped } from '@/lib/wallet-errors'
 import { freshSignIn } from '@/lib/signin'
@@ -25,9 +24,10 @@ import { freshWalletSignIn } from '@/lib/reauth'
 import { identity } from '@/lib/identity'
 import { readAppearance, writeAppearance, readNotify, writeNotify } from '@/lib/prefs'
 import { readLangChoice, t, writeLangChoice, type LangChoice } from '@/i18n'
+import type { Key } from '@/i18n/en'
 import { useLang } from '@/i18n/useLang'
 import type { NoticeKind } from '@/lib/notices'
-import { DISCLOSURES, HOW_IT_WORKS, NOT_ADVICE } from '@/lib/settings-copy'
+import { disclosures } from '@/lib/settings-copy'
 import { clearTaxFiles, prepareTaxCsv, shareTaxCsv, taxFileFresh, type TaxFile } from '@/lib/tax-export'
 import { notify } from '@/lib/notify'
 import { QuestionCard } from '@/components/QuestionCard'
@@ -35,19 +35,21 @@ import { dismiss, readDismissed, removedAskFor } from '@/lib/feedback'
 import { spacing, switchColors, useTheme } from '@/theme'
 import { schemeFor, type Appearance as AppearanceChoice } from '@/theme/appearance'
 
-/** R161: each notice and its switch's words, in the order they show. */
-const NOTICES: [NoticeKind, string][] = [
-  ['plantings', 'Tell me when my change is planted'],
-  ['withdrawals', 'Tell me when a withdrawal arrives'],
-  ['manager', 'Tell me when the manager moves my split'],
-  ['limit', 'Tell me when the daily limit is reached'],
-  ['paused', 'Tell me when a wallet runs out of USDC'],
-  ['reminders', 'Reminders'],
+/** R161: each notice and its switch's words (a key, read at render), in the order they show. */
+const NOTICES: [NoticeKind, Key][] = [
+  ['plantings', 'settings.notices.plantings'],
+  ['withdrawals', 'settings.notices.withdrawals'],
+  ['manager', 'settings.notices.manager'],
+  ['limit', 'settings.notices.limit'],
+  ['paused', 'settings.notices.paused'],
+  ['reminders', 'settings.notices.reminders'],
 ]
 /** Copy F: a switch's second line, where it has one. */
-const NOTICE_SUBLINE: Partial<Record<NoticeKind, string>> = {
-  reminders: 'Nudges when your garden needs something, at most one a day.',
+const NOTICE_SUBLINE: Partial<Record<NoticeKind, Key>> = {
+  reminders: 'settings.notices.reminders.sub',
 }
+/** A wallet's short address, as TalkBack hears it beside Pause / Resume / Revoke. */
+const shortKey = (pubkey: string) => `${pubkey.slice(0, 4)}...${pubkey.slice(-4)}`
 
 export default function Settings() {
   const [taxBusy, setTaxBusy] = useState(false)
@@ -96,7 +98,7 @@ export default function Settings() {
       await api(`/api/wallets/${w.pubkey}`, { method: 'POST', body: { action, ...(reauth ? { reauth } : {}) } })
       await invalidate()
     } catch (e) {
-      setWalletError(e instanceof ApiError ? e.message : 'Could not change the wallet. Try again.')
+      setWalletError(e instanceof ApiError ? e.message : t('settings.wallets.changeFailed'))
     } finally {
       setWalletBusy(false)
       setSigning(false)
@@ -115,20 +117,20 @@ export default function Settings() {
     if (!session) return
     setWalletError(null)
     if (wallet !== session.pubkey) {
-      setWalletError('Revoke this wallet on sprouts.money/revoke with the wallet that approved it.')
+      setWalletError(t('settings.wallets.revokeElsewhere'))
       return
     }
     setWalletBusy(true)
     setSigning(true)
     try {
-      const t = await api<{ transaction: string | null }>(`/api/revoke/${wallet}`)
-      if (!t.transaction) throw new ApiError(409, 'Nothing to revoke.')
-      const signed = await makeSigner(signTransaction, { kind: 'revoke', user: wallet })(t.transaction)
+      const built = await api<{ transaction: string | null }>(`/api/revoke/${wallet}`)
+      if (!built.transaction) throw new ApiError(409, t('settings.wallets.nothingToRevoke'))
+      const signed = await makeSigner(signTransaction, { kind: 'revoke', user: wallet })(built.transaction)
       await api(`/api/revoke/${wallet}`, { method: 'POST', body: { signedTransaction: signed } })
       setRemovedRef(`${wallet}:${new Date().toISOString().slice(0, 10)}`)
       await invalidate()
     } catch (e) {
-      setWalletError(e instanceof ApiError || e instanceof SignRefused ? e.message : isSessionDropped(e) ? DROPPED_NOTHING_SENT : 'The revoke did not go through. Try again.')
+      setWalletError(e instanceof ApiError || e instanceof SignRefused ? e.message : isSessionDropped(e) ? DROPPED_NOTHING_SENT : t('settings.wallets.revokeFailed'))
     } finally {
       setWalletBusy(false)
       setSigning(false)
@@ -158,17 +160,17 @@ export default function Settings() {
   }
 
   return (
-    <Screen inset="top" title="Settings" keyboard keyboardAnchor={() => walletsBottom.current}>
+    <Screen inset="top" title={t('tabs.settings')} keyboard keyboardAnchor={() => walletsBottom.current}>
       <Card>
         {/* R462: the wallet that signs in is the Seed Vault */}
-        <ThemedText variant="heading">Your Seed Vault</ThemedText>
+        <ThemedText variant="heading">{t('settings.seedVault.title')}</ThemedText>
         <ThemedText numeric>
           {me?.user.skrName ?? (session ? `${session.pubkey.slice(0, 4)}...${session.pubkey.slice(-4)}` : '')}
         </ThemedText>
         {/* R150: the holdings note moved here from Home (both audits): where the wallet coins sit, said once. */}
         {/* His note 10-08: one small caption under the address, so the address leads */}
         <ThemedText variant="caption" tone="secondary">
-          {`Where your savings live. Only you can move them. ${HOLDINGS_NOTE}`}
+          {`${t('settings.seedVault.note')} ${holdingsNote()}`}
         </ThemedText>
       </Card>
       <Card>
@@ -178,38 +180,38 @@ export default function Settings() {
           <ThemedText variant="heading">Sprouts Pro</ThemedText>
           <ProBadge />
         </View>
-        <ThemedText>Your money works by itself.</ThemedText>
-        {['The AI Yield Manager splits new change each morning', 'Automatic lending at the best safe rate', 'Tax reports'].map((l) => (
+        <ThemedText>{t('settings.pro.line')}</ThemedText>
+        {[t('settings.pro.manager'), t('settings.pro.lending'), t('settings.pro.tax')].map((l) => (
           <ThemedText key={l} tone="secondary">
             {`\u2022 ${l}`}
           </ThemedText>
         ))}
         <Button
-          title="Get Pro"
+          title={t('settings.pro.get')}
           kind="quiet"
           onPress={() => setProNote((v) => !v)}
-          accessibilityLabel="Get Pro, not needed during launch"
+          accessibilityLabel={t('settings.pro.get.a11y')}
           style={{ alignSelf: 'flex-start', opacity: 0.45 }}
         />
         {proNote ? (
           <ThemedText variant="caption" tone="secondary">
-            {PRO_LINE} Nothing to buy yet: every Pro feature is already on.
+            {`${t('manager.proLine')} ${t('settings.pro.nothingToBuy')}`}
           </ThemedText>
         ) : null}
         <ThemedText variant="caption" tone="secondary">
-          Coming soon: add money to your garden anytime.
+          {t('settings.pro.soon')}
         </ThemedText>
       </Card>
       <View onLayout={(e) => (walletsBottom.current = e.nativeEvent.layout.y + e.nativeEvent.layout.height)}>
       <Card>
-        <ThemedText variant="heading">Linked wallets</ThemedText>
+        <ThemedText variant="heading">{t('settings.wallets.title')}</ThemedText>
         {/* 10-28 (his note: an old revoked wallet clutters the list): revoked wallets are hidden; a stopped one has Home's re-link card,
             and its plantings stay in Activity */}
-        {me && liveWallets.length === 0 ? <ThemedText tone="secondary">No wallet linked yet.</ThemedText> : null}
+        {me && liveWallets.length === 0 ? <ThemedText tone="secondary">{t('settings.wallets.none')}</ThemedText> : null}
         {/* 11-08 his ruling: the server checks each wallet's own USDC (plant-run.ts), so say it where the wallets are listed */}
         {liveWallets.length > 0 ? (
           <ThemedText variant="caption" tone="secondary">
-            Each wallet needs its own USDC to plant.
+            {t('settings.wallets.ownUsdc')}
           </ThemedText>
         ) : null}
         {liveWallets.map((w) => (
@@ -218,17 +220,17 @@ export default function Settings() {
             {/* 11-08 his note: the phone's own wallet says so, subtly (it is the wallet the user signs in with) */}
             {w.pubkey === me?.user.pubkey ? (
               <ThemedText variant="caption" tone="secondary">
-                Seed Vault wallet
+                {t('settings.wallets.seedVault')}
               </ThemedText>
             ) : null}
             <View style={{ flexDirection: 'row', gap: spacing.sm }}>
-              <Button title={w.status === 'paused' ? 'Resume' : 'Pause'} accessibilityLabel={`${w.status === 'paused' ? 'Resume' : 'Pause'} wallet ${w.pubkey.slice(0, 4)}...${w.pubkey.slice(-4)}`} kind="quiet" loading={walletBusy} onPress={() => pauseOrResume(w)} />
-              <Button title="Revoke" accessibilityLabel={`Revoke wallet ${w.pubkey.slice(0, 4)}...${w.pubkey.slice(-4)}`} kind="danger" loading={walletBusy} onPress={() => revoke(w.pubkey)} />
+              <Button title={w.status === 'paused' ? t('settings.wallets.resume') : t('settings.wallets.pause')} accessibilityLabel={w.status === 'paused' ? t('settings.wallets.resume.a11y', { wallet: shortKey(w.pubkey) }) : t('settings.wallets.pause.a11y', { wallet: shortKey(w.pubkey) })} kind="quiet" loading={walletBusy} onPress={() => pauseOrResume(w)} />
+              <Button title={t('settings.wallets.revoke')} accessibilityLabel={t('settings.wallets.revoke.a11y', { wallet: shortKey(w.pubkey) })} kind="danger" loading={walletBusy} onPress={() => revoke(w.pubkey)} />
             </View>
           </View>
         ))}
         <ThemedText variant="caption" tone="secondary">
-          {"Revoke ends Sprouts' approval on chain. Nothing in your garden moves."}
+          {t('settings.wallets.revokeNote')}
         </ThemedText>
         {signing ? (
           <ThemedText variant="caption" tone="secondary">
@@ -249,17 +251,17 @@ export default function Settings() {
           />
         ) : null}
         <Link href="/connect" asChild>
-          <Button title="Link a wallet" kind="quiet" onPress={() => {}} style={{ alignSelf: 'flex-start' }} />
+          <Button title={t('settings.wallets.link')} kind="quiet" onPress={() => {}} style={{ alignSelf: 'flex-start' }} />
         </Link>
       </Card>
       </View>
       <Card>
-        <ThemedText variant="heading">Appearance</ThemedText>
+        <ThemedText variant="heading">{t('settings.appearance')}</ThemedText>
         <TwoWay
           options={[
-            { value: 'system', label: 'System' },
-            { value: 'light', label: 'Light' },
-            { value: 'dark', label: 'Dark' },
+            { value: 'system', label: t('settings.appearance.system') },
+            { value: 'light', label: t('settings.appearance.light') },
+            { value: 'dark', label: t('settings.appearance.dark') },
           ]}
           value={appearance}
           onChange={setAppearance}
@@ -280,13 +282,16 @@ export default function Settings() {
       </Card>
       <Card>
         {/* R160 and R161: the notices grouped under their own heading, one switch each. */}
-        <ThemedText variant="heading">Notifications</ThemedText>
-        {NOTICES.map(([kind, label]) => (
+        <ThemedText variant="heading">{t('settings.notices.title')}</ThemedText>
+        {NOTICES.map(([kind, labelKey]) => {
+          const label = t(labelKey)
+          const sub = NOTICE_SUBLINE[kind] ? t(NOTICE_SUBLINE[kind]) : null
+          return (
           <View key={kind} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.xs }}>
             {/* The switch carries the label; the text is hidden from the screen reader so it is not read twice. */}
             <View style={{ flex: 1 }} importantForAccessibility="no" accessibilityElementsHidden>
               <ThemedText>{label}</ThemedText>
-              {NOTICE_SUBLINE[kind] ? <ThemedText variant="caption">{NOTICE_SUBLINE[kind]}</ThemedText> : null}
+              {sub ? <ThemedText variant="caption">{sub}</ThemedText> : null}
             </View>
             <Switch
               {...toggle}
@@ -295,22 +300,23 @@ export default function Settings() {
                 writeNotify(kind, on)
                 setNotifyOn((s) => ({ ...s, [kind]: on }))
               }}
-              accessibilityLabel={NOTICE_SUBLINE[kind] ? `${label}. ${NOTICE_SUBLINE[kind]}` : label}
+              accessibilityLabel={sub ? `${label}. ${sub}` : label}
             />
           </View>
-        ))}
+          )
+        })}
       </Card>
       <Card>
         {/* R447 + R476: Tax reports, Pro (free during launch). R463: request it, the phone says when it is ready,
             then download; the whole history, no year button */}
         {/* His note 10-08: "Tax reports", with the Pro pill the Yield Manager carries */}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
-          <ThemedText variant="heading">Tax reports</ThemedText>
+          <ThemedText variant="heading">{t('settings.pro.tax')}</ThemedText>
           <ProBadge />
         </View>
-        <ThemedText tone="secondary">Every planting and withdrawal, for your tax tool.</ThemedText>
+        <ThemedText tone="secondary">{t('settings.tax.line')}</ThemedText>
         <Button
-          title={taxFileFresh(taxFile) ? 'Download' : 'Request history'}
+          title={taxFileFresh(taxFile) ? t('settings.tax.download') : t('settings.tax.request')}
           kind="quiet"
           loading={taxBusy}
           onPress={async () => {
@@ -322,10 +328,10 @@ export default function Settings() {
               } else {
                 setTaxFile(await prepareTaxCsv())
                 // The notice is for someone who left the app while it was prepared; on screen the button turning to Download says it
-                if (AppState.currentState !== 'active') await notify('Your tax report is ready', 'Open Settings to download it.').catch(() => {})
+                if (AppState.currentState !== 'active') await notify(t('settings.tax.notify.title'), t('settings.tax.notify.body')).catch(() => {})
               }
             } catch (e) {
-              setTaxError(e instanceof ApiError ? e.message : 'Could not prepare it just now. Try again.')
+              setTaxError(e instanceof ApiError ? e.message : t('settings.tax.failed'))
             } finally {
               setTaxBusy(false)
             }
@@ -334,37 +340,37 @@ export default function Settings() {
         />
         {taxFileFresh(taxFile) ? (
           <ThemedText variant="caption" tone="secondary">
-            Ready: {taxFile.filename}
+            {t('settings.tax.ready', { file: taxFile.filename })}
           </ThemedText>
         ) : null}
         {taxError ? <ThemedText tone="error">{taxError}</ThemedText> : null}
       </Card>
       <Card>
         {/* 11-01 (his ask, draft v1): one way to reach the team; replies go by email (the Message us screen asks for it) */}
-        <ThemedText variant="heading">Help</ThemedText>
-        <Button title="Message us" kind="quiet" onPress={() => router.push('/support')} style={{ alignSelf: 'flex-start' }} />
+        <ThemedText variant="heading">{t('settings.help.title')}</ThemedText>
+        <Button title={t('support.title')} kind="quiet" onPress={() => router.push('/support')} style={{ alignSelf: 'flex-start' }} />
         <ThemedText variant="caption" tone="secondary">
-          We read every message. Sprouts will never ask for your seed phrase.
+          {t('settings.help.note')}
         </ThemedText>
       </Card>
       <Card style={{ gap: 0 }}>
         {/* R145 and R153: the disclosures as rows that open in place, grouped as About at the end; R300's promise above them, the precise rule inside. */}
-        <ThemedText variant="heading">About Sprouts</ThemedText>
+        <ThemedText variant="heading">{t('settings.about.title')}</ThemedText>
         {/* R452: three lines on how it works before the questions. 11-20 (his): R300's promise moved into "Who holds my money?" */}
-        <ThemedText style={{ marginTop: spacing.xs, marginBottom: spacing.sm }}>{HOW_IT_WORKS}</ThemedText>
-        <ThemedText style={{ marginBottom: spacing.sm }}>{`Swaps under $1 are counted but don't round up.`}</ThemedText>
-        {DISCLOSURES.map(([h, p], i) => (
+        <ThemedText style={{ marginTop: spacing.xs, marginBottom: spacing.sm }}>{t('about.how')}</ThemedText>
+        <ThemedText style={{ marginBottom: spacing.sm }}>{t('settings.about.under1')}</ThemedText>
+        {disclosures().map(([h, p], i) => (
           <Disclosure key={h} title={h} first={i === 0}>
             {p}
           </Disclosure>
         ))}
         <ThemedText variant="caption" tone="secondary" style={{ marginTop: spacing.sm }}>
-          {NOT_ADVICE}
+          {t('about.notAdvice')}
         </ThemedText>
       </Card>
-      <Button title="Terms and Privacy" kind="quiet" onPress={() => router.push('/terms')} />
-      <Button title="Sign out" kind="quiet" disabled={busy} onPress={() => signOut(false)} />
-      <Button title="Sign out of all devices" kind="quiet" disabled={busy} onPress={() => signOut(true)} />
+      <Button title={t('home.terms.title')} kind="quiet" onPress={() => router.push('/terms')} />
+      <Button title={t('settings.signOut')} kind="quiet" disabled={busy} onPress={() => signOut(false)} />
+      <Button title={t('settings.signOutAll')} kind="quiet" disabled={busy} onPress={() => signOut(true)} />
     </Screen>
   )
 }

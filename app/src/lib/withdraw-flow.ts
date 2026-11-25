@@ -1,10 +1,12 @@
+import { en } from '@/i18n/en'
+import { t } from '@/i18n'
 /** What /api/withdraw/build answers: the unsigned unstake and the plan the screen shows. */
 export type WithdrawPlan = { transaction: string; shares: string; amountRaw: string; prunes: boolean; brief: string[] }
 export type WithdrawRequest = { mode: 'earned' | 'amount'; amountRaw?: string }
 /** The line the screen shows when the tap re-planned instead of signing (review, round 3 fix 1: never a silent swap). */
-export const REPLANNED = 'Your garden changed since you opened this. Check the amount and tap Withdraw again.'
+export const REPLANNED = en['withdraw.replanned']
 /** Security R207 #10 (10-03): the fresh plan would withdraw a different amount than the one on screen. */
-export const AMOUNT_CHANGED = 'The amount changed. Review it and tap Withdraw again.'
+export const AMOUNT_CHANGED = en['withdraw.amountChanged']
 
 /**
  * Device round 3, item 7 (10-02): the transaction is built AT THE TAP. The plan on screen was built when the amount was picked, and
@@ -22,8 +24,8 @@ export async function withdrawAtTap(a: {
   confirm: (signedTransaction: string) => Promise<unknown>
 }): Promise<{ done: true } | { replanned: WithdrawPlan; message: string }> {
   const fresh = await a.build(a.request)
-  if (fresh.prunes !== a.shown.prunes) return { replanned: fresh, message: REPLANNED }
-  if (fresh.amountRaw !== a.shown.amountRaw) return { replanned: fresh, message: AMOUNT_CHANGED }
+  if (fresh.prunes !== a.shown.prunes) return { replanned: fresh, message: t('withdraw.replanned') }
+  if (fresh.amountRaw !== a.shown.amountRaw) return { replanned: fresh, message: t('withdraw.amountChanged') }
   await a.confirm(await a.sign(fresh)(fresh.transaction))
   return { done: true }
 }

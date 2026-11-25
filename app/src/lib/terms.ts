@@ -1,3 +1,4 @@
+import { t } from "@/i18n";
 import type { MeResponse } from "./api";
 import { TERMS_MD } from "./terms-text";
 import { dayMonthYear } from "@/i18n/format"
@@ -50,5 +51,5 @@ export function agreedLine(me: Pick<MeResponse, "terms"> | null | undefined, tim
   if (!at || termsNeeded(me)) return null;
   const d = new Date(at);
   if (Number.isNaN(d.getTime())) return null;
-  return `You agreed to these Terms on ${dayMonthYear(d, undefined, timeZone)}.`;
+  return t("terms.agreed", { date: dayMonthYear(d, undefined, timeZone) });
 }

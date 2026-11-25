@@ -6,6 +6,7 @@ import { router } from 'expo-router'
 import type { PropsWithChildren, ReactElement } from 'react'
 import { spacing, TARGET, useTheme } from '@/theme'
 import { ThemedText } from './ThemedText'
+import { t } from '@/i18n'
 
 /**
  * Paper ground, one column, the screen edge, and the phone's insets (the status bar on an edge-to-edge Android; the bottom only
@@ -72,7 +73,7 @@ export function Screen({
         <Pressable
           onPress={goBack}
           accessibilityRole="button"
-          accessibilityLabel="Back"
+          accessibilityLabel={t('link.approval.back')}
           hitSlop={8}
           style={({ pressed }) => ({
             alignSelf: 'flex-start',
@@ -86,7 +87,7 @@ export function Screen({
         >
           <MaterialCommunityIcons name="arrow-left" size={22} color={colors.accentText} />
           <ThemedText variant="label" tone="accentText">
-            Back
+            {t('link.approval.back')}
           </ThemedText>
         </Pressable>
       ) : null}

@@ -1,3 +1,6 @@
+import { t, type Lang } from "@/i18n";
+import { decimalSeparator } from "@/i18n/format";
+
 const SKR_DECIMALS = 6;
 const ONE_SKR = 1_000_000n;
 
@@ -12,17 +15,17 @@ export function parseSkr(text: string): bigint | null {
 /** Why Continue is off for a typed amount, in the server's own words (planPick), or null when it is fine. */
 export function amountProblem(text: string, heldRaw: bigint): string | null {
   const raw = parseSkr(text);
-  if (raw === null) return "Enter an amount in SKR.";
-  if (raw < ONE_SKR) return "The smallest withdrawal is 1 SKR.";
-  if (raw > heldRaw) return "That is more than your garden holds.";
+  if (raw === null) return t("withdraw.enterAmount", { coin: "SKR" });
+  if (raw < ONE_SKR) return t("withdraw.min", { min: "1 SKR" });
+  if (raw > heldRaw) return t("withdraw.tooMuch");
   return null;
 }
 
-/** Everything the garden holds, as the field shows it (Max). */
-export function maxAmountText(heldRaw: bigint): string {
+/** Everything the garden holds, as the field shows it (Max): no grouping, the language's decimal separator ("34,910172" in Spanish; parseSkr reads both). */
+export function maxAmountText(heldRaw: bigint, lang?: Lang): string {
   const whole = heldRaw / ONE_SKR;
   const frac = (heldRaw % ONE_SKR).toString().padStart(SKR_DECIMALS, "0").replace(/0+$/, "");
-  return frac ? `${whole}.${frac}` : `${whole}`;
+  return frac ? `${whole}${decimalSeparator(lang)}${frac}` : `${whole}`;
 }
 
 /** The rules a draft changes, and whether it raises the daily limit (one fresh sign-in for the whole save, R84). */

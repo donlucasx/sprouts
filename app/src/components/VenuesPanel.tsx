@@ -4,10 +4,10 @@ import { MaterialCommunityIcons } from '@expo/vector-icons'
 import { useQuery } from '@tanstack/react-query'
 import { api, type VenuesResponse } from '@/lib/api'
 import { venueCard, venueGroups } from '@/model/venues'
-import { VENUES_EMPTY } from '@/lib/settings-copy'
 import { spacing, TARGET, useTheme } from '@/theme'
 import { ThemedText } from './ThemedText'
 import { useLang } from '@/i18n/useLang'
+import { t } from '@/i18n'
 
 function Line({ title, detail }: { title: string; detail: string }) {
   return (
@@ -28,7 +28,7 @@ export function VenuesPanel() {
   const { colors } = useTheme()
   const [open, setOpen] = useState(false)
   const venues = useQuery({ queryKey: ['venues'], queryFn: () => api<VenuesResponse>('/api/venues'), retry: false, enabled: open })
-  const card = venueCard(venues.data, venues.isError, VENUES_EMPTY)
+  const card = venueCard(venues.data, venues.isError, t('venues.empty'))
   const groups = venues.data && venues.data.venues.length > 0 ? venueGroups(venues.data) : null
   return (
     <View style={{ gap: spacing.xs }}>
@@ -38,14 +38,14 @@ export function VenuesPanel() {
         accessibilityState={{ expanded: open }}
         style={{ flexDirection: 'row', alignItems: 'center', minHeight: TARGET, gap: spacing.sm }}
       >
-        <ThemedText style={{ flex: 1, color: colors.accentText }}>Where lending goes today</ThemedText>
+        <ThemedText style={{ flex: 1, color: colors.accentText }}>{t('venues.title')}</ThemedText>
         <MaterialCommunityIcons name={open ? 'chevron-up' : 'chevron-down'} size={20} color={colors.accentText} />
       </Pressable>
       {open ? (
         groups ? (
           <>
             <ThemedText variant="caption" tone="secondary">
-              Checked each morning. Code picks the best rate; the AI can set a venue aside for the day.
+              {t('venues.checked')}
             </ThemedText>
             {groups.used.map((v) => (
               <Line key={v.key} title={v.title} detail={v.detail} />

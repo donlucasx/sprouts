@@ -57,7 +57,7 @@ export function LendWithdraw(props: {
       if ('stopped' in out) setError(out.stopped)
       else setPlan({ ...out.plan, request })
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Could not prepare the withdrawal.')
+      setError(e instanceof ApiError ? e.message : t('withdraw.prepareFailed'))
     } finally {
       setBusy(false)
     }
@@ -88,7 +88,7 @@ export function LendWithdraw(props: {
       await invalidate()
       props.onDone(out.line)
     } catch (e) {
-      setError(e instanceof ApiError || e instanceof SignRefused ? e.message : 'The withdrawal did not go through. Nothing moved.')
+      setError(e instanceof ApiError || e instanceof SignRefused ? e.message : t('withdraw.failed'))
       // Review I1: the transaction may have landed (a 409 "may still go through", a dropped answer). Read the position again and drop the
       // plan, so a second tap is planned from the position as it is now, never the same part signed twice from the old one.
       setPlan(null)
@@ -106,12 +106,12 @@ export function LendWithdraw(props: {
           <ThemedText variant="heading" numeric>
             {lines.value}
           </ThemedText>
-          <ThemedText>What do you want to withdraw?</ThemedText>
+          <ThemedText>{t('withdraw.what')}</ThemedText>
           {canSplit ? (
             <TwoWay
               options={[
-                { value: 'all', label: 'All of it' },
-                { value: 'amount', label: 'An amount' },
+                { value: 'all', label: t('lend.all') },
+                { value: 'amount', label: t('withdraw.anAmount') },
               ]}
               value={choice}
               onChange={setChoice}
@@ -121,19 +121,19 @@ export function LendWithdraw(props: {
             <>
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm }}>
                 <ThemedText numeric style={{ flex: 1 }}>
-                  Available: {lines.value}
+                  {t('withdraw.available', { amount: lines.value })}
                 </ThemedText>
-                <Button title="Max" kind="quiet" onPress={() => setAmount(lendMaxText(p))} />
+                <Button title={t('withdraw.max')} kind="quiet" onPress={() => setAmount(lendMaxText(p))} />
               </View>
               <TextInput
                 value={amount}
                 onChangeText={setAmount}
                 keyboardType="decimal-pad"
-                placeholder={`Amount in ${coin}`}
+                placeholder={t('withdraw.amountIn', { coin })}
                 placeholderTextColor={colors.textSecondary}
                 cursorColor={colors.accent}
                 selectionColor={colors.accent}
-                accessibilityLabel={`Amount in ${coin}`}
+                accessibilityLabel={t('withdraw.amountIn', { coin })}
                 style={{ ...ramp.title, borderBottomWidth: 1, borderBottomColor: colors.hairline, paddingVertical: spacing.sm, color: colors.text }}
               />
               {problem ? (
@@ -149,21 +149,21 @@ export function LendWithdraw(props: {
               {n}
             </ThemedText>
           ))}
-          <Button title="Continue" disabled={busy || problem !== null} loading={busy} onPress={prepare} />
+          <Button title={t('withdraw.continue')} disabled={busy || problem !== null} loading={busy} onPress={prepare} />
         </Card>
       ) : (
         <Card>
           <ThemedText>{plan.brief}</ThemedText>
-          <Button title="Withdraw" loading={busy} onPress={sign} />
+          <Button title={t('home.withdraw')} loading={busy} onPress={sign} />
           {busy ? (
             <ThemedText variant="caption" tone="secondary">
               {t('wallet.waiting')}
             </ThemedText>
           ) : null}
-          <Button title="Change amount" kind="quiet" disabled={busy} onPress={() => setPlan(null)} />
+          <Button title={t('withdraw.changeAmount')} kind="quiet" disabled={busy} onPress={() => setPlan(null)} />
         </Card>
       )}
-      <Button title="Back to the list" kind="quiet" disabled={busy} onPress={props.onBack} />
+      <Button title={t('withdraw.backToList')} kind="quiet" disabled={busy} onPress={props.onBack} />
       {error ? <ThemedText tone="error">{error}</ThemedText> : null}
     </Screen>
   )

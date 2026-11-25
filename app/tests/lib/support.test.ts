@@ -54,6 +54,12 @@ describe('Message us', () => {
     expect(await fetchSupportLog()).toEqual([])
   })
 
+  it('0.1.13: in Spanish the log row names the day and the topic in Spanish', () => {
+    kv.set('prefs.language', 'es')
+    expect(logLine({ ref: 'S-7K3Q', ts: '2026-11-01T20:00:00Z', topic: 'link', preview: '' })).toBe('S-7K3Q · 1 nov · Vincular una billetera')
+    kv.delete('prefs.language')
+  })
+
   it("a log row's first line: reference, day, topic; a message from before references just skips it", () => {
     expect(logLine({ ref: 'S-7K3Q', ts: '2026-11-01T20:00:00Z', topic: 'link', preview: '' })).toBe('S-7K3Q \u00b7 Nov 1 \u00b7 Linking a wallet')
     expect(logLine({ ref: null, ts: '2026-11-01T20:00:00Z', topic: null, preview: '' })).toBe('Nov 1')

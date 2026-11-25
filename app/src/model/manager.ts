@@ -2,6 +2,7 @@ import { ASSETS, type LiveAsset, type Pins, type Split, type Stop } from "@/lib/
 import type { SplitRow } from "@/lib/api";
 import { coinNameLong, dayLabel } from "@/lib/format";
 import { t } from "@/i18n";
+import { en } from "@/i18n/en";
 
 /**
  * The Yield Manager as the app shows it (spec 3.1, 3.2). Pure. The tables mirror spec 4.1 for labels and stepper bounds only:
@@ -31,22 +32,23 @@ export const STORE_FLOOR = 10;
 export const PIN_MAX: Record<LiveAsset, number> = { SKR: 100, stORE: 100, USDC_LEND: 100, SOL_LEND: 100, hSOL: 100, cbBTC: 100 };
 export const PIN_STEP = 5;
 
-export const SWITCH_LABEL = "AI Yield Manager";
+/** 0.1.13: the copy constants below hold the English (tests); Rules renders t("manager.*"). */
+export const SWITCH_LABEL = en["manager.switch"];
 /** R348: the one line under the Yield Manager switch on Rules (replaces R178's). */
-export const MANAGER_LINE = "Each morning, Claude Haiku 5.5 reads live rates and sends your new change where it pays best. It never sells what you hold.";
+export const MANAGER_LINE = en["manager.line"];
 /** R347: the manager is branded Pro and included for everyone during launch. */
 export const PRO_BADGE = "Pro";
-export const PRO_LINE = "Included free during launch.";
+export const PRO_LINE = en["manager.proLine"];
 /** R348: the one line above the split rows, so each control says what it does. 11-15: SKR has a switch too; one coin stays on. */
-export const ROWS_LINE = { on: "Switch a coin off and the manager won't buy it. Keep at least one on.", off: "Set your own split. Switch a coin off and Sprouts won't buy it. Keep at least one on." } as const;
+export const ROWS_LINE = { on: en["manager.rows.on"], off: en["manager.rows.off"] } as const;
 /** 11-15: the stop's SKR share is the manager's aim, not a user minimum. */
-export const STOP_LINE = "Careful aims for about 50% in SKR, Balanced 35%, Bold 25%.";
-export const UNDONE_TEXT = "Yesterday's split is back. The AI Yield Manager is off until you turn it on.";
-export const STORE_ROW_NOTE = "ORE staked in ORE's program";
+export const STOP_LINE = en["manager.stopLine"];
+export const UNDONE_TEXT = en["manager.undone"];
+export const STORE_ROW_NOTE = en["manager.storeNote"];
 /** R-O1 (10-21); 11-15: stORE's 10% is a default, any stORE pin wins. */
 export const STORE_FLOOR_LINE = {
-  on: "stORE starts at 10% until you change it.",
-  off: "stORE starts at 10% until you change it.",
+  on: en["manager.storeFloor"],
+  off: en["manager.storeFloor"],
 } as const;
 
 export type Row = { asset: LiveAsset; pct: number; mode: "auto" | "off" | "pinned"; bound: string | null };
@@ -232,8 +234,8 @@ export function draftShares(pins: Pins): Split {
 /** Addendum 11-15: "Total N%." under the rows and, off 100, what to fix; Save waits for exactly 100. */
 export function splitTotal(shares: Split): { total: number; line: string; fix: string | null; ok: boolean } {
   const total = ASSETS.reduce((s, c) => s + shares[c], 0);
-  const fix = total > 100 ? `Take ${total - 100}% from another coin to save.` : total < 100 ? `Add ${100 - total}% to another coin to save.` : null;
-  return { total, line: `Total ${total}%.`, fix, ok: total === 100 };
+  const fix = total > 100 ? t("manager.total.take", { n: total - 100 }) : total < 100 ? t("manager.total.add", { n: 100 - total }) : null;
+  return { total, line: t("manager.total", { n: total }), fix, ok: total === 100 };
 }
 
 /** The draft's pins as saved (owner 11-15: "when a coin that is on is turned down to 0%, after saved, it should be turned off
@@ -366,7 +368,7 @@ export function pinsForOff(allocation: Split, pins: Pins): Pins {
 
 /** "Changed {Mon D}." (F4: labelled by the day the manager changed the split, gated by undoAvailable). */
 export function undoLine(changedDay: string | null): string | null {
-  return changedDay ? `Changed ${dayLabel(changedDay)}.` : null;
+  return changedDay ? t("manager.changed", { day: dayLabel(changedDay) }) : null;
 }
 
 /** "USDC lending 10 to 15, hSOL 20 to 15": every live leg that moved, in the spec's order; old rows' retired keys are not named (R281). */

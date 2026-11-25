@@ -2,6 +2,7 @@ import { Pressable, View } from 'react-native'
 import { MaterialCommunityIcons } from '@expo/vector-icons'
 import { radius, spacing, TARGET, useTheme } from '@/theme'
 import { ThemedText } from './ThemedText'
+import { t } from '@/i18n'
 
 /** The two round buttons of a stepper, named for TalkBack after what they move ("Less hSOL", "More hSOL"). */
 export function StepButtons({
@@ -47,8 +48,8 @@ export function StepButtons({
   )
   return (
     <View style={{ flexDirection: 'row', gap: spacing.sm }}>
-      {one(lessLabel ?? `Less ${what}`, 'minus', onLess, lessDisabled)}
-      {one(moreLabel ?? `More ${what}`, 'plus', onMore, moreDisabled)}
+      {one(lessLabel ?? t('stepper.less', { what }), 'minus', onLess, lessDisabled)}
+      {one(moreLabel ?? t('stepper.more', { what }), 'plus', onMore, moreDisabled)}
     </View>
   )
 }

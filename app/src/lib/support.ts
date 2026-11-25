@@ -4,8 +4,10 @@ import { api } from "./api";
 import { store } from "./store";
 import { QUESTIONS, type Question } from "./feedback";
 import { dayMonth } from "@/i18n/format"
+import { t } from "@/i18n"
 
-/** 11-01: Settings > Message us. The topics as the API knows them (api/src/app/api/support/route.ts), in the order they show. */
+/** 11-01: Settings > Message us. The topics as the API knows them (api/src/app/api/support/route.ts), in the order they show.
+ *  `label` is the English (tests); the screen shows topicLabel(). */
 export const SUPPORT_TOPICS = [
   { value: "link", label: "Linking a wallet" },
   { value: "planting", label: "Plantings" },
@@ -25,7 +27,9 @@ export const writeSupportEmail = (email: string) => store.set(EMAIL_KEY, email.t
 export const looksLikeEmail = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v.trim());
 export const canSend = (message: string, email: string) => message.trim().length > 0 && message.length <= MESSAGE_MAX && looksLikeEmail(email);
 
-export const isTopic = (v: unknown): v is SupportTopic => SUPPORT_TOPICS.some((t) => t.value === v);
+export const isTopic = (v: unknown): v is SupportTopic => SUPPORT_TOPICS.some((x) => x.value === v);
+/** A topic's chip words in the current language. */
+export const topicLabel = (v: SupportTopic): string => t(`support.topic.${v}`);
 
 /** What is attached beside the message (the server adds the wallets and the recent failures it already holds). */
 export function appLine(): { version: string; device: string } {
@@ -54,7 +58,7 @@ export async function fetchSupportLog(): Promise<SupportLogEntry[]> {
 /** "S-7K3Q · Nov 1 · Linking a wallet": the log row's first line. */
 export function logLine(e: SupportLogEntry): string {
   const day = dayMonth(new Date(e.ts));
-  const topic = SUPPORT_TOPICS.find((t) => t.value === e.topic)?.label ?? asQuestion(e.topic)?.title;
+  const topic = isTopic(e.topic) ? topicLabel(e.topic) : asQuestion(e.topic)?.title;
   return [e.ref, day, topic].filter(Boolean).join(" \u00b7 ");
 }
 
