@@ -11,10 +11,11 @@ import { ApiError } from '@/lib/api'
 import { useMe, useInvalidateMe, useApplyRules } from '@/lib/me'
 import { coinColor } from '@/lib/coin-colors'
 import { activityQuery } from '@/lib/activity-query'
-import { filterRows, foundRow, groupByDay, KIND_FILTERS, KIND_TAG, lendWithdrawalRow, mergeRows, moveRow, plantingRow, rowTime, spokenLabel, splitRow, swapRow, skrPlantRow, topUpRow, visibleRows, walletNamer, walletRow, withdrawalRow, type ActivityKind, type ActivityRow } from '@/model/activity'
+import { filterLabel, filterRows, foundRow, groupByDay, KIND_FILTERS, kindTag, lendWithdrawalRow, mergeRows, moveRow, plantingRow, rowTime, spokenLabel, splitRow, swapRow, skrPlantRow, topUpRow, visibleRows, walletNamer, walletRow, withdrawalRow, type ActivityKind, type ActivityRow } from '@/model/activity'
 import { undoSplit } from '@/lib/manager-api'
 import { radius, spacing, TARGET, useTheme } from '@/theme'
 import { useLang } from '@/i18n/useLang'
+import { t } from '@/i18n'
 
 /** R450: the type tag's colour per kind (plantings take the coin green; lending tones for moves and finds). */
 const KIND_COLOR: Record<ActivityKind, string> = {
@@ -44,13 +45,14 @@ const KIND_COLOR_DARK: Record<ActivityKind, string> = {
  * wallet-started withdrawal not yet delivered: the wallet, R165). TalkBack hears the full date, since the day is in the header.
  */
 function Row({ row, kind, accountPubkey, right }: { row: ActivityRow; kind: ActivityKind; accountPubkey?: string | null; right?: ReactNode }) {
+  useLang()
   const { colors, dark } = useTheme()
   const tint = (dark ? KIND_COLOR_DARK : KIND_COLOR)[kind]
   const [open, setOpen] = useState(false)
   const link = row.signature
-    ? { url: `https://solscan.io/tx/${row.signature}`, label: 'Open on Solscan' }
+    ? { url: `https://solscan.io/tx/${row.signature}`, label: t('activity.solscan.tx') }
     : accountPubkey
-      ? { url: `https://solscan.io/account/${accountPubkey}`, label: 'Open your wallet on Solscan' }
+      ? { url: `https://solscan.io/account/${accountPubkey}`, label: t('activity.solscan.wallet') }
       : null
   const opens = row.details.length > 0 || link !== null
   return (
@@ -72,7 +74,7 @@ function Row({ row, kind, accountPubkey, right }: { row: ActivityRow; kind: Acti
               numberOfLines={1}
               style={{ fontFamily: 'AlbertSans_500Medium', fontSize: 11, lineHeight: 14, letterSpacing: 0.9, textTransform: 'uppercase', color: tint }}
             >
-              {row.tag ?? KIND_TAG[kind]}
+              {row.tag ?? kindTag(kind)}
             </ThemedText>
           </View>
           <View style={{ flex: 1 }}>
@@ -143,7 +145,7 @@ export default function Activity() {
       void invalidate()
       await q.refetch()
     } catch (e) {
-      setUndoError(e instanceof ApiError ? e.message : 'Could not undo. Try again.')
+      setUndoError(e instanceof ApiError ? e.message : t('activity.undoFailed'))
     } finally {
       setBusy(false)
     }
@@ -160,7 +162,7 @@ export default function Activity() {
     : []
   const moves = a?.moves ? a.moves.flatMap((m) => { const r = moveRow(m); return r ? [{ row: r }] : [] }) : []
   const found = a?.found ? a.found.map((f) => ({ row: foundRow(f) })) : []
-  const topUps = a?.topUps ? a.topUps.map((t) => ({ row: topUpRow(t, name !== null) })) : []
+  const topUps = a?.topUps ? a.topUps.map((u) => ({ row: topUpRow(u, name !== null) })) : []
   // 0.1.13 Plant my SKR: a stake from this wallet is a planting (the Plant chip); absent from an older API
   const skrPlants = (a?.skrPlants ?? []).flatMap((p) => { const row = skrPlantRow(p); return row ? [{ row }] : [] })
   const walletRows = a?.wallets && me ? a.wallets.map((e) => ({ row: walletRow(e, me.user.pubkey) })) : []
@@ -172,16 +174,16 @@ export default function Activity() {
   return (
     <Screen
       inset="top"
-      title="Activity"
+      title={t('tabs.activity')}
       refreshControl={<RefreshControl refreshing={q.isRefetching} onRefresh={() => q.refetch()} colors={[colors.accent]} progressBackgroundColor={colors.surface} tintColor={colors.accent} />}
     >
-      {!a && q.isError ? <ThemedText tone="secondary">Could not load your activity just now. Pull down to try again.</ThemedText> : null}
+      {!a && q.isError ? <ThemedText tone="secondary">{t('activity.loadFailed')}</ThemedText> : null}
       {/* His note 10-08: the first read can take a few seconds; the sign-in sprout sways meanwhile instead of a near-empty page */}
       {!a && !q.isError ? (
-        <View style={{ alignItems: 'center', gap: spacing.sm, paddingTop: spacing.xl }} accessibilityLabel="Loading your activity">
+        <View style={{ alignItems: 'center', gap: spacing.sm, paddingTop: spacing.xl }} accessibilityLabel={t('activity.loading')}>
           <SigninSprout />
           <ThemedText variant="caption" tone="secondary">
-            Loading your activity
+            {t('activity.loading')}
           </ThemedText>
         </View>
       ) : null}
@@ -209,28 +211,28 @@ export default function Activity() {
                   }}
                 >
                   <ThemedText variant="label" style={{ color: on ? colors.onAccent : colors.text }}>
-                    {f.label}
+                    {filterLabel(f)}
                   </ThemedText>
                 </Pressable>
               )
             })}
           </View>
-          {rows.length === 0 ? <ThemedText tone="secondary">Nothing here yet.</ThemedText> : null}
-          {groupByDay(shown.map((t) => t.row)).map((day, d) => (
+          {rows.length === 0 ? <ThemedText tone="secondary">{t('activity.empty')}</ThemedText> : null}
+          {groupByDay(shown.map((x) => x.row)).map((day, d) => (
             <View key={`${day.key}-${d}`} style={{ gap: spacing.xs }}>
               <ThemedText variant="caption" tone="secondary" accessibilityRole="header" style={{ textTransform: 'uppercase', letterSpacing: 0.6, paddingTop: spacing.xs }}>
                 {day.header}
               </ThemedText>
               <Card>
                 {day.rows.map((r) => {
-                  const t = shown.find((x) => x.row.key === r.key)!
+                  const tagged = shown.find((x) => x.row.key === r.key)!
                   return (
                     <View key={r.key}>
                       <Row
                         row={r}
-                        kind={t.kind}
-                        accountPubkey={t.walletAccount ? me?.user.pubkey : null}
-                        right={r.key === undoKey ? <Button title="Undo" kind="quiet" loading={busy} onPress={undo} style={{ paddingHorizontal: spacing.sm }} /> : null}
+                        kind={tagged.kind}
+                        accountPubkey={tagged.walletAccount ? me?.user.pubkey : null}
+                        right={r.key === undoKey ? <Button title={t('activity.undo')} kind="quiet" loading={busy} onPress={undo} style={{ paddingHorizontal: spacing.sm }} /> : null}
                       />
                       {r.key === undoKey && undoError ? <ThemedText tone="error">{undoError}</ThemedText> : null}
                     </View>
@@ -239,7 +241,7 @@ export default function Activity() {
               </Card>
             </View>
           ))}
-          {hidden > 0 ? <Button title={`Show ${hidden} more`} kind="quiet" onPress={() => setMore(true)} style={{ alignSelf: 'flex-start' }} /> : null}
+          {hidden > 0 ? <Button title={t('activity.showMore', { n: hidden })} kind="quiet" onPress={() => setMore(true)} style={{ alignSelf: 'flex-start' }} /> : null}
         </>
       ) : null}
     </Screen>

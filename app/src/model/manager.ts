@@ -1,6 +1,7 @@
 import { ASSETS, type LiveAsset, type Pins, type Split, type Stop } from "@/lib/coins";
 import type { SplitRow } from "@/lib/api";
-import { COIN_NAME_LONG, dayLabel } from "@/lib/format";
+import { coinNameLong, dayLabel } from "@/lib/format";
+import { t } from "@/i18n";
 
 /**
  * The Yield Manager as the app shows it (spec 3.1, 3.2). Pure. The tables mirror spec 4.1 for labels and stepper bounds only:
@@ -10,6 +11,10 @@ type NonSkr = Exclude<LiveAsset, "SKR">;
 const NON_SKR: readonly NonSkr[] = ["stORE", "USDC_LEND", "SOL_LEND", "hSOL", "cbBTC"] as const;
 
 export const STOP_LABEL: Record<Stop, string> = { careful: "Careful", balanced: "Balanced", bold: "Bold" };
+/** 0.1.13: STOP_LABEL in the current language; an unknown stop is shown as the API sent it. */
+export function stopLabel(stop: string): string {
+  return stop === "careful" ? t("stop.careful") : stop === "balanced" ? t("stop.balanced") : stop === "bold" ? t("stop.bold") : stop;
+}
 export const STOP_FLOOR: Record<Stop, number> = { careful: 50, balanced: 35, bold: 25 };
 // Spec 9 (lending build, 10-04), the API's STOPS (api/src/domain/split.ts)
 export const STOP_MAX: Record<Stop, Record<NonSkr, number>> = {
@@ -366,7 +371,7 @@ export function undoLine(changedDay: string | null): string | null {
 
 /** "USDC lending 10 to 15, hSOL 20 to 15": every live leg that moved, in the spec's order; old rows' retired keys are not named (R281). */
 export function changeSummary(from: Partial<Record<string, number>>, to: Partial<Record<string, number>>): string {
-  return ASSETS.filter((a) => (from[a] ?? 0) !== (to[a] ?? 0)).map((a) => `${COIN_NAME_LONG[a]} ${from[a] ?? 0} to ${to[a] ?? 0}`).join(", ");
+  return ASSETS.filter((a) => (from[a] ?? 0) !== (to[a] ?? 0)).map((a) => t("split.change", { coin: coinNameLong(a), from: from[a] ?? 0, to: to[a] ?? 0 })).join(", ");
 }
 
 /** One Activity row (spec 3.2), dated by the API's UTC day so it agrees with the Rules card's "Changed {Mon D}." */
