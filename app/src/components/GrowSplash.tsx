@@ -5,6 +5,8 @@ import Animated, { Easing, runOnJS, useAnimatedStyle, useReducedMotion, useShare
 import { ThemedText } from './ThemedText'
 import { HorizontalLockup } from './Lockup'
 import { spacing } from '@/theme'
+import { t } from '@/i18n'
+import { useLang } from '@/i18n/useLang'
 
 /**
  * R573/R574 (10-09): the re-open loading screen. One plant growing gently, once: the stORE tree filling out (pack stages 8 -> 10, no
@@ -31,11 +33,11 @@ const FRAMES = {
   ],
 } as const
 const GROW_MS = 3500
-/** R576 (his words): the re-open screen says what it is doing; the slogan stays on Welcome and in the store listing. */
-const LOADING_LINE = 'Loading up your garden...'
+/** R576 (his words): the re-open screen says what it is doing ('splash.loading'); the slogan stays on Welcome and in the store listing. */
 
 /** `onEnd` once the tree has grown (at once under reduced motion, which shows it grown). */
 export function GrowSplash({ onEnd }: { onEnd?: () => void }) {
+  useLang()
   const still = useReducedMotion()
   const { width } = useWindowDimensions()
   const insets = useSafeAreaInsets()
@@ -61,7 +63,7 @@ export function GrowSplash({ onEnd }: { onEnd?: () => void }) {
   return (
     // R578: one hero (the tree, the lockup tight under it as one unit) just above the optical centre; the status line is a small
     // grey caption near the bottom edge. Fills its parent.
-    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: '12%' }} accessible accessibilityLabel={`Sprouts. ${LOADING_LINE}`}>
+    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: '12%' }} accessible accessibilityLabel={t('splash.a11y')}>
       <View style={{ width: side, height: side }}>
         <Image source={frames[0]} fadeDuration={0} style={{ position: 'absolute', width: side, height: side }} />
         {frames.slice(1).map((f, i) => (
@@ -72,7 +74,7 @@ export function GrowSplash({ onEnd }: { onEnd?: () => void }) {
         <HorizontalLockup wordSize={42} ink />
       </View>
       <ThemedText variant="caption" tone="secondary" style={{ position: 'absolute', bottom: insets.bottom + 48, textAlign: 'center' }}>
-        {LOADING_LINE}
+        {t('splash.loading')}
       </ThemedText>
     </View>
   )

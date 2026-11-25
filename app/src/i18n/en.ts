@@ -660,6 +660,46 @@ export const en = {
   'pause.failed': 'Could not pause. Try again.',
   'stepper.lower': 'Lower {what}',
   'stepper.raise': 'Raise {what}',
+  // P7 (f) notify: the Android notification channel's visible name (its id stays "plantings")
+  'notify.channel': 'Plantings',
+  // the home-screen widget (lib/widget-state.ts, garden/Widget.tsx, garden/EnsoWidget.tsx). A '|' separates a text's forms, longest
+  // first: a narrow widget draws the first that fits, else the last. Spanish may have more forms than English (never fewer placeholders).
+  'widget.state.bud': 'A bud is ready. Water it.',
+  'widget.state.walletNeedsUsdc': 'Wallet needs USDC',
+  'widget.state.waiting': '+{amount} waiting',
+  'widget.state.empty': 'Waiting for a swap',
+  'widget.inGarden': '{total} in your garden|{total} in garden',
+  'widget.plantsAt': 'Round-ups plant at {goal}|Plants at {goal}',
+  'widget.noUsdc.big': 'Paused: wallet needs USDC|Wallet needs USDC|Needs USDC',
+  'widget.noUsdc.label': 'Open Sprouts to top up your wallet|Open to top up',
+  'widget.paused.big': 'Round-ups paused|Paused',
+  'widget.paused.label': 'Open Sprouts to turn them on|Open to turn on',
+  'widget.reached.big': '{amount} saved|{amount}',
+  'widget.reached.label': 'plants {when}|plants {clock}',
+  'widget.saving.big': '{amount} of {goal}|{amount}',
+  'widget.saving.label': 'rounds up from every swap|from your swaps|from swaps',
+  'widget.planted.big': 'Planted {amount}|{amount}',
+  'widget.waitingNext': 'Waiting for your next swap|Waiting for a swap|Swap to grow',
+  'widget.garden.big': '{total} in your garden|{total}',
+  'widget.yourGarden': 'Your garden',
+  'widget.waitingFirst': 'Waiting for your first swap|Waiting for a swap|Swap to start',
+  'widget.walletAsk': 'A wallet needs USDC|Wallet needs USDC|Needs USDC',
+  'widget.label': 'your garden',
+  'widget.signIn': 'Open Sprouts to sign in',
+  'widget.openToSee': 'Open Sprouts to see your garden',
+  'widget.enso.inYourGarden': 'in your garden',
+  'widget.enso.inGarden': 'in garden',
+  'widget.enso.nextPlanting': 'next planting',
+  // Settings > Add a widget (components/AddWidget.tsx)
+  'addWidget.row': 'Add a widget',
+  'addWidget.add': 'Add the {name} widget',
+  'addWidget.bamboo': 'Bamboo',
+  'addWidget.enso': 'Ensō',
+  'addWidget.fallback': 'Long-press your home screen, then tap Widgets.',
+  'addWidget.resize': 'Long-press a widget to resize it.',
+  // the re-open loading screen (components/GrowSplash.tsx)
+  'splash.loading': 'Loading up your garden...',
+  'splash.a11y': 'Sprouts. Loading up your garden...',
 } as const
 
 export type Key = keyof typeof en

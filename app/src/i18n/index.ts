@@ -49,6 +49,9 @@ export function subscribeLang(l: () => void): () => void {
   listeners.add(l)
   return () => void listeners.delete(l)
 }
+/** Every subscriber hears the change: the screens (useLang), and outside React the placed widget (lib/me.ts redraws it with
+ *  refreshWidget) and the notification channel's name (lib/notify.ts). Those two subscribe from their own modules, which the entry
+ *  (index.js) loads, so this file never imports native widget or notification code. */
 export function writeLangChoice(c: LangChoice) {
   if (c === 'auto') store.remove(CHOICE)
   else store.set(CHOICE, c)

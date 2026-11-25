@@ -1,4 +1,6 @@
 import { formatUsd } from "./format";
+import { t, type Vars } from "@/i18n";
+import type { Key } from "@/i18n/en";
 import { nextPlantingFor, nextRunClock, nextRunWords } from "./next-planting";
 import { watcherLine } from "@/model/watcher";
 import type { MeResponse } from "./api";
@@ -7,7 +9,19 @@ import type { Scene } from "@/model/garden";
 /** The widget's one state line (R363), and whether it is the call to act (drawn in the accent green). */
 export type WidgetState = { text: string; action: boolean };
 
+/** The bud's call in English (tests); the widget draws t("widget.state.bud") (0.1.13). */
 export const BUD_LINE = "A bud is ready. Water it.";
+
+/** 0.1.13: a widget text's forms, longest first, in the current language at draw time ('|' separates them in en.ts / es.ts). */
+export const formsOf = (key: Key, vars?: Vars): string[] => t(key, vars).split("|");
+/** The texts the Garden2 headline picks a form of by width (tests: every Spanish text has a form as narrow as English's narrowest). */
+export const WIDGET_FORM_KEYS = [
+  "widget.inGarden", "widget.plantsAt", "widget.noUsdc.big", "widget.noUsdc.label", "widget.paused.big", "widget.paused.label",
+  "widget.reached.big", "widget.reached.label", "widget.saving.big", "widget.saving.label", "widget.planted.big", "widget.waitingNext",
+  "widget.garden.big", "widget.waitingFirst", "widget.walletAsk",
+] as const satisfies readonly Key[];
+/** The first form of a text that fits, else its last (the narrowest). */
+const pickForm = (f: Fit | undefined, texts: string[]) => texts.find((x) => (f ?? (() => true))(x)) ?? texts[texts.length - 1];
 
 /**
  * R363 (10-05, "Value + the one thing to do"): ONE line that invites a tap, decided from Home's own state so the two never disagree:
@@ -16,13 +30,13 @@ export const BUD_LINE = "A bud is ready. Water it.";
  * "Next: 7 AM" (Home: "Tomorrow, 7 AM"). Nothing saved yet -> "Waiting for a swap" (his 10-26 note: "waiting on your next swap", in the least text).
  */
 export function widgetStateLine(me: Pick<MeResponse, "nextPlanting" | "wallets">, scene: Pick<Scene, "parts" | "unrevealed">, now: Date): WidgetState {
-  if (watcherLine({ unrevealed: scene.unrevealed, failed: false, nudged: false }).can === "ready") return { text: BUD_LINE, action: true };
+  if (watcherLine({ unrevealed: scene.unrevealed, failed: false, nudged: false }).can === "ready") return { text: t("widget.state.bud"), action: true };
   const row = nextPlantingFor(me, scene, now);
   switch (row.state) {
-    case "paused": return { text: me.wallets.some((w) => w.status === "paused" && w.pause?.reason === "no_usdc") ? "Wallet needs USDC" : "Paused", action: false };
-    case "saving": return { text: `+${formatUsd(me.nextPlanting.pendingCents)} waiting`, action: false };
-    case "reached": return { text: `Next: ${nextRunClock(now)}`, action: false };
-    case "empty": return { text: "Waiting for a swap", action: false };
+    case "paused": return { text: me.wallets.some((w) => w.status === "paused" && w.pause?.reason === "no_usdc") ? t("widget.state.walletNeedsUsdc") : t("next.paused"), action: false };
+    case "saving": return { text: t("widget.state.waiting", { amount: formatUsd(me.nextPlanting.pendingCents) }), action: false };
+    case "reached": return { text: t("next.short.next", { value: nextRunClock(now) }), action: false };
+    case "empty": return { text: t("widget.state.empty"), action: false };
   }
 }
 
@@ -53,8 +67,7 @@ export function widgetHeadline(
   // 10-26 (his ruling: "the widget should flag this issue"): one wallet out of USDC while another still plants. The garden is not paused,
   // so the money and the bar stay; the line under the headline turns into the ask, in the accent green, and a tap opens Home's top-up.
   if (head.action || !me.wallets.some((w) => w.status === "paused" && w.pause?.reason === "no_usdc")) return head;
-  const pick = (f: Fit | undefined, texts: string[]) => texts.find((t) => (f ?? (() => true))(t)) ?? texts[texts.length - 1];
-  return { ...head, label: pick(fits.label, ["A wallet needs USDC", "Wallet needs USDC", "Needs USDC"]), action: true, walletAsk: true };
+  return { ...head, label: pickForm(fits.label, formsOf("widget.walletAsk")), action: true, walletAsk: true };
 }
 
 function gardenHeadline(
@@ -64,25 +77,25 @@ function gardenHeadline(
 ): WidgetHeadline {
   const row = nextPlantingFor(me, scene, now), pending = Math.max(0, me.nextPlanting.pendingCents);
   const goal = formatUsd(me.nextPlanting.thresholdCents);
-  const pick = (f: Fit | undefined, texts: string[]) => texts.find((t) => (f ?? (() => true))(t)) ?? texts[texts.length - 1];
-  const big = (...t: string[]) => pick(fits.big, t), label = (...t: string[]) => pick(fits.label, t), line = (...t: string[]) => pick(fits.line, t);
-  const inGarden = line(`${total} in your garden`, `${total} in garden`);
-  const plantsAt = line(`Round-ups plant at ${goal}`, `Plants at ${goal}`);
+  // 0.1.13: each text is one key whose forms the language gives ('|'), read at draw time
+  const big = (k: Key, v?: Vars) => pickForm(fits.big, formsOf(k, v)), label = (k: Key, v?: Vars) => pickForm(fits.label, formsOf(k, v)), line = (k: Key, v?: Vars) => pickForm(fits.line, formsOf(k, v));
+  const inGarden = line("widget.inGarden", { total });
+  const plantsAt = line("widget.plantsAt", { goal });
   switch (row.state) {
     case "paused":
       // 10-26 copy review row 7: a pause for want of USDC asks for USDC in the wallet; the user's own pause keeps its words
       if (me.wallets.some((w) => w.status === "paused" && w.pause?.reason === "no_usdc"))
-        return { big: big("Paused: wallet needs USDC", "Wallet needs USDC", "Needs USDC"), label: label("Open Sprouts to top up your wallet", "Open to top up"), line: inGarden, fraction: null, action: true };
-      return { big: big("Round-ups paused", "Paused"), label: label("Open Sprouts to turn them on", "Open to turn on"), line: inGarden, fraction: null, action: true };
-    case "reached": return { big: big(`${formatUsd(pending)} saved`, formatUsd(pending)), label: label(`plants ${nextRunWords(now)}`, `plants ${nextRunClock(now)}`), line: inGarden, fraction: 1, action: false };
-    case "saving": return { big: big(`${formatUsd(pending)} of ${goal}`, formatUsd(pending)), label: label("rounds up from every swap", "from your swaps", "from swaps"), line: inGarden, fraction: row.fraction, action: false };
+        return { big: big("widget.noUsdc.big"), label: label("widget.noUsdc.label"), line: inGarden, fraction: null, action: true };
+      return { big: big("widget.paused.big"), label: label("widget.paused.label"), line: inGarden, fraction: null, action: true };
+    case "reached": return { big: big("widget.reached.big", { amount: formatUsd(pending) }), label: label("widget.reached.label", { when: nextRunWords(now), clock: nextRunClock(now) }), line: inGarden, fraction: 1, action: false };
+    case "saving": return { big: big("widget.saving.big", { amount: formatUsd(pending), goal }), label: label("widget.saving.label"), line: inGarden, fraction: row.fraction, action: false };
     case "empty": {
       const recent = (me.history?.plantings ?? []).filter((p) => { const t = Date.parse(p.ts); return t <= now.getTime() && now.getTime() - t < PLANTED_RECENT_MS; });
       const planted = recent.reduce((c, p) => c + p.usdcInCents, 0);
       // 10-27 (his note: the pill "not showing the planting bar"): nothing waiting is an empty bar (fraction 0), not no bar
-      if (planted > 0) return { big: big(`Planted ${formatUsd(planted)}`, formatUsd(planted)), label: label(`${total} in your garden`, `${total} in garden`), line: line("Waiting for your next swap", "Waiting for a swap", "Swap to grow"), fraction: 0, action: false };
-      if (hasMoney) return { big: big(`${total} in your garden`, total), label: label("Waiting for your next swap", "Waiting for a swap", "Swap to grow"), line: plantsAt, fraction: 0, action: false };
-      return { big: "Your garden", label: label("Waiting for your first swap", "Waiting for a swap", "Swap to start"), line: plantsAt, fraction: 0, action: false };
+      if (planted > 0) return { big: big("widget.planted.big", { amount: formatUsd(planted) }), label: label("widget.inGarden", { total }), line: line("widget.waitingNext"), fraction: 0, action: false };
+      if (hasMoney) return { big: big("widget.garden.big", { total }), label: label("widget.waitingNext"), line: plantsAt, fraction: 0, action: false };
+      return { big: t("widget.yourGarden"), label: label("widget.waitingFirst"), line: plantsAt, fraction: 0, action: false };
     }
   }
 }

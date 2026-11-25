@@ -3,6 +3,7 @@ import { api, ApiError, type MeResponse } from "./api";
 import { applyRulesTo, normalizeMe, pickMeState, usableMe, type ManagerExtra } from "./me-state";
 import { refreshWidget } from "./widget-refresh";
 import { recordZeroMarks } from "./zero-marks";
+import { subscribeLang } from "@/i18n";
 
 import { store } from "./store";
 export { toGardenInput } from "./garden-input";
@@ -15,6 +16,10 @@ export function readLastMe(): MeResponse | null {
   const usable = raw ? usableMe(JSON.parse(raw) as MeResponse) : null;
   return usable ? normalizeMe(usable) : null;
 }
+
+/** 0.1.13: a language change (writeLangChoice) redraws a placed widget from the last read, in the new language: its words are t() at
+ *  draw time. Registered here, where the last read lives; the entry (index.js) loads this module, so it holds with no screen open. */
+subscribeLang(() => void refreshWidget(readLastMe()).catch(() => {}));
 
 /** Forgets the saved last read (a different user signed in: their phone must not show the previous user's garden). */
 export function clearLastMe() {

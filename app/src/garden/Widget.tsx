@@ -10,6 +10,7 @@ import { toGardenInput, type ZeroMarks } from "@/lib/garden-input";
 import { gardenTotals, valueBlock } from "@/lib/me-state";
 import { formatUsd } from "@/lib/format";
 import { widgetHeadline, widgetStateLine, type WidgetState } from "@/lib/widget-state";
+import { t } from "@/i18n";
 import { BAR_GAP, BAR_H, G2_BIG, G2_BIG_MIN, LABEL_SIZE, lineBox, isSlim, isSmallest, padFor, STATE_MIN, textWidth, widgetLayout, type Box } from "./widget-layout";
 import type { PlantId, Scene } from "@/model/garden";
 
@@ -35,6 +36,7 @@ export const TINY_W = 140;
 /** The slim frame's height: 64 cut the bottom line once the empty bar showed too (10-27); the ensō pill is 72. */
 const SLIM_FRAME_H = 74;
 /** R363's tiny label under the total. */
+/** The total's label in English (tests); drawn as t("widget.label"), read at draw time (0.1.13). */
 export const WIDGET_LABEL = "your garden";
 
 /**
@@ -73,11 +75,11 @@ export function SproutsWidget({ me, width, height, wateredPlants = null, restart
       <FlexWidget clickAction="OPEN_APP" style={{ height: "match_parent", width: "match_parent", backgroundColor: PAPER, borderRadius: 16, padding: pad, ...style }}>{children}</FlexWidget>
     );
   const notice = (text: string) => card(inner ? frameGap(width) : padFor(width), { justifyContent: "center" }, <TextWidget text={text} style={{ fontSize: 14, color: INK }} />);
-  if (!me) return notice("Open Sprouts to sign in");
+  if (!me) return notice(t("widget.signIn"));
   // R146, R252: the total is Home's own number (valueBlock: the whole garden in dollars, the SKR pot when no SKR price is known).
   // A cached read too old for these fields says "open the app" rather than failing the whole render.
   let labelAction = false;
-  let big: string, label = WIDGET_LABEL, fraction: number | null = null, scene: Scene | null = null, input: ReturnType<typeof toGardenInput> | null = null, state: WidgetState;
+  let big: string, label = t("widget.label"), fraction: number | null = null, scene: Scene | null = null, input: ReturnType<typeof toGardenInput> | null = null, state: WidgetState;
   try {
     big = valueBlock(gardenTotals(me), BigInt(me.pot.skrStakedRaw)).big;
     // a garden that cannot be built (a cached read missing a newer field) draws no garden, and so no bud line: Home rebuilds on open
@@ -95,7 +97,7 @@ export function SproutsWidget({ me, width, height, wateredPlants = null, restart
       big = head.big; label = head.label; fraction = head.fraction;
       labelAction = head.action;
     }
-  } catch { return notice("Open Sprouts to see your garden"); }
+  } catch { return notice(t("widget.openToSee")); }
   // 10-27 (his note: "the 1x1 should have no art and feature the planting gauge instead"): one column wide, the words and the bar
   const tiny = !!inner && !slim && (width < TINY_W || isSmallest(width, height));
   if (tiny && inner) {

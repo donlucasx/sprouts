@@ -7,7 +7,8 @@ import { stagesFor } from "@/model/garden2";
 import { toGardenInput, type ZeroMarks } from "@/lib/garden-input";
 import { gardenTotals, valueBlock } from "@/lib/me-state";
 import { formatUsd } from "@/lib/format";
-import { widgetHeadline } from "@/lib/widget-state";
+import { formsOf, widgetHeadline } from "@/lib/widget-state";
+import { t } from "@/i18n";
 import { isSlim, isSmallest, LABEL_SIZE, lineBox, STATE_MIN, textWidth } from "./widget-layout";
 import type { PlantId } from "@/model/garden";
 
@@ -37,9 +38,9 @@ function wordsFor(me: MeResponse, total: string, parts: { parts: never[] } | { p
   // the garden itself paused: the ask is the headline and the ring empties
   if (head.action && !head.walletAsk) return { title: head.big, sub: null, accent: head.label, foot: head.line, fraction: 0, ask: true };
   // one wallet needs USDC while the garden still plants (10-26): the money stays the headline, the ask takes the accent line
-  if (head.action) return { title: total, sub: "in your garden", accent: head.label, foot: head.big.includes(total) ? null : head.big, fraction: head.fraction, ask: true };
+  if (head.action) return { title: total, sub: t("widget.enso.inYourGarden"), accent: head.label, foot: head.big.includes(total) ? null : head.big, fraction: head.fraction, ask: true };
   const saving = head.fraction !== null && head.fraction > 0 && head.fraction < 1;
-  return { title: total, sub: "in your garden", accent: head.big.includes(total) ? null : head.big, foot: saving ? "next planting" : head.label, fraction: head.fraction, ask: false };
+  return { title: total, sub: t("widget.enso.inYourGarden"), accent: head.big.includes(total) ? null : head.big, foot: saving ? t("widget.enso.nextPlanting") : head.label, fraction: head.fraction, ask: false };
 }
 
 function ring(cx: number, cy: number, r: number, sw: number, fr: number | null): string {
@@ -180,10 +181,11 @@ export function EnsoWidget({ me, width, height, wateredPlants = null, restartMar
     layers.push(
       <FlexWidget key="t" style={{ width: W, height: H, flexDirection: "column", justifyContent: "center", paddingLeft: left, paddingRight: mode === "pill" ? 20 : 6 }}>
         {/* the widget renderer draws widget elements only: plain children, never a fragment (TypeError on the Seeker, 10-26) */}
-        {mode === "pill" ? text(words.sub ? `${words.title} ${words.sub}` : words.title, BIG, INK, true) : text(words.title, BIG, INK, true)}
+        {/* 0.1.13: "$14.98 in your garden" is one sentence per language (the first form of widget.inGarden), never total + sub */}
+        {mode === "pill" ? text(words.sub ? formsOf("widget.inGarden", { total: words.title })[0] : words.title, BIG, INK, true) : text(words.title, BIG, INK, true)}
         {mode === "pill"
           ? text([words.accent, words.foot].filter(Boolean).join(" · "), LINE, words.ask ? ACCENT : QUIET, words.ask)
-          : text(words.sub ? "in garden" : null, LABEL_SIZE, QUIET, false)}
+          : text(words.sub ? t("widget.enso.inGarden") : null, LABEL_SIZE, QUIET, false)}
         {mode === "pill" ? null : text(words.accent, LINE, ACCENT, true)}
         {mode === "pill" ? null : text(words.foot, LABEL_SIZE, QUIET, false)}
       </FlexWidget>,
