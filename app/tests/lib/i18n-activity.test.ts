@@ -77,7 +77,7 @@ describe('Activity in Spanish, through the same functions', () => {
     const now = new Date(2026, 9, 5, 12)
     expect(dayHeader('2026-10-05', now)).toBe('Hoy')
     expect(dayHeader('2026-10-04', now)).toBe('Ayer')
-    expect(KIND_FILTERS.map(filterLabel)).toEqual(['Todo', 'Plantar', 'Swap', 'Retirar', 'Reparto', 'Billetera'])
+    expect(KIND_FILTERS.map(filterLabel)).toEqual(['Todo', 'Plantación', 'Swap', 'Retiro', 'Reparto', 'Billetera'])
     expect(kindTag('topup')).toBe('Agregar')
     expect(KIND_TAG.topup).toBe('Top up')
     expect(spokenLabel({ key: 'k', ts: '2026-10-03T20:00:00Z', label: 'L', amount: null, details: [], signature: null })).toBe('3 de octubre de 2026, 13:00, L')
