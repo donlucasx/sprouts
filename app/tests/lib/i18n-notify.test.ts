@@ -58,7 +58,7 @@ describe('the headline and state line in Spanish', () => {
   it('a wide widget gets the long forms, a narrow one the short', () => {
     writeLangChoice('es')
     const wide = widgetHeadline(saving, { parts: [] }, NOW, '$14,98', true)
-    expect([wide.big, wide.label, wide.line]).toEqual(['$1,35 de $2,00', 'redondeos de cada swap', '$14,98 en tu jardín'])
+    expect([wide.big, wide.label, wide.line]).toEqual(['$1,35 de $2,00', 'redondea cada swap', '$14,98 en tu jardín'])
     const narrow = widgetHeadline(saving, { parts: [] }, NOW, '$14,98', true, { big: (x) => x.length <= 6, label: (x) => x.length <= 12, line: (x) => x.length <= 16 })
     expect([narrow.big, narrow.label, narrow.line]).toEqual(['$1,35', 'de tus swaps', '$14,98 en jardín'])
   })
@@ -68,8 +68,8 @@ describe('the headline and state line in Spanish', () => {
     expect([none.big, none.label, none.line]).toEqual(['Tu jardín', 'Esperando tu primer swap', 'Tus redondeos se plantan al llegar a $2,00'])
     const wallets = [{ pubkey: 'W', status: 'paused', pause: { reason: 'no_usdc' } }]
     const paused = widgetHeadline({ ...saving, wallets } as unknown as MeResponse, { parts: [] }, NOW, '$14,98', true)
-    expect([paused.big, paused.label]).toEqual(['En pausa: billetera sin USDC', 'Abre Sprouts para agregar USDC a tu billetera'])
-    expect(widgetStateLine({ ...saving, wallets } as unknown as MeResponse, { parts: [], unrevealed: 0 }, NOW).text).toBe('Billetera sin USDC')
+    expect([paused.big, paused.label]).toEqual(['En pausa: falta USDC', 'Abre Sprouts para agregar USDC a tu billetera'])
+    expect(widgetStateLine({ ...saving, wallets } as unknown as MeResponse, { parts: [], unrevealed: 0 }, NOW).text).toBe('Falta USDC en tu billetera')
     expect(widgetStateLine(saving, { parts: [], unrevealed: 0 }, NOW).text).toBe('+$1,35 en espera')
   })
 })
