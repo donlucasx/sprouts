@@ -63,7 +63,33 @@ async function coverCooldown(repo: Repo, user: string, position: Position): Prom
  * a `sent` planting (it may have landed, the ledger does not count it yet), a recent move not finalized, a ledger that moved
  * during the read, or no time left before `deadlineMs`.
  */
-export async function reconcileOwnStakes(a: { repo: Repo; chain: ReconcileChain; now: Date; deadlineMs?: number }): Promise<{ adjusted: string[]; skipped: string[]; deferred: string[] }> {
+/**
+ * 11-25 (support S-HJAK, his ruling "Longer + fair order"): the order users are reconciled in. Users the previous finished run deferred go
+ * first (in their order), then everyone else in signup order. With no usable previous record (a killed run writes none, a failed one has
+ * no `reconciled`), the signup order is rotated by the day so a run that runs out of time never starves the same newest users.
+ */
+/** Prime, so the start moves every day; with a user count that is a multiple of 97 the rotation stalls (accepted: deferred-first is the main path). */
+export const RECONCILE_ROTATE_STRIDE = 97;
+export function reconcileOrder<T extends { seedVaultPubkey: string }>(users: T[], previousDeferred: string[] | null, dayNumber: number): T[] {
+  if (previousDeferred) {
+    const byKey = new Map(users.map((u) => [u.seedVaultPubkey, u]));
+    const first = previousDeferred.map((k) => byKey.get(k)).filter((u): u is T => u !== undefined);
+    const firstSet = new Set(first.map((u) => u.seedVaultPubkey));
+    return [...first, ...users.filter((u) => !firstSet.has(u.seedVaultPubkey))];
+  }
+  if (users.length === 0) return users;
+  const offset = (((dayNumber * RECONCILE_ROTATE_STRIDE) % users.length) + users.length) % users.length;
+  return [...users.slice(offset), ...users.slice(0, offset)];
+}
+
+/** The previous run's deferred users, only from a finished, successful record that carries them; else null (rotate instead). */
+export function previousDeferred(run: { ok: boolean | null; finishedAt: Date | null; summary: unknown } | null): string[] | null {
+  if (!run || run.ok !== true || run.finishedAt === null) return null;
+  const d = (run.summary as { reconciled?: { deferred?: unknown } } | null)?.reconciled?.deferred;
+  return Array.isArray(d) && d.every((k) => typeof k === "string") ? (d as string[]) : null;
+}
+
+export async function reconcileOwnStakes(a: { repo: Repo; chain: ReconcileChain; now: Date; deadlineMs?: number; previousDeferred?: string[] | null }): Promise<{ adjusted: string[]; skipped: string[]; deferred: string[] }> {
   const adjusted: string[] = [];
   const skipped: string[] = [];
   const deferred: string[] = [];
@@ -72,7 +98,7 @@ export async function reconcileOwnStakes(a: { repo: Repo; chain: ReconcileChain;
   // Every `sent` planting, any age: one whose send threw may still have landed, and the next planting run settles it (R499 F2).
   // The bound is a day ahead of now, never a far-future sentinel: Postgres rejects a year past 9999 (round 2, R2-1).
   const unsettled = new Set((await a.repo.listSentPlantings(new Date(a.now.getTime() + 86_400_000))).map((p) => p.userPubkey));
-  for (const user of await a.repo.listUsers()) {
+  for (const user of reconcileOrder(await a.repo.listUsers(), a.previousDeferred ?? null, Math.floor(a.now.getTime() / 86_400_000))) {
     if (Date.now() >= deadline) {
       deferred.push(user.seedVaultPubkey);
       continue;

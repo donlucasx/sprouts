@@ -12,7 +12,7 @@ vi.mock("@/lib/withdraw-run", async (orig) => {
   const actual = await orig<typeof import("@/lib/withdraw-run")>();
   return { ...actual, runWithdrawCrank: vi.fn(async (a: Parameters<typeof actual.runWithdrawCrank>[0]) => { if (crankMock.fail) throw new Error("crank blew up"); return actual.runWithdrawCrank(a); }) };
 });
-vi.mock("@/lib/reconcile", () => ({ reconcileOwnStakes: vi.fn(async () => ({ adjusted: [], skipped: [], deferred: [] })) }));
+vi.mock("@/lib/reconcile", async (orig) => ({ previousDeferred: ((await orig()) as typeof import("@/lib/reconcile")).previousDeferred, reconcileOwnStakes: vi.fn(async () => ({ adjusted: [], skipped: [], deferred: [] })) }));
 vi.mock("@/lib/planting", () => ({ buildPlantingTx: vi.fn(), simulatePlanting: vi.fn(), sendPlanting: vi.fn(), signatureStatus: vi.fn() }));
 vi.mock("@/lib/subscriptions", () => ({ readDelegation: vi.fn(), usdcAta: vi.fn() }));
 const { order, snapshotMock, decideMock, applyMock, venuesMock, movesMock } = vi.hoisted(() => {
@@ -60,9 +60,9 @@ describe("cron route", () => {
     const body = (await res.json()) as { swapCheck: unknown };
     expect(body.swapCheck).toMatchObject({ checked: 3, missed: [{ sig: "44gdAAAA", roundupCents: 66 }] });
     const a = swapCheckMock.mock.calls[0][0];
-    // Starts no wallet past 255 s (45 s before the 300 s kill, after the reconcile's 275 s); a wallet still going at 280 s is deferred.
-    expect(a.deadlineMs - before).toBeGreaterThanOrEqual(254_000);
-    expect(a.deadlineMs - before).toBeLessThanOrEqual(256_000);
+    // 11-25: starts no wallet past 730 s (70 s before the 800 s kill, after the reconcile's 700 s); a wallet still going at 755 s is deferred.
+    expect(a.deadlineMs - before).toBeGreaterThanOrEqual(729_000);
+    expect(a.deadlineMs - before).toBeLessThanOrEqual(731_000);
     expect(a.hardStopMs - a.deadlineMs).toBe(25_000);
     expect(a.boundAt! - a.deadlineMs).toBe(30_000);
     // L3: it runs after every money step (planting, crank, remainder retry, reconcile) and the coverage pass.
@@ -73,7 +73,7 @@ describe("cron route", () => {
     expect(vi.mocked(reconcileOwnStakes).mock.invocationCallOrder.at(-1)!).toBeLessThan(swapCheckMock.mock.invocationCallOrder.at(-1)!);
   });
 
-  it("M1: a swap check whose read hangs returns by the 285 s bound, and the run record is still written", async () => {
+  it("M1: a swap check whose read hangs returns by the 760 s bound (11-25; was 285 s), and the run record is still written", async () => {
     const actual = await vi.importActual<typeof import("@/lib/swap-check")>("@/lib/swap-check");
     await repo.upsertUser({ seedVaultPubkey: "U", sgtMint: "M", skrName: null });
     await repo.addWallet({ pubkey: "W", userPubkey: "U", delegationPda: "D", dailyCapCents: 500 });
@@ -85,7 +85,7 @@ describe("cron route", () => {
     // test advanced 10 s per loop turn whatever the route was doing, so fake time ran on while the route was still on its way to the
     // check (real event-loop turns: about 2 ms of load was enough), the bound was set relative to that later time, and 60 turns no
     // longer reached it. Now the route reaches the check with no time passing (setImmediate is real and advances nothing), its
-    // first read hangs, and the clock is then moved exactly to the 285 s bound: not settled 1 ms before it, settled at it.
+    // first read hangs, and the clock is then moved exactly to the 760 s bound: not settled 1 ms before it, settled at it.
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
     try {
       let settled = false;
@@ -93,7 +93,7 @@ describe("cron route", () => {
       const waitUntil = performance.now() + 5_000;
       while (!started && performance.now() < waitUntil) await new Promise((r) => setImmediate(r));
       expect(started).toBe(true);
-      await vi.advanceTimersByTimeAsync(285_000 - 1);
+      await vi.advanceTimersByTimeAsync(760_000 - 1);
       expect(settled).toBe(false);   // the hung read holds the step until the bound, not before
       await vi.advanceTimersByTimeAsync(1);
       for (let i = 0; i < 1_000 && !settled; i++) await new Promise((r) => setImmediate(r));   // the rest of the route: no timers, real turns only
@@ -288,6 +288,22 @@ describe("cron route", () => {
     expect((await res.json()).reconciled).toBeNull();
     expect(cleanup).toHaveBeenCalled();
     expect(keepalive).toHaveBeenCalled();
+  });
+
+  // 11-25 (S-HJAK, his ruling "Longer + fair order"): the reconcile gets 700 s, and yesterday's deferred users go first.
+  it("the reconcile starts no user past 700 s and gets yesterday's deferred users from yesterday's finished record", async () => {
+    const { reconcileOwnStakes } = await import("@/lib/reconcile");
+    const y = new Date(Date.now() - 86_400_000);
+    const yday = dayOf(y);
+    await repo.claimCronRun(yday, y, new Date(0));
+    await repo.finishCronRun(yday, true, { reconciled: { adjusted: [], skipped: [], deferred: ["late1", "late2"] } }, new Date(y.getTime() + 60_000), y);
+    const before = Date.now();
+    const res = await GET(new Request("http://x/api/cron/plant", { headers: { authorization: `Bearer ${SECRET}` } }));
+    expect(res.status).toBe(200);
+    const a = vi.mocked(reconcileOwnStakes).mock.calls.at(-1)![0] as { deadlineMs: number; previousDeferred: string[] | null };
+    expect(a.deadlineMs - before).toBeGreaterThanOrEqual(699_000);
+    expect(a.deadlineMs - before).toBeLessThanOrEqual(701_000);
+    expect(a.previousDeferred).toEqual(["late1", "late2"]);
   });
 
   describe("11-07 run lock and run record (0010)", () => {

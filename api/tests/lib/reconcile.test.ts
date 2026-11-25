@@ -371,3 +371,29 @@ describe("reconcileOwnStakes: superseded rows and uncovered cooldowns (ops #6)",
     expect(repo.withdrawals.size).toBe(0);
   });
 });
+
+describe("reconcile order (11-25, S-HJAK: his ruling 'Longer + fair order')", async () => {
+  const { reconcileOrder, previousDeferred, RECONCILE_ROTATE_STRIDE } = await import("@/lib/reconcile");
+  const us = ["a", "b", "c", "d", "e"].map((k) => ({ seedVaultPubkey: k }));
+  const keys = (xs: { seedVaultPubkey: string }[]) => xs.map((x) => x.seedVaultPubkey);
+  it("yesterday's deferred users go first, in their order, then the rest in signup order; unknown keys are ignored", () => {
+    expect(keys(reconcileOrder(us, ["d", "zz", "b"], 0))).toEqual(["d", "b", "a", "c", "e"]);
+  });
+  it("with no usable record the signup order is rotated by the day, every user exactly once", () => {
+    const day = 20_417;
+    const got = keys(reconcileOrder(us, null, day));
+    const off = (day * RECONCILE_ROTATE_STRIDE) % 5;
+    expect(got).toEqual([...keys(us).slice(off), ...keys(us).slice(0, off)]);
+    expect(new Set(got).size).toBe(5);
+    expect(keys(reconcileOrder(us, null, day + 1))[0]).not.toBe(got[0]);
+  });
+  it("previousDeferred trusts only a finished, ok record that carries reconciled.deferred", () => {
+    const fin = new Date();
+    expect(previousDeferred(null)).toBeNull();
+    expect(previousDeferred({ ok: false, finishedAt: fin, summary: { error: "x" } })).toBeNull();
+    expect(previousDeferred({ ok: null, finishedAt: null, summary: null })).toBeNull();
+    expect(previousDeferred({ ok: true, finishedAt: fin, summary: { reconciled: null } })).toBeNull();
+    expect(previousDeferred({ ok: true, finishedAt: fin, summary: { reconciled: { deferred: ["a", 3] } } })).toBeNull();
+    expect(previousDeferred({ ok: true, finishedAt: fin, summary: { reconciled: { adjusted: [], skipped: [], deferred: ["c", "a"] } } })).toEqual(["c", "a"]);
+  });
+});
