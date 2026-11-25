@@ -1,3 +1,4 @@
+import { en } from '@/i18n/en'
 import type { MeResponse } from './api'
 import { confirmWithRetries, RELINK_NOT_ON_CHAIN_YET } from './confirm-retry'
 import { NEEDS_LIVE } from './lend-mock'
@@ -10,8 +11,7 @@ import { leashPda, SETUP_MAX, type SignFlow } from './sign'
 export const WEB_LINK_TRUST = "Web-linked wallets trust the link page at link time; your Seeker's own wallet does not."
 
 /** R300's public promise verbatim (the controller's one sentence plus its three-word close): the re-link card and Settings (Task 13). */
-export const PUBLIC_GUARANTEE =
-  'Even if our server is hacked, neither it nor the AI can move more than your daily round-up (max $5), and only into your own savings.'
+export const PUBLIC_GUARANTEE = en['promise.public']
 
 /**
  * R287 (in-app card, one Seed Vault signature), R300 (the public promise, verbatim), spec 6.5 (the old approval stays exposed until

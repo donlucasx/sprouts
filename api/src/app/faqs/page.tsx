@@ -22,7 +22,7 @@ const QA: [string, ReactNode][] = [
   ["What can Sprouts buy?", "SKR, staked under your Seeker's key. stORE, which keeps mining ORE. hSOL and cbBTC. USDC and SOL lending at Kamino or Jupiter Lend, with the receipt in your wallet."],
   ["What permission does Sprouts need?", <>
     When you link a wallet, you approve Sprouts&apos; on-chain program to use the USDC in it. Your wallet shows this as an &quot;unlimited
-    USDC&quot; approval. The program caps it at $5 a day, and only into your own garden.
+    USDC&quot; approval. The program caps it at $5 a day, and only into your own garden, less a 0.5% fee.
     <div style={{ marginTop: 14 }}><Safety ink={ink} muted={muted} leaf={leaf} rule={rule} intro={false} /></div>
   </>],
   ["What does it cost?", "Sprouts takes 0.5% of each planting, in USDC, including USDC and SOL lending. Sprouts takes nothing on interest, withdrawals or moves, and pays the network fee for every planting."],

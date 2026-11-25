@@ -1,6 +1,7 @@
 import type { MeResponse, WalletPause } from './api'
 import { REFUSED, SignRefused, topUpSourceAllowed, WSOL_MINT, type SignFlow } from './sign'
 import { DROPPED_NOTHING_SENT } from './wallet-errors'
+import { t } from '@/i18n'
 
 /**
  * The SOL top-up (10-22, owner-approved): round-ups are pulled only as USDC and most Seeker wallets hold SOL, so wherever USDC is short
@@ -16,12 +17,14 @@ export const TOPUP = {
   button: (cents: number) => `Add $${Math.round(cents / 100)} of USDC`,
   // 10-27 (his note on the Saga: "should state somewhere that you are swapping existing sol from your wallet into USDC")
   // Task 3 (any-coin top-up): the coin picked names itself; SOL by default, so the SOL line is unchanged
-  how: (cents: number, covers: string | null, symbol = 'SOL') =>
-    `Swaps ${symbol} already in this wallet for $${Math.round(cents / 100)} of USDC${covers ? `, ${covers.charAt(0).toLowerCase()}${covers.slice(1)}` : ''}. No Sprouts fee.`,
+  // 0.1.13 (his ruling "Name both", 11-25): the swap is free and the planting carries the 0.5% (t topup.fee). `tail` replaces that
+  // sentence (the SOL pointer, solCheaperLine).
+  how: (cents: number, covers: string | null, symbol = 'SOL', tail: string = t('topup.fee')) =>
+    `Swaps ${symbol} already in this wallet for $${Math.round(cents / 100)} of USDC${covers ? `, ${covers.charAt(0).toLowerCase()}${covers.slice(1)}` : ''}. ${tail}`,
   /** The line under the closed "Add USDC" button (owner's copy, 11-19), the picked coin's symbol in it. */
   swapsLine: (symbols: string[]) => {
     const list = symbols.length === 0 ? 'SOL' : symbols.length === 1 ? symbols[0] : `${symbols.slice(0, -1).join(', ')} or ${symbols[symbols.length - 1]}`
-    return `Swaps a little of your ${list} into USDC. No Sprouts fee.`
+    return `Swaps a little of your ${list} into USDC. ${t('topup.fee')}`
   },
   // 11-20 (Kimi copy item 3): never a "not enough SOL" line; just where to send USDC
   sendHere: 'Send USDC to this wallet from any wallet or exchange. Plantings start again once it arrives.',

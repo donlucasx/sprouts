@@ -73,10 +73,10 @@ describe('the venue card (R275, R276, R278: the rates the AI reads, its verdicts
 })
 
 describe('venueGroups (R451)', () => {
-  it('puts the venues Sprouts can use first and the compared-only ones after, keeping every line', () => {
+  it('0.1.13 (his ruling 11-25): only the venues Sprouts can use; marginfi and Lulo (not auto) are left out', () => {
     const g = venueGroups(FIXTURE_VENUES)
-    expect(g.used.length + g.compared.length).toBe(FIXTURE_VENUES.venues.length)
+    expect(g.used.length).toBe(FIXTURE_VENUES.venues.filter((v) => v.auto).length)
     expect(g.used.every((l) => !l.detail.includes('Compared only'))).toBe(true)
-    expect(g.compared.every((l) => l.detail.includes('Compared only'))).toBe(true)
+    expect(g.used.some((l) => /marginfi|Lulo/.test(l.title))).toBe(false)
   })
 })

@@ -30,7 +30,7 @@ export const DISCLOSURES: [string, string][] = [
   ],
   [
     'Where does lending go?',
-    'New USDC and SOL go to Kamino Lend or Jupiter Lend, whichever paid more over the last 7 days and is safe that day. Once you have $20 or more lent, new money only goes to a venue if that keeps it at or under 60% of your lending. marginfi and Lulo are compared every day but get no money. The Yield Manager can skip a venue for a day and says why in Rules, under "Where lending goes today". A venue can pause withdrawals when its pool is fully lent out; your money stays yours, and you can withdraw once borrowers repay or new money comes in. Kamino blocks some regions on its own website. Sprouts deposits on-chain for you and you withdraw inside Sprouts, so check that lending is allowed where you live.',
+    'New USDC and SOL go to Kamino Lend or Jupiter Lend, whichever paid more over the last 7 days and is safe that day. Once you have $20 or more lent, new money only goes to a venue if that keeps it at or under 60% of your lending. The Yield Manager can skip a venue for a day and says why in Rules, under "Where lending goes today". A venue can pause withdrawals when its pool is fully lent out; your money stays yours, and you can withdraw once borrowers repay or new money comes in. Kamino blocks some regions on its own website. Sprouts deposits on-chain for you and you withdraw inside Sprouts, so check that lending is allowed where you live.',
   ],
   [
     'What does "earned" mean?',

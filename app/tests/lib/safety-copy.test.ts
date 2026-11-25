@@ -3,8 +3,8 @@ import { SAFETY_HEADING, CAN, CANT, LINK_INTRO, APPROVAL_WARN_TITLE, APPROVAL_WA
 import * as web from '../../../api/src/lib/link-safety-copy'
 
 describe('safety copy (mirrors api/src/app/safety.tsx)', () => {
-  it('keeps the phone-sized shape: one can, three can\'t, and no em dashes', () => {
-    expect(CAN).toHaveLength(1)
+  it('keeps the phone-sized shape: two can, two can\'t, and no em dashes', () => {
+    expect(CAN).toHaveLength(2)   // 11-25 (his ruling): the fee is its own line
     expect(CANT).toHaveLength(2)
     for (const l of [...CAN, ...CANT, LINK_INTRO, APPROVAL_WARN_TITLE, APPROVAL_WARN_BODY, OTHER_WALLET_LINE]) expect(l).not.toMatch(/—/)
   })

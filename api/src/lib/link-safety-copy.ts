@@ -6,7 +6,8 @@
  */
 export const LINK_INTRO = "Every swap rounds up. Once a day, Sprouts plants the change using USDC in your wallet.";
 
-export const CAN: readonly string[] = ["Plants up to $5 of USDC a day, only into your own savings"];
+// 11-25 (his ruling): two lines, the fee named.
+export const CAN: readonly string[] = ["Plants up to $5 of USDC a day into your own savings", "Takes 0.5% per planting"];
 
 export const CANT: readonly string[] = [
   "Can't send your money anywhere else",
@@ -14,5 +15,6 @@ export const CANT: readonly string[] = [
 ];
 
 /** The wallet's "unlimited USDC" warning, said before the wallet says it (10-27; shortened 10-28 so the title fits one line on the Seeker). */
-export const APPROVAL_WARN_TITLE = 'Your wallet will ask for approval';
-export const APPROVAL_WARN_BODY = "It shows as \"unlimited USDC\". That's normal. Sprouts' on-chain program caps it at $5 a day, only into your garden. You can revoke it any time.";
+// 0.1.13 step 3 (his copy, 11-25), the same words as the app's last step before the wallet opens.
+export const APPROVAL_WARN_TITLE = "One approval, then round-ups run on their own";
+export const APPROVAL_WARN_BODY = "Your wallet will ask you to approve \"unlimited USDC\" so Sprouts can round up every swap without asking you to sign each time. Our on-chain program only lets Sprouts move up to $5 a day into your own account, less a 0.5% fee. Revoke it any time.";

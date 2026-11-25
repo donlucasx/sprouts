@@ -161,7 +161,8 @@ export type ActivityResponse = {
   moves?: { ts: string; asset: LendAsset; from: AutoVenue; to: AutoVenue; receiptRaw: string; status: MoveStatus }[];
   found?: FoundVenue[];
   /** 10-27: the Add USDC top-ups that landed (usdcRaw: USDC base units, exactly what arrived); absent from an older API. */
-  topUps?: { ts: string; signature: string; usdcRaw: string }[];
+  /** `coin` (11-24 API): the symbol of the coin that paid; null for a top-up recorded before, absent from an older API. */
+  topUps?: { ts: string; signature: string; usdcRaw: string; coin?: string | null }[];
   /** 10-28: links and revokes; absent from an older API. `why` on a revoke: the user, the USDC approval removed, or unlinked outside. */
   wallets?: { ts: string; kind: 'linked' | 'revoked'; wallet: string; why: 'user' | 'approval' | 'outside' | null; signature: string | null }[];
 };

@@ -16,11 +16,14 @@ import { newlyLinked } from '@/lib/newly-linked'
 import { confirmWithRetries, LINK_NOT_ON_CHAIN_YET } from '@/lib/confirm-retry'
 import { useSession } from '@/lib/session'
 import { reportLinkFailure, type LinkFailure, type LinkStep } from '@/lib/link-report'
-import { APPROVAL_WARN_BODY, APPROVAL_WARN_TITLE, CAN, CANT, CODE_STEPS, LINK_FINISHING, SAFETY_HEADING, OTHER_WALLET_LINE, linkApprovalPath, phoneSolNote, phoneUsdcNote, setupAccountsOf, setupLine } from '@/lib/safety-copy'
+import { CAN_KEYS, CANT, CODE_STEPS, LINK_FINISHING, SAFETY_HEADING, OTHER_WALLET_LINE, linkApprovalPath, phoneSolNote, phoneUsdcNote, setupAccountsOf, setupLine } from '@/lib/safety-copy'
 import { TopUpButton } from '@/components/TopUp'
 import { ME_USDC_SETUP, meUsdcSetupKey, TOPUP, TOPUP_DEFAULT_CENTS } from '@/lib/topup'
 import { useSolUsd } from '@/lib/sol-usd'
-import { FONT, radius, spacing, useTheme } from '@/theme'
+import { FONT, spacing } from '@/theme'
+import { ApprovalStep } from '@/components/ApprovalStep'
+import { t } from '@/i18n'
+import { useLang } from '@/i18n/useLang'
 
 /**
  * Confirms the link; when the delegation is late on chain the same code is confirmed again (no new signature, no new code), so a late
@@ -45,19 +48,6 @@ function LinkError({ error, title, help = true }: { error: string; title?: strin
   )
 }
 
-/** 10-27 (WAL-002): the wallet's "unlimited USDC" warning, said right above Approve so it is expected, not a surprise. */
-function ApprovalWarning() {
-  const { colors } = useTheme()
-  return (
-    <View style={{ borderWidth: 1.5, borderColor: colors.attention, borderRadius: radius.md, padding: spacing.md, gap: spacing.xs }}>
-      <ThemedText tone="attention" style={{ fontFamily: FONT.label, fontSize: 15, lineHeight: 21 }}>
-        {APPROVAL_WARN_TITLE}
-      </ThemedText>
-      <ThemedText style={{ fontSize: 14, lineHeight: 20 }}>{APPROVAL_WARN_BODY}</ThemedText>
-    </View>
-  )
-}
-
 /** One marked line of the can / can't card: a check for what Sprouts can do, a cross for what it can't. */
 function Mark({ ok, text }: { ok: boolean; text: string }) {
   return (
@@ -71,11 +61,14 @@ function Mark({ ok, text }: { ok: boolean; text: string }) {
 }
 
 export default function Connect() {
+  useLang()
   const { session } = useSession()
   const { signTransaction } = useMobileWallet()
   const invalidate = useInvalidateMe()
   const [code, setCode] = useState<string | null>(null)
   const [approving, setApproving] = useState(false)
+  // 0.1.13 step 3: Approve (and Try again) show the approval step; only its "Continue to wallet" opens the wallet
+  const [confirming, setConfirming] = useState(false)
   // 10-28: after the wallet signs, the link is still being checked on chain; the caption says so instead of "Waiting for your wallet"
   const [signed, setSigned] = useState(false)
   const [coding, setCoding] = useState(false)
@@ -158,6 +151,7 @@ export default function Connect() {
       setError(view.body)
       // 10-31: where it stopped, for the drop-offs the server cannot see (a wallet closed or cancelled before signing)
       reportLinkFailure((body: LinkFailure) => api('/api/link/report', { method: 'POST', body }), step, e, session.pubkey)
+      setConfirming(false)
     } finally {
       setApproving(false)
     }
@@ -181,7 +175,7 @@ export default function Connect() {
     <Screen back title="Link a wallet" keyboard keyboardAnchor={() => askBottom.current}>
       <ThemedText variant="heading">{SAFETY_HEADING}</ThemedText>
       <Card>
-        {CAN.map((l) => <Mark key={l} ok text={l} />)}
+        {CAN_KEYS.map((k) => <Mark key={k} ok text={t(k)} />)}
         {CANT.map((l) => <Mark key={l} ok={false} text={l} />)}
       </Card>
       <View onLayout={(e) => (askBottom.current = e.nativeEvent.layout.y + e.nativeEvent.layout.height)}>
@@ -202,14 +196,17 @@ export default function Connect() {
             {solNote}
           </ThemedText>
         ) : null}
-        <ApprovalWarning />
         {/* Task 17b: the one-time setup of this wallet's coin accounts, paid from its SOL, said before the wallet asks */}
         {setupNote ? (
           <ThemedText variant="caption" tone="secondary">
             {setupNote}
           </ThemedText>
         ) : null}
-        <Button title="Approve" loading={approving} onPress={linkThisPhone} />
+        {confirming ? (
+          <ApprovalStep busy={approving} onContinue={linkThisPhone} onBack={() => setConfirming(false)} />
+        ) : (
+          <Button title="Approve" loading={approving} onPress={() => setConfirming(true)} />
+        )}
         {approving ? (
           <ThemedText variant="caption" tone="secondary">
             {signed ? LINK_FINISHING : 'Waiting for your wallet.'}
@@ -220,7 +217,7 @@ export default function Connect() {
             {/* 11-08 (his Saga note): one help line, from the second failure. A wallet that closed opens What happened? in place
                 (with Message us inside); any other error keeps "Still stuck? Message us". */}
             <LinkError error={error} title={errorTitle} help={!canAsk && showStillStuck(failures)} />
-            {canAsk ? <Button title="Try again" loading={approving} onPress={linkThisPhone} style={{ alignSelf: 'flex-start' }} /> : null}
+            {canAsk && !confirming ? <Button title="Try again" loading={approving} onPress={() => setConfirming(true)} style={{ alignSelf: 'flex-start' }} /> : null}
             {canAsk && showStillStuck(failures) && !asked ? (
               <Button title="Still stuck? Tell us what happened" kind="quiet" onPress={() => { setAsking(true); setAsked(true) }} style={{ alignSelf: 'flex-start' }} />
             ) : null}

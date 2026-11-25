@@ -48,16 +48,6 @@ export function VenuesPanel() {
             {groups.used.map((v) => (
               <Line key={v.key} title={v.title} detail={v.detail} />
             ))}
-            {groups.compared.length > 0 ? (
-              <>
-                <ThemedText variant="caption" tone="secondary" style={{ marginTop: spacing.xs }}>
-                  Also compared
-                </ThemedText>
-                {groups.compared.map((v) => (
-                  <Line key={v.key} title={v.title} detail={v.detail} />
-                ))}
-              </>
-            ) : null}
           </>
         ) : (
           <ThemedText tone="secondary">{'message' in card ? card.message : ''}</ThemedText>

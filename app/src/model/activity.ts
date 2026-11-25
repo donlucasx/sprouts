@@ -1,4 +1,5 @@
 import type { ActivityResponse, FoundVenue, SplitRow } from '@/lib/api'
+import { t as tr } from '@/i18n'
 import { isRetired, VENUE_NAME, type LiveAsset, type Stop } from '@/lib/coins'
 import { arrivalLine, COIN_NAME, COIN_NAME_LONG, formatSkr, formatUsd, plantedLine, timeOf, underlyingAmount } from '@/lib/format'
 import { changeSummary, STOP_LABEL } from './manager'
@@ -97,12 +98,17 @@ export function moveRow(m: Move): ActivityRow | null {
   return null
 }
 
-/** 10-27 (his rulings: top-ups show in Activity, never as a swap; copy approved): an Add USDC top-up, the USDC it added. */
-export const TOPUP_NOTE = 'From SOL in this wallet. No Sprouts fee.'
-// 10-28: with 2+ wallets linked, "this wallet" names it; a top-up is always this phone's wallet (topup-record: wallet = the user)
-export const TOPUP_NOTE_NAMED = `From SOL in your ${PHONE_WALLET}. No Sprouts fee.`
+/**
+ * 10-27 (his rulings: top-ups show in Activity, never as a swap; copy approved): an Add USDC top-up, the USDC it added. 0.1.13 (11-24):
+ * it names the coin that paid (/api/activity `coin`); a row recorded before 11-24, or from an older API, has none and says "this wallet".
+ * 10-28: with 2+ wallets linked, "this wallet" names it; a top-up is always this phone's wallet (topup-record: wallet = the user).
+ */
+export function topUpNote(coin: string | null | undefined, named: boolean): string {
+  if (coin) return named ? tr('activity.topup.coinNamed', { coin, wallet: PHONE_WALLET }) : tr('activity.topup.coin', { coin })
+  return named ? tr('activity.topup.plainNamed', { wallet: PHONE_WALLET }) : tr('activity.topup.plain')
+}
 export function topUpRow(t: TopUp, named = false): ActivityRow {
-  return { key: `tu-${t.signature}`, ts: t.ts, label: `Added ${formatUsd(Number(BigInt(t.usdcRaw) / 10_000n))} of USDC`, amount: null, details: [named ? TOPUP_NOTE_NAMED : TOPUP_NOTE], signature: t.signature }
+  return { key: `tu-${t.signature}`, ts: t.ts, label: `Added ${formatUsd(Number(BigInt(t.usdcRaw) / 10_000n))} of USDC`, amount: null, details: [topUpNote(t.coin, named)], signature: t.signature }
 }
 
 /**

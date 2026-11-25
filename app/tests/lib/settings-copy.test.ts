@@ -37,13 +37,15 @@ describe('Settings > About Sprouts (spec 6.2, 11; R452: six questions)', () => {
     expect(faqs).toContain(`["What does it cost?", "${COST_LINE}"]`)
     expect(faqs).not.toMatch(/No fee on USDC or SOL lending|paid from the USDC in your linked wallet/)
   })
+  it('0.1.13 (his ruling 11-25): marginfi and Lulo get no money, so About does not name them', () => {
+    expect(DISCLOSURES.map(([, p]) => p).join(' ')).not.toMatch(/marginfi|Lulo/i)
+  })
   it('lists the venues and the cap, the geo line, free lending, the admin key, the full-pool line', () => {
     const all = DISCLOSURES.map(([, p]) => p).join(' ')
     for (const s of [
       'Kamino Lend',
       'Jupiter Lend',
       '60%',
-      'marginfi and Lulo',
       'blocks some regions',   // R367 (10-05): no named countries
       'including USDC and SOL lending',
       "Sprouts' offline admin key",
@@ -66,7 +68,7 @@ describe('Settings > About Sprouts (spec 6.2, 11; R452: six questions)', () => {
   })
   it("R300's public promise is one constant, shared with the re-link card", () => {
     expect(PUBLIC_GUARANTEE).toBe(
-      'Even if our server is hacked, neither it nor the AI can move more than your daily round-up (max $5), and only into your own savings.',
+      'Even if our server is hacked, neither it nor the AI can move more than your daily round-up (max $5), and only into your own savings, less a 0.5% fee.',
     )
     expect(RELINK.body).toBe(PUBLIC_GUARANTEE)
   })

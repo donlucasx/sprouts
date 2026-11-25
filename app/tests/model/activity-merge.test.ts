@@ -25,7 +25,7 @@ describe('Activity as one list (R450)', () => {
 describe('a top-up row', () => {
   it('says the USDC it added, the note, its transaction, and the tag "Top up"', async () => {
     const { topUpRow, KIND_TAG } = await import('@/model/activity')
-    expect(topUpRow({ ts: '2026-10-27T20:00:00Z', signature: 'sig', usdcRaw: '5000000' })).toEqual({
+    expect(topUpRow({ ts: '2026-10-27T20:00:00Z', signature: 'sig', usdcRaw: '5000000', coin: 'SOL' })).toEqual({
       key: 'tu-sig', ts: '2026-10-27T20:00:00Z', label: 'Added $5.00 of USDC', amount: null, details: ['From SOL in this wallet. No Sprouts fee.'], signature: 'sig',
     })
     expect(topUpRow({ ts: '2026-10-27T20:00:00Z', signature: 's', usdcRaw: '25000000' }).label).toBe('Added $25.00 of USDC')
@@ -44,10 +44,12 @@ describe('10-28: which wallet a row came from, only with 2+ wallets linked', () 
   const other = 'FdPpbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbYjB6'
   const swap = { signature: 'sw', ts: '2026-10-28T10:00:00Z', usdSizeCents: 1050, roundupCents: 50, plantingId: null }
   it('one linked wallet (or one live, one revoked): no name, rows read as before', async () => {
-    const { walletNamer, swapRow, topUpRow, TOPUP_NOTE } = await import('@/model/activity')
+    const { walletNamer, swapRow, topUpRow } = await import('@/model/activity')
     expect(walletNamer([{ pubkey: phone, status: 'active' }, { pubkey: other, status: 'revoked' }], phone)).toBeNull()
     expect(swapRow({ ...swap, walletPubkey: other }, null).details).toEqual(['Change $0.50, waiting to be planted.'])
-    expect(topUpRow({ ts: swap.ts, signature: 't', usdcRaw: '5000000' }, false).details).toEqual([TOPUP_NOTE])
+    expect(topUpRow({ ts: swap.ts, signature: 't', usdcRaw: '5000000' }, false).details).toEqual(['From this wallet. No Sprouts fee.'])
+    expect(topUpRow({ ts: swap.ts, signature: 't', usdcRaw: '5000000', coin: 'SKR' }, false).details).toEqual(['From SKR in this wallet. No Sprouts fee.'])
+    expect(topUpRow({ ts: swap.ts, signature: 't', usdcRaw: '5000000', coin: null }, false).details).toEqual(['From this wallet. No Sprouts fee.'])
   })
   it('two linked wallets: swaps name their wallet, top-ups name the Seed Vault wallet', async () => {
     const { walletNamer, swapRow, topUpRow } = await import('@/model/activity')
@@ -55,7 +57,8 @@ describe('10-28: which wallet a row came from, only with 2+ wallets linked', () 
     expect(swapRow({ ...swap, walletPubkey: other }, name).details).toEqual(['Change $0.50, waiting to be planted.', 'In FdPp...YjB6.'])
     expect(swapRow({ ...swap, walletPubkey: phone }, name).details).toEqual(['Change $0.50, waiting to be planted.', 'In your Seed Vault wallet.'])
     expect(swapRow({ ...swap, roundupCents: 0, walletPubkey: other }, name).details).toEqual(['No spare change on a whole-dollar swap.', 'In FdPp...YjB6.'])
-    expect(topUpRow({ ts: swap.ts, signature: 't', usdcRaw: '5000000' }, true).details).toEqual(['From SOL in your Seed Vault wallet. No Sprouts fee.'])
+    expect(topUpRow({ ts: swap.ts, signature: 't', usdcRaw: '5000000', coin: 'SOL' }, true).details).toEqual(['From SOL in your Seed Vault wallet. No Sprouts fee.'])
+    expect(topUpRow({ ts: swap.ts, signature: 't', usdcRaw: '5000000' }, true).details).toEqual(['From your Seed Vault wallet. No Sprouts fee.'])
   })
 })
 

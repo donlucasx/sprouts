@@ -1,3 +1,5 @@
+import { en } from '@/i18n/en'
+
 /**
  * What Sprouts can and can't do with a linked wallet, shown on Link a wallet before anyone signs. His note 10-22 ("too much text,
  * simplify"): three marked lines. /link and /faqs say these exact lines (api/src/lib/link-safety-copy.ts, his note 10-28: "match it
@@ -8,7 +10,9 @@
 export const SAFETY_HEADING = "What Sprouts can and can't do"
 export const LINK_INTRO = 'Every swap rounds up. Once a day, Sprouts plants the change using USDC in your wallet.'
 
-export const CAN: readonly string[] = ['Plants up to $5 of USDC a day, only into your own savings']
+/** 11-25 (his ruling): two lines, the fee named. English here for the app/web drift test; screens show t() of CAN_KEYS. */
+export const CAN_KEYS = ['link.can.plants', 'link.can.fee'] as const
+export const CAN: readonly string[] = CAN_KEYS.map((k) => en[k])
 
 export const CANT: readonly string[] = [
   "Can't send your money anywhere else",
@@ -19,8 +23,8 @@ export const CANT: readonly string[] = [
  * 10-27 (WAL-002 store rejection + his note "this is a scary permission that will turn off most people"): the wallet's "unlimited USDC"
  * warning, said right above Approve, before the wallet says it. Same words as api/src/app/safety.tsx ApprovalWarning.
  */
-export const APPROVAL_WARN_TITLE = 'Your wallet will ask for approval'
-export const APPROVAL_WARN_BODY = "It shows as \"unlimited USDC\". That's normal. Sprouts' on-chain program caps it at $5 a day, only into your garden. You can revoke it any time."
+export const APPROVAL_WARN_TITLE = en['link.approval.title']
+export const APPROVAL_WARN_BODY = en['link.approval.body']
 
 /** Under "Another wallet" (his note 10-22: make clear more than one wallet can be linked). Its balance is not read here. */
 export const OTHER_WALLET_LINE = 'Link a wallet from your computer, or from the browser inside any mobile wallet app. Each wallet plants from its own USDC.'

@@ -5,6 +5,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons'
 import { useMobileWallet } from '@wallet-ui/react-native-kit'
 import { Card } from '@/components/Card'
 import { Button } from '@/components/Button'
+import { ApprovalStep } from '@/components/ApprovalStep'
 import { ThemedText } from '@/components/ThemedText'
 import { api, ApiError, type MeResponse, type MeUsdcResponse } from '@/lib/api'
 import { makeSigner, SignRefused } from '@/lib/sign'
@@ -28,6 +29,8 @@ export function RelinkCard({ me }: { me: MeResponse }) {
   const user = me.user.pubkey
   const webKey = view.web.join(',')
   const { colors } = useTheme()
+  // 0.1.13 step 3 (Kimi 6): Re-link asks for the same USDC approval, so it shows the same last step before the wallet opens
+  const [confirming, setConfirming] = useState(false)
   const { signTransaction } = useMobileWallet()
   const qc = useQueryClient()
   const [gate] = useState(oneAtATime)
@@ -97,6 +100,7 @@ export function RelinkCard({ me }: { me: MeResponse }) {
       setSettling(true)
     } catch (e) {
       setRelinkError(e instanceof RelinkSent || e instanceof ApiError || e instanceof SignRefused ? e.message : RELINK.failedBefore)
+      setConfirming(false)
     } finally {
       setRelinking(null)
       try {
@@ -137,7 +141,11 @@ export function RelinkCard({ me }: { me: MeResponse }) {
               {setupNote}
             </ThemedText>
           ) : null}
-          {settling ? null : <Button title={RELINK.button} loading={relinking !== null} onPress={relinkHere} />}
+          {settling ? null : confirming ? (
+            <ApprovalStep busy={relinking !== null} onContinue={relinkHere} onBack={() => setConfirming(false)} />
+          ) : (
+            <Button title={RELINK.button} loading={relinking !== null} onPress={() => setConfirming(true)} />
+          )}
           {relinking ? (
             <ThemedText variant="caption" tone="secondary">
               {relinking === 'seeker' ? RELINK.waiting : RELINK.checking}

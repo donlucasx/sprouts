@@ -54,8 +54,11 @@ export function venueCard(
   return { message: isError || data ? empty : 'Loading the venues.' }
 }
 
-/** R451 (venues moved under the Yield Manager): the venues Sprouts can use first, the ones it only compares after. */
-export function venueGroups(v: VenuesResponse): { used: ReturnType<typeof venueLines>; compared: ReturnType<typeof venueLines> } {
+/**
+ * R451 (venues moved under the Yield Manager): the venues Sprouts can use. 0.1.13 (his ruling 11-25: marginfi and Lulo get no money,
+ * so they do not show): a venue the API marks not auto is left out; the server still reads and logs its rate.
+ */
+export function venueGroups(v: VenuesResponse): { used: ReturnType<typeof venueLines> } {
   const lines = venueLines(v)
-  return { used: lines.filter((_, i) => v.venues[i].auto), compared: lines.filter((_, i) => !v.venues[i].auto) }
+  return { used: lines.filter((_, i) => v.venues[i].auto) }
 }
