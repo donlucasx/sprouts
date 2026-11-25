@@ -19,14 +19,14 @@ export const en = {
   'link.cant.touch': "Can't touch other tokens or sell your garden",
   'promise.public': 'Even if our server is hacked, neither it nor the AI can move more than your daily round-up (max $5), and only into your own savings, less a 0.5% fee.',
   // 11-25 (his ruling "Name both"): the top-up swap is free; the planting carries the fee
-  'topup.fee': "No fee on the swap. Sprouts takes 0.5% when it's planted.",
+  'topup.fee': "Sprouts takes 0.5% when it's planted.",
   // 11-25 (his ruling "Point to SOL instead"; Kimi: the real split share, only when SOL covers the amount and costs less)
   'topup.solCheaper': 'Your split plants {pct}% of it back into {symbol}, so SOL costs less.',
   // 11-24: Activity names the coin that paid; a top-up recorded before 11-24 has no coin
-  'activity.topup.coin': 'From {coin} in this wallet. No Sprouts fee.',
-  'activity.topup.coinNamed': 'From {coin} in your {wallet}. No Sprouts fee.',
-  'activity.topup.plain': 'From this wallet. No Sprouts fee.',
-  'activity.topup.plainNamed': 'From your {wallet}. No Sprouts fee.',
+  'activity.topup.coin': 'From {coin} in this wallet.',
+  'activity.topup.coinNamed': 'From {coin} in your {wallet}.',
+  'activity.topup.plain': 'From this wallet.',
+  'activity.topup.plainNamed': 'From your {wallet}.',
 } as const
 
 export type Key = keyof typeof en
