@@ -38,9 +38,9 @@ describe('i18n guards', () => {
     expect(enKeys.filter((k) => !(k in rest))).toEqual([enKeys[0]])
   })
 
-  // Release gate: ON at P10 (every English line has its Spanish line). TODO enable at P10: change it.skip to it.
+  // Release gate: ON since 11-25 (P10 done): every English line has its Spanish line.
   // Until then English fills any hole (t() falls back), so the app is never blank; un-skipped today it lists what is missing.
-  it.skip('release gate: no English key is missing from Spanish (TODO enable at P10)', () => {
+  it('release gate: no English key is missing from Spanish', () => {
     expect(enKeys.filter((k) => !(k in es))).toEqual([])
   })
 })
