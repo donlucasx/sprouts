@@ -22,7 +22,7 @@ permissions: {}
 jobs:
   plant:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 15   # 11-25: the route may run up to 800 s (Vercel Pro)
     steps:
       - name: Run first plantings
         env:
@@ -30,7 +30,7 @@ jobs:
         run: |
           set -eu
           if [ -z "${CRON_SECRET}" ]; then echo "The CRON_SECRET repository secret is not set."; exit 1; fi
-          code=$(curl -sS -o body.json -w '%{http_code}' --max-time 330 \
+          code=$(curl -sS -o body.json -w '%{http_code}' --max-time 840 \
             -H "Authorization: Bearer ${CRON_SECRET}" \
             https://sprouts.money/api/cron/first-planting) || { echo "request failed (curl)"; exit 1; }
           echo "HTTP ${code}"

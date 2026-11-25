@@ -6,7 +6,7 @@ import { dayOf } from "@/domain/day";
 import { cronAuthorized, realPlantingChain } from "@/lib/cron-run";
 
 export const runtime = "nodejs";
-export const maxDuration = 300;
+export const maxDuration = 800; // 11-25 (Pro): 300 s killed the run under Helius 429 slowdowns (19 of ~45 planted); internal deadlines unchanged
 
 /**
  * First planting (owner 10-22, "first planting right away"): the hourly run, called by GitHub Actions

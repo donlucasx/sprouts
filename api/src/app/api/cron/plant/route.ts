@@ -29,7 +29,7 @@ import { checkMissedSwaps, realSwapCheckReads } from "@/lib/swap-check";
 import { excludedWallets } from "@/lib/ops/sources";
 
 export const runtime = "nodejs";
-export const maxDuration = 300;
+export const maxDuration = 800; // 11-25 (Pro): 300 s killed the run under Helius 429 slowdowns (19 of ~45 planted); internal deadlines unchanged
 /** The moves step reads no position past this many ms from the run's start (the planting's own cutoff is 240 s). */
 const MOVES_DEADLINE_MS = 150_000;
 /**
@@ -53,7 +53,7 @@ const SWAPCHECK_HARD_STOP_MS = 280_000;
 /** M1: the step itself returns by 285 s whatever read is still in flight (the rest of its wallets deferred), so the record is written. */
 const SWAPCHECK_BOUND_MS = 285_000;
 /** 11-07 run lock: a claimed run not finished after this long died (the route's limit is 300 s), so its day can be claimed again. */
-const RUN_STALE_MS = 6 * 60_000;
+const RUN_STALE_MS = 15 * 60_000;   // 11-25 (Kimi): above maxDuration 800 s, so a live run is never taken for dead
 
 /** The run's record is best effort: failing to write it never fails the run (its outcome is already decided). */
 async function finishRun(repo: Repo, day: string, startedAt: Date, ok: boolean, record: unknown) {
