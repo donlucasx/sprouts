@@ -365,3 +365,38 @@ describe('11-20 copy pass: the closed card names only coins that can pay; none =
     expect(src).toContain('<Pressable onPress={back} accessibilityRole="button" accessibilityLabel={TOPUP.back}')
   })
 })
+
+describe('0.1.13 cost ranking and the SOL line (his rulings 11-24/25, Kimi step 3 #9-11)', async () => {
+  const { pickerSources, solCheaperLine, defaultSource, TOPUP } = await import('@/lib/topup')
+  const { WSOL_MINT } = await import('@/lib/sign')
+  const SKR = 'SKRbvo6Gf7GondiT3BbTfuRDPqLWei4j2Qy2NPGZhW3'
+  const sol = (over = {}) => ({ mint: WSOL_MINT, symbol: 'SOL', decimals: 9, valueCents: 1_400, offers: [500, 1_000], splitPct: 0, costBps: 5, ...over })
+  const skr = (over = {}) => ({ mint: SKR, symbol: 'SKR', decimals: 6, valueCents: 5_000, offers: [500, 1_000, 2_500], splitPct: 90, costBps: 99, ...over })
+  const jup = (over = {}) => ({ mint: 'JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN', symbol: 'JUP', decimals: 6, valueCents: 900, offers: [500], splitPct: 0, costBps: 50, ...over })
+  it('lists SOL first, then the cheapest coins (not the most valuable) when every coin has a cost', () => {
+    expect(pickerSources([skr(), jup(), sol()]).map((s) => s.symbol)).toEqual(['SOL', 'JUP', 'SKR'])
+  })
+  it('an older API without costs keeps the value order', () => {
+    const plain = (s: ReturnType<typeof skr>) => { const { splitPct: _a, costBps: _b, ...rest } = s; return rest }
+    expect(pickerSources([plain(jup()), plain(skr()), sol()]).map((s) => s.symbol)).toEqual(['SOL', 'SKR', 'JUP'])
+  })
+  it('the default stays SOL when it is offered; else the cheapest', () => {
+    expect(defaultSource(pickerSources([skr(), sol()]))?.symbol).toBe('SOL')
+    expect(defaultSource(pickerSources([skr(), jup()]))?.symbol).toBe('JUP')
+  })
+  it('SKR picked, 90% of the split, SOL offered for this amount and cheaper: the line names the real share', () => {
+    const line = solCheaperLine(skr(), [sol(), skr()], 500)
+    expect(line).toBe('Your split plants 90% of it back into SKR, so SOL costs less.')
+    expect(TOPUP.how(500, null, 'SKR', line!)).toBe('Swaps SKR already in this wallet for $5 of USDC. Your split plants 90% of it back into SKR, so SOL costs less.')
+    expect(solCheaperLine(skr({ splitPct: 37 }), [sol(), skr()], 500)).toContain('37%')
+  })
+  it('no line when it would be false or not actionable', () => {
+    expect(solCheaperLine(skr({ splitPct: 24 }), [sol(), skr()], 500)).toBeNull()      // under 25% of the split
+    expect(solCheaperLine(skr(), [sol(), skr()], 2_500)).toBeNull()                    // SOL does not cover $25
+    expect(solCheaperLine(skr(), [skr()], 500)).toBeNull()                             // SOL not in the picker
+    expect(solCheaperLine(skr({ costBps: 4 }), [sol(), skr({ costBps: 4 })], 500)).toBeNull()   // SOL not cheaper
+    expect(solCheaperLine(sol(), [sol(), skr()], 500)).toBeNull()                      // SOL itself picked
+    expect(solCheaperLine(skr({ splitPct: undefined }), [sol(), skr()], 500)).toBeNull()        // an older API
+    expect(solCheaperLine(null, null, 500)).toBeNull()
+  })
+})

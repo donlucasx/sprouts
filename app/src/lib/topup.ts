@@ -62,16 +62,41 @@ export const meUsdcSetupKey = (user: string | undefined) => ['me-usdc-setup', us
 export const TOPUP_SETUP_MAX = 3
 
 /** GET /api/me/usdc topUpSources (0.1.12 API): a coin this phone's wallet can top up from; SOL first, absent from an older API. */
-export type TopUpSource = { mint: string; symbol: string; decimals: number; valueCents: number; offers: number[] }
+/** `splitPct` / `costBps` (0.1.13 API, api lib/topup-cost.ts): the coin's share of the user's split and what a top-up from it wastes;
+ *  absent from an older API or when the split could not be read. */
+export type TopUpSource = { mint: string; symbol: string; decimals: number; valueCents: number; offers: number[]; splitPct?: number; costBps?: number }
 /** The coin picked first: SOL when offered, else the first; null when there is no list (an older API: the SOL top-up as in 0.1.11). */
 export const defaultSource = (sources: readonly TopUpSource[] | null | undefined): TopUpSource | null =>
   sources?.find((s) => s.mint === WSOL_MINT) ?? sources?.[0] ?? null
 
-/** Controller ruling (11-19): the picker shows at most 3 coins: SOL first (when offered), then the two worth the most in this wallet. */
+/**
+ * Controller ruling (11-19): the picker shows at most 3 coins: SOL first (when offered), then two more. 0.1.13 (his ruling "Line +
+ * ranking now"): the cheapest two by costBps when every coin carries one (ties: more value first); else, as before, the two worth the
+ * most in this wallet.
+ */
 export function pickerSources(sources: readonly TopUpSource[]): TopUpSource[] {
   const sol = sources.filter((s) => s.mint === WSOL_MINT).slice(0, 1)
-  const others = sources.filter((s) => s.mint !== WSOL_MINT).sort((a, b) => b.valueCents - a.valueCents).slice(0, 2)
+  const rest = sources.filter((s) => s.mint !== WSOL_MINT)
+  const ranked = rest.every((s) => typeof s.costBps === 'number')
+  const others = [...rest].sort((a, b) => (ranked ? (a.costBps as number) - (b.costBps as number) : 0) || b.valueCents - a.valueCents).slice(0, 2)
   return [...sol, ...others]
+}
+
+/** A coin at or above this share of the split gets the SOL line (his ruling 11-25, gate per Kimi step 3 #9-11). */
+export const SOL_CHEAPER_MIN_SPLIT_PCT = 25
+/**
+ * 0.1.13 (his ruling "Point to SOL instead", his note "make sure this is appropriate/accurate/necessary"): the line that replaces the
+ * fee sentence when the picked coin mostly goes back into itself at planting, said only when it is true AND actionable: the picked coin
+ * is not SOL, is SOL_CHEAPER_MIN_SPLIT_PCT or more of the split, SOL is in the picker, covers this amount, and costs less. The share is
+ * the server's, never a fixed number. Null otherwise (the fee sentence shows).
+ */
+export function solCheaperLine(picked: TopUpSource | null, usable: readonly TopUpSource[] | null, cents: number): string | null {
+  if (!picked || !usable || picked.mint === WSOL_MINT) return null
+  const sol = usable.find((s) => s.mint === WSOL_MINT)
+  if (!sol || !sol.offers.includes(cents)) return null
+  if (typeof picked.splitPct !== 'number' || typeof picked.costBps !== 'number' || typeof sol.costBps !== 'number') return null
+  if (picked.splitPct < SOL_CHEAPER_MIN_SPLIT_PCT || sol.costBps >= picked.costBps) return null
+  return t('topup.solCheaper', { pct: Math.round(picked.splitPct), symbol: picked.symbol })
 }
 
 /**

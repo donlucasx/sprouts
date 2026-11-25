@@ -134,6 +134,20 @@ describe("GET /api/me/usdc", () => {
       expect(asked.map((a) => a.inputMint)).not.toContain(HSOL);
     });
 
+    it("0.1.13: a signed-in user's coins carry their split share and cost (lib/topup-cost.ts), so the phone lists the cheapest first", async () => {
+      const repo = new MemoryRepo();
+      setRepoForTests(repo);
+      await repo.upsertUser({ seedVaultPubkey: U, sgtMint: "M", skrName: null });
+      const target = (await import("@/lib/plant-run")).plantingTarget((await import("@/db/types")).rulesRowToRules(await repo.getRules(U)), []);
+      vi.mocked(readUsdcBalanceRaw).mockResolvedValueOnce(0n);
+      const body = await (await getSources(await issueSession(U, "M"))).json();
+      const [sol, skr] = body.topUpSources;
+      const { topUpCost } = await import("@/lib/topup-cost");
+      expect(sol).toMatchObject({ symbol: "SOL", ...topUpCost(WSOL, target) });
+      expect(skr).toMatchObject({ symbol: "SKR", ...topUpCost(SKR, target) });
+      expect(skr.splitPct).toBe(Math.round(target!.SKR));
+      expect(sol.costBps).toBeLessThan(skr.costBps);
+    });
     it("answers topUpSources null when the balances cannot be read, every other key as before", async () => {
       vi.mocked(readUsdcBalanceRaw).mockResolvedValueOnce(2_050_000n);
       tokenAccounts.v = null;

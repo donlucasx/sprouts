@@ -10,6 +10,8 @@ import { rpc } from "./rpc";
 import { cached } from "./memo";
 import { pullerSigner } from "./puller";
 import type { Rules } from "@/domain/roundup";
+import type { Split } from "@/domain/coins";
+import { topUpCost } from "./topup-cost";
 import { ATA_RENT_LAMPORTS, fitSetup, MAX_CU_LIMIT, plannedSetup, SETUP_CU_PER_CREATE, takeSetupPrefix, TOPUP_SETUP_MAX } from "./user-setup";
 
 /**
@@ -644,7 +646,8 @@ async function buildTokenTopUp(user: Address, cents: number, inputMint: Address,
   return { transaction, usdcRaw: outRaw.toString(), inputMint, maxInRaw: maxIn.toString() };
 }
 
-export type TopUpSourceOffer = { mint: string; symbol: string; decimals: number; valueCents: number; offers: number[] };
+/** `splitPct` / `costBps` (0.1.13, lib/topup-cost.ts): present only when the user's split was read; an older phone ignores them. */
+export type TopUpSourceOffer = { mint: string; symbol: string; decimals: number; valueCents: number; offers: number[]; splitPct?: number; costBps?: number };
 
 /**
  * GET /api/me/usdc topUpSources (Task 7): SOL first (its `offers` = topUpCents), then at most TOPUP_MAX_TOKEN_SOURCES coins by value
@@ -653,9 +656,9 @@ export type TopUpSourceOffer = { mint: string; symbol: string; decimals: number;
  * probe, withinTopUpPriceBound). Computed only when the app asks (/api/me/usdc?sources=1). Coins only when the wallet keeps the SOL a token top-up
  * needs. Null when the SOL, its price, the balances or the prices could not be read.
  */
-export async function topUpSources(user: Address, solLamports: bigint | null, solUsd: number | null, solOffers: number[] | null, caps: TopUpCaps = OLD_APP_CAPS): Promise<TopUpSourceOffer[] | null> {
+export async function topUpSources(user: Address, solLamports: bigint | null, solUsd: number | null, solOffers: number[] | null, caps: TopUpCaps = OLD_APP_CAPS, split: Split | null = null): Promise<TopUpSourceOffer[] | null> {
   if (solLamports === null || solUsd === null || solOffers === null) return null;
-  const sol: TopUpSourceOffer = { mint: WSOL_MINT, symbol: "SOL", decimals: 9, valueCents: Math.floor((Number(solLamports) * solUsd) / 1e7), offers: solOffers };
+  const sol: TopUpSourceOffer = { mint: WSOL_MINT, symbol: "SOL", decimals: 9, valueCents: Math.floor((Number(solLamports) * solUsd) / 1e7), offers: solOffers, ...topUpCost(WSOL_MINT, split) };
   let held: { mint: Address; raw: bigint; decimals: number }[];
   try {
     const { value } = await rpc().getTokenAccountsByOwner(user, { programId: TOKEN_PROGRAM_ADDRESS }, { encoding: "jsonParsed", commitment: "confirmed" }).send();
@@ -693,7 +696,7 @@ export async function topUpSources(user: Address, solLamports: bigint | null, so
         const route = await topUpRouteMax(h.mint);
         // 0.1.13: a route through WhirlpoolSwapV2 is offered only to a phone that can sign it.
         if (route === null || (route.v47 && !caps.allowV47) || !withinTopUpPriceBound(route.max, TOPUP_PROBE_RAW, prices[h.mint].usdPrice, h.decimals)) return null;
-        return { mint: h.mint as string, symbol: t.symbol, decimals: h.decimals, valueCents: h.valueCents, offers: affordableTopUpsFor(h.valueCents) };
+        return { mint: h.mint as string, symbol: t.symbol, decimals: h.decimals, valueCents: h.valueCents, offers: affordableTopUpsFor(h.valueCents), ...topUpCost(h.mint, split) };
       } catch {
         return null;
       }

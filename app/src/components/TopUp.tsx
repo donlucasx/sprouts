@@ -8,7 +8,7 @@ import { api, type MeUsdcResponse } from '@/lib/api'
 import { makeSigner } from '@/lib/sign'
 import { setupAccountsOf, setupLine } from '@/lib/safety-copy'
 import { useSolUsd } from '@/lib/sol-usd'
-import { choiceFor, ME_USDC_SETUP, meUsdcSetupKey, TOPUP, TOPUP_SETUP_MAX, TopUpFailed, topUpChoices, topUpClosedView, topUpThisPhone, type TopUpSource } from '@/lib/topup'
+import { choiceFor, ME_USDC_SETUP, meUsdcSetupKey, solCheaperLine, TOPUP, TOPUP_SETUP_MAX, TopUpFailed, topUpChoices, topUpClosedView, topUpThisPhone, type TopUpSource } from '@/lib/topup'
 import { coverageLine } from '@/lib/usdc-runway'
 import { TwoWay } from '@/components/TwoWay'
 import { oneAtATime } from '@/lib/withdraw-flow'
@@ -114,7 +114,7 @@ export function TopUpButton({ user, cents: suggested, done, onDone, avgDailyCent
       ) : landed ? null : (
         <>
           <ThemedText variant="caption" tone="secondary">
-            {TOPUP.how(cents, coverageLine(cents, avgDailyCents), symbol)}
+            {TOPUP.how(cents, coverageLine(cents, avgDailyCents), symbol, solCheaperLine(source, usable, cents) ?? undefined)}
           </ThemedText>
           {setupNote ? (
             <ThemedText variant="caption" tone="secondary">

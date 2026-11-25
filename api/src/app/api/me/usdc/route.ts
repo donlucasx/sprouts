@@ -9,6 +9,8 @@ import { WSOL_MINT } from "@/lib/constants";
 import { getRepo } from "@/db/repo";
 import { rulesRowToRules } from "@/db/types";
 import { linkSetupCovered, missingSetupMints, SETUP_MAX } from "@/lib/user-setup";
+import { plantingTarget } from "@/lib/plant-run";
+import { type Split } from "@/domain/coins";
 
 export const runtime = "nodejs";
 
@@ -47,7 +49,7 @@ export async function GET(request: Request) {
   if (!wantSources && !wantSetup) return NextResponse.json(body);
   const [sources, setupAccounts] = await Promise.all([
     wantSources
-      ? topUpSources(me, sol, solUsd, topUpCents, topUpCapsFor(request)).catch((e) => {
+      ? userSplit(me).then((split) => topUpSources(me, sol, solUsd, topUpCents, topUpCapsFor(request), split)).catch((e) => {
         console.error(`/api/me/usdc: the top-up coins could not be read (${e instanceof Error ? e.message : String(e)})`);
         return null;
       })
@@ -55,6 +57,21 @@ export async function GET(request: Request) {
     wantSetup ? setupCount(me, sol) : Promise.resolve(undefined),
   ]);
   return NextResponse.json({ ...body, ...(wantSources ? { topUpSources: sources } : {}), ...(wantSetup ? { setupAccounts } : {}) });
+}
+
+/**
+ * 0.1.13 (cost ranking, Kimi step 3 #14): the split the user's next planting aims at (plantingTarget with nothing disabled), so each
+ * top-up coin can carry its share and cost. Null when the rules cannot be read or the split is empty: no cost fields, today's order.
+ */
+async function userSplit(me: ReturnType<typeof address>): Promise<Split | null> {
+  try {
+    const repo = await getRepo();
+    const row = await repo.findRules(me);   // a read never writes a default rules row
+    return row ? plantingTarget(rulesRowToRules(row), []) : null;
+  } catch (e) {
+    console.error(`/api/me/usdc: the split could not be read for the top-up order (${e instanceof Error ? e.message : String(e)})`);
+    return null;
+  }
 }
 
 /**
