@@ -50,7 +50,7 @@ export const PLANT_CONFIRM = {
   notMarked: "Could not start planting. Nothing moved. Try again.",
   failed: "The planting failed on chain. Your SKR stayed in your wallet.",
   expired: "It did not go through. Nothing moved. Try again.",
-  pending: "Your SKR was sent but is not confirmed yet. Check Home in a minute before you try again.",
+  pending: "Not confirmed yet. Check your SKR plant in a minute before trying again.",   // his copy 11-25 (app plant.sent)
 } as const;
 
 /** A refusal the app shows as it is, never a transaction. */

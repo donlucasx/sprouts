@@ -1,5 +1,5 @@
 import type { MeResponse } from './api'
-import type { CoinRow } from './me-state'
+import { coinRows, type CoinRow } from './me-state'
 import { grouped, formatUsd } from './format'
 import { REFUSED, SignRefused, type SignFlow } from './sign'
 import { DROPPED_NOTHING_SENT } from './wallet-errors'
@@ -25,6 +25,25 @@ export function idleSkrOf(me: Pick<MeResponse, 'idleSkr'>): IdleSkr | null {
 /** Kimi #13: the marker shows on the SKR row (and the SKR plant card, whose row it is) only while the wallet holds $5+ of liquid SKR. */
 export function showPlantMarker(me: Pick<MeResponse, 'idleSkr'>, row: CoinRow | null | undefined): boolean {
   return !!row && row.asset === 'SKR' && row.venue === null && idleSkrOf(me) !== null
+}
+
+/** The key of the $0 SKR row (never a withdraw key: there is nothing staked to withdraw). */
+export const IDLE_SKR_ROW_KEY = 'SKR:idle'
+
+/**
+ * 0.1.13 (his ruling 11-25, on the coordinator's recommendation): a wallet with $5+ of liquid SKR and NOTHING staked has no SKR row or
+ * plant to carry the marker, so Home lists an SKR row at $0 with the seed; it opens the SKR sheet (Plant my SKR, no Withdraw) and goes
+ * once idleSkr is null. Null whenever the user already has an SKR row (staked SKR: the marker sits on that row and plant card).
+ */
+export function idleSkrRow(me: Pick<MeResponse, 'pot' | 'holdings' | 'positions' | 'idleSkr'>): CoinRow | null {
+  if (idleSkrOf(me) === null || coinRows(me).some((r) => r.asset === 'SKR')) return null
+  return { key: IDLE_SKR_ROW_KEY, asset: 'SKR', venue: null, amount: '0 SKR ($0.00)', qty: '0 SKR', usd: '$0.00', locked: false, note: null, lead: true, earnedUsd: null, putInCents: 0, where: 'Nothing planted here yet' }
+}
+
+/** Home's coin list: coinRows, led by the $0 SKR row when idleSkrRow gives one. */
+export function homeCoinRows(me: Pick<MeResponse, 'pot' | 'holdings' | 'positions' | 'idleSkr'>): CoinRow[] {
+  const idle = idleSkrRow(me)
+  return idle ? [idle, ...coinRows(me)] : coinRows(me)
 }
 
 export type PlantShare = '25' | '50' | 'all'

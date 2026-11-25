@@ -14,7 +14,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
-import { MaterialCommunityIcons } from '@expo/vector-icons'
+import { SeedMark } from '@/components/Mark'
 import { ThemedText } from '@/components/ThemedText'
 import { FONT, GARDEN_INK, radius, spacing, useTheme } from '@/theme'
 import { pinchOffset } from '@/model/motion'
@@ -434,9 +434,13 @@ export function Garden2({
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
               {label.card.icon !== undefined ? <Image source={label.card.icon} style={{ width: 28, height: 28, borderRadius: 14 }} /> : null}
               <View style={{ flex: 1, gap: 1 }}>
-                <ThemedText variant="label" numberOfLines={1}>
-                  {label.card.title}
-                </ThemedText>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                  <ThemedText variant="label" numberOfLines={1} style={{ flexShrink: 1 }}>
+                    {label.card.title}
+                  </ThemedText>
+                  {/* 0.1.13 Plant my SKR (his ruling 11-25): the seed marker; Details opens the SKR sheet's section */}
+                  {label.card.marker ? <SeedMark size={14} label={label.card.marker} /> : null}
+                </View>
                 {label.card.where ? (
                   <ThemedText variant="caption" tone="secondary" numberOfLines={2}>
                     {label.card.where}
@@ -460,15 +464,6 @@ export function Garden2({
               <ThemedText variant="caption" tone="secondary">
                 {label.card.next}
               </ThemedText>
-            ) : null}
-            {label.card.marker && label.card.row && onCard ? (
-              // 0.1.13 Plant my SKR: the card's small marker; the tap opens the SKR sheet, where the section is
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                <MaterialCommunityIcons name="sprout" size={12} color={colors.accentText} />
-                <ThemedText variant="caption" style={{ color: colors.accentText }} numberOfLines={1}>
-                  {label.card.marker}
-                </ThemedText>
-              </View>
             ) : null}
             {label.card.row && onCard ? (
               <ThemedText variant="caption" style={{ color: colors.accentText, fontFamily: FONT.label }}>

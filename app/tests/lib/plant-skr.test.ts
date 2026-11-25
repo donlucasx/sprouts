@@ -3,9 +3,12 @@ import { address, createNoopSigner, type Address, type Instruction, type Transac
 import { getStakeInstructionAsync } from '../../../api/src/generated/staking'
 import { GUARDIAN_POOL, SKR_MINT, SKR_STAKING_PROGRAM, STAKE_CONFIG, STAKE_VAULT } from '../../../api/src/lib/constants'
 import { makeSigner, REFUSED, SignRefused, userStakePda, type SignFlow } from '@/lib/sign'
-import { idleSkrOf, MIN_PLANT_RAW, PLANT_DEFAULT, PlantFailed, plantAmountRaw, plantOptions, plantSkrThisPhone, plantUsdText, showPlantMarker, skrAmountText } from '@/lib/plant-skr'
+import { homeCoinRows, idleSkrRow, IDLE_SKR_ROW_KEY, idleSkrOf, MIN_PLANT_RAW, PLANT_DEFAULT, PlantFailed, plantAmountRaw, plantOptions, plantSkrThisPhone, plantUsdText, showPlantMarker, skrAmountText } from '@/lib/plant-skr'
 import { plantCard } from '@/lib/plant-card'
 import { coinRows } from '@/lib/me-state'
+import { coinSheet } from '@/lib/coin-sheet'
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 import { skrPlantRow } from '@/model/activity'
 import { writeLangChoice } from '@/i18n'
 import { en } from '@/i18n/en'
@@ -108,6 +111,9 @@ describe('amounts: [25%] [50%] [All], All first, floored, the dollars from /api/
     expect(en['plant.instead']).toBe('Plant my SKR instead')
     expect(en['activity.planted']).toBe('Planted {amount} SKR')
     expect(en['activity.planted.from']).toBe('From this wallet.')
+    // fix round 1 (his copy, 11-25)
+    expect(en['plant.done']).toBe('Planted {amount} SKR. Your garden updates within a minute.')
+    expect(en['plant.sent']).toBe('Not confirmed yet. Check your SKR plant in a minute before trying again.')
   })
   it('no fee wording and never "free", in English or Spanish; every new key has its Spanish line', () => {
     const keys = Object.keys(en).filter((k) => k.startsWith('plant.') || k.startsWith('activity.planted'))
@@ -139,7 +145,7 @@ describe('the marker (Kimi #13): the SKR row and the SKR plant card, only while 
     const m = meWith({ raw: '500000000', usdCents: 1000 })
     const row = coinRows(m).find((r) => r.asset === 'SKR')
     expect(showPlantMarker(m, row)).toBe(true)
-    expect(plantCard(m, 'SKR').marker).toBe('Plant my SKR')
+    expect(plantCard(m, 'SKR').marker).toBe('SKR you can plant')
     expect(plantCard(m, 'hSOL').marker).toBeNull()
     expect(showPlantMarker(m, null)).toBe(false)
   })
@@ -183,5 +189,46 @@ describe("Activity's row: 'Planted {amount} SKR' / 'From this wallet.'", () => {
     expect(skrPlantRow({ ts: '2026-11-25T10:00:00Z', signature: 'S', amountRaw: '1240000000' })?.label).toBe('Plantaste 1,240 SKR')
     writeLangChoice('en')
     expect(skrPlantRow({ ts: '2026-11-25T10:00:00Z', signature: 'S', amountRaw: 'nope' })).toBeNull()
+  })
+})
+
+describe('fix round 1: the $0 SKR row when nothing is staked (his ruling 11-25)', () => {
+  const zero = { ...pot, skrStakedRaw: '0', skrEarnedRaw: '0' } as MeResponse['pot']
+  const fresh = (idleSkr?: MeResponse['idleSkr']) =>
+    ({ pot: zero, holdings: [], positions: [], basket: null, history: { plantings: [], picks: [] }, nextPlanting: { pendingCents: 0, thresholdCents: 100, capLeftCents: 0, asset: 'SKR' }, ...(idleSkr === undefined ? {} : { idleSkr }) }) as unknown as MeResponse
+  beforeEach(() => writeLangChoice('en'))
+  it('idleSkr set and nothing staked: Home lists an SKR row at $0 first, with the marker; the plant card opens it', () => {
+    const m = fresh({ raw: '500000000', usdCents: 1000 })
+    const row = idleSkrRow(m)
+    expect(row).toMatchObject({ key: IDLE_SKR_ROW_KEY, asset: 'SKR', usd: '$0.00', venue: null })
+    expect(homeCoinRows(m)[0]).toEqual(row)
+    expect(showPlantMarker(m, row)).toBe(true)
+    expect(plantCard(m, 'SKR')).toMatchObject({ value: '$0.00', marker: 'SKR you can plant' })
+    expect(plantCard(m, 'SKR').row?.key).toBe(IDLE_SKR_ROW_KEY)
+  })
+  it('its sheet: Put in $0.00 and Where, no Withdraw, no wallet line, no plantings', () => {
+    const m = fresh({ raw: '500000000', usdCents: 1000 })
+    const sheet = coinSheet(m, idleSkrRow(m)!)
+    expect(sheet.lines).toEqual([{ label: 'Put in', value: '$0.00' }, { label: 'Where', value: 'Nothing planted here yet' }])
+    expect(sheet.withdrawKey).toBeUndefined()
+    expect(sheet.walletNote).toBeNull()
+    expect(sheet.plantings).toEqual([])
+  })
+  it('goes once idleSkr is null (or from an older API); never added beside a staked SKR row', () => {
+    expect(idleSkrRow(fresh(null))).toBeNull()
+    expect(idleSkrRow(fresh())).toBeNull()
+    expect(homeCoinRows(fresh(null)).some((r) => r.asset === 'SKR')).toBe(false)
+    const staked = meWith({ raw: '500000000', usdCents: 1000 })
+    expect(idleSkrRow(staked)).toBeNull()
+    expect(homeCoinRows(staked).filter((r) => r.asset === 'SKR')).toHaveLength(1)
+    expect(homeCoinRows(staked)[0].key).toBe('SKR')
+  })
+  it('the seed marker is the mark\'s seed alone: the seed group and its crack mask, no sprout', () => {
+    const src = readFileSync(path.resolve(__dirname, '../../src/components/Mark.tsx'), 'utf8')
+    const seed = src.slice(src.indexOf('const SEED_ART'), src.indexOf('export function SeedMark'))
+    expect(seed).toContain('k6b-ms')
+    expect(seed).not.toContain('k6b-mb')
+    expect(seed).not.toContain('<circle')
+    expect(src).toContain("export function SeedMark")
   })
 })

@@ -268,6 +268,41 @@ describe("(c) the confirm books the put in once; the next reconcile adds nothing
     expect((await (await get(activity)).json()).skrPlants).toHaveLength(1);
   });
 
+  // Kimi code review #1: reconcile defers a user with an SKR planting from the last 15 minutes, so the confirm and the reconcile never
+  // both book the same stake; after the window the confirm's adjustment is in `expected` and nothing more is booked.
+  const inWindow = () => new Date(Date.now() + 60_000);
+  const afterWindow = () => new Date(Date.now() + 16 * 60_000);
+  it("a confirm-booked stake and a reconcile inside the 15-minute window: exactly one adjustment; after the window reconcile books nothing extra", async () => {
+    chain.shares = JOINED + MINTED;
+    expect((await post(confirm, { signedTransaction: await postedOf(await plantSkrIxs(U, AMOUNT)) })).status).toBe(200);
+    const inside = await reconcileOwnStakes({ repo, chain: reconcileChain(), now: inWindow() });
+    expect(inside.deferred).toContain(U);
+    expect(await repo.listStakeAdjustments(U)).toHaveLength(1);
+    const after = await reconcileOwnStakes({ repo, chain: reconcileChain(), now: afterWindow() });
+    expect(after.deferred).not.toContain(U);
+    expect(after.adjusted).not.toContain(U);
+    expect(await repo.listStakeAdjustments(U)).toHaveLength(1);
+  });
+
+  it("a pending-then-landed stake (sent mark only, nothing booked at confirm): deferred inside the window, booked once after it", async () => {
+    chain.status = "pending";
+    expect((await post(confirm, { signedTransaction: await postedOf(await plantSkrIxs(U, AMOUNT)) })).status).toBe(202);
+    chain.shares = JOINED + MINTED; // it landed later
+    expect((await reconcileOwnStakes({ repo, chain: reconcileChain(), now: inWindow() })).deferred).toContain(U);
+    expect(await repo.listStakeAdjustments(U)).toHaveLength(0);
+    expect((await reconcileOwnStakes({ repo, chain: reconcileChain(), now: afterWindow() })).adjusted).toContain(U);
+    await reconcileOwnStakes({ repo, chain: reconcileChain(), now: new Date(Date.now() + 24 * 3_600_000) });
+    const adj = await repo.listStakeAdjustments(U);
+    expect(adj).toHaveLength(1);
+    expect(adj[0]).toMatchObject({ kind: "own_stake", sharesDelta: MINTED });
+  });
+
+  it("another user's SKR planting does not defer this one", async () => {
+    await repo.addEvent({ userPubkey: "someone-else", walletPubkey: "someone-else", kind: "skr_plant_sent", detail: { signature: "x", amountRaw: "1" } });
+    chain.shares = JOINED + MINTED;
+    expect((await reconcileOwnStakes({ repo, chain: reconcileChain(), now: inWindow() })).adjusted).toContain(U);
+  });
+
   it("on any doubt the confirm books nothing and reconcile books it, once: a delta that is not this stake", async () => {
     const posted = await postedOf(await plantSkrIxs(U, AMOUNT));
     chain.shares = JOINED + 3n * MINTED; // another wallet stake not booked yet: not this stake's shares
@@ -300,7 +335,7 @@ describe("(c) the confirm books the put in once; the next reconcile adds nothing
     chain.status = "pending";
     const p = await post(confirm, { signedTransaction: await postedOf(await plantSkrIxs(U, AMOUNT + 10_000n)) });
     expect(p.status).toBe(202);
-    expect((await p.json()).message).toBe("Your SKR was sent but is not confirmed yet. Check Home in a minute before you try again.");
+    expect((await p.json()).message).toBe("Not confirmed yet. Check your SKR plant in a minute before trying again.");
     expect((await (await get(activity)).json()).skrPlants).toHaveLength(0);
     chain.status = "confirmed";
     const a = await (await get(activity)).json();

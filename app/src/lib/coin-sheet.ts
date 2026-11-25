@@ -2,6 +2,7 @@ import type { MeResponse } from './api'
 import { formatUsd, plantedWhat } from './format'
 import { skrPutInCents, type CoinRow } from './me-state'
 import { withdrawRows } from './withdraw-list'
+import { IDLE_SKR_ROW_KEY } from './plant-skr'
 
 /** R563: a row's earned as Home shows it, "+$0.03" (null when unknown); green only above zero (`positive`). */
 export function earnedLabel(usd: number | null): { text: string; positive: boolean } | null {
@@ -42,6 +43,8 @@ export function coinSheet(me: Pick<MeResponse, 'pot' | 'basket' | 'holdings' | '
     return `${day}: ${plantedWhat({ usdcInCents: p.usdcInCents, asset: row.asset, amountOutRaw: p.amountOutRaw, usdPrice: null, venue: p.venue })}`
   })
   if (row.parts) return { lines, plantings, withdrawKey: null, walletNote: null }   // R568: Withdraw opens the list, one row per venue
+  // 0.1.13: the $0 SKR row (liquid SKR, nothing staked): Put in and Where only, no Withdraw and no wallet line; the sheet's Plant my SKR does the rest
+  if (row.key === IDLE_SKR_ROW_KEY) return { lines, plantings: [], withdrawKey: undefined, walletNote: null }
   const w = withdrawRows(me, now).find((r) => r.key === row.key)
   return w?.opens
     ? { lines, plantings, withdrawKey: w.key, walletNote: null }

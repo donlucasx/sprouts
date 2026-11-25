@@ -50,7 +50,8 @@ import { useSession } from '@/lib/session'
 import { LINKED_LINE, LINKED_TITLE } from '@/lib/safety-copy'
 import { PHONE_WALLET, gardenTotals, pauseState, pausedOnlyForNoUsdc, stoppedNotice, showLinkPrompt, LINK_PROMPT, previewLine, usdcNotice, coinRows, valueBlock, walletsLine, lastPlantingLine, staleLine, type CoinRow } from '@/lib/me-state'
 import { FONT, radius, spacing, TARGET, useTheme } from '@/theme'
-import { showPlantMarker } from '@/lib/plant-skr'
+import { homeCoinRows, showPlantMarker } from '@/lib/plant-skr'
+import { SeedMark } from '@/components/Mark'
 import { t } from '@/i18n'
 import { useLang } from '@/i18n/useLang'
 /** Canvas px of extra sky above the plants inside the dark-mode bamboo frame (10-27, his note: "more negative space above the plants"). */
@@ -266,7 +267,7 @@ export default function Home() {
   const stopped = stoppedNotice(me)
   // 0.1.13 Plant my SKR (his ruling 11-25, Kimi #12): an SKR top-up's quiet "Plant my SKR instead" opens the SKR sheet, here on Home only
   // (Link a wallet has no sheet); only while the SKR row carries the marker.
-  const skrRow = coinRows(me).find((r) => r.asset === 'SKR' && r.venue === null)
+  const skrRow = homeCoinRows(me).find((r) => r.asset === 'SKR' && r.venue === null)
   const plantSkrOpen = skrRow && showPlantMarker(me, skrRow) ? () => setSheetRow(skrRow) : undefined
   const noWallet = showLinkPrompt(me)
   // R96, R184 and R186: the one line and the can decided together, so they always agree; the can is in colour only while a bud waits.
@@ -559,14 +560,14 @@ export default function Home() {
             the amount under it on the left, the dollars with the coin's status under them on the right; hairlines between rows.
             Replaces R198/R205's one-line rows (the lead rows' larger face goes: every row now has the same two lines). */}
         <View>
-          {coinRows(devSplit ? devSplitLending(me) : me).map((r, i) => {
+          {homeCoinRows(devSplit ? devSplitLending(me) : me).map((r, i) => {
             const earned = earnedLabel(r.earnedUsd)
             return (
             <View key={r.key} style={{ borderTopWidth: i === 0 ? 0 : 1, borderTopColor: colors.hairline }}>
             <Pressable
               onPress={() => setSheetRow(r)}
               accessibilityRole="button"
-              accessibilityLabel={`${COIN_FULL_NAME[r.asset]}, ${r.amount}${earned ? `, earned ${earned.text}` : ''}. Opens its details.`}
+              accessibilityLabel={`${COIN_FULL_NAME[r.asset]}, ${r.amount}${earned ? `, earned ${earned.text}` : ''}.${showPlantMarker(me, r) ? ` ${t('plant.marker')}.` : ''} Opens its details.`}
               style={({ pressed }) => ({
                 opacity: pressed ? 0.7 : 1,
                 flexDirection: 'row',
@@ -578,9 +579,13 @@ export default function Home() {
             >
               <Image source={COIN_LOGO[r.asset]} style={{ width: 40, height: 40, borderRadius: 20 }} />
               <View style={{ flex: 1, gap: 2 }}>
-                <ThemedText variant="body" style={{ fontFamily: FONT.label }} numberOfLines={1}>
-                  {COIN_FULL_NAME[r.asset]}
-                </ThemedText>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <ThemedText variant="body" style={{ fontFamily: FONT.label, flexShrink: 1 }} numberOfLines={1}>
+                    {COIN_FULL_NAME[r.asset]}
+                  </ThemedText>
+                  {/* 0.1.13 Plant my SKR (his ruling 11-25): the seed marker while the wallet holds $5+ of liquid SKR; the row opens the sheet */}
+                  {showPlantMarker(me, r) ? <SeedMark size={15} /> : null}
+                </View>
                 <ThemedText variant="caption" tone="secondary" numeric numberOfLines={1}>
                   {r.qty}
                 </ThemedText>
@@ -591,15 +596,6 @@ export default function Home() {
                     <MaterialCommunityIcons name={r.locked ? 'lock-outline' : r.venue ? 'bank-outline' : 'pickaxe'} size={12} color={colors.textSecondary} />
                     <ThemedText variant="caption" tone="secondary" numberOfLines={1} style={{ flexShrink: 1 }}>
                       {r.where}
-                    </ThemedText>
-                  </View>
-                ) : null}
-                {showPlantMarker(me, r) ? (
-                  // 0.1.13 Plant my SKR (his ruling 11-25): a small marker while the wallet holds $5+ of liquid SKR; the row opens the sheet
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                    <MaterialCommunityIcons name="sprout" size={12} color={colors.accentText} />
-                    <ThemedText variant="caption" numberOfLines={1} style={{ flexShrink: 1, color: colors.accentText }}>
-                      {t('plant.title')}
                     </ThemedText>
                   </View>
                 ) : null}

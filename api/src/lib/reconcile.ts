@@ -28,6 +28,14 @@ const RECENT_MS = 10 * 60_000;
 const CANCEL_MS = 30 * 86_400_000;
 /** The longest one user's finality check may wait. */
 const FINALITY_WAIT_MS = 30_000;
+/**
+ * 0.1.13 Plant my SKR (Kimi code review #1): a user with an SKR planting marked or recorded in the last PLANT_RECENT_MS is deferred.
+ * The stake confirm books its own put in (lib/plant-skr bookPlantedStake) inside its 45 s window; both sides check-then-write with no
+ * lock, so a reconcile reading the same stake meanwhile could book it twice, and a double never heals (fewer shares than expected,
+ * nothing unstaking: deferred for good). After the window the confirm has finished: its adjustment is in `expected`, and a stake that
+ * landed after its confirm (mark only, nothing booked) is booked here as any wallet stake.
+ */
+export const PLANT_RECENT_MS = 15 * 60_000;
 
 /** Every ledger fact the expected share count is built from; a change between the two reads means a move landed meanwhile. */
 export function ledgerKey(plantings: PlantingRow[], withdrawals: WithdrawalRow[], adjustments: StakeAdjustmentRow[]): string {
@@ -84,12 +92,19 @@ export async function reconcileOwnStakes(a: { repo: Repo; chain: ReconcileChain;
   // Every `sent` planting, any age: one whose send threw may still have landed, and the next planting run settles it (R499 F2).
   // The bound is a day ahead of now, never a far-future sentinel: Postgres rejects a year past 9999 (round 2, R2-1).
   const unsettled = new Set((await a.repo.listSentPlantings(new Date(a.now.getTime() + 86_400_000))).map((p) => p.userPubkey));
+  const plantSince = new Date(a.now.getTime() - PLANT_RECENT_MS);
+  const planting = new Set((await Promise.all((["skr_plant_sent", "skr_planted"] as const).map((k) => a.repo.listEventsByKind(k, plantSince)))).flat().map((e) => e.userPubkey));
   for (const user of await a.repo.listUsers()) {
     if (Date.now() >= deadline) {
       deferred.push(user.seedVaultPubkey);
       continue;
     }
     try {
+      if (planting.has(user.seedVaultPubkey)) {
+        console.error(`reconcile: ${user.seedVaultPubkey} has an SKR planting from the last 15 minutes; deferred to the next run`);
+        deferred.push(user.seedVaultPubkey);
+        continue;
+      }
       if (unsettled.has(user.seedVaultPubkey)) {
         console.error(`reconcile: ${user.seedVaultPubkey} has a planting still marked sent; deferred to the next run`);
         deferred.push(user.seedVaultPubkey);

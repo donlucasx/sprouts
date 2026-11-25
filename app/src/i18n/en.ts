@@ -30,15 +30,17 @@ export const en = {
   // 0.1.13 Plant my SKR (his rulings 11-25, verbatim): the SKR coin sheet's section, the marker, the top-up's line, Activity's row
   'plant.title': 'Plant my SKR',
   'plant.instead': 'Plant my SKR instead',
+  // build-written: what TalkBack says for the seed marker on the SKR row and plant card
+  'plant.marker': 'SKR you can plant',
   'plant.all': 'All',
   'plant.amount': '{amount} SKR (about ${usd})',
   'plant.button': 'Plant {amount} SKR',
   'plant.line': 'Stakes this SKR in your garden, where it earns staking rewards. Taking it out later takes 48 hours.',
-  // build-written (his review owed): the steps and outcomes, as the top-up says them; no fee wording
+  // the steps as the top-up says them (build-written); done and sent are his (11-25); no fee wording
   'plant.waiting': 'Waiting for your wallet.',
   'plant.checking': 'Approved. Checking the chain.',
-  'plant.done': 'Planted {amount} SKR. It shows in your garden now.',
-  'plant.sent': 'Your SKR was sent but is not confirmed yet. Check Home in a minute before you try again.',
+  'plant.done': 'Planted {amount} SKR. Your garden updates within a minute.',
+  'plant.sent': 'Not confirmed yet. Check your SKR plant in a minute before trying again.',
   'plant.failedBefore': 'Could not start planting. Nothing moved. Try again.',
   'activity.planted': 'Planted {amount} SKR',
   'activity.planted.from': 'From this wallet.',

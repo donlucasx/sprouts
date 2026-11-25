@@ -38,3 +38,28 @@ export function Mark({ size = 32, decorative = false, color }: { size?: number; 
     />
   )
 }
+
+/**
+ * 0.1.13 Plant my SKR (his ruling 11-25: "a seed, not a dot"): the mark's seed alone, its crack as the hole, no sprout (the first group
+ * of ART, mask k6b-ms), cropped to the seed. The marker on Home's SKR row and the SKR plant card; `label` names it for TalkBack.
+ */
+const SEED_ART = (fill: string) =>
+  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="38 69 40 40"><defs>` +
+  `<mask id="k6b-ms" maskUnits="userSpaceOnUse" x="0" y="0" width="120" height="120"><rect width="120" height="120" fill="#fff"/>` +
+  `<path d="M-5.85 -13.2 Q -2.6 -6.4 0 3.3 Q 2.6 -6.4 5.85 -13.2 z" fill="#000" transform="translate(58 88) rotate(14)"/></mask></defs>` +
+  `<g fill="${fill}" mask="url(#k6b-ms)"><path d="M-17.94 0 C-17.94 -8.4 -7.5 -12.6 0 -11.7 C9.0 -11.2 17.94 -5.9 17.94 0 C17.94 8.4 9.0 12.2 0 11.7 C-9.3 12.2 -17.94 8.4 -17.94 0 z" transform="translate(58 88) rotate(14)"/></g>` +
+  `</svg>`
+
+export function SeedMark({ size = 15, label }: { size?: number; label?: string }) {
+  const { colors } = useTheme()
+  return (
+    <SvgXml
+      xml={SEED_ART(colors.accent)}
+      width={size}
+      height={size}
+      accessibilityRole={label ? 'image' : undefined}
+      accessibilityLabel={label}
+      importantForAccessibility={label ? 'yes' : 'no-hide-descendants'}
+    />
+  )
+}

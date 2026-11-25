@@ -102,11 +102,11 @@ export function CoinSheet({ me, row, onClose }: { me: MeResponse; row: CoinRow |
                 router.push(pick ? { pathname: '/withdraw', params: { pick } } : '/withdraw')
               }}
             />
-          ) : (
+          ) : sheet.walletNote ? (
             <ThemedText variant="caption" tone="secondary">
               {sheet.walletNote}
             </ThemedText>
-          )}
+          ) : null}
         </View>
       ) : null}
     </Modal>
