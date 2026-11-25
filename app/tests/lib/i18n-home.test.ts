@@ -29,8 +29,8 @@ describe('Home in Spanish, through the same functions', () => {
   it('the stale line: offline or server, today / yesterday / a day', () => {
     writeLangChoice('es')
     const now = new Date('2026-10-20T15:00:00-07:00')
-    expect(staleLine(new Date('2026-10-20T09:12:00-07:00'), now, 0)).toBe('Estás sin conexión. Te mostramos tu jardín de hoy, 9:12.')
-    expect(staleLine(new Date('2026-10-19T14:05:00-07:00'), now, 500)).toBe('Sprouts no pudo cargar tu jardín en este momento. Te lo mostramos como estaba ayer, 14:05.')
+    expect(staleLine(new Date('2026-10-20T09:12:00-07:00'), now, 0)).toBe('Estás sin conexión. Te mostramos tu jardín de hoy a las 9:12.')
+    expect(staleLine(new Date('2026-10-19T14:05:00-07:00'), now, 500)).toBe('Sprouts no pudo cargar tu jardín en este momento. Te lo mostramos como estaba ayer a las 14:05.')
     expect(staleLine(new Date('2026-10-16T09:12:00-07:00'), now, 0)).toBe('Estás sin conexión. Te mostramos tu jardín del 16 oct.')
   })
 
@@ -47,7 +47,7 @@ describe('Home in Spanish, through the same functions', () => {
     writeLangChoice('es')
     expect(usdcNotice(me([active]), { usdcCents: 0, low: false })).toEqual({
       title: 'La billetera Seed Vault no tiene USDC',
-      lines: ['Sprouts planta tus redondeos con USDC de esta billetera. Hasta que agregues, esperan.'],
+      lines: ['Sprouts planta tus redondeos con USDC de esta billetera. Hasta que agregues USDC, esperan.'],
       topUp: true,
     })
     expect(usdcNotice(me([active]), { usdcCents: 250, low: true })?.lines[0]).toBe(
@@ -97,14 +97,14 @@ describe('Home in Spanish, through the same functions', () => {
     const r = { ts: '2026-10-05T21:00:00Z', usdcPulledCents: 100, amountOutRaw: '1000000', usdPrice: null, networkFeeCents: 0 }
     writeLangChoice('es')
     expect(lastPlantingLine({ ...r, asset: 'SKR', venue: null } as never)).toBe('Última plantación, 5 oct: $1,00 se convirtió en 1,00 SKR')
-    expect(lastPlantingLine({ ...r, asset: 'USDC_LEND', venue: 'kamino_klend' } as never)).toBe('Última plantación, 5 oct: $1,00 fue a USDC en préstamo (Kamino)')
+    expect(lastPlantingLine({ ...r, asset: 'USDC_LEND', venue: 'kamino_klend' } as never)).toBe('Última plantación, 5 oct: $1,00 pasó a USDC en préstamo (Kamino)')
   })
 
   it('plantedLine: every fee fork is one whole line', () => {
     writeLangChoice('es')
     expect(plantedLine({ usdcInCents: 23, asset: 'SKR', amountOutRaw: '12480000', usdPrice: 0.01833, feeCents: 1, feeAmountRaw: '0' })).toBe('$0,23 se convirtió en 12,48 SKR ($0,23), comisión $0,01')
     expect(plantedLine({ usdcInCents: 203, asset: 'hSOL', amountOutRaw: '12300000', usdPrice: 168, feeCents: 0, feeAmountRaw: '0' })).toBe('$2,03 se convirtió en 0,0123 hSOL ($2,07), comisión menor a 1 centavo')
-    expect(plantedLine({ usdcInCents: 200, asset: 'SOL_LEND', amountOutRaw: '1', usdPrice: null, venue: 'jupiter_lend', feeCents: 0 })).toBe('$2,00 fue a SOL en préstamo (Jupiter), sin comisión de Sprouts')
+    expect(plantedLine({ usdcInCents: 200, asset: 'SOL_LEND', amountOutRaw: '1', usdPrice: null, venue: 'jupiter_lend', feeCents: 0 })).toBe('$2,00 pasó a SOL en préstamo (Jupiter), sin comisión de Sprouts')
   })
 
   it('the Next planting row and the widget line', () => {
@@ -126,7 +126,7 @@ describe('Home in Spanish, through the same functions', () => {
     expect(moveCopy(FIXTURE_MOVE).title).toMatch(/^¿Mover tu \w+ a \w+\?$/)
     expect(MOVE.moved).toBe('Movido.')
     expect(UNWRAP.button).toBe('Desenvolver tu SOL')
-    expect(lowUsdcNotice(0, null, false, false).notice).toEqual({ kind: 'paused', title: 'La billetera Seed Vault no tiene USDC', body: 'Tus redondeos esperan hasta que tenga algo. Abre Sprouts para agregar USDC.' })
+    expect(lowUsdcNotice(0, null, false, false).notice).toEqual({ kind: 'paused', title: 'La billetera Seed Vault no tiene USDC', body: 'Tus redondeos esperan hasta que tenga USDC. Abre Sprouts para agregar USDC.' })
     expect(coinFullName('USDC_LEND')).toBe('USDC en préstamo')
     expect(coinFullName('hSOL')).toBe('Helius Staked SOL')
     writeLangChoice('en')
