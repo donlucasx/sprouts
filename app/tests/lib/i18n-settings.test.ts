@@ -26,7 +26,7 @@ describe("t(key, vars, 'es') for a sample of the area's keys", () => {
   it('fills placeholders in Spanish', () => {
     expect(t('settings.wallets.revoke.a11y', { wallet: 'Fdpp...YjB6' }, 'es')).toBe('Revocar la billetera Fdpp...YjB6')
     expect(t('rules.cap.chip', { amount: '$5' }, 'es')).toBe('Límite diario $5')
-    expect(t('support.thanks', { email: 'a@b.co' }, 'es')).toBe('Gracias. Te responderemos a a@b.co, normalmente en un día.')
+    expect(t('support.thanks', { email: 'a@b.co' }, 'es')).toBe('Gracias. Te escribiremos a a@b.co, normalmente en un día.')
     expect(t('terms.agreed', { date: '3 de octubre de 2025' }, 'es')).toBe('Aceptaste estos Términos el 3 de octubre de 2025.')
   })
   it("Rules says Home's preview words: \"Agregar 10¢ a cada swap\"", () => {
@@ -73,7 +73,7 @@ describe('the area in Spanish, through the same functions', () => {
     writeLangChoice('es')
     const hsol = { asset: 'hSOL', heldRaw: '12300000', putInCents: 203, valueUsd: 2.07, earnedUsd: 0.04, earnedUnderlyingRaw: '1' } as const
     const rows = withdrawRows({ pot, basket: null, holdings: [hsol] })
-    expect(rows[0]).toMatchObject({ label: 'Retirar SKR', note: 'bloqueado en tu Seed Vault, 48 horas para salir' })
+    expect(rows[0]).toMatchObject({ label: 'Retirar SKR', note: 'bloqueado en tu Seed Vault, tarda 48 horas en salir' })
     expect(rows[1].note).toBe('en tu billetera. Intercámbialo o envíalo desde la app de tu billetera.')
     const basket = { id: 'b', asset: 'SKR', amountRaw: '1000000', unstakeTs: '2026-10-02T12:00:00Z', readyAt: '2026-10-04T12:00:00Z', delivered: false, deliveredSignature: null } as const
     const [later] = withdrawRows({ pot: { ...pot, skrStakedRaw: '0' }, basket, holdings: [] }, new Date('2026-10-03T00:00:00Z'))
@@ -84,9 +84,9 @@ describe('the area in Spanish, through the same functions', () => {
   it('the venue lines: rate with and without rewards, the average or one day measured, the state, Spanish percents', () => {
     writeLangChoice('es')
     const lines = venueLines(FIXTURE_VENUES)
-    expect(lines[0]).toMatchObject({ title: 'USDC en Kamino', detail: 'Esta mañana 4,43%, 7 días 4,41%. La elegida de hoy.' })
-    expect(lines[1].detail).toBe('Esta mañana 3,83% + 0,36% en recompensas, 7 días 3,90%. No elegida hoy.')
-    expect(lines[2].detail).toBe('Esta mañana 5,62%, 7 días 5,50%. Omitida hoy: casi prestada por completo.')
+    expect(lines[0]).toMatchObject({ title: 'USDC en Kamino', detail: 'Esta mañana 4,43%, promedio 7 días: 4,41%. Elegida hoy.' })
+    expect(lines[1].detail).toBe('Esta mañana 3,83% + 0,36% en recompensas, promedio 7 días: 3,90%. No elegida hoy.')
+    expect(lines[2].detail).toBe('Esta mañana 5,62%, promedio 7 días: 5,50%. Omitida hoy: casi prestada por completo.')
     expect(lines[4].detail).toBe('Esta mañana 2,96% + 1,21% en recompensas, medido 1 día. Solo comparada.')
     expect(lines[5].detail).toBe('Rate unavailable. Solo comparada.')   // the API's own note for the venue stays as sent (server text)
     expect(venueLines({ ...FIXTURE_VENUES, venues: [{ ...FIXTURE_VENUES.venues[5], note: null }] })[0].detail).toBe('Tasa no disponible. Solo comparada.')
