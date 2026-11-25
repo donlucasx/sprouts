@@ -35,7 +35,7 @@ describe('top-up: one whole sentence per coverage kind', () => {
     const lines = [TOPUP.open, TOPUP.button(500), TOPUP.how(500, { kind: 'weeks', n: 2 }), TOPUP.swapsLine(['SOL', 'SKR', 'JUP']), TOPUP.done(500), TOPUP.doneLink(500), TOPUP.sendHere, TOPUP.otherWallet('W111...xyz9')]
     expect(TOPUP.open).toBe('Agregar USDC')
     expect(TOPUP.button(1_000)).toBe('Agregar $10 en USDC')
-    expect(TOPUP.how(500, { kind: 'weeks', n: 2 })).toBe('Hace un swap de SOL que ya está en esta billetera por $5 en USDC, alcanza para cerca de 2 semanas de redondeos. Sprouts cobra 0,5% al plantar.')
+    expect(TOPUP.how(500, { kind: 'weeks', n: 2 })).toBe('Hace un swap de SOL que ya está en esta billetera por $5 en USDC. Alcanza para unas 2 semanas de redondeos. Sprouts cobra 0,5% al plantar.')
     expect(TOPUP.swapsLine(['SOL', 'SKR', 'JUP'])).toBe('Hace un swap de un poco de tu SOL, SKR o JUP a USDC. Sprouts cobra 0,5% al plantar.')
     expect(TOPUP.swapsLine([])).toBe('Hace un swap de un poco de tu SOL a USDC. Sprouts cobra 0,5% al plantar.')
     expect(TOPUP.done(550)).toBe('Tu billetera ahora tiene $5,50 más en USDC. Sprouts vuelve a plantar en la próxima plantación diaria.')
@@ -55,7 +55,7 @@ describe('top-up: one whole sentence per coverage kind', () => {
     expect(lowUsdcLine(300, 100)).toBe("Your wallet has $3.00 of USDC left. Top it up so plantings don't pause.")
     writeLangChoice('es')
     expect(lowUsdcLine(0, null)).toBe('Tu billetera no tiene USDC, así que no se planta nada hasta que agregues. Tus redondeos se siguen contando.')
-    expect(lowUsdcLine(300, 100)).toBe('A tu billetera le quedan $3,00 en USDC. Agrega más para que las plantaciones no se pausen.')
+    expect(lowUsdcLine(300, 100)).toBe('A tu billetera le quedan $3,00 en USDC. Agrega más a tu billetera para que las plantaciones no se pausen.')
   })
 })
 
