@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { ApiError, type MeResponse } from './api'
 import { useInvalidateMe } from './me'
 import { setPaused } from './pause-api'
+import { t } from '@/i18n'
 import { freshWalletSignIn } from './reauth'
 import { identity } from './identity'
 
@@ -36,7 +37,7 @@ export function usePauseToggle() {
       void invalidate()
     } catch (e) {
       setPauseError(
-        e instanceof ApiError ? e.message : on ? 'Could not turn Sprouts back on. Try again.' : 'Could not pause. Try again.',
+        e instanceof ApiError ? e.message : on ? t('pause.resumeFailed') : t('pause.failed'),
       )
     } finally {
       inFlight.current = false

@@ -1,7 +1,8 @@
 import { Directory, File, Paths } from "expo-file-system";
 import { shareAsync } from "expo-sharing";
 import { loadSession } from "./session";
-import { API_ORIGIN, API_UNANSWERED, ApiError } from "./api";
+import { API_ORIGIN, ApiError, apiUnanswered, requestFailed } from "./api";
+import { t } from "@/i18n";
 
 /**
  * R447: the tax record. GET /api/export/tax answers a CSV in Koinly's Universal import format, a record to import into a tax tool
@@ -10,7 +11,7 @@ import { API_ORIGIN, API_UNANSWERED, ApiError } from "./api";
  */
 export async function fetchTaxCsv(year?: number): Promise<{ csv: string; filename: string }> {
   const s = await loadSession();
-  if (!s) throw new ApiError(401, "Sign in first.");
+  if (!s) throw new ApiError(401, t("api.signInFirst"));
   const query = year === undefined ? "" : `?year=${year}`;
   let res: Response;
   let text: string;
@@ -18,10 +19,10 @@ export async function fetchTaxCsv(year?: number): Promise<{ csv: string; filenam
     res = await fetch(`${API_ORIGIN}/api/export/tax${query}`, { headers: { authorization: `Bearer ${s.token}` } });
     text = await res.text();
   } catch {
-    throw new ApiError(0, API_UNANSWERED);
+    throw new ApiError(0, apiUnanswered());
   }
   if (!res.ok) {
-    let message = res.status >= 500 ? API_UNANSWERED : `Request failed (${res.status}).`;
+    let message = res.status >= 500 ? apiUnanswered() : requestFailed(res.status);
     try {
       const j = JSON.parse(text) as { error?: unknown };
       if (typeof j.error === "string") message = j.error;
@@ -32,7 +33,7 @@ export async function fetchTaxCsv(year?: number): Promise<{ csv: string; filenam
   }
   // Audit 10-08: a 200 that is not the CSV (a captive portal's page) is refused, not saved as a .csv; the served name becomes a
   // plain file name before it touches the file system.
-  if (!(res.headers.get("content-type") ?? "").includes("text/csv")) throw new ApiError(0, API_UNANSWERED);
+  if (!(res.headers.get("content-type") ?? "").includes("text/csv")) throw new ApiError(0, apiUnanswered());
   const named = /filename="([^"]+)"/.exec(res.headers.get("content-disposition") ?? "")?.[1]?.replace(/[^\w.-]/g, "_");
   return { csv: text, filename: named ?? `sprouts-tax-${year ?? "all"}.csv` };
 }

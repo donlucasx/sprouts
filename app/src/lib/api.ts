@@ -1,5 +1,6 @@
 import { loadSession } from "./session";
-import { currentLang } from "@/i18n";
+import { currentLang, t } from "@/i18n";
+import { en } from "@/i18n/en";
 import Constants from "expo-constants";
 /** The app's own version (app.json), sent with every request. */
 const APP_VERSION: string = Constants.expoConfig?.version ?? "0.0.0";
@@ -20,7 +21,11 @@ export class ApiError extends Error {
 }
 
 /** A reply that is not JSON (a gateway timeout page, an empty 5xx): whether anything moved is not known, so it never says "Nothing moved." */
-export const API_UNANSWERED = "Sprouts didn't answer. Check Home in a minute.";
+export const API_UNANSWERED = en["api.unanswered"];
+/** 0.1.13 Spanish pass P6 (e): the line a failure carries, in the current language (the constant above is the English, for tests).
+ *  Only the app's own lines: a server's `error` text is shown as it came. */
+export const apiUnanswered = (): string => t("api.unanswered");
+export const requestFailed = (status: number): string => t("api.requestFailed", { status });
 
 /** One fetch for every call: JSON in, JSON out, the session bearer when there is one, the API's own sentence on failure. */
 export async function api<T>(path: string, init: { method?: "GET" | "POST" | "PUT"; body?: unknown; auth?: boolean; signal?: AbortSignal } = {}): Promise<T> {
@@ -47,7 +52,7 @@ export async function api<T>(path: string, init: { method?: "GET" | "POST" | "PU
     if (init.signal?.aborted) throw e;
     // Dev builds only: the real network error behind the generic line (10-07: the Seeker's sign-in got 200 at the API, the app saw nothing).
     if (typeof __DEV__ !== "undefined" && __DEV__) console.warn(`[api] ${path} threw: ${e instanceof Error ? `${e.name}: ${e.message}` : String(e)}`);
-    throw new ApiError(0, API_UNANSWERED);
+    throw new ApiError(0, apiUnanswered());
   }
   if (typeof __DEV__ !== "undefined" && __DEV__) console.log(`[api] ${init.method ?? "GET"} ${path} ${res.status} ${Date.now() - t0} ms`);
   let json: { error?: string } = {};
@@ -59,10 +64,10 @@ export async function api<T>(path: string, init: { method?: "GET" | "POST" | "PU
       json = parsed as { error?: string };
     } catch {
       if (typeof __DEV__ !== "undefined" && __DEV__) console.warn(`[api] ${path} ${res.status} not JSON: ${text.slice(0, 160)}`);
-      throw new ApiError(res.status, API_UNANSWERED);
+      throw new ApiError(res.status, apiUnanswered());
     }
   }
-  if (!res.ok) throw new ApiError(res.status, json.error ?? (res.status >= 500 ? API_UNANSWERED : `Request failed (${res.status}).`), json as Record<string, unknown>);
+  if (!res.ok) throw new ApiError(res.status, json.error ?? (res.status >= 500 ? apiUnanswered() : requestFailed(res.status)), json as Record<string, unknown>);
   return (LEND_MOCK ? mockAfter(path, json) : json) as T;
 }
 

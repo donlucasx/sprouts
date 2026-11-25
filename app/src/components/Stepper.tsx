@@ -3,6 +3,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons'
 import { radius, spacing, TARGET, useTheme } from '@/theme'
 import { ThemedText } from './ThemedText'
 import { t } from '@/i18n'
+import { useLang } from '@/i18n/useLang'
 
 /** The two round buttons of a stepper, named for TalkBack after what they move ("Less hSOL", "More hSOL"). */
 export function StepButtons({
@@ -77,6 +78,7 @@ export function Stepper({
   /** The noun TalkBack names ("daily limit"); the label when absent. */
   what?: string
 }) {
+  useLang()
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md }}>
       <ThemedText style={{ flex: 1 }}>{label}</ThemedText>
@@ -85,8 +87,8 @@ export function Stepper({
       </ThemedText>
       <StepButtons
         what={what ?? label}
-        lessLabel={`Lower ${what ?? label}`}
-        moreLabel={`Raise ${what ?? label}`}
+        lessLabel={t('stepper.lower', { what: what ?? label })}
+        moreLabel={t('stepper.raise', { what: what ?? label })}
         onLess={() => onChange(Math.max(min, value - step))}
         onMore={() => onChange(Math.min(max, value + step))}
         lessDisabled={disabled || value <= min}

@@ -9,8 +9,8 @@ import { makeSigner, SKR_MINT } from '@/lib/sign'
 import { t } from '@/i18n'
 import { setupAccountsOf, setupLine } from '@/lib/safety-copy'
 import { useSolUsd } from '@/lib/sol-usd'
-import { choiceFor, ME_USDC_SETUP, meUsdcSetupKey, solCheaperLine, TOPUP, TOPUP_SETUP_MAX, TopUpFailed, topUpChoices, topUpClosedView, topUpThisPhone, type TopUpSource } from '@/lib/topup'
-import { coverageLine } from '@/lib/usdc-runway'
+import { chipLabel, choiceFor, ME_USDC_SETUP, meUsdcSetupKey, solCheaperLine, TOPUP, TOPUP_SETUP_MAX, TopUpFailed, topUpChoices, topUpClosedView, topUpThisPhone, type TopUpSource } from '@/lib/topup'
+import { coverage } from '@/lib/usdc-runway'
 import { TwoWay } from '@/components/TwoWay'
 import { oneAtATime } from '@/lib/withdraw-flow'
 import { spacing, TARGET } from '@/theme'
@@ -109,7 +109,7 @@ export function TopUpButton({ user, cents: suggested, done, onDone, avgDailyCent
         <TwoWay options={usable.map((s) => ({ value: s.mint, label: s.symbol }))} value={source.mint} onChange={(m) => setPickedMint(m)} />
       )}
       {landed || phase ? null : (
-        choices.length > 1 ? <TwoWay options={choices.map((c) => ({ value: String(c), label: `$${c / 100}` }))} value={String(cents)} onChange={(v) => setPicked(Number(v))} /> : null
+        choices.length > 1 ? <TwoWay options={choices.map((c) => ({ value: String(c), label: chipLabel(c) }))} value={String(cents)} onChange={(v) => setPicked(Number(v))} /> : null
       )}
       {landed ? null : <Button title={TOPUP.button(cents)} loading={phase !== null} onPress={topUp} />}
       {phase ? (
@@ -119,7 +119,7 @@ export function TopUpButton({ user, cents: suggested, done, onDone, avgDailyCent
       ) : landed ? null : (
         <>
           <ThemedText variant="caption" tone="secondary">
-            {TOPUP.how(cents, coverageLine(cents, avgDailyCents), symbol, solCheaperLine(source, usable, cents) ?? undefined)}
+            {TOPUP.how(cents, coverage(cents, avgDailyCents), symbol, solCheaperLine(source, usable, cents) ?? undefined)}
           </ThemedText>
           {setupNote ? (
             <ThemedText variant="caption" tone="secondary">

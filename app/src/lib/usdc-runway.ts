@@ -1,4 +1,5 @@
 import { usdFromCents } from "@/i18n/format"
+import { t } from "@/i18n"
 
 /**
  * How long a wallet's USDC lasts at its owner's own pace (10-26 copy review rows 10-11 and the top-up's coverage hint, his rulings:
@@ -26,21 +27,25 @@ export function avgDailyRoundupCents(swaps: readonly Swap[], wallet: string, now
   return sum > 0 ? sum / span : null;
 }
 
-/** "About 2 weeks of round-ups" for `cents` at `avg` a day; null without an average. */
-export function coverageLine(cents: number, avg: number | null): string | null {
+/**
+ * How long `cents` lasts at `avg` a day, as the top-up's line says it ("about 2 weeks of round-ups"); null without an average.
+ * 0.1.13 Spanish pass P6 (e): a kind and a count, never words, so the top-up line is one whole sentence per kind (topup.how.*).
+ */
+export type Coverage = { kind: "one" | "days" | "weeks" | "months"; n: number };
+export function coverage(cents: number, avg: number | null): Coverage | null {
   if (!avg) return null;
   const days = cents / avg;
-  if (days < 10) return `About ${Math.max(1, Math.round(days))} ${Math.round(days) <= 1 ? "day" : "days"} of round-ups`;
+  if (days < 10) return Math.round(days) <= 1 ? { kind: "one", n: 1 } : { kind: "days", n: Math.round(days) };
   const weeks = Math.round(days / 7);
-  if (weeks <= 8) return `About ${weeks} weeks of round-ups`;
-  return "Over 2 months of round-ups";
+  if (weeks <= 8) return { kind: "weeks", n: weeks };
+  return { kind: "months", n: 2 };
 }
 
 /** Home's line when the wallet has under LOW_DAYS of round-ups left (copy review row 10), or null. */
 export function lowUsdcLine(balanceCents: number | null, avg: number | null): string | null {
   // 10-27 (his note on the Saga: "$0.00... top it up so plantings don't pause" understated it): at zero nothing can plant, and that
   // needs no average (the Saga's wallet at $0 showed nothing while it had too little history for one)
-  if (balanceCents != null && balanceCents <= 0) return "Your wallet has no USDC, so nothing plants until you add some. Your round-ups are still counted.";
+  if (balanceCents != null && balanceCents <= 0) return t("runway.zero");
   if (balanceCents == null || !avg || balanceCents >= avg * LOW_DAYS) return null;
-  return `Your wallet has ${usdFromCents(balanceCents)} of USDC left. Top it up so plantings don't pause.`;
+  return t("runway.low", { amount: usdFromCents(balanceCents) });
 }

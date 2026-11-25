@@ -45,7 +45,7 @@ import { TopUpButton } from '@/components/TopUp'
 import { BambooFrame } from '@/garden2/BambooFrame'
 import { ME_USDC_WITH_SOURCES, TOPUP, TOPUP_DEFAULT_CENTS, postLinkUsdc, topUpOffer } from '@/lib/topup'
 import { MoveCard } from '@/components/MoveCard'
-import { termsNeeded, termsSummary } from '@/lib/terms'
+import { homeTermsSummary, termsNeeded } from '@/lib/terms'
 import { arrivalParts, formatSkr } from '@/lib/format'
 import { useSession } from '@/lib/session'
 import { linkedTitle } from '@/lib/safety-copy'
@@ -452,7 +452,7 @@ export default function Home() {
       {termsNeeded(me) ? (
         <Card>
           <ThemedText variant="heading">{t('home.terms.title')}</ThemedText>
-          {termsSummary().map((l) => (
+          {homeTermsSummary().map((l) => (
             <ThemedText key={l} tone="secondary">{`• ${l}`}</ThemedText>
           ))}
           <Button title={t('home.terms.agree')} onPress={() => router.push('/terms')} />

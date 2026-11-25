@@ -1,6 +1,8 @@
 import { api, type MeResponse } from "./api";
 import { store } from "./store";
 import { localDay } from "./reminders";
+import { t } from "@/i18n";
+import type { Key } from "@/i18n/en";
 
 export type Question = "link_failed" | "wallet_removed" | "brought_you";
 
@@ -34,6 +36,15 @@ export const QUESTIONS: Record<Question, { title: string; options: { value: stri
       { value: "other", label: "Something else" },
     ],
   },
+};
+
+/** 0.1.13 Spanish pass P6 (e): QUESTIONS keeps the English (tests, the values the API takes); the card shows these, in the current
+ *  language. "other" is the support topic's own "Something else". */
+export const questionTitle = (q: Question): string => t(`ask.${q}.title` as Key);
+export const optionLabel = (q: Question, value: string): string => {
+  if (value === "other") return t("support.topic.other");
+  const key = `ask.${q}.${value}`;
+  return QUESTIONS[q].options.some((o) => o.value === value && o.value !== "other") ? t(key as Key) : value;
 };
 
 export const TEXT_MAX = 500;

@@ -2,7 +2,8 @@ import type { MeResponse, WalletPause } from './api'
 import { REFUSED, SignRefused, topUpSourceAllowed, WSOL_MINT, type SignFlow } from './sign'
 import { droppedNothingSent } from './wallet-errors'
 import { t } from '@/i18n'
-import { usdFromCents } from "@/i18n/format"
+import { usdFromCents, usdTrimmed } from "@/i18n/format"
+import type { Coverage } from "./usdc-runway"
 
 /**
  * The SOL top-up (10-22, owner-approved): round-ups are pulled only as USDC and most Seeker wallets hold SOL, so wherever USDC is short
@@ -10,39 +11,49 @@ import { usdFromCents } from "@/i18n/format"
  * API builds it (POST /api/topup/build), the phone checks it (sign.ts 'topup'), the Seed Vault signs, POST /api/topup/confirm sends.
  * Only this phone's wallet: another linked wallet's key is not on this phone. Build-written copy, every line below (his ruling owed).
  */
+// 0.1.13 Spanish pass P6 (e): every line is read in the current language when it is shown (getters and functions over t()); the
+// amounts go through the formatter (whole dollars, usdTrimmed), never hand-built "$5".
+/** The button's whole dollars: "$5" (the same in Spanish, "$5"). */
+const wholeUsd = (cents: number) => usdTrimmed(Math.round(cents / 100) * 100)
 export const TOPUP = {
   // 10-26 copy review rows 8-9 (his: make clear the USDC goes to the user's own wallet, not to Sprouts)
   // 10-27 (his ruling: "We dont want to tell the user 'you need sol' so 'you can buy usdc'... Should be a simpler solution"): one
   // "Add USDC" button; the SOL swap stays behind it, named once in a quiet line; a wallet whose SOL covers nothing gets its address
-  open: 'Add USDC',
-  button: (cents: number) => `Add $${Math.round(cents / 100)} of USDC`,
+  get open() { return t('topup.open') },
+  button: (cents: number) => t('topup.button', { amount: wholeUsd(cents) }),
   // 10-27 (his note on the Saga: "should state somewhere that you are swapping existing sol from your wallet into USDC")
   // Task 3 (any-coin top-up): the coin picked names itself; SOL by default, so the SOL line is unchanged
   // 0.1.13 (his ruling "Name both", 11-25): the swap is free and the planting carries the 0.5% (t topup.fee). `tail` replaces that
-  // sentence (the SOL pointer, solCheaperLine).
-  how: (cents: number, covers: string | null, symbol = 'SOL', tail: string = t('topup.fee')) =>
-    `Swaps ${symbol} already in this wallet for $${Math.round(cents / 100)} of USDC${covers ? `, ${covers.charAt(0).toLowerCase()}${covers.slice(1)}` : ''}. ${tail}`,
+  // sentence (the SOL pointer, solCheaperLine). `covers` (usdc-runway coverage()) picks the whole sentence, one key per kind.
+  how: (cents: number, covers: Coverage | null, symbol = 'SOL', tail: string = t('topup.fee')) => {
+    const vars = { symbol, amount: wholeUsd(cents), tail }
+    return covers ? t(`topup.how.${covers.kind}` as const, { ...vars, n: covers.n }) : t('topup.how', vars)
+  },
   /** The line under the closed "Add USDC" button (owner's copy, 11-19), the picked coin's symbol in it. */
   swapsLine: (symbols: string[]) => {
-    const list = symbols.length === 0 ? 'SOL' : symbols.length === 1 ? symbols[0] : `${symbols.slice(0, -1).join(', ')} or ${symbols[symbols.length - 1]}`
-    return `Swaps a little of your ${list} into USDC. ${t('topup.fee')}`
+    const fee = t('topup.fee')
+    if (symbols.length <= 1) return t('topup.swaps', { coin: symbols[0] ?? 'SOL', fee })
+    return t('topup.swaps.or', { list: symbols.slice(0, -1).join(', '), last: symbols[symbols.length - 1], fee })
   },
   // 11-20 (Kimi copy item 3): never a "not enough SOL" line; just where to send USDC
-  sendHere: 'Send USDC to this wallet from any wallet or exchange. Plantings start again once it arrives.',
-  copy: 'Copy address',
+  get sendHere() { return t('topup.sendHere') },
+  get copy() { return t('topup.copy') },
   /** 11-20: under the open top-up, back to the closed card; sends nothing. */
-  back: 'Back',
-  copied: 'Copied',
+  get back() { return t('link.approval.back') },
+  get copied() { return t('topup.copied') },
   get waiting() { return t('wallet.waiting') },
   get checking() { return t('wallet.checking') },
-  done: (cents: number) => `Your wallet now has ${usdFromCents(cents)} more USDC. Sprouts plants again at the next daily planting.`,
-  doneLink: (cents: number) => `Your wallet now has ${usdFromCents(cents)} more USDC.`,
+  done: (cents: number) => t('topup.done', { amount: usdFromCents(cents) }),
+  doneLink: (cents: number) => t('topup.doneLink', { amount: usdFromCents(cents) }),
   /** After the signature went out and no final answer came back: never "nothing moved". */
-  sent: 'Your top-up was sent but is not confirmed yet. Check Home in a minute before you try again.',
+  get sent() { return t('topup.sent') },
   /** Before the wallet was asked (the build failed for a reason the API did not word). */
-  failedBefore: 'Could not start the top-up. Nothing moved. Try again.',
-  otherWallet: (short: string) => `Top up works only for this phone's wallet. Add USDC to ${short} from wherever you use it.`,
-} as const
+  get failedBefore() { return t('topup.failedBefore') },
+  otherWallet: (short: string) => t('topup.otherWallet', { wallet: short }),
+}
+
+/** A top-up amount chip: whole dollars through the formatter ("$5", "$10"; cents only if an amount ever has them). */
+export const chipLabel = (cents: number): string => usdTrimmed(cents)
 
 /**
  * Task 7 review: the API computes topUpSources only when asked (it costs a Helius token-accounts read and Jupiter calls), so only Home's

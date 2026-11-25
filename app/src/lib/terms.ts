@@ -23,6 +23,10 @@ export function termsBlocks(md: string = TERMS_MD): TermsBlock[] {
 export function termsSummary(md: string = TERMS_MD): string[] {
   return (md.split(SUMMARY)[1] ?? "").split("\n").map((l) => l.trim()).filter((l) => l.startsWith("- ")).map((l) => l.slice(2));
 }
+/** 0.1.13 Spanish pass P6 (e): Home's Terms card shows the three lines in the current language (a courtesy; the Terms page and its own
+ *  summary stay the binding English). The en lines are termsSummary() word for word (terms test). */
+export const TERMS_SUMMARY_KEYS = ["terms.summary.1", "terms.summary.2", "terms.summary.3"] as const;
+export const homeTermsSummary = (): string[] => TERMS_SUMMARY_KEYS.map((k) => t(k));
 /** A signed-in user is asked to accept only when the API says the current version is not the accepted one; an older API never asks. */
 export function termsNeeded(me: Pick<MeResponse, "terms"> | null | undefined): boolean {
   return !!me?.terms && me.terms.acceptedVersion !== me.terms.currentVersion;

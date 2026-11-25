@@ -2,7 +2,7 @@ import { Platform } from "react-native";
 import Constants from "expo-constants";
 import { api } from "./api";
 import { store } from "./store";
-import { QUESTIONS, type Question } from "./feedback";
+import { optionLabel, QUESTIONS, questionTitle, type Question } from "./feedback";
 import { dayMonth } from "@/i18n/format"
 import { t } from "@/i18n"
 
@@ -58,13 +58,14 @@ export async function fetchSupportLog(): Promise<SupportLogEntry[]> {
 /** "S-7K3Q · Nov 1 · Linking a wallet": the log row's first line. */
 export function logLine(e: SupportLogEntry): string {
   const day = dayMonth(new Date(e.ts));
-  const topic = isTopic(e.topic) ? topicLabel(e.topic) : asQuestion(e.topic)?.title;
+  const topic = isTopic(e.topic) ? topicLabel(e.topic) : asQuestion(e.topic) ? questionTitle(e.topic as Question) : undefined;
   return [e.ref, day, topic].filter(Boolean).join(" \u00b7 ");
 }
 
 /** The row's text: the message, or for an answer its picked option, then the note if one was written. */
 export function previewOf(e: SupportLogEntry): string {
-  const picked = asQuestion(e.topic)?.options.find((o) => o.value === e.choice)?.label;
-  if (!picked) return e.preview;
-  return e.preview ? `${picked}: ${e.preview}` : picked;
+  const option = asQuestion(e.topic)?.options.find((o) => o.value === e.choice);
+  if (!option) return e.preview;
+  const picked = optionLabel(e.topic as Question, option.value);
+  return e.preview ? t("support.log.answer", { choice: picked, note: e.preview }) : picked;
 }

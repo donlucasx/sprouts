@@ -94,11 +94,11 @@ describe('the offer and its amount', () => {
   })
 
   it('the copy: plain, no em dashes', () => {
-    const lines = [TOPUP.open, TOPUP.button(500), TOPUP.how(500, null), TOPUP.how(500, 'About 2 weeks of round-ups'), TOPUP.sendHere, TOPUP.done(500), TOPUP.doneLink(500), TOPUP.sent, TOPUP.failedBefore]
+    const lines = [TOPUP.open, TOPUP.button(500), TOPUP.how(500, null), TOPUP.how(500, { kind: 'weeks', n: 2 }), TOPUP.sendHere, TOPUP.done(500), TOPUP.doneLink(500), TOPUP.sent, TOPUP.failedBefore]
     // 10-27 (his rulings): one "Add USDC"; the swap said outright in the line under it; never "you need SOL"
     expect(TOPUP.open).toBe('Add USDC')
     expect(TOPUP.button(500)).toBe('Add $5 of USDC')
-    expect(TOPUP.how(500, 'About 2 weeks of round-ups')).toBe('Swaps SOL already in this wallet for $5 of USDC, about 2 weeks of round-ups. Sprouts takes 0.5% when it\'s planted.')
+    expect(TOPUP.how(500, { kind: 'weeks', n: 2 })).toBe('Swaps SOL already in this wallet for $5 of USDC, about 2 weeks of round-ups. Sprouts takes 0.5% when it\'s planted.')
     expect(TOPUP.done(500)).toBe('Your wallet now has $5.00 more USDC. Sprouts plants again at the next daily planting.')
     for (const l of lines) expect(l).not.toMatch(/—|–/)
   })
@@ -135,7 +135,7 @@ describe('any-coin top-up (Task 3): the source coin', () => {
     expect(TOPUP.swapsLine([])).toBe('Swaps a little of your SOL into USDC. Sprouts takes 0.5% when it\'s planted.')
     expect(TOPUP.swapsLine(['SOL', 'SKR', 'JUP'])).toBe('Swaps a little of your SOL, SKR or JUP into USDC. Sprouts takes 0.5% when it\'s planted.')
     expect(TOPUP.how(500, null)).toBe('Swaps SOL already in this wallet for $5 of USDC. Sprouts takes 0.5% when it\'s planted.')
-    expect(TOPUP.how(500, 'About 2 weeks of round-ups', 'SKR')).toBe('Swaps SKR already in this wallet for $5 of USDC, about 2 weeks of round-ups. Sprouts takes 0.5% when it\'s planted.')
+    expect(TOPUP.how(500, { kind: 'weeks', n: 2 }, 'SKR')).toBe('Swaps SKR already in this wallet for $5 of USDC, about 2 weeks of round-ups. Sprouts takes 0.5% when it\'s planted.')
     for (const l of [TOPUP.swapsLine(['SOL', 'SKR', 'JUP']), TOPUP.how(500, null, 'SKR')]) expect(l).not.toMatch(/—|–/)
   })
 

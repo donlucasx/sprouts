@@ -3,7 +3,9 @@ import { Pressable, TextInput, View } from 'react-native'
 import { Card } from './Card'
 import { Button } from './Button'
 import { ThemedText } from './ThemedText'
-import { QUESTIONS, TEXT_MAX, sendFeedback, type Question } from '@/lib/feedback'
+import { optionLabel, QUESTIONS, questionTitle, TEXT_MAX, sendFeedback, type Question } from '@/lib/feedback'
+import { t } from '@/i18n'
+import { useLang } from '@/i18n/useLang'
 import { SUPPORT_LOG_KEY } from '@/lib/support'
 import { useQueryClient } from '@tanstack/react-query'
 import { radius, spacing, TARGET, useTheme } from '@/theme'
@@ -19,6 +21,7 @@ export const SENT_SHOWN_MS = 2500
 export const SENT_WITH_REF_MS = 4000
 
 export function QuestionCard(p: { question: Question; askRef?: string; onDone: () => void }) {
+  useLang()
   const { colors } = useTheme()
   const q = QUESTIONS[p.question]
   const [choice, setChoice] = useState<string | null>(null)
@@ -42,7 +45,7 @@ export function QuestionCard(p: { question: Question; askRef?: string; onDone: (
       setSent(true)
       if (ref) void queryClient.invalidateQueries({ queryKey: SUPPORT_LOG_KEY })
     } catch {
-      setError('Could not send it. Check your connection and try again.')
+      setError(t('ask.sendFailed'))
     } finally {
       setBusy(false)
     }
@@ -53,17 +56,17 @@ export function QuestionCard(p: { question: Question; askRef?: string; onDone: (
   doneRef.current = p.onDone
   useEffect(() => {
     if (!sent) return
-    const t = setTimeout(() => doneRef.current(), sentRef ? SENT_WITH_REF_MS : SENT_SHOWN_MS)
-    return () => clearTimeout(t)
+    const timer = setTimeout(() => doneRef.current(), sentRef ? SENT_WITH_REF_MS : SENT_SHOWN_MS)
+    return () => clearTimeout(timer)
   }, [sent, sentRef])
 
   if (sent) {
     return (
       <Card>
-        <ThemedText variant="heading">Message sent</ThemedText>
+        <ThemedText variant="heading">{t('support.sent')}</ThemedText>
         {sentRef ? (
           <ThemedText tone="secondary" numeric>
-            Reference {sentRef}
+            {t('support.ref', { ref: sentRef })}
           </ThemedText>
         ) : null}
       </Card>
@@ -72,7 +75,7 @@ export function QuestionCard(p: { question: Question; askRef?: string; onDone: (
 
   return (
     <Card>
-      <ThemedText variant="heading">{q.title}</ThemedText>
+      <ThemedText variant="heading">{questionTitle(p.question)}</ThemedText>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }}>
         {q.options.map((o) => {
           const on = o.value === choice
@@ -81,7 +84,7 @@ export function QuestionCard(p: { question: Question; askRef?: string; onDone: (
               key={o.value}
               onPress={() => setChoice(on ? null : o.value)}
               accessibilityRole="button"
-              accessibilityLabel={o.label}
+              accessibilityLabel={optionLabel(p.question, o.value)}
               accessibilityState={{ selected: on }}
               hitSlop={4}
               style={({ pressed }) => ({
@@ -96,7 +99,7 @@ export function QuestionCard(p: { question: Question; askRef?: string; onDone: (
               })}
             >
               <ThemedText variant="button" style={{ color: on ? colors.onAccent : colors.text }}>
-                {o.label}
+                {optionLabel(p.question, o.value)}
               </ThemedText>
             </Pressable>
           )
@@ -108,9 +111,9 @@ export function QuestionCard(p: { question: Question; askRef?: string; onDone: (
           onChangeText={setText}
           maxLength={TEXT_MAX}
           multiline
-          placeholder="Tell us more"
+          placeholder={t('ask.more')}
           placeholderTextColor={colors.textSecondary}
-          accessibilityLabel="Tell us more"
+          accessibilityLabel={t('ask.more')}
           editable={!busy}
           textAlignVertical="top"
           style={{
@@ -132,9 +135,9 @@ export function QuestionCard(p: { question: Question; askRef?: string; onDone: (
           value={email}
           onChangeText={setEmail}
           maxLength={254}
-          placeholder="Your email, if you'd like a reply"
+          placeholder={t('ask.email')}
           placeholderTextColor={colors.textSecondary}
-          accessibilityLabel="Your email, if you'd like a reply"
+          accessibilityLabel={t('ask.email')}
           editable={!busy}
           keyboardType="email-address"
           autoCapitalize="none"
@@ -154,8 +157,8 @@ export function QuestionCard(p: { question: Question; askRef?: string; onDone: (
       ) : null}
       {error ? <ThemedText style={{ color: colors.error }}>{error}</ThemedText> : null}
       <View style={{ flexDirection: 'row', gap: spacing.sm }}>
-        <Button title="Send" onPress={() => void send()} disabled={!choice} loading={busy} style={{ flex: 1 }} />
-        <Button title="Skip" kind="quiet" onPress={p.onDone} disabled={busy} />
+        <Button title={t('support.send')} onPress={() => void send()} disabled={!choice} loading={busy} style={{ flex: 1 }} />
+        <Button title={t('ask.skip')} kind="quiet" onPress={p.onDone} disabled={busy} />
       </View>
     </Card>
   )
