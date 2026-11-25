@@ -15,6 +15,8 @@ export const en = {
   // 11-25 (his ruling: "less a 0.5% fee"; CAN as two lines)
   'link.can.plants': 'Plants up to $5 of USDC a day into your own savings',
   'link.can.fee': 'Takes 0.5% per planting',
+  'link.cant.send': "Can't send your money anywhere else",
+  'link.cant.touch': "Can't touch other tokens or sell your garden",
   'promise.public': 'Even if our server is hacked, neither it nor the AI can move more than your daily round-up (max $5), and only into your own savings, less a 0.5% fee.',
   // 11-25 (his ruling "Name both"): the top-up swap is free; the planting carries the fee
   'topup.fee': "No fee on the swap. Sprouts takes 0.5% when it's planted.",

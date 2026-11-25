@@ -16,7 +16,7 @@ import { newlyLinked } from '@/lib/newly-linked'
 import { confirmWithRetries, LINK_NOT_ON_CHAIN_YET } from '@/lib/confirm-retry'
 import { useSession } from '@/lib/session'
 import { reportLinkFailure, type LinkFailure, type LinkStep } from '@/lib/link-report'
-import { CAN_KEYS, CANT, CODE_STEPS, LINK_FINISHING, SAFETY_HEADING, OTHER_WALLET_LINE, linkApprovalPath, phoneSolNote, phoneUsdcNote, setupAccountsOf, setupLine } from '@/lib/safety-copy'
+import { CAN_KEYS, CANT_KEYS, CODE_STEPS, LINK_FINISHING, SAFETY_HEADING, OTHER_WALLET_LINE, linkApprovalPath, phoneSolNote, phoneUsdcNote, setupAccountsOf, setupLine } from '@/lib/safety-copy'
 import { TopUpButton } from '@/components/TopUp'
 import { ME_USDC_SETUP, meUsdcSetupKey, TOPUP, TOPUP_DEFAULT_CENTS } from '@/lib/topup'
 import { useSolUsd } from '@/lib/sol-usd'
@@ -176,7 +176,7 @@ export default function Connect() {
       <ThemedText variant="heading">{SAFETY_HEADING}</ThemedText>
       <Card>
         {CAN_KEYS.map((k) => <Mark key={k} ok text={t(k)} />)}
-        {CANT.map((l) => <Mark key={l} ok={false} text={l} />)}
+        {CANT_KEYS.map((k) => <Mark key={k} ok={false} text={t(k)} />)}
       </Card>
       <View onLayout={(e) => (askBottom.current = e.nativeEvent.layout.y + e.nativeEvent.layout.height)}>
       <Card>

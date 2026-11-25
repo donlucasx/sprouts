@@ -88,7 +88,8 @@ export const SOL_CHEAPER_MIN_SPLIT_PCT = 25
  * 0.1.13 (his ruling "Point to SOL instead", his note "make sure this is appropriate/accurate/necessary"): the line that replaces the
  * fee sentence when the picked coin mostly goes back into itself at planting, said only when it is true AND actionable: the picked coin
  * is not SOL, is SOL_CHEAPER_MIN_SPLIT_PCT or more of the split, SOL is in the picker, covers this amount, and costs less. The share is
- * the server's, never a fixed number. Null otherwise (the fee sentence shows).
+ * the server's, never a fixed number. Null otherwise (the fee sentence shows). Only Home's read asks for sources with costs
+ * (ME_USDC_WITH_SOURCES); Link a wallet's ?setup=1 read has none, so the line can only show on Home (Kimi step 3 #14).
  */
 export function solCheaperLine(picked: TopUpSource | null, usable: readonly TopUpSource[] | null, cents: number): string | null {
   if (!picked || !usable || picked.mint === WSOL_MINT) return null

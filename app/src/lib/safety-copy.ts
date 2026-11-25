@@ -14,10 +14,8 @@ export const LINK_INTRO = 'Every swap rounds up. Once a day, Sprouts plants the 
 export const CAN_KEYS = ['link.can.plants', 'link.can.fee'] as const
 export const CAN: readonly string[] = CAN_KEYS.map((k) => en[k])
 
-export const CANT: readonly string[] = [
-  "Can't send your money anywhere else",
-  "Can't touch other tokens or sell your garden",
-]
+export const CANT_KEYS = ['link.cant.send', 'link.cant.touch'] as const
+export const CANT: readonly string[] = CANT_KEYS.map((k) => en[k])
 
 /**
  * 10-27 (WAL-002 store rejection + his note "this is a scary permission that will turn off most people"): the wallet's "unlimited USDC"

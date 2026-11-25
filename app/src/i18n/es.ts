@@ -12,6 +12,8 @@ export const es: Partial<Record<Key, string>> = {
   'link.approval.back': 'Volver',
   'link.can.plants': 'Planta hasta $5 de USDC al día en tus propios ahorros',
   'link.can.fee': 'Cobra 0,5% por plantación',
+  'link.cant.send': 'No puede enviar tu dinero a ningún otro lugar',
+  'link.cant.touch': 'No puede tocar otros tokens ni vender tu jardín',
   'promise.public': 'Aunque hackeen nuestro servidor, ni él ni la IA pueden mover más que tu redondeo diario (máx. $5), y solo a tus propios ahorros, menos una comisión del 0,5%.',
   'topup.fee': 'El swap no tiene comisión. Sprouts cobra 0,5% al plantar.',
   'topup.solCheaper': 'Tu reparto vuelve a plantar el {pct}% en {symbol}, así que SOL cuesta menos.',
