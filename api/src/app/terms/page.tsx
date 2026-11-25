@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
+import type { ReactNode } from "react";
 import { Outfit, Albert_Sans } from "next/font/google";
 import { TERMS_MD } from "@/lib/terms-text";
+import { TERMS_MD_ES } from "@/lib/terms-text-es";
 import { SiteFooter, SiteHeader } from "../site-chrome";
+import { pageLang } from "../page-lang";
 
 /** The Terms of Use and Privacy, public (10-05: wallet reviewers asked for the site's terms; the same text the app shows). */
 const outfit = Outfit({ subsets: ["latin"], weight: ["600"], variable: "--font-display" });
@@ -23,7 +26,7 @@ function blocks(md: string) {
 
 /** His ask 10-23: the section names under the title, so the long page can be skipped through. */
 function contents(md: string) {
-  const heads = md.split("\n").filter((l) => l.startsWith("## ")).map((l) => l.slice(3)).filter((h) => !h.startsWith("In three lines"));
+  const heads = md.split("\n").filter((l) => l.startsWith("## ")).map((l) => l.slice(3)).filter((h) => !h.startsWith("In three lines") && !h.startsWith("En tres líneas"));
   return <nav className="toc" aria-label="Sections">{heads.map((h) => <a key={h} href={`#${slug(h)}`}>{h}</a>)}</nav>;
 }
 
@@ -41,13 +44,34 @@ const CSS = `
 .terms a { color:var(--leaf-ink); }
 `;
 
-/** The title, then the section links, then the text. */
-function withContents(md: string) {
-  const [first, ...rest] = blocks(md);
-  return [first, <div key="toc">{contents(md)}</div>, ...rest];
+/** The title, then the section links, then the text. The Spanish opens with its courtesy line (and the link to the English) above the
+ *  title, so the links go after the title wherever it is; for the English that is the first block, as before. */
+function withContents(md: string, lead: ReactNode[] = []) {
+  const all = blocks(md);
+  const i = Math.max(0, all.findIndex((b) => b.type === "h1"));
+  return [...all.slice(0, i), ...lead, all[i], <div key="toc">{contents(md)}</div>, ...all.slice(i + 1)];
 }
 
-export default function Terms() {
+/** 0.1.13 Spanish pass P10: the Spanish courtesy translation for a browser that prefers es (the English governs, one link away at
+ *  ?lang=en). Its summary keeps the "## In three lines" marker the app splits on; on the web that heading shows in Spanish. */
+const ES_SUMMARY_FROM = '## In three lines (for the "I agree" screen)\n\nEn tres líneas (para la pantalla "Acepto")';
+const ES_SUMMARY_TO = '## En tres líneas (para la pantalla "Acepto")';
+const TERMS_WEB_ES = TERMS_MD_ES.replace(ES_SUMMARY_FROM, ES_SUMMARY_TO);
+const READ_ENGLISH = <p key="en"><a href="/terms?lang=en" hrefLang="en">Leer la versión en inglés (vinculante)</a></p>;
+
+export default async function Terms({ searchParams }: { searchParams?: Promise<{ lang?: string | string[] }> }) {
+  const asked = (await searchParams)?.lang;
+  const lang = asked === "en" ? "en" : asked === "es" ? "es" : await pageLang();
+  if (lang === "es") {
+    return (
+      <div className={`terms ${outfit.variable} ${albert.variable}`} lang="es">
+        <style>{CSS}</style>
+        <SiteHeader darkOk />
+        <div className="wrap">{withContents(TERMS_WEB_ES, [READ_ENGLISH])}</div>
+        <SiteFooter lang="es" />
+      </div>
+    );
+  }
   return (
     <div className={`terms ${outfit.variable} ${albert.variable}`}>
       <style>{CSS}</style>

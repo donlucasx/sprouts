@@ -8,21 +8,24 @@ import { ThemedText } from '@/components/ThemedText'
 import { api, ApiError, type MeResponse } from '@/lib/api'
 import { useSession } from '@/lib/session'
 import { readLastMe, useMe, writeLastMe } from '@/lib/me'
-import { TERMS_VERSION, agreedLine, termsAction, termsBlocks, termsSummary, withAccepted } from '@/lib/terms'
+import { TERMS_VERSION, agreedLine, termsAction, termsPage, termsSummary, termsText, withAccepted } from '@/lib/terms'
 import { spacing } from '@/theme'
 import { useLang } from '@/i18n/useLang'
 import { t } from '@/i18n'
 
 /** R283: the one plain page (the final text, verbatim), linked from Welcome, Home and Settings. A signed-in user who has not accepted this version agrees here. */
 export default function Terms() {
-  useLang()
+  const lang = useLang()
+  // P10: Spanish shows the courtesy translation, one tap from the binding English. Accepting is the same version either way.
+  const [binding, setBinding] = useState(false)
+  const md = termsText(lang, binding)
   const { session } = useSession()
   const queryClient = useQueryClient()
   // The same read Home's card is driven by: the live read, or the last verified one when the live fetch failed.
   const me = useMe().data ?? readLastMe()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const blocks = termsBlocks()
+  const page = termsPage(md)
   // Controller ruling (Task 11 review, risk 3): the card only. New sign-ins accept at /api/auth/verify; there is no hard block on other screens.
   const action = session !== null ? termsAction(me) : null
   async function accept() {
@@ -48,8 +51,11 @@ export default function Terms() {
     }
   }
   return (
-    <Screen back title={blocks[0]?.text}>
-      {blocks.slice(1).map((b, i) =>
+    <Screen back title={page.title}>
+      {lang === 'es' ? (
+        <Button kind="quiet" title={binding ? t('terms.readSpanish') : t('terms.readEnglish')} onPress={() => setBinding((b) => !b)} />
+      ) : null}
+      {page.body.map((b, i) =>
         b.kind === 'heading' ? (
           <ThemedText key={i} variant="heading" style={{ marginTop: spacing.sm }}>
             {b.text}
@@ -60,7 +66,7 @@ export default function Terms() {
       )}
       {action !== null ? (
         <Card>
-          {termsSummary().map((l) => (
+          {termsSummary(md).map((l) => (
             <ThemedText key={l}>{`• ${l}`}</ThemedText>
           ))}
           {action === 'agree' ? (

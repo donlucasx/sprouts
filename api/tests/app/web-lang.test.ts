@@ -6,12 +6,14 @@ import type { ReactElement } from "react";
 const { acceptLanguage } = vi.hoisted(() => ({ acceptLanguage: { value: null as string | null } }));
 vi.mock("next/headers", () => ({ headers: async () => new Headers(acceptLanguage.value ? { "accept-language": acceptLanguage.value } : {}) }));
 vi.mock("next/font/google", () => {
-  const font = () => ({ className: "font" });
+  const font = () => ({ className: "font", variable: "v" });
   return { Outfit: font, Albert_Sans: font, Geist: font, Geist_Mono: font };
 });
 import LinkPage from "@/app/link/page";
 import RevokePage from "@/app/revoke/page";
 import FaqsPage from "@/app/faqs/page";
+import TermsPage from "@/app/terms/page";
+import { readFileSync } from "node:fs";
 import { CAN, CANT, SAFETY_ES } from "@/lib/link-safety-copy";
 
 const render = async (page: () => Promise<ReactElement>, lang: string | null) => {
@@ -57,5 +59,37 @@ describe("web pages follow Accept-Language", () => {
     for (const l of SAFETY_ES.can) expect(es).toContain(l);
     expect(es).not.toContain("How does it work?");
     expect(es).not.toMatch(/—/);
+  });
+
+  // P10: /terms. The English render is the page as it was before P10 (tests/fixtures, rendered with these same mocks) minus the removed line.
+  const terms = (lang: string | null, query?: Record<string, string>) => {
+    acceptLanguage.value = lang;
+    return (async () => renderToStaticMarkup(await TermsPage({ searchParams: Promise.resolve(query ?? {}) })))();
+  };
+  it("/terms: English without the header, byte for byte as before except the removed line", async () => {
+    const before = readFileSync("tests/fixtures/terms-web-en-before-p10.html", "utf8");
+    const gone = "<p>To be completed: the parts in brackets are not final yet.</p>";
+    expect(before).toContain(gone);
+    expect(await terms(null)).toBe(before.replace(gone, ""));
+    expect(await terms("en-US,es;q=0.9")).toBe(before.replace(gone, ""));
+  });
+  it("/terms: Spanish for es, with the courtesy line, a link to the binding English, and the same version", async () => {
+    const es = await terms("es-AR,es;q=0.9");
+    expect(es).toContain("Esta es una traducción de cortesía.");
+    expect(es).toContain('<a href="/terms?lang=en" hrefLang="en">Leer la versión en inglés (vinculante)</a>');
+    expect(es).toContain("<h1>Sprouts: Términos de uso y privacidad</h1>");
+    expect(es).toContain("Versión 2026-11-23.");
+    expect(es).toContain('lang="es"');
+    expect(es).toContain("<h2 id=\"en-tres-l-neas-para-la-pantalla-acepto\">");
+    expect(es).not.toContain("In three lines");
+    expect(es).not.toContain("Pendiente de completar");
+    expect(es).not.toContain("What Sprouts is");
+    // the courtesy line and the link sit above the title; the section links right after it
+    expect(es.indexOf("traducción de cortesía")).toBeLessThan(es.indexOf("<h1>"));
+    expect(es.indexOf('class="toc"')).toBeGreaterThan(es.indexOf("<h1>"));
+    expect(es).not.toContain('href="#en-tres');
+  });
+  it("/terms?lang=en gives the English even when the browser prefers Spanish", async () => {
+    expect(await terms("es", { lang: "en" })).toBe(await terms(null));
   });
 });

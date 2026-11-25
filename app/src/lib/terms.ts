@@ -1,6 +1,8 @@
 import { t } from "@/i18n";
 import type { MeResponse } from "./api";
 import { TERMS_MD } from "./terms-text";
+import { TERMS_MD_ES } from "./terms-text-es";
+import type { Lang } from "@/i18n";
 import { dayMonthYear } from "@/i18n/format"
 
 /** Contracts 5.6 (DECIDED 10-04): the version the API records at sign-in and on POST /api/terms. */
@@ -18,6 +20,18 @@ export function termsBlocks(md: string = TERMS_MD): TermsBlock[] {
     .map((l): TermsBlock =>
       l.startsWith("# ") ? { kind: "title", text: l.slice(2) } : l.startsWith("## ") ? { kind: "heading", text: l.slice(3) } : l.startsWith("- ") ? { kind: "bullet", text: l.slice(2) } : { kind: "para", text: l },
     );
+}
+/** 0.1.13 Spanish pass P10: the text the Terms page shows. Spanish (a courtesy translation) when the app is in Spanish, unless the reader
+ *  asked for the binding English. Only the text changes: the version and what accepting records are the same in every language. */
+export function termsText(lang: Lang, binding = false): string {
+  return lang === "es" && !binding ? TERMS_MD_ES : TERMS_MD;
+}
+/** The page's title and the blocks under it. The Spanish opens with its courtesy line before the title, so the title is found, not
+ *  assumed first; for the English this is blocks[0] and blocks.slice(1), as before. */
+export function termsPage(md: string = TERMS_MD): { title: string | undefined; body: TermsBlock[] } {
+  const all = termsBlocks(md);
+  const i = all.findIndex((b) => b.kind === "title");
+  return i < 0 ? { title: undefined, body: all } : { title: all[i].text, body: [...all.slice(0, i), ...all.slice(i + 1)] };
 }
 /** The three lines the acceptance screen shows. */
 export function termsSummary(md: string = TERMS_MD): string[] {

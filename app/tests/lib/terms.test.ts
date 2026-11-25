@@ -1,12 +1,24 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, afterEach } from 'vitest'
 import { existsSync, readFileSync } from 'node:fs'
 import { TERMS_MD } from '@/lib/terms-text'
-import { TERMS_VERSION, termsAction, termsBlocks, termsNeeded, termsSummary, withAccepted, stampSignIn, agreedLine } from '@/lib/terms'
+import { TERMS_MD_ES } from '@/lib/terms-text-es'
+import { TERMS_VERSION, termsAction, termsBlocks, termsNeeded, termsSummary, termsText, termsPage, withAccepted, stampSignIn, agreedLine } from '@/lib/terms'
+import { currentLang, t, writeLangChoice } from '@/i18n'
 
 const FINAL = new URL('../../../../../docs/legal/2026-11-23-terms.md', import.meta.url) // the project's docs/legal, outside the repo
 
 describe('Terms + Privacy (R283; R365, the text of 10-07)', () => {
-  it.skipIf(!existsSync(FINAL))('is the final file, byte for byte (never paraphrased)', () => expect(TERMS_MD).toBe(readFileSync(FINAL, 'utf8')))
+  // P10 (his ruling 11-25): the bundled text is the final file without its "To be completed" line (and that line's blank line), same version.
+  const REMOVED = 'To be completed: the parts in brackets are not final yet.\n\n'
+  it.skipIf(!existsSync(FINAL))('is the final file, byte for byte (never paraphrased), less the removed line', () => {
+    const final = readFileSync(FINAL, 'utf8')
+    expect(TERMS_MD).toBe(final.includes(REMOVED) ? final.replace(REMOVED, '') : final)
+  })
+  it('P10: the "To be completed" line is gone and the version is unchanged', () => {
+    expect(TERMS_MD).not.toContain('To be completed')
+    expect(TERMS_MD).toContain('## Liability and governing law\n\nThese Terms are governed by')
+    expect(TERMS_VERSION).toBe('2026-11-23')
+  })
   it("the version is the page's own", () => {
     expect(TERMS_VERSION).toBe('2026-11-23')
     expect(TERMS_MD).toContain('Version 2026-11-23.')
@@ -83,5 +95,42 @@ describe('after sign-in (0.1.9, 11-07: no stale Terms card)', () => {
     expect(agreedLine({ terms: { ...accepted.terms, acceptedAt: null } }, 'UTC')).toBeNull()
     expect(agreedLine({ terms: { currentVersion: 'x', acceptedVersion: 'x' } }, 'UTC')).toBeNull()
     expect(agreedLine(null, 'UTC')).toBeNull()
+  })
+})
+
+describe('P10: the Spanish courtesy translation', () => {
+  const heads = (md: string) => md.split('\n').filter((l) => l.startsWith('## '))
+  afterEach(() => writeLangChoice('auto'))
+  it('opens with the courtesy line, keeps the version, the marker and the section count, and drops the reviewer notes', () => {
+    expect(TERMS_MD_ES.split('\n')[0]).toBe('Esta es una traducción de cortesía. Si hay cualquier diferencia entre esta versión y la versión en inglés, la versión en inglés es la vinculante.')
+    expect(TERMS_MD_ES).toContain('Versión 2026-11-23.')
+    expect(TERMS_MD_ES).toContain('\n## In three lines (for the "I agree" screen)\n')
+    expect(heads(TERMS_MD_ES)).toHaveLength(heads(TERMS_MD).length)
+    for (const bad of ['<!--', 'Para revisar', 'Pendiente de completar', 'corchetes', '---', '—']) expect(TERMS_MD_ES).not.toContain(bad)
+  })
+  it('the headings in the same order as the English (the section each one translates)', () => {
+    expect(termsPage(TERMS_MD_ES).body.filter((b) => b.kind === 'heading').map((b) => b.text)).toEqual(['Qué es Sprouts', 'Sprouts no es un banco', 'Quién puede usar Sprouts', 'Tu dinero se queda en tu billetera', 'Qué autoriza vincular una billetera', 'Sacar dinero', 'El gestor de rendimiento', 'Riesgos', 'Comisiones', 'Datos que guardamos', 'Si Sprouts cierra', 'Responsabilidad y ley aplicable', 'Cambios a estos términos', 'Contacto'])
+    expect(termsBlocks(TERMS_MD_ES).filter((b) => b.kind === 'bullet')).toHaveLength(termsBlocks().filter((b) => b.kind === 'bullet').length)
+  })
+  it('the Spanish page: its title found after the courtesy line; its summary is the es Home lines word for word', () => {
+    const p = termsPage(TERMS_MD_ES)
+    expect(p.title).toBe('Sprouts: Términos de uso y privacidad')
+    expect(p.body[0]).toEqual({ kind: 'para', text: TERMS_MD_ES.split('\n')[0] })
+    expect(termsSummary(TERMS_MD_ES)).toEqual([1, 2, 3].map((n) => t(`terms.summary.${n}` as 'terms.summary.1', undefined, 'es')))
+  })
+  it('the English page is unchanged by termsPage: blocks[0] as the title, the rest as the body', () => {
+    const p = termsPage()
+    expect(p.title).toBe(termsBlocks()[0].text)
+    expect(p.body).toEqual(termsBlocks().slice(1))
+  })
+  it('the app shows Spanish under es (one tap from the binding English) and English under en', () => {
+    writeLangChoice('es')
+    expect(termsText(currentLang())).toBe(TERMS_MD_ES)
+    expect(termsText(currentLang(), true)).toBe(TERMS_MD)
+    expect(t('terms.readEnglish')).toBe('Leer la versión en inglés (vinculante)')
+    writeLangChoice('en')
+    expect(termsText(currentLang())).toBe(TERMS_MD)
+    expect(termsText(currentLang(), true)).toBe(TERMS_MD)
+    expect(t('terms.readEnglish')).toBe('Read the binding English')
   })
 })

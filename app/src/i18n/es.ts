@@ -539,6 +539,8 @@ export const es: Partial<Record<Key, string>> = {
   "terms.slow": "Tardó demasiado. Inténtalo de nuevo.",
   "terms.saveFailed": "No se pudo guardar. Inténtalo de nuevo.",
   "terms.agreed": "Aceptaste estos Términos el {date}.",
+  "terms.readEnglish": "Leer la versión en inglés (vinculante)",
+  "terms.readSpanish": "Leer en español",
   // ---- P5 (d) Vincular una billetera, re-vincular, inicio de sesión, firmas ----
   'link.title': 'Vincular una billetera',
   'link.safety.heading': 'Lo que Sprouts puede y no puede hacer',

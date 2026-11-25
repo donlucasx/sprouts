@@ -558,6 +558,8 @@ export const en = {
   "terms.slow": "That took too long. Try again.",
   "terms.saveFailed": "Could not save that. Try again.",
   "terms.agreed": "You agreed to these Terms on {date}.",
+  "terms.readEnglish": "Read the binding English",
+  "terms.readSpanish": "Read in Spanish",
   // ---- P5 (d) Link a wallet, re-link card, sign-in, the wallet-signing lines (safety-copy.ts, relink.ts, sign.ts, wallet-errors.ts) ----
   'link.title': 'Link a wallet',
   'link.safety.heading': "What Sprouts can and can't do",
