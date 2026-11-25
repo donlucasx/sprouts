@@ -1,5 +1,6 @@
 import { langOf } from "@/lib/i18n";
 import { apiError } from "@/lib/api-error";
+import { readRules } from "@/lib/rules-read";
 import { NextResponse } from "next/server";
 import { address } from "@solana/kit";
 import { requireSession, rateLimited } from "@/lib/auth-guard";
@@ -91,7 +92,7 @@ async function setupCount(me: ReturnType<typeof address>, sol: bigint | null): P
   if (sol === null) return 0;
   try {
     const repo = await getRepo();
-    const missing = await missingSetupMints(me, rulesRowToRules(await repo.getRules(me)));
+    const missing = await missingSetupMints(me, rulesRowToRules(await readRules(repo, me)));
     const n = Math.min(missing.length, SETUP_MAX);
     return n > 0 && linkSetupCovered(sol, n) ? n : 0;
   } catch (e) {

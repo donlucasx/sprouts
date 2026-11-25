@@ -217,12 +217,12 @@ export const JUPITER_RETRY_MS: readonly number[] = [500, 1_500];
 const RETRY_AFTER_CAP_MS = 3_000;
 
 export function isJupiterRateLimit(e: unknown): boolean {
-  return e instanceof JupiterRateLimited || (e instanceof Error && /^Jupiter (quote|swap-instructions|price) failed: 429\b/.test(e.message));
+  return e instanceof JupiterRateLimited || (e instanceof Error && /^Jupiter (quote|swap-instructions|price|token search) failed: 429\b/.test(e.message));
 }
 
 /** One Jupiter call, retried on 429 only. Any other status comes back to the caller, whose own error text stays as it was. */
 export async function jupiterFetch(
-  url: string, init: RequestInit, what: "quote" | "swap-instructions" | "price",
+  url: string, init: RequestInit, what: "quote" | "swap-instructions" | "price" | "token search",
   sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
 ): Promise<Response> {
   for (let attempt = 0; ; attempt++) {
@@ -323,7 +323,8 @@ export type JupiterToken = { symbol: string; decimals: number; verified: boolean
  * Jupiter does not know it. Throws on a failed call. The any-coin top-up (Task 7) lists only verified coins of the classic Token program.
  */
 export async function jupiterToken(mint: string): Promise<JupiterToken | null> {
-  const res = await fetch(`${BASE}/tokens/v2/search?query=${encodeURIComponent(mint)}`, { headers: headers(), signal: timeout() });
+  // 11-25 (server queue): through jupiterFetch, so a 429 is retried like every other Jupiter call on the top-up path.
+  const res = await jupiterFetch(`${BASE}/tokens/v2/search?query=${encodeURIComponent(mint)}`, { headers: headers() }, "token search");
   if (!res.ok) throw new Error(`Jupiter token search failed: ${res.status}`);
   const list = (await res.json()) as { id?: unknown; symbol?: unknown; decimals?: unknown; isVerified?: unknown; tokenProgram?: unknown }[];
   const t = Array.isArray(list) ? list.find((x) => x?.id === mint) : undefined;

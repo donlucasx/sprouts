@@ -1,5 +1,6 @@
 import { langOf, lineText } from "@/lib/i18n";
 import { foundNoteFor } from "@/lib/split-run";
+import { readRules } from "@/lib/rules-read";
 import { apiError } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { getRepo } from "@/db/repo";
@@ -35,7 +36,7 @@ export async function GET(request: Request) {
   const [todays, latest] = await Promise.all([repo.listVenueDays(today), latestVenueRows(repo, today)]);
   const rows: VenueDayRow[] = [...todays, ...latest.filter((l) => !todays.some((t) => t.venue === l.venue && t.asset === l.asset))];
   const day = rows.reduce((m, r) => (r.day > m ? r.day : m), rows[0]?.day ?? today);
-  const rules = await repo.getRules(user.seedVaultPubkey);
+  const rules = await readRules(repo, user.seedVaultPubkey);
   const split = (await repo.getSplitDay(today, rules.stop)) ?? (await repo.latestSplitDay(rules.stop));
   // K-I5: `picked`, `picks` and `why` after THIS user's 60% venue cap, exactly as /api/me computes them.
   const positions = await readLendingPositions(address(user.seedVaultPubkey)).catch((e: unknown) => {
