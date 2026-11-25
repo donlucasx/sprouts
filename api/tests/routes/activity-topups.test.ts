@@ -32,7 +32,7 @@ describe("GET /api/activity top-ups", () => {
     await sent("a");
     await repo.addEvent({ userPubkey: U, walletPubkey: U, kind: "topped_up", detail: { signature: "a", usdcRaw: "5000000", sentAt: "2026-10-27T20:00:00.000Z" } });
     await repo.addEvent({ userPubkey: U, walletPubkey: U, kind: "topped_up", detail: { signature: "b", usdcRaw: "five" } });
-    expect((await get()).topUps).toEqual([{ ts: "2026-10-27T20:00:00.000Z", signature: "a", usdcRaw: "5000000" }]);
+    expect((await get()).topUps).toEqual([{ ts: "2026-10-27T20:00:00.000Z", signature: "a", usdcRaw: "5000000", coin: null }]);   // 11-24: no coin recorded then
     expect(asked).toEqual([]); // a mark that already has its row is not asked again
   });
 

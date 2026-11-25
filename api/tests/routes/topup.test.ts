@@ -338,7 +338,7 @@ describe("POST /api/topup/confirm records the top-up", () => {
     const { signature } = await res.json();
     expect(sentWhenMarked).toEqual([0]);
     expect(kinds()).toEqual(["topup_sent", "topped_up"]);
-    expect(repo.events.map((e) => e.detail)).toEqual([{ signature, usdcRaw: "5000000" }, { signature, usdcRaw: "5000000", sentAt: expect.any(String) }]);
+    expect(repo.events.map((e) => e.detail)).toEqual([{ signature, usdcRaw: "5000000", inputMint: "So11111111111111111111111111111111111111112", coin: "SOL" }, { signature, usdcRaw: "5000000", inputMint: "So11111111111111111111111111111111111111112", coin: "SOL", sentAt: expect.any(String) }]);   // 11-24: what paid
     expect(repo.events.every((e) => e.userPubkey === USER && e.walletPubkey === USER)).toBe(true);
   });
 

@@ -382,6 +382,13 @@ const usableToken = (mint: string, t: JupiterToken | null): t is JupiterToken =>
  * Jupiter's word on a coin (symbol, decimals, verified, token program): a usable coin kept a day, any other answer NEGATIVE_TTL_MS.
  * Callers reach it only for a coin the wallet holds (the memo is capped too, memo.ts MEMO_MAX_ENTRIES).
  */
+/** 11-24 (his "should it be recorded and show in each users activity?"): the paying coin's symbol for the top-up's record; null when unknown. */
+export async function topUpCoinSymbol(mint: string): Promise<string | null> {
+  if (mint === WSOL_MINT) return "SOL";
+  if (mint === SKR_MINT) return "SKR";
+  const s = (await topUpToken(mint).catch(() => null))?.symbol;
+  return typeof s === "string" && /^[A-Za-z0-9.$]{1,12}$/.test(s) ? s : null;
+}
 const topUpToken = (mint: string): Promise<JupiterToken | null> =>
   cached(`topup-token:${mint}`, () => jupiterToken(mint), () => true, (t) => (usableToken(mint, t) ? DAY_MS : NEGATIVE_TTL_MS));
 /**

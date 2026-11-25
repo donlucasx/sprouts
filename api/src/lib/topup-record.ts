@@ -10,19 +10,21 @@ import { signatureStatuses } from "./planting";
  *   read as a SOL->USDC swap; bookSwap skips a marked signature, and the mark exists before the chain can see the transaction.
  * - `topped_up`, once it landed: Activity's row. `sentAt` is the mark's time, so a top-up settled later still sorts where it happened.
  */
-type Mark = { user: string; signature: string; usdcRaw: string };
+/** 11-24: `inputMint` and `coin` name what paid (SOL or the coin), so Activity can say it; absent on top-ups recorded before. */
+type Mark = { user: string; signature: string; usdcRaw: string; inputMint?: string; coin?: string | null };
+const paidWith = (m: Mark) => ({ ...(m.inputMint ? { inputMint: m.inputMint } : {}), ...(m.coin ? { coin: m.coin } : {}) });
 
 /** Throws when the mark could not be written: the caller must not send (an unmarked top-up would be booked as a swap). */
 export async function markTopUpSent(repo: Repo, m: Mark): Promise<void> {
   if ((await repo.topUpKinds(m.signature, m.user)).includes("topup_sent")) return;
-  await repo.addEvent({ userPubkey: m.user, walletPubkey: m.user, kind: "topup_sent", detail: { signature: m.signature, usdcRaw: m.usdcRaw } });
+  await repo.addEvent({ userPubkey: m.user, walletPubkey: m.user, kind: "topup_sent", detail: { signature: m.signature, usdcRaw: m.usdcRaw, ...paidWith(m) } });
 }
 
 /** The money already moved, so a failed write is logged, never thrown into the user's answer. */
 export async function recordTopUpLanded(repo: Repo, m: Mark & { sentAt: Date }): Promise<void> {
   try {
     if ((await repo.topUpKinds(m.signature, m.user)).includes("topped_up")) return;
-    await repo.addEvent({ userPubkey: m.user, walletPubkey: m.user, kind: "topped_up", detail: { signature: m.signature, usdcRaw: m.usdcRaw, sentAt: m.sentAt.toISOString() } });
+    await repo.addEvent({ userPubkey: m.user, walletPubkey: m.user, kind: "topped_up", detail: { signature: m.signature, usdcRaw: m.usdcRaw, ...paidWith(m), sentAt: m.sentAt.toISOString() } });
   } catch (e) {
     console.error(`top-up ${m.signature}: landed, but its Activity row was not written: ${e instanceof Error ? e.message : String(e)}`);
   }
@@ -50,8 +52,9 @@ export async function settleTopUps(repo: Repo, user: string, now = new Date()): 
   const since = now.getTime() - SETTLE_DAYS * 86_400_000;
   const open = events.filter((e) => e.kind === "topup_sent" && e.ts.getTime() >= since && !landed.has(sig(e.detail))).slice(0, SETTLE_MAX);
   const marks = open.flatMap((e) => {
-    const d = e.detail as { signature?: unknown; usdcRaw?: unknown } | null;
-    return typeof d?.signature === "string" && typeof d.usdcRaw === "string" && /^\d+$/.test(d.usdcRaw) ? [{ signature: d.signature, usdcRaw: d.usdcRaw, sentAt: e.ts }] : [];
+    const d = e.detail as { signature?: unknown; usdcRaw?: unknown; inputMint?: unknown; coin?: unknown } | null;
+    if (!(typeof d?.signature === "string" && typeof d.usdcRaw === "string" && /^\d+$/.test(d.usdcRaw))) return [];
+    return [{ signature: d.signature, usdcRaw: d.usdcRaw, sentAt: e.ts, ...(typeof d.inputMint === "string" ? { inputMint: d.inputMint } : {}), ...(typeof d.coin === "string" ? { coin: d.coin } : {}) }];
   });
   const settled: EventRow[] = [];
   try {
@@ -59,7 +62,7 @@ export async function settleTopUps(repo: Repo, user: string, now = new Date()): 
     for (const [i, m] of marks.entries()) {
       if (statuses[i] !== "confirmed") continue;
       await recordTopUpLanded(repo, { user, ...m });
-      settled.push({ id: 0, userPubkey: user, walletPubkey: user, ts: now, kind: "topped_up", detail: { ...m, sentAt: m.sentAt.toISOString() } });
+      settled.push({ id: 0, userPubkey: user, walletPubkey: user, ts: now, kind: "topped_up", detail: { signature: m.signature, usdcRaw: m.usdcRaw, ...paidWith({ user, ...m }), sentAt: m.sentAt.toISOString() } });
     }
   } catch (err) {
     console.error(`top-up settle for ${user}: ${err instanceof Error ? err.message : String(err)}`);
