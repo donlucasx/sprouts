@@ -7,6 +7,7 @@ import { sharedPriceUsd } from "@/lib/shared-reads";
 import { affordableTopUps, topUpSources } from "@/lib/topup";
 import { WSOL_MINT } from "@/lib/constants";
 import { getRepo } from "@/db/repo";
+import { ownerCached } from "@/lib/memo";
 import { rulesRowToRules } from "@/db/types";
 import { linkSetupCovered, missingSetupMints, SETUP_MAX } from "@/lib/user-setup";
 
@@ -29,11 +30,12 @@ export async function GET(request: Request) {
   if (session instanceof NextResponse) return session;
   const me = address(session.pubkey);
   const [usdc, sol, solUsd] = await Promise.all([
-    readUsdcBalanceRaw(me).then((r) => r.toString(), (e) => {
+    // 11-25 (carousel load, Kimi hotfix): 15 s per instance; the failure fallbacks stay outside the cache.
+    ownerCached(me, "usdc", () => readUsdcBalanceRaw(me)).then((r) => r.toString(), (e) => {
       console.error(`/api/me/usdc: the balance could not be read (${e instanceof Error ? e.message : String(e)})`);
       return null;
     }),
-    Promise.resolve().then(() => rpc().getBalance(me).send()).then((r) => BigInt(r.value), () => null),
+    ownerCached(me, "sol", () => rpc().getBalance(me).send()).then((r) => BigInt(r.value), () => null),
     Promise.resolve().then(() => sharedPriceUsd(WSOL_MINT)).catch(() => null),   // 11-23: display only, the shared 120 s read
   ]);
   const topUpCents = sol !== null && solUsd !== null ? affordableTopUps(sol, solUsd) : null;
@@ -47,7 +49,8 @@ export async function GET(request: Request) {
   if (!wantSources && !wantSetup) return NextResponse.json(body);
   const [sources, setupAccounts] = await Promise.all([
     wantSources
-      ? topUpSources(me, sol, solUsd, topUpCents).catch((e) => {
+      // 30 s (Kimi #2: the build re-reads balances and re-quotes, so a cached list never moves money). 0.1.13 adds the phone's caps to the key.
+      ? ownerCached(me, "sources", () => topUpSources(me, sol, solUsd, topUpCents), 30_000).catch((e) => {
         console.error(`/api/me/usdc: the top-up coins could not be read (${e instanceof Error ? e.message : String(e)})`);
         return null;
       })

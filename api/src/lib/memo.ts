@@ -34,6 +34,36 @@ export function cached<T>(key: string, read: () => Promise<T>, keep: (v: T) => b
   return value;
 }
 
+/**
+ * 11-25 (carousel load: Helius credits ~5k/day -> ~100k/day, nearly all GET /api/me and /api/me/usdc, Kimi hotfix scope): one
+ * owner's chain reads for the Home GETs, kept OWNER_TTL_MS per function instance. Its own map (Kimi #4), so per-user keys never evict
+ * the shared price and snapshot reads above. Keys are `owner:<pubkey>:<reader>`; forgetOwnerReads clears one owner after a write they
+ * made on this instance (other instances may show chain state up to the TTL old). Only the GET call sites use it, never a reader
+ * itself (Kimi #1: readDelegation also backs the link confirm's poll) and never a money path (top-up build reads fresh, Kimi #3).
+ * In-flight reads are shared; a rejection is never kept.
+ */
+export const OWNER_TTL_MS = 15_000;
+export const OWNER_MAX_ENTRIES = 5_000;
+const owners = new Map<string, { at: number; ttl: number; value: Promise<unknown> }>();
+export function ownerCached<T>(owner: string, reader: string, read: () => Promise<T>, ttlMs = OWNER_TTL_MS): Promise<T> {
+  const key = `owner:${owner}:${reader}`;
+  const now = Date.now();
+  const hit = owners.get(key);
+  if (hit && now - hit.at < hit.ttl) return hit.value as Promise<T>;
+  const value = read();
+  const entry = { at: now, ttl: ttlMs, value };
+  owners.delete(key);
+  owners.set(key, entry);
+  while (owners.size > OWNER_MAX_ENTRIES) owners.delete(owners.keys().next().value as string);
+  value.catch(() => { if (owners.get(key) === entry) owners.delete(key); });
+  return value;
+}
+/** After a write `owner` made (a top-up, withdrawal, link, re-link, revoke, move): this instance reads their chain state fresh. */
+export function forgetOwnerReads(owner: string): void {
+  const prefix = `owner:${owner}:`;
+  for (const k of [...owners.keys()]) if (k.startsWith(prefix)) owners.delete(k);
+}
+
 /** Tests: every test starts from fresh reads. */
-export function clearSharedReads(): void { memo.clear(); }
+export function clearSharedReads(): void { memo.clear(); owners.clear(); }
 

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { forgetOwnerReads } from "@/lib/memo";
 import { z } from "zod";
 import { address, type Base64EncodedWireTransaction } from "@solana/kit";
 import { ASSOCIATED_TOKEN_PROGRAM_ADDRESS, TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
@@ -9,6 +10,7 @@ import { checkTopUp, COMPUTE_BUDGET, topUpAccounts, topUpCoinSymbol, topUpSource
 import { JUPITER_AGGREGATOR } from "@/lib/jupiter";
 import { SYSTEM_PROGRAM, WSOL_MINT } from "@/lib/constants";
 import { rpc } from "@/lib/rpc";
+import { isHttp429 } from "@/lib/http429";
 import { getRepo } from "@/db/repo";
 import { markTopUpSent, recordTopUpLanded } from "@/lib/topup-record";
 import { withAppErrorLog } from "@/lib/failure-log";
@@ -17,6 +19,9 @@ import { takeSetupPrefix, TOPUP_SETUP_MAX } from "@/lib/user-setup";
 export const runtime = "nodejs";
 export const maxDuration = 60; // the send plus the confirm poll (up to 30 s)
 const Body = z.object({ signedTransaction: z.string() });
+/** 11-25 (Kimi hotfix #6): the send retries and the poll together end by here, so the route answers before maxDuration. */
+const CONFIRM_DEADLINE_MS = 45_000;
+const SEND_RETRIES_ON_429 = 2;
 
 /**
  * Sends the top-up the wallet signed: only the session wallet's own transaction, and only a top-up (the build's check again, on what
@@ -27,6 +32,8 @@ const Body = z.object({ signedTransaction: z.string() });
 async function postHandler(request: Request) {
   const session = await requireSession(request);
   if (session instanceof NextResponse) return session;
+  // 11-25 (load hotfix): this user's Home chain reads on this instance are read fresh after this write (memo.ts ownerCached).
+  forgetOwnerReads(session.pubkey);
   const parsed = Body.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Bad request." }, { status: 400 });
   const me = address(session.pubkey);
@@ -67,14 +74,25 @@ async function postHandler(request: Request) {
     console.error(`/api/topup/confirm: not marked, not sent, for ${me}: ${e instanceof Error ? e.message : String(e)}`);
     return NextResponse.json({ error: TOPUP_CONFIRM.notMarked }, { status: 400 });
   }
-  try {
-    await rpc().sendTransaction(posted.wire as Base64EncodedWireTransaction, { encoding: "base64", preflightCommitment: "confirmed" }).send();
-  } catch (e) {
-    // A lost answer is not a lost send: the signature's status below decides.
-    console.error(`/api/topup/confirm: send answered with an error for ${me}: ${e instanceof Error ? e.message : String(e)}`);
+  // 11-25 (a $10 top-up was never broadcast: its send met Helius 429s past the transport's retries; Kimi hotfix #6-7): one deadline for
+  // the whole answer, inside maxDuration 60; a send refused with 429 is tried twice more, then re-sent while the poll runs.
+  const deadlineMs = Date.now() + CONFIRM_DEADLINE_MS;
+  const send = () => rpc().sendTransaction(posted.wire as Base64EncodedWireTransaction, { encoding: "base64", preflightCommitment: "confirmed" }).send().then(() => undefined);
+  let sent = false;
+  for (let attempt = 0; attempt <= SEND_RETRIES_ON_429 && !sent && Date.now() < deadlineMs; attempt++) {
+    try {
+      await send();
+      sent = true;
+    } catch (e) {
+      // A lost answer is not a lost send: the signature's status below decides.
+      console.error(`/api/topup/confirm: send answered with an error for ${me}: ${e instanceof Error ? e.message : String(e)}`);
+      if (!isHttp429(e)) break;
+      if (attempt < SEND_RETRIES_ON_429) await new Promise((r) => setTimeout(r, 1_500));
+    }
   }
-  let status: "confirmed" | "failed" | "pending" | "expired" = await waitConfirmed(posted.signature);
-  if (status === "pending") status = await settleUnconfirmed(posted);
+  let status: "confirmed" | "failed" | "pending" | "expired" = await waitConfirmed(posted.signature, 20, 1_500, { deadlineMs, ...(sent ? {} : { resend: send }) });
+  if (status === "pending" && Date.now() < deadlineMs) status = await settleUnconfirmed(posted);
+  forgetOwnerReads(session.pubkey);
   if (status === "confirmed") {
     await recordTopUpLanded(repo, { ...mark, sentAt });
     return NextResponse.json({ status, signature: posted.signature, usdcRaw: plan.outRaw.toString() });

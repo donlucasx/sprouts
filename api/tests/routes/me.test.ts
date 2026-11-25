@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { MemoryRepo } from "@/db/memory";
 import { setRepoForTests } from "@/db/repo";
 import { issueSession } from "@/lib/session";
+import { clearSharedReads } from "@/lib/memo";
 import { SKR_ONLY } from "@/domain/coins";
 
 const SP = 1_146_000_000n;
@@ -151,10 +152,12 @@ describe("GET /api/me", () => {
   it("stORE's put in follows what is still held: half the planted amount when half is left, the planted amount when more is held", async () => {
     await repo.insertPlanting({ userPubkey: U, walletPubkey: "W", signature: "sig-ore", usdcPulledCents: 203, networkFeeCents: 3, status: "confirmed", aiLine: null },
       [{ asset: "stORE", usdcInCents: 200, amountOutRaw: 2_000_000_000n, staked: false, feeAmountRaw: 0n, feeCents: 1, rateAtPlanting: 1.0, venue: null }]);
+    clearSharedReads();   // 11-25: Home's chain reads are kept 15 s
     vi.mocked(storeBalanceRaw).mockResolvedValueOnce(1_000_000_000n);
     let body = await (await me(new Request("http://x/api/me", bearer(await issueSession(U, "M"))))).json();
     expect(body.pot.storeRaw).toBe("1000000000");
     expect(body.pot.storePutInRaw).toBe("1000000000");
+    clearSharedReads();   // 11-25: Home's chain reads are kept 15 s
     vi.mocked(storeBalanceRaw).mockResolvedValueOnce(3_000_000_000n);
     body = await (await me(new Request("http://x/api/me", bearer(await issueSession(U, "M"))))).json();
     expect(body.pot.storePutInRaw).toBe("2000000000");
