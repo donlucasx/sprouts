@@ -61,7 +61,7 @@
           "widgets": [
             {
               "name": "Sprouts",
-              "label": "Sprouts · Bamboo",
+              "label": "Sprouts \u00b7 Bamboo",
               "minWidth": "110dp",
               "minHeight": "40dp",
               "targetCellWidth": 3,
@@ -73,7 +73,7 @@
             },
             {
               "name": "SproutsEnso",
-              "label": "Sprouts · Ensō",
+              "label": "Sprouts \u00b7 Ens\u014d",
               "minWidth": "110dp",
               "minHeight": "40dp",
               "targetCellWidth": 3,
@@ -87,7 +87,18 @@
         }
       ],
       "expo-video",
-      "expo-sharing"
+      "expo-sharing",
+      [
+        "expo-localization",
+        {
+          "supportedLocales": {
+            "android": [
+              "en",
+              "es"
+            ]
+          }
+        }
+      ]
     ],
     "scheme": "sprouts",
     "slug": "sprouts",

@@ -25,6 +25,8 @@ const Body = z.object({
   device: z.string().min(4).max(64).optional(),
   /** R283, contracts 5.6: the Terms version the person accepted on the sign-in screen; only the current one is recorded. */
   termsVersion: z.string().max(32).optional(),
+  /** 0.1.13 (his ruling 11-24): the phone's language code only ("es"), to count which languages users read. Anything else is ignored. */
+  lang: z.string().max(8).optional(),
 });
 
 /**
@@ -65,6 +67,16 @@ async function verify(request: Request) {
   if (parsed.data.termsVersion === TERMS_VERSION && (await repo.getUser(output.address))?.termsVersion !== TERMS_VERSION) {
     await repo.setTermsAccepted(output.address, TERMS_VERSION, new Date());
     await repo.addEvent({ userPubkey: output.address, walletPubkey: null, kind: "terms_accepted", detail: { version: TERMS_VERSION, at: "sign-in" } });
+  }
+  // 0.1.13: one language_seen event when a user's phone language is new or changed (the code only, nothing derived from it).
+  const lang = parsed.data.lang?.toLowerCase();
+  if (lang && /^[a-z]{2,3}$/.test(lang)) {
+    try {
+      const [last] = await repo.listEvents(output.address, ["language_seen"], 1);
+      if ((last?.detail as { lang?: unknown } | null)?.lang !== lang) await repo.addEvent({ userPubkey: output.address, walletPubkey: null, kind: "language_seen", detail: { lang } });
+    } catch (e) {
+      console.error(`sign-in: language not recorded: ${e instanceof Error ? e.message : String(e)}`);   // never fails a sign-in
+    }
   }
   if (created) {
     // R61: what the Seeker already holds today is put in, never earned; the pot and the reconciliation count from here.

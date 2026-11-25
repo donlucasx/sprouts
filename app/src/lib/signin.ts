@@ -1,4 +1,5 @@
 import { fromUint8Array, toUint8Array, type SignInPayload } from "@wallet-ui/react-native-kit";
+import { langSignal } from '@/i18n'
 import { api } from "./api";
 import { TERMS_VERSION } from "./terms";
 import { installationId, type Session } from "./session";
@@ -63,6 +64,6 @@ async function signOnce(signIn: SignInFn): Promise<SignedIn> {
  */
 export async function signInWithSeeker(signIn: SignInFn): Promise<Session> {
   const signed = await freshSignIn(signIn);
-  const verified = await api<{ token: string; skrName: string | null }>("/api/auth/verify", { method: "POST", auth: false, body: { ...signed, device: await installationId(), termsVersion: TERMS_VERSION } });
+  const verified = await api<{ token: string; skrName: string | null }>("/api/auth/verify", { method: "POST", auth: false, body: { ...signed, device: await installationId(), termsVersion: TERMS_VERSION, ...langSignal() } });
   return { token: verified.token, pubkey: signed.output.address, skrName: verified.skrName };
 }

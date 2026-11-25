@@ -24,6 +24,8 @@ import { freshSignIn } from '@/lib/signin'
 import { freshWalletSignIn } from '@/lib/reauth'
 import { identity } from '@/lib/identity'
 import { readAppearance, writeAppearance, readNotify, writeNotify } from '@/lib/prefs'
+import { readLangChoice, t, writeLangChoice, type LangChoice } from '@/i18n'
+import { useLang } from '@/i18n/useLang'
 import type { NoticeKind } from '@/lib/notices'
 import { DISCLOSURES, HOW_IT_WORKS, NOT_ADVICE } from '@/lib/settings-copy'
 import { clearTaxFiles, prepareTaxCsv, shareTaxCsv, taxFileFresh, type TaxFile } from '@/lib/tax-export'
@@ -62,6 +64,13 @@ export default function Settings() {
   const { colors } = useTheme()
   const toggle = switchColors(colors)
   const [appearance, setAppearanceState] = useState<AppearanceChoice>(() => readAppearance())
+  // 0.1.13: the language row; useLang re-renders this screen the moment the choice changes.
+  useLang()
+  const [langChoice, setLangChoice] = useState<LangChoice>(() => readLangChoice())
+  function chooseLang(c: LangChoice) {
+    writeLangChoice(c)
+    setLangChoice(c)
+  }
   const [notifyOn, setNotifyOn] = useState(() => Object.fromEntries(NOTICES.map(([k]) => [k, readNotify(k)])) as Record<NoticeKind, boolean>)
   const { signTransaction } = useMobileWallet()
   const invalidate = useInvalidateMe()
@@ -256,6 +265,18 @@ export default function Settings() {
           onChange={setAppearance}
         />
         <AddWidget />
+      </Card>
+      <Card>
+        <ThemedText variant="heading">{t('settings.language')}</ThemedText>
+        <TwoWay
+          options={[
+            { value: 'auto', label: t('settings.language.auto') },
+            { value: 'en', label: t('settings.language.en') },
+            { value: 'es', label: t('settings.language.es') },
+          ]}
+          value={langChoice}
+          onChange={chooseLang}
+        />
       </Card>
       <Card>
         {/* R160 and R161: the notices grouped under their own heading, one switch each. */}

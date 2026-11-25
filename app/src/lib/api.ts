@@ -1,4 +1,5 @@
 import { loadSession } from "./session";
+import { currentLang } from "@/i18n";
 import { LEND_MOCK, mockAfter, mockBefore } from "./lend-mock";
 import type { Asset, AutoVenue, LendAsset, LiveAsset, Stop, Split, Pins, Venue } from "./coins";
 import type { TopUpSource } from "./topup";
@@ -25,7 +26,8 @@ export async function api<T>(path: string, init: { method?: "GET" | "POST" | "PU
     if (m && "error" in m) throw new ApiError(m.error.status, m.error.message);
     if (m) return m.answer as T;
   }
-  const headers: Record<string, string> = { "content-type": "application/json" };
+  // 0.1.13: the language the app shows, so the server answers its messages in it (English when it has none).
+  const headers: Record<string, string> = { "content-type": "application/json", "accept-language": currentLang() };
   if (init.auth !== false) {
     const s = await loadSession();
     if (s) headers.authorization = `Bearer ${s.token}`;

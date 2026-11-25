@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, beforeAll, vi } from "vitest";
+import { describe, it, expect, beforeEach, beforeAll, afterEach, vi } from "vitest";
 import { MemoryRepo } from "@/db/memory";
 import { setRepoForTests } from "@/db/repo";
 import { createSignInPayload, renderSignInMessage } from "@/lib/siws";
@@ -139,3 +139,35 @@ describe("POST /api/auth/verify, Terms at sign-in (R283, contracts 5.6)", () => 
     expect(repo.events.some((e) => e.kind === "terms_accepted")).toBe(false);
   });
 });
+
+// 0.1.13 (his ruling 11-24): the phone's language code, one event when new or changed, nothing else stored.
+describe("POST /api/auth/verify, language signal", () => {
+  // Its own caller address, so these sign-ins never meet the per-IP limit the blocks above already spent.
+  let n = 0;
+  const postFrom = (body: unknown) => verify(new Request("http://x/api/auth/verify", { method: "POST", headers: { "content-type": "application/json", "x-real-ip": `10.9.9.${++n}` }, body: JSON.stringify(body) }));
+  let repo: MemoryRepo;
+  beforeEach(() => {
+    vi.stubEnv("VERCEL", "1");   // so clientIp reads x-real-ip (off Vercel every caller shares one bucket)
+    repo = new MemoryRepo();
+    setRepoForTests(repo);
+    positionMock.mockReset();
+    positionMock.mockResolvedValue({ shares: 0n, stakedRaw: 0n, unstakingRaw: 0n, unstakeTs: null });
+  });
+  afterEach(() => vi.unstubAllEnvs());
+  const langs = () => repo.events.filter((e) => e.kind === "language_seen").map((e) => (e.detail as { lang: string }).lang);
+  it("records the code once, again only when it changes", async () => {
+    expect((await postFrom({ ...(await signedIn(repo, "phone-1")), lang: "ES" })).status).toBe(200);
+    expect((await postFrom({ ...(await signedIn(repo, "phone-1")), lang: "es" })).status).toBe(200);
+    expect((await postFrom({ ...(await signedIn(repo, "phone-1")), lang: "pt" })).status).toBe(200);
+    expect(langs()).toEqual(["es", "pt"]);
+  });
+  it("ignores anything that is not a bare language code, and a sign-in without one", async () => {
+    for (const lang of ["es-MX", "e", "español", "<b>"]) expect((await postFrom({ ...(await signedIn(repo, "phone-1")), lang })).status).toBe(200);
+    expect((await postFrom({ ...(await signedIn(repo, "phone-1")) })).status).toBe(200);
+    expect(langs()).toEqual([]);
+  });
+  it("a code longer than 8 characters is a bad request like any malformed field", async () => {
+    expect((await postFrom({ ...(await signedIn(repo, "phone-1")), lang: "x".repeat(9) })).status).toBe(400);
+  });
+});
+

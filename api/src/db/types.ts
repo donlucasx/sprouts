@@ -124,6 +124,7 @@ export type WatcherCallKind = "compile" | "explain" | "propose" | "split";
 export type WatcherCallRow = { id: number; ts: Date; userPubkey: string | null; kind: WatcherCallKind; inputTokens: number; outputTokens: number; costMicrocents: number };
 
 export type EventKind =
+  | "language_seen"   // 0.1.13: the phone language code at sign-in when new or changed (detail: { lang })
   | "wallet_linked"
   | "first_planting_run"   // 11-12: one heartbeat per completed hourly first-planting run (detail: planted, skipped counts, reasons: count per fixed skip-reason string); the ops dashboard reads the latest
   | "over_cap_rejected"
