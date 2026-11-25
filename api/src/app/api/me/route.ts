@@ -10,7 +10,7 @@ import { readDelegation } from "@/lib/subscriptions";
 import { readHoldings, holdingsFrom, readLendingPositions, lendingFrom, lendHoldings } from "@/lib/holdings";
 import { lendSignsFor, underlyingOutRaw, receiptOutRaw } from "@/lib/lend-view";
 import { enabledLegs, LEG_SPEC, leashLive, relinkPilot, type LeashConfig } from "@/lib/leash";
-import { ownerCached } from "@/lib/memo";
+import { ownerCached, rememberAnswer, repeatAnswer } from "@/lib/memo";
 import { sharedSharePrice, sharedPriceUsd, sharedStoreRedeemRate, sharedLeashConfig, sharedLatestCoinDays, sharedRateFacts, sharedLatestVenueRows } from "@/lib/shared-reads";
 import { TERMS_VERSION } from "@/lib/terms";
 import { carryMoves, moveCarriesFor } from "@/lib/moves";
@@ -37,7 +37,7 @@ const COOLDOWN_MS = 172_800_000;
 const str = (v: unknown) => JSON.parse(JSON.stringify(v, (_k, x) => (typeof x === "bigint" ? x.toString() : x)));
 
 /** Everything Home needs, computed in one place from the chain and the ledger. The app never computes money from chain reads itself. */
-export async function GET(request: Request) {
+async function answer(request: Request) {
   const session = await requireSession(request);
   if (session instanceof NextResponse) return session;
   const repo = await getRepo();
@@ -227,4 +227,22 @@ export async function GET(request: Request) {
     wallets: wallets.map((w) => ({ pubkey: w.pubkey, status: w.status, dailyCapCents: w.dailyCapCents, linkModel: w.linkModel, pause: pauseOf(w), stopped: stoppedOf(w) })),
     rules: rulesRowToRules(rules),
   }));
+}
+
+/**
+ * 11-25 (Home refresh loop, Kimi loop scope A): a repeat of the same read by the same signed-in user inside REPEAT_MS gets the answer
+ * they just had (memo.ts repeatAnswer), with no DB or Helius work; any write they make clears it (auth-guard). Only 200 answers kept.
+ */
+export async function GET(request: Request) {
+  const session = await requireSession(request);
+  if (session instanceof NextResponse) return session;
+  const url = new URL(request.url);
+  const key = `me${url.search}|${request.headers.get("x-sprouts-app") ?? "-"}`;
+  const again = repeatAnswer(session.pubkey, key);
+  // TEMP 11-25 (loop diagnosis, remove after the device check): who reads, how often; a 6-char prefix only.
+  console.log(`load-diag ${key} u=${session.pubkey.slice(0, 6)} ${again !== undefined ? "repeat" : "fresh"}`);
+  if (again !== undefined) return NextResponse.json(again);
+  const res = await answer(request);
+  if (res.status === 200) rememberAnswer(session.pubkey, key, await res.clone().json());
+  return res;
 }

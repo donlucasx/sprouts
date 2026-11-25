@@ -62,8 +62,31 @@ export function ownerCached<T>(owner: string, reader: string, read: () => Promis
 export function forgetOwnerReads(owner: string): void {
   const prefix = `owner:${owner}:`;
   for (const k of [...owners.keys()]) if (k.startsWith(prefix)) owners.delete(k);
+  for (const k of [...answers.keys()]) if (k.startsWith(prefix)) answers.delete(k);
+}
+
+/**
+ * 11-25 (Home refresh loop on ~9 phones, ~1.5 reads/s each; Kimi loop scope): the last successful (HTTP 200) answer of a Home GET (/api/me,
+ * /api/me/usdc) per owner, route, query and app caps, kept REPEAT_MS per instance. A repeat inside the window gets that body with no
+ * DB or Helius work. Read only after the session check (never across a 401). Any non-GET request the owner makes clears it
+ * (auth-guard requireSession -> forgetOwnerReads), so a save, a watering, a Terms acceptance or a confirm is never hidden.
+ */
+export const REPEAT_MS = 5_000;   // 5 s (Kimi guard #6): another instance can show a pre-write body this long
+/** Off under vitest (route tests change the DB between reads, like the RPC pace); its own test turns it on. */
+let repeatMs = process.env.VITEST ? 0 : REPEAT_MS;
+export function setRepeatMsForTests(ms: number): void { repeatMs = ms; }
+const answers = new Map<string, { at: number; body: unknown }>();
+export function repeatAnswer(owner: string, key: string): unknown | undefined {
+  const hit = answers.get(`owner:${owner}:${key}`);
+  return hit && Date.now() - hit.at < repeatMs ? hit.body : undefined;
+}
+export function rememberAnswer(owner: string, key: string, body: unknown): void {
+  const k = `owner:${owner}:${key}`;
+  answers.delete(k);
+  answers.set(k, { at: Date.now(), body });
+  while (answers.size > OWNER_MAX_ENTRIES) answers.delete(answers.keys().next().value as string);
 }
 
 /** Tests: every test starts from fresh reads. */
-export function clearSharedReads(): void { memo.clear(); owners.clear(); }
+export function clearSharedReads(): void { memo.clear(); owners.clear(); answers.clear(); }
 

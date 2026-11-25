@@ -7,7 +7,7 @@ import { sharedPriceUsd } from "@/lib/shared-reads";
 import { affordableTopUps, topUpSources } from "@/lib/topup";
 import { WSOL_MINT } from "@/lib/constants";
 import { getRepo } from "@/db/repo";
-import { ownerCached } from "@/lib/memo";
+import { ownerCached, rememberAnswer, repeatAnswer } from "@/lib/memo";
 import { rulesRowToRules } from "@/db/types";
 import { linkSetupCovered, missingSetupMints, SETUP_MAX } from "@/lib/user-setup";
 
@@ -25,7 +25,7 @@ export const runtime = "nodejs";
  * balances or prices could not be read. Only with `?sources=1` (Home's read in 0.1.12): it costs a Helius token-accounts read and Jupiter
  * calls, so the background refresh, Link a wallet and every 0.1.11 install get the old shape without the key, at the old cost.
  */
-export async function GET(request: Request) {
+async function answer(request: Request) {
   const session = await requireSession(request);
   if (session instanceof NextResponse) return session;
   const me = address(session.pubkey);
@@ -76,4 +76,22 @@ async function setupCount(me: ReturnType<typeof address>, sol: bigint | null): P
     console.error(`/api/me/usdc: the setup accounts could not be read (${e instanceof Error ? e.message : String(e)})`);
     return 0;
   }
+}
+
+/**
+ * 11-25 (Home refresh loop, Kimi loop scope A): a repeat of the same read by the same signed-in user inside REPEAT_MS gets the answer
+ * they just had (memo.ts repeatAnswer), with no DB or Helius work; any write they make clears it (auth-guard). Only 200 answers kept.
+ */
+export async function GET(request: Request) {
+  const session = await requireSession(request);
+  if (session instanceof NextResponse) return session;
+  const url = new URL(request.url);
+  const key = `usdc${url.search}|${request.headers.get("x-sprouts-app") ?? "-"}`;
+  const again = repeatAnswer(session.pubkey, key);
+  // TEMP 11-25 (loop diagnosis, remove after the device check): who reads, how often; a 6-char prefix only.
+  console.log(`load-diag ${key} u=${session.pubkey.slice(0, 6)} ${again !== undefined ? "repeat" : "fresh"}`);
+  if (again !== undefined) return NextResponse.json(again);
+  const res = await answer(request);
+  if (res.status === 200) rememberAnswer(session.pubkey, key, await res.clone().json());
+  return res;
 }
