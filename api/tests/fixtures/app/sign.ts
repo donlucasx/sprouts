@@ -9,11 +9,11 @@ import {
   type Transaction,
 } from '@solana/kit'
 // VENDORED (API Task 18): app/src/lib/sign.ts byte for byte from this repo's app (refreshed 2026-11-25, 0.1.13 Spanish pass P5, feat/0.1.13),
-// except these imports: app/src/lib/coins.ts's two lines inlined, and t() reading the app's English (en.ts) directly. Refresh with `cp` + this one edit.
+// except these imports: app/src/lib/coins.ts's two lines inlined, and t() over the app's English lines for these keys, inlined (Vercel builds api/ without app/). Refresh with `cp` + this one edit.
 type LendAsset = 'USDC_LEND' | 'SOL_LEND'
 const isLend = (a: string): a is LendAsset => a === 'USDC_LEND' || a === 'SOL_LEND'
-import { en } from '../../../../app/src/i18n/en'
-const t = (k: keyof typeof en, v?: Record<string, string | number>): string => en[k].replace(/\{(\w+)\}/g, (m, n: string) => (v && n in v ? String(v[n]) : m))
+const EN: Record<string, string> = {"sign.refused.amount": "This transaction moves more than your position holds. Nothing was signed.", "sign.refused.lookup": "This transaction uses a lookup table Sprouts did not build. Nothing was signed.", "sign.refused.overpriced": "This swap asks for more {symbol} than the USDC is worth right now. Nothing was signed.", "sign.refused.payer": "This transaction was not built for your wallet. Nothing was signed.", "sign.refused.plan": "This transaction does not match what the screen shows. Nothing was signed.", "sign.refused.price": "Sprouts could not check the {symbol} price, so nothing was asked of your wallet. Try again.", "sign.refused.program": "This transaction touches a program Sprouts does not use here. Nothing was signed.", "sign.refused.signer": "This transaction asks for a signature besides yours. Nothing was signed.", "sign.refused.unreadable": "Sprouts could not read this transaction. Nothing was signed."}
+const t = (k: string, v?: Record<string, string | number>): string => (EN[k] ?? k).replace(/\{(\w+)\}/g, (m, n: string) => (v && n in v ? String(v[n]) : m))
 
 /**
  * Security R207 #3 (10-03): the API builds every transaction and the Seed Vault key signs it, so a compromised API (or its domain)

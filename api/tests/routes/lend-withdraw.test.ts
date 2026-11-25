@@ -237,11 +237,21 @@ describe("Withdraw a lending position (contracts 5.3, R264)", () => {
   });
   const appSign = new URL("../../../app/src/lib/sign.ts", import.meta.url); // this repo's app (Task 17a: was a sibling worktree, absent, so the test always skipped)
   // Skipped (shown as skipped in the run) when the app worktree is not on this machine: the vendored copy was then not compared.
+  // 11-25: Vercel builds api/ without app/, so the fixture inlines the English refusal lines; they must equal the app's en.ts.
+  it.skipIf(!existsSync(appSign))("the fixture's inlined English refusal lines equal the app's en.ts", () => {
+    const vendored = readFileSync(new URL("../fixtures/app/sign.ts", import.meta.url), "utf8");
+    const inlined = JSON.parse(/const EN: Record<string, string> = (\{[^\n]*\})\n/.exec(vendored)![1]) as Record<string, string>;
+    const enSrc = readFileSync(new URL("../../../app/src/i18n/en.ts", import.meta.url), "utf8");
+    for (const [k, v] of Object.entries(inlined)) {
+      const m = new RegExp(`'${k.replace(/\./g, "\\.")}':\\s*(['"])(.*?)\\1,\\n`).exec(enSrc);
+      expect(m?.[2].replace(/\\'/g, "'"), k).toBe(v);
+    }
+  });
   it.skipIf(!existsSync(appSign))("the vendored copy of the app's sign.ts equals the app's file byte for byte, bar the one documented import edit (skipped only when the app folder is absent)", () => {
     // The vendored header says what was changed: the app's coins import is inlined as two lines and its i18n import becomes a t() over
     // the app's en.ts (11-25, Spanish pass P5). Undo exactly that edit, then every other byte must match.
     const vendored = readFileSync(new URL("../fixtures/app/sign.ts", import.meta.url), "utf8");
-    const edit = /\/\/ VENDORED \(API Task 18\)[^\n]*\n\/\/ except these imports[^\n]*\ntype LendAsset = [^\n]*\nconst isLend = [^\n]*\nimport \{ en \}[^\n]*\nconst t = [^\n]*\n/;
+    const edit = /\/\/ VENDORED \(API Task 18\)[^\n]*\n\/\/ except these imports[^\n]*\ntype LendAsset = [^\n]*\nconst isLend = [^\n]*\nconst EN: Record[^\n]*\nconst t = [^\n]*\n/;
     expect(edit.test(vendored)).toBe(true);
     expect(vendored.replace(edit, "import { isLend, type LendAsset } from './coins'\nimport { t } from '@/i18n'\n")).toBe(readFileSync(appSign, "utf8"));
   });
