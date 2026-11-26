@@ -67,6 +67,6 @@ describe('link area in Spanish', () => {
   })
   it('sign-in: the agreement keeps one {terms} slot for the link', () => {
     for (const lang of ['en', 'es'] as const) expect(t('signin.agree', undefined, lang).split('{terms}')).toHaveLength(2)
-    expect(t('signin.agree', { terms: t('home.terms.title', undefined, 'es') }, 'es')).toBe('Al iniciar sesión aceptas los Términos y privacidad.')
+    expect(t('signin.agree', { terms: t('home.terms.title', undefined, 'es') }, 'es')).toBe('Al iniciar sesión, aceptas nuestros Términos de uso y privacidad.')
   })
 })
