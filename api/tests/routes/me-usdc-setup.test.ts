@@ -57,7 +57,10 @@ describe("GET /api/me/usdc?setup=1", () => {
     chain.lamports = 1_000_000_000n;
     chain.existing = null;
     expect((await get("?setup=1")).setupAccounts).toBe(0);
-    setRepoForTests(new MemoryRepo()); // no rules row: the read throws
+    // 11-25: the rules are read without writing (readRules); a rules read that throws still gives 0.
+    const broken = new MemoryRepo();
+    broken.findRules = async () => { throw new Error("database away"); };
+    setRepoForTests(broken);
     chain.existing = new Set();
     expect((await get("?setup=1")).setupAccounts).toBe(0);
   });

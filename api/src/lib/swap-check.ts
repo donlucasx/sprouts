@@ -1,7 +1,6 @@
 import { address, signature as toSignature } from "@solana/kit";
 import type { Repo } from "@/db/repo";
-import type { RulesRow } from "@/db/types";
-import { DEFAULT_RULES } from "@/domain/roundup";
+import { defaultRules } from "./rules-read";
 import type { PriceLookup } from "@/domain/sizing";
 import { bookSwap, type HeliusEnhancedTx } from "./book-swap";
 import { checkSwapOnChain, fetchTransaction, type FetchTx } from "./verify-swap";
@@ -66,8 +65,6 @@ const short = (k: string) => `${k.slice(0, 4)}…${k.slice(-3)}`;
 class Partial extends Error { constructor(readonly why: UncheckedWallet["why"]) { super(why); } }
 class OutOfTime extends Error {}
 
-/** The defaults a first getRules would write, built in memory only (memory.ts builds its default row the same way). */
-const defaultRules = (userPubkey: string): RulesRow => ({ ...DEFAULT_RULES, pins: {}, allocation: { ...DEFAULT_RULES.allocation }, prevAllocation: null, allocationDay: null, pinsByUndo: false, userPubkey, updatedAt: new Date() });
 
 /** The repo with insertSwap replaced by a recorder and getRules by a pure read: nothing is written by the booking. */
 function dryRepo(repo: Repo, record: (s: Parameters<Repo["insertSwap"]>[0]) => void): Repo {

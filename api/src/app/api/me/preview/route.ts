@@ -1,5 +1,6 @@
 import { langOf } from "@/lib/i18n";
 import { apiError } from "@/lib/api-error";
+import { readRules } from "@/lib/rules-read";
 import { NextResponse } from "next/server";
 import { rateLimited, requireSession } from "@/lib/auth-guard";
 import { getRepo } from "@/db/repo";
@@ -33,7 +34,7 @@ export async function GET(request: Request) {
   const repo = await getRepo();
   // Only for a user with no wallet linked (Home asks only then; review 11-12: the route must not read history for anyone else).
   if ((await repo.listWalletsOf(session.pubkey)).some((w) => w.status !== "revoked")) return apiError("has_wallet", { error: "Only for a user with no wallet linked." }, { status: 409 }, lang);
-  const rules = rulesRowToRules(await repo.getRules(session.pubkey));
+  const rules = rulesRowToRules(await readRules(repo, session.pubkey));
   try {
     const { swaps, partial } = await cached(
       `preview|${session.pubkey}`,
