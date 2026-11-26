@@ -77,7 +77,7 @@ async function postHandler(request: Request) {
   // After the poll the chain itself must show the leash delegation (delegator, delegatee, $5 per day, no expiry) and the old one gone;
   // anything short of that records nothing.
   const d = await waitForDelegation(pda, 10_000);
-  // The same English either way (a 0.1.12 app matches LATE); a 0.1.13 app reads blockhash_expired and asks the Seed Vault once more.
+  // The same English either way (a 0.1.12 app shows the same sentence and fails fast on the unknown code); a 0.1.13 app reads blockhash_expired and asks the Seed Vault once more.
   if (!d.exists) return apiError(blockhashExpired ? "blockhash_expired" : "relink_not_on_chain", { error: LATE }, { status: 409 }, lang);
   if (d.delegator !== me || d.delegatee !== leash || d.amountPerPeriodRaw !== CAP_RAW || d.periodLengthS !== DAY_S || d.expiryTs !== 0n) {
     console.error(`relink confirm: the delegation at ${pda} is not the leash delegation for ${me}`);

@@ -18,6 +18,7 @@ import { plantThresholdFor } from "@/domain/threshold";
 import { fitSetup, linkSetupCovered, plannedSetup, setupCount } from "@/lib/user-setup";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;   // Kimi 11-26: the user 429 budget over ~6 RPC calls stays under a hard ceiling
 
 const DAILY_CAP_CENTS = 500; // not exported: Next.js allows only handler exports from a route file
 const DAILY_CAP_RAW = 5_000_000n;

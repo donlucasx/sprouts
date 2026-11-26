@@ -106,7 +106,7 @@ async function confirm(request: Request) {
         ? "No delegation found yet: your approval was sent but is not on chain. Trying again is safe."
         : "No delegation found for this wallet yet. Sign the approval first.";
     // 11-26: an expired blockhash answers its own code (a 0.1.13 app fetches a new approval and signs once more); the English is the
-    // same sentence, so a 0.1.12 app, which matches the stem only, retries exactly as before.
+    // same sentence, so a 0.1.12 app shows the same sentence; it reads the unknown code and fails fast instead of re-posting dead bytes (Kimi 11-26).
     return apiError(sendError && blockhashExpired ? "blockhash_expired" : "no_delegation", { error }, { status: 409 }, lang);
   }
   // K-M4 (like relink/confirm): the chain must show the terms the link page built: this wallet as delegator, a delegatee that derives
