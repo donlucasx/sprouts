@@ -69,7 +69,7 @@ describe("Spanish numbers", () => {
   });
   it("a withdrawal's arrival, UTC, 24-hour", () => {
     expect(esDayHourUtc(new Date("2026-11-27T15:00:00Z"))).toBe("27 nov, 15:00 UTC");
-    expect(esDayHourUtc(new Date("2026-01-03T00:40:00Z"))).toBe("3 ene, 0:00 UTC");
+    expect(esDayHourUtc(new Date("2026-01-03T00:40:00Z"))).toBe("3 ene, 00:00 UTC");
   });
 });
 

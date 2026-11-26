@@ -108,6 +108,6 @@ export function lineText(english: string, lang: Lang | undefined, vars?: Record<
   return spanishOf(ES_LINES, english, vars) ?? english;
 }
 
-const MONTHS_ES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+const MONTHS_ES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sept", "oct", "nov", "dic"];
 /** A withdrawal's arrival in UTC, as the app says it in Spanish: "27 nov, 15:00 UTC" (en: "Nov 27, 3 PM UTC"). */
-export const esDayHourUtc = (d: Date): string => `${d.getUTCDate()} ${MONTHS_ES[d.getUTCMonth()]}, ${d.getUTCHours()}:00 UTC`;
+export const esDayHourUtc = (d: Date): string => `${d.getUTCDate()} ${MONTHS_ES[d.getUTCMonth()]}, ${String(d.getUTCHours()).padStart(2, "0")}:00 UTC`;

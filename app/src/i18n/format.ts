@@ -9,7 +9,7 @@ import { currentLang, type Lang } from './index'
 
 const MONTHS_SHORT: Record<Lang, readonly string[]> = {
   en: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
-  es: ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'],
+  es: ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sept', 'oct', 'nov', 'dic'],
 }
 const MONTHS_LONG: Record<Lang, readonly string[]> = {
   en: ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'],
@@ -80,19 +80,19 @@ function ymd(d: Date, timeZone?: string): { y: number; m0: number; d: number } {
 export function timeOfDay(d: Date, lang: Lang = currentLang()): string {
   const h = d.getHours()
   const m = String(d.getMinutes()).padStart(2, '0')
-  return lang === 'es' ? `${h}:${m}` : `${h % 12 === 0 ? 12 : h % 12}:${m} ${h < 12 ? 'AM' : 'PM'}`
+  return lang === 'es' ? `${String(h).padStart(2, '0')}:${m}` : `${h % 12 === 0 ? 12 : h % 12}:${m} ${h < 12 ? 'AM' : 'PM'}`
 }
-/** The clock short: en "7 AM" on the hour, "7:30 AM" otherwise; es "7:00", "7:30". */
+/** The clock short: en "7 AM" on the hour, "7:30 AM" otherwise; es "07:00", "07:30" (his ruling 11-25). */
 export function clockShort(d: Date, lang: Lang = currentLang()): string {
   const h = d.getHours()
   const m = d.getMinutes()
-  if (lang === 'es') return `${h}:${String(m).padStart(2, '0')}`
+  if (lang === 'es') return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
   return `${h % 12 === 0 ? 12 : h % 12}${m === 0 ? '' : `:${String(m).padStart(2, '0')}`} ${h < 12 ? 'AM' : 'PM'}`
 }
 /** The hour only, as the staking withdrawals show it: en "3 PM", es "15:00". */
 function hourOnly(d: Date, lang: Lang): string {
   const h = d.getHours()
-  return lang === 'es' ? `${h}:00` : `${h % 12 === 0 ? 12 : h % 12} ${h < 12 ? 'AM' : 'PM'}`
+  return lang === 'es' ? `${String(h).padStart(2, '0')}:00` : `${h % 12 === 0 ? 12 : h % 12} ${h < 12 ? 'AM' : 'PM'}`
 }
 
 /** Day and month: en "Oct 5", es "5 oct". Pass a zone for a fixed one (tests). */

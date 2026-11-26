@@ -27,7 +27,7 @@ const narrowest = (line: string) => Math.min(...forms(line).map((f) => textWidth
 // what each language fills the placeholders with (its own longest run phrase and clock)
 const VARS = {
   en: { total: '$1,234.50', goal: '$2.00', amount: '$1.35', when: 'tomorrow afternoon', clock: '7:30 AM' },
-  es: { total: '$1.234,50', goal: '$2,00', amount: '$1,35', when: 'mañana por la tarde', clock: '7:30' },
+  es: { total: '$1.234,50', goal: '$2,00', amount: '$1,35', when: 'mañana por la tarde', clock: '07:30' },
 }
 const saving = { nextPlanting: { pendingCents: 135, thresholdCents: 200, capLeftCents: 500, asset: 'SKR' }, wallets: [], history: { plantings: [] } } as unknown as MeResponse
 const NOW = new Date('2026-10-02T20:00:00Z')
