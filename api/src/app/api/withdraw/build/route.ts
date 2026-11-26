@@ -13,6 +13,7 @@ import { buildUserTransaction, userAddress } from "@/lib/user-tx";
 import { json } from "@/lib/json";
 import { SKR_MINT } from "@/lib/constants";
 import { withAppErrorLog } from "@/lib/failure-log";
+import { withUserRetryBudget } from "@/lib/retry-budget";
 
 export const runtime = "nodejs";
 
@@ -56,4 +57,5 @@ async function postHandler(request: Request) {
   const transaction = await buildUserTransaction(owner, [ix]);
   return NextResponse.json(json({ transaction, shares: plan.shares, amountRaw: plan.amountRaw, prunes: plan.prunes, brief: plan.brief }));
 }
-export const POST = withAppErrorLog("withdraw/build", postHandler);
+// 11-26: the user-facing 429 budget (retry-budget.ts), at least the daily run's.
+export const POST = withAppErrorLog("withdraw/build", withUserRetryBudget(postHandler));

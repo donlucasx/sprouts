@@ -12,7 +12,7 @@ import { issueSession } from "@/lib/session";
  */
 const { simulateMock, chain } = vi.hoisted(() => ({
   simulateMock: vi.fn(async () => ({ value: { err: null as unknown, logs: [] as string[] } })),
-  chain: { authority: "", oldLive: true, sendLands: true, landed: false, sent: 0, user: "", leash: "", created: null as null | Record<string, unknown> },
+  chain: { authority: "", oldLive: true, sendLands: true, landed: false, sent: 0, user: "", leash: "", created: null as null | Record<string, unknown>, sendError: null as null | Error },
 }));
 const USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 const NONE = { exists: false, amountPerPeriodRaw: 0n, pulledInPeriodRaw: 0n, periodStartTs: 0n, periodLengthS: 0n };
@@ -32,7 +32,8 @@ vi.mock("@/lib/rpc", () => ({ rpc: () => ({
   simulateTransaction: () => ({ send: simulateMock }),
   sendTransaction: () => ({ send: async () => {
     chain.sent++;
-    if (!chain.sendLands) throw new Error("blockhash not found");
+    // 11-26: a plain failed send by default; a test sets `sendError` for the node's expired-blockhash refusal.
+    if (!chain.sendLands) throw chain.sendError ?? new Error("send failed");
     chain.landed = true;
     chain.oldLive = false;
     return "sig";
@@ -76,7 +77,7 @@ describe("re-link the Seed Vault wallet to the leash (contracts 5.5, R287)", () 
     await repo.upsertUser({ seedVaultPubkey: user.address, sgtMint: "M", skrName: null });
     await repo.addWallet({ pubkey: user.address, userPubkey: user.address, delegationPda: OLD, dailyCapCents: 500 });
     simulateMock.mockClear();
-    Object.assign(chain, { oldLive: true, sendLands: true, landed: false, sent: 0, created: null });
+    Object.assign(chain, { oldLive: true, sendLands: true, landed: false, sent: 0, created: null, sendError: null });
   });
   const call = async (fn: typeof build, body: unknown) => fn(new Request("http://x", { method: "POST", headers: { authorization: `Bearer ${await issueSession(user.address, "M")}` }, body: JSON.stringify(body) }));
   const sign = async (b64: string) => getBase64EncodedWireTransaction(await signTransaction([user.keyPair], decode(b64)));
@@ -130,6 +131,32 @@ describe("re-link the Seed Vault wallet to the leash (contracts 5.5, R287)", () 
     expect(await res.json()).toEqual({ error: "No re-link found on chain yet. Check again in a minute.", code: "relink_not_on_chain" });
     expect(await repo.getWallet(user.address)).toMatchObject({ linkModel: "puller", delegationPda: OLD });
     expect(repo.events.map((e) => e.kind)).not.toContain("relinked");
+  });
+  // 11-26 (Kimi scope 2 B): a send the node refused for an expired blockhash can never land. Its own code, so a 0.1.13 app asks the
+  // Seed Vault once more; the English is LATE byte for byte, so a 0.1.12 app (stem only) retries exactly as before.
+  it("blockhash expired: 409 blockhash_expired with the 0.1.12 English sentence, Spanish for es, nothing recorded", async () => {
+    const built = await (await call(build, {})).json();
+    chain.sendLands = false;
+    chain.sendError = Object.assign(new Error("Solana error #-32002"), { context: { __code: -32002, __serverMessage: "Transaction simulation failed: Blockhash not found" }, cause: { context: { __code: 7050008 } } });
+    const signed = await sign(built.transaction);
+    const old = await call(confirm, { signedTransaction: signed });
+    expect(old.status).toBe(409);
+    const body = (await old.json()) as { error: string; code: string };
+    expect(body).toEqual({ error: "No re-link found on chain yet. Check again in a minute.", code: "blockhash_expired" });
+    expect(body.error.includes("No re-link found on chain yet. Check again in a minute.")).toBe(true);   // the 0.1.12 app's RELINK_NOT_ON_CHAIN_YET
+    const es = await confirm(new Request("http://x", { method: "POST", headers: { authorization: `Bearer ${await issueSession(user.address, "M")}`, "accept-language": "es" }, body: JSON.stringify({ signedTransaction: signed }) }));
+    expect(await es.json()).toEqual({ error: "La aprobación tardó demasiado en llegar a la red. Apruébala una vez más.", code: "blockhash_expired" });
+    expect(await repo.getWallet(user.address)).toMatchObject({ linkModel: "puller", delegationPda: OLD });
+    expect(repo.events.map((e) => e.kind)).not.toContain("relinked");
+  });
+  it("blockhash expired but the re-link landed before (a re-post): the chain decides, it records", async () => {
+    const built = await (await call(build, {})).json();
+    const signed = await sign(built.transaction);
+    chain.landed = true;
+    chain.oldLive = false;
+    chain.sendLands = false;
+    chain.sendError = Object.assign(new Error("Solana error #-32002"), { context: { err: "BlockhashNotFound" } });
+    expect((await call(confirm, { signedTransaction: signed })).status).toBe(200);
   });
   it("confirm refuses a wallet that is not this user's linked Seed Vault wallet", async () => {
     const built = await (await call(build, {})).json();

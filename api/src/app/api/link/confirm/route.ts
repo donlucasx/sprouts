@@ -14,7 +14,7 @@ import { rpc } from "@/lib/rpc";
 import { SUBSCRIPTIONS_PROGRAM, USDC_MINT } from "@/lib/constants";
 import { findSubscriptionAuthorityPda } from "@solana/subscriptions";
 import { ASSOCIATED_TOKEN_PROGRAM_ADDRESS, TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
-import { errorText, sendFailureDetail, sendFailureText } from "@/lib/redact";
+import { errorText, isBlockhashExpiredSend, sendFailureDetail, sendFailureText } from "@/lib/redact";
 import { addressOrNull, linkOwner, withFailureLog } from "@/lib/failure-log";
 
 export const runtime = "nodejs";
@@ -61,6 +61,8 @@ async function confirm(request: Request) {
   }
 
   let sendError: string | null = null;
+  // 11-26 (Kimi scope 2 B): the send refused these bytes for an expired blockhash; they can never land, so re-posting them is useless.
+  let blockhashExpired = false;
   // The phone's own wallet posts the signed approval here [A3]: it must be this wallet's own approval for this delegation, then the API sends it.
   if (parsed.data.signedTransaction) {
     let posted;
@@ -88,6 +90,7 @@ async function confirm(request: Request) {
       // 11-01 (Kimi MED, user-d.skr): the reason was only logged, and Vercel keeps logs about an hour; it now rides the 409 below, so the
       // link_failed event (failure-log.ts) and the founder's alert carry it. An "already processed" here is the app's re-post of a landed approval.
       sendError = sendFailureText(e);
+      blockhashExpired = isBlockhashExpiredSend(e);
       console.error(`link confirm: send answered with an error for ${wallet}: ${sendError}`);
       // 11-23 (carousel day): the whole failure, so the next refusal says why (the line above keeps only 140 characters).
       console.error(`link confirm: send failure detail for ${wallet}: ${sendFailureDetail(e)}`);
@@ -102,7 +105,9 @@ async function confirm(request: Request) {
       : parsed.data.signedTransaction
         ? "No delegation found yet: your approval was sent but is not on chain. Trying again is safe."
         : "No delegation found for this wallet yet. Sign the approval first.";
-    return apiError("no_delegation", { error }, { status: 409 }, lang);
+    // 11-26: an expired blockhash answers its own code (a 0.1.13 app fetches a new approval and signs once more); the English is the
+    // same sentence, so a 0.1.12 app, which matches the stem only, retries exactly as before.
+    return apiError(sendError && blockhashExpired ? "blockhash_expired" : "no_delegation", { error }, { status: 409 }, lang);
   }
   // K-M4 (like relink/confirm): the chain must show the terms the link page built: this wallet as delegator, a delegatee that derives
   // the bound PDA, $5 a day, a one-day period, no expiry, on USDC, under this wallet's USDC subscription authority. Anything else

@@ -90,3 +90,23 @@ describe("sendFailureText puts the cause code after the log line (11-23 Kimi day
     expect(sendFailureText(e)).toBe("Program log: Error: insufficient funds; transaction error #7050003");
   });
 });
+
+// 11-26 (Kimi scope 2 B): link and re-link confirm answer blockhash_expired only when these signed bytes can never land.
+describe("isBlockhashExpiredSend", async () => {
+  const { isBlockhashExpiredSend } = await import("@/lib/redact");
+  const kit = (context: Record<string, unknown>, cause?: unknown) => Object.assign(new Error("Solana error #-32002"), { context, ...(cause ? { cause } : {}) });
+  it("reads kit's expired-blockhash shapes: the cause's 7050008, err BlockhashNotFound, the node's message", () => {
+    expect(isBlockhashExpiredSend(kit({ __code: -32002 }, { context: { __code: 7050008 } }))).toBe(true);
+    expect(isBlockhashExpiredSend(kit({ err: "BlockhashNotFound", logs: [] }))).toBe(true);
+    expect(isBlockhashExpiredSend(kit({ __serverMessage: "Transaction simulation failed: Blockhash not found" }))).toBe(true);
+    expect(isBlockhashExpiredSend(kit({ __code: -32002 }, kit({ __code: -1 }, { context: { __code: 7050008 } })))).toBe(true);
+  });
+  it("anything else is not: another transaction error, a program failure, a 429, already processed, a network error", () => {
+    expect(isBlockhashExpiredSend(kit({ __code: -32002 }, { context: { __code: 7050003 } }))).toBe(false);
+    expect(isBlockhashExpiredSend(kit({ err: { InstructionError: [0, { Custom: 1 }] }, logs: ["Program log: Error: insufficient funds"] }))).toBe(false);
+    expect(isBlockhashExpiredSend(kit({ __code: 8100002, statusCode: 429 }))).toBe(false);
+    expect(isBlockhashExpiredSend(kit({ err: "AlreadyProcessed", logs: [] }))).toBe(false);
+    expect(isBlockhashExpiredSend(new TypeError("fetch failed"))).toBe(false);
+    expect(isBlockhashExpiredSend(null)).toBe(false);
+  });
+});

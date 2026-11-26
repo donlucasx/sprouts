@@ -11,6 +11,7 @@ import { buildApproveOnceIxs, buildRevokeDelegationIx, delegationPda, readDelega
 import { pullerSigner } from "@/lib/puller";
 import { leashLive, leashPda } from "@/lib/leash";
 import { rpc } from "@/lib/rpc";
+import { withUserRetryBudget } from "@/lib/retry-budget";
 import { ownerLabel } from "@/lib/owner-label";
 import { rulesRowToRules } from "@/db/types";
 import { plantThresholdFor } from "@/domain/threshold";
@@ -136,4 +137,5 @@ function simulationError(err: unknown, logs: readonly string[]): string {
 async function approvalWho(req: Request, _f: unknown, ctx: { params: Promise<{ code: string }> }) {
   return { userPubkey: await linkOwner((await ctx.params).code), walletPubkey: addressOrNull(new URL(req.url).searchParams.get("wallet")) };
 }
-export const GET = withFailureLog("link_failed", "approval", approvalWho, getApproval);
+// 11-26: the user-facing 429 budget (retry-budget.ts), at least the daily run's: the approval GET is where links were lost.
+export const GET = withFailureLog("link_failed", "approval", approvalWho, withUserRetryBudget(getApproval));

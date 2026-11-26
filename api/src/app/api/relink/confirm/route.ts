@@ -14,6 +14,7 @@ import { leashPda } from "@/lib/leash";
 import { rpc } from "@/lib/rpc";
 import { SUBSCRIPTIONS_PROGRAM, USDC_MINT } from "@/lib/constants";
 import { withAppErrorLog } from "@/lib/failure-log";
+import { isBlockhashExpiredSend } from "@/lib/redact";
 
 export const runtime = "nodejs";
 export const maxDuration = 60; // the delegation poll (up to 10 s) plus the send
@@ -64,16 +65,20 @@ async function postHandler(request: Request) {
   const oldLive = (await readDelegation(old)).exists;
   const revokesOld = posted.instructions.some((ix) => ix.program === SUBSCRIPTIONS_PROGRAM && ix.data.length === 1 && ix.data[0] === Number(REVOKE_DELEGATION_DISCRIMINATOR) && ix.accounts[0] === me && ix.accounts[1] === old);
   if (oldLive && !revokesOld) return apiError("relink_keeps_old", { error: "This re-link does not revoke your current approval. Nothing was sent; start the re-link again." }, { status: 400 }, lang);
+  // 11-26 (Kimi scope 2 B, as link/confirm): a send refused for an expired blockhash can never land; the late answer says so by its code.
+  let blockhashExpired = false;
   try {
     await rpc().sendTransaction(posted.wire as Base64EncodedWireTransaction, { encoding: "base64", preflightCommitment: "confirmed" }).send();
   } catch (e) {
     // A lost answer is not a lost re-link: the reads below decide, and the app checks again.
+    blockhashExpired = isBlockhashExpiredSend(e);
     console.error(`relink confirm: send answered with an error for ${me}: ${e instanceof Error ? e.message : String(e)}`);
   }
   // After the poll the chain itself must show the leash delegation (delegator, delegatee, $5 per day, no expiry) and the old one gone;
   // anything short of that records nothing.
   const d = await waitForDelegation(pda, 10_000);
-  if (!d.exists) return apiError("relink_not_on_chain", { error: LATE }, { status: 409 }, lang);
+  // The same English either way (a 0.1.12 app matches LATE); a 0.1.13 app reads blockhash_expired and asks the Seed Vault once more.
+  if (!d.exists) return apiError(blockhashExpired ? "blockhash_expired" : "relink_not_on_chain", { error: LATE }, { status: 409 }, lang);
   if (d.delegator !== me || d.delegatee !== leash || d.amountPerPeriodRaw !== CAP_RAW || d.periodLengthS !== DAY_S || d.expiryTs !== 0n) {
     console.error(`relink confirm: the delegation at ${pda} is not the leash delegation for ${me}`);
     return apiError("wrong_transaction", { error: NOT_RELINK }, { status: 400 }, lang);

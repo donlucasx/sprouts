@@ -8,8 +8,8 @@ export {
 } from "./helius-count";
 
 /**
- * 11-19: Sprouts counts the Helius credits it spends, per billing cycle, so the founder hears at 70% and 90% of the free plan's
- * 1,000,000 (his ruling: upgrade at 70%). Each function instance keeps a pending count (rpc.ts's transport per request and per 429
+ * 11-19: Sprouts counts the Helius credits it spends, per billing cycle, so the founder hears at 70% and 90% of the plan's credits
+ * (his ruling: upgrade at 70%). 11-26: the Developer plan (10,000,000 a cycle) replaced the free plan's 1,000,000. Each function instance keeps a pending count (rpc.ts's transport per request and per 429
  * retry, helius.ts per REST call, countingFetch for web3.js Connections and raw DAS posts, the swap webhook per delivered item).
  * Review fix 1: a request that counts anything writes the pending count as one `helius_credits` event in its after() hook once the
  * pending count reaches FLUSH_AT_CREDITS (50) or its oldest unflushed credit is over FLUSH_AFTER_MS (60 s) old: at most one insert
@@ -26,7 +26,7 @@ export {
  * - the cycle boundary is the 14th at 00:00 UTC, an assumption from the dashboard's date (its own time zone is not shown): a few
  *   hours of the old cycle may be summed into the new one, which reads high, never low.
  */
-export const HELIUS_MONTHLY_CREDITS = 1_000_000;
+export const HELIUS_MONTHLY_CREDITS = 10_000_000;   // Developer plan, since 11-26 (was 1,000,000 on the free plan)
 export const HELIUS_ALERT_LEVELS = [70, 90] as const;   // percent
 
 /** The ops card for a level reached. */
@@ -34,7 +34,7 @@ export function heliusCreditAlertCard(level: number, credits: number, cycle: str
   return {
     channel: "ops",
     title: `Helius credits at ${level}%`,
-    text: `About ${credits.toLocaleString("en-US")} of 1,000,000 Helius credits used this cycle (since ${cycle}), counted by Sprouts itself. Other apps on the same key are not counted.`,
+    text: `About ${credits.toLocaleString("en-US")} of ${HELIUS_MONTHLY_CREDITS.toLocaleString("en-US")} Helius credits used this cycle (since ${cycle}), counted by Sprouts itself. Other apps on the same key are not counted.`,
     todo: "Check the Helius dashboard. Cut previews and the swap check, or move the other app off this key",
   };
 }

@@ -81,51 +81,51 @@ describe("checkHeliusCredits", () => {
     return { calls, alert: async (level: number, credits: number) => { calls.push([level, credits]); return true; } };
   };
 
-  it("699,999: nothing posted", async () => {
-    const repo = await repoWith([600_000, 99_999]);
+  it("6,999,999 (just under 70% of the Developer plan's 10,000,000): nothing posted", async () => {
+    const repo = await repoWith([6_000_000, 999_999]);
     const a = alerts();
-    expect(await checkHeliusCredits({ repo, now, alert: a.alert })).toEqual({ cycle: "2026-11-14", credits: 699_999, alerted: null });
+    expect(await checkHeliusCredits({ repo, now, alert: a.alert })).toEqual({ cycle: "2026-11-14", credits: 6_999_999, alerted: null });
     expect(a.calls).toEqual([]);
   });
 
-  it("700,000: posts 70 once; a second check posts nothing", async () => {
-    const repo = await repoWith([700_000]);
+  it("7,000,000: posts 70 once; a second check posts nothing", async () => {
+    const repo = await repoWith([7_000_000]);
     const a = alerts();
     expect((await checkHeliusCredits({ repo, now, alert: a.alert })).alerted).toBe(70);
     expect((await checkHeliusCredits({ repo, now, alert: a.alert })).alerted).toBeNull();
-    expect(a.calls).toEqual([[70, 700_000]]);
+    expect(a.calls).toEqual([[70, 7_000_000]]);
     expect(repo.events.filter((e) => e.kind === "helius_credit_alert").map((e) => e.detail)).toEqual([{ cycle: "2026-11-14", level: 70 }]);
   });
 
-  it("905,000 after 70 was posted: posts 90 once", async () => {
-    const repo = await repoWith([700_000]);
+  it("9,050,000 after 70 was posted: posts 90 once", async () => {
+    const repo = await repoWith([7_000_000]);
     const a = alerts();
     await checkHeliusCredits({ repo, now, alert: a.alert });
-    await repo.addEvent({ userPubkey: null, walletPubkey: null, kind: "helius_credits", detail: { cycle: "2026-11-14", credits: 205_000 } });
+    await repo.addEvent({ userPubkey: null, walletPubkey: null, kind: "helius_credits", detail: { cycle: "2026-11-14", credits: 2_050_000 } });
     expect((await checkHeliusCredits({ repo, now, alert: a.alert })).alerted).toBe(90);
     expect((await checkHeliusCredits({ repo, now, alert: a.alert })).alerted).toBeNull();
-    expect(a.calls).toEqual([[70, 700_000], [90, 905_000]]);
+    expect(a.calls).toEqual([[70, 7_000_000], [90, 9_050_000]]);
   });
 
-  it("905,000 with nothing posted: posts 90 only, and 70 is never posted after it", async () => {
-    const repo = await repoWith([905_000]);
+  it("9,050,000 with nothing posted: posts 90 only, and 70 is never posted after it", async () => {
+    const repo = await repoWith([9_050_000]);
     const a = alerts();
     expect((await checkHeliusCredits({ repo, now, alert: a.alert })).alerted).toBe(90);
     expect((await checkHeliusCredits({ repo, now, alert: a.alert })).alerted).toBeNull();
-    expect(a.calls).toEqual([[90, 905_000]]);
+    expect(a.calls).toEqual([[90, 9_050_000]]);
   });
 
   it("rows from the previous cycle are not counted, nor its alerts", async () => {
-    const repo = await repoWith([900_000], "2026-10-14");
+    const repo = await repoWith([9_000_000], "2026-10-14");
     await repo.addEvent({ userPubkey: null, walletPubkey: null, kind: "helius_credit_alert", detail: { cycle: "2026-10-14", level: 70 } });
-    await repo.addEvent({ userPubkey: null, walletPubkey: null, kind: "helius_credits", detail: { cycle: "2026-11-14", credits: 700_000 } });
+    await repo.addEvent({ userPubkey: null, walletPubkey: null, kind: "helius_credits", detail: { cycle: "2026-11-14", credits: 7_000_000 } });
     const a = alerts();
-    expect(await checkHeliusCredits({ repo, now, alert: a.alert })).toEqual({ cycle: "2026-11-14", credits: 700_000, alerted: 70 });
-    expect(a.calls).toEqual([[70, 700_000]]);
+    expect(await checkHeliusCredits({ repo, now, alert: a.alert })).toEqual({ cycle: "2026-11-14", credits: 7_000_000, alerted: 70 });
+    expect(a.calls).toEqual([[70, 7_000_000]]);
   });
 
   it("a failed post leaves no marker, and the next check posts again", async () => {
-    const repo = await repoWith([700_000]);
+    const repo = await repoWith([7_000_000]);
     const calls: number[] = [];
     let ok = false;
     const alert = async (level: number) => { calls.push(level); return ok; };
@@ -141,7 +141,7 @@ describe("checkHeliusCredits", () => {
     vi.stubEnv("ALERT_WEBHOOK_OPS", "");
     vi.stubEnv("ALERT_WEBHOOK_URL", "");
     try {
-      const repo = await repoWith([700_000]);
+      const repo = await repoWith([7_000_000]);
       expect((await checkHeliusCredits({ repo, now })).alerted).toBeNull();
       expect(repo.events.filter((e) => e.kind === "helius_credit_alert")).toEqual([]);
     } finally {
@@ -151,16 +151,16 @@ describe("checkHeliusCredits", () => {
 
   it("sums every row of the cycle, however many (no row cap)", async () => {
     const repo = new MemoryRepo();
-    for (let i = 0; i < 60_000; i++) repo.events.push({ id: i + 1, ts: new Date("2026-11-15T00:00Z"), userPubkey: null, walletPubkey: null, kind: "helius_credits", detail: { cycle: "2026-11-14", credits: 15 } });
+    for (let i = 0; i < 60_000; i++) repo.events.push({ id: i + 1, ts: new Date("2026-11-15T00:00Z"), userPubkey: null, walletPubkey: null, kind: "helius_credits", detail: { cycle: "2026-11-14", credits: 150 } });
     const a = alerts();
-    expect(await checkHeliusCredits({ repo, now, alert: a.alert })).toEqual({ cycle: "2026-11-14", credits: 900_000, alerted: 90 });
+    expect(await checkHeliusCredits({ repo, now, alert: a.alert })).toEqual({ cycle: "2026-11-14", credits: 9_000_000, alerted: 90 });
   });
 
   it("the default alert posts to the ops channel with the brief's words", () => {
-    expect(heliusCreditAlertCard(70, 712_345, "2026-11-14")).toEqual({
+    expect(heliusCreditAlertCard(70, 7_123_450, "2026-11-14")).toEqual({
       channel: "ops",
       title: "Helius credits at 70%",
-      text: "About 712,345 of 1,000,000 Helius credits used this cycle (since 2026-11-14), counted by Sprouts itself. Other apps on the same key are not counted.",
+      text: "About 7,123,450 of 10,000,000 Helius credits used this cycle (since 2026-11-14), counted by Sprouts itself. Other apps on the same key are not counted.",
       todo: "Check the Helius dashboard. Cut previews and the swap check, or move the other app off this key",
     });
   });
@@ -170,7 +170,7 @@ describe("checkHeliusCredits", () => {
     const f = vi.fn(async () => new Response("ok", { status: 200 }));
     vi.stubGlobal("fetch", f);
     try {
-      const repo = await repoWith([700_000]);
+      const repo = await repoWith([7_000_000]);
       expect((await checkHeliusCredits({ repo, now })).alerted).toBe(70);
       expect(f).toHaveBeenCalledTimes(1);
       const calls = f.mock.calls as unknown as [string, RequestInit][];
@@ -178,7 +178,7 @@ describe("checkHeliusCredits", () => {
       const body = JSON.parse(String(calls[0][1].body)) as { content: string; embeds: { title: string; description: string }[] };
       expect(body.content).toMatch(/^<@\d+>$/);
       expect(body.embeds[0].title).toContain("Helius credits at 70%");
-      expect(body.embeds[0].description).toContain("About 700,000 of 1,000,000 Helius credits");
+      expect(body.embeds[0].description).toContain("About 7,000,000 of 10,000,000 Helius credits");
     } finally {
       vi.unstubAllEnvs(); vi.unstubAllGlobals();
     }

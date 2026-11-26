@@ -134,6 +134,12 @@ export const ES_ERRORS = {
     "No delegation found for this wallet yet. Sign the approval first.": "Aún no se encontró una delegación para esta billetera. Primero firma la aprobación.",
     "No delegation found: the network did not accept the approval ({reason}). Nothing was linked. Try again.": "No se encontró la delegación: la red no aceptó la aprobación ({reason}). No se vinculó nada. Inténtalo de nuevo.",
   },
+  // 11-26: the same English as the not-on-chain answers (a 0.1.12 app matches their stems); a 0.1.13 app matches the code and shows
+  // its own line, so this Spanish is for the web /link page and the failure log's readers.
+  blockhash_expired: {
+    "No delegation found: the network did not accept the approval ({reason}). Nothing was linked. Try again.": "No se encontró la delegación: la aprobación tardó demasiado en llegar a la red ({reason}). No se vinculó nada. Apruébala una vez más.",
+    "No re-link found on chain yet. Check again in a minute.": "La aprobación tardó demasiado en llegar a la red. Apruébala una vez más.",
+  },
   // ---- Re-link ----
   link_wallet_first: {
     "Link this phone's wallet first.": "Primero vincula la billetera de este teléfono.",

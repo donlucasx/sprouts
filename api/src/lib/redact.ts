@@ -71,6 +71,25 @@ export function sendFailureText(e: unknown): string {
 }
 
 /**
+ * 11-26 (Kimi scope 2 B): true when a failed sendTransaction says the transaction's blockhash is unknown or expired, so these signed
+ * bytes can never land and only a new approval (a fresh blockhash, signed again) can. Read from kit's error and its cause chain: the
+ * transaction error code 7050008 (BLOCKHASH_NOT_FOUND, on `cause` for a refused preflight), `err` "BlockhashNotFound", or the node's
+ * "Blockhash not found" message; and, as a last check, from sendFailureText's words.
+ */
+export function isBlockhashExpiredSend(e: unknown): boolean {
+  let cur: unknown = e;
+  for (let i = 0; i < 4 && cur; i++) {
+    const ctx = (cur as { context?: Record<string, unknown> } | null)?.context;
+    if (ctx) {
+      if (ctx.__code === 7050008 || ctx.err === "BlockhashNotFound") return true;
+      if (typeof ctx.__serverMessage === "string" && /blockhash not found/i.test(ctx.__serverMessage)) return true;
+    }
+    cur = (cur as { cause?: unknown }).cause;
+  }
+  return /BlockhashNotFound|blockhash not found|transaction error #7050008/i.test(sendFailureText(e));
+}
+
+/**
  * 11-23 (carousel day): the whole send failure for the server log, redacted: the outer context (simulation result: err, logs,
  * unitsConsumed) and each cause's code and context, up to 3 levels. At most 2,000 characters. Never stored in an event.
  */

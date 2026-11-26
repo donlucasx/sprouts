@@ -41,6 +41,7 @@ export const API_ERROR_CODES = {
   wallet_taken: "The wallet is linked to another Seeker (409).",
   link_would_fail: "The approval would fail on chain; nothing asked of the wallet (400).",
   no_delegation: "Link confirm: the approval is not on chain (yet). The app retries the confirm on this (409).",
+  blockhash_expired: "Link or re-link confirm: the network refused the signed approval because its blockhash expired; it can never land, so a 0.1.13 app fetches a new approval and asks the wallet once more. The English sentence keeps that route's not-on-chain stem, so a 0.1.12 app retries as before (409).",
   // Re-link
   link_wallet_first: "No live link for this phone's wallet (409).",
   already_relinked: "The wallet is already re-linked (409).",

@@ -8,6 +8,7 @@ import { ApprovalWarning, Safety } from "../safety";
 import { SiteFooter, SiteHeader } from "../site-chrome";
 import { safetyCopy } from "@/lib/link-safety-copy";
 import type { Lang } from "@/lib/i18n";
+import { signAndConfirmRebuildingOnce } from "@/lib/link-rebuild";
 
 /** 10-16 (his note "too much text, simplify, and brand the page"): the splash's paper, ink and Outfit, the deck's leaf green and Albert Sans. */
 const outfit = Outfit({ subsets: ["latin"], weight: ["300", "600"] });
@@ -47,6 +48,7 @@ const COPY = {
     linked: (short: string, skrName: string | null, cap: number, revokes: boolean) =>
       `Your ${short} wallet is linked${skrName ? ` to ${skrName}'s garden` : ""}, up to $${cap.toFixed(0)} a day.${revokes ? " The old approval was revoked." : ""} You can close this page. To link another wallet, get a new code in the Sprouts app.`,
     failed: "Something did not go through. Nothing moved.",
+    approveAgain: "The approval took too long to reach the network. Approve once more.",
     title: "Link your trading wallets",
     sub: "Phantom, Solflare, Backpack or any Solana wallet. Link as many as you like, one code each. Each one pays its round-ups from its own USDC.",
     placeholder: "CODE",
@@ -70,6 +72,7 @@ const COPY = {
     linked: (short: string, skrName: string | null, cap: number, revokes: boolean) =>
       `Tu billetera ${short} quedó vinculada${skrName ? ` al jardín de ${skrName}` : ""}, hasta $${cap.toFixed(0)} al día.${revokes ? " Se revocó la aprobación anterior." : ""} Puedes cerrar esta página. Para vincular otra billetera, pide un código nuevo en la app de Sprouts.`,
     failed: "Algo no se completó. No se movió nada.",
+    approveAgain: "La aprobación tardó demasiado en llegar a la red. Apruébala una vez más.",
     title: "Vincula tus billeteras de trading",
     sub: "Phantom, Solflare, Backpack o cualquier billetera de Solana. Vincula todas las que quieras, un código para cada una. Cada una paga sus redondeos con su propio USDC.",
     placeholder: "CÓDIGO",
@@ -127,14 +130,22 @@ export function LinkClient({ lang = "en" }: { lang?: Lang }) {
     try {
       const account = await connectWith(w);
       const wallet = account.address;
-      const t = await call<{ transaction: string; cap: number; revokes: string | null; owner: string; puller: string; delegatee: string; usdcRaw?: string | null; usdcNeedCents?: number }>(`/api/link/${c}?wallet=${wallet}`);
-      if (t.owner !== owner) throw new Error(L.ownerChanged(t.owner, owner));
-      // After go-live the delegate is leashPda(wallet, garden), shown before the wallet is asked so it can be compared with the app's
-      // re-link card (contracts 5.5, Kimi #4); the signer refuses an approval naming any other delegate.
-      setLeash(t.delegatee !== t.puller ? t.delegatee : null);
-      const signed = await signWith(w, account, t.transaction, t.delegatee);
-      const done = await call<{ skrName: string | null }>("/api/link/confirm", {
-        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ code: c, wallet, signedTransaction: signed }),
+      // 11-26 (Kimi scope 2 B): an approval that sat in the wallet until its blockhash expired is refused by the network (409
+      // blockhash_expired); the page fetches a fresh one and asks the wallet once more, saying why. A second expiry shows the API's sentence.
+      const { built: t, result: done } = await signAndConfirmRebuildingOnce({
+        build: async () => {
+          const t = await call<{ transaction: string; cap: number; revokes: string | null; owner: string; puller: string; delegatee: string; usdcRaw?: string | null; usdcNeedCents?: number }>(`/api/link/${c}?wallet=${wallet}`);
+          if (t.owner !== owner) throw new Error(L.ownerChanged(t.owner, owner));
+          // After go-live the delegate is leashPda(wallet, garden), shown before the wallet is asked so it can be compared with the app's
+          // re-link card (contracts 5.5, Kimi #4); the signer refuses an approval naming any other delegate.
+          setLeash(t.delegatee !== t.puller ? t.delegatee : null);
+          return t;
+        },
+        sign: (t) => signWith(w, account, t.transaction, t.delegatee),
+        confirm: (signed) => call<{ skrName: string | null }>("/api/link/confirm", {
+          method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ code: c, wallet, signedTransaction: signed }),
+        }),
+        onRebuild: () => setMessage(L.approveAgain),
       });
       // 11-12 (his note): name the wallet that was linked, and say the page can be closed.
       const short = `${wallet.slice(0, 4)}...${wallet.slice(-4)}`;

@@ -371,12 +371,39 @@ describe("link flow", () => {
     const r = await confirm(new Request("http://x/api/link/confirm", { method: "POST", body: JSON.stringify({ code: c.code, wallet: WALLET, signedTransaction: signed, waitMs: 0 }) }));
     expect(r.status).toBe(409);
     const body = (await r.json()) as { error: string; code?: string };
-    expect(body.code).toBe("no_delegation");
+    // 11-26: an expired blockhash has its own code (a 0.1.13 app fetches a new approval); the English is unchanged (0.1.12 matches the stem)
+    expect(body.code).toBe("blockhash_expired");
     const error = body.error;
     expect(error).toBe("No delegation found: the network did not accept the approval (BlockhashNotFound; Transaction simulation failed: Blockhash not found). Nothing was linked. Try again.");
     expect(error.startsWith("No delegation found")).toBe(true);
     const e = repo.events.find((x) => x.kind === "link_failed")!;
     expect((e.detail as { error: string }).error).toContain("BlockhashNotFound");
+    readDelegation.mockImplementation(chainRead);
+  });
+
+  // 11-26 (Kimi scope 2 B): the code is decided by the send's error; every other refusal stays no_delegation, the code stays live for a
+  // second GET (bound to the same wallet), and Spanish reads the new line.
+  it("blockhash_expired only for an expired blockhash; other refusals stay no_delegation; the code survives for a rebuild; Spanish", async () => {
+    const { readDelegation, chainRead } = (await import("@/lib/subscriptions")) as unknown as { readDelegation: { mockResolvedValue: (v: unknown) => void; mockImplementation: (v: unknown) => void }; chainRead: unknown };
+    readDelegation.mockResolvedValue({ exists: false, amountPerPeriodRaw: 0n, pulledInPeriodRaw: 0n, periodStartTs: 0n, periodLengthS: 0n });
+    const c = await mintCode(repo);
+    const t = await (await getTx(new Request(`http://x/api/link/${c.code}?wallet=${WALLET}`), { params: Promise.resolve({ code: c.code }) })).json();
+    const signed = getBase64EncodedWireTransaction(await signTransaction([walletKeyPair.keyPair], getTransactionDecoder().decode(getBase64Encoder().encode(t.transaction))));
+    const post = (headers: Record<string, string> = {}) => confirm(new Request("http://x/api/link/confirm", { method: "POST", headers, body: JSON.stringify({ code: c.code, wallet: WALLET, signedTransaction: signed, waitMs: 0 }) }));
+    // kit's shape: a -32002 preflight failure whose cause carries the transaction error 7050008 (no err, no logs)
+    sendMock.mockRejectedValueOnce(Object.assign(new Error("Solana error #-32002"), { context: { __code: -32002 }, cause: { context: { __code: 7050008 } } }));
+    const es = await post({ "accept-language": "es" });
+    expect(es.status).toBe(409);
+    expect(await es.json()).toEqual({ error: "No se encontró la delegación: la aprobación tardó demasiado en llegar a la red (transaction error #7050008). No se vinculó nada. Apruébala una vez más.", code: "blockhash_expired" });
+    sendMock.mockRejectedValueOnce(Object.assign(new Error("Solana error #-32002"), { context: { err: { InstructionError: [0, { Custom: 1 }] }, logs: ["Program log: Error: insufficient funds"] } }));
+    const other = await post();
+    expect(other.status).toBe(409);
+    expect(((await other.json()) as { code: string }).code).toBe("no_delegation");
+    // the code is not burned and stays bound to this wallet: the app's second GET builds a fresh approval for the same delegation
+    expect(await repo.peekLinkCode(c.code)).toMatchObject({ walletPubkey: WALLET });
+    const again = await getTx(new Request(`http://x/api/link/${c.code}?wallet=${WALLET}`), { params: Promise.resolve({ code: c.code }) });
+    expect(again.status).toBe(200);
+    expect(((await again.json()) as { delegationPda: string }).delegationPda).toBe(t.delegationPda);
     readDelegation.mockImplementation(chainRead);
   });
 

@@ -48,6 +48,35 @@ describe("rpc transport: HTTP 429 is retried (11-13: an SKR price post and a wit
     expect(leaks(err)).toBe(false);
   });
 
+  // 11-26 (Helius Developer plan): the user-facing builds (link approval GET, withdraw/build) get at least the daily run's budget, plus one.
+  it("inside withUserRetryBudget: 4 retries (about 0.5 s, 1 s, 2 s, 4 s), and outside it the daily run's 3 again", async () => {
+    const f = stubFetch(tooMany);
+    const { rpc, sleeps, mod } = await setup();
+    const err = await mod.withUserRetryBudget(async () => rpc.getSlot().send())().then(() => null, (e: unknown) => e);
+    expect(f).toHaveBeenCalledTimes(5);
+    expect(sleeps).toEqual([500, 1_000, 2_000, 4_000]);
+    expect(mod.USER_RETRY_DELAYS_MS.length).toBeGreaterThanOrEqual(mod.RETRY_DELAYS_MS.length);
+    expect(mod.USER_RETRY_DELAYS_MS.slice(0, mod.RETRY_DELAYS_MS.length)).toEqual([...mod.RETRY_DELAYS_MS]);
+    expect(leaks(err)).toBe(false);
+    sleeps.length = 0;
+    f.mockClear();
+    await rpc.getSlot().send().catch(() => null);
+    expect(f).toHaveBeenCalledTimes(4);
+    expect(sleeps).toEqual([500, 1_000, 2_000]);
+  });
+
+  it("the budget follows the handler through parallel reads (Promise.all), and a success inside it returns as usual", async () => {
+    stubFetch(tooMany, tooMany, tooMany, tooMany, ok);
+    const { rpc, sleeps, mod } = await setup();
+    await expect(mod.withUserRetryBudget(async (n: number) => Promise.all([rpc.getSlot().send()]).then(([s]) => s + BigInt(n)))(1)).resolves.toBe(4243n);
+    expect(sleeps).toEqual([500, 1_000, 2_000, 4_000]);
+  });
+
+  it("the pace allows 30 requests a second (Developer plan: 50 for the whole key)", async () => {
+    const { mod } = await setup();
+    expect(mod.RPC_MAX_RPS).toBe(30);
+  });
+
   it("a 500 throws at once: 1 call, no wait", async () => {
     const f = stubFetch(() => new Response("", { status: 500, statusText: "Internal Server Error" }));
     const { rpc, sleeps } = await setup();
