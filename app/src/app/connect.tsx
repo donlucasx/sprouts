@@ -13,7 +13,7 @@ import { linkErrorView, showStillStuck } from '@/lib/link-error'
 import { QuestionCard } from '@/components/QuestionCard'
 import { useInvalidateMe, useMe } from '@/lib/me'
 import { newlyLinked } from '@/lib/newly-linked'
-import { confirmWithRetries, LINK_NOT_ON_CHAIN } from '@/lib/confirm-retry'
+import { confirmWithRetries, LINK_NOT_ON_CHAIN, signAndConfirmRebuildingOnce } from '@/lib/confirm-retry'
 import { useSession } from '@/lib/session'
 import { reportLinkFailure, type LinkFailure, type LinkStep } from '@/lib/link-report'
 import { CAN_KEYS, CANT_KEYS, LINK_STEP_KEYS, linkApprovalPath, phoneSolNote, phoneUsdcNote, setupAccountsOf, setupLine } from '@/lib/safety-copy'
@@ -71,6 +71,8 @@ export default function Connect() {
   const [confirming, setConfirming] = useState(false)
   // 10-28: after the wallet signs, the link is still being checked on chain; the caption says so instead of "Waiting for your wallet"
   const [signed, setSigned] = useState(false)
+  // 11-26 (Kimi scope 2 B): the first approval expired before it reached the network; the wallet is being asked once more
+  const [again, setAgain] = useState(false)
   const [coding, setCoding] = useState(false)
   const [error, setError] = useState<string | null>(null)
   // Copy C: the phone-link error's title, and whether "What happened?" is offered; the question shows at most once per screen visit.
@@ -123,6 +125,7 @@ export default function Connect() {
     if (!session) return
     setApproving(true)
     setSigned(false)
+    setAgain(false)
     setError(null)
     setErrorTitle('')
     setCanAsk(false)
@@ -133,12 +136,27 @@ export default function Connect() {
       step = 'approval'
       // The count on screen at the tap: 0 asks exactly what 0.1.12 asked (no setup param) and signs exactly what it signed.
       const setupMax = setupCount
-      const t = await api<{ transaction: string; cap: number }>(linkApprovalPath(code, session.pubkey, setupMax))
-      step = 'sign'
-      const signedTx = await makeSigner(signTransaction, setupMax > 0 ? { kind: 'link', user: session.pubkey, setupMax } : { kind: 'link', user: session.pubkey })(t.transaction)
-      setSigned(true)
-      step = 'confirm'
-      await confirmLink(code, session.pubkey, signedTx)
+      // 11-26 (Kimi scope 2 B): an approval whose blockhash expired before it reached the network (409 blockhash_expired) can never
+      // land, so the same code's approval is fetched again (fresh blockhash, same delegation) and the wallet asked ONCE more.
+      await signAndConfirmRebuildingOnce({
+        build: async () => {
+          step = 'approval'
+          return api<{ transaction: string; cap: number }>(linkApprovalPath(code, session.pubkey, setupMax))
+        },
+        sign: (t) => {
+          step = 'sign'
+          return makeSigner(signTransaction, setupMax > 0 ? { kind: 'link', user: session.pubkey, setupMax } : { kind: 'link', user: session.pubkey })(t.transaction)
+        },
+        onSigned: () => setSigned(true),
+        confirm: (signedTx) => {
+          step = 'confirm'
+          return confirmLink(code, session.pubkey, signedTx)
+        },
+        onRebuild: () => {
+          setSigned(false)
+          setAgain(true)
+        },
+      })
       await invalidate()
       // 10-28 (his note): back to the garden, where a notice says the wallet linked until he taps OK
       router.replace({ pathname: '/home', params: { linked: session.pubkey } })
@@ -220,7 +238,7 @@ export default function Connect() {
         )}
         {approving ? (
           <ThemedText variant="caption" tone="secondary">
-            {signed ? t('link.finishing') : t('wallet.waiting')}
+            {signed ? t('link.finishing') : again ? t('approval.expired') : t('wallet.waiting')}
           </ThemedText>
         ) : null}
         {error && errorFrom === 'phone' ? (

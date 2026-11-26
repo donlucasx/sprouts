@@ -561,6 +561,7 @@ export const es: Partial<Record<Key, string>> = {
   'link.closed.title': 'Seed Vault se cerró antes de aprobar',
   'link.closed.body': 'No se envió nada. Toca Reintentar y presiona Aprobar en la siguiente pantalla.',
   'link.failed': 'La aprobación no se completó. Inténtalo de nuevo.',
+  'approval.expired': 'La aprobación tardó demasiado en llegar a la red. Apruébala una vez más.',
   'link.note.sol': 'Esta billetera necesita alrededor de 0,01 SOL para aprobar. Cubre el depósito único y la comisión de red. Primero agrega un poco de SOL.',
   'link.note.usdc.none': 'Esta billetera no tiene USDC. Agrégale al menos {add} para que Sprouts pueda plantar.',
   'link.note.usdc.some': 'Esta billetera tiene {held} en USDC. Agrégale al menos {add} para que Sprouts pueda plantar.',

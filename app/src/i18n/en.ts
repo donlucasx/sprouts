@@ -581,6 +581,8 @@ export const en = {
   'link.closed.title': 'Seed Vault closed before approving',
   'link.closed.body': 'Nothing was sent. Tap Try again and press Approve on the next screen.',
   'link.failed': 'The approval did not go through. Try again.',
+  // 11-26 (Kimi scope 2 B): the signed approval's blockhash expired before it reached the network; the app asks the wallet once more
+  'approval.expired': 'The approval took too long to reach the network. Approve once more.',
   'link.note.sol': 'This wallet needs about 0.01 SOL to approve. It covers the one-time rent and the network fee. Add a little SOL first.',
   'link.note.usdc.none': 'This wallet has no USDC. Add at least {add} to it so Sprouts can plant.',
   'link.note.usdc.some': 'This wallet has {held} of USDC. Add at least {add} to it so Sprouts can plant.',

@@ -13,7 +13,7 @@ import { setupAccountsOf, setupLine } from '@/lib/safety-copy'
 import { useSolUsd } from '@/lib/sol-usd'
 import { ME_USDC_SETUP, meUsdcSetupKey } from '@/lib/topup'
 import { LEND_MOCK } from '@/lib/lend-mock'
-import { disclosureItems, RELINK, relinkCode, RelinkSent, relinkThisPhone, relinkView, relinkWebLines, short } from '@/lib/relink'
+import { disclosureItems, RELINK, relinkCode, RelinkExpired, RelinkSent, relinkThisPhone, relinkView, relinkWebLines, short } from '@/lib/relink'
 import { oneAtATime } from '@/lib/withdraw-flow'
 import { FONT, spacing, TARGET, useTheme } from '@/theme'
 import { t } from '@/i18n'
@@ -98,11 +98,13 @@ export function RelinkCard({ me }: { me: MeResponse }) {
         sign: (flow) => makeSigner(signTransaction, flow),
         confirm: (body) => api('/api/relink/confirm', { method: 'POST', body }),
         onSigned: () => setRelinking('chain'),
+        // 11-26: the first approval expired; the Seed Vault is asked once more
+        onRebuild: () => setRelinking('seeker'),
       })
       setRelinked(true)
       setSettling(true)
     } catch (e) {
-      setRelinkError(e instanceof RelinkSent || e instanceof ApiError || e instanceof SignRefused ? e.message : RELINK.failedBefore)
+      setRelinkError(e instanceof RelinkSent || e instanceof RelinkExpired || e instanceof ApiError || e instanceof SignRefused ? e.message : RELINK.failedBefore)
       setConfirming(false)
     } finally {
       setRelinking(null)

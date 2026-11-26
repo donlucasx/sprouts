@@ -1,6 +1,6 @@
 import { en } from '@/i18n/en'
 import type { MeResponse } from './api'
-import { confirmWithRetries, RELINK_NOT_ON_CHAIN } from './confirm-retry'
+import { confirmWithRetries, isBlockhashExpired, RELINK_NOT_ON_CHAIN, signAndConfirmRebuildingOnce } from './confirm-retry'
 import { NEEDS_LIVE } from './lend-mock'
 import { leashPda, SETUP_MAX, type SignFlow } from './sign'
 import { t } from '@/i18n'
@@ -98,8 +98,21 @@ export class RelinkSent extends Error {
 }
 
 /**
+ * 11-26 (Kimi scope 2 B): the re-link approval expired before it reached the network, twice (the Seed Vault was already asked once
+ * more): it can never land, so the card says so instead of RelinkSent's "may still go through".
+ */
+export class RelinkExpired extends Error {
+  constructor(public reason: unknown) {
+    super(t('approval.expired'))
+    this.name = 'RelinkExpired'
+  }
+}
+
+/**
  * POST /api/relink/build, the relink check (only this wallet's leash PDA, at most one revoke), the Seed Vault, POST /api/relink/confirm.
  * A late delegation is confirmed again with the SAME signed transaction (never a new signature); a failure after signing is RelinkSent.
+ * 11-26: the one exception, an expired blockhash (409 blockhash_expired): those bytes can never land, so the re-link is built and the
+ * Seed Vault asked ONCE more (`onRebuild` first); a second expiry is RelinkExpired.
  */
 export async function relinkThisPhone(a: {
   user: string
@@ -111,15 +124,23 @@ export async function relinkThisPhone(a: {
   /** Called once the Seeker returned the signature, before the first confirm. */
   onSigned?: () => void
   sleep?: (ms: number) => Promise<void>
+  /** 11-26: called when the first approval expired, before the Seed Vault is asked once more. */
+  onRebuild?: () => void
 }): Promise<void> {
   const setupMax = a.setupMax !== undefined && Number.isInteger(a.setupMax) && a.setupMax > 0 ? Math.min(a.setupMax, SETUP_MAX) : 0
-  const built = await a.build(setupMax > 0 ? { setupMax } : {})
-  const signedTransaction = await a.sign(setupMax > 0 ? { kind: 'relink', user: a.user, setupMax } : { kind: 'relink', user: a.user })(built.transaction)
-  a.onSigned?.()
+  // A build or signature failure is thrown as it came (before any send of that round); only confirm failures are wrapped.
+  let confirming = false
   try {
-    await confirmWithRetries(() => a.confirm({ signedTransaction }), { notOnChainYet: RELINK_NOT_ON_CHAIN, sleep: a.sleep })
+    await signAndConfirmRebuildingOnce({
+      build: () => { confirming = false; return a.build(setupMax > 0 ? { setupMax } : {}) },
+      sign: (built) => a.sign(setupMax > 0 ? { kind: 'relink', user: a.user, setupMax } : { kind: 'relink', user: a.user })(built.transaction),
+      onSigned: a.onSigned,
+      confirm: (signedTransaction) => { confirming = true; return confirmWithRetries(() => a.confirm({ signedTransaction }), { notOnChainYet: RELINK_NOT_ON_CHAIN, sleep: a.sleep }) },
+      onRebuild: a.onRebuild,
+    })
   } catch (e) {
-    throw new RelinkSent(e)
+    if (!confirming) throw e
+    throw isBlockhashExpired(e) ? new RelinkExpired(e) : new RelinkSent(e)
   }
 }
 

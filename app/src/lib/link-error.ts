@@ -1,5 +1,6 @@
 import { t } from '@/i18n'
 import { ApiError } from './api'
+import { isBlockhashExpired } from './confirm-retry'
 import { SignRefused } from './sign'
 import { isSessionDropped, isWalletDeclined } from './wallet-errors'
 
@@ -13,6 +14,8 @@ export const showStillStuck = (failures: number): boolean => failures >= STILL_S
  * Other errors keep their own text (no title) and do not ask.
  */
 export function linkErrorView(e: unknown): { title: string; body: string; ask: boolean } {
+  // 11-26: a second expired approval (the app already asked once more): the app's own line, not the server's not-on-chain sentence
+  if (isBlockhashExpired(e)) return { title: '', body: t('approval.expired'), ask: false }
   if (e instanceof ApiError || e instanceof SignRefused) return { title: '', body: e.message, ask: false }
   if (isSessionDropped(e) || isWalletDeclined(e)) {
     return { title: t('link.closed.title'), body: t('link.closed.body'), ask: true }

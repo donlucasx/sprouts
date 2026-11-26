@@ -43,3 +43,40 @@ export async function confirmWithRetries(
     }
   }
 }
+
+/**
+ * 11-26 (Kimi scope 2 B): link/confirm and relink/confirm answer 409 `blockhash_expired` when the network refused the signed approval
+ * because its blockhash expired. Those bytes can never land, so confirmWithRetries (which re-posts them) stops at once on it (the code
+ * decides alone), and the flow builds a fresh approval and asks the wallet ONCE more. Only a 0.1.13-era server sends the code; its
+ * English keeps the not-on-chain stem, so a 0.1.12 app keeps retrying as before.
+ */
+export const BLOCKHASH_EXPIRED = 'blockhash_expired'
+export function isBlockhashExpired(e: unknown): boolean {
+  return e instanceof Error && (e as { status?: unknown }).status === 409 && (e as { code?: unknown }).code === BLOCKHASH_EXPIRED
+}
+
+/**
+ * Build, sign, confirm; on `blockhash_expired` (and only then) build, sign and confirm one more time. Never a third signature: a second
+ * expiry, or any other error, is thrown as it came. `onRebuild` runs before the second build (the screen says why the wallet asks again).
+ */
+export async function signAndConfirmRebuildingOnce<B>(a: {
+  build: () => Promise<B>
+  sign: (built: B) => Promise<string>
+  confirm: (signed: string) => Promise<void>
+  /** Called after each signature returns, before its confirm. */
+  onSigned?: () => void
+  onRebuild?: () => void
+}): Promise<void> {
+  for (let round = 0; ; round++) {
+    const built = await a.build()
+    const signed = await a.sign(built)
+    a.onSigned?.()
+    try {
+      await a.confirm(signed)
+      return
+    } catch (e) {
+      if (round > 0 || !isBlockhashExpired(e)) throw e
+    }
+    a.onRebuild?.()
+  }
+}
