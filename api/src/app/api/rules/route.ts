@@ -22,7 +22,7 @@ const Body = z.object({
   roundupToCents: z.literal(100).optional(),
   pctOn: z.boolean().optional(),
   pctBps: z.number().int().min(0).max(500).optional(),
-  // 11-12 (his ruling): the 1% can start from $1 (the app offers $1, $10, $100; a watcher draft may carry any size in range).
+  // 11-12 (his ruling): the 1% can start from $1 (the app offers $1, $10, $100).
   pctThresholdCents: z.number().int().min(100).max(100_000).optional(),
   smallOn: z.boolean().optional(),
   perSwapOn: z.boolean().optional(),

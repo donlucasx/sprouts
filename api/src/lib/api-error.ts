@@ -87,8 +87,9 @@ export const API_ERROR_CODES = {
   pick_answer: "The feedback answer is not one of the choices (400).",
   bad_year: "The export year is not four digits (400).",
   export_too_long: "The history is too long for one export (503).",
-  watcher_resting: "The watcher's monthly budget is spent (503).",
-  watcher_unreadable: "The watcher could not read the request (502).",
+  // RETIRED with the rules text box (11-25): no route returns these any more. Never reuse the names.
+  watcher_resting: "RETIRED, never reused: the watcher's monthly budget is spent (503).",
+  watcher_unreadable: "RETIRED, never reused: the watcher could not read the request (502).",
 } as const;
 
 export type ApiErrorCode = keyof typeof API_ERROR_CODES;

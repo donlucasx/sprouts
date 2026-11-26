@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Pressable, Switch, TextInput, View } from 'react-native'
+import { Pressable, Switch, View } from 'react-native'
 import { useQuery } from '@tanstack/react-query'
 import { Screen } from '@/components/Screen'
 import { Card } from '@/components/Card'
@@ -50,9 +50,6 @@ import { t } from '@/i18n'
 import { useLang } from '@/i18n/useLang'
 
 type RulesShape = MeResponse['rules']
-
-// D5: the text-to-controls box is hidden; it still compiles and its compile route still answers.
-const SHOW_BOX = false as boolean
 
 const Row = ({ label, children }: { label: string; children: React.ReactNode }) => (
   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: spacing.md }}>
@@ -146,10 +143,6 @@ export default function Rules() {
   // Addendum 11-15: true once a manager-off split change has pinned every on coin at its shown share (explicitPins); the draft's pins
   // are then the user's own numbers, read as they are (draftShares), and Save waits for a total of exactly 100.
   const [explicit, setExplicit] = useState(false)
-  // The watcher (spec 6): a rule in plain English becomes a proposal, set on the controls as the draft; Save is the confirmation.
-  const [ask, setAsk] = useState('')
-  const [asking, setAsking] = useState(false)
-  const [watcher, setWatcher] = useState<{ understood: string; notes: string[] } | null>(null)
   // 10-08 redesign: which chip's stepper is open, and whether the 0% coins are unfolded
   const [picker, setPicker] = useState<'cap' | null>(null)
   const [showAll, setShowAll] = useState(false)
@@ -259,24 +252,6 @@ export default function Rules() {
     }
   }
 
-  /** The typed rule to the watcher; its patch lands on the controls as the draft, so the existing Save confirms it. */
-  async function askWatcher() {
-    setAsking(true)
-    setError(null)
-    try {
-      const r = await api<{ patch: Partial<RulesShape>; understood: string; notes: string[] }>('/api/watcher/compile', {
-        method: 'POST',
-        body: { text: ask.trim() },
-      })
-      setDraft((d) => ({ ...d, ...r.patch }))
-      setWatcher({ understood: r.understood, notes: r.notes })
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : t('rules.box.failed'))
-    } finally {
-      setAsking(false)
-    }
-  }
-
   return (
     <Screen
       inset="top"
@@ -304,42 +279,6 @@ export default function Rules() {
         ) : null
       }
     >
-      {SHOW_BOX && (
-        <Card>
-          <ThemedText>{t('rules.box.title')}</ThemedText>
-          <TextInput
-            value={ask}
-            onChangeText={setAsk}
-            multiline
-            maxLength={300}
-            placeholder={t('rules.box.placeholder')}
-            placeholderTextColor={colors.textSecondary}
-            accessibilityLabel={t('rules.box.a11y')}
-            editable={!busy && !asking}
-            style={{
-              fontFamily: 'AlbertSans_400Regular',
-              fontSize: 16,
-              lineHeight: 22,
-              minHeight: 48,
-              borderBottomWidth: 1,
-              borderBottomColor: colors.hairline,
-              paddingVertical: spacing.sm,
-              color: colors.text,
-            }}
-          />
-          <Button
-            title={t('rules.box.ask')}
-            kind="quiet"
-            loading={asking}
-            disabled={busy || ask.trim() === ''}
-            onPress={askWatcher}
-          />
-          {watcher ? <ThemedText>{[watcher.understood, ...watcher.notes].join(' ')}</ThemedText> : null}
-          <ThemedText variant="caption" tone="secondary">
-            {t('rules.box.note')}
-          </ThemedText>
-        </Card>
-      )}
       {/* R448: Sprouts' own switch leads Rules; R455: this week's round-ups under it */}
       {pause.shown ? (
         <Card>

@@ -24,7 +24,6 @@ export const ES_ERRORS = {
   },
   daily_limit: {
     "That is enough answers for today. Thank you.": "Ya son suficientes respuestas por hoy. Gracias.",
-    "That is enough for today. The controls below still work.": "Es suficiente por hoy. Los controles de abajo siguen funcionando.",
     "You have sent 5 messages today. We read them all and will reply by email.": "Hoy enviaste 5 mensajes. Los leemos todos y te responderemos por correo.",
   },
   reauth_required: {
@@ -284,12 +283,6 @@ export const ES_ERRORS = {
   },
   export_too_long: {
     "Your history is too long for one export yet. Contact support for the full file.": "Tu historial todavía es demasiado largo para una sola exportación. Escríbenos para recibir el archivo completo.",
-  },
-  watcher_resting: {
-    "The watcher is resting this month. The controls below still work.": "Sprouts no puede leer reglas nuevas este mes. Los controles de abajo siguen funcionando.",
-  },
-  watcher_unreadable: {
-    "The watcher could not read that. Use the controls below.": "Sprouts no pudo entender eso. Usa los controles de abajo.",
   },
 } as const satisfies Partial<Record<import("../api-error").ApiErrorCode, Record<string, string>>>;
 

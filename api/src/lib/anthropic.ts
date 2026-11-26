@@ -21,7 +21,7 @@ type MessagesResponse = {
  * (never the body as a whole, which could echo our prompt): "credit balance is too low" and "invalid x-api-key" are then readable in the log.
  */
 export const callTool: ModelCall = async (req) => {
-  // K-M5: the same per-call timeout and single 529 retry as callConversation (the watcher's compile holds a budget row meanwhile).
+  // K-M5: the same per-call timeout and single 529 retry as callConversation.
   const res = await postMessages(JSON.stringify({
     model: MODEL,
     max_tokens: req.maxTokens,

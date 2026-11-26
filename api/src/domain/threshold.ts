@@ -6,8 +6,8 @@
  * Why 50 cents is safe: plantings of 10 and 20 cents have landed on mainnet (spikes/RESULTS.md, 09-28); the leash floor is a
  * percentage of the pull (98.5% on the coin legs), so it does not bind harder on a small pull; NETWORK_FEE_CENTS is 0 (Sprouts
  * pays the network fee); the puller's one-time token-account rent (~0.002 SOL per user per coin) is paid on a user's first planting
- * of a coin whatever its size, so a smaller first planting only brings it forward. 50 is also the app's own lowest "Plant at" step
- * (watcher.ts). A user whose own threshold is lower keeps theirs.
+ * of a coin whatever its size, so a smaller first planting only brings it forward. 50 is also the app's own lowest "Plant at" step.
+ * A user whose own threshold is lower keeps theirs.
  */
 export const FIRST_PLANTING_MIN_CENTS = 50;
 

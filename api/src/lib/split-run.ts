@@ -7,7 +7,7 @@ import { VENUES, VENUE_NAME, isAutoVenue, pickVenue, venueCandidates, type AutoV
 import { STOPS, STOP_DEFAULTS, STOP_LABEL, STORE_FLOOR, stopMax, clampSplit, fallbackSplit, checkWhy, templateWhy, effectiveSplit } from "@/domain/split";
 import { dayOf, addDays } from "@/domain/day";
 import { growth, priceChange } from "./coin-data";
-import { costMicrocents, MONTH_CAP_MICROCENTS } from "./watcher";
+import { costMicrocents, MONTH_CAP_MICROCENTS } from "./ai-budget";
 import { runToolLoop, type ConversationCall } from "./anthropic";
 import { getVenueRates, type FoundPool } from "./venues/rates";
 
