@@ -2,3 +2,5 @@ allowBuilds:
   esbuild: true
   unrs-resolver: true
   sharp: true
+patchedDependencies:
+  react-native-android-widget@0.22.1: patches/react-native-android-widget@0.22.1.patch

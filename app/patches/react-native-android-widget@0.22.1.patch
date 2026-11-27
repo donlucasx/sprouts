@@ -1,0 +1,24 @@
+diff --git a/android/src/main/java/com/reactnativeandroidwidget/RNWidgetUtil.java b/android/src/main/java/com/reactnativeandroidwidget/RNWidgetUtil.java
+index a057c09736ee40464ca7d9d618079114bdd5518c..fc02254d692559781316613ba3e040550445333a 100644
+--- a/android/src/main/java/com/reactnativeandroidwidget/RNWidgetUtil.java
++++ b/android/src/main/java/com/reactnativeandroidwidget/RNWidgetUtil.java
+@@ -18,7 +18,8 @@ import java.util.List;
+ 
+ public class RNWidgetUtil {
+     public static int getWidgetWidth(Context context, int widgetId) {
+-        boolean isPortrait = context.getResources().getConfiguration().orientation == ORIENTATION_PORTRAIT;
++        // Sprouts patch 11-27: a background wake can report ORIENTATION_UNDEFINED; only LANDSCAPE means landscape (the Seeker home is portrait)
++        boolean isPortrait = context.getResources().getConfiguration().orientation != android.content.res.Configuration.ORIENTATION_LANDSCAPE;
+         if (isPortrait) {
+             return getWidgetSizeInDp(context, widgetId, AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH);
+         } else {
+@@ -27,7 +28,8 @@ public class RNWidgetUtil {
+     }
+ 
+     public static int getWidgetHeight(Context context, int widgetId) {
+-        boolean isPortrait = context.getResources().getConfiguration().orientation == ORIENTATION_PORTRAIT;
++        // Sprouts patch 11-27: a background wake can report ORIENTATION_UNDEFINED; only LANDSCAPE means landscape (the Seeker home is portrait)
++        boolean isPortrait = context.getResources().getConfiguration().orientation != android.content.res.Configuration.ORIENTATION_LANDSCAPE;
+         if (isPortrait) {
+             return getWidgetSizeInDp(context, widgetId, AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT);
+         } else {
