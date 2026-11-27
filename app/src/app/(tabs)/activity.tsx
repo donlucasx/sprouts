@@ -1,3 +1,4 @@
+'use no memo' // 11-27: this file's lines are read in the current language at render; the React Compiler would cache them (i18n/useLang)
 import { useState, type ReactNode } from 'react'
 import { Linking, Pressable, RefreshControl, View } from 'react-native'
 import { MaterialCommunityIcons } from '@expo/vector-icons'
@@ -20,6 +21,7 @@ import { t } from '@/i18n'
 /** R450: the type tag's colour per kind (plantings take the coin green; lending tones for moves and finds). */
 const KIND_COLOR: Record<ActivityKind, string> = {
   plant: coinColor('SKR'),
+  stake: coinColor('SKR'), // 11-27: SKR's own green, like its plantings; the word tells them apart
   swap: '#7A6248',
   withdraw: '#9E4B3F',
   split: coinColor('SOL_LEND'),
@@ -31,6 +33,7 @@ const KIND_COLOR: Record<ActivityKind, string> = {
 /** R482: the same hues lightened for the dark ground, so the small-caps word stays readable (Claude's picks, shown on the options page). */
 const KIND_COLOR_DARK: Record<ActivityKind, string> = {
   plant: '#78D696',
+  stake: '#78D696',
   swap: '#D6BA96',
   withdraw: '#F09687',
   split: '#C4ACF0',
@@ -163,10 +166,10 @@ export default function Activity() {
   const moves = a?.moves ? a.moves.flatMap((m) => { const r = moveRow(m); return r ? [{ row: r }] : [] }) : []
   const found = a?.found ? a.found.map((f) => ({ row: foundRow(f) })) : []
   const topUps = a?.topUps ? a.topUps.map((u) => ({ row: topUpRow(u, name !== null) })) : []
-  // 0.1.13 Plant my SKR: a stake from this wallet is a planting (the Plant chip); absent from an older API
+  // 0.1.13 Stake SKR: a stake from this wallet, its own kind (the Stake tag and chip, 11-27); absent from an older API
   const skrPlants = (a?.skrPlants ?? []).flatMap((p) => { const row = skrPlantRow(p); return row ? [{ row }] : [] })
   const walletRows = a?.wallets && me ? a.wallets.map((e) => ({ row: walletRow(e, me.user.pubkey) })) : []
-  const all = mergeRows({ plant: [...plantings, ...skrPlants], split: splits, swap: swaps, withdraw: withdrawals, move: moves, found, topup: topUps, wallet: walletRows })
+  const all = mergeRows({ plant: plantings, stake: skrPlants, split: splits, swap: swaps, withdraw: withdrawals, move: moves, found, topup: topUps, wallet: walletRows })
   const rows = filterRows(all, filter)
   const { shown, hidden } = visibleRows(rows, more, 25)
   // The undo sits on the newest split row when the manager made it (as before, now in the one list)

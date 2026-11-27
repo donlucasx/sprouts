@@ -1,3 +1,4 @@
+'use no memo' // 11-27: this file's lines are read in the current language at render; the React Compiler would cache them (i18n/useLang)
 import { useEffect, useState } from 'react'
 import { Text, View } from 'react-native'
 import { Redirect, router } from 'expo-router'

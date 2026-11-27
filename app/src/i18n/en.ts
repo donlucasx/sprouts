@@ -68,6 +68,7 @@ export const en = {
   'activity.spoken.noTimeNoAmount': '{date}, {label}',
   'activity.filter.all': 'All',
   'activity.kind.plant': 'Plant',
+  'activity.kind.stake': 'Stake',   // 11-27: SKR staked from the wallet (Stake your SKR)
   'activity.kind.swap': 'Swap',
   'activity.kind.withdraw': 'Withdraw',
   'activity.kind.split': 'Split',
@@ -78,6 +79,7 @@ export const en = {
   'activity.tag.ai': 'AI',
   // 11-25 (his device note: Spanish rows cramped): the row tag has its own short word per kind; the chips keep activity.kind.*
   'activity.tag.plant': 'Plant',
+  'activity.tag.stake': 'Stake',
   'activity.tag.swap': 'Swap',
   'activity.tag.withdraw': 'Withdraw',
   'activity.tag.split': 'Split',

@@ -9,6 +9,7 @@ import { WATER } from "./parts";
 import { Stream } from "./Pour";
 import { REDUCED_MS } from "@/model/opening";
 import { t as tr } from "@/i18n";
+import { useLang } from "@/i18n/useLang";
 import { canArt, canHit, canSeat, clampDrag, dropSize, grabAt, roseAt, roseOnScreen, CAN_MS, DRIP, POUR_SHARE, STREAM, SWEEP_TAIL, WOBBLE_WAIT_MS } from "@/model/can";
 
 const TILT = -40, LIFT = 1.08, MOVED = 8, HOVER_STEP = 3, TILT_MS = 350;
@@ -79,6 +80,7 @@ type Props = {
  * R196, lets the art hang past the right edge (clampDrag): Android drops touches outside a parent's bounds.
  */
 export function Can({ ready, reduced, tempo, width, s, wobbleKey, overlayW, viewH, viewHNow, barBelow, overlayBelow, targetAt, spotOf, tapTarget, sweep, buds, onPour, onVisit, onDrop, afterOpening, onPourEnd, onNudge }: Props) {
+  const lang = useLang();   // passed into tr() so the React Compiler re-reads the can's spoken label on a language change
   const dx = useSharedValue(0), dy = useSharedValue(0), tilt = useSharedValue(0), lift = useSharedValue(1), wobble = useSharedValue(0), seen = useSharedValue(1);
   const busy = useSharedValue(false);   // one watering at a time (a shared value, so the gesture's callbacks may read it)
   const held = useSharedValue(false);   // in the hand or pouring: the shadow lightens and the drip stops at once
@@ -274,7 +276,7 @@ export function Can({ ready, reduced, tempo, width, s, wobbleKey, overlayW, view
           style={[{ position: "absolute", left: 0, top: 0, width: hit.w, height: hit.h }, place]}
           accessible
           accessibilityRole="button"
-          accessibilityLabel={inColour ? tr("garden.can.water") : tr("garden.can.nothing")}
+          accessibilityLabel={inColour ? tr("garden.can.water", undefined, lang) : tr("garden.can.nothing", undefined, lang)}
           accessibilityActions={[{ name: "activate" }]}
           onAccessibilityAction={() => (inColour ? tap() : onNudge())}
         >

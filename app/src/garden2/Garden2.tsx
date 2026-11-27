@@ -111,7 +111,7 @@ export function Garden2({
   skyPad?: number
 }) {
   const { colors, dark } = useTheme()
-  useLang()
+  const lang = useLang() // passed into t() so the React Compiler re-reads these lines on a language change
   // R530 (option B): dark draws the light plate full bleed and square; a dark plate, if one is ever exported, replaces it (R529 plumbing).
   const night = dark && PLATE_DARK !== null
   const reduced = useReducedMotion()
@@ -340,7 +340,7 @@ export function Garden2({
             backgroundColor: night ? colors.background : '#FFFCF6',
           }}
           accessible
-          accessibilityLabel={t('home.title')}
+          accessibilityLabel={t('home.title', undefined, lang)}
         >
           <Animated.View style={[{ width, height: h, transformOrigin: [0, 0, 0] }, zoomed]}>
             {layers.map((l) =>
@@ -457,7 +457,7 @@ export function Garden2({
                   </ThemedText>
                   {label.card.earned ? (
                     <ThemedText variant="caption" numeric style={{ color: label.card.earned.positive ? colors.success : colors.textSecondary }}>
-                      {t('home.coin.earned', { amount: label.card.earned.text })}
+                      {t('home.coin.earned', { amount: label.card.earned.text }, lang)}
                     </ThemedText>
                   ) : null}
                 </View>
@@ -470,7 +470,7 @@ export function Garden2({
             ) : null}
             {label.card.row && onCard ? (
               <ThemedText variant="caption" style={{ color: colors.accentText, fontFamily: FONT.label }}>
-                {t('garden.details')}
+                {t('garden.details', undefined, lang)}
               </ThemedText>
             ) : null}
           </Pressable>

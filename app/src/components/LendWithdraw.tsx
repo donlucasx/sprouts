@@ -1,3 +1,4 @@
+'use no memo' // 11-27: this file's lines are read in the current language at render; the React Compiler would cache them (i18n/useLang)
 import { useState } from 'react'
 import { TextInput, View } from 'react-native'
 import { useMobileWallet } from '@wallet-ui/react-native-kit'

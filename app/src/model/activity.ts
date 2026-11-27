@@ -219,16 +219,18 @@ export function visibleRows<T>(rows: T[], open: boolean, limit = 5): { shown: T[
 }
 
 /** R450 (10-08): Activity as ONE list, newest first, each row tagged with its kind; the chips filter by kind. */
-export type ActivityKind = 'plant' | 'swap' | 'withdraw' | 'split' | 'move' | 'found' | 'topup' | 'wallet'
+// 11-27 (his Stake ruling): 'stake' is SKR staked straight from the wallet (Stake your SKR), its own tag and chip; plantings stay 'plant'
+export type ActivityKind = 'plant' | 'stake' | 'swap' | 'withdraw' | 'split' | 'move' | 'found' | 'topup' | 'wallet'
 export type TaggedRow = { kind: ActivityKind; row: ActivityRow; walletAccount?: boolean }
 const KIND_KEY: Record<ActivityKind, Key> = {
-  plant: 'activity.kind.plant', swap: 'activity.kind.swap', withdraw: 'activity.kind.withdraw', split: 'activity.kind.split',
+  plant: 'activity.kind.plant', stake: 'activity.kind.stake', swap: 'activity.kind.swap', withdraw: 'activity.kind.withdraw', split: 'activity.kind.split',
   move: 'activity.kind.move', found: 'activity.kind.found', topup: 'activity.kind.topup', wallet: 'activity.kind.wallet',
 }
 /** The chips; each label is read with filterLabel() at render time. */
 export const KIND_FILTERS: { value: 'all' | ActivityKind; key: Key }[] = [
   { value: 'all', key: 'activity.filter.all' },
   { value: 'plant', key: KIND_KEY.plant },
+  { value: 'stake', key: KIND_KEY.stake },
   { value: 'swap', key: KIND_KEY.swap },
   { value: 'withdraw', key: KIND_KEY.withdraw },
   { value: 'split', key: KIND_KEY.split },

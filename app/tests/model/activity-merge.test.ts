@@ -81,3 +81,19 @@ describe("10-28: the Wallet chip", () => {
     expect(filterRows(merged, 'wallet').map((r) => r.row.key)).toEqual(['t', 'w'])
   })
 })
+
+describe('11-27: a stake from the wallet is its own kind (Stake), plantings stay Plant', () => {
+  it('the Stake chip keeps stakes only, the Plant chip plantings only', async () => {
+    const row = (key: string, ts: string) => ({ row: { key, ts, label: key, amount: null, details: [], signature: null } as ActivityRow })
+    const all = mergeRows({ plant: [row('p', '2026-11-27T10:00:00Z')], stake: [row('s', '2026-11-27T11:00:00Z')] })
+    expect(all.map((r) => [r.kind, r.row.key])).toEqual([['stake', 's'], ['plant', 'p']])
+    expect(filterRows(all, 'stake').map((r) => r.row.key)).toEqual(['s'])
+    expect(filterRows(all, 'plant').map((r) => r.row.key)).toEqual(['p'])
+  })
+  it('the screen files stakes under stake, not plant', async () => {
+    const { readFileSync } = await import('node:fs')
+    const path = await import('node:path')
+    const src = readFileSync(path.resolve(__dirname, '../../src/app/(tabs)/activity.tsx'), 'utf8')
+    expect(src).toContain('mergeRows({ plant: plantings, stake: skrPlants,')
+  })
+})
