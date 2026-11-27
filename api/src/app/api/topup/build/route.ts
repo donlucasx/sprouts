@@ -39,7 +39,7 @@ async function postHandler(request: Request) {
     const setup = { max: parsed.data.setupMax ?? 0, rules: async () => rulesRowToRules(await (await getRepo()).getRules(session.pubkey)) };
     return NextResponse.json(await buildTopUp(address(session.pubkey), parsed.data.cents ?? TOPUP_DEFAULT_CENTS, inputMint === undefined ? undefined : address(inputMint), setup, topUpCapsFor(request)));
   } catch (e) {
-    if (e instanceof TopUpRefused) return apiError("topup_refused", { error: e.message }, { status: e.status }, lang);
+    if (e instanceof TopUpRefused) return apiError(e.code, { error: e.message }, { status: e.status }, lang);   // 11-27: jupiter_busy for Jupiter's 429s
     console.error(`/api/topup/build: ${e instanceof Error ? e.message : String(e)}`);
     return apiError("topup_not_now", { error: TOPUP_COPY.notNow }, { status: 503 }, lang);
   }

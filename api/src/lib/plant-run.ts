@@ -17,7 +17,7 @@ import { errorText } from "./redact";
 export { lendingUsdByProtocol } from "./user-routing";
 import { AUTO_VENUES, VENUE_PROTOCOL, pickVenue, pickVenueSticky, venueCandidates, type AutoVenue, type Protocol } from "@/domain/venues";
 import { LEASH_PROGRAM } from "./constants";
-import { isJupiterRateLimit } from "./jupiter";
+import { isJupiterRateLimit, withJupiterRunLane } from "./jupiter";
 import { isHttp429 } from "./http429";
 import { enabledLegs, leashAllowedVenues, leashLegOf, leashLive, LEASH_ERRORS, LEG_SPEC, postedPriceRefusal, skrPriceSource, type LeashConfig, type LeashLegByte } from "./leash";
 import type { ParsedPrice } from "./pyth";
@@ -138,9 +138,20 @@ export type Skipped = { wallet: string; reason: string };
  * free stack serves the 20 to 50 wallet beta and needs paid tiers somewhere past 100 wallets.
  */
 export async function runPlanting(a: RunArgs & { deadlineMs?: number }): Promise<{ planted: Planted[]; skipped: Skipped[] }> {
+  const deadline = a.deadlineMs ?? Date.now() + RUN_BUDGET_MS;
+  // 11-27 (Kimi pace scope item 1): every Jupiter call of the run is in the run lane: paced per process, and no Jupiter wait (pace,
+  // 429 retry) ends past `deadline`, so the run's deadlines are exactly what they were.
+  return withJupiterRunLane(deadline, () => runPlantingIn(a, deadline));
+}
+
+/**
+ * 11-27 (Kimi pace scope item 2): a wallet skipped "jupiter busy" (Jupiter's 429s outlasted the run lane's retries and window wait)
+ * gets ONE more try after every other wallet had its turn, if the run deadline has not passed and the run was not stopped; still busy,
+ * it stays "jupiter busy" for the hourly rescue. Its 429 is pre-claim (the build), so a second try is the normal path.
+ */
+async function runPlantingIn(a: RunArgs, deadline: number): Promise<{ planted: Planted[]; skipped: Skipped[] }> {
   const planted: Planted[] = [];
   const skipped: Skipped[] = [];
-  const deadline = a.deadlineMs ?? Date.now() + RUN_BUDGET_MS;
 
   // 11-24: a rescue pass is like a first-only one: no reconcile (the daily run's job), and no resumes (the daily run did them).
   if (a.only === undefined) await reconcileSentPlantings(a);
@@ -163,7 +174,7 @@ export async function runPlanting(a: RunArgs & { deadlineMs?: number }): Promise
   let pastDeadline = 0;
   let buildFailures = 0;
   let stopped = false;
-  const plantWallet = async (w: WalletRow) => {
+  const plantWallet = async (w: WalletRow, again = false) => {
     if (stopped) {
       skipped.push({ wallet: w.pubkey, reason: "run stopped" });
       return;
@@ -173,7 +184,7 @@ export async function runPlanting(a: RunArgs & { deadlineMs?: number }): Promise
       skipped.push({ wallet: w.pubkey, reason: "run deadline" });
       return;
     }
-    const outcome = await plantOne(a, w, ctx);
+    const outcome = await plantOne(a, w, ctx, again);
     if ("signature" in outcome) {
       planted.push(outcome);
       buildFailures = 0;
@@ -195,6 +206,20 @@ export async function runPlanting(a: RunArgs & { deadlineMs?: number }): Promise
   await mapWithConcurrency([...byUser.values()], CONCURRENCY, async (group) => {
     for (const w of group) await plantWallet(w);
   });
+  // Item 2: the end-of-run retry, once, same per-user series rule. Past the deadline (or a stopped run) a busy wallet stays as it was.
+  const busy = new Set(skipped.filter((s) => s.reason === "jupiter busy").map((s) => s.wallet));
+  if (busy.size > 0 && !stopped && Date.now() < deadline) {
+    console.log(`planting run: ${busy.size} wallet(s) Jupiter was busy for get one more try`);
+    for (let i = skipped.length - 1; i >= 0; i--) if (busy.has(skipped[i].wallet) && skipped[i].reason === "jupiter busy") skipped.splice(i, 1);
+    const again = new Map<string, WalletRow[]>();
+    for (const w of wallets) if (busy.has(w.pubkey)) again.set(w.userPubkey, [...(again.get(w.userPubkey) ?? []), w]);
+    await mapWithConcurrency([...again.values()], CONCURRENCY, async (group) => {
+      for (const w of group) {
+        if (stopped || Date.now() >= deadline) skipped.push({ wallet: w.pubkey, reason: "jupiter busy" });
+        else await plantWallet(w, true);
+      }
+    });
+  }
   if (pastDeadline) console.error(`planting run deadline reached: ${pastDeadline} wallet(s) not started (${skipped.filter((x) => x.reason === "run deadline").map((x) => x.wallet).join(", ")}); they wait for the next run`);
   return { planted, skipped };
 }
@@ -700,18 +725,19 @@ async function busyStreak(a: RunArgs, w: WalletRow): Promise<number> {
   return busy.length + 1;
 }
 
-async function plantOne(a: RunArgs, w: WalletRow, ctx: RunCtx): Promise<Planted | Skipped> {
+/** `again` (11-27): the end-of-run retry. A busy skip there writes no second event: the first one already counts this run toward the streak. */
+async function plantOne(a: RunArgs, w: WalletRow, ctx: RunCtx, again = false): Promise<Planted | Skipped> {
   try {
     return await plantOneOrThrow(a, w, ctx);
   } catch (e) {
     if (isJupiterRateLimit(e)) {
-      console.error(`planting for ${w.pubkey} skipped: Jupiter is busy (429)`);
-      await a.repo.addEvent({ userPubkey: w.userPubkey, walletPubkey: w.pubkey, kind: "pull_failed", detail: { stage: "build", err: "jupiter 429", streak: await busyStreak(a, w) } });
+      console.error(`planting for ${w.pubkey} skipped: Jupiter is busy (429)${again ? " on its end-of-run retry too" : ""}`);
+      if (!again) await a.repo.addEvent({ userPubkey: w.userPubkey, walletPubkey: w.pubkey, kind: "pull_failed", detail: { stage: "build", err: "jupiter 429", streak: await busyStreak(a, w) } });
       return { wallet: w.pubkey, reason: "jupiter busy" };
     }
     if (isHttp429(e)) {
       console.error(`planting for ${w.pubkey} skipped: the RPC is busy (429)`);
-      await a.repo.addEvent({ userPubkey: w.userPubkey, walletPubkey: w.pubkey, kind: "pull_failed", detail: { stage: "build", err: "rpc 429", streak: await busyStreak(a, w) } });
+      if (!again) await a.repo.addEvent({ userPubkey: w.userPubkey, walletPubkey: w.pubkey, kind: "pull_failed", detail: { stage: "build", err: "rpc 429", streak: await busyStreak(a, w) } });
       return { wallet: w.pubkey, reason: "rpc busy" };
     }
     // Review I1: a Jupiter 400, a lookup-table fetch or a blockhash error on one wallet must not abort everyone's day.

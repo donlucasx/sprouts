@@ -630,12 +630,73 @@ describe("runPlanting", () => {
     let builds = 0;
     const r = await runPlanting({ repo, now: NOW, chain: fakeChain({ buildPlantingTx: async () => { builds++; throw new JupiterRateLimited("Jupiter quote failed: 429 rate limited"); } }) });
     expect(r.planted).toEqual([]);
-    expect(builds).toBe(12);
+    expect(builds).toBe(24);   // 11-27 (item 2): each busy wallet gets one more try at the end of the run
     expect(r.skipped.length).toBe(12);
     expect(r.skipped.every((s) => s.reason === "jupiter busy")).toBe(true);
     expect(repo.events.filter((e) => e.kind === "run_stopped").length).toBe(0);
+    // One busy event per wallet per run: the end-of-run retry writes none (the founder's 3-in-24-h streak counts runs, as before).
     expect(repo.events.filter((e) => e.kind === "pull_failed" && (e.detail as { err?: string }).err === "jupiter 429").length).toBe(12);
     for (let i = 0; i < 12; i++) expect(await repo.unplantedSwaps(`W${i}`)).toHaveLength(1);
+  });
+
+  // 11-27 (Kimi pace scope item 2): a wallet Jupiter was busy for gets ONE more try after every other wallet had its turn.
+  it("end-of-run retry: a wallet busy on its first try plants on its second; each wallet is tried at most twice", async () => {
+    const repo = new MemoryRepo();
+    for (let i = 0; i < 3; i++) {
+      await repo.upsertUser({ seedVaultPubkey: `U${i}`, sgtMint: `M${i}`, skrName: null });
+      await repo.addWallet({ pubkey: `W${i}`, userPubkey: `U${i}`, delegationPda: `D${i}`, dailyCapCents: 500 });
+      await repo.insertSwap({ signature: `x${i}`, walletPubkey: `W${i}`, ts: NOW, inMint: "a", inAmount: 1, outMint: "b", outAmount: 1, usdSizeCents: 100, class: "major", roundupCents: 215 });
+    }
+    const base = fakeChain();
+    const tries = new Map<string, number>();
+    const r = await runPlanting({ repo, now: NOW, chain: fakeChain({ buildPlantingTx: async (a) => {
+      const n = (tries.get(a.delegator) ?? 0) + 1;
+      tries.set(a.delegator, n);
+      // W0 busy once, W1 busy twice (stays busy), W2 fine.
+      if ((a.delegator === "W0" && n === 1) || a.delegator === "W1") throw new JupiterRateLimited("Jupiter quote failed: 429 x");
+      return base.buildPlantingTx(a);
+    } }) });
+    expect(r.planted.map((p) => p.wallet).sort()).toEqual(["W0", "W2"]);
+    expect(r.skipped).toEqual([{ wallet: "W1", reason: "jupiter busy" }]);
+    expect(Object.fromEntries(tries)).toEqual({ W0: 2, W1: 2, W2: 1 });
+    expect(repo.events.filter((e) => e.kind === "pull_failed").map((e) => e.walletPubkey).sort()).toEqual(["W0", "W1"]);
+  });
+
+  it("DEADLINE: no end-of-run retry starts past the run deadline; the busy wallet stays 'jupiter busy' for the rescue", async () => {
+    const repo = await seeded([215]);
+    let builds = 0;
+    const deadlineMs = Date.now() + 60_000;
+    const realNow = Date.now.bind(Date);
+    let skew = 0;
+    const spy = vi.spyOn(Date, "now").mockImplementation(() => realNow() + skew);
+    try {
+      // The first try is busy and the clock passes the deadline while it runs.
+      const r = await runPlanting({ repo, now: NOW, deadlineMs, chain: fakeChain({ buildPlantingTx: async () => { builds++; skew = 61_000; throw new JupiterRateLimited("Jupiter quote failed: 429 x"); } }) });
+      expect(builds).toBe(1);
+      expect(r.skipped).toEqual([{ wallet: "W", reason: "jupiter busy" }]);
+    } finally { spy.mockRestore(); }
+  });
+
+  it("DEADLINE: the run's Jupiter calls are in the run lane with the run's own deadline, so their waits never pass it", async () => {
+    const { jupiterLane, jupiterFetch } = await import("@/lib/jupiter");
+    const repo = await seeded([215]);
+    const deadlineMs = Date.now() + 5_000;
+    const lanes: unknown[] = [];
+    const slept: number[] = [];
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("x", { status: 429, headers: { "retry-after": "20" } })));
+    try {
+      const r = await runPlanting({ repo, now: NOW, deadlineMs, chain: fakeChain({ buildPlantingTx: async () => {
+        lanes.push(jupiterLane.getStore());
+        // A 20 s Retry-After with 5 s left of the run: refused at once, no wait (the real sleep would hang this test).
+        await jupiterFetch("http://x", {}, "quote", { sleep: async (ms) => { slept.push(ms); }, pace: async () => {} });
+        throw new Error("unreachable");
+      } }) });
+      expect(r.skipped).toEqual([{ wallet: "W", reason: "jupiter busy" }]);
+      expect(lanes).toEqual([{ kind: "run", deadlineMs }, { kind: "run", deadlineMs }]);   // the first try and the end-of-run retry
+      expect(slept).toEqual([]);
+      expect(Date.now()).toBeLessThan(deadlineMs);
+      expect(jupiterLane.getStore()).toBeUndefined();
+    } finally { vi.unstubAllGlobals(); }
   });
 
   it("a 429 between two build failures neither counts nor resets", async () => {

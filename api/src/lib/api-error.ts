@@ -78,6 +78,7 @@ export const API_ERROR_CODES = {
   topup_bad_source: "The top-up source coin is not valid (400).",
   topup_refused: "The top-up refused this request (status as given).",
   topup_not_now: "The top-up could not be built just now (503).",
+  jupiter_busy: "11-27: Jupiter's rate limit outlasted the top-up's retries; nothing was asked of the wallet, try again in a minute (503). Any app shows the sentence as it came (top-up errors are not matched by code).",
   // Rules, terms, preview, feedback, export, watcher
   pin_invalid: "A pin breaks the split's rules (400).",
   rules_not_saved: "The rules could not be saved just now (503).",

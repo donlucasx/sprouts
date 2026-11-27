@@ -1,5 +1,7 @@
 import { address, AccountRole, type Address, type Instruction } from "@solana/kit";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { config } from "./config";
+import { createWindowPace, PaceRefused, type Pace } from "./pace";
 
 const BASE = "https://api.jup.ag";
 
@@ -216,6 +218,47 @@ export class JupiterRateLimited extends Error {
 export const JUPITER_RETRY_MS: readonly number[] = [500, 1_500];
 const RETRY_AFTER_CAP_MS = 3_000;
 
+/**
+ * 11-27 (Kimi pace scope; the free key allows 60 requests in any 60 s window, and that day the run got 15 "jupiter 429" skips and the
+ * top-up 8 "can't swap SOL"): who is calling. Set with AsyncLocalStorage around a whole job, read by jupiterFetch; no store = a
+ * user-facing call (prices, the token search, a withdrawal's price), unpaced, with today's two retries.
+ * - "run" (the planting runs, the cron's coin snapshot): paced at JUPITER_RUN_MAX_PER_MIN per process, a Retry-After honored up to
+ *   JUPITER_RUN_RETRY_AFTER_CAP_MS, one more try after a window wait (JUPITER_RUN_WINDOW_WAIT_MS), and NO wait of any kind that would
+ *   end past `deadlineMs` (the run's own "start no wallet" deadline): such a call fails at once as a rate limit ("jupiter busy").
+ * - "topup" (the top-up build): unpaced (the other 20 a minute are the users' reserve), JUPITER_TOPUP_RETRY_MS, all waits together
+ *   at most JUPITER_TOPUP_MAX_WAIT_MS.
+ */
+export type JupiterLane = { kind: "run"; deadlineMs: number } | { kind: "topup" };
+export const jupiterLane = new AsyncLocalStorage<JupiterLane>();
+/** Runs `fn` with every Jupiter call in the run lane (paced, deadline-bound waits). */
+export const withJupiterRunLane = <T>(deadlineMs: number, fn: () => Promise<T>): Promise<T> => jupiterLane.run({ kind: "run", deadlineMs }, fn);
+/** Runs `fn` with every Jupiter call on the top-up's longer 429 budget. */
+export const withJupiterTopUpBudget = <T>(fn: () => Promise<T>): Promise<T> => jupiterLane.run({ kind: "topup" }, fn);
+
+/** The run lane's share of the key's 60 a minute; the other 20 are left to user-facing calls, which bypass the pace. */
+export const JUPITER_RUN_MAX_PER_MIN = 40;
+export const JUPITER_WINDOW_MS = 60_000;
+/** Run lane only: a Retry-After up to this is honored (it was cut to 3 s, shorter than any real window answer). */
+export const JUPITER_RUN_RETRY_AFTER_CAP_MS = 20_000;
+/** Run lane only: after the two short retries, one more try after a wait drawn evenly from this range (no Retry-After). */
+export const JUPITER_RUN_WINDOW_WAIT_MS = [10_000, 20_000] as const;
+/** Top-up lane: four retries, base waits jittered 0.5..1.5 like the default, all waits together cut to JUPITER_TOPUP_MAX_WAIT_MS. */
+export const JUPITER_TOPUP_RETRY_MS: readonly number[] = [500, 1_500, 2_500, 3_000];
+export const JUPITER_TOPUP_MAX_WAIT_MS = 8_000;
+
+// The test suite runs without the process-wide pace (as rpc.ts's); the run lane's pace is tested by passing `pace` to jupiterFetch.
+const runPace = createWindowPace({ max: process.env.VITEST ? 0 : JUPITER_RUN_MAX_PER_MIN, windowMs: JUPITER_WINDOW_MS, label: "jupiter pace" });
+
+export type JupiterFetchOptions = {
+  sleep?: (ms: number) => Promise<void>;
+  now?: () => number;
+  random?: () => number;
+  /** The run lane's pace (default: the process-wide one). */
+  pace?: Pace;
+  /** The lane (default: the AsyncLocalStorage one). */
+  lane?: JupiterLane;
+};
+
 export function isJupiterRateLimit(e: unknown): boolean {
   return e instanceof JupiterRateLimited || (e instanceof Error && /^Jupiter (quote|swap-instructions|price|token search) failed: 429\b/.test(e.message));
 }
@@ -223,15 +266,44 @@ export function isJupiterRateLimit(e: unknown): boolean {
 /** One Jupiter call, retried on 429 only. Any other status comes back to the caller, whose own error text stays as it was. */
 export async function jupiterFetch(
   url: string, init: RequestInit, what: "quote" | "swap-instructions" | "price" | "token search",
-  sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
+  opts: JupiterFetchOptions | ((ms: number) => Promise<void>) = {},
 ): Promise<Response> {
+  const o: JupiterFetchOptions = typeof opts === "function" ? { sleep: opts } : opts;
+  const sleep = o.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  const now = o.now ?? Date.now;
+  const random = o.random ?? Math.random;
+  const lane = o.lane ?? jupiterLane.getStore();
+  const run = lane?.kind === "run" ? lane : null;
+  const topup = lane?.kind === "topup";
+  const schedule = topup ? JUPITER_TOPUP_RETRY_MS : JUPITER_RETRY_MS;
+  const retries = schedule.length + (run ? 1 : 0);   // the run's one extra try after a window wait
+  const raCap = run ? JUPITER_RUN_RETRY_AFTER_CAP_MS : RETRY_AFTER_CAP_MS;
+  const pace = o.pace ?? runPace;
+  let waited = 0;
   for (let attempt = 0; ; attempt++) {
+    if (run) {
+      // Every attempt (a retry too) takes a turn, as the RPC pace does; a turn only past the run deadline is never waited for.
+      try {
+        await pace({ notAfterMs: run.deadlineMs });
+      } catch (e) {
+        if (e instanceof PaceRefused) throw new JupiterRateLimited(`Jupiter ${what} failed: 429 not sent: the run's Jupiter pace has no turn before the run deadline`);
+        throw e;
+      }
+    }
     const res = await fetch(url, { ...init, signal: timeout() });
     if (res.status !== 429) return res;
-    if (attempt >= JUPITER_RETRY_MS.length) throw new JupiterRateLimited(`Jupiter ${what} failed: 429 ${(await res.text().catch(() => "")).slice(0, 200)}`);
-    await res.text().catch(() => "");   // free the socket before waiting (an 8-worker burst would otherwise hold them until GC)
+    const body = await res.text().catch(() => "");   // free the socket before waiting (an 8-worker burst would otherwise hold them until GC)
+    if (attempt >= retries) throw new JupiterRateLimited(`Jupiter ${what} failed: 429 ${body.slice(0, 200)}`);
     const ra = Number(res.headers.get("retry-after"));
-    const wait = Number.isFinite(ra) && ra > 0 ? Math.min(ra * 1000, RETRY_AFTER_CAP_MS) : Math.round(JUPITER_RETRY_MS[attempt] * (0.5 + Math.random()));
+    let wait = Number.isFinite(ra) && ra > 0 ? Math.min(ra * 1000, raCap)
+      : attempt < schedule.length ? Math.round(schedule[attempt] * (0.5 + random()))
+      : Math.round(JUPITER_RUN_WINDOW_WAIT_MS[0] + random() * (JUPITER_RUN_WINDOW_WAIT_MS[1] - JUPITER_RUN_WINDOW_WAIT_MS[0]));
+    if (topup) {
+      wait = Math.min(wait, JUPITER_TOPUP_MAX_WAIT_MS - waited);
+      if (wait <= 0) throw new JupiterRateLimited(`Jupiter ${what} failed: 429 ${body.slice(0, 200)}`);
+    }
+    if (run && now() + wait > run.deadlineMs) throw new JupiterRateLimited(`Jupiter ${what} failed: 429 (the next try would come after the run deadline) ${body.slice(0, 200)}`);
+    waited += wait;
     await sleep(wait);
   }
 }

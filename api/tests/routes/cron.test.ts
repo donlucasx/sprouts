@@ -173,6 +173,29 @@ describe("cron route", () => {
     expect(decideMock.mock.invocationCallOrder[0]).toBeLessThan(applyMock.mock.invocationCallOrder[0]);
   });
 
+  // 11-27 (Kimi pace scope item 5): the snapshot's Jupiter reads (prices, the $2 quotes) run in the run lane, bound to the planting's
+  // 240 s deadline, so they share the planting's per-process pace and never wait past it.
+  it("the snapshot's Jupiter prices and quotes run in the run lane with the planting's 240 s deadline", async () => {
+    const { getQuote, pricesUsd, jupiterLane } = await import("@/lib/jupiter");
+    const lanes: unknown[] = [];
+    vi.mocked(pricesUsd).mockImplementationOnce(async () => { lanes.push(jupiterLane.getStore()); return {}; });
+    vi.mocked(getQuote).mockImplementationOnce(async () => { lanes.push(jupiterLane.getStore()); return { priceImpactPct: "0" } as never; });
+    snapshotMock.mockImplementationOnce((async (a: { reads: { prices: (m: string[]) => Promise<unknown>; quoteOk: (x: string) => Promise<boolean> } }) => {
+      await a.reads.prices(["m"]);
+      await a.reads.quoteOk("SKR");
+      return [];
+    }) as never);
+    const started = Date.now();
+    expect((await GET(new Request("http://x/api/cron/plant", { headers: { authorization: `Bearer ${SECRET}` } }))).status).toBe(200);
+    expect(lanes.length).toBe(2);
+    for (const l of lanes as { kind: string; deadlineMs: number }[]) {
+      expect(l.kind).toBe("run");
+      expect(l.deadlineMs - started).toBeGreaterThanOrEqual(239_000);
+      expect(l.deadlineMs - started).toBeLessThanOrEqual(241_000);
+    }
+    expect(jupiterLane.getStore()).toBeUndefined();   // nothing leaks outside the run
+  });
+
   const seedSolPrice = async (priceUsd: number | null) => {
     await repo.putCoinDay({ day: dayOf(new Date()), asset: "SOL_LEND", priceUsd } as never);
   };

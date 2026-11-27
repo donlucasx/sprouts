@@ -177,6 +177,51 @@ describe("buildPlantingTx: one v0 tx, one pull/settle pair (contracts 3.2)", () 
     QUOTES.he1iusmfkpAdwvxLNGV8Y1iSbj4rUy6yMhEA3fotn9A = ["13843000", "13705000"];
   });
 
+  // 11-27 (Kimi pace scope item 3): the run's Jupiter pace can hold the swap-instructions call; a quote older than 10 s by then is
+  // taken again (every quote check re-run) before anything is built; three stale rounds in a row are "jupiter busy".
+  it("stale-quote guard: a quote 10+ s old when its instructions return is re-quoted, re-checked and rebuilt; 3 stale rounds are busy", async () => {
+    const { QUOTE_MAX_AGE_MS, QUOTE_MAX_ROUNDS } = await import("@/lib/planting");
+    const { isJupiterRateLimit } = await import("@/lib/jupiter");
+    expect(QUOTE_MAX_AGE_MS).toBe(10_000);
+    expect(QUOTE_MAX_ROUNDS).toBe(3);
+    const realNow = Date.now.bind(Date);
+    let skew = 0;
+    const spy = vi.spyOn(Date, "now").mockImplementation(() => realNow() + skew);
+    const realSwap = vi.mocked(getSwapInstructions).getMockImplementation()!;
+    try {
+      // 9 s is still fresh: one quote, one set of instructions.
+      vi.mocked(getSwapInstructions).mockImplementationOnce(async (a) => { skew += 9_000; return realSwap(a); });
+      await buildPlantingTx({ ...base, asset: "hSOL", venue: null, leashed: true });
+      expect(getQuote).toHaveBeenCalledTimes(1);
+      expect(getSwapInstructions).toHaveBeenCalledTimes(1);
+      // Past 10 s: quoted again, the new quote's instructions are the ones built.
+      vi.mocked(getQuote).mockClear(); vi.mocked(getSwapInstructions).mockClear(); checks.length = 0;
+      vi.mocked(getSwapInstructions).mockImplementationOnce(async (a) => { skew += 10_001; return realSwap(a); });
+      const b = await buildPlantingTx({ ...base, asset: "hSOL", venue: null, leashed: true });
+      expect(getQuote).toHaveBeenCalledTimes(2);
+      expect(getSwapInstructions).toHaveBeenCalledTimes(2);
+      expect(vi.mocked(getSwapInstructions).mock.calls[1][0].quote).toBe(await vi.mocked(getQuote).mock.results[1].value);
+      expect(checks.length).toBe(1);   // only the fresh instructions are checked and built
+      expect(b.minOutRaw).toBe(13_705_000n);
+      // The re-quote runs every check again: a wrong mint on the second quote refuses the build.
+      vi.mocked(getQuote).mockClear();
+      vi.mocked(getSwapInstructions).mockImplementationOnce(async (a) => { skew += 11_000; return realSwap(a); });
+      const realQuote = vi.mocked(getQuote).getMockImplementation()!;
+      vi.mocked(getQuote).mockImplementationOnce(realQuote).mockImplementationOnce(async (a) => ({ ...(await realQuote(a)), outputMint: "So11111111111111111111111111111111111111112" }));
+      await expect(buildPlantingTx({ ...base, asset: "hSOL", venue: null, leashed: true })).rejects.toThrow(/Jupiter quote refused: output mint/);
+      // Stale three times: busy (the run's "jupiter busy", retried at the end of the run and by the rescue), nothing built.
+      vi.mocked(getQuote).mockClear(); vi.mocked(getSwapInstructions).mockClear(); checks.length = 0;
+      vi.mocked(getSwapInstructions).mockImplementation(async (a) => { skew += 11_000; return realSwap(a); });
+      const e = await buildPlantingTx({ ...base, asset: "hSOL", venue: null, leashed: true }).catch((x) => x);
+      expect(isJupiterRateLimit(e)).toBe(true);
+      expect(getQuote).toHaveBeenCalledTimes(3);
+      expect(checks.length).toBe(0);
+    } finally {
+      spy.mockRestore();
+      vi.mocked(getSwapInstructions).mockImplementation(realSwap);
+    }
+  });
+
   it("ruling A, cbBTC-like: expected 1_162 vs floor 1_150 builds with a minimum >= 1_150; expected 1_148 skips 'route under floor'", async () => {
     QUOTES.cbbtcf3aa214zXHbiAZQwf4122FBYbraNdFqgw4iMij = ["3225", "3193"];
     const floor = (await buildPlantingTx({ ...base, asset: "cbBTC", venue: null, leashed: true })).leashFloorRaw as bigint;

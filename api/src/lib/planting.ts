@@ -6,7 +6,7 @@ import {
 import { sendAndConfirmByPolling } from "./confirm";
 import { getSetComputeUnitLimitInstruction, getSetComputeUnitPriceInstruction } from "@solana-program/compute-budget";
 import { ASSOCIATED_TOKEN_PROGRAM_ADDRESS, findAssociatedTokenPda, TOKEN_PROGRAM_ADDRESS, getCreateAssociatedTokenIdempotentInstruction, getTransferInstruction } from "@solana-program/token";
-import { getQuote, getSwapInstructions, checkSwapInstructions, checkQuoteMints, JUPITER_AGGREGATOR } from "./jupiter";
+import { getQuote, getSwapInstructions, checkSwapInstructions, checkQuoteMints, JUPITER_AGGREGATOR, JupiterRateLimited } from "./jupiter";
 import { buildTransferRecurringIx } from "./subscriptions";
 import { buildStakeIx, sharePrice, skrAta } from "./staking";
 import { klendRate, klendMinOut, buildKlendDepositIxs, checkKlendDepositInstructions } from "./venues/klend";
@@ -79,6 +79,13 @@ export const SWAP_MAX_ACCOUNTS: Record<LiveAsset, number> = { SKR: 24, stORE: 24
 const MAX_TX_BYTES = 1232;
 /** The swap slippage every leg asks Jupiter for; ruling A may only tighten it on a leashed coin leg, never loosen it. */
 export const SWAP_SLIPPAGE_BPS = 100;
+/**
+ * 11-27 (Kimi pace scope item 3): a planting quote older than this when its swap instructions come back is taken again (with every
+ * quote check) before anything is built from it; the run's Jupiter pace and 429 window waits can now hold a call for many seconds.
+ */
+export const QUOTE_MAX_AGE_MS = 10_000;
+/** After this many stale rounds in a row the build gives up as "jupiter busy" (the hourly rescue and the next run try again). */
+export const QUOTE_MAX_ROUNDS = 3;
 
 /**
  * Ruling A as corrected (Task 12, security scan of 5caa060): the swap slippage of a leashed coin leg, so its on-chain minimum is
@@ -312,29 +319,46 @@ async function composePlanting(a: PlantingInput, posted: { reclaim: Instruction[
     const checkInput = (q: { inAmount: string }) => {
       if (a.asset === "SOL_LEND" && q.inAmount !== quoteArgs.amountRaw.toString()) throw new Error(`Planting refused: the ${a.asset} quote spends ${q.inAmount}, not the ${quoteArgs.amountRaw} asked for (pull less fee)`);
     };
-    let quote = await getQuote(quoteArgs);
-    checkQuoteMints(quote, { inputMint: USDC_MINT, outputMint: coin.mint });
-    checkInput(quote);
-    // Ruling A as corrected (Task 12): on a LEASHED coin leg the swap's minimum is max(route less 100 bps, floor + 1). The route under
-    // the floor skips; when 100 bps would land under the floor, re-quote at the tighter slippage (Jupiter's swap enforces the quote's
-    // own slippageBps, so a re-quote is the documented way; no instruction bytes are edited). Never looser than 100 bps.
-    if (swapFloor !== null) {
-      const bps = a.asset === "SOL_LEND" ? solLendSwapSlippageBps(BigInt(quote.outAmount), swapFloor) : leashSwapSlippageBps(BigInt(quote.outAmount), swapFloor);
-      if (bps === null) throw new Error(`${a.asset}: route under floor (route ${quote.outAmount} < floor ${swapFloor}); the leg skips today`);
-      if (bps !== SWAP_SLIPPAGE_BPS) {
-        quote = await getQuote({ ...quoteArgs, slippageBps: bps });
-        checkQuoteMints(quote, { inputMint: USDC_MINT, outputMint: coin.mint });
-        checkInput(quote);
+    // 11-27 (Kimi pace scope item 3): the quote and its checks, as one step the stale-quote guard below can take again.
+    const takeQuote = async () => {
+      let quote = await getQuote(quoteArgs);
+      checkQuoteMints(quote, { inputMint: USDC_MINT, outputMint: coin.mint });
+      checkInput(quote);
+      // Ruling A as corrected (Task 12): on a LEASHED coin leg the swap's minimum is max(route less 100 bps, floor + 1). The route under
+      // the floor skips; when 100 bps would land under the floor, re-quote at the tighter slippage (Jupiter's swap enforces the quote's
+      // own slippageBps, so a re-quote is the documented way; no instruction bytes are edited). Never looser than 100 bps.
+      if (swapFloor !== null) {
+        const bps = a.asset === "SOL_LEND" ? solLendSwapSlippageBps(BigInt(quote.outAmount), swapFloor) : leashSwapSlippageBps(BigInt(quote.outAmount), swapFloor);
+        if (bps === null) throw new Error(`${a.asset}: route under floor (route ${quote.outAmount} < floor ${swapFloor}); the leg skips today`);
+        if (bps !== SWAP_SLIPPAGE_BPS) {
+          quote = await getQuote({ ...quoteArgs, slippageBps: bps });
+          checkQuoteMints(quote, { inputMint: USDC_MINT, outputMint: coin.mint });
+          checkInput(quote);
+        }
+        if (BigInt(quote.otherAmountThreshold) < swapFloor) throw new Error(`${a.asset}: route under floor (minimum ${quote.otherAmountThreshold} < floor ${swapFloor} after re-quote at ${bps} bps); the leg skips today`);
       }
-      if (BigInt(quote.otherAmountThreshold) < swapFloor) throw new Error(`${a.asset}: route under floor (minimum ${quote.otherAmountThreshold} < floor ${swapFloor} after re-quote at ${bps} bps); the leg skips today`);
+      // Task 15b: the fee wallet is paid on a lending leg ONLY by the pinned transfer: a quote carrying a platform fee, or a route naming
+      // the fee wallet's USDC account, is refused (we never ask for either; this catches an answer that adds one).
+      if (lendFee) {
+        const pf = (quote as { platformFee?: { amount?: string; feeBps?: number } | null }).platformFee;
+        if (pf && (Number(pf.feeBps ?? 0) !== 0 || BigInt(pf.amount ?? "0") !== 0n)) throw new Error(`Planting refused: the ${a.asset} quote carries a platform fee (${pf.feeBps ?? "?"} bps); a lending swap never pays one`);
+      }
+      return quote;
+    };
+    // 11-27 (Kimi pace scope item 3): the run's Jupiter pace (or a 429 window wait) can hold the swap-instructions call long enough
+    // for the quote to go stale. A quote older than QUOTE_MAX_AGE_MS when its instructions come back is taken again, with every check
+    // above re-run on the new one, before anything is built from it; after QUOTE_MAX_ROUNDS stale rounds the wallet is "jupiter busy".
+    let quote: Awaited<ReturnType<typeof takeQuote>>;
+    let swap: Awaited<ReturnType<typeof getSwapInstructions>>;
+    for (let round = 1; ; round++) {
+      quote = await takeQuote();
+      const quotedAt = Date.now();
+      swap = await getSwapInstructions({ quote, userPublicKey: puller.address, ...(fee.feeAccount ? { feeAccount: fee.feeAccount } : {}), ...(a.asset === "SKR" ? {} : { destinationTokenAccount: destination }) });
+      const age = Date.now() - quotedAt;
+      if (age <= QUOTE_MAX_AGE_MS) break;
+      if (round >= QUOTE_MAX_ROUNDS) throw new JupiterRateLimited(`Jupiter busy: the quote went stale ${round} times waiting for its instructions (last ${age} ms old)`);
+      console.log(`planting ${a.asset} for ${a.delegator}: the quote was ${age} ms old when its instructions came back; quoting again`);
     }
-    // Task 15b: the fee wallet is paid on a lending leg ONLY by the pinned transfer: a quote carrying a platform fee, or a route naming
-    // the fee wallet's USDC account, is refused (we never ask for either; this catches an answer that adds one).
-    if (lendFee) {
-      const pf = (quote as { platformFee?: { amount?: string; feeBps?: number } | null }).platformFee;
-      if (pf && (Number(pf.feeBps ?? 0) !== 0 || BigInt(pf.amount ?? "0") !== 0n)) throw new Error(`Planting refused: the ${a.asset} quote carries a platform fee (${pf.feeBps ?? "?"} bps); a lending swap never pays one`);
-    }
-    const swap = await getSwapInstructions({ quote, userPublicKey: puller.address, ...(fee.feeAccount ? { feeAccount: fee.feeAccount } : {}), ...(a.asset === "SKR" ? {} : { destinationTokenAccount: destination }) });
     if (lendFee && [...swap.setup, swap.swap, ...(swap.cleanup ? [swap.cleanup] : [])].some((ix) => (ix.accounts ?? []).some((x) => x.address === lendFee.pin.destination)))
       throw new Error(`Planting refused: the ${a.asset} swap names the fee wallet's USDC account ${lendFee.pin.destination}; a lending leg pays its fee only by the pinned transfer`);
     checkSwapInstructions(swap, { puller: puller.address, ...(fee.feeAccount ? { feeAccount: fee.feeAccount } : {}), wsolAccount: pullerWsol, destination, source: pullerUsdc, ...(coin.held === "wallet" ? { destinationOwner: a.user } : {}) });

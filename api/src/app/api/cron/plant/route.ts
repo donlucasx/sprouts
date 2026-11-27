@@ -15,7 +15,7 @@ import { snapshotVenues, scoutYields, realVenueReads } from "@/lib/venues/rates"
 import { chainTxStatus, movesEnabled, proposeMoves } from "@/lib/moves";
 import { decideSplits, applyToUsers } from "@/lib/split-run";
 import { callConversation } from "@/lib/anthropic";
-import { getQuote, pricesUsd } from "@/lib/jupiter";
+import { getQuote, pricesUsd, withJupiterRunLane } from "@/lib/jupiter";
 import { storeRedeemRate } from "@/lib/store";
 import { readLendingPositions } from "@/lib/holdings";
 import { COINS, type Asset } from "@/domain/coins";
@@ -33,6 +33,8 @@ export const runtime = "nodejs";
 export const maxDuration = 800; // 11-25 (Pro): 300 s killed the run under Helius 429 slowdowns (19 of ~45 planted); the reconcile and swap check now use it (S-HJAK); planting/crank/remainder deadlines unchanged
 /** The moves step reads no position past this many ms from the run's start (the planting's own cutoff is 240 s). */
 const MOVES_DEADLINE_MS = 150_000;
+/** The planting run starts no wallet past this (Review M1); since 11-27 also the last moment any of the route's Jupiter waits may end. */
+const PLANTING_DEADLINE_MS = 240_000;
 /**
  * 11-13: the withdrawal crank starts no new withdrawal past this many ms, so a started one's send and confirm have ~50 s before the
  * old 300 s kill (now 800 s). The ladder: planting starts no wallet past 240 s, the crank none past 250 s, the remainder retry none past 260 s, the
@@ -68,8 +70,12 @@ async function finishRun(repo: Repo, day: string, startedAt: Date, ok: boolean, 
   }
 }
 
-/** The real reads behind the snapshot (spec 5.2): account bytes, the two share prices, the epoch, Jupiter's prices and a $2 quote; lending legs from today's venue rows (contracts 4). */
-function realCoinReads(repo: Repo, now: Date): CoinReads {
+/**
+ * The real reads behind the snapshot (spec 5.2): account bytes, the two share prices, the epoch, Jupiter's prices and a $2 quote; lending legs from today's venue rows (contracts 4).
+ * 11-27 (Kimi pace scope item 5): the Jupiter reads (prices, the six quotes) run in the run lane, so they share the planting's pace in
+ * this process (same key) and never wait past `jupiterDeadlineMs` (the planting's own deadline).
+ */
+function realCoinReads(repo: Repo, now: Date, jupiterDeadlineMs: number): CoinReads {
   return {
     accountData: async (addr) => {
       const info = await rpc().getAccountInfo(address(addr), { encoding: "base64" }).send();
@@ -78,10 +84,10 @@ function realCoinReads(repo: Repo, now: Date): CoinReads {
     skrSharePrice: sharePrice,
     storeRate: storeRedeemRate,
     currentEpoch: async () => (await rpc().getEpochInfo().send()).epoch,
-    prices: pricesUsd,
+    prices: (mints) => withJupiterRunLane(jupiterDeadlineMs, () => pricesUsd(mints)),
     quoteOk: async (asset: Asset) => {
       // The planting's own size and settings; Jupiter's priceImpactPct is a percentage string.
-      const q = await getQuote({ inputMint: USDC_MINT, outputMint: COINS[asset].mint, amountRaw: 2_000_000n, maxAccounts: 24, onlyDirectRoutes: asset === "SKR" });
+      const q = await withJupiterRunLane(jupiterDeadlineMs, () => getQuote({ inputMint: USDC_MINT, outputMint: COINS[asset].mint, amountRaw: 2_000_000n, maxAccounts: 24, onlyDirectRoutes: asset === "SKR" }));
       return Number(q.priceImpactPct) < IMPACT_LIMIT_PCT;
     },
     // snapshotVenues runs before snapshotCoins, so today's venue rows exist; a failed venues step leaves the lending legs as no data.
@@ -124,7 +130,7 @@ export async function GET(request: Request) {
     // remainder retry none past 260 s, the reconcile none past 700 s, the swap check (last) no wallet past 730 s; the whole route has 800 s (11-25).
     // realVenueReads() is built inside each step, so a missing JUPITER_API_KEY or RPC fails that step loudly in the log, not the run.
     const venues = await step("venues", () => snapshotVenues({ repo, now, reads: realVenueReads() }));
-    const coins = await step("snapshot", () => snapshotCoins({ repo, now, reads: realCoinReads(repo, now) }));
+    const coins = await step("snapshot", () => snapshotCoins({ repo, now, reads: realCoinReads(repo, now, startedMs + PLANTING_DEADLINE_MS) }));
     const splits = await step("decide", () => decideSplits({ repo, now, model: process.env.ANTHROPIC_API_KEY ? callConversation : null, scout: () => scoutYields(realVenueReads()) }));
     const applied = await step("apply", () => applyToUsers({ repo, now }));
     const movesDeadlineMs = startedMs + MOVES_DEADLINE_MS;
@@ -151,7 +157,7 @@ export async function GET(request: Request) {
       });
     });
     const chain = realPlantingChain();
-    const planting = await runPlanting({ repo, now, chain, deadlineMs: startedMs + 240_000 });
+    const planting = await runPlanting({ repo, now, chain, deadlineMs: startedMs + PLANTING_DEADLINE_MS });
     // 11-13: the crank starts no new withdrawal past 250 s (the 429 retry can stretch the run); the rest wait for the next run.
     // Kimi M4: the crank is tolerated like a step (the rest of the day still runs; null in the record, red on the ops light), but a
     // throw there used to fail the run and alert the founder, so it still alerts.

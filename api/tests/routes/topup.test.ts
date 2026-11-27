@@ -126,15 +126,57 @@ describe("POST /api/topup/build (the SOL top-up's unsigned transaction)", () => 
     expect(simulateMock).not.toHaveBeenCalled();
   });
 
-  it("a Jupiter 429 on the quote (after retries) is the usual 'no route' 503, nothing asked of the wallet", async () => {
-    const st = vi.spyOn(globalThis, "setTimeout").mockImplementation(((fn: () => void) => { fn(); return 0 as never; }) as never);
+  // 11-27 (Kimi pace scope item 4): a 429 that outlasts the top-up's longer budget (4 retries, <= 8 s of waits) is its own "busy" line
+  // with code jupiter_busy; the status stays 503, so any app (0.1.12 shows a build error's sentence as it came) reads it as today.
+  it("a Jupiter 429 on the quote after the top-up's 4 retries is 503 jupiter_busy, the busy line; at most 8 s of waits; nothing asked of the wallet", async () => {
+    const waits: number[] = [];
+    const st = vi.spyOn(globalThis, "setTimeout").mockImplementation(((fn: () => void, ms?: number) => { if (typeof ms === "number" && ms > 0 && ms < 10_000) waits.push(ms); fn(); return 0 as never; }) as never);
     try {
-      fetchMock.mockImplementationOnce(async () => new Response("limit", { status: 429 })).mockImplementationOnce(async () => new Response("limit", { status: 429 })).mockImplementationOnce(async () => new Response("limit", { status: 429 }));
+      const r429 = async () => new Response("limit", { status: 429 });
+      for (let i = 0; i < 5; i++) fetchMock.mockImplementationOnce(r429);
       const res = await call(build, {});
       expect(res.status).toBe(503);
-      expect((await res.json()).error).toMatch(/can't swap SOL to USDC right now\. Nothing was asked of your wallet\. Try again in a few minutes\./);
+      const body = await res.json();
+      expect(body).toEqual({ error: "Sprouts is busy right now. Nothing was asked of your wallet. Try again in a minute.", code: "jupiter_busy" });
+      expect(fetchMock.mock.calls.filter((c) => String(c[0]).includes("/swap/v1/quote")).length).toBe(5);
+      // The four retry waits come first (a later 2 s timer is the error log's own, not a Jupiter wait).
+      const retryWaits = waits.slice(0, 4);
+      expect(retryWaits.length).toBe(4);
+      expect(retryWaits.reduce((x, y) => x + y, 0)).toBeLessThanOrEqual(8_000);
       expect(simulateMock).not.toHaveBeenCalled();
     } finally { st.mockRestore(); }
+  });
+
+  it("jupiter_busy in Spanish; a 429 on the token top-up's swap instructions is busy too; four 429s then an answer builds", async () => {
+    const st = vi.spyOn(globalThis, "setTimeout").mockImplementation(((fn: () => void) => { fn(); return 0 as never; }) as never);
+    try {
+      const r429 = async () => new Response("limit", { status: 429 });
+      for (let i = 0; i < 5; i++) fetchMock.mockImplementationOnce(r429);
+      const es = await build(new Request("http://x", { method: "POST", headers: { authorization: `Bearer ${await issueSession(USER, "M")}`, "accept-language": "es" }, body: "{}" }));
+      expect(es.status).toBe(503);
+      expect(await es.json()).toEqual({ error: "Sprouts está ocupado ahora mismo. No se le pidió nada a tu billetera. Inténtalo de nuevo en un minuto.", code: "jupiter_busy" });
+      // Four 429s, then Jupiter answers: the SOL top-up builds (the longer budget is what saves it).
+      for (let i = 0; i < 4; i++) fetchMock.mockImplementationOnce(r429);
+      expect((await call(build, {})).status).toBe(200);
+      // The token top-up: its swap-instructions call meets five 429s.
+      const real = fetchMock.getMockImplementation()!;
+      let n = 0;
+      fetchMock.mockImplementation(async (url: string, init?: { body?: string }) => (url.includes("/swap/v1/swap-instructions") && n++ < 5 ? new Response("limit", { status: 429 }) : real(url, init)));
+      try {
+        const res = await call(build, { cents: 500, inputMint: JUP_MINT });
+        expect(res.status).toBe(503);
+        expect((await res.json()).code).toBe("jupiter_busy");
+      } finally { fetchMock.mockImplementation(real); }
+    } finally { st.mockRestore(); }
+  });
+
+  it("a Jupiter 500 on the quote is still the usual 'no route' 503 (code topup_refused)", async () => {
+    fetchMock.mockImplementationOnce(async () => new Response("boom", { status: 500 }));
+    const res = await call(build, {});
+    expect(res.status).toBe(503);
+    const body = await res.json();
+    expect(body.code).toBe("topup_refused");
+    expect(body.error).toMatch(/can't swap SOL to USDC right now\. Nothing was asked of your wallet\. Try again in a few minutes\./);
   });
 
   it("refuses Jupiter's plain ExactOut route (the wallet among the AMM's accounts), before building anything", async () => {

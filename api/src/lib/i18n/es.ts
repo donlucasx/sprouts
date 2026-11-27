@@ -260,6 +260,9 @@ export const ES_ERRORS = {
   topup_not_now: {
     "Sprouts could not build the top-up just now. Nothing was asked of your wallet. Try again in a minute.": "Sprouts no pudo armar el swap a USDC en este momento. No se le pidió nada a tu billetera. Inténtalo de nuevo en un minuto.",
   },
+  jupiter_busy: {
+    "Sprouts is busy right now. Nothing was asked of your wallet. Try again in a minute.": "Sprouts está ocupado ahora mismo. No se le pidió nada a tu billetera. Inténtalo de nuevo en un minuto.",
+  },
   // ---- Rules, terms, preview, feedback, export, watcher ----
   pin_invalid: {
     "Your coins add up to more than 100%.": "Tus monedas suman más de 100%.",

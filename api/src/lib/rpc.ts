@@ -89,29 +89,11 @@ import { isHttp429 } from "./http429";
 export const RPC_MAX_RPS = 30;
 export type PaceOptions = { maxPerSecond?: number; now?: () => number; sleep?: (ms: number) => Promise<void>; log?: (s: string) => void };
 export function createPace(opts: PaceOptions = {}): () => Promise<void> {
-  const max = opts.maxPerSecond ?? RPC_MAX_RPS;
-  const now = opts.now ?? Date.now;
-  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
-  const log = opts.log ?? ((s: string) => console.log(s));
-  const starts: number[] = [];
-  let queue: Promise<void> = Promise.resolve();
-  if (max <= 0) return async () => {};   // no pace
-  return () => {
-    const asked = now();
-    const turn = queue.then(async () => {
-      for (;;) {
-        const t = now();
-        while (starts.length && starts[0] <= t - 1000) starts.shift();
-        if (starts.length < max) { starts.push(t); break; }
-        await sleep(starts[0] + 1000 - t);
-      }
-      const waited = now() - asked;
-      if (waited > 1000) log(`rpc pace: a request waited ${waited} ms for its turn`);
-    });
-    queue = turn.catch(() => {});
-    return turn;
-  };
+  // 11-27: the queue itself moved to pace.ts (the Jupiter pace is the same queue over a 60 s window); this is the RPC's 1 s one.
+  const pace = createWindowPace({ max: opts.maxPerSecond ?? RPC_MAX_RPS, windowMs: 1000, now: opts.now, sleep: opts.sleep, log: opts.log, label: "rpc pace", logOverMs: 1000 });
+  return () => pace();
 }
+import { createWindowPace } from "./pace";
 // The test suite runs without the process-wide pace (its fake clocks would queue requests behind a frozen second); the pace itself
 // is tested through createPace.
 const processPace = createPace({ maxPerSecond: process.env.VITEST ? 0 : RPC_MAX_RPS });

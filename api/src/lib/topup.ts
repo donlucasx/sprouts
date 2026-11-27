@@ -1,7 +1,8 @@
 import { AccountRole, address, getBase64Encoder, getProgramDerivedAddress, isSolanaError, SOLANA_ERROR__JSON_RPC__INVALID_PARAMS, type Address, type Instruction } from "@solana/kit";
 import { findAssociatedTokenPda, TOKEN_PROGRAM_ADDRESS, ASSOCIATED_TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
 import { TOKEN_2022_PROGRAM_ADDRESS } from "@solana-program/token-2022";
-import { checkQuoteMints, getQuote, getSwapInstructions, JUPITER_AGGREGATOR, jupiterToken, pricesUsd, type JupiterToken } from "./jupiter";
+import { checkQuoteMints, getQuote, getSwapInstructions, isJupiterRateLimit, JUPITER_AGGREGATOR, jupiterToken, pricesUsd, withJupiterTopUpBudget, type JupiterToken } from "./jupiter";
+import type { ApiErrorCode } from "./api-error";
 import { SKR_MINT, SYSTEM_PROGRAM, USDC_MINT, WSOL_MINT } from "./constants";
 import { COINS } from "@/domain/coins";
 import { RECEIPT } from "./venues/addresses";
@@ -380,7 +381,8 @@ const dollars = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
 /** A refusal the app shows as it is (status 400 or 409), never a transaction. */
 export class TopUpRefused extends Error {
-  constructor(message: string, public status = 400) {
+  /** `code` (11-27): the API_ERROR_CODES code the route answers with; topup_refused unless said (jupiter_busy for Jupiter's 429s). */
+  constructor(message: string, public status = 400, public code: ApiErrorCode = "topup_refused") {
     super(message);
     this.name = "TopUpRefused";
   }
@@ -401,7 +403,15 @@ export const TOPUP_COPY = {
   noFairPrice: (symbol: string) => `Sprouts could not get a fair ${symbol} to USDC price right now. Nothing was asked of your wallet. Try again later.`,
   tooBig: "Sprouts could not fit this swap in one transaction just now. Nothing was asked of your wallet. Try again in a minute.",
   wouldFail: "This top-up would fail on chain, so nothing was asked of your wallet. Try again in a minute.",
+  // 11-27 (Kimi pace scope item 4): Jupiter's free key answered 429 past the top-up's whole retry budget; not a route problem.
+  busy: "Sprouts is busy right now. Nothing was asked of your wallet. Try again in a minute.",
 } as const;
+
+/**
+ * 11-27 (item 4): Jupiter's rate limit (429 past JUPITER_TOPUP_RETRY_MS) is said as "busy" (503, code jupiter_busy), apart from a real
+ * route or price problem; `other` is the refusal the step gave before. Any app shows the sentence as it came (it matches no top-up code).
+ */
+const busyOr = (e: unknown, other: TopUpRefused): TopUpRefused => (isJupiterRateLimit(e) ? new TopUpRefused(TOPUP_COPY.busy, 503, "jupiter_busy") : other);
 
 /** The confirm route's answers (api/topup/confirm). */
 export const TOPUP_CONFIRM = {
@@ -420,11 +430,14 @@ export type BuiltTopUp = { transaction: string; usdcRaw: string; maxLamports?: s
  * answer adds inputMint = wSOL and maxInRaw = maxLamports; 0.1.11 reads neither). Any other coin: the token top-up.
  */
 export async function buildTopUp(user: Address, cents: number, inputMint?: Address, setup: TopUpSetupAsk = NO_SETUP, caps: TopUpCaps = OLD_APP_CAPS): Promise<BuiltTopUp> {
-  if (inputMint === undefined || inputMint === WSOL_MINT) {
-    const built = await buildSolTopUp(user, cents, setup, caps);
-    return { ...built, inputMint: WSOL_MINT, maxInRaw: built.maxLamports };
-  }
-  return buildTokenTopUp(user, cents, inputMint, setup, caps);
+  // 11-27 (item 4): every Jupiter call of the build has the top-up's longer 429 budget (at most 8 s of waits in all).
+  return withJupiterTopUpBudget(async () => {
+    if (inputMint === undefined || inputMint === WSOL_MINT) {
+      const built = await buildSolTopUp(user, cents, setup, caps);
+      return { ...built, inputMint: WSOL_MINT, maxInRaw: built.maxLamports };
+    }
+    return buildTokenTopUp(user, cents, inputMint, setup, caps);
+  });
 }
 
 /** A coin Jupiter verified, of the classic Token program (the swap's fixed token program), and allowed as a source. */
@@ -592,7 +605,7 @@ async function buildTokenTopUp(user: Address, cents: number, inputMint: Address,
     token = await topUpToken(inputMint);
   } catch (e) {
     console.error(`topup: no token info for ${inputMint} (${e instanceof Error ? e.message : String(e)})`);
-    throw new TopUpRefused(TOPUP_COPY.notNow, 503);
+    throw busyOr(e, new TopUpRefused(TOPUP_COPY.notNow, 503));
   }
   if (!usableToken(inputMint, token)) throw new TopUpRefused(TOPUP_COPY.notSource, 400);
   const accounts = await topUpAccounts(user);
@@ -602,7 +615,7 @@ async function buildTokenTopUp(user: Address, cents: number, inputMint: Address,
     checkQuoteMints(quote, { inputMint, outputMint: USDC_MINT });
   } catch (e) {
     console.error(`topup: no ${token.symbol} quote for ${user} (${e instanceof Error ? e.message : String(e)})`);
-    throw new TopUpRefused(TOPUP_COPY.noRouteFor(token.symbol), 503);
+    throw busyOr(e, new TopUpRefused(TOPUP_COPY.noRouteFor(token.symbol), 503));
   }
   const maxIn = BigInt(quote.otherAmountThreshold);
   if (held.raw < maxIn) throw new TopUpRefused(TOPUP_COPY.noToken(token.symbol, cents), 409);
@@ -612,6 +625,7 @@ async function buildTokenTopUp(user: Address, cents: number, inputMint: Address,
     price = (await pricesUsd([inputMint]))[inputMint]?.usdPrice;
   } catch (e) {
     console.error(`topup: no ${token.symbol} price (${e instanceof Error ? e.message : String(e)})`);
+    if (isJupiterRateLimit(e)) throw busyOr(e, new TopUpRefused(TOPUP_COPY.noPriceFor(token.symbol), 503));
   }
   if (price === undefined) throw new TopUpRefused(TOPUP_COPY.noPriceFor(token.symbol), 503);   // 11-23: its own line (Kimi)
   if (!withinTopUpPriceBound(maxIn, outRaw, price, held.decimals)) {
@@ -623,7 +637,7 @@ async function buildTokenTopUp(user: Address, cents: number, inputMint: Address,
     parsed = await getSwapInstructions({ quote, userPublicKey: user, wrapAndUnwrapSol: false, maxPriorityLamports: TOPUP_PRIORITY_LAMPORTS, useSharedAccounts: true });
   } catch (e) {
     console.error(`topup: no ${token.symbol} swap instructions for ${user} (${e instanceof Error ? e.message : String(e)})`);
-    throw new TopUpRefused(TOPUP_COPY.noRouteFor(token.symbol), 503);
+    throw busyOr(e, new TopUpRefused(TOPUP_COPY.noRouteFor(token.symbol), 503));
   }
   const ixs = [...parsed.computeBudget, ...parsed.setup, parsed.swap, ...(parsed.cleanup ? [parsed.cleanup] : [])];
   let plan: TopUpPlan;
@@ -722,7 +736,7 @@ async function buildSolTopUp(user: Address, cents: number, setup: TopUpSetupAsk,
     checkQuoteMints(quote, { inputMint: WSOL_MINT, outputMint: USDC_MINT });
   } catch (e) {
     console.error(`topup: no quote for ${user} (${e instanceof Error ? e.message : String(e)})`);
-    throw new TopUpRefused(TOPUP_COPY.noRouteFor("SOL"), 503);
+    throw busyOr(e, new TopUpRefused(TOPUP_COPY.noRouteFor("SOL"), 503));
   }
   const maxIn = BigInt(quote.otherAmountThreshold);
   const { value: balance } = await rpc().getBalance(user, { commitment: "confirmed" }).send();
@@ -732,7 +746,7 @@ async function buildSolTopUp(user: Address, cents: number, setup: TopUpSetupAsk,
     parsed = await getSwapInstructions({ quote, userPublicKey: user, wrapAndUnwrapSol: true, maxPriorityLamports: TOPUP_PRIORITY_LAMPORTS, useSharedAccounts: true });
   } catch (e) {
     console.error(`topup: no swap instructions for ${user} (${e instanceof Error ? e.message : String(e)})`);
-    throw new TopUpRefused(TOPUP_COPY.noRouteFor("SOL"), 503);
+    throw busyOr(e, new TopUpRefused(TOPUP_COPY.noRouteFor("SOL"), 503));
   }
   const ixs = [...parsed.computeBudget, ...parsed.setup, parsed.swap, ...(parsed.cleanup ? [parsed.cleanup] : [])];
   try {
