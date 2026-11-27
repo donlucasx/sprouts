@@ -4,6 +4,7 @@ import type { Repo } from "@/db/repo";
 import { errorText } from "./redact";
 import { FEEDBACK_OPTIONS, type FeedbackQuestion } from "@/domain/asks";
 import { isSupportRef } from "./support-ref";
+import { COINS, isAsset } from "@/domain/coins";
 
 /**
  * 10-26 (Kimi user-comms A, build order 2-3): the events a user would want someone to act on, and the run's ALERT lines, reached
@@ -375,4 +376,57 @@ export function supportAlert(userPubkey: string | null, d: Record<string, unknow
     `Reply to: ${String(d.email ?? "?")} | app ${String(app.version ?? "?")} | ${String(app.device ?? "?")}`,
     `Wallets: ${wallets} | recent (UTC): ${recent}`,
   ].join("\n");
+}
+
+/** A raw token amount in plain units: 1310000 at 6 decimals is "1.31"; under 1, three significant digits. */
+function units(raw: bigint, decimals: number): string {
+  const v = Number(raw) / 10 ** decimals;
+  return v >= 1 ? v.toFixed(2).replace(/\.?0+$/, "") : String(Number(v.toPrecision(3)));
+}
+
+/**
+ * 11-27 (his ask: the "Safety check refused" card showed the full wallet and raw JSON): one plain sentence from a money guard's
+ * refusal (plant-run's legShortfall / deliveryShortfall texts, or a builder's "... refused:" throw). The raw text stays in the events
+ * table (leg_skipped, leg_fallback or pull_failed); the card only says what would have happened. An unknown shape gets a generic line.
+ */
+export function guardRefusalSentence(asset: string, err: string): string {
+  const coin = isAsset(asset) ? COINS[asset] : null;
+  const name = coin?.name ?? "this";
+  // A failed simulation's error arrives as JSON ({"delivery":"..."}): read the guard's own words out of it.
+  const why = /"delivery"\s*:\s*"([^"]*)"/.exec(err)?.[1] ?? err;
+  const big = (x: string) => BigInt(x);
+  let m = /the puller's (SKR|WSOL|USDC) fell by (\d+), more than this user's carry of (\d+)/.exec(why);
+  if (m) {
+    const over = big(m[2]) - big(m[3]);
+    const [label, decimals] = m[1] === "SKR" ? ["SKR", 6] : m[1] === "WSOL" ? ["SOL", 9] : ["USDC", 6];
+    if (over > 0n) {
+      return m[1] === "SKR" && asset === "SKR"
+        ? `The SKR swap would have delivered ${units(over, 6)} SKR less than the stake needs, so nothing was sent.`
+        : `The ${name} planting would have taken ${units(over, decimals)} ${label} more than this user's own share of the shared account, so nothing was sent.`;
+    }
+  }
+  m = /the destination gained (-?\d+), under the minimum (\d+)/.exec(why);
+  if (m && coin) {
+    const short = big(m[2]) - big(m[1]);
+    if (short > 0n) return `The ${name} swap would have delivered ${units(short, coin.decimals)} ${name} less than its minimum, so nothing was sent.`;
+  }
+  if (/the (kToken|user's jl) account gained -?\d+, under the minimum/.test(why)) return `The ${name} deposit would have returned less than its minimum, so nothing was sent.`;
+  if (/the puller's jl account still holds/.test(why)) return `The ${name} deposit would have left part of it in the shared account, so nothing was sent.`;
+  if (/^Jupiter (response|quote) refused/.test(why)) return `Jupiter's quote for the ${name} swap failed a safety check, so nothing was sent.`;
+  if (/^Leash refused/.test(why)) return `The wallet's leash check refused the ${name} planting, so nothing was sent.`;
+  if (/^(Jupiter Lend|K-Lend) refused/.test(why)) return `The ${why.startsWith("K-Lend") ? "Kamino" : "Jupiter Lend"} deposit for ${name} failed a safety check, so nothing was sent.`;
+  if (/^(SKR )?Planting refused/.test(why)) return `The ${name} planting failed a safety check while it was being built, so nothing was sent.`;
+  return `A money check refused the ${name} planting, so nothing was sent.`;
+}
+
+/** 11-27: the "Safety check refused" card, like the others: a plain sentence, the user's .skr name when known, short keys. */
+export function guardRefusalCard(a: { asset: string; err: string; walletPubkey: string; userPubkey: string | null; skrName?: string | null }): AlertCard {
+  const name = typeof a.skrName === "string" && a.skrName ? a.skrName.replace(/[^\w.-]/g, "") : null;
+  return {
+    channel: "ops",
+    title: `Safety check refused a ${isAsset(a.asset) ? COINS[a.asset].name : "?"} planting`,
+    text: guardRefusalSentence(a.asset, a.err),
+    fields: [["User", name ?? short(a.userPubkey)], ["Wallet", short(a.walletPubkey)]],
+    todo: "A money guard said no: could be a bad price or a bug. Look before the next run (the full detail is in the events table)",
+  };
 }

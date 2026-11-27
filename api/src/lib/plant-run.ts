@@ -3,7 +3,7 @@ import { pauseCauseOf, PAUSE_EVENT_KINDS } from "@/domain/pause-cause";
 import type { RemainderKind, Repo } from "@/db/repo";
 import type { CarryKind, PlantingLegRow, PlantingRow, VenueDayRow, WalletRow } from "@/db/types";
 import { rulesRowToRules } from "@/db/types";
-import { alertFounder } from "./founder-alert";
+import { alertFounder, guardRefusalCard } from "./founder-alert";
 import { pickAsset, type Asset, type Ledger } from "@/domain/allocation";
 import { coinOpening, OPEN_STEP_CENTS, type Opening } from "@/domain/opening";
 import { ASSETS, COINS, LEND_ASSETS, isLendAsset, type LendAsset, type LiveAsset, type Split } from "@/domain/coins";
@@ -640,10 +640,17 @@ export function leashErrorOf(sim: { logs: string[] }): number | null {
 
 /** A refusal by one of the money guards or checkers (a possible attack, or a builder bug), not weather: it gets an ALERT line (review M2). */
 const GUARD_REFUSAL = /fell by|under the minimum|still holds|(Planting|Jupiter response|Jupiter Lend|K-Lend|Leash) refused/;
-function alertIfGuard(w: WalletRow, asset: LiveAsset, err: string) {
+/**
+ * 11-27 (his ask): the card is a plain sentence with the user's .skr name and short keys (guardRefusalCard); the raw refusal stays in
+ * the log line here and in the events table (the caller's leg_skipped, leg_fallback or pull_failed). Never awaited, never throws.
+ */
+function alertIfGuard(repo: Repo, w: WalletRow, asset: LiveAsset, err: string) {
   if (!GUARD_REFUSAL.test(err)) return;
   console.error(`ALERT: guard refusal on ${asset} for ${w.pubkey}: ${err}`);
-  void alertFounder({ channel: "ops", title: `Safety check refused a ${asset} planting`, text: err.slice(0, 300), fields: [["Wallet", w.pubkey]], todo: "A money guard said no: could be a bad price or a bug. Look before the next run" });
+  void (async () => {
+    const skrName = (await repo.getUser(w.userPubkey).catch(() => null))?.skrName ?? null;
+    await alertFounder(guardRefusalCard({ asset, err, walletPubkey: w.pubkey, userPubkey: w.userPubkey, skrName }));
+  })().catch(() => {});
 }
 
 /**
@@ -653,7 +660,7 @@ function alertIfGuard(w: WalletRow, asset: LiveAsset, err: string) {
  */
 async function legSkipped(a: { repo: Repo; now: Date }, w: WalletRow, asset: LiveAsset, err: string, extra: Record<string, unknown> = {}) {
   console.error(`${asset} leg for ${w.pubkey} failed (${err}); skipped today`);
-  alertIfGuard(w, asset, err);
+  alertIfGuard(a.repo, w, asset, err);
   const day = dayOf(a.now);
   const key = `${w.pubkey}:${asset}:${err.replace(/0x[0-9a-f]+|\d+/gi, (m) => (/^0x/i.test(m) ? m : "#")).slice(0, 160)}`;
   try {
@@ -1016,7 +1023,7 @@ async function plantOneOrThrow(a: RunArgs, w: WalletRow, ctx: RunCtx): Promise<P
       await legSkipped(a, w, failed, err);
       return null;
     }
-    alertIfGuard(w, failed, err);
+    alertIfGuard(a.repo, w, failed, err);
     console.error(`${failed} leg for ${w.pubkey} failed (${err}); planting SKR instead`);
     await a.repo.addEvent({ userPubkey: w.userPubkey, walletPubkey: w.pubkey, kind: "leg_fallback", detail: { asset: failed, err } });
     asset = "SKR";
@@ -1058,7 +1065,7 @@ async function plantOneOrThrow(a: RunArgs, w: WalletRow, ctx: RunCtx): Promise<P
   if (!outcome) return { wallet: w.pubkey, reason: "leg failed" };
   const { built, sim, carry, venue, leg, cfg, feedAlive } = outcome;
   if (!sim.ok) {
-    alertIfGuard(w, asset, json(sim.err));
+    alertIfGuard(a.repo, w, asset, json(sim.err));
     const code = leashErrorOf(sim);
     const leashError = code !== null ? (LEASH_ERRORS[code] ?? null) : null;
     console.error(`planting for ${w.pubkey} failed simulation: ${json(sim.err)} ${sim.logs.slice(-2).join(" | ")}`);

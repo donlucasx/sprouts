@@ -44,7 +44,7 @@ describe("swapsCountedLight", () => {
 
   it("unknown when no check is recorded, the last run did not check, or the check is old", () => {
     expect(swapsCountedLight({ now: NOW, input: input({ lastCheckAt: null, last: null }) })).toMatchObject({ state: "unknown", fact: "No swap check recorded yet" });
-    expect(swapsCountedLight({ now: NOW, input: input({ last: null }) })).toMatchObject({ state: "unknown", fact: "The last daily job did not check swaps" });
+    expect(swapsCountedLight({ now: NOW, input: input({ last: null }) })).toMatchObject({ state: "unknown", fact: "The last daily swap check did not finish" });
     const old = swapsCountedLight({ now: NOW, input: input({ lastCheckAt: new Date(NOW.getTime() - 30 * HOUR) }) });
     expect(old).toMatchObject({ state: "unknown", fact: "The last swap check was 30 hours ago" });
     expect(old.action).toBeTruthy();

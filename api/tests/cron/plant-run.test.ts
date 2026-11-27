@@ -1632,6 +1632,31 @@ describe("Task 11 fix round 1 (review I1, I2, M1-M4, M7, M9)", () => {
     expect(alerts.length).toBe(1);
   });
 
+  it("11-27: the guard refusal card is plain: a sentence, the user's .skr name, short keys; the raw text stays in the events table", async () => {
+    const repo = await seeded([83, 62, 70]);
+    await repo.upsertUser({ seedVaultPubkey: "U", sgtMint: "M", skrName: "alice.skr" });
+    await repo.saveRules("U", { allocation: hsolOnly });
+    await repo.bumpLedger("W", "SKR", 1_000);
+    vi.stubEnv("ALERT_WEBHOOK_OPS", "https://ntfy.sh/test-topic");
+    const posts: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (_u: string, init: { body: string }) => { posts.push(init.body); return new Response("ok"); }));
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await runPlanting({ repo, now: NOW, chain: fakeChain({ simulatePlanting: async (b) => (assetOf(b) === "hSOL" ? ok(b, { PU: { pre: 5_000n, post: 2_185_000n }, PS: { pre: 2_000_000n, post: 1_000_000n } }) : ok(b, {})) }) });
+      for (let i = 0; i < 20 && !posts.some((p) => p.includes("Safety check")); i++) await new Promise((r) => setImmediate(r));
+    } finally {
+      err.mockRestore();
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+    }
+    const card = posts.find((p) => p.includes("Safety check"))!;
+    expect(card).toContain("Safety check refused a hSOL planting");
+    expect(card).toContain("The hSOL planting would have taken 1 SKR more than this user's own share of the shared account, so nothing was sent.");
+    expect(card).toContain("User: alice.skr | Wallet: W...W");
+    expect(card).not.toMatch(/[{}"]/);   // no raw JSON
+    expect(JSON.stringify(repo.events.find((e) => e.kind === "leg_fallback")?.detail)).toMatch(/puller's SKR fell by 1000000, more than this user's carry of 0/);
+  });
+
   it("I1: an SKR leg whose route closes the pooled wSOL account (every user's WSOL carry) is refused", async () => {
     const repo = await seeded([83, 62, 70]);
     let sent = 0;

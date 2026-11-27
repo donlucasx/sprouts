@@ -16,7 +16,7 @@ const DAY = 86_400_000;
 /** Spec "Known blind spots", one per line. */
 export const BLIND_SPOTS = [
   "The swap watcher can be registered but silently not delivering. \"Swaps coming in\" only catches that after 1 to 3 days.",
-  "A missed swap shows on \"Every swap counted\" only after the next daily job (it checks the last 48 hours once a day).",
+  "A missed swap shows on \"Every swap counted\" only after the next daily swap check (13:00 UTC; it reads each wallet back to its last check, up to 7 days).",
   "The Discord alerts themselves can fail, and then nothing tells you.",
   "A saving can succeed but with the wrong amount.",
 ];

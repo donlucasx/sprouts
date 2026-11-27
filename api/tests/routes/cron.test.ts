@@ -53,69 +53,14 @@ beforeAll(() => {
 describe("cron route", () => {
   let repo: MemoryRepo;
 
-  it("ops #9: runs the missed-swap check last, under its own cutoffs, and records it in the run record", async () => {
+  it("11-27 (Kimi swap-check scope 4): the plant run no longer runs the missed-swap check; its record carries no swapCheck", async () => {
     swapCheckMock.mockClear();
-    const before = Date.now();
     const res = await GET(new Request("http://x/api/cron/plant", { headers: { authorization: `Bearer ${SECRET}` } }));
-    const body = (await res.json()) as { swapCheck: unknown };
-    expect(body.swapCheck).toMatchObject({ checked: 3, missed: [{ sig: "44gdAAAA", roundupCents: 66 }] });
-    const a = swapCheckMock.mock.calls[0][0];
-    // 11-25: starts no wallet past 730 s (70 s before the 800 s kill, after the reconcile's 700 s); a wallet still going at 755 s is deferred.
-    expect(a.deadlineMs - before).toBeGreaterThanOrEqual(729_000);
-    expect(a.deadlineMs - before).toBeLessThanOrEqual(731_000);
-    expect(a.hardStopMs - a.deadlineMs).toBe(25_000);
-    expect(a.boundAt! - a.deadlineMs).toBe(30_000);
-    // L3: it runs after every money step (planting, crank, remainder retry, reconcile) and the coverage pass.
-    expect(order.at(-1)).toBe("swapcheck");
-    expect(order.indexOf("plant")).toBeLessThan(order.indexOf("swapcheck"));
-    expect(order.indexOf("remainders")).toBeLessThan(order.indexOf("swapcheck"));
-    const { reconcileOwnStakes } = await import("@/lib/reconcile");
-    expect(vi.mocked(reconcileOwnStakes).mock.invocationCallOrder.at(-1)!).toBeLessThan(swapCheckMock.mock.invocationCallOrder.at(-1)!);
-  });
-
-  it("M1: a swap check whose read hangs returns by the 760 s bound (11-25; was 285 s), and the run record is still written", async () => {
-    const actual = await vi.importActual<typeof import("@/lib/swap-check")>("@/lib/swap-check");
-    await repo.upsertUser({ seedVaultPubkey: "U", sgtMint: "M", skrName: null });
-    await repo.addWallet({ pubkey: "W", userPubkey: "U", delegationPda: "D", dailyCapCents: 500 });
-    readsMock.mockResolvedValueOnce({ signatures: () => new Promise(() => {}), enhanced: async () => [], fetchTx: async () => null, priceUsd: async () => null, puller: "P" } as never);
-    let started = false;
-    swapCheckMock.mockImplementationOnce((a) => { started = true; return actual.checkMissedSwaps(a as never) as never; });
-    const err = vi.spyOn(console, "error").mockImplementation(() => {});
-    // 11-14 (flake fix): the clock is fake too (setTimeout, clearTimeout and Date), and frozen until the check has started. The old
-    // test advanced 10 s per loop turn whatever the route was doing, so fake time ran on while the route was still on its way to the
-    // check (real event-loop turns: about 2 ms of load was enough), the bound was set relative to that later time, and 60 turns no
-    // longer reached it. Now the route reaches the check with no time passing (setImmediate is real and advances nothing), its
-    // first read hangs, and the clock is then moved exactly to the 760 s bound: not settled 1 ms before it, settled at it.
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
-    try {
-      let settled = false;
-      const p = get().finally(() => { settled = true; });
-      const waitUntil = performance.now() + 5_000;
-      while (!started && performance.now() < waitUntil) await new Promise((r) => setImmediate(r));
-      expect(started).toBe(true);
-      await vi.advanceTimersByTimeAsync(760_000 - 1);
-      expect(settled).toBe(false);   // the hung read holds the step until the bound, not before
-      await vi.advanceTimersByTimeAsync(1);
-      for (let i = 0; i < 1_000 && !settled; i++) await new Promise((r) => setImmediate(r));   // the rest of the route: no timers, real turns only
-      expect(settled).toBe(true);
-      const res = await p;
-      expect(res.status).toBe(200);
-      const rec = repo.cronRuns.get(dayOf(new Date()));
-      expect(rec?.ok).toBe(true);
-      expect(rec?.summary).toMatchObject({ swapCheck: { checked: 0, deferred: 1, missed: [], unchecked: [] } });
-    } finally {
-      vi.useRealTimers();
-      err.mockRestore();
-    }
-  });
-
-  it("ops #9: a missed-swap check that throws is a failed step (null in the record), never a failed run", async () => {
-    swapCheckMock.mockRejectedValueOnce(new Error("helius down"));
-    const err = vi.spyOn(console, "error").mockImplementation(() => {});
-    const res = await GET(new Request("http://x/api/cron/plant", { headers: { authorization: `Bearer ${SECRET}` } }));
-    err.mockRestore();
     expect(res.status).toBe(200);
-    expect(((await res.json()) as { swapCheck: unknown }).swapCheck).toBeNull();
+    expect(swapCheckMock).not.toHaveBeenCalled();
+    expect(readsMock).not.toHaveBeenCalled();
+    expect(Object.keys((await res.json()) as object)).not.toContain("swapCheck");
+    expect(Object.keys(repo.cronRuns.get(dayOf(new Date()))?.summary as object)).not.toContain("swapCheck");
   });
 
   beforeEach(() => {
@@ -204,7 +149,7 @@ describe("cron route", () => {
   it("runs venues, coins, decide, apply, moves, then plant, and reports venues and moves (MOVES_ENABLED=true)", async () => {
     process.env.MOVES_ENABLED = "true";
     const res = await get();
-    expect(order).toEqual(["venues", "coins", "decide", "apply", "moves", "plant", "remainders", "swapcheck"]);
+    expect(order).toEqual(["venues", "coins", "decide", "apply", "moves", "plant", "remainders"]);
     const body = (await res.json()) as { venues: number; moves: number };
     expect(body.venues).toBe(1);
     expect(body.moves).toBe(1);
@@ -216,7 +161,7 @@ describe("cron route", () => {
       order.length = 0;
       const log = vi.spyOn(console, "log").mockImplementation(() => {});
       const body = (await (await get()).json()) as { moves: number | null };
-      expect(order).toEqual(["venues", "coins", "decide", "apply", "plant", "remainders", "swapcheck"]);
+      expect(order).toEqual(["venues", "coins", "decide", "apply", "plant", "remainders"]);
       expect(body.moves).toBeNull();
       expect(log.mock.calls.map((c) => String(c[0])).join("\n")).toContain("moves off,");
       log.mockRestore();

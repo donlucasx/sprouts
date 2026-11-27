@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { alertFounder, founderAlertFor } from "@/lib/founder-alert";
+import { alertFounder, founderAlertFor, guardRefusalCard, guardRefusalSentence } from "@/lib/founder-alert";
 
 const W = "9H7ChDC2o32wC8jcpVDjLGQhwyx1hmLW1fiCjsjUuzFm";
 const U = "8KiTtZXjcpxUGuH93G12iMVNcTYteTbRvaovdeQdfjc6";
@@ -379,5 +379,44 @@ describe("remainder_unrecorded card (audit F1)", () => {
     const line = founderAlertFor(ev("remainder_unrecorded", { plantingId: "<@1>", kind: "<@everyone>", reason: "x".repeat(50) }))!;
     expect(line).not.toContain("<@");
     expect(line).not.toContain("xxxxx");
+  });
+});
+
+describe("11-27: the Safety check refused card", () => {
+  it("an SKR delivery shortfall (the simulation's raw JSON) becomes one plain sentence", () => {
+    const raw = `simulation: {"delivery":"the puller's SKR fell by 1310000, more than this user's carry of 0"} Program log: x | Program y failed`;
+    expect(guardRefusalSentence("SKR", raw)).toBe("The SKR swap would have delivered 1.31 SKR less than the stake needs, so nothing was sent.");
+    expect(guardRefusalSentence("SKR", `{"delivery":"the puller's SKR fell by 2500000, more than this user's carry of 1000000"}`)).toBe("The SKR swap would have delivered 1.5 SKR less than the stake needs, so nothing was sent.");
+  });
+
+  it("every guard text the planting raises reads as a sentence; an unknown shape gets the generic line", () => {
+    expect(guardRefusalSentence("hSOL", `{"delivery":"the destination gained 900000, under the minimum 1000000"}`)).toBe("The hSOL swap would have delivered 0.0001 hSOL less than its minimum, so nothing was sent.");
+    expect(guardRefusalSentence("hSOL", `{"delivery":"the puller's SKR fell by 1000, more than this user's carry of 0"}`)).toBe("The hSOL planting would have taken 0.001 SKR more than this user's own share of the shared account, so nothing was sent.");
+    expect(guardRefusalSentence("SOL_LEND", `{"delivery":"the puller's WSOL fell by 2000000000, more than this user's carry of 500000000"}`)).toBe("The SOL lending planting would have taken 1.5 SOL more than this user's own share of the shared account, so nothing was sent.");
+    expect(guardRefusalSentence("USDC_LEND", `{"delivery":"the puller's USDC fell by 250000, more than this user's carry of 0"}`)).toBe("The USDC lending planting would have taken 0.25 USDC more than this user's own share of the shared account, so nothing was sent.");
+    expect(guardRefusalSentence("USDC_LEND", `{"delivery":"the kToken account gained 5, under the minimum 9"}`)).toBe("The USDC lending deposit would have returned less than its minimum, so nothing was sent.");
+    expect(guardRefusalSentence("SOL_LEND", `{"delivery":"the puller's jl account still holds 3 after the planting"}`)).toBe("The SOL lending deposit would have left part of it in the shared account, so nothing was sent.");
+    expect(guardRefusalSentence("cbBTC", "Jupiter response refused: the route names an unknown program")).toBe("Jupiter's quote for the cbBTC swap failed a safety check, so nothing was sent.");
+    expect(guardRefusalSentence("SKR", "Leash refused: price too old")).toBe("The wallet's leash check refused the SKR planting, so nothing was sent.");
+    expect(guardRefusalSentence("USDC_LEND", "K-Lend refused: another reserve")).toBe("The Kamino deposit for USDC lending failed a safety check, so nothing was sent.");
+    expect(guardRefusalSentence("USDC_LEND", "Jupiter Lend refused: x")).toBe("The Jupiter Lend deposit for USDC lending failed a safety check, so nothing was sent.");
+    expect(guardRefusalSentence("stORE", "Planting refused: the stORE quote carries a platform fee (5 bps)")).toBe("The stORE planting failed a safety check while it was being built, so nothing was sent.");
+    expect(guardRefusalSentence("SKR", "something under the minimum we never wrote")).toBe("A money check refused the SKR planting, so nothing was sent.");
+  });
+
+  it("the card: plain sentence, the .skr name (cleaned) or the short user key, the short wallet; never the full keys or JSON", () => {
+    const err = `simulation: {"delivery":"the puller's SKR fell by 1310000, more than this user's carry of 0"} logs`;
+    const c = guardRefusalCard({ asset: "SKR", err, walletPubkey: W, userPubkey: U, skrName: "alice.skr<@1>" });
+    expect(c).toMatchObject({ channel: "ops", title: "Safety check refused a SKR planting", text: "The SKR swap would have delivered 1.31 SKR less than the stake needs, so nothing was sent." });
+    expect(c.fields).toEqual([["User", "alice.skr1"], ["Wallet", "9H7C...uzFm"]]);
+    const plain = guardRefusalCard({ asset: "SOL_LEND", err, walletPubkey: W, userPubkey: U, skrName: null });
+    expect(plain.fields).toEqual([["User", "8KiT...fjc6"], ["Wallet", "9H7C...uzFm"]]);
+    expect(plain.title).toBe("Safety check refused a SOL lending planting");
+    for (const card of [c, plain]) {
+      const all = JSON.stringify(card);
+      expect(all).not.toContain(W);
+      expect(all).not.toContain(U);
+      expect(card.text).not.toMatch(/[{}"]/);
+    }
   });
 });

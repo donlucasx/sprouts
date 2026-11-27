@@ -27,11 +27,22 @@ import { stockMints } from "./token-kind";
  * Never concludes "nothing missed" from a partial read: a page-cap hit, a read error, an enhanced answer missing a signature, a
  * transaction the RPC cannot return or a capped swaps read marks the wallet unchecked. Swaps before the wallet linked are not owed.
  * Helius load at 15 wallets: ~15-30 getSignaturesForAddress, ~15 enhanced calls, one getTransaction per candidate miss.
+ *
+ * 11-27 (Kimi swap-check scope, his ruling "check EVERY wallet daily"): the check has its own daily route (/api/cron/swap-check,
+ * 13:00 UTC, 800 s) instead of the plant run's last ~30 s; wallets are read CONCURRENCY at a time (each one's guards unchanged);
+ * a wallet's window reaches back to the last run that checked it (at most 7 days), so a deferred wallet's swaps are not lost; and
+ * each run records which bookSwap filter dropped the unbooked swaps it read (`skipped`), plus, per miss, what the webhook left
+ * (annotateMissReasons) and a founder card when a wallet misses in two runs straight (repeatMisses).
  */
 
 export const LOOKBACK_S = 48 * 3600;
+/** 11-27 (Kimi 3): a wallet no run checked lately is read back to its last check, never further than this. */
+export const MAX_LOOKBACK_S = 7 * 86_400;
 export const PAGE_SIZE = 100;
-export const MAX_PAGES = 3;
+/** 11-27: 3 -> 10 (a window can now reach 7 days; the route has ~730 s, not ~30). A wallet past this is still unchecked, never concluded. */
+export const MAX_PAGES = 10;
+/** 11-27 (Kimi 2): wallets read at once. ~20 Helius requests/s at most, under the plan's 50 (the RPC transport paces anyway). */
+export const CONCURRENCY = 8;
 /** The webhook books within seconds; a swap this fresh may simply be in flight. */
 export const GRACE_S = 15 * 60;
 /** The user's newest swaps read to tell booked from not (PostgREST's row cap). A full read still inside the window is partial. */
@@ -50,7 +61,14 @@ export type SwapCheckReads = {
   puller: string;
 };
 
-export type MissedSwap = { wallet: string; sig: string; ts: string; roundupCents: number };
+/**
+ * `reason` (11-27, Kimi 6; set by annotateMissReasons, after the check): what the webhook left for this swap. `refused:<why>` it was
+ * delivered and the chain check said no then; `unpriced` delivered with no price; `no_trace` never delivered, or dropped by a routine
+ * skip that writes nothing; `unknown` the events could not be read.
+ */
+export type MissedSwap = { wallet: string; sig: string; ts: string; roundupCents: number; reason?: string };
+/** Why the unbooked swaps the check read were (rightly) not booked: bookSwap's own filters, counted per run (Kimi 6). */
+export type SkipCounts = { puller: number; top_up: number; refused: number; not_this_wallet: number };
 export type UncheckedWallet = { wallet: string; why: "page_cap" | "read_error" | "partial_read" | "price_unavailable" };
 export type SwapCheckRecord = {
   checked: number;
@@ -59,9 +77,40 @@ export type SwapCheckRecord = {
   deferred: number;
   missed: MissedSwap[];
   calls: { signatures: number; enhanced: number; transactions: number };
+  /** 11-27: the end of this run's window (ISO, now minus the 15 min grace): the next run reads a checked wallet from here at the latest. */
+  through?: string;
+  /** 11-27: the wallets this run concluded (short keys, as in `missed`): the next run's lookback (checkedThrough). */
+  checkedWallets?: string[];
+  skipped?: SkipCounts;
 };
 
-const short = (k: string) => `${k.slice(0, 4)}…${k.slice(-3)}`;
+/**
+ * Kimi 3: where a wallet's window starts. With no earlier record at all (the first run of the route), the old 48 h. Otherwise 48 h, or
+ * further back to the last run that concluded this wallet when that is older, capped at 7 days; never before the wallet linked.
+ * Short keys can collide; a wrong `lastThroughS` can only widen the window (min with 48 h), never narrow it.
+ */
+export function windowStart(a: { nowS: number; createdS: number; lastThroughS: number | undefined; hasHistory: boolean }): number {
+  const base = a.nowS - LOOKBACK_S;
+  const cap = a.nowS - MAX_LOOKBACK_S;
+  const start = !a.hasHistory ? base : a.lastThroughS === undefined ? cap : Math.max(cap, Math.min(base, a.lastThroughS));
+  return Math.max(start, a.createdS);
+}
+
+/** Per short wallet key, the newest `through` (seconds) of the earlier runs' records that concluded it. */
+export function checkedThrough(records: unknown[]): { through: Map<string, number>; hasHistory: boolean } {
+  const through = new Map<string, number>();
+  let hasHistory = false;
+  for (const r of records) {
+    const c = r !== null && typeof r === "object" ? (r as { through?: unknown; checkedWallets?: unknown }) : null;
+    const t = typeof c?.through === "string" ? Math.floor(Date.parse(c.through) / 1000) : NaN;
+    if (!Number.isFinite(t) || !Array.isArray(c?.checkedWallets)) continue;
+    hasHistory = true;
+    for (const w of c.checkedWallets) if (typeof w === "string" && !((through.get(w) ?? -Infinity) >= t)) through.set(w, t);
+  }
+  return { through, hasHistory };
+}
+
+export const short = (k: string) => `${k.slice(0, 4)}…${k.slice(-3)}`;
 class Partial extends Error { constructor(readonly why: UncheckedWallet["why"]) { super(why); } }
 class OutOfTime extends Error {}
 
@@ -90,8 +139,13 @@ export async function checkMissedSwaps(a: {
   /** The whole check returns by this (Date.now ms) whatever is still in flight (M1). */
   boundAt?: number;
   clock?: () => number;
+  /** Wallets read at once (default CONCURRENCY). */
+  concurrency?: number;
+  /** Earlier runs' lookback (checkedThrough); absent = no history, every wallet's window is 48 h. */
+  history?: { through: Map<string, number>; hasHistory: boolean };
 }): Promise<SwapCheckRecord> {
-  const out: SwapCheckRecord = { checked: 0, unchecked: [], deferred: 0, missed: [], calls: { signatures: 0, enhanced: 0, transactions: 0 } };
+  const until = Math.floor(a.now.getTime() / 1000) - GRACE_S;
+  const out: SwapCheckRecord = { checked: 0, unchecked: [], deferred: 0, missed: [], calls: { signatures: 0, enhanced: 0, transactions: 0 }, through: new Date(until * 1000).toISOString(), checkedWallets: [], skipped: { puller: 0, top_up: 0, refused: 0, not_this_wallet: 0 } };
   const listed = { total: null as number | null };
   const work = runCheck(a, out, listed);
   if (a.boundAt === undefined) return work;
@@ -102,7 +156,7 @@ export async function checkMissedSwaps(a: {
   work.catch(() => {});   // it may still settle later; nothing it does writes
   if (listed.total === null) throw new Error("swap check cut at its bound before the wallet list was read");
   // A snapshot: only wallets that finished count as checked or unchecked (their misses were added when they finished).
-  return { checked: out.checked, unchecked: [...out.unchecked], deferred: listed.total - out.checked - out.unchecked.length, missed: [...out.missed], calls: { ...out.calls } };
+  return { checked: out.checked, unchecked: [...out.unchecked], deferred: listed.total - out.checked - out.unchecked.length, missed: [...out.missed], calls: { ...out.calls }, through: out.through, checkedWallets: [...out.checkedWallets!], skipped: { ...out.skipped! } };
 }
 
 async function runCheck(a: Parameters<typeof checkMissedSwaps>[0], out: SwapCheckRecord, listed: { total: number | null }): Promise<SwapCheckRecord> {
@@ -112,10 +166,22 @@ async function runCheck(a: Parameters<typeof checkMissedSwaps>[0], out: SwapChec
   const wallets = [...new Map((await a.repo.listActiveWallets()).filter((w) => !a.exclude.has(w.pubkey) && !a.exclude.has(w.userPubkey)).map((w) => [w.pubkey, w])).values()];
   listed.total = wallets.length;
 
-  for (const w of wallets) {
-    if (clock() >= a.deadlineMs) { out.deferred++; continue; }
+  const history = a.history ?? { through: new Map<string, number>(), hasHistory: false };
+
+  // Kimi 2: a bounded pool. Each wallet is still judged alone (its own guard, deadline and partial-read rules); only the order changes.
+  let next = 0;
+  const worker = async () => {
+    while (next < wallets.length) await checkWallet(wallets[next++]);
+  };
+  await Promise.all(Array.from({ length: Math.max(1, Math.min(a.concurrency ?? CONCURRENCY, wallets.length)) }, worker));
+  return out;
+
+  async function checkWallet(w: (typeof wallets)[number]) {
+    if (clock() >= a.deadlineMs) { out.deferred++; return; }
+    // Counted into the run only when the wallet is concluded: a partial or stopped wallet adds nothing.
+    const skipped: SkipCounts = { puller: 0, top_up: 0, refused: 0, not_this_wallet: 0 };
     try {
-      const from = Math.max(nowS - LOOKBACK_S, Math.floor(w.createdAt.getTime() / 1000));
+      const from = windowStart({ nowS, createdS: Math.floor(w.createdAt.getTime() / 1000), lastThroughS: history.through.get(short(w.pubkey)), hasHistory: history.hasHistory });
       const until = nowS - GRACE_S;
 
       // 1. Signatures in the window, paged; a window that does not end inside MAX_PAGES is a partial read.
@@ -159,8 +225,14 @@ async function runCheck(a: Parameters<typeof checkMissedSwaps>[0], out: SwapChec
       for (const tx of txs) {
         if (tx.timestamp < from || tx.timestamp > until) continue;   // before the link (never owed), or possibly in flight
         guard();
+        if (tx.feePayer === a.reads.puller) { skipped.puller++; continue; }   // bookSwap's first filter (a Sprouts planting)
         let inserted: Parameters<Repo["insertSwap"]>[0] | null = null;
-        const repo = dryRepo(a.repo, (s) => { inserted = s; });
+        let topUp = false;
+        const dry = dryRepo(a.repo, (s) => { inserted = s; });
+        const repo = new Proxy(dry, { get(t, prop) {
+          if (prop === "topUpKinds") return async (sig: string, wallet: string) => { const k = await t.topUpKinds(sig, wallet); if (k.length) topUp = true; return k; };
+          return Reflect.get(t, prop, t) as unknown;
+        } });
         const res = await bookSwap({
           repo, tx, priceUsd: a.reads.priceUsd, ignoreFeePayer: a.reads.puller, stockMints: a.reads.stockMints,
           verify: async (x) => {
@@ -175,15 +247,58 @@ async function runCheck(a: Parameters<typeof checkMissedSwaps>[0], out: SwapChec
         if (!res.booked && res.unpriced) throw new Partial("price_unavailable");
         const s = inserted as Parameters<Repo["insertSwap"]>[0] | null;
         if (s && s.walletPubkey === w.pubkey) found.push({ wallet: short(w.pubkey), sig: tx.signature.slice(0, 8), ts: `${new Date(tx.timestamp * 1000).toISOString().slice(0, 16)}Z`, roundupCents: s.roundupCents });
+        else if (topUp) skipped.top_up++;
+        else if (!res.booked && res.refused) skipped.refused++;
+        else skipped.not_this_wallet++;   // no swap legs for a known wallet, or booked under another wallet
       }
       out.missed.push(...found);
       out.checked++;
+      out.checkedWallets!.push(short(w.pubkey));
+      for (const k of Object.keys(skipped) as (keyof SkipCounts)[]) out.skipped![k] += skipped[k];
     } catch (e) {
       if (e instanceof OutOfTime) out.deferred++;
       else out.unchecked.push({ wallet: short(w.pubkey), why: e instanceof Partial ? e.why : "read_error" });
     }
   }
-  return out;
+}
+
+/**
+ * Kimi 6: what the webhook left for each miss, read once from the events table (swap_refused and zero_roundup since `since`, matched
+ * on the wallet and the short signature). Never throws: unreadable events mark every miss `unknown`. Returns a new list.
+ */
+export async function annotateMissReasons(repo: Repo, missed: MissedSwap[], since: Date): Promise<MissedSwap[]> {
+  if (!missed.length) return missed;
+  let traces: Map<string, string>;
+  try {
+    const [refused, unpriced] = await Promise.all([repo.listEventsByKind("swap_refused", since), repo.listEventsByKind("zero_roundup", since)]);
+    traces = new Map();
+    const key = (wallet: string | null, sig: unknown) => `${wallet ? short(wallet) : "?"}:${String(sig ?? "")}`;
+    for (const e of unpriced) traces.set(key(e.walletPubkey, (e.detail as { sig?: unknown } | null)?.sig), "unpriced");
+    for (const e of refused) {
+      const d = (e.detail ?? {}) as { sig?: unknown; reason?: unknown };
+      const why = /^[a-z_]{1,24}$/.test(String(d.reason)) ? String(d.reason) : "other";
+      traces.set(key(e.walletPubkey, d.sig), `refused:${why}`);
+      // A refusal written with no wallet (an item that matched no known wallet) still names the swap.
+      if (!e.walletPubkey) traces.set(`?:${String(d.sig ?? "")}`, `refused:${why}`);
+    }
+  } catch (e) {
+    console.error(`swap check: miss reasons unreadable: ${e instanceof Error ? e.message.slice(0, 120) : "error"}`);
+    return missed.map((m) => ({ ...m, reason: "unknown" }));
+  }
+  return missed.map((m) => ({ ...m, reason: traces.get(`${m.wallet}:${m.sig}`) ?? traces.get(`?:${m.sig}`) ?? "no_trace" }));
+}
+
+/**
+ * Kimi 6: the wallets that missed a swap in this run AND in the previous one (a new miss now, so one miss re-read by the overlapping
+ * window is not a repeat). The repeat is the signal worth a card: one miss is weather, two runs straight is a pattern.
+ */
+export function repeatMisses(current: MissedSwap[], previous: unknown): string[] {
+  const prev = previous !== null && typeof previous === "object" && Array.isArray((previous as { missed?: unknown }).missed)
+    ? ((previous as { missed: unknown[] }).missed.filter((m) => m !== null && typeof m === "object") as { wallet?: unknown; sig?: unknown }[])
+    : [];
+  const prevWallets = new Set(prev.map((m) => String(m.wallet)));
+  const prevSigs = new Set(prev.map((m) => String(m.sig)));
+  return [...new Set(current.filter((m) => prevWallets.has(m.wallet) && !prevSigs.has(m.sig)).map((m) => m.wallet))];
 }
 
 /** M1: one hung Helius parse costs at most this; the step as a whole is also cut at its bound. */

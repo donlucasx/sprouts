@@ -26,11 +26,9 @@ import { alertFounder, checkWebhookCoverage, stillRevokedCheck } from "@/lib/fou
 import { heliusEnsureAddresses, heliusRemoveAddresses, heliusWebhookAddresses } from "@/lib/helius";
 import { flushHeliusCredits, checkHeliusCredits } from "@/lib/helius-credits";
 import { config } from "@/lib/config";
-import { checkMissedSwaps, realSwapCheckReads } from "@/lib/swap-check";
-import { excludedWallets } from "@/lib/ops/sources";
 
 export const runtime = "nodejs";
-export const maxDuration = 800; // 11-25 (Pro): 300 s killed the run under Helius 429 slowdowns (19 of ~45 planted); the reconcile and swap check now use it (S-HJAK); planting/crank/remainder deadlines unchanged
+export const maxDuration = 800; // 11-25 (Pro): 300 s killed the run under Helius 429 slowdowns (19 of ~45 planted); the reconcile now uses it (S-HJAK); planting/crank/remainder deadlines unchanged
 /** The moves step reads no position past this many ms from the run's start (the planting's own cutoff is 240 s). */
 const MOVES_DEADLINE_MS = 150_000;
 /** The planting run starts no wallet past this (Review M1); since 11-27 also the last moment any of the route's Jupiter waits may end. */
@@ -46,18 +44,10 @@ const WITHDRAW_DEADLINE_MS = 250_000;
  * 20 reads of one transaction each; one in flight at 260 s ends well before the reconcile's own 700 s stop and the 800 s kill.
  */
 const REMAINDERS_DEADLINE_MS = 260_000;
-/**
- * Ops #9: the missed-swap check runs LAST (after the reconcile and the coverage pass) and starts no wallet past 730 s from the run's
- * start, 70 s before the 800 s kill (11-25; was 255 s of 300 s); a run whose reconcile went long skips it (every wallet deferred). A wallet still being read at
- * 755 s is stopped and counted deferred (never concluded), leaving the cleanup and the keepalive their time.
- */
 /** 11-25 (S-HJAK, his ruling): the reconcile starts no user past 700 s (it was 275 s and deferred ~360 of ~480 users daily); Kimi: its
- * tail (last read + booking) ends by ~715 s, coverage ~20 s more, then the swap check below. */
+ * tail (last read + booking) ends by ~715 s, coverage ~20 s more. 11-27 (Kimi swap-check scope item 4): the missed-swap check that
+ * ran last here (730-760 s) has its own route, /api/cron/swap-check (13:00 UTC); the run record no longer carries swapCheck. */
 const RECONCILE_DEADLINE_MS = 700_000;
-const SWAPCHECK_DEADLINE_MS = 730_000;
-const SWAPCHECK_HARD_STOP_MS = 755_000;
-/** M1: the step itself returns by 760 s (11-25; was 285 s) whatever read is still in flight (the rest of its wallets deferred), so the record is written. */
-const SWAPCHECK_BOUND_MS = 760_000;
 /** 11-07 run lock: a claimed run not finished after this long died (the route's limit is 800 s), so its day can be claimed again. */
 const RUN_STALE_MS = 15 * 60_000;   // 11-25 (Kimi): above maxDuration 800 s, so a live run is never taken for dead
 
@@ -127,7 +117,7 @@ export async function GET(request: Request) {
     // The Yield Manager's steps before the planting run (spec 6.1): snapshot the venues, then the coins (its lending legs read today's
     // venue rows), decide each stop's split, apply to users, propose moves. Budgets: decide 90 s (DECIDE_BUDGET_MS); the moves step
     // reads no position past 150 s from the start; planting starts no new wallet past 240 s, the crank none past 250 s, the
-    // remainder retry none past 260 s, the reconcile none past 700 s, the swap check (last) no wallet past 730 s; the whole route has 800 s (11-25).
+    // remainder retry none past 260 s, the reconcile none past 700 s; the whole route has 800 s (11-25).
     // realVenueReads() is built inside each step, so a missing JUPITER_API_KEY or RPC fails that step loudly in the log, not the run.
     const venues = await step("venues", () => snapshotVenues({ repo, now, reads: realVenueReads() }));
     const coins = await step("snapshot", () => snapshotCoins({ repo, now, reads: realCoinReads(repo, now, startedMs + PLANTING_DEADLINE_MS) }));
@@ -174,10 +164,8 @@ export async function GET(request: Request) {
     const reconciled = (await step("reconcile", () => reconcileOwnStakes({ repo, now: new Date(), deadlineMs: startedMs + RECONCILE_DEADLINE_MS, previousDeferred: lastDeferred, chain: { readPosition: (u) => readPosition(address(u), "finalized"), sharePrice, finalized: signaturesFinalized } })));
     // 10-26: every linked wallet still on the swap webhook (founder alert when not).
     const coverage = await step("webhook coverage", () => checkWebhookCoverage({ repo, watched: () => heliusWebhookAddresses(config().heliusWebhookId), repair: (missing) => heliusEnsureAddresses(config().heliusWebhookId, missing, { tries: 2, settleMs: 500 }), prune: (extras) => heliusRemoveAddresses(config().heliusWebhookId, extras, { tries: 2, settleMs: 500, stillRevoked: stillRevokedCheck(repo) }) }));   // short: the reconcile may run to ~715 s of the 800
-    // Ops #9: on-chain swaps of the last 48 h that are not in swaps (DETECTION ONLY: nothing is booked; ops light "Every swap counted").
-    const swapCheck = await step("swap check", async () => checkMissedSwaps({ repo, now: new Date(), reads: await realSwapCheckReads(), exclude: excludedWallets(config().opsExcludeWallets), deadlineMs: startedMs + SWAPCHECK_DEADLINE_MS, hardStopMs: startedMs + SWAPCHECK_HARD_STOP_MS, boundAt: startedMs + SWAPCHECK_BOUND_MS }));
     // 11-19: this run's own Helius count is written, then this cycle's total is checked (ops post once at 70% and once at 90% of 1M).
-    // After the swap check, so today's run is in the sum.
+    // The 13:00 swap check flushes its own count, so it is in the sum.
     const credits = await step("helius credits", async () => { await flushHeliusCredits(repo, now); return checkHeliusCredits({ repo, now }); });
     await repo.cleanupExpired();
     // The first production run (2026-09-28) planted and then answered 500 here: reading rules for a made-up user violates the
@@ -187,9 +175,9 @@ export async function GET(request: Request) {
     // Review M8: expired and settled cards are logged too, so a move stuck in flight shows in the log.
     const movesLine = moves ? `${moves.proposed.length} (expired ${moves.expired.length}, settled ${moves.settled.length ? moves.settled.join(" ") : 0})` : movesOn ? "failed" : "off";
     if (credits) console.log(`cron: helius credits ${credits.credits} this cycle (since ${credits.cycle})${credits.alerted ? `, alerted ${credits.alerted}%` : ""}`);
-    console.log(`cron: venues ${summary.venues ?? "failed"}, coins ${summary.coins ?? "failed"}, splits ${summary.splits ? summary.splits.map((s) => `${s.stop}${s.fallback ? `(${s.fallback})` : ""}`).join(" ") : "failed"}, applied ${summary.applied ?? "failed"}, moves ${movesLine}, planted ${planting.planted.length}, skipped ${planting.skipped.length}, ${withdrawals ? `cranked ${withdrawals.cranked.length}, failed ${withdrawals.failed.length}, closed ${withdrawals.skipped.length}, deferred ${withdrawals.deferred.length}` : "withdrawals failed"}, reconciled ${reconciled ? `${reconciled.adjusted.length} (skipped ${reconciled.skipped.length}, deferred ${reconciled.deferred.length})` : "failed"}, off webhook ${coverage ? `${coverage.missing.length} (re-added ${coverage.repaired.length}), revoked extras ${coverage.extras.length} (removed ${coverage.removed.length})` : "failed"}, remainders ${remainders ? `${remainders.recorded} recorded of ${remainders.retried} retried (still missing ${remainders.still_missing}, deferred ${remainders.deferred})` : "failed"}, swaps missed ${swapCheck ? `${swapCheck.missed.length} (checked ${swapCheck.checked}, unchecked ${swapCheck.unchecked.length}, deferred ${swapCheck.deferred})` : "check failed"}`);
+    console.log(`cron: venues ${summary.venues ?? "failed"}, coins ${summary.coins ?? "failed"}, splits ${summary.splits ? summary.splits.map((s) => `${s.stop}${s.fallback ? `(${s.fallback})` : ""}`).join(" ") : "failed"}, applied ${summary.applied ?? "failed"}, moves ${movesLine}, planted ${planting.planted.length}, skipped ${planting.skipped.length}, ${withdrawals ? `cranked ${withdrawals.cranked.length}, failed ${withdrawals.failed.length}, closed ${withdrawals.skipped.length}, deferred ${withdrawals.deferred.length}` : "withdrawals failed"}, reconciled ${reconciled ? `${reconciled.adjusted.length} (skipped ${reconciled.skipped.length}, deferred ${reconciled.deferred.length})` : "failed"}, off webhook ${coverage ? `${coverage.missing.length} (re-added ${coverage.repaired.length}), revoked extras ${coverage.extras.length} (removed ${coverage.removed.length})` : "failed"}, remainders ${remainders ? `${remainders.recorded} recorded of ${remainders.retried} retried (still missing ${remainders.still_missing}, deferred ${remainders.deferred})` : "failed"}`);
     // Kimi H2: coverage is recorded (null when its step failed) so the Daily-job light's coverage rules can fire.
-    const record = { ...summary, planting, withdrawals, remainders, reconciled, coverage, swapCheck, seconds: Math.round((Date.now() - startedMs) / 1000) };
+    const record = { ...summary, planting, withdrawals, remainders, reconciled, coverage, seconds: Math.round((Date.now() - startedMs) / 1000) };
     await finishRun(repo, day, now, true, record);
     return NextResponse.json(json(record));
   } catch (e) {

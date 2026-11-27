@@ -137,6 +137,23 @@ export class SupabaseRepo implements Repo {
     return { startedAt: new Date(r.started_at), finishedAt: r.finished_at ? new Date(r.finished_at) : null, ok: r.ok, summary: r.summary };
   }
 
+  async claimSwapCheckRun(day: string, now: Date, staleBefore: Date) {
+    const { data, error } = await this.db.rpc("claim_swap_check_run", { p_day: day, p_now: now.toISOString(), p_stale_before: staleBefore.toISOString() });
+    if (error) throw new Error(error.message);
+    return data === true;
+  }
+
+  async finishSwapCheckRun(day: string, ok: boolean, summary: unknown, now: Date, startedAt: Date) {
+    const { error } = await this.db.from("swap_check_runs").update({ finished_at: now.toISOString(), ok, summary }).eq("day", day).eq("started_at", startedAt.toISOString());
+    if (error) throw new Error(error.message);
+  }
+
+  async listSwapCheckRuns(since: Date, limit: number) {
+    const { data, error } = await this.db.from("swap_check_runs").select("day, finished_at, ok, summary").not("finished_at", "is", null).gte("finished_at", since.toISOString()).order("finished_at", { ascending: false }).limit(limit);
+    if (error) throw new Error(error.message);
+    return ((data ?? []) as { day: string; finished_at: string; ok: boolean | null; summary: unknown }[]).map((r) => ({ day: String(r.day), finishedAt: new Date(r.finished_at), ok: r.ok, summary: r.summary }));
+  }
+
   async keepalive() {
     const { error } = await this.db.from("users").select("*", { head: true, count: "exact" });
     if (error) throw new Error(error.message);

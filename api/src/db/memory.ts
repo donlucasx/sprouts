@@ -89,6 +89,22 @@ export class MemoryRepo implements Repo {
     const r = this.cronRuns.get(day);
     return r ? { ...r } : null;
   }
+  /** 0014's claim_swap_check_run: the same rules as claim_cron_run, its own table. */
+  swapCheckRuns = new Map<string, { startedAt: Date; finishedAt: Date | null; ok: boolean | null; summary: unknown }>();
+  async claimSwapCheckRun(day: string, now: Date, staleBefore: Date) {
+    const r = this.swapCheckRuns.get(day);
+    if (r && r.finishedAt === null && r.startedAt >= staleBefore) return false;
+    this.swapCheckRuns.set(day, { startedAt: now, finishedAt: null, ok: null, summary: null });
+    return true;
+  }
+  async finishSwapCheckRun(day: string, ok: boolean, summary: unknown, now: Date, startedAt: Date) {
+    const r = this.swapCheckRuns.get(day);
+    if (r && r.startedAt.getTime() === startedAt.getTime()) Object.assign(r, { finishedAt: now, ok, summary });
+  }
+  async listSwapCheckRuns(since: Date, limit: number) {
+    return [...this.swapCheckRuns].flatMap(([day, r]) => (r.finishedAt && r.finishedAt >= since ? [{ day, finishedAt: r.finishedAt, ok: r.ok, summary: r.summary }] : []))
+      .sort((a, b) => b.finishedAt.getTime() - a.finishedAt.getTime()).slice(0, limit);
+  }
 
   async getRules(userPubkey: string): Promise<T.RulesRow> {
     // Mirrors the schema: rules.user_pubkey references users, so a first read for an unknown user fails (as it did in production).

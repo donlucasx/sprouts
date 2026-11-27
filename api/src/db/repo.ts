@@ -170,6 +170,11 @@ export interface Repo {
   finishCronRun(day: string, ok: boolean, summary: unknown, now: Date, startedAt: Date): Promise<void>;
   /** 11-24: the day's run record (the hourly rescue reads which wallets the daily run could not reach); null when there is none. */
   getCronRun(day: string): Promise<{ startedAt: Date; finishedAt: Date | null; ok: boolean | null; summary: unknown } | null>;
+  /** 11-27 (0014): the missed-swap check's own run lock and record, the same rules as claimCronRun / finishCronRun. */
+  claimSwapCheckRun(day: string, now: Date, staleBefore: Date): Promise<boolean>;
+  finishSwapCheckRun(day: string, ok: boolean, summary: unknown, now: Date, startedAt: Date): Promise<void>;
+  /** The check's finished runs since `since` (by finish time), newest first, at most `limit` (its lookback and repeat history). */
+  listSwapCheckRuns(since: Date, limit: number): Promise<{ day: string; finishedAt: Date; ok: boolean | null; summary: unknown }[]>;
 
   // The watcher's budget (spec 6): every model call recorded; spend since a moment, calls by one user since a moment.
   addWatcherCall(c: NewWatcherCall): Promise<number>;

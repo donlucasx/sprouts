@@ -218,10 +218,10 @@ export function swapsCountedLight(input: { now: Date; input: SwapCheckInput }): 
   const notChecked = fresh && last ? last.unchecked + last.deferred : 0;
   if (notChecked) parts.push(`${plural(notChecked, "wallet")} could not be checked in the last run`);
   if (parts.length) return mk("amber", `${parts.join("; ")}${refusedNote}`, missed.length ? "Ask Claude to credit them." : "Ask Claude if it repeats.");
-  const ASK = "Ask Claude to check the daily job.";
-  if (!lastCheckAt) return mk("unknown", `No swap check recorded yet${refusedNote}`, "Nothing if you just deployed; it runs with the daily job. Ask Claude if it stays grey.");
+  const ASK = "Ask Claude to check the daily swap check.";
+  if (!lastCheckAt) return mk("unknown", `No swap check recorded yet${refusedNote}`, "Nothing if you just deployed; it runs once a day at 13:00 UTC. Ask Claude if it stays grey.");
   if (!fresh) return mk("unknown", `The last swap check was ${ageText(age!)} ago${refusedNote}`, ASK);
-  if (!last) return mk("unknown", `The last daily job did not check swaps${refusedNote}`, ASK);
+  if (!last) return mk("unknown", `The last daily swap check did not finish${refusedNote}`, ASK);
   const when = ageText(age!);
   return mk("green", `${last.checked === 0 ? `No missed swaps; no wallets to check (checked ${when} ago)` : `No missed swaps; all ${plural(last.checked, "wallet")} checked ${when} ago`}${refusedNote}`);
 }

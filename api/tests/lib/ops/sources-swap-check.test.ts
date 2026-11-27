@@ -70,12 +70,38 @@ describe("swapCheck source (mocked client)", () => {
     expect(await realOpsSources().swapCheck(SINCE)).toEqual({ lastCheckAt: null, last: null, missed: [], refused7d: 0 });
   });
 
-  it("a run without a swap check (older deploy, or the step failed) has last null; odd entries are ignored", async () => {
-    tables.cron_runs = [run("2026-11-14T08:00:00Z", null), run("2026-11-13T08:00:00Z", { checked: "x", missed: [{ sig: "bad sig!", ts: "2026-11-13T00:00Z", roundupCents: 5 }, miss("GooDGooD", "2026-11-13T00:00Z", 7)] })];
+  it("a failed check (null in swap_check_runs) has last null; odd entries are ignored", async () => {
+    tables.swap_check_runs = [run("2026-11-14T08:00:00Z", null)];
+    tables.cron_runs = [run("2026-11-13T08:00:00Z", { checked: "x", missed: [{ sig: "bad sig!", ts: "2026-11-13T00:00Z", roundupCents: 5 }, miss("GooDGooD", "2026-11-13T00:00Z", 7)] })];
     tables.events = [];
     tables.swaps = [];
     const s = await realOpsSources().swapCheck(SINCE);
     expect(s.last).toBeNull();
     expect(s.missed).toEqual([{ cents: 7 }]);
+  });
+
+  it("11-27: the check's own table is read; a newer plant run without swapCheck never hides it (the old reader would go grey)", async () => {
+    tables.swap_check_runs = [run("2026-11-27T13:05:00Z", { checked: 140, unchecked: [], deferred: 0, missed: [miss("NewMxss1", "2026-11-26T09:00Z", 40)] })];
+    tables.cron_runs = [
+      run("2026-11-27T14:10:00Z", null),   // today's plant run, after the move: no swapCheck in its summary
+      run("2026-11-26T14:12:00Z", { checked: 30, unchecked: [], deferred: 110, missed: [miss("PrevMss1", "2026-11-25T09:00Z", 60)] }),   // the last in-plant check
+    ];
+    tables.swaps = [];
+    tables.events = [];
+    const s = await realOpsSources().swapCheck(SINCE);
+    expect(s.lastCheckAt?.toISOString()).toBe("2026-11-27T13:05:00.000Z");
+    expect(s.last).toEqual({ checked: 140, unchecked: 0, deferred: 0 });
+    expect(s.missed.map((m) => m.cents).sort()).toEqual([40, 60]);   // the week's misses from both tables
+    expect(selects.some((x) => x.startsWith("swap_check_runs") && x.includes("summary->swapCheck"))).toBe(true);
+  });
+
+  it("11-27: right after the deploy (no swap_check_runs row yet) the last in-plant check still counts", async () => {
+    tables.swap_check_runs = [];
+    tables.cron_runs = [run("2026-11-27T14:10:00Z", null), run("2026-11-26T14:12:00Z", { checked: 30, unchecked: [], deferred: 110, missed: [] })];
+    tables.swaps = [];
+    tables.events = [];
+    const s = await realOpsSources().swapCheck(SINCE);
+    expect(s.lastCheckAt?.toISOString()).toBe("2026-11-26T14:12:00.000Z");
+    expect(s.last).toEqual({ checked: 30, unchecked: 0, deferred: 110 });
   });
 });

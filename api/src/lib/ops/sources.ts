@@ -56,7 +56,7 @@ export interface OpsSources {
   appErrors(sinceIso: string): Promise<{ step: string }[]>;
   /** Confirmed plantings since the time, each with what it claimed, pulled and recorded in legs (cents); short ids only. */
   amountsAddUp(sinceIso: string): Promise<AddUpRow[]>;
-  /** Ops #9: the newest daily run's missed-swap check, this window's misses still not in swaps, and swap_refused events since. */
+  /** Ops #9: the newest daily missed-swap check (swap_check_runs; before 11-27 the plant run's cron_runs row), this window's misses still not in swaps, and swap_refused events since. */
   swapCheck(sinceIso: string): Promise<SwapCheckInput>;
   support(sinceIso: string): Promise<{ count: number; newestAt: Date | null }>;
   numbers(nowIso: string): Promise<OpsNumbers>;
@@ -377,13 +377,19 @@ export function realOpsSources(): OpsSources {
     async swapCheck(sinceIso) {
       const skip = ex();
       // Only the check's part of each run record (never the whole summary); finished runs only, newest first.
-      const runs = await rows(db().from("cron_runs").select("day, finished_at, check:summary->swapCheck").not("finished_at", "is", null).gte("finished_at", sinceIso).order("finished_at", { ascending: false }).limit(14));
-      const latest = runs[0];
-      const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null);
+      // 11-27 (Kimi swap-check scope 5): the check has its own route and table (swap_check_runs, 0014), whose every row is a check (a
+      // null check there is a failed one, and shows as "did not check"). The plant run's rows (cron_runs) carried it until then; one
+      // of those counts only when it holds a check, so a plant run after the move (no swapCheck) never hides the newer check row.
+      const q = (table: string) => rows(db().from(table).select("day, finished_at, check:summary->swapCheck").not("finished_at", "is", null).gte("finished_at", sinceIso).order("finished_at", { ascending: false }).limit(14));
       const checkOf = (r: Row | undefined) => {
         const c = r?.check;
         return c !== null && typeof c === "object" && !Array.isArray(c) ? (c as Row) : null;
       };
+      const [own, legacy] = await Promise.all([q("swap_check_runs"), q("cron_runs")]);
+      const runs = [...own, ...legacy.filter((r) => checkOf(r) !== null)]
+        .sort((x, y) => Date.parse(String(y.finished_at)) - Date.parse(String(x.finished_at)));
+      const latest = runs[0];
+      const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null);
       const lc = checkOf(latest);
       const checked = num(lc?.checked);
       const last = lc && checked !== null ? { checked, unchecked: Array.isArray(lc.unchecked) ? lc.unchecked.length : 0, deferred: num(lc.deferred) ?? 0 } : null;
