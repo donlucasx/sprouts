@@ -24,20 +24,22 @@ describe('top-up: one whole sentence per coverage kind', () => {
     expect(coverage(1_400, 100)).toEqual({ kind: 'weeks', n: 2 })
     expect(coverage(10_000, 100)).toEqual({ kind: 'months', n: 2 })
   })
-  it('English unchanged for every kind', () => {
-    const tail = t('topup.fee', undefined, 'en')
-    expect(TOPUP.how(500, { kind: 'one', n: 1 })).toBe(`Swaps SOL already in this wallet for $5 of USDC, about 1 day of round-ups. ${tail}`)
-    expect(TOPUP.how(1_000, { kind: 'days', n: 4 }, 'SKR')).toBe(`Swaps SKR already in this wallet for $10 of USDC, about 4 days of round-ups. ${tail}`)
-    expect(TOPUP.how(2_500, { kind: 'months', n: 2 })).toBe(`Swaps SOL already in this wallet for $25 of USDC, over 2 months of round-ups. ${tail}`)
+  it('English for every kind; 11-27 (his ruling): no fee sentence after it', () => {
+    expect(TOPUP.how(500, null, 'SKR')).toBe('Swaps SKR already in this wallet for $5 of USDC.')
+    expect(TOPUP.how(500, { kind: 'one', n: 1 })).toBe('Swaps SOL already in this wallet for $5 of USDC, about 1 day of round-ups.')
+    expect(TOPUP.how(1_000, { kind: 'days', n: 4 }, 'SKR')).toBe('Swaps SKR already in this wallet for $10 of USDC, about 4 days of round-ups.')
+    expect(TOPUP.how(2_500, { kind: 'months', n: 2 })).toBe('Swaps SOL already in this wallet for $25 of USDC, over 2 months of round-ups.')
+    expect('topup.fee' in en).toBe(false)
   })
-  it('Spanish: billetera, Spanish fee line, no "jardín" (a top-up lands in the wallet, not the garden)', () => {
+  it('Spanish: billetera, no fee line, no "jardín" (a top-up lands in the wallet, not the garden)', () => {
     writeLangChoice('es')
     const lines = [TOPUP.open, TOPUP.button(500), TOPUP.how(500, { kind: 'weeks', n: 2 }), TOPUP.swapsLine(['SOL', 'SKR', 'JUP']), TOPUP.done(500), TOPUP.doneLink(500), TOPUP.sendHere, TOPUP.otherWallet('W111...xyz9')]
     expect(TOPUP.open).toBe('Agregar USDC')
     expect(TOPUP.button(1_000)).toBe('Agregar $10 en USDC')
-    expect(TOPUP.how(500, { kind: 'weeks', n: 2 })).toBe('Hace un swap de SOL que ya está en esta billetera por $5 en USDC. Alcanza para unas 2 semanas de redondeos. Sprouts cobra 0,5% al plantar.')
-    expect(TOPUP.swapsLine(['SOL', 'SKR', 'JUP'])).toBe('Hace un swap de un poco de tu SOL, SKR o JUP a USDC. Sprouts cobra 0,5% al plantar.')
-    expect(TOPUP.swapsLine([])).toBe('Hace un swap de un poco de tu SOL a USDC. Sprouts cobra 0,5% al plantar.')
+    expect(TOPUP.how(500, { kind: 'weeks', n: 2 })).toBe('Hace un swap de SOL que ya está en esta billetera por $5 en USDC. Alcanza para unas 2 semanas de redondeos.')
+    expect(TOPUP.how(500, null, 'SKR')).toBe('Hace un swap de SKR que ya está en esta billetera por $5 en USDC.')
+    expect(TOPUP.swapsLine(['SOL', 'SKR', 'JUP'])).toBe('Hace un swap de un poco de tu SOL, SKR o JUP a USDC.')
+    expect(TOPUP.swapsLine([])).toBe('Hace un swap de un poco de tu SOL a USDC.')
     expect(TOPUP.done(550)).toBe('Tu billetera ahora tiene $5,50 más en USDC. Sprouts vuelve a plantar en la próxima plantación diaria.')
     expect(TOPUP.back).toBe('Volver')
     for (const l of lines) {

@@ -23,17 +23,17 @@ export const TOPUP = {
   button: (cents: number) => t('topup.button', { amount: wholeUsd(cents) }),
   // 10-27 (his note on the Saga: "should state somewhere that you are swapping existing sol from your wallet into USDC")
   // Task 3 (any-coin top-up): the coin picked names itself; SOL by default, so the SOL line is unchanged
-  // 0.1.13 (his ruling "Name both", 11-25): the swap is free and the planting carries the 0.5% (t topup.fee). `tail` replaces that
-  // sentence (the SOL pointer, solCheaperLine). `covers` (usdc-runway coverage()) picks the whole sentence, one key per kind.
-  how: (cents: number, covers: Coverage | null, symbol = 'SOL', tail: string = t('topup.fee')) => {
-    const vars = { symbol, amount: wholeUsd(cents), tail }
+  // 0.1.13: `tail` is an optional second sentence (the SOL pointer, solCheaperLine). 11-27 (his ruling): no fee sentence by default
+  // ("our costs are already listed on the about section"); the fee stays in About, Terms, the store and the link page.
+  // `covers` (usdc-runway coverage()) picks the whole sentence, one key per kind.
+  how: (cents: number, covers: Coverage | null, symbol = 'SOL', tail?: string) => {
+    const vars = { symbol, amount: wholeUsd(cents), tail: tail ? ` ${tail}` : '' }
     return covers ? t(`topup.how.${covers.kind}` as const, { ...vars, n: covers.n }) : t('topup.how', vars)
   },
   /** The line under the closed "Add USDC" button (owner's copy, 11-19), the picked coin's symbol in it. */
   swapsLine: (symbols: string[]) => {
-    const fee = t('topup.fee')
-    if (symbols.length <= 1) return t('topup.swaps', { coin: symbols[0] ?? 'SOL', fee })
-    return t('topup.swaps.or', { list: symbols.slice(0, -1).join(', '), last: symbols[symbols.length - 1], fee })
+    if (symbols.length <= 1) return t('topup.swaps', { coin: symbols[0] ?? 'SOL' })
+    return t('topup.swaps.or', { list: symbols.slice(0, -1).join(', '), last: symbols[symbols.length - 1] })
   },
   // 11-20 (Kimi copy item 3): never a "not enough SOL" line; just where to send USDC
   get sendHere() { return t('topup.sendHere') },

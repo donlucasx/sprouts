@@ -34,11 +34,11 @@ export const STAKE_CU_PRICE_MICROLAMPORTS = 1_000n;
 export const STAKE_BUILD_LIMIT = 6;
 export const STAKE_BUILD_WINDOW_MS = 60_000;
 
-/** Build-written copy (his review owed): no fee wording, never "free" (his rule 11-25). */
+/** Build-written copy (his review owed): no fee wording, never "free" (his rule 11-25). 11-27 (his ruling): Stake, not Plant. */
 export const PLANT_COPY = {
-  off: "Planting SKR from your wallet is paused right now. Nothing was asked of your wallet.",
+  off: "Staking SKR from your wallet is paused right now. Nothing was asked of your wallet.",
   busy: "Too many tries. Wait a minute, then try again.",
-  badAmount: "Pick an amount of SKR to plant.",
+  badAmount: "Pick an amount of SKR to stake.",
   stale: "Your SKR balance changed. Nothing was asked of your wallet. Pick an amount again.",
   notNow: "Sprouts could not build this just now. Nothing was asked of your wallet. Try again in a minute.",
   wouldFail: "This would fail on chain, so nothing was asked of your wallet. Try again in a minute.",
@@ -46,9 +46,9 @@ export const PLANT_COPY = {
 
 /** The confirm route's answers (api/stake/confirm). */
 export const PLANT_CONFIRM = {
-  notStake: "This is not a Sprouts SKR planting, so nothing was sent.",
-  notMarked: "Could not start planting. Nothing moved. Try again.",
-  failed: "The planting failed on chain. Your SKR stayed in your wallet.",
+  notStake: "This is not a Sprouts SKR stake, so nothing was sent.",
+  notMarked: "Could not start staking. Nothing moved. Try again.",
+  failed: "The stake failed on chain. Your SKR stayed in your wallet.",
   expired: "It did not go through. Nothing moved. Try again.",
   pending: "Not confirmed yet. Check your SKR plant in a minute before trying again.",   // his copy 11-25 (app plant.sent)
 } as const;

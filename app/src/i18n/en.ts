@@ -23,8 +23,6 @@ export const en = {
   'link.cant.send': "Can't send your money anywhere else",
   'link.cant.touch': "Can't touch other tokens or sell your garden",
   'promise.public': 'Even if our server is hacked, neither it nor the AI can move more than your daily round-up (max $5), and only into your own savings, less a 0.5% fee.',
-  // 11-25 (his ruling "Name both"): the top-up swap is free; the planting carries the fee
-  'topup.fee': "Sprouts takes 0.5% when it's planted.",
   // 11-25 (his ruling "Point to SOL instead"; Kimi: the real split share, only when SOL covers the amount and costs less)
   'topup.solCheaper': 'Your split plants {pct}% of it back into {symbol}, so SOL costs less.',
   // 11-24: Activity names the coin that paid; a top-up recorded before 11-24 has no coin
@@ -32,22 +30,25 @@ export const en = {
   'activity.topup.coinNamed': 'From {coin} in your Seed Vault wallet.',
   'activity.topup.plain': 'From this wallet.',
   'activity.topup.plainNamed': 'From your Seed Vault wallet.',
-  // 0.1.13 Plant my SKR (his rulings 11-25, verbatim): the SKR coin sheet's section, the marker, the top-up's line, Activity's row
-  'plant.title': 'Plant my SKR',
-  'plant.instead': 'Plant my SKR instead',
-  // build-written: what TalkBack says for the seed marker on the SKR row and plant card
-  'plant.marker': 'SKR you can plant',
+  // 0.1.13 Stake SKR (his rulings 11-27, verbatim; keys keep their 0.1.13 "plant." names): the SKR coin sheet's section, the
+  // marker, Activity's row. 11-27: out of the no-USDC card, renamed from "Plant my SKR" (plant already means round-ups turned into coins)
+  'plant.title': 'Stake your SKR',
+  // what TalkBack says for the seed marker on the SKR row and plant card
+  'plant.marker': 'SKR you can stake',
   'plant.all': 'All',
   'plant.amount': '{amount} SKR (about ${usd})',
-  'plant.button': 'Plant {amount} SKR',
-  'plant.line': 'Stakes this SKR in your garden, where it earns staking rewards. Taking it out later takes 48 hours.',
+  'plant.button': 'Stake {amount} SKR',
+  // 11-27 (his ruling): three chips under the button in place of the sentence
+  'plant.chip.noSwap': 'No swap',
+  'plant.chip.earns': 'Earns staking',
+  'plant.chip.unstake': '48 h to unstake',
   // the steps as the top-up says them (build-written); done and sent are his (11-25); no fee wording
   'wallet.waiting': 'Waiting for your wallet.',
   'wallet.checking': 'Approved. Checking the chain.',
-  'plant.done': 'Planted {amount} SKR. Your garden updates within a minute.',
+  'plant.done': 'Staked {amount} SKR. It joins your SKR plant.',
   'plant.sent': 'Not confirmed yet. Check your SKR plant in a minute before trying again.',
-  'plant.failedBefore': 'Could not start planting. Nothing moved. Try again.',
-  'activity.planted': 'Planted {amount} SKR',
+  'plant.failedBefore': 'Could not start staking. Nothing moved. Try again.',
+  'activity.planted': 'Staked {amount} SKR',
   'activity.planted.from': 'From this wallet.',
 
   // ---- P3 (b) Activity: the tab, its rows (model/activity.ts), chips, tags, day headers, what TalkBack reads ----
@@ -622,13 +623,13 @@ export const en = {
   // ---- P6 (e) top-up, ask/question cards, Terms summary on Home, app-made error and status lines ----
   'topup.open': 'Add USDC',
   'topup.button': 'Add {amount} of USDC',
-  'topup.how': 'Swaps {symbol} already in this wallet for {amount} of USDC. {tail}',
-  'topup.how.one': 'Swaps {symbol} already in this wallet for {amount} of USDC, about 1 day of round-ups. {tail}',
-  'topup.how.days': 'Swaps {symbol} already in this wallet for {amount} of USDC, about {n} days of round-ups. {tail}',
-  'topup.how.weeks': 'Swaps {symbol} already in this wallet for {amount} of USDC, about {n} weeks of round-ups. {tail}',
-  'topup.how.months': 'Swaps {symbol} already in this wallet for {amount} of USDC, over 2 months of round-ups. {tail}',
-  'topup.swaps': 'Swaps a little of your {coin} into USDC. {fee}',
-  'topup.swaps.or': 'Swaps a little of your {list} or {last} into USDC. {fee}',
+  'topup.how': 'Swaps {symbol} already in this wallet for {amount} of USDC.{tail}',
+  'topup.how.one': 'Swaps {symbol} already in this wallet for {amount} of USDC, about 1 day of round-ups.{tail}',
+  'topup.how.days': 'Swaps {symbol} already in this wallet for {amount} of USDC, about {n} days of round-ups.{tail}',
+  'topup.how.weeks': 'Swaps {symbol} already in this wallet for {amount} of USDC, about {n} weeks of round-ups.{tail}',
+  'topup.how.months': 'Swaps {symbol} already in this wallet for {amount} of USDC, over 2 months of round-ups.{tail}',
+  'topup.swaps': 'Swaps a little of your {coin} into USDC.',
+  'topup.swaps.or': 'Swaps a little of your {list} or {last} into USDC.',
   'topup.sendHere': 'Send USDC to this wallet from any wallet or exchange. Plantings start again once it arrives.',
   'topup.copy': 'Copy address',
   'topup.copied': 'Copied',

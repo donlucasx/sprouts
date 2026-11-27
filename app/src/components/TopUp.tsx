@@ -5,8 +5,7 @@ import { useMobileWallet } from '@wallet-ui/react-native-kit'
 import { Button } from '@/components/Button'
 import { ThemedText } from '@/components/ThemedText'
 import { api, type MeUsdcResponse } from '@/lib/api'
-import { makeSigner, SKR_MINT } from '@/lib/sign'
-import { t } from '@/i18n'
+import { makeSigner } from '@/lib/sign'
 import { setupAccountsOf, setupLine } from '@/lib/safety-copy'
 import { useSolUsd } from '@/lib/sol-usd'
 import { chipLabel, choiceFor, ME_USDC_SETUP, meUsdcSetupKey, solCheaperLine, TOPUP, TOPUP_SETUP_MAX, TopUpFailed, topUpChoices, topUpClosedView, topUpThisPhone, type TopUpSource } from '@/lib/topup'
@@ -28,9 +27,8 @@ import { useLang } from '@/i18n/useLang'
 /** `sources` (Task 3, /api/me/usdc topUpSources, 0.1.12 API): the coins this wallet can top up from, SOL first; when more than one has
  *  amounts, a picker of their symbols opens above the amounts, SOL picked first, and the amounts are the picked coin's. null or absent
  *  (an older API) = no picker, SOL, `offers` as in 0.1.11. */
-/** `onPlantSkr` (0.1.13 Plant my SKR, his ruling 11-25): an SKR top-up gets a quiet "Plant my SKR instead" line that calls it (Home opens
- *  the SKR coin sheet). Only Home passes it (Link a wallet has no sheet, Kimi #12), and only while the wallet holds $5+ of liquid SKR. */
-export function TopUpButton({ user, cents: suggested, done, onDone, avgDailyCents = null, compact = false, offers = null, sources = null, onPlantSkr }: { user: string; cents: number; done: (cents: number) => string; onDone?: () => void; avgDailyCents?: number | null; compact?: boolean; offers?: readonly number[] | null; sources?: readonly TopUpSource[] | null; onPlantSkr?: () => void }) {
+/** 11-27 (his ruling): the card offers Add USDC only; staking the wallet's SKR lives on the SKR coin sheet (the seed marker leads there). */
+export function TopUpButton({ user, cents: suggested, done, onDone, avgDailyCents = null, compact = false, offers = null, sources = null }: { user: string; cents: number; done: (cents: number) => string; onDone?: () => void; avgDailyCents?: number | null; compact?: boolean; offers?: readonly number[] | null; sources?: readonly TopUpSource[] | null }) {
   useLang()
   const [open, setOpen] = useState(!compact)
   // Only coins with an amount to offer are picked or shown; none at all = the address to send USDC to.
@@ -132,11 +130,6 @@ export function TopUpButton({ user, cents: suggested, done, onDone, avgDailyCent
         <ThemedText tone={line.error ? 'error' : 'accentText'} style={{ fontSize: 14, lineHeight: 20 }}>
           {line.text}
         </ThemedText>
-      ) : null}
-      {onPlantSkr && source?.mint === SKR_MINT && !phase && !landed ? (
-        <Pressable onPress={onPlantSkr} accessibilityRole="button" accessibilityLabel={t('plant.instead')} style={({ pressed }) => ({ minHeight: TARGET, justifyContent: 'center', alignSelf: 'flex-start', opacity: pressed ? 0.7 : 1 })}>
-          <ThemedText tone="accentText" style={{ fontSize: 14, lineHeight: 20 }}>{t('plant.instead')}</ThemedText>
-        </Pressable>
       ) : null}
       {compact && !phase && !landed ? (
         <Pressable onPress={back} accessibilityRole="button" accessibilityLabel={TOPUP.back} style={({ pressed }) => ({ minHeight: TARGET, justifyContent: 'center', alignSelf: 'flex-start', opacity: pressed ? 0.7 : 1 })}>

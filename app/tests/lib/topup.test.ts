@@ -98,7 +98,7 @@ describe('the offer and its amount', () => {
     // 10-27 (his rulings): one "Add USDC"; the swap said outright in the line under it; never "you need SOL"
     expect(TOPUP.open).toBe('Add USDC')
     expect(TOPUP.button(500)).toBe('Add $5 of USDC')
-    expect(TOPUP.how(500, { kind: 'weeks', n: 2 })).toBe('Swaps SOL already in this wallet for $5 of USDC, about 2 weeks of round-ups. Sprouts takes 0.5% when it\'s planted.')
+    expect(TOPUP.how(500, { kind: 'weeks', n: 2 })).toBe('Swaps SOL already in this wallet for $5 of USDC, about 2 weeks of round-ups.')
     expect(TOPUP.done(500)).toBe('Your wallet now has $5.00 more USDC. Sprouts plants again at the next daily planting.')
     for (const l of lines) expect(l).not.toMatch(/—|–/)
   })
@@ -129,13 +129,13 @@ describe('any-coin top-up (Task 3): the source coin', () => {
   }
 
   it("names every coin it can swap", () => {
-    expect(TOPUP.swapsLine(['SOL'])).toBe('Swaps a little of your SOL into USDC. Sprouts takes 0.5% when it\'s planted.')
-    expect(TOPUP.swapsLine(['SKR'])).toBe('Swaps a little of your SKR into USDC. Sprouts takes 0.5% when it\'s planted.')
-    expect(TOPUP.swapsLine(['SOL', 'SKR'])).toBe('Swaps a little of your SOL or SKR into USDC. Sprouts takes 0.5% when it\'s planted.')
-    expect(TOPUP.swapsLine([])).toBe('Swaps a little of your SOL into USDC. Sprouts takes 0.5% when it\'s planted.')
-    expect(TOPUP.swapsLine(['SOL', 'SKR', 'JUP'])).toBe('Swaps a little of your SOL, SKR or JUP into USDC. Sprouts takes 0.5% when it\'s planted.')
-    expect(TOPUP.how(500, null)).toBe('Swaps SOL already in this wallet for $5 of USDC. Sprouts takes 0.5% when it\'s planted.')
-    expect(TOPUP.how(500, { kind: 'weeks', n: 2 }, 'SKR')).toBe('Swaps SKR already in this wallet for $5 of USDC, about 2 weeks of round-ups. Sprouts takes 0.5% when it\'s planted.')
+    expect(TOPUP.swapsLine(['SOL'])).toBe('Swaps a little of your SOL into USDC.')
+    expect(TOPUP.swapsLine(['SKR'])).toBe('Swaps a little of your SKR into USDC.')
+    expect(TOPUP.swapsLine(['SOL', 'SKR'])).toBe('Swaps a little of your SOL or SKR into USDC.')
+    expect(TOPUP.swapsLine([])).toBe('Swaps a little of your SOL into USDC.')
+    expect(TOPUP.swapsLine(['SOL', 'SKR', 'JUP'])).toBe('Swaps a little of your SOL, SKR or JUP into USDC.')
+    expect(TOPUP.how(500, null)).toBe('Swaps SOL already in this wallet for $5 of USDC.')
+    expect(TOPUP.how(500, { kind: 'weeks', n: 2 }, 'SKR')).toBe('Swaps SKR already in this wallet for $5 of USDC, about 2 weeks of round-ups.')
     for (const l of [TOPUP.swapsLine(['SOL', 'SKR', 'JUP']), TOPUP.how(500, null, 'SKR')]) expect(l).not.toMatch(/—|–/)
   })
 

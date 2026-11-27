@@ -279,10 +279,6 @@ export default function Home() {
   // one top-up on screen: the linked card's Add USDC replaces the amber notice's
   const notice = postLink?.topUp ? null : usdcNotice(me, { usdcCents, low: low !== null })
   const stopped = stoppedNotice(me)
-  // 0.1.13 Plant my SKR (his ruling 11-25, Kimi #12): an SKR top-up's quiet "Plant my SKR instead" opens the SKR sheet, here on Home only
-  // (Link a wallet has no sheet); only while the SKR row carries the marker.
-  const skrRow = homeCoinRows(me).find((r) => r.asset === 'SKR' && r.venue === null)
-  const plantSkrOpen = skrRow && showPlantMarker(me, skrRow) ? () => setSheetRow(skrRow) : undefined
   const noWallet = showLinkPrompt(me)
   // R96, R184 and R186: the one line and the can decided together, so they always agree; the can is in colour only while a bud waits.
   // R186: the Next planting row draws inside the garden (directly under it, the can at its bar's end). R199: the line rides in that
@@ -367,7 +363,7 @@ export default function Home() {
           </View>
           <ThemedText style={{ fontSize: 14, lineHeight: 20 }}>{t('link.linked.line')}</ThemedText>
           {postLink?.line ? <ThemedText style={{ fontSize: 14, lineHeight: 20 }}>{postLink.line}</ThemedText> : null}
-          {postLink?.topUp ? <TopUpButton compact user={me.user.pubkey} cents={TOPUP_DEFAULT_CENTS} done={TOPUP.done} avgDailyCents={avg} offers={usdcRead?.topUpCents ?? null} sources={usdcRead?.topUpSources ?? null} onPlantSkr={plantSkrOpen} /> : null}
+          {postLink?.topUp ? <TopUpButton compact user={me.user.pubkey} cents={TOPUP_DEFAULT_CENTS} done={TOPUP.done} avgDailyCents={avg} offers={usdcRead?.topUpCents ?? null} sources={usdcRead?.topUpSources ?? null} /> : null}
           <Button title={t('home.ok')} kind="quiet" onPress={() => router.setParams({ linked: undefined })} style={{ alignSelf: 'flex-start' }} />
         </View>
       ) : null}
@@ -384,7 +380,7 @@ export default function Home() {
               {line}
             </ThemedText>
           ))}
-          {notice.topUp ? <TopUpButton compact user={me.user.pubkey} cents={topUp.phoneCents ?? 500} done={TOPUP.done} avgDailyCents={avg} offers={usdcRead?.topUpCents ?? null} sources={usdcRead?.topUpSources ?? null} onPlantSkr={plantSkrOpen} /> : null}
+          {notice.topUp ? <TopUpButton compact user={me.user.pubkey} cents={topUp.phoneCents ?? 500} done={TOPUP.done} avgDailyCents={avg} offers={usdcRead?.topUpCents ?? null} sources={usdcRead?.topUpSources ?? null} /> : null}
         </View>
       ) : null}
       {stopped ? (

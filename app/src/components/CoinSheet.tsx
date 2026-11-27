@@ -18,7 +18,7 @@ import { useLang } from '@/i18n/useLang'
  * R564: tapping a coin on Home opens this sheet from the bottom: the coin's logo, value and amount, Put in / Earned (green above
  * zero, R563) / Where, its last plantings, and Withdraw opened on this coin (or the wallet line for coins Sprouts cannot move).
  * A plain RN Modal (no native sheet module, so no new dev build); tapping the shade or the hardware back closes it.
- * 0.1.13: the SKR row's sheet carries "Plant my SKR" (PlantSkr) while /api/me idleSkr is set.
+ * 0.1.13: the SKR row's sheet carries "Stake your SKR" (PlantSkr) while /api/me idleSkr is set.
  */
 export function CoinSheet({ me, row, onClose }: { me: MeResponse; row: CoinRow | null; onClose: () => void }) {
   useLang()
@@ -94,7 +94,7 @@ export function CoinSheet({ me, row, onClose }: { me: MeResponse; row: CoinRow |
               ))}
             </View>
           ) : null}
-          {/* 0.1.13 Plant my SKR (his ruling 11-25): the SKR sheet gains the section while the wallet holds $5+ of liquid SKR */}
+          {/* 0.1.13 Stake SKR (his rulings 11-25, 11-27): the SKR sheet gains the section while the wallet holds $5+ of liquid SKR */}
           {row.asset === 'SKR' && row.venue === null ? <PlantSkr user={me.user.pubkey} idle={showPlantMarker(me, row) ? idleSkrOf(me) : null} /> : null}
           {sheet.withdrawKey !== undefined ? (
             <Button

@@ -167,7 +167,7 @@ describe("(a) only the capped compute budget and the one stake: the server's bui
     const ixs = await plantSkrIxs(U, AMOUNT);
     const res = await post(confirm, { signedTransaction: await postedOf([ixs[0], ixs[1], retarget(ixs[2], 6, OTHER)]) });
     expect(res.status).toBe(400);
-    expect((await res.json()).error).toBe("This is not a Sprouts SKR planting, so nothing was sent.");
+    expect((await res.json()).error).toBe("This is not a Sprouts SKR stake, so nothing was sent.");
     expect(chain.sent).toBe(0);
     // A lookup-free, user-paid transaction with another wallet as fee payer is refused too.
     const theirs = signed(await buildUserTransaction(OTHER, ixs), OTHER);
@@ -326,7 +326,7 @@ describe("(c) the confirm books the put in once; the next reconcile adds nothing
     chain.status = "failed";
     const failed = await post(confirm, { signedTransaction: await postedOf(await plantSkrIxs(U, AMOUNT)) });
     expect(failed.status).toBe(400);
-    expect((await failed.json()).error).toBe("The planting failed on chain. Your SKR stayed in your wallet.");
+    expect((await failed.json()).error).toBe("The stake failed on chain. Your SKR stayed in your wallet.");
     expect(await repo.listEvents(U, ["skr_planted"], 10)).toHaveLength(0);
     expect((await (await get(activity)).json()).skrPlants).toHaveLength(0); // its mark is asked on chain and stays failed
   });

@@ -56,8 +56,8 @@ export const ES_ERRORS = {
     "This approval is not the one Sprouts asked for. Nothing was linked; get a new code in the app.": "Esta aprobación no es la que pidió Sprouts. No se vinculó nada; pide un código nuevo en la app.",
     "This revoke is for another delegation.": "Esta revocación es de otra delegación.",
     "This approval is not the Sprouts re-link.": "Esta aprobación no es la nueva vinculación de Sprouts.",
-    "This is not a Sprouts SKR planting, so nothing was sent.": "Esta no es una plantación de SKR de Sprouts, así que no se envió nada.",
-    "Could not start planting. Nothing moved. Try again.": "No se pudo empezar a plantar. No se movió nada. Inténtalo de nuevo.",
+    "This is not a Sprouts SKR stake, so nothing was sent.": "Esto no es un staking de SKR de Sprouts, así que no se envió nada.",
+    "Could not start staking. Nothing moved. Try again.": "No se pudo iniciar el staking. No se movió nada. Inténtalo de nuevo.",
     "This is not a Sprouts top-up, so nothing was sent.": "Este no es un swap a USDC de Sprouts, así que no se envió nada.",
     "Could not start the top-up. Nothing moved. Try again.": "No se pudo empezar el swap a USDC. No se movió nada. Inténtalo de nuevo.",
   },
@@ -66,7 +66,7 @@ export const ES_ERRORS = {
     "The withdrawal failed on chain. Nothing moved.": "El retiro falló on-chain. No se movió nada.",
     "The revoke failed on chain.": "La revocación falló on-chain.",
     "The cancel failed on chain. The basket stands.": "La cancelación falló on-chain. La canasta sigue igual.",
-    "The planting failed on chain. Your SKR stayed in your wallet.": "La plantación falló on-chain. Tu SKR se quedó en tu billetera.",
+    "The stake failed on chain. Your SKR stayed in your wallet.": "El staking falló on-chain. Tu SKR se quedó en tu billetera.",
     "The swap failed on chain. Your SOL stayed in your wallet, less the network fee.": "El swap falló on-chain. Tu SOL se quedó en tu billetera, menos la comisión de red.",
     "The swap failed on chain. Your coins stayed in your wallet, less the network fee.": "El swap falló on-chain. Tus monedas se quedaron en tu billetera, menos la comisión de red.",
   },
@@ -220,15 +220,15 @@ export const ES_ERRORS = {
   basket_empty: {
     "Nothing in the basket.": "No hay nada en la canasta.",
   },
-  // ---- Plant my SKR ----
+  // ---- Stake SKR (0.1.13 "Plant my SKR", renamed 11-27) ----
   plant_off: {
-    "Planting SKR from your wallet is paused right now. Nothing was asked of your wallet.": "Plantar SKR desde tu billetera está en pausa por ahora. No se le pidió nada a tu billetera.",
+    "Staking SKR from your wallet is paused right now. Nothing was asked of your wallet.": "Poner SKR en staking desde tu billetera está en pausa por ahora. No se le pidió nada a tu billetera.",
   },
   plant_bad_amount: {
-    "Pick an amount of SKR to plant.": "Elige cuánto SKR plantar.",
+    "Pick an amount of SKR to stake.": "Elige cuánto SKR poner en staking.",
   },
   plant_refused: {
-    "Pick an amount of SKR to plant.": "Elige cuánto SKR plantar.",
+    "Pick an amount of SKR to stake.": "Elige cuánto SKR poner en staking.",
     "Your SKR balance changed. Nothing was asked of your wallet. Pick an amount again.": "Tu saldo de SKR cambió. No se le pidió nada a tu billetera. Vuelve a elegir un monto.",
     "Sprouts could not build this just now. Nothing was asked of your wallet. Try again in a minute.": "Sprouts no pudo armar esto en este momento. No se le pidió nada a tu billetera. Inténtalo de nuevo en un minuto.",
     "This would fail on chain, so nothing was asked of your wallet. Try again in a minute.": "Esto fallaría on-chain, así que no se le pidió nada a tu billetera. Inténtalo de nuevo en un minuto.",

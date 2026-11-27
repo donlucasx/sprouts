@@ -123,7 +123,7 @@ export function topUpRow(t: TopUp, named = false): ActivityRow {
   return { key: `tu-${t.signature}`, ts: t.ts, label: tr('activity.topup.title', { amount: formatUsd(Number(BigInt(t.usdcRaw) / 10_000n)) }), amount: null, details: [topUpNote(t.coin, named)], signature: t.signature }
 }
 
-/** 0.1.13 Plant my SKR (his copy): "Planted {amount} SKR" / "From this wallet.", the stake's transaction behind the tap; null when malformed. */
+/** 0.1.13 Stake SKR (his copy 11-27): "Staked {amount} SKR" / "From this wallet.", the stake's transaction behind the tap; null when malformed. */
 export function skrPlantRow(p: SkrPlant): ActivityRow | null {
   if (!/^\d{1,20}$/.test(p.amountRaw)) return null
   return { key: `ps-${p.signature}`, ts: p.ts, label: tr('activity.planted', { amount: skrAmountText(BigInt(p.amountRaw)) }), amount: null, details: [tr('activity.planted.from')], signature: p.signature }

@@ -11,15 +11,20 @@ import { oneAtATime } from '@/lib/withdraw-flow'
 import { PLANT_DEFAULT, PlantFailed, plantAmountRaw, plantOptions, plantSkrThisPhone, plantUsdText, skrAmountText, type IdleSkr, type PlantShare } from '@/lib/plant-skr'
 import { t } from '@/i18n'
 import { useLang } from '@/i18n/useLang'
-import { spacing } from '@/theme'
+import { radius, spacing, useTheme } from '@/theme'
+import type { Key } from '@/i18n/en'
+
+/** 11-27 (his ruling): what staking here is, as three chips in place of a sentence. */
+export const STAKE_CHIPS: readonly Key[] = ['plant.chip.noSwap', 'plant.chip.earns', 'plant.chip.unstake']
 
 /**
- * 0.1.13 Plant my SKR (his rulings 11-25): the SKR coin sheet's section. [25%] [50%] [All], All picked first, no typing; the amount and
- * its dollars; the one line; the button. One Seed Vault signature stakes this wallet's own SKR into its garden position. After any
+ * 0.1.13 Stake SKR (his rulings 11-25; renamed from "Plant my SKR" 11-27): the SKR coin sheet's section. [25%] [50%] [All], All picked
+ * first, no typing; the amount and its dollars; the button; three chips (No swap, Earns staking, 48 h to unstake). One Seed Vault signature stakes this wallet's own SKR into its garden position. After any
  * outcome /api/me and Activity are read again, so the marker goes once the SKR is planted (and a 409 "balance changed" re-offers).
  */
 export function PlantSkr({ user, idle }: { user: string; idle: IdleSkr | null }) {
-  useLang()
+  const lang = useLang()
+  const { colors } = useTheme()
   // After a planting /api/me answers no idle SKR (the marker goes); the outcome line stays on screen until the sheet closes.
   const options = idle ? plantOptions(idle) : []
   const [share, setShare] = useState<PlantShare>(PLANT_DEFAULT)
@@ -73,9 +78,21 @@ export function PlantSkr({ user, idle }: { user: string; idle: IdleSkr | null })
             {t('plant.amount', { amount, usd: plantUsdText(amountRaw, idle) })}
           </ThemedText>
           <Button title={t('plant.button', { amount })} loading={phase !== null} onPress={plant} />
-          <ThemedText variant="caption" tone="secondary">
-            {phase === 'wallet' ? t('wallet.waiting') : phase === 'chain' ? t('wallet.checking') : t('plant.line')}
-          </ThemedText>
+          {phase ? (
+            <ThemedText variant="caption" tone="secondary">
+              {phase === 'wallet' ? t('wallet.waiting') : t('wallet.checking')}
+            </ThemedText>
+          ) : (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs }}>
+              {STAKE_CHIPS.map((k) => (
+                <View key={k} style={{ paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: radius.full, borderWidth: 1, borderColor: colors.hairline }}>
+                  <ThemedText variant="caption" tone="secondary">
+                    {t(k, undefined, lang)}
+                  </ThemedText>
+                </View>
+              ))}
+            </View>
+          )}
         </>
       )}
       {line ? (

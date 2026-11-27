@@ -106,13 +106,18 @@ describe('amounts: [25%] [50%] [All], All first, floored, the dollars from /api/
   it("the owner's lines, verbatim, with the amount and the dollars", () => {
     writeLangChoice('en')
     expect(en['plant.amount'].replace('{amount}', '1,240').replace('{usd}', '24.80')).toBe('1,240 SKR (about $24.80)')
-    expect(en['plant.button']).toBe('Plant {amount} SKR')
-    expect(en['plant.line']).toBe('Stakes this SKR in your garden, where it earns staking rewards. Taking it out later takes 48 hours.')
-    expect(en['plant.instead']).toBe('Plant my SKR instead')
-    expect(en['activity.planted']).toBe('Planted {amount} SKR')
+    // 11-27 (his ruling): Stake, not Plant; three chips in place of the sentence; out of the no-USDC card (no "instead" line)
+    expect(en['plant.title']).toBe('Stake your SKR')
+    expect(en['plant.button']).toBe('Stake {amount} SKR')
+    expect([en['plant.chip.noSwap'], en['plant.chip.earns'], en['plant.chip.unstake']]).toEqual(['No swap', 'Earns staking', '48 h to unstake'])
+    expect(en['plant.marker']).toBe('SKR you can stake')
+    expect(en['plant.failedBefore']).toBe('Could not start staking. Nothing moved. Try again.')
+    expect('plant.line' in en).toBe(false)
+    expect('plant.instead' in en).toBe(false)
+    expect(en['activity.planted']).toBe('Staked {amount} SKR')
     expect(en['activity.planted.from']).toBe('From this wallet.')
     // fix round 1 (his copy, 11-25)
-    expect(en['plant.done']).toBe('Planted {amount} SKR. Your garden updates within a minute.')
+    expect(en['plant.done']).toBe('Staked {amount} SKR. It joins your SKR plant.')
     expect(en['plant.sent']).toBe('Not confirmed yet. Check your SKR plant in a minute before trying again.')
   })
   it('no fee wording and never "free", in English or Spanish; every new key has its Spanish line', () => {
@@ -123,7 +128,17 @@ describe('amounts: [25%] [50%] [All], All first, floored, the dollars from /api/
       expect(es[k as keyof typeof en], k).toBeTruthy()
       for (const l of lines) expect(l, k).not.toMatch(/\bfee|free|gratis|comisi|tarifa/i)
     }
-    expect(es['plant.title']).toBe('Planta mi SKR')
+    expect(es['plant.title']).toBe('Pon tu SKR en staking')
+    expect(es['plant.button']).toBe('Poner {amount} SKR en staking')
+    expect([es['plant.chip.noSwap'], es['plant.chip.earns'], es['plant.chip.unstake']]).toEqual(['Sin swap', 'Gana recompensas de staking', '48 h para retirarlo'])
+    expect(es['plant.done']).toBe('Pusiste {amount} SKR en staking. Se suma a tu planta de SKR.')
+    expect(es['plant.failedBefore']).toBe('No se pudo iniciar el staking. No se movió nada. Inténtalo de nuevo.')
+    expect(es['plant.marker']).toBe('SKR que puedes poner en staking')
+    // no user-facing "plant/planta(r)" verb for this action in either language (the "SKR plant" noun in done/sent stays)
+    for (const k of ['plant.title', 'plant.button', 'plant.failedBefore', 'plant.marker', 'activity.planted'] as const) {
+      expect(en[k], k).not.toMatch(/\bplant/i)
+      expect(es[k], k).not.toMatch(/plant/i)
+    }
   })
 })
 
@@ -145,7 +160,7 @@ describe('the marker (Kimi #13): the SKR row and the SKR plant card, only while 
     const m = meWith({ raw: '500000000', usdCents: 1000 })
     const row = coinRows(m).find((r) => r.asset === 'SKR')
     expect(showPlantMarker(m, row)).toBe(true)
-    expect(plantCard(m, 'SKR').marker).toBe('SKR you can plant')
+    expect(plantCard(m, 'SKR').marker).toBe('SKR you can stake')
     expect(plantCard(m, 'hSOL').marker).toBeNull()
     expect(showPlantMarker(m, null)).toBe(false)
   })
@@ -181,12 +196,12 @@ describe('plantSkrThisPhone (the topUpThisPhone shape)', () => {
   })
 })
 
-describe("Activity's row: 'Planted {amount} SKR' / 'From this wallet.'", () => {
+describe("Activity's row: 'Staked {amount} SKR' / 'From this wallet.'", () => {
   it('in English and Spanish; a malformed amount is no row', () => {
     writeLangChoice('en')
-    expect(skrPlantRow({ ts: '2026-11-25T10:00:00Z', signature: 'S', amountRaw: '1240000000' })).toMatchObject({ label: 'Planted 1,240 SKR', details: ['From this wallet.'], signature: 'S', amount: null })
+    expect(skrPlantRow({ ts: '2026-11-25T10:00:00Z', signature: 'S', amountRaw: '1240000000' })).toMatchObject({ label: 'Staked 1,240 SKR', details: ['From this wallet.'], signature: 'S', amount: null })
     writeLangChoice('es')
-    expect(skrPlantRow({ ts: '2026-11-25T10:00:00Z', signature: 'S', amountRaw: '1240000000' })?.label).toBe('Plantaste 1.240 SKR')
+    expect(skrPlantRow({ ts: '2026-11-25T10:00:00Z', signature: 'S', amountRaw: '1240000000' })?.label).toBe('1.240 SKR en staking')
     writeLangChoice('en')
     expect(skrPlantRow({ ts: '2026-11-25T10:00:00Z', signature: 'S', amountRaw: 'nope' })).toBeNull()
   })
@@ -203,7 +218,7 @@ describe('fix round 1: the $0 SKR row when nothing is staked (his ruling 11-25)'
     expect(row).toMatchObject({ key: IDLE_SKR_ROW_KEY, asset: 'SKR', usd: '$0.00', venue: null })
     expect(homeCoinRows(m)[0]).toEqual(row)
     expect(showPlantMarker(m, row)).toBe(true)
-    expect(plantCard(m, 'SKR')).toMatchObject({ value: '$0.00', marker: 'SKR you can plant' })
+    expect(plantCard(m, 'SKR')).toMatchObject({ value: '$0.00', marker: 'SKR you can stake' })
     expect(plantCard(m, 'SKR').row?.key).toBe(IDLE_SKR_ROW_KEY)
   })
   it('its sheet: Put in $0.00 and Where, no Withdraw, no wallet line, no plantings', () => {
