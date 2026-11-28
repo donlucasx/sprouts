@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { createWindowPace, PaceRefused } from "@/lib/pace";
+import { createWindowPace, createTokenLane, PaceRefused } from "@/lib/pace";
 import {
   jupiterFetch, JupiterRateLimited, isJupiterRateLimit, jupiterLane, withJupiterRunLane, withJupiterTopUpBudget,
-  JUPITER_RUN_MAX_PER_MIN, JUPITER_WINDOW_MS, JUPITER_RUN_RETRY_AFTER_CAP_MS, JUPITER_RUN_WINDOW_WAIT_MS, JUPITER_TOPUP_RETRY_MS, JUPITER_TOPUP_MAX_WAIT_MS,
+  JUPITER_LANE_INTERVAL_MS, JUPITER_USER_MAX_TURN_WAIT_MS, JUPITER_RUN_RETRY_AFTER_CAP_MS, JUPITER_RUN_WINDOW_WAIT_MS, JUPITER_TOPUP_RETRY_MS, JUPITER_TOPUP_MAX_WAIT_MS,
 } from "@/lib/jupiter";
 
 // 11-27 (Kimi pace scope items 1, 2, 4, 6): the run lane's 40-a-minute pace, its deadline-bound 429 waits, the top-up's longer budget.
@@ -13,9 +13,9 @@ const clock = () => {
 };
 
 describe("createWindowPace", () => {
-  it("the constants: 40 a minute for the run, over Jupiter's 60 s window", () => {
-    expect(JUPITER_RUN_MAX_PER_MIN).toBe(40);
-    expect(JUPITER_WINDOW_MS).toBe(60_000);
+  it("11-28: Jupiter no longer uses the window pace; the shared lane spaces every call 1.1 s, a user turn at most 8 s away", () => {
+    expect(JUPITER_LANE_INTERVAL_MS).toBe(1_100);
+    expect(JUPITER_USER_MAX_TURN_WAIT_MS).toBe(8_000);
   });
   it("lets at most 40 requests start in any rolling 60 s; the 41st waits for the first one's window to end", async () => {
     const { c, now, sleep } = clock();
@@ -95,7 +95,7 @@ describe("jupiterFetch, run lane", () => {
   it("DEADLINE: a pace with no turn before the deadline sends nothing and waits nothing", async () => {
     const f = script({ status: 200 }, { status: 200 });
     const { c, now, sleep } = clock();
-    const pace = createWindowPace({ max: 1, windowMs: 60_000, now, sleep, log: () => {} });
+    const pace = createTokenLane({ intervalMs: 60_000, now, sleep, log: () => {} });
     const lane = { kind: "run" as const, deadlineMs: c.t + 30_000 };
     expect((await jupiterFetch("http://x", {}, "quote", { sleep, now, pace, lane })).status).toBe(200);
     const e = await jupiterFetch("http://x", {}, "quote", { sleep, now, pace, lane }).catch((x) => x);
@@ -109,7 +109,7 @@ describe("jupiterFetch, run lane", () => {
     const turns: unknown[] = [];
     const { c, now, sleep } = clock();
     await jupiterFetch("http://x", {}, "price", { sleep, now, pace: async (o) => { turns.push(o); }, lane: { kind: "run", deadlineMs: c.t + 100_000 } });
-    expect(turns).toEqual([{ notAfterMs: c.t - c.slept[0] + 100_000 }, { notAfterMs: c.t - c.slept[0] + 100_000 }]);
+    expect(turns).toEqual([{ notAfterMs: c.t - c.slept[0] + 100_000, priority: "run" }, { notAfterMs: c.t - c.slept[0] + 100_000, priority: "run" }]);
   });
   it("the lane comes from withJupiterRunLane / withJupiterTopUpBudget and ends with them; no lane = today's two retries, unpaced", async () => {
     expect(jupiterLane.getStore()).toBeUndefined();

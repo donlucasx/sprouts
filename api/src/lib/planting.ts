@@ -13,7 +13,7 @@ import { klendRate, klendMinOut, buildKlendDepositIxs, checkKlendDepositInstruct
 import { jlendRate, jlendShares, PRICE_SCALE as JL_PRICE_SCALE, buildJlendDepositIxs, checkJlendDepositInstructions, JL_EXPECTED_LEFTOVER } from "./venues/jlend";
 import { KLEND, JLEND } from "./venues/addresses";
 import { leashLegOf, legAccounts, legRate, readReceipt, buildPullIx, buildSettleIx, checkLeashInstructions, floorRaw, LEG_SPEC, priceSourceFor, sponsoredPriceRefusal, postedPriceRefusal, type LeashLegByte } from "./leash";
-import { buildPriceUpdate, readPostedPrice, readSponsoredPrice, sendPriceTxs, CONF_CAP_BPS, type ParsedPrice } from "./pyth";
+import { buildPriceUpdate, readPostedPrice, readSponsoredPrice, sendPriceTxs, CONF_CAP_BPS, FRESH_MARGIN_S, type ParsedPrice } from "./pyth";
 import type { Simulation } from "./plant-run";
 import { pullerSigner } from "./puller";
 import { rpc } from "./rpc";
@@ -199,13 +199,43 @@ export type PlantingInput = { delegator: Address; user: Address; asset: LiveAsse
  * behind; on success the reclaim is `cleanup`, sent after the planting (cleanupPlanting).
  */
 export async function buildPlantingTx(a: PlantingInput): Promise<BuiltPlanting> {
-  const posted: { reclaim: Instruction[] } = { reclaim: [] };
-  try {
-    return await composePlanting(a, posted);
-  } catch (e) {
-    if (posted.reclaim.length) await sendPullerIxs(posted.reclaim, "reclaim of the posted price after a refused build");
-    throw e;
+  for (let round = 1; ; round++) {
+    const posted: { reclaim: Instruction[] } = { reclaim: [] };
+    try {
+      return await composePlanting(a, posted);
+    } catch (e) {
+      if (posted.reclaim.length) await sendPullerIxs(posted.reclaim, "reclaim of the posted price after a refused build");
+      // 11-28 (Kimi fix 3, StalePrice 6018): the posted price aged while Jupiter answered: post a fresh one through the same path
+      // (a whole new build: the floor, the quote and the swap minimum all come from the price, so none of them is reused).
+      if (e instanceof PostedPriceAged && round <= PRICE_REPOSTS) {
+        console.log(`planting ${a.asset} for ${a.delegator}: ${e.message}; posting a fresh price (re-post ${round} of ${PRICE_REPOSTS})`);
+        continue;
+      }
+      throw e;
+    }
   }
+}
+
+/**
+ * 11-28 (Kimi Jupiter re-assessment fix 3; leash StalePrice 6018 seen 11-27/11-28): the price is posted BEFORE the quote, and the
+ * quote, the slippage re-quote and the swap instructions wait their turns in the Jupiter lane (and 429 waits), so the posted price
+ * can age past the program's max_age_s before the planting is simulated and sent. After the swap instructions come back, a posted
+ * price with less than POST_SWAP_HEADROOM_S left under the usable age (the leg's on-chain max_age_s - FRESH_MARGIN_S, the bound the
+ * pre-send check applies) is not used: the build is redone with a fresh post, at most PRICE_REPOSTS times; still aged, the leg skips
+ * (nothing is sent with a price the program would refuse). The headroom covers what follows: the lookup tables, the blockhash, the
+ * signing, the simulation, the claim and the pre-send check.
+ */
+export const POST_SWAP_HEADROOM_S = 10;
+export const PRICE_REPOSTS = 1;
+export class PostedPriceAged extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "PostedPriceAged";
+  }
+}
+/** Whether a posted price `ageS` old (after the swap) leaves the send its headroom under the leg's max age. */
+export function postedPriceTooOldAfterSwap(ageS: number, maxAgeS: number): boolean {
+  return ageS >= maxAgeS - FRESH_MARGIN_S - POST_SWAP_HEADROOM_S;
 }
 
 async function composePlanting(a: PlantingInput, posted: { reclaim: Instruction[] }): Promise<BuiltPlanting> {
@@ -366,6 +396,13 @@ async function composePlanting(a: PlantingInput, posted: { reclaim: Instruction[
     lookupTables = swap.lookupTables;
     expectedOutRaw = BigInt(quote.outAmount);
     swapMin = BigInt(quote.otherAmountThreshold);
+  }
+
+  // 11-28 (Kimi fix 3): the posted price's age now that Jupiter has answered (see PostedPriceAged); buildPlantingTx re-posts.
+  if (postedPrice !== null && leg !== null) {
+    const maxAgeS = a.priceOpts?.maxAgeS ?? LEG_SPEC[leg].maxAgeS;
+    const ageS = Math.floor(Date.now() / 1000) - Number(postedPrice.publishTime);
+    if (postedPriceTooOldAfterSwap(ageS, maxAgeS)) throw new PostedPriceAged(`${a.asset}: the posted price was ${ageS} s old when the swap instructions came back (re-posted under ${maxAgeS - FRESH_MARGIN_S - POST_SWAP_HEADROOM_S} s, max age ${maxAgeS} s); the leg skips today`);
   }
 
   // 5-6. Deposit or stake; what the delivery guard and the leash expect.

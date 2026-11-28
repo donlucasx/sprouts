@@ -148,6 +148,23 @@ export class SupabaseRepo implements Repo {
     if (error) throw new Error(error.message);
   }
 
+  async getSharedCache(key: string) {
+    const { data, error } = await this.db.from("shared_cache").select("value, expires_at").eq("key", key).maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!data) return null;
+    const r = data as { value: unknown; expires_at: string };
+    return { value: r.value, expiresAt: new Date(r.expires_at) };
+  }
+
+  async putSharedCache(key: string, value: unknown, expiresAt: Date, pruneBefore?: Date) {
+    const { error } = await this.db.from("shared_cache").upsert({ key, value, expires_at: expiresAt.toISOString(), updated_at: new Date().toISOString() }, { onConflict: "key" });
+    if (error) throw new Error(error.message);
+    if (pruneBefore) {
+      const { error: e2 } = await this.db.from("shared_cache").delete().lt("expires_at", pruneBefore.toISOString());
+      if (e2) throw new Error(e2.message);
+    }
+  }
+
   async listSwapCheckRuns(since: Date, limit: number) {
     const { data, error } = await this.db.from("swap_check_runs").select("day, finished_at, ok, summary").not("finished_at", "is", null).gte("finished_at", since.toISOString()).order("finished_at", { ascending: false }).limit(limit);
     if (error) throw new Error(error.message);

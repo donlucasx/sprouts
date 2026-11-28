@@ -5,7 +5,7 @@ import { getRepo } from "@/db/repo";
 import { config } from "@/lib/config";
 import { bookSwap, type HeliusEnhancedTx } from "@/lib/book-swap";
 import { sharedPriceUsd } from "@/lib/shared-reads";
-import { priceUsd } from "@/lib/jupiter";
+import { displayPriceUsd } from "@/lib/das-price";
 import { retryOncePrice, deliveryPriceLookup } from "@/lib/webhook-price";
 import { pullerSigner } from "@/lib/puller";
 import { onChainVerifier } from "@/lib/verify-swap";
@@ -20,8 +20,8 @@ export const runtime = "nodejs";
  */
 export const maxDuration = 60;
 
-/** The shared (memoed) price read, each attempt bounded at 800 ms, one retry after 300 ms (webhook-price.ts); the retry reads fresh (priceUsd), since the memo would hand back a hung first attempt. */
-const webhookPrice = retryOncePrice(sharedPriceUsd, { retryRead: priceUsd });
+/** The shared (memoed, cross-instance) price read, each attempt bounded at 800 ms, one retry after 300 ms (webhook-price.ts); the retry reads fresh (displayPriceUsd: DAS, then Jupiter), since the memo would hand back a hung first attempt. 11-28: sizing only, DAS first (das-price.ts). */
+const webhookPrice = retryOncePrice(sharedPriceUsd, { retryRead: displayPriceUsd });
 
 function authorized(header: string | null): boolean {
   const expected = Buffer.from(`Bearer ${config().heliusWebhookSecret}`);

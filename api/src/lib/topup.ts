@@ -9,6 +9,7 @@ import { RECEIPT } from "./venues/addresses";
 import { buildUserTransaction, userTransactionCompiler } from "./user-tx";
 import { rpc } from "./rpc";
 import { cached } from "./memo";
+import { crossCached } from "./shared-cache";
 import { pullerSigner } from "./puller";
 import type { Rules } from "@/domain/roundup";
 import type { Split } from "@/domain/coins";
@@ -457,15 +458,37 @@ export async function topUpCoinSymbol(mint: string): Promise<string | null> {
   const s = (await topUpToken(mint).catch(() => null))?.symbol;
   return typeof s === "string" && /^[A-Za-z0-9.$]{1,12}$/.test(s) ? s : null;
 }
+const tokenTtl = (mint: string) => (t: JupiterToken | null) => (usableToken(mint, t) ? DAY_MS : NEGATIVE_TTL_MS);
+/** A stored token answer, checked before it is trusted (null = Jupiter did not know it; undefined = not a usable entry: read again). */
+export function decodeTopUpToken(x: unknown): JupiterToken | null | undefined {
+  if (x === null) return null;
+  const t = x as Partial<JupiterToken> | undefined;
+  if (!t || typeof t.symbol !== "string" || typeof t.decimals !== "number" || typeof t.verified !== "boolean" || typeof t.tokenProgram !== "string") return undefined;
+  return { symbol: t.symbol, decimals: t.decimals, verified: t.verified, tokenProgram: t.tokenProgram };
+}
+// 11-28 (Kimi fix 4): shared across instances (shared-cache.ts) under the same lives, then per instance (memo.ts).
 const topUpToken = (mint: string): Promise<JupiterToken | null> =>
-  cached(`topup-token:${mint}`, () => jupiterToken(mint), () => true, (t) => (usableToken(mint, t) ? DAY_MS : NEGATIVE_TTL_MS));
+  cached(`topup-token:${mint}`, () => crossCached(`topup-token:${mint}`, () => jupiterToken(mint), { ttlMs: tokenTtl(mint), decode: decodeTopUpToken }), () => true, tokenTtl(mint));
 /**
  * The most a $5 ExactOut route from `mint` to USDC through TOPUP_DEXES may spend (the quote's maximum, base units), null when there is
  * no route: the same for every user, kept an hour (no route: NEGATIVE_TTL_MS).
  */
 const TOPUP_PROBE_RAW = BigInt(TOPUP_DEFAULT_CENTS) * 10_000n;
+const routeTtl = (v: ProbedRoute | null) => (v === null ? NEGATIVE_TTL_MS : HOUR_MS);
+/** A stored probe answer, checked before it is trusted (null = no route; undefined = not a usable entry: probe again). */
+export function decodeProbedRoute(x: unknown): ProbedRoute | null | undefined {
+  if (x === null) return null;
+  const r = x as { max?: unknown; v47?: unknown } | undefined;
+  if (!r || typeof r.max !== "string" || !/^[0-9]{1,30}$/.test(r.max) || typeof r.v47 !== "boolean") return undefined;
+  return { max: BigInt(r.max), v47: r.v47 };
+}
+// 11-28 (Kimi fix 4): the probe (a quote and a swap-instructions call per coin) was the biggest per-instance multiplier: one answer
+// per coin is now shared across instances for HOUR_MS (no route: NEGATIVE_TTL_MS), then kept per instance. A probe that met Jupiter's
+// rate limit is not an answer and is kept nowhere (probeTopUpRoute rethrows it).
 const topUpRouteMax = (mint: Address): Promise<ProbedRoute | null> =>
-  cached(`topup-route:${mint}`, () => probeTopUpRoute(mint), () => true, (v) => (v === null ? NEGATIVE_TTL_MS : HOUR_MS));
+  cached(`topup-route:${mint}`, () => crossCached(`topup-route:${mint}`, () => probeTopUpRoute(mint), {
+    ttlMs: routeTtl, encode: (v) => (v === null ? null : { max: v.max.toString(), v47: v.v47 }), decode: decodeProbedRoute,
+  }), () => true, routeTtl);
 
 /**
  * 11-23 (carousel day: SKR was offered, then every SKR top-up refused on swap variant 47): the probe is "the route BUILDS", not only "it
@@ -484,6 +507,7 @@ export async function probeTopUpRoute(mint: Address): Promise<ProbedRoute | null
     return { max: BigInt(quote.otherAmountThreshold), v47: route.variants.includes(WHIRLPOOL_SWAP_V2) };
   } catch (e) {
     console.error(`topup: ${mint} is not offered as a source (${e instanceof Error ? e.message : String(e)})`);
+    if (isJupiterRateLimit(e)) throw e;   // 11-28: busy is not "no route": never cached (the caller offers the coin no route this time)
     return null;
   }
 }

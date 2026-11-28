@@ -1,7 +1,7 @@
 import { address, AccountRole, type Address, type Instruction } from "@solana/kit";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { config } from "./config";
-import { createWindowPace, PaceRefused, type Pace } from "./pace";
+import { createTokenLane, PaceRefused, type Lane } from "./pace";
 
 const BASE = "https://api.jup.ag";
 
@@ -219,25 +219,30 @@ export const JUPITER_RETRY_MS: readonly number[] = [500, 1_500];
 const RETRY_AFTER_CAP_MS = 3_000;
 
 /**
- * 11-27 (Kimi pace scope; the free key allows 60 requests in any 60 s window, and that day the run got 15 "jupiter 429" skips and the
- * top-up 8 "can't swap SOL"): who is calling. Set with AsyncLocalStorage around a whole job, read by jupiterFetch; no store = a
- * user-facing call (prices, the token search, a withdrawal's price), unpaced, with today's two retries.
- * - "run" (the planting runs, the cron's coin snapshot): paced at JUPITER_RUN_MAX_PER_MIN per process, a Retry-After honored up to
- *   JUPITER_RUN_RETRY_AFTER_CAP_MS, one more try after a window wait (JUPITER_RUN_WINDOW_WAIT_MS), and NO wait of any kind that would
- *   end past `deadlineMs` (the run's own "start no wallet" deadline): such a call fails at once as a rate limit ("jupiter busy").
- * - "topup" (the top-up build): unpaced (the other 20 a minute are the users' reserve), JUPITER_TOPUP_RETRY_MS, all waits together
- *   at most JUPITER_TOPUP_MAX_WAIT_MS.
+ * Who is calling. Set with AsyncLocalStorage around a whole job, read by jupiterFetch; no store = a user-facing call (a price fallback,
+ * the token search, a withdrawal's price).
+ * 11-28 (Kimi Jupiter re-assessment fix 2; the free key allows 60 requests in any 60 s window, and the 11-27 40-a-minute run window
+ * released its 40 in a burst): EVERY Jupiter call of the process, every attempt (a 429 retry too), takes a turn in ONE shared lane
+ * (jupiterLaneTurn: a start at most every JUPITER_LANE_INTERVAL_MS, no bursts). A user or top-up call goes before a waiting run call;
+ * nothing bypasses the lane.
+ * - "run" (the planting runs, the cron's coin snapshot): a Retry-After honored up to JUPITER_RUN_RETRY_AFTER_CAP_MS, one more try
+ *   after a window wait (JUPITER_RUN_WINDOW_WAIT_MS), and NO wait of any kind (a lane turn or a 429 wait) that would end past
+ *   `deadlineMs` (the run's own "start no wallet" deadline): such a call fails at once as a rate limit ("jupiter busy").
+ * - "topup" (the top-up build): JUPITER_TOPUP_RETRY_MS, all 429 waits together at most JUPITER_TOPUP_MAX_WAIT_MS; each lane turn at
+ *   most JUPITER_USER_MAX_TURN_WAIT_MS away, else busy.
+ * - no lane (user-facing): today's two retries; each lane turn at most JUPITER_USER_MAX_TURN_WAIT_MS away, else busy.
  */
 export type JupiterLane = { kind: "run"; deadlineMs: number } | { kind: "topup" };
 export const jupiterLane = new AsyncLocalStorage<JupiterLane>();
-/** Runs `fn` with every Jupiter call in the run lane (paced, deadline-bound waits). */
+/** Runs `fn` with every Jupiter call in the run lane (lowest priority, deadline-bound waits). */
 export const withJupiterRunLane = <T>(deadlineMs: number, fn: () => Promise<T>): Promise<T> => jupiterLane.run({ kind: "run", deadlineMs }, fn);
 /** Runs `fn` with every Jupiter call on the top-up's longer 429 budget. */
 export const withJupiterTopUpBudget = <T>(fn: () => Promise<T>): Promise<T> => jupiterLane.run({ kind: "topup" }, fn);
 
-/** The run lane's share of the key's 60 a minute; the other 20 are left to user-facing calls, which bypass the pace. */
-export const JUPITER_RUN_MAX_PER_MIN = 40;
-export const JUPITER_WINDOW_MS = 60_000;
+/** 11-28: the shared lane's spacing: about 55 starts a minute at most, under the key's 60 in any 60 s, with no burst. */
+export const JUPITER_LANE_INTERVAL_MS = 1_100;
+/** 11-28: a user-facing or top-up call whose lane turn is further away than this answers busy (a phone never waits on a long queue). */
+export const JUPITER_USER_MAX_TURN_WAIT_MS = 8_000;
 /** Run lane only: a Retry-After up to this is honored (it was cut to 3 s, shorter than any real window answer). */
 export const JUPITER_RUN_RETRY_AFTER_CAP_MS = 20_000;
 /** Run lane only: after the two short retries, one more try after a wait drawn evenly from this range (no Retry-After). */
@@ -246,16 +251,16 @@ export const JUPITER_RUN_WINDOW_WAIT_MS = [10_000, 20_000] as const;
 export const JUPITER_TOPUP_RETRY_MS: readonly number[] = [500, 1_500, 2_500, 3_000];
 export const JUPITER_TOPUP_MAX_WAIT_MS = 8_000;
 
-// The test suite runs without the process-wide pace (as rpc.ts's); the run lane's pace is tested by passing `pace` to jupiterFetch.
-const runPace = createWindowPace({ max: process.env.VITEST ? 0 : JUPITER_RUN_MAX_PER_MIN, windowMs: JUPITER_WINDOW_MS, label: "jupiter pace" });
+// The test suite runs without the process-wide lane (as rpc.ts's pace); the lane is tested by passing `pace` to jupiterFetch and in pace's own tests.
+const sharedLane: Lane = createTokenLane({ intervalMs: process.env.VITEST ? 0 : JUPITER_LANE_INTERVAL_MS, label: "jupiter lane" });
 
 export type JupiterFetchOptions = {
   sleep?: (ms: number) => Promise<void>;
   now?: () => number;
   random?: () => number;
-  /** The run lane's pace (default: the process-wide one). */
-  pace?: Pace;
-  /** The lane (default: the AsyncLocalStorage one). */
+  /** The lane every attempt takes a turn in (default: the process-wide one). */
+  pace?: Lane;
+  /** The caller (default: the AsyncLocalStorage one). */
   lane?: JupiterLane;
 };
 
@@ -278,17 +283,15 @@ export async function jupiterFetch(
   const schedule = topup ? JUPITER_TOPUP_RETRY_MS : JUPITER_RETRY_MS;
   const retries = schedule.length + (run ? 1 : 0);   // the run's one extra try after a window wait
   const raCap = run ? JUPITER_RUN_RETRY_AFTER_CAP_MS : RETRY_AFTER_CAP_MS;
-  const pace = o.pace ?? runPace;
+  const pace = o.pace ?? sharedLane;
   let waited = 0;
   for (let attempt = 0; ; attempt++) {
-    if (run) {
-      // Every attempt (a retry too) takes a turn, as the RPC pace does; a turn only past the run deadline is never waited for.
-      try {
-        await pace({ notAfterMs: run.deadlineMs });
-      } catch (e) {
-        if (e instanceof PaceRefused) throw new JupiterRateLimited(`Jupiter ${what} failed: 429 not sent: the run's Jupiter pace has no turn before the run deadline`);
-        throw e;
-      }
+    // Every attempt (a retry too) takes a turn in the shared lane; a turn past the caller's bound is never waited for.
+    try {
+      await pace(run ? { notAfterMs: run.deadlineMs, priority: "run" } : { notAfterMs: now() + JUPITER_USER_MAX_TURN_WAIT_MS, priority: "user" });
+    } catch (e) {
+      if (e instanceof PaceRefused) throw new JupiterRateLimited(`Jupiter ${what} failed: 429 not sent: the Jupiter lane has no turn ${run ? "before the run deadline" : "soon enough"}`);
+      throw e;
     }
     const res = await fetch(url, { ...init, signal: timeout() });
     if (res.status !== 429) return res;

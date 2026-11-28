@@ -101,6 +101,15 @@ export class MemoryRepo implements Repo {
     const r = this.swapCheckRuns.get(day);
     if (r && r.startedAt.getTime() === startedAt.getTime()) Object.assign(r, { finishedAt: now, ok, summary });
   }
+  sharedCache = new Map<string, { value: unknown; expiresAt: Date }>();
+  async getSharedCache(key: string) {
+    const r = this.sharedCache.get(key);
+    return r ? { value: structuredClone(r.value), expiresAt: r.expiresAt } : null;
+  }
+  async putSharedCache(key: string, value: unknown, expiresAt: Date, pruneBefore?: Date) {
+    if (pruneBefore) for (const [k, r] of this.sharedCache) if (r.expiresAt < pruneBefore) this.sharedCache.delete(k);
+    this.sharedCache.set(key, { value: structuredClone(value), expiresAt });
+  }
   async listSwapCheckRuns(since: Date, limit: number) {
     return [...this.swapCheckRuns].flatMap(([day, r]) => (r.finishedAt && r.finishedAt >= since ? [{ day, finishedAt: r.finishedAt, ok: r.ok, summary: r.summary }] : []))
       .sort((a, b) => b.finishedAt.getTime() - a.finishedAt.getTime()).slice(0, limit);

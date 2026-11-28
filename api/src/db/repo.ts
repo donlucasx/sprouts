@@ -175,6 +175,10 @@ export interface Repo {
   finishSwapCheckRun(day: string, ok: boolean, summary: unknown, now: Date, startedAt: Date): Promise<void>;
   /** The check's finished runs since `since` (by finish time), newest first, at most `limit` (its lookback and repeat history). */
   listSwapCheckRuns(since: Date, limit: number): Promise<{ day: string; finishedAt: Date; ok: boolean | null; summary: unknown }[]>;
+  /** 11-28 (0015): the cross-instance cache (lib/shared-cache.ts). A row past its expiry may still come back; the caller judges it. */
+  getSharedCache(key: string): Promise<{ value: unknown; expiresAt: Date } | null>;
+  /** Writes (or replaces) one entry; `pruneBefore` set: rows that expired before it are deleted too. */
+  putSharedCache(key: string, value: unknown, expiresAt: Date, pruneBefore?: Date): Promise<void>;
 
   // The watcher's budget (spec 6): every model call recorded; spend since a moment, calls by one user since a moment.
   addWatcherCall(c: NewWatcherCall): Promise<number>;

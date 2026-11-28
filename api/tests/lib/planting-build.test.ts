@@ -99,7 +99,7 @@ vi.mock("@/lib/leash", async (orig) => {
   };
 });
 
-import { buildPlantingTx, simulatePlanting, tokenAmountOf, leashSwapSlippageBps, MEASURE_ALT } from "@/lib/planting";
+import { buildPlantingTx, simulatePlanting, tokenAmountOf, leashSwapSlippageBps, MEASURE_ALT, POST_SWAP_HEADROOM_S, PRICE_REPOSTS, postedPriceTooOldAfterSwap } from "@/lib/planting";
 import { sproutsAltAddresses } from "@/lib/alt";
 import { getQuote, getSwapInstructions } from "@/lib/jupiter";
 import { klendMinOut } from "@/lib/venues/klend";
@@ -702,6 +702,32 @@ describe("the posted price (SKR, leg 0; contracts 3.2 row 2b, 10 item 15): pre-t
       expect(sendLog).toEqual(["pre:1", "pre:2", "tx"]);   // the pre-txs, then ONE reclaim tx (best effort)
     }
     expect(getQuote).not.toHaveBeenCalled();
+  });
+
+  it("11-28 StalePrice (6018): a posted price that aged while Jupiter answered is re-posted (a whole fresh build) before anything is sent", async () => {
+    const now = BigInt(Math.floor(Date.now() / 1000));
+    expect(POST_SWAP_HEADROOM_S).toBe(10);
+    expect(PRICE_REPOSTS).toBe(1);
+    // 35 s old after the swap: usable under the 40 s bound, but under 10 s of headroom for the send: re-posted.
+    vi.mocked(readPostedPrice).mockResolvedValueOnce({ ...SKR_PRICE, publishTime: now - 35n }).mockResolvedValueOnce({ ...SKR_PRICE, publishTime: now });
+    const b = await buildPlantingTx(skr);
+    expect(vi.mocked(buildPriceUpdate)).toHaveBeenCalledTimes(2);
+    expect(sendLog).toEqual(["pre:1", "pre:2", "tx", "pre:1", "pre:2"]);   // post, reclaim of the aged account, fresh post
+    expect(b.postedPrice?.publishTime).toBe(now);
+    expect(vi.mocked(getQuote).mock.calls.length).toBeGreaterThanOrEqual(2);   // the swap was quoted again from the fresh floor
+    // Aged twice: the leg skips, each posted account reclaimed, nothing built.
+    sendLog.length = 0; vi.mocked(buildPriceUpdate).mockClear();
+    vi.mocked(readPostedPrice).mockResolvedValueOnce({ ...SKR_PRICE, publishTime: now - 35n }).mockResolvedValueOnce({ ...SKR_PRICE, publishTime: now - 36n });
+    await expect(buildPlantingTx(skr)).rejects.toThrow(/posted price was 3[5-7] s old when the swap instructions came back .*the leg skips today/);
+    expect(vi.mocked(buildPriceUpdate)).toHaveBeenCalledTimes(2);
+    expect(sendLog).toEqual(["pre:1", "pre:2", "tx", "pre:1", "pre:2", "tx"]);
+  });
+
+  it("11-28: the after-swap bound is the leg's max age less FRESH_MARGIN_S less the headroom (60 s: re-post from 30 s; cbBTC 600 s: from 570 s)", () => {
+    expect(postedPriceTooOldAfterSwap(29, 60)).toBe(false);
+    expect(postedPriceTooOldAfterSwap(30, 60)).toBe(true);
+    expect(postedPriceTooOldAfterSwap(569, 600)).toBe(false);
+    expect(postedPriceTooOldAfterSwap(570, 600)).toBe(true);
   });
 
   it("any refusal AFTER the post (here: the route under the floor) reclaims the price account before throwing", async () => {

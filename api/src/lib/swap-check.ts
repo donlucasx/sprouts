@@ -5,7 +5,7 @@ import type { PriceLookup } from "@/domain/sizing";
 import { bookSwap, type HeliusEnhancedTx } from "./book-swap";
 import { checkSwapOnChain, fetchTransaction, type FetchTx } from "./verify-swap";
 import { heliusParseTransactions } from "./helius";
-import { priceUsd } from "./jupiter";
+import { sharedPriceUsd } from "./shared-reads";
 import { pullerSigner } from "./puller";
 import { rpc } from "./rpc";
 import { stockMints } from "./token-kind";
@@ -305,7 +305,7 @@ export function repeatMisses(current: MissedSwap[], previous: unknown): string[]
 const ENHANCED_TIMEOUT_MS = 8_000;
 const PRICE_TIMEOUT_MS = 2_000;
 
-/** The real reads: the app's RPC (429-retrying, redacted) for signatures and transactions, Helius's parse, Jupiter's price. */
+/** The real reads: the app's RPC (429-retrying, redacted) for signatures and transactions, Helius's parse, the shared sizing price (11-28: DAS first, Jupiter fallback, shared across instances: the 13:00 check no longer bursts Jupiter). */
 export async function realSwapCheckReads(): Promise<SwapCheckReads> {
   return {
     signatures: async (wallet, before) => {
@@ -315,7 +315,7 @@ export async function realSwapCheckReads(): Promise<SwapCheckReads> {
     enhanced: (sigs) => heliusParseTransactions(sigs, { timeoutMs: ENHANCED_TIMEOUT_MS }),
     fetchTx: fetchTransaction,
     // A null price makes bookSwap answer `unpriced`, which marks the wallet unchecked (never a silent "nothing missed"); a hung price never holds the run.
-    priceUsd: (mint) => Promise.race([priceUsd(mint), new Promise<null>((resolve) => setTimeout(() => resolve(null), PRICE_TIMEOUT_MS))]),
+    priceUsd: (mint) => Promise.race([sharedPriceUsd(mint), new Promise<null>((resolve) => setTimeout(() => resolve(null), PRICE_TIMEOUT_MS))]),
     stockMints,
     puller: (await pullerSigner()).address,
   };

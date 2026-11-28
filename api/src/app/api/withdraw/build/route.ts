@@ -6,7 +6,7 @@ import { createNoopSigner } from "@solana/kit";
 import { getRepo } from "@/db/repo";
 import { requireSession } from "@/lib/auth-guard";
 import { readPosition, sharePrice, buildUnstakeIx } from "@/lib/staking";
-import { priceUsd } from "@/lib/jupiter";
+import { sharedPriceUsd } from "@/lib/shared-reads";
 import { potForUser } from "@/lib/pot";
 import { planPick } from "@/lib/withdraw";
 import { buildUserTransaction, userAddress } from "@/lib/user-tx";
@@ -39,7 +39,7 @@ async function postHandler(request: Request) {
   }
 
   const owner = userAddress(user.seedVaultPubkey);
-  const [position, price, skrUsd] = await Promise.all([readPosition(owner), sharePrice(), priceUsd(SKR_MINT)]);
+  const [position, price, skrUsd] = await Promise.all([readPosition(owner), sharePrice(), sharedPriceUsd(SKR_MINT).catch(() => null)]);   // 11-28: display only (planPick's sentence), the shared DAS-first read
   // The program allows one cooldown per position: a cooldown the wallet started refuses a second before any signature is asked (review I2).
   if (position.unstakingRaw > 0n) {
     const readyAt = position.unstakeTs === null ? null : new Date(Number(position.unstakeTs) * 1000 + COOLDOWN_MS);

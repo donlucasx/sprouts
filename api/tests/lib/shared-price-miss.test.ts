@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 
-// 11-23 (Kimi day review item 1): a missing price is kept 10 s, a real one SHARED_TTL_MS; a miss is not re-read on every load.
+// 11-23 (Kimi day review item 1): a missing price is kept 10 s, a real one PRICE_CACHE_TTL_MS (11-28); a miss is not re-read on every load.
 const priceUsd = vi.fn();
 vi.mock("@/lib/jupiter", () => ({ priceUsd: (m: string) => priceUsd(m) }));
 
@@ -19,8 +19,13 @@ describe("sharedPriceUsd keeps a miss briefly", () => {
     vi.setSystemTime(new Date("2026-11-23T19:00:11Z"));
     expect(await sharedPriceUsd("MISS1")).toBe(73.5);
     expect(priceUsd).toHaveBeenCalledTimes(2);
-    vi.setSystemTime(new Date("2026-11-23T19:01:00Z"));
+    vi.setSystemTime(new Date("2026-11-23T19:00:50Z"));
     expect(await sharedPriceUsd("MISS1")).toBe(73.5);
     expect(priceUsd).toHaveBeenCalledTimes(2);
+    // 11-28: a price lives PRICE_CACHE_TTL_MS (45 s; it was 120 s), then it is read again.
+    priceUsd.mockResolvedValueOnce(74);
+    vi.setSystemTime(new Date("2026-11-23T19:00:57Z"));
+    expect(await sharedPriceUsd("MISS1")).toBe(74);
+    expect(priceUsd).toHaveBeenCalledTimes(3);
   });
 });
