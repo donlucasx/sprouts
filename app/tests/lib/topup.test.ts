@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { REFUSED, SignRefused, type SignFlow } from '@/lib/sign'
 import { DROPPED_NOTHING_SENT } from '@/lib/wallet-errors'
-import { ME_USDC_SETUP, meUsdcSetupKey, ME_USDC_WITH_SOURCES, postLinkUsdc, defaultSource, pickerSources, topUpChoices, topUpClosedView, TOPUP, TopUpFailed, topUpCentsFor, topUpOffer, topUpThisPhone } from '@/lib/topup'
+import { cardCoins, choiceFor, greyedCoins, ME_USDC_SETUP, meUsdcSetupKey, ME_USDC_WITH_SOURCES, postLinkUsdc, SEND_PICK, TOPUP, TopUpFailed, topUpCard, topUpCentsFor, topUpOffer, topUpThisPhone } from '@/lib/topup'
 
 const ME = 'HJCJKRQLV2HVKfe3sFdTF5jjBY1xfWgnK8cLcjH7qnHd'
 const OTHER = '7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU'
@@ -94,11 +94,11 @@ describe('the offer and its amount', () => {
   })
 
   it('the copy: plain, no em dashes', () => {
-    const lines = [TOPUP.open, TOPUP.button(500), TOPUP.how(500, null), TOPUP.how(500, { kind: 'weeks', n: 2 }), TOPUP.sendHere, TOPUP.done(500), TOPUP.doneLink(500), TOPUP.sent, TOPUP.failedBefore]
-    // 10-27 (his rulings): one "Add USDC"; the swap said outright in the line under it; never "you need SOL"
-    expect(TOPUP.open).toBe('Add USDC')
+    const lines = [TOPUP.open, TOPUP.disclaimer, TOPUP.coinTitle('SOL'), TOPUP.coinLine('SOL'), TOPUP.send, TOPUP.sendLine, TOPUP.button(500), TOPUP.done(500), TOPUP.doneLink(500), TOPUP.sent, TOPUP.failedBefore]
+    // 11-27 (his ruling): one "Top up"; each coin's row says the swap outright; never "you need SOL"
+    expect(TOPUP.open).toBe('Top up')
     expect(TOPUP.button(500)).toBe('Add $5 of USDC')
-    expect(TOPUP.how(500, { kind: 'weeks', n: 2 })).toBe('Swaps SOL already in this wallet for $5 of USDC, about 2 weeks of round-ups.')
+    expect(TOPUP.coinLine('SOL')).toBe('Swaps SOL in this wallet for USDC.')
     expect(TOPUP.done(500)).toBe('Your wallet now has $5.00 more USDC. Sprouts plants again at the next daily planting.')
     for (const l of lines) expect(l).not.toMatch(/—|–/)
   })
@@ -128,17 +128,6 @@ describe('any-coin top-up (Task 3): the source coin', () => {
     return { out, flows, bodies }
   }
 
-  it("names every coin it can swap", () => {
-    expect(TOPUP.swapsLine(['SOL'])).toBe('Swaps a little of your SOL into USDC.')
-    expect(TOPUP.swapsLine(['SKR'])).toBe('Swaps a little of your SKR into USDC.')
-    expect(TOPUP.swapsLine(['SOL', 'SKR'])).toBe('Swaps a little of your SOL or SKR into USDC.')
-    expect(TOPUP.swapsLine([])).toBe('Swaps a little of your SOL into USDC.')
-    expect(TOPUP.swapsLine(['SOL', 'SKR', 'JUP'])).toBe('Swaps a little of your SOL, SKR or JUP into USDC.')
-    expect(TOPUP.how(500, null)).toBe('Swaps SOL already in this wallet for $5 of USDC.')
-    expect(TOPUP.how(500, { kind: 'weeks', n: 2 }, 'SKR')).toBe('Swaps SKR already in this wallet for $5 of USDC, about 2 weeks of round-ups.')
-    for (const l of [TOPUP.swapsLine(['SOL', 'SKR', 'JUP']), TOPUP.how(500, null, 'SKR')]) expect(l).not.toMatch(/—|–/)
-  })
-
   it('a token: the build body names it and the flow carries it', async () => {
     const r = go(SKR, SKR)
     await expect(r.out).resolves.toBe('confirmed')
@@ -163,55 +152,6 @@ describe('any-coin top-up (Task 3): the source coin', () => {
       await expect(r.out).rejects.toThrow(REFUSED.plan)
       expect(r.flows).toEqual([])
     }
-  })
-
-  it('defaultSource: SOL first, else the first source; none when there are no sources', () => {
-    const sol = { mint: WSOL, symbol: 'SOL', decimals: 9, valueCents: 900, offers: [500] }
-    const skr = { mint: SKR, symbol: 'SKR', decimals: 6, valueCents: 800, offers: [500] }
-    expect(defaultSource([skr, sol])).toBe(sol)
-    expect(defaultSource([skr])).toBe(skr)
-    expect(defaultSource([])).toBeNull()
-    expect(defaultSource(null)).toBeNull()
-    expect(defaultSource(undefined)).toBeNull()
-  })
-
-  it('the picker shows at most 3 coins: SOL first when offered, then the two worth the most', () => {
-    const c = (symbol: string, valueCents: number, mint = symbol) => ({ mint, symbol, decimals: 6, valueCents, offers: [500] })
-    const sol = c('SOL', 600, WSOL)
-    const [a, b, d, e] = [c('A', 900), c('B', 3_000), c('D', 700), c('E', 1_200)]
-    expect(pickerSources([sol, a, b, d, e]).map((s) => s.symbol)).toEqual(['SOL', 'B', 'E'])
-    expect(pickerSources([a, b, d, e]).map((s) => s.symbol)).toEqual(['B', 'E'])
-    expect(pickerSources([a, sol]).map((s) => s.symbol)).toEqual(['SOL', 'A'])
-    expect(pickerSources([sol])).toEqual([sol])
-    expect(pickerSources([])).toEqual([])
-  })
-
-  it('the picker drops any coin the phone would refuse to sign (cbBTC, a K-Lend receipt, USDC)', () => {
-    const c = (symbol: string, mint: string, valueCents: number) => ({ mint, symbol, decimals: 6, valueCents, offers: [500] })
-    const list = [
-      c('USDC', 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', 9_000),
-      c('cbBTC', 'cbbtcf3aa214zXHbiAZQwf4122FBYbraNdFqgw4iMij', 8_000),
-      c('kUSDC', 'B8V6WVjPxW1UGwVDfxH2d2r8SyT4cqn7dQRK6XneVa7D', 7_000),
-      c('SKR', SKR, 800),
-      c('SOL', WSOL, 600),
-    ]
-    expect(topUpChoices(list, null, null).usable?.map((s) => s.symbol)).toEqual(['SOL', 'SKR'])
-    expect(topUpChoices(list.slice(0, 3), [500], null)).toMatchObject({ usable: [], choices: [] })
-  })
-
-  it("an empty topUpSources is read as absent: SOL and topUpCents as in 0.1.11, never the send-USDC view (review fix round 1, finding 2)", () => {
-    for (const sources of [[], null, undefined]) {
-      expect(topUpChoices(sources, [500, 1_000], null)).toEqual({ usable: null, source: null, symbol: 'SOL', choices: [500, 1_000] })
-      expect(topUpChoices(sources, null, null).choices).toEqual([500, 1_000, 2_500])
-      expect(topUpChoices(sources, [], null).choices).toEqual([])
-    }
-    const sol = { mint: WSOL, symbol: 'SOL', decimals: 9, valueCents: 600, offers: [] as number[] }
-    const skr = { mint: SKR, symbol: 'SKR', decimals: 6, valueCents: 800, offers: [500] }
-    // A list: its coins with amounts; the picked one's amounts; none with amounts = [].
-    expect(topUpChoices([sol, skr], [500], null)).toMatchObject({ symbol: 'SKR', choices: [500] })
-    expect(topUpChoices([{ ...sol, offers: [500, 1_000] }, skr], null, SKR)).toMatchObject({ symbol: 'SKR', choices: [500] })
-    expect(topUpChoices([{ ...sol, offers: [500, 1_000] }, skr], null, null)).toMatchObject({ symbol: 'SOL', choices: [500, 1_000] })
-    expect(topUpChoices([sol], [500], null)).toMatchObject({ usable: [], choices: [] })
   })
 })
 
@@ -326,68 +266,111 @@ describe('Task 17b (user rent): the top-up carries the setup count the screen sh
   })
 })
 
-describe('11-20 copy pass: the closed card names only coins that can pay; none = the address straight away; Back', () => {
+describe('0.1.13 the no-USDC card (his ruling 11-27, Kimi scope 11-27 #2): order, greyed rows, the flow', () => {
   const SKR = 'SKRbvo6Gf7GondiT3BbTfuRDPqLWei4j2Qy2NPGZhW3'
   const WSOL = 'So11111111111111111111111111111111111111112'
-  const c = (symbol: string, mint: string, offers: number[], valueCents = 900) => ({ mint, symbol, decimals: 6, valueCents, offers })
-  it('(a) the line names only the usable sources with amounts', () => {
-    expect(topUpClosedView([c('SOL', WSOL, []), c('SKR', SKR, [500, 1_000])], null)).toEqual({ kind: 'add', symbols: ['SKR'] })
-    expect(topUpClosedView([c('SOL', WSOL, [500]), c('SKR', SKR, [])], null)).toEqual({ kind: 'add', symbols: ['SOL'] })
-    expect(topUpClosedView([c('SOL', WSOL, [500]), c('SKR', SKR, [500])], null)).toEqual({ kind: 'add', symbols: ['SOL', 'SKR'] })
-    // a coin the phone would not sign never shows, even with amounts
-    expect(topUpClosedView([c('cbBTC', 'cbbtcf3aa214zXHbiAZQwf4122FBYbraNdFqgw4iMij', [500]), c('SKR', SKR, [500])], null)).toEqual({ kind: 'add', symbols: ['SKR'] })
+  const JUP = 'JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN'
+  const WIF = 'EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm'
+  const sol = (over = {}) => ({ mint: WSOL, symbol: 'SOL', decimals: 9, valueCents: 1_400, offers: [500, 1_000], splitPct: 0, costBps: 5, ...over })
+  const skr = (over = {}) => ({ mint: SKR, symbol: 'SKR', decimals: 6, valueCents: 5_000, offers: [500, 1_000, 2_500], splitPct: 90, costBps: 99, ...over })
+  const coin = (symbol: string, mint: string, over = {}) => ({ mint, symbol, decimals: 6, valueCents: 9_000, offers: [500], splitPct: 0, costBps: 1, ...over })
+  const plain = <T extends { splitPct?: number; costBps?: number }>(s: T) => { const { splitPct: _a, costBps: _b, ...rest } = s; return rest }
+  const base = { open: true, waiting: false, pick: null as string | null, sources: null as never, unavailable: null as never, offers: null as number[] | null }
+
+  it('payable coins by the server cost ranking (cheapest first), whichever coin that is', () => {
+    expect(cardCoins([skr(), sol()], null).map((s) => s.symbol)).toEqual(['SOL', 'SKR'])
+    expect(cardCoins([sol({ costBps: 120 }), skr({ costBps: 40 })], null).map((s) => s.symbol)).toEqual(['SKR', 'SOL'])
+    // ties: more value first
+    expect(cardCoins([sol({ costBps: 50, valueCents: 600 }), skr({ costBps: 50 })], null).map((s) => s.symbol)).toEqual(['SKR', 'SOL'])
   })
-  it('(b) no coin can pay: the address view, never "Add USDC" and never a SOL fallback', () => {
-    expect(topUpClosedView([c('SOL', WSOL, []), c('SKR', SKR, [])], null)).toEqual({ kind: 'send' })
-    expect(topUpClosedView([], [])).toEqual({ kind: 'send' })
-    expect(topUpClosedView(null, [])).toEqual({ kind: 'send' })
-    expect(topUpClosedView([c('cbBTC', 'cbbtcf3aa214zXHbiAZQwf4122FBYbraNdFqgw4iMij', [500])], [500])).toEqual({ kind: 'send' })
+  it('without costs (an older API or no split): SOL first, then by value', () => {
+    expect(cardCoins([plain(skr()), plain(sol())], null).map((s) => s.symbol)).toEqual(['SOL', 'SKR'])
   })
-  it('an older API (no list): SOL with its offers, as 0.1.11; unknown offers = every amount', () => {
-    expect(topUpClosedView(null, [500])).toEqual({ kind: 'add', symbols: ['SOL'] })
-    expect(topUpClosedView(undefined, null)).toEqual({ kind: 'add', symbols: ['SOL'] })
-    expect(topUpClosedView([], null)).toEqual({ kind: 'add', symbols: ['SOL'] })
+  it('only SKR and SOL ever show (his "Not now" for WIF and the rest), and only coins with amounts the phone would sign', () => {
+    expect(cardCoins([coin('WIF', WIF), coin('JUP', JUP), skr(), sol()], null).map((s) => s.symbol)).toEqual(['SOL', 'SKR'])
+    expect(cardCoins([sol({ offers: [] }), skr()], null).map((s) => s.symbol)).toEqual(['SKR'])
+    expect(cardCoins([coin('WIF', WIF)], [500])).toEqual([])
   })
-  it('the empty state: just where to send USDC, never a SOL line (Kimi copy item 3)', () => {
-    expect(TOPUP.sendHere).toBe('Send USDC to this wallet from any wallet or exchange. Plantings start again once it arrives.')
-    expect(TOPUP.sendHere).not.toMatch(/SOL\b/)
-    expect(TOPUP.copy).toBe('Copy address')
-    expect(TOPUP.back).toBe('Back')
+  it('an older API with no list (Link a wallet, 0.1.11): SOL with topUpCents; null = every amount; [] = SOL cannot pay', () => {
+    for (const sources of [null, undefined, []]) {
+      expect(cardCoins(sources, [500, 1_000])).toEqual([{ mint: WSOL, symbol: 'SOL', decimals: 9, valueCents: 0, offers: [500, 1_000] }])
+      expect(cardCoins(sources, null)[0].offers).toEqual([500, 1_000, 2_500])
+      expect(cardCoins(sources, [])).toEqual([])
+    }
   })
-  it('(b, c) TopUp.tsx: the address view comes before the closed button; Back closes without sending, hidden while busy or landed', () => {
+  it('greyed rows: only SKR/SOL, never one that pays, never an unknown reason or a repeat, in the server order', () => {
+    const u = (symbol: string, mint: string, reason: string) => ({ mint, symbol, reason }) as never
+    const payable = cardCoins([sol()], null)
+    expect(greyedCoins([u('SKR', SKR, 'none_here'), u('SOL', WSOL, 'not_enough')], payable)).toEqual([{ mint: SKR, symbol: 'SKR', reason: 'none_here' }])
+    expect(greyedCoins([u('WIF', WIF, 'none_here'), u('SKR', SKR, 'no_route'), u('SKR', SKR, 'not_enough'), u('SKR', SKR, 'none_here')], [])).toEqual([{ mint: SKR, symbol: 'SKR', reason: 'not_enough' }])
+    expect(greyedCoins(null, payable)).toEqual([])
+    expect(greyedCoins(undefined, [])).toEqual([])
+  })
+  it('the greyed reasons, en', () => {
+    expect(TOPUP.greyed('SKR', 'none_here')).toBe('No SKR in this wallet')
+    expect(TOPUP.greyed('SOL', 'not_enough')).toBe('Not enough SOL for $5')
+  })
+  it('the flow: closed -> open (payable, then greyed, then Send USDC) -> a coin (its amounts) or Send USDC (the address)', () => {
+    const sources = [skr(), sol({ offers: [] })]
+    const unavailable = [{ mint: WSOL, symbol: 'SOL', reason: 'not_enough' as const }]
+    expect(topUpCard({ ...base, open: false, sources, unavailable })).toEqual({ step: 'closed', waiting: false })
+    const opened = topUpCard({ ...base, sources, unavailable })
+    expect(opened).toMatchObject({ step: 'open', picked: null })
+    if (opened.step !== 'open') throw new Error('open')
+    expect(opened.coins.map((s) => s.symbol)).toEqual(['SKR'])
+    expect(opened.greyed).toEqual(unavailable)
+    expect(topUpCard({ ...base, sources, unavailable, pick: SKR })).toMatchObject({ picked: { kind: 'coin', source: { symbol: 'SKR', offers: [500, 1_000, 2_500] } } })
+    expect(topUpCard({ ...base, sources, unavailable, pick: SEND_PICK })).toMatchObject({ picked: { kind: 'send' } })
+    // a greyed coin cannot be picked
+    expect(topUpCard({ ...base, sources, unavailable, pick: WSOL })).toMatchObject({ picked: null })
+  })
+  it('loading: [Top up] holds (closed, waiting) until the ?sources=1 read lands, even when tapped', () => {
+    expect(topUpCard({ ...base, waiting: true, sources: [sol()] })).toEqual({ step: 'closed', waiting: true })
+  })
+  it('late offers: the picked coin keeps its row while its amounts change in place; one that can no longer pay drops back to nothing picked', () => {
+    expect(topUpCard({ ...base, pick: SKR, sources: [sol(), skr({ offers: [500] })] })).toMatchObject({ picked: { kind: 'coin', source: { symbol: 'SKR', offers: [500] } } })
+    expect(topUpCard({ ...base, pick: SKR, sources: [sol(), skr({ offers: [500, 1_000] })] })).toMatchObject({ picked: { kind: 'coin', source: { symbol: 'SKR', offers: [500, 1_000] } } })
+    expect(topUpCard({ ...base, pick: SKR, sources: [sol()] })).toMatchObject({ picked: null })
+    // the amount chip: one the new offers do not hold is never built (the smallest that covers the suggestion instead)
+    expect(choiceFor(700, [500, 1_000])).toBe(1_000)
+    expect(choiceFor(700, [500])).toBe(500)
+  })
+  it('TopUp.tsx renders the view: [Top up] + its line closed, rows with a11y role/state/label, the greyed ones not pressable, Send USDC last', () => {
     const src = readFileSync(new URL('../../src/components/TopUp.tsx', import.meta.url), 'utf8')
-    const send = src.indexOf("if (closed.kind === 'send' || choices.length === 0) return <SendUsdcHere")
-    expect(send).toBeGreaterThan(0)
-    expect(send).toBeLessThan(src.indexOf('if (!open)'))
-    expect(src).toContain('{TOPUP.swapsLine(closed.symbols)}')
-    expect(src).toMatch(/const back = \(\) => \{\n\s+setOpen\(false\)\n\s+setPickedMint\(null\)\n\s+setLine\(null\)\n\s+\}/)
-    expect(src).toContain('{compact && !phase && !landed ? (')
+    expect(src).toContain('const view = topUpCard({ open, waiting, pick, sources, unavailable, offers })')
+    expect(src).toMatch(/<Button title=\{TOPUP\.open\} loading=\{view\.waiting\} onPress=\{\(\) => setOpen\(true\)\} \/>\n\s+<ThemedText[^>]*>\n\s+\{TOPUP\.disclaimer\}/)
+    const coins = src.indexOf('{view.coins.map(')
+    const greyed = src.indexOf('{view.greyed.map(')
+    const send = src.indexOf('<OptionRow title={TOPUP.send}')
+    expect(coins).toBeGreaterThan(0)
+    expect(greyed).toBeGreaterThan(coins)
+    expect(send).toBeGreaterThan(greyed)
+    expect(src).toContain('line={TOPUP.greyed(g.symbol, g.reason)} selected={false} disabled greyed')
+    expect(src).toContain('accessibilityState={{ selected, disabled }}')
+    expect(src).toContain('accessibilityLabel={`${title}. ${line}`}')
+    expect(src).toContain('minHeight: TARGET')
+    expect(src).toMatch(/const back = \(\) => \{\n\s+setOpen\(false\)\n\s+setPick\(null\)\n\s+setLine\(null\)\n\s+\}/)
     expect(src).toContain('<Pressable onPress={back} accessibilityRole="button" accessibilityLabel={TOPUP.back}')
+    // after it lands: only the confirmation line
+    expect(src).toMatch(/if \(landed\)\n\s+return \(\n\s+<ThemedText tone="accentText"/)
+  })
+  it("Home passes the greyed list and holds [Top up] while its read is pending; Link a wallet keeps the same component", () => {
+    const home = readFileSync(new URL('../../src/app/(tabs)/home.tsx', import.meta.url), 'utf8')
+    expect(home).toContain('const { data: usdcRead, isPending: usdcPending } = useQuery(')
+    expect(home.match(/unavailable=\{usdcRead\?\.topUpUnavailable \?\? null\} waiting=\{usdcPending\}/g)?.length).toBe(2)
+    const connect = readFileSync(new URL('../../src/app/connect.tsx', import.meta.url), 'utf8')
+    expect(connect).toContain('<TopUpButton compact user={session.pubkey}')
   })
 })
 
-describe('0.1.13 cost ranking and the SOL line (his rulings 11-24/25, Kimi step 3 #9-11)', async () => {
-  const { pickerSources, solCheaperLine, defaultSource, TOPUP } = await import('@/lib/topup')
+describe('0.1.13 the SOL line (his rulings 11-24/25, Kimi step 3 #9-11)', async () => {
+  const { solCheaperLine } = await import('@/lib/topup')
   const { WSOL_MINT } = await import('@/lib/sign')
   const SKR = 'SKRbvo6Gf7GondiT3BbTfuRDPqLWei4j2Qy2NPGZhW3'
   const sol = (over = {}) => ({ mint: WSOL_MINT, symbol: 'SOL', decimals: 9, valueCents: 1_400, offers: [500, 1_000], splitPct: 0, costBps: 5, ...over })
   const skr = (over = {}) => ({ mint: SKR, symbol: 'SKR', decimals: 6, valueCents: 5_000, offers: [500, 1_000, 2_500], splitPct: 90, costBps: 99, ...over })
-  const jup = (over = {}) => ({ mint: 'JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN', symbol: 'JUP', decimals: 6, valueCents: 900, offers: [500], splitPct: 0, costBps: 50, ...over })
-  it('lists SOL first, then the cheapest coins (not the most valuable) when every coin has a cost', () => {
-    expect(pickerSources([skr(), jup(), sol()]).map((s) => s.symbol)).toEqual(['SOL', 'JUP', 'SKR'])
-  })
-  it('an older API without costs keeps the value order', () => {
-    const plain = (s: ReturnType<typeof skr>) => { const { splitPct: _a, costBps: _b, ...rest } = s; return rest }
-    expect(pickerSources([plain(jup()), plain(skr()), sol()]).map((s) => s.symbol)).toEqual(['SOL', 'SKR', 'JUP'])
-  })
-  it('the default stays SOL when it is offered; else the cheapest', () => {
-    expect(defaultSource(pickerSources([skr(), sol()]))?.symbol).toBe('SOL')
-    expect(defaultSource(pickerSources([skr(), jup()]))?.symbol).toBe('JUP')
-  })
   it('SKR picked, 90% of the split, SOL offered for this amount and cheaper: the line names the real share', () => {
-    const line = solCheaperLine(skr(), [sol(), skr()], 500)
-    expect(line).toBe('Your split plants 90% of it back into SKR, so SOL costs less.')
-    expect(TOPUP.how(500, null, 'SKR', line!)).toBe('Swaps SKR already in this wallet for $5 of USDC. Your split plants 90% of it back into SKR, so SOL costs less.')
+    expect(solCheaperLine(skr(), [sol(), skr()], 500)).toBe('Your split plants 90% of it back into SKR, so SOL costs less.')
     expect(solCheaperLine(skr({ splitPct: 37 }), [sol(), skr()], 500)).toContain('37%')
   })
   it('no line when it would be false or not actionable', () => {

@@ -513,41 +513,69 @@ export function parseSharedExactOut(d: Uint8Array): { id: number; steps: number;
   return { id, steps, outAmount: u64At(d, at), quotedIn: u64At(d, at + 8), slippageBps: u16At(d, at + 16), feeBps: d[at + 18] }
 }
 
-/** The SOL price in USD, from a source that is not the Sprouts API. Throws when it cannot say. */
-export type SolUsdSource = () => Promise<number>
-/** Jupiter's public price API (no key), 4 s at most. The app reads it itself: the API it checks never hands it a price. */
-export const SOL_PRICE_URL = `https://lite-api.jup.ag/price/v3?ids=${WSOL_MINT}`
-export const fetchSolUsd: SolUsdSource = async () => {
+/**
+ * 0.1.13 (his SKR top-up refused once right after a wifi reconnect, the endpoint fine; Kimi scope 11-27 #5): the phone's own price read
+ * gets 8 s per attempt (was 4 s) and ONE retry after PRICE_RETRY_MS, only when the answer never came (a timeout, the network) or the
+ * server failed (5xx). An answer that came and is unusable (a 4xx, a body that is not JSON, no number in it) is never retried: the
+ * check refuses on it as before. The sanity bounds the price then meets are untouched.
+ */
+export const PRICE_TIMEOUT_MS = 8_000
+export const PRICE_RETRY_MS = 750
+/** A read that may succeed if tried again: no answer, or a 5xx. */
+class PriceUnanswered extends Error {}
+async function readPriceOnce(url: string): Promise<unknown> {
   const abort = new AbortController()
-  const timer = setTimeout(() => abort.abort(), 4_000)
+  const timer = setTimeout(() => abort.abort(), PRICE_TIMEOUT_MS)
   try {
-    const res = await fetch(SOL_PRICE_URL, { signal: abort.signal })
+    let res: Response
+    try {
+      res = await fetch(url, { signal: abort.signal })
+    } catch (e) {
+      throw new PriceUnanswered(`price unanswered (${e instanceof Error ? e.message : String(e)})`)
+    }
+    if (res.status >= 500) throw new PriceUnanswered(`price ${res.status}`)
     if (!res.ok) throw new Error(`price ${res.status}`)
-    const body = (await res.json()) as Record<string, { usdPrice?: unknown } | undefined>
-    const p = body?.[WSOL_MINT]?.usdPrice
-    if (typeof p !== 'number') throw new Error('no SOL price')
-    return p
+    try {
+      return await res.json()
+    } catch (e) {
+      // the body cut off by the timeout is no answer; a body that came whole and is not JSON is a bad answer
+      if (abort.signal.aborted) throw new PriceUnanswered('price timed out')
+      throw e
+    }
   } finally {
     clearTimeout(timer)
   }
 }
+/** The parsed body of Jupiter's price API at `url`, retried once per the rule above. Throws when it cannot say. */
+export async function readPrice(url: string, wait: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms))): Promise<unknown> {
+  try {
+    return await readPriceOnce(url)
+  } catch (e) {
+    if (!(e instanceof PriceUnanswered)) throw e
+    await wait(PRICE_RETRY_MS)
+    return readPriceOnce(url)
+  }
+}
+
+/** The SOL price in USD, from a source that is not the Sprouts API. Throws when it cannot say. */
+export type SolUsdSource = () => Promise<number>
+/** Jupiter's public price API (no key), readPrice's timeout and retry. The app reads it itself: the API it checks never hands it a price. */
+export const SOL_PRICE_URL = `https://lite-api.jup.ag/price/v3?ids=${WSOL_MINT}`
+export const fetchSolUsd: SolUsdSource = async () => {
+  const body = (await readPrice(SOL_PRICE_URL)) as Record<string, { usdPrice?: unknown } | undefined> | null
+  const p = body?.[WSOL_MINT]?.usdPrice
+  if (typeof p !== 'number') throw new Error('no SOL price')
+  return p
+}
 /** A coin's USD price and decimals, from a source that is not the Sprouts API. Throws when it cannot say. */
 export type UsdPriceSource = (mint: string) => Promise<{ usd: number; decimals: number }>
-/** Jupiter's public price API (no key) for any mint, 4 s at most: the token top-up's bound, read by the phone itself. */
+/** Jupiter's public price API (no key) for any mint, readPrice's timeout and retry: the token top-up's bound, read by the phone itself. */
 export const fetchUsdPrice: UsdPriceSource = async (mint) => {
-  const abort = new AbortController()
-  const timer = setTimeout(() => abort.abort(), 4_000)
-  try {
-    const res = await fetch(`https://lite-api.jup.ag/price/v3?ids=${mint}`, { signal: abort.signal })
-    if (!res.ok) throw new Error(`price ${res.status}`)
-    const body = (await res.json()) as Record<string, { usdPrice?: unknown; decimals?: unknown } | undefined>
-    const p = body?.[mint]?.usdPrice
-    const decimals = body?.[mint]?.decimals
-    if (typeof p !== 'number' || typeof decimals !== 'number') throw new Error('no price')
-    return { usd: p, decimals }
-  } finally {
-    clearTimeout(timer)
-  }
+  const body = (await readPrice(`https://lite-api.jup.ag/price/v3?ids=${mint}`)) as Record<string, { usdPrice?: unknown; decimals?: unknown } | undefined> | null
+  const p = body?.[mint]?.usdPrice
+  const decimals = body?.[mint]?.decimals
+  if (typeof p !== 'number' || typeof decimals !== 'number') throw new Error('no price')
+  return { usd: p, decimals }
 }
 /** coinSymbol: the token top-up's coin, named in its price refusals (display only; the check reads the flow's inputMint). */
 export type CheckOptions = { solUsd?: SolUsdSource; usdPrice?: UsdPriceSource; coinSymbol?: string }

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { address, getAddressEncoder, getProgramDerivedAddress, AccountRole, type Address, type Instruction, type Transaction } from '@solana/kit'
-import { fetchSolUsd, fetchUsdPrice, makeSigner, parseSharedExactOut, REFUSED, REFUSED_COIN, SignRefused, SOL_PRICE_URL, topUpLamportCeiling, type SignFlow, type SolUsdSource, type UsdPriceSource } from '@/lib/sign'
+import { fetchSolUsd, fetchUsdPrice, makeSigner, parseSharedExactOut, PRICE_RETRY_MS, PRICE_TIMEOUT_MS, readPrice, REFUSED, REFUSED_COIN, SignRefused, SOL_PRICE_URL, topUpLamportCeiling, type SignFlow, type SolUsdSource, type UsdPriceSource } from '@/lib/sign'
 import { parseSwapInstructions } from '../../../api/src/lib/jupiter'
 import { wire, ATTACKER } from '../fixtures/api-built'
 import { ataOf, L } from '../fixtures/lend-built'
@@ -389,5 +389,83 @@ describe('topup through WhirlpoolSwapV2 (variant 47): SKR and WIF', async () => 
       await expect(makeSigner(sign, f, { usdPrice, solUsd: async () => 1 })(wire(bent, USER))).rejects.toThrow(SignRefused)
       expect(sign).not.toHaveBeenCalled()
     }
+  })
+})
+
+// 0.1.13 (Kimi scope 11-27 #5): his SKR top-up refused once right after a wifi reconnect. 8 s per attempt and ONE retry, only when no
+// answer came (timeout, network) or the server failed (5xx); never on an answer that came and is unusable.
+describe("the phone's price read: one retry, never on a bad body", () => {
+  const MINT = 'SKRbvo6Gf7GondiT3BbTfuRDPqLWei4j2Qy2NPGZhW3'
+  const URL_ = `https://lite-api.jup.ag/price/v3?ids=${MINT}`
+  const good = () => new Response(JSON.stringify({ [MINT]: { usdPrice: 0.02, decimals: 6 } }))
+  const noWait = vi.fn(async () => {})
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.useRealTimers()
+    noWait.mockClear()
+  })
+  const seq = (...steps: (() => Response | Promise<Response>)[]) => {
+    const f = vi.fn(async () => (steps.shift() ?? (() => { throw new Error('no more answers') }))())
+    vi.stubGlobal('fetch', f)
+    return f
+  }
+
+  it('retries once on a network failure, after PRICE_RETRY_MS', async () => {
+    const f = seq(() => { throw new TypeError('Network request failed') }, good)
+    expect(await readPrice(URL_, noWait)).toEqual({ [MINT]: { usdPrice: 0.02, decimals: 6 } })
+    expect(f).toHaveBeenCalledTimes(2)
+    expect(noWait).toHaveBeenCalledWith(PRICE_RETRY_MS)
+    expect(PRICE_RETRY_MS).toBe(750)
+  })
+  it('retries once on a 5xx', async () => {
+    const f = seq(() => new Response('{}', { status: 502 }), good)
+    expect(await readPrice(URL_, noWait)).toBeTruthy()
+    expect(f).toHaveBeenCalledTimes(2)
+  })
+  it('gives up after the one retry (two attempts, never three)', async () => {
+    const f = seq(() => new Response('', { status: 503 }), () => { throw new TypeError('offline') }, good)
+    await expect(readPrice(URL_, noWait)).rejects.toThrow()
+    expect(f).toHaveBeenCalledTimes(2)
+  })
+  it('never retries an answer that came: a 4xx, a body that is not JSON', async () => {
+    let f = seq(() => new Response('{}', { status: 404 }), good)
+    await expect(readPrice(URL_, noWait)).rejects.toThrow('price 404')
+    expect(f).toHaveBeenCalledTimes(1)
+    f = seq(() => new Response('<html>not json</html>'), good)
+    await expect(readPrice(URL_, noWait)).rejects.toThrow()
+    expect(f).toHaveBeenCalledTimes(1)
+    expect(noWait).not.toHaveBeenCalled()
+  })
+  it('never retries a parsed body without a number (fetchUsdPrice refuses it on the first answer)', async () => {
+    const f = seq(() => new Response(JSON.stringify({ [MINT]: { usdPrice: 'NaN', decimals: 6 } })), good)
+    await expect(fetchUsdPrice(MINT)).rejects.toThrow('no price')
+    expect(f).toHaveBeenCalledTimes(1)
+    const g = seq(() => new Response(JSON.stringify({})), good)
+    await expect(fetchSolUsd()).rejects.toThrow('no SOL price')
+    expect(g).toHaveBeenCalledTimes(1)
+  })
+  it('an attempt is cut at 8 s (was 4 s), then retried once', async () => {
+    vi.useFakeTimers()
+    expect(PRICE_TIMEOUT_MS).toBe(8_000)
+    const hang = (init?: RequestInit) => new Promise<Response>((_, reject) => init?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError'))))
+    const calls: number[] = []
+    const f = vi.fn(async (_u: string, init?: RequestInit) => {
+      calls.push(Date.now())
+      return calls.length === 1 ? hang(init) : good()
+    })
+    vi.stubGlobal('fetch', f)
+    const out = readPrice(URL_, noWait)
+    await vi.advanceTimersByTimeAsync(7_999)
+    expect(f).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(1)
+    await expect(out).resolves.toBeTruthy()
+    expect(f).toHaveBeenCalledTimes(2)
+  })
+  it('fetchUsdPrice end to end: a timeout-like failure then a good answer gives the price', async () => {
+    vi.useFakeTimers()
+    seq(() => { throw new DOMException('Aborted', 'AbortError') }, good)
+    const out = fetchUsdPrice(MINT)
+    await vi.advanceTimersByTimeAsync(PRICE_RETRY_MS)
+    await expect(out).resolves.toEqual({ usd: 0.02, decimals: 6 })
   })
 })

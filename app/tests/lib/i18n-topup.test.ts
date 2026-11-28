@@ -5,7 +5,7 @@ vi.mock('react-native', () => ({ Platform: { OS: 'android', constants: {} } }))
 import { t, writeLangChoice } from '@/i18n'
 import { en } from '@/i18n/en'
 import { TOPUP, chipLabel } from '@/lib/topup'
-import { coverage, lowUsdcLine } from '@/lib/usdc-runway'
+import { lowUsdcLine } from '@/lib/usdc-runway'
 import { QUESTIONS, optionLabel, questionTitle } from '@/lib/feedback'
 import type { Question } from '@/lib/feedback'
 import { previewOf, logLine } from '@/lib/support'
@@ -16,34 +16,41 @@ import { API_UNANSWERED, apiUnanswered, requestFailed } from '@/lib/api'
 // source (the other tests assert it); these check the variants and that the same calls render Spanish.
 afterEach(() => writeLangChoice('auto'))
 
-describe('top-up: one whole sentence per coverage kind', () => {
-  it('coverage picks the kind and count the English always said', () => {
-    expect(coverage(500, null)).toBeNull()
-    expect(coverage(500, 600)).toEqual({ kind: 'one', n: 1 })
-    expect(coverage(500, 100)).toEqual({ kind: 'days', n: 5 })
-    expect(coverage(1_400, 100)).toEqual({ kind: 'weeks', n: 2 })
-    expect(coverage(10_000, 100)).toEqual({ kind: 'months', n: 2 })
-  })
-  it('English for every kind; 11-27 (his ruling): no fee sentence after it', () => {
-    expect(TOPUP.how(500, null, 'SKR')).toBe('Swaps SKR already in this wallet for $5 of USDC.')
-    expect(TOPUP.how(500, { kind: 'one', n: 1 })).toBe('Swaps SOL already in this wallet for $5 of USDC, about 1 day of round-ups.')
-    expect(TOPUP.how(1_000, { kind: 'days', n: 4 }, 'SKR')).toBe('Swaps SKR already in this wallet for $10 of USDC, about 4 days of round-ups.')
-    expect(TOPUP.how(2_500, { kind: 'months', n: 2 })).toBe('Swaps SOL already in this wallet for $25 of USDC, over 2 months of round-ups.')
+describe('top-up: the no-USDC card (his ruling 11-27)', () => {
+  it('English: Top up, its line, the rows, the greyed reasons; no fee sentence', () => {
+    expect(TOPUP.open).toBe('Top up')
+    expect(TOPUP.disclaimer).toBe('Adds USDC to this wallet so your round-ups can plant.')
+    expect(TOPUP.coinTitle('SKR')).toBe('Use SKR')
+    expect(TOPUP.coinLine('SOL')).toBe('Swaps SOL in this wallet for USDC.')
+    expect(TOPUP.send).toBe('Send USDC')
+    expect(TOPUP.sendLine).toBe('From another wallet or an exchange.')
+    expect(TOPUP.greyed('SKR', 'none_here')).toBe('No SKR in this wallet')
+    expect(TOPUP.greyed('SOL', 'not_enough')).toBe('Not enough SOL for $5')
+    expect(TOPUP.button(1_000)).toBe('Add $10 of USDC')
+    expect(TOPUP.copy).toBe('Copy')
+    expect(t('home.usdc.zero.mine')).toBe('Seed Vault wallet has no USDC')
+    expect(t('home.usdc.zero.line')).toBe('Your round-ups wait until you add some.')
     expect('topup.fee' in en).toBe(false)
   })
-  it('Spanish: billetera, no fee line, no "jardín" (a top-up lands in the wallet, not the garden)', () => {
+  it('Spanish: billetera, swap, Agregar; the existing title kept; no "jardín" (a top-up lands in the wallet, not the garden)', () => {
     writeLangChoice('es')
-    const lines = [TOPUP.open, TOPUP.button(500), TOPUP.how(500, { kind: 'weeks', n: 2 }), TOPUP.swapsLine(['SOL', 'SKR', 'JUP']), TOPUP.done(500), TOPUP.doneLink(500), TOPUP.sendHere, TOPUP.otherWallet('W111...xyz9')]
     expect(TOPUP.open).toBe('Agregar USDC')
+    expect(TOPUP.disclaimer).toBe('Agrega USDC a esta billetera para que tus redondeos se planten.')
+    expect(TOPUP.coinTitle('SKR')).toBe('Usar SKR')
+    expect(TOPUP.coinLine('SKR')).toBe('Hace un swap de SKR de esta billetera a USDC.')
+    expect(TOPUP.send).toBe('Enviar USDC')
+    expect(TOPUP.sendLine).toBe('Desde otra billetera o un exchange.')
+    expect(TOPUP.greyed('SKR', 'none_here')).toBe('No hay SKR en esta billetera')
+    expect(TOPUP.greyed('SOL', 'not_enough')).toBe('No alcanza el SOL para $5')
     expect(TOPUP.button(1_000)).toBe('Agregar $10 en USDC')
-    expect(TOPUP.how(500, { kind: 'weeks', n: 2 })).toBe('Hace un swap de SOL que ya está en esta billetera por $5 en USDC. Alcanza para unas 2 semanas de redondeos.')
-    expect(TOPUP.how(500, null, 'SKR')).toBe('Hace un swap de SKR que ya está en esta billetera por $5 en USDC.')
-    expect(TOPUP.swapsLine(['SOL', 'SKR', 'JUP'])).toBe('Hace un swap de un poco de tu SOL, SKR o JUP a USDC.')
-    expect(TOPUP.swapsLine([])).toBe('Hace un swap de un poco de tu SOL a USDC.')
+    expect(TOPUP.copy).toBe('Copiar')
+    expect(t('home.usdc.zero.mine')).toBe('La billetera Seed Vault no tiene USDC')
+    expect(t('home.usdc.zero.line')).toBe('Tus redondeos esperan hasta que agregues.')
     expect(TOPUP.done(550)).toBe('Tu billetera ahora tiene $5,50 más en USDC. Sprouts vuelve a plantar en la próxima plantación diaria.')
     expect(TOPUP.back).toBe('Volver')
+    const lines = [TOPUP.open, TOPUP.disclaimer, TOPUP.coinTitle('SOL'), TOPUP.coinLine('SOL'), TOPUP.send, TOPUP.sendLine, TOPUP.greyed('SOL', 'none_here'), TOPUP.greyed('SKR', 'not_enough'), TOPUP.button(500), TOPUP.copy, TOPUP.done(500), TOPUP.doneLink(500), TOPUP.otherWallet('W111...xyz9')]
     for (const l of lines) {
-      expect(l).not.toMatch(/jardín|wallet\b|Swaps|Add /)
+      expect(l).not.toMatch(/jardín|wallet\b|Swaps|Add |—|–/)
     }
   })
   it('the amount chips use the formatter: whole dollars, Spanish separators when there are cents', () => {
@@ -107,14 +114,3 @@ describe("Home's Terms lines and the app's own error lines", () => {
     expect(requestFailed(404)).toBe('La solicitud falló (404).')
   })
 })
-
-describe("coverage never says '1 weeks' (11-25)", async () => {
-  const { coverage } = await import("@/lib/usdc-runway");
-  it("10 days stays in days (it used to round to 1 week); 11 days and up round to 2 weeks", () => {
-    expect(coverage(1000, 100)).toEqual({ kind: "days", n: 10 });
-    expect(coverage(1040, 100)).toEqual({ kind: "days", n: 10 });
-    expect(coverage(1100, 100)).toEqual({ kind: "weeks", n: 2 });
-    expect(coverage(1400, 100)).toEqual({ kind: "weeks", n: 2 });
-    expect(coverage(900, 100)).toEqual({ kind: "days", n: 9 });
-  });
-});

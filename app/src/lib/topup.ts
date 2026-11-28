@@ -1,9 +1,8 @@
 import type { MeResponse, WalletPause } from './api'
-import { REFUSED, SignRefused, topUpSourceAllowed, WSOL_MINT, type SignFlow } from './sign'
+import { REFUSED, SignRefused, SKR_MINT, topUpSourceAllowed, WSOL_MINT, type SignFlow } from './sign'
 import { droppedNothingSent } from './wallet-errors'
 import { t } from '@/i18n'
 import { usdFromCents, usdTrimmed } from "@/i18n/format"
-import type { Coverage } from "./usdc-runway"
 
 /**
  * The SOL top-up (10-22, owner-approved): round-ups are pulled only as USDC and most Seeker wallets hold SOL, so wherever USDC is short
@@ -18,25 +17,19 @@ const wholeUsd = (cents: number) => usdTrimmed(Math.round(cents / 100) * 100)
 export const TOPUP = {
   // 10-26 copy review rows 8-9 (his: make clear the USDC goes to the user's own wallet, not to Sprouts)
   // 10-27 (his ruling: "We dont want to tell the user 'you need sol' so 'you can buy usdc'... Should be a simpler solution"): one
-  // "Add USDC" button; the SOL swap stays behind it, named once in a quiet line; a wallet whose SOL covers nothing gets its address
+  // button (0.1.13: "Top up", Spanish "Agregar USDC"); what it swaps is said on each coin's row
   get open() { return t('topup.open') },
   button: (cents: number) => t('topup.button', { amount: wholeUsd(cents) }),
-  // 10-27 (his note on the Saga: "should state somewhere that you are swapping existing sol from your wallet into USDC")
-  // Task 3 (any-coin top-up): the coin picked names itself; SOL by default, so the SOL line is unchanged
-  // 0.1.13: `tail` is an optional second sentence (the SOL pointer, solCheaperLine). 11-27 (his ruling): no fee sentence by default
-  // ("our costs are already listed on the about section"); the fee stays in About, Terms, the store and the link page.
-  // `covers` (usdc-runway coverage()) picks the whole sentence, one key per kind.
-  how: (cents: number, covers: Coverage | null, symbol = 'SOL', tail?: string) => {
-    const vars = { symbol, amount: wholeUsd(cents), tail: tail ? ` ${tail}` : '' }
-    return covers ? t(`topup.how.${covers.kind}` as const, { ...vars, n: covers.n }) : t('topup.how', vars)
-  },
-  /** The line under the closed "Add USDC" button (owner's copy, 11-19), the picked coin's symbol in it. */
-  swapsLine: (symbols: string[]) => {
-    if (symbols.length <= 1) return t('topup.swaps', { coin: symbols[0] ?? 'SOL' })
-    return t('topup.swaps.or', { list: symbols.slice(0, -1).join(', '), last: symbols[symbols.length - 1] })
-  },
-  // 11-20 (Kimi copy item 3): never a "not enough SOL" line; just where to send USDC
-  get sendHere() { return t('topup.sendHere') },
+  // 0.1.13 (his ruling 11-27, the no-USDC card): [Top up], this line under it, then in the same card a row per coin, each with its
+  // own short line, greyed with why when it cannot pay, and [Send USDC] last.
+  get disclaimer() { return t('topup.disclaimer') },
+  coinTitle: (coin: string) => t('topup.useCoin', { coin }),
+  coinLine: (coin: string) => t('topup.useCoin.line', { coin }),
+  get send() { return t('topup.send') },
+  get sendLine() { return t('topup.send.line') },
+  /** Why a coin is greyed (api TopUpUnavailable reason); the smallest offer names the amount ("Not enough SOL for $5"). */
+  greyed: (coin: string, reason: TopUpUnavailableReason) =>
+    reason === 'none_here' ? t('topup.noCoin', { coin }) : t('topup.notEnough', { coin, amount: wholeUsd(TOPUP_CHOICES[0]) }),
   get copy() { return t('topup.copy') },
   /** 11-20: under the open top-up, back to the closed card; sends nothing. */
   get back() { return t('link.approval.back') },
@@ -77,23 +70,6 @@ export const TOPUP_SETUP_MAX = 3
 /** `splitPct` / `costBps` (0.1.13 API, api lib/topup-cost.ts): the coin's share of the user's split and what a top-up from it wastes;
  *  absent from an older API or when the split could not be read. */
 export type TopUpSource = { mint: string; symbol: string; decimals: number; valueCents: number; offers: number[]; splitPct?: number; costBps?: number }
-/** The coin picked first: SOL when offered, else the first; null when there is no list (an older API: the SOL top-up as in 0.1.11). */
-export const defaultSource = (sources: readonly TopUpSource[] | null | undefined): TopUpSource | null =>
-  sources?.find((s) => s.mint === WSOL_MINT) ?? sources?.[0] ?? null
-
-/**
- * Controller ruling (11-19): the picker shows at most 3 coins: SOL first (when offered), then two more. 0.1.13 (his ruling "Line +
- * ranking now"): the cheapest two by costBps when every coin carries one (ties: more value first); else, as before, the two worth the
- * most in this wallet.
- */
-export function pickerSources(sources: readonly TopUpSource[]): TopUpSource[] {
-  const sol = sources.filter((s) => s.mint === WSOL_MINT).slice(0, 1)
-  const rest = sources.filter((s) => s.mint !== WSOL_MINT)
-  const ranked = rest.every((s) => typeof s.costBps === 'number')
-  const others = [...rest].sort((a, b) => (ranked ? (a.costBps as number) - (b.costBps as number) : 0) || b.valueCents - a.valueCents).slice(0, 2)
-  return [...sol, ...others]
-}
-
 /** A coin at or above this share of the split gets the SOL line (his ruling 11-25, gate per Kimi step 3 #9-11). */
 export const SOL_CHEAPER_MIN_SPLIT_PCT = 25
 /**
@@ -112,27 +88,58 @@ export function solCheaperLine(picked: TopUpSource | null, usable: readonly TopU
   return t('topup.solCheaper', { pct: Math.round(picked.splitPct), symbol: picked.symbol })
 }
 
-/**
- * What TopUpButton shows. No list, or an empty one (an older API, or a read that listed nothing): no picker, SOL, `offers` (0.1.11's
- * topUpCents; null = every amount). A list: its coins with amounts (only coins the phone would sign: a buggy or hostile answer never shows the rest), at most 3 (pickerSources); the picked one (else defaultSource) and
- * its amounts; none with amounts = [] (the address to send USDC to).
- */
-export function topUpChoices(sources: readonly TopUpSource[] | null | undefined, offers: readonly number[] | null | undefined, pickedMint: string | null) {
-  const usable = sources?.length ? pickerSources(sources.filter((s) => topUpSourceAllowed(s.mint) && s.offers.length > 0)) : null
-  const source = usable ? (usable.find((s) => s.mint === pickedMint) ?? defaultSource(usable)) : null
-  const choices: readonly number[] = usable ? (source?.offers ?? []) : (offers ?? TOPUP_CHOICES)
-  return { usable, source, symbol: source?.symbol ?? 'SOL', choices }
-}
+/** GET /api/me/usdc?sources=1 topUpUnavailable (0.1.13 API, for a 0.1.13 phone): a card coin that cannot pay, and why. */
+export type TopUpUnavailableReason = 'none_here' | 'not_enough'
+export type TopUpUnavailable = { mint: string; symbol: string; reason: TopUpUnavailableReason }
+/** The only coins the no-USDC card names (his "Not now" for WIF and the rest; the server may list more, the card never shows them). */
+export const CARD_COIN_MINTS: readonly string[] = [WSOL_MINT, SKR_MINT]
+const REASONS: readonly string[] = ['none_here', 'not_enough']
 
 /**
- * The closed card (11-20 copy pass): 'add' = the "Add USDC" button, its line naming only the coins that can pay (the usable sources with
- * amounts; an older API with no list = SOL, as 0.1.11); 'send' = no coin can pay, so the address to send USDC to shows straight away,
- * no button. Never names a coin that cannot pay (the empty-list SOL fallback was the bug).
+ * The card's coins that can pay (SOL and SKR only, a coin the phone would sign, with amounts), cheapest first by the server's costBps
+ * when every one carries it (ties: more value first); else SOL first, then by value. An older API with no list (Link a wallet's read,
+ * a 0.1.11 API): SOL alone with `offers` (null = every amount, as 0.1.11), none when `offers` is [].
  */
-export function topUpClosedView(sources: readonly TopUpSource[] | null | undefined, offers: readonly number[] | null | undefined): { kind: 'send' } | { kind: 'add'; symbols: string[] } {
-  const { usable, choices } = topUpChoices(sources, offers, null)
-  if (choices.length === 0) return { kind: 'send' }
-  return { kind: 'add', symbols: usable ? usable.map((s) => s.symbol) : ['SOL'] }
+export function cardCoins(sources: readonly TopUpSource[] | null | undefined, offers: readonly number[] | null | undefined): TopUpSource[] {
+  if (!sources?.length) {
+    const amounts = offers ?? TOPUP_CHOICES
+    return amounts.length ? [{ mint: WSOL_MINT, symbol: 'SOL', decimals: 9, valueCents: 0, offers: [...amounts] }] : []
+  }
+  const coins = sources.filter((s) => CARD_COIN_MINTS.includes(s.mint) && topUpSourceAllowed(s.mint) && s.offers.length > 0)
+  const ranked = coins.every((s) => typeof s.costBps === 'number')
+  const solFirst = (s: TopUpSource) => (s.mint === WSOL_MINT ? 0 : 1)
+  return [...coins].sort((a, b) => (ranked ? (a.costBps as number) - (b.costBps as number) : solFirst(a) - solFirst(b)) || b.valueCents - a.valueCents)
+}
+
+/** The greyed rows: the server's card coins that cannot pay, in its order, never one that pays, an unknown coin or an unknown reason. */
+export function greyedCoins(unavailable: readonly TopUpUnavailable[] | null | undefined, payable: readonly TopUpSource[]): TopUpUnavailable[] {
+  const seen = new Set(payable.map((s) => s.mint))
+  return (unavailable ?? []).filter((u) => {
+    if (!CARD_COIN_MINTS.includes(u.mint) || !REASONS.includes(u.reason) || seen.has(u.mint)) return false
+    seen.add(u.mint)
+    return true
+  })
+}
+
+/** What the card's open part shows: null = nothing picked yet, a coin (its amounts and [Add $X of USDC]) or Send USDC (the address). */
+export const SEND_PICK = 'send'
+export type TopUpCardView =
+  | { step: 'closed'; waiting: boolean }
+  | { step: 'open'; coins: TopUpSource[]; greyed: TopUpUnavailable[]; picked: null | { kind: 'coin'; source: TopUpSource } | { kind: 'send' } }
+
+/**
+ * The no-USDC card (his ruling 11-27, Kimi scope 11-27 #2): closed = [Top up] and its line; while Home's ?sources=1 read has not landed
+ * (`waiting`) the button holds, so it never opens on a guessed list. Open = the paying coins (cardCoins), then the greyed ones
+ * (greyedCoins), then Send USDC; `pick` (a mint or SEND_PICK) opens that row. A picked coin that can no longer pay (the list re-read
+ * without it) falls back to nothing picked, never to another coin's amounts.
+ */
+export function topUpCard(a: { open: boolean; waiting: boolean; pick: string | null; sources: readonly TopUpSource[] | null | undefined; unavailable: readonly TopUpUnavailable[] | null | undefined; offers: readonly number[] | null | undefined }): TopUpCardView {
+  if (!a.open || a.waiting) return { step: 'closed', waiting: a.waiting }
+  const coins = cardCoins(a.sources, a.offers)
+  const greyed = greyedCoins(a.unavailable, coins)
+  const coin = coins.find((s) => s.mint === a.pick)
+  const picked = a.pick === SEND_PICK ? { kind: 'send' as const } : coin ? { kind: 'coin' as const, source: coin } : null
+  return { step: 'open', coins, greyed, picked }
 }
 
 export const TOPUP_DEFAULT_CENTS = 500

@@ -27,21 +27,6 @@ export function avgDailyRoundupCents(swaps: readonly Swap[], wallet: string, now
   return sum > 0 ? sum / span : null;
 }
 
-/**
- * How long `cents` lasts at `avg` a day, as the top-up's line says it ("about 2 weeks of round-ups"); null without an average.
- * 0.1.13 Spanish pass P6 (e): a kind and a count, never words, so the top-up line is one whole sentence per kind (topup.how.*).
- */
-export type Coverage = { kind: "one" | "days" | "weeks" | "months"; n: number };
-export function coverage(cents: number, avg: number | null): Coverage | null {
-  if (!avg) return null;
-  const days = cents / avg;
-  const weeks = Math.round(days / 7);
-  // 11-25: 10-13 days rounded to "1 weeks"; under 2 weeks it stays in days ("about 12 days").
-  if (days < 10 || weeks < 2) return Math.round(days) <= 1 ? { kind: "one", n: 1 } : { kind: "days", n: Math.round(days) };
-  if (weeks <= 8) return { kind: "weeks", n: weeks };
-  return { kind: "months", n: 2 };
-}
-
 /** Home's line when the wallet has under LOW_DAYS of round-ups left (copy review row 10), or null. */
 export function lowUsdcLine(balanceCents: number | null, avg: number | null): string | null {
   // 10-27 (his note on the Saga: "$0.00... top it up so plantings don't pause" understated it): at zero nothing can plant, and that

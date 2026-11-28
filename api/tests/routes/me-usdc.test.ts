@@ -225,6 +225,57 @@ describe("GET /api/me/usdc", () => {
       }
     });
 
+    // 0.1.13 (the no-USDC card, Kimi scope 11-27 #1): SKR and SOL greyed with why, for a 0.1.13+ phone only
+    describe("topUpUnavailable", () => {
+      const as0113 = async () => (await getSourcesAs(await issueSession(U, "M"), "0.1.13")).json();
+      beforeEach(() => vi.mocked(readUsdcBalanceRaw).mockResolvedValue(0n));
+
+      it("is absent for an older phone (no header, 0.1.12): its answer keeps exactly the keys it had", async () => {
+        const old = await (await getSources(await issueSession(U, "M"))).json();
+        expect(Object.keys(old)).toEqual(["usdcRaw", "topUpCents", "solLamports", "topUpSources"]);
+        const v12 = await (await getSourcesAs(await issueSession(U, "M"), "0.1.12")).json();
+        expect(Object.keys(v12)).toEqual(["usdcRaw", "topUpCents", "solLamports", "topUpSources"]);
+      });
+
+      it("is empty when SOL and SKR both pay; topUpSources is unchanged beside it", async () => {
+        const body = await as0113();
+        expect(body.topUpUnavailable).toEqual([]);
+        expect(body.topUpSources.map((x: { symbol: string }) => x.symbol)).toEqual(["SOL", "SKR"]);
+      });
+
+      it("names SKR 'none_here' when the wallet holds no SKR", async () => {
+        tokenAccounts.v = [];
+        expect((await as0113()).topUpUnavailable).toEqual([{ mint: SKR, symbol: "SKR", reason: "none_here" }]);
+      });
+
+      it("names SKR 'not_enough' when its SKR is worth less than $5", async () => {
+        tokenAccounts.v = [{ pubkey: await ata(SKR), mint: SKR, amount: "100000000", decimals: 6 }];   // 100 SKR at $0.02 = $2
+        expect((await as0113()).topUpUnavailable).toEqual([{ mint: SKR, symbol: "SKR", reason: "not_enough" }]);
+      });
+
+      it("names SOL 'none_here' at 0 lamports and 'not_enough' when some SOL covers no amount", async () => {
+        solLamports.v = 0n;
+        tokenAccounts.v = [];
+        expect((await as0113()).topUpUnavailable).toEqual([{ mint: WSOL, symbol: "SOL", reason: "none_here" }, { mint: SKR, symbol: "SKR", reason: "none_here" }]);
+        clearSharedReads();
+        solLamports.v = 20_000_000n;   // 0.02 SOL at $200 = $4
+        expect((await as0113()).topUpUnavailable).toEqual([{ mint: WSOL, symbol: "SOL", reason: "not_enough" }, { mint: SKR, symbol: "SKR", reason: "none_here" }]);
+      });
+
+      it("says nothing of SKR that is worth enough but cannot pay for another reason (too little SOL for the fee)", async () => {
+        solLamports.v = 1_000_000n;   // under the 0.003 SOL a token top-up needs
+        const body = await as0113();
+        expect(body.topUpUnavailable).toEqual([{ mint: WSOL, symbol: "SOL", reason: "not_enough" }]);
+      });
+
+      it("is null with topUpSources when the balances cannot be read", async () => {
+        tokenAccounts.v = null;
+        const body = await as0113();
+        expect(body.topUpSources).toBeNull();
+        expect(body.topUpUnavailable).toBeNull();
+      });
+    });
+
     it("SOL alone when the wallet holds no other coin", async () => {
       vi.mocked(readUsdcBalanceRaw).mockResolvedValueOnce(0n);
       tokenAccounts.v = [];

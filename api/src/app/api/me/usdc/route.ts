@@ -7,7 +7,7 @@ import { requireSession, rateLimited } from "@/lib/auth-guard";
 import { readUsdcBalanceRaw } from "@/lib/subscriptions";
 import { rpc } from "@/lib/rpc";
 import { sharedPriceUsd } from "@/lib/shared-reads";
-import { affordableTopUps, topUpSources, topUpCapsFor } from "@/lib/topup";
+import { affordableTopUps, isApp0113, topUpSourcesWithReasons, topUpCapsFor } from "@/lib/topup";
 import { WSOL_MINT } from "@/lib/constants";
 import { getRepo } from "@/db/repo";
 import { homeReadCapOn, ownerCached, rememberAnswer, repeatAnswer } from "@/lib/memo";
@@ -58,14 +58,22 @@ async function answer(request: Request) {
     wantSources
       // 30 s (Kimi #2: the build re-reads balances and re-quotes, so a cached list never moves money), keyed by the phone's caps (Kimi
       // load review #10: a list built for a 0.1.13 phone may carry variant-47 coins an older phone cannot sign).
-      ? ownerCached(me, `sources:${topUpCapsFor(request).allowV47 ? "v47" : "old"}`, () => userSplit(me).then((split) => topUpSources(me, sol, solUsd, topUpCents, topUpCapsFor(request), split)), 30_000).catch((e) => {
+      ? ownerCached(me, `sources:${topUpCapsFor(request).allowV47 ? "v47" : "old"}`, () => userSplit(me).then((split) => topUpSourcesWithReasons(me, sol, solUsd, topUpCents, topUpCapsFor(request), split)), 30_000).catch((e) => {
         console.error(`/api/me/usdc: the top-up coins could not be read (${e instanceof Error ? e.message : String(e)})`);
         return null;
       })
       : Promise.resolve(undefined),
     wantSetup ? setupCount(me, sol) : Promise.resolve(undefined),
   ]);
-  return NextResponse.json({ ...body, ...(wantSources ? { topUpSources: sources } : {}), ...(wantSetup ? { setupAccounts } : {}) });
+  // 0.1.13 (the no-USDC card): `topUpUnavailable`, SKR and SOL when they cannot pay, with why (lib/topup.ts TopUpUnavailable). Additive and
+  // only for a 0.1.13+ phone, so an older phone's answer is byte for byte what it was.
+  const withReasons = wantSources && isApp0113(request);
+  return NextResponse.json({
+    ...body,
+    ...(wantSources ? { topUpSources: sources ? sources.sources : null } : {}),
+    ...(withReasons ? { topUpUnavailable: sources ? sources.unavailable : null } : {}),
+    ...(wantSetup ? { setupAccounts } : {}),
+  });
 }
 
 /**

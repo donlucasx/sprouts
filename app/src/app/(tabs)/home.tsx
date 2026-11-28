@@ -113,7 +113,7 @@ export default function Home() {
     if (me && activity) writeLastAvg(avgDailyRoundupCents(activity.swaps, me.user.pubkey, new Date()))
   }, [me, activity])
   // Its own key (Link a wallet's read of the plain path shares the 'me-usdc' prefix, so the top-up's invalidation refreshes both).
-  const { data: usdcRead } = useQuery({ queryKey: ['me-usdc', me?.user.pubkey, 'sources'], queryFn: () => api<MeUsdcResponse>(ME_USDC_WITH_SOURCES), enabled: !!me, retry: false, staleTime: 60_000 })
+  const { data: usdcRead, isPending: usdcPending } = useQuery({ queryKey: ['me-usdc', me?.user.pubkey, 'sources'], queryFn: () => api<MeUsdcResponse>(ME_USDC_WITH_SOURCES), enabled: !!me, retry: false, staleTime: 60_000 })
   // 0.1.10 (his ruling "Last 30 days total"): with no wallet linked, what their own swaps would have saved. Read once per 12 hours;
   // a failed read shows nothing extra (the plain prompt stays).
   const { data: preview } = useQuery({
@@ -364,7 +364,7 @@ export default function Home() {
           </View>
           <ThemedText style={{ fontSize: 14, lineHeight: 20 }}>{t('link.linked.line')}</ThemedText>
           {postLink?.line ? <ThemedText style={{ fontSize: 14, lineHeight: 20 }}>{postLink.line}</ThemedText> : null}
-          {postLink?.topUp ? <TopUpButton compact user={me.user.pubkey} cents={TOPUP_DEFAULT_CENTS} done={TOPUP.done} avgDailyCents={avg} offers={usdcRead?.topUpCents ?? null} sources={usdcRead?.topUpSources ?? null} /> : null}
+          {postLink?.topUp ? <TopUpButton compact user={me.user.pubkey} cents={TOPUP_DEFAULT_CENTS} done={TOPUP.done} offers={usdcRead?.topUpCents ?? null} sources={usdcRead?.topUpSources ?? null} unavailable={usdcRead?.topUpUnavailable ?? null} waiting={usdcPending} /> : null}
           <Button title={t('home.ok')} kind="quiet" onPress={() => router.setParams({ linked: undefined })} style={{ alignSelf: 'flex-start' }} />
         </View>
       ) : null}
@@ -381,7 +381,7 @@ export default function Home() {
               {line}
             </ThemedText>
           ))}
-          {notice.topUp ? <TopUpButton compact user={me.user.pubkey} cents={topUp.phoneCents ?? 500} done={TOPUP.done} avgDailyCents={avg} offers={usdcRead?.topUpCents ?? null} sources={usdcRead?.topUpSources ?? null} /> : null}
+          {notice.topUp ? <TopUpButton compact user={me.user.pubkey} cents={topUp.phoneCents ?? 500} done={TOPUP.done} offers={usdcRead?.topUpCents ?? null} sources={usdcRead?.topUpSources ?? null} unavailable={usdcRead?.topUpUnavailable ?? null} waiting={usdcPending} /> : null}
         </View>
       ) : null}
       {stopped ? (

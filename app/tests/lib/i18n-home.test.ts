@@ -41,13 +41,13 @@ describe('Home in Spanish, through the same functions', () => {
     writeLangChoice('en')
     expect(usdcNotice(me([active]), { usdcCents: 0, low: false })).toEqual({
       title: 'Seed Vault wallet has no USDC',
-      lines: ['Sprouts plants your round-ups with USDC from this wallet. Until you add some, they wait.'],
+      lines: ['Your round-ups wait until you add some.'],
       topUp: true,
     })
     writeLangChoice('es')
     expect(usdcNotice(me([active]), { usdcCents: 0, low: false })).toEqual({
       title: 'La billetera Seed Vault no tiene USDC',
-      lines: ['Sprouts planta tus redondeos con USDC de esta billetera. Hasta que agregues USDC, esperan.'],
+      lines: ['Tus redondeos esperan hasta que agregues.'],
       topUp: true,
     })
     expect(usdcNotice(me([active]), { usdcCents: 250, low: true })?.lines[0]).toBe(

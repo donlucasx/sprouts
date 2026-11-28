@@ -119,10 +119,14 @@ const variantAllowed = (v: number, allowV47: boolean): readonly PayloadByte[] | 
 export type TopUpCaps = { allowV47: boolean };
 export const OLD_APP_CAPS: TopUpCaps = Object.freeze({ allowV47: false });
 export function topUpCapsFor(request: Request): TopUpCaps {
+  return isApp0113(request) ? { allowV47: true } : OLD_APP_CAPS;
+}
+/** Whether the asking phone is 0.1.13 or later (x-sprouts-app); no header = an older app. */
+export function isApp0113(request: Request): boolean {
   const m = /^(\d+)\.(\d+)\.(\d+)/.exec(request.headers.get("x-sprouts-app") ?? "");
-  if (!m) return OLD_APP_CAPS;
+  if (!m) return false;
   const [maj, min, pat] = m.slice(1).map(Number);
-  return { allowV47: maj > 0 || min > 1 || (min === 1 && pat >= 13) };
+  return maj > 0 || min > 1 || (min === 1 && pat >= 13);
 }
 const JUPITER_AUTHORITIES = 8;
 const MAX_ROUTE_STEPS = 4;
@@ -674,6 +678,24 @@ export type TopUpSourceOffer = { mint: string; symbol: string; decimals: number;
  * needs. Null when the SOL, its price, the balances or the prices could not be read.
  */
 export async function topUpSources(user: Address, solLamports: bigint | null, solUsd: number | null, solOffers: number[] | null, caps: TopUpCaps = OLD_APP_CAPS, split: Split | null = null): Promise<TopUpSourceOffer[] | null> {
+  return (await topUpSourcesWithReasons(user, solLamports, solUsd, solOffers, caps, split))?.sources ?? null;
+}
+
+/**
+ * 0.1.13 (the no-USDC card, Kimi scope 11-27 #1): why a coin the card names (SKR, SOL; his "Not now" for any other) cannot pay.
+ * 'none_here' = the wallet holds none of it; 'not_enough' = it holds some, worth less than the smallest offer. A coin that cannot pay for
+ * any other reason (no route, no price, too little SOL for the fee) is in neither list: the card says nothing it cannot stand behind.
+ */
+export type TopUpUnavailableReason = "none_here" | "not_enough";
+export type TopUpUnavailable = { mint: string; symbol: string; reason: TopUpUnavailableReason };
+/** The coins the no-USDC card names, greyed when they cannot pay (SOL first, the order the phone falls back to). */
+export const TOPUP_CARD_COINS: readonly { mint: string; symbol: string }[] = [{ mint: WSOL_MINT, symbol: "SOL" }, { mint: SKR_MINT, symbol: "SKR" }];
+
+/**
+ * topUpSources plus `unavailable` (TopUpUnavailable): the card coins that are not among `sources`, each with its reason. Null as
+ * topUpSources is null. Read by /api/me/usdc?sources=1 for a 0.1.13+ phone only (topUpUnavailable), so an older phone's answer is unchanged.
+ */
+export async function topUpSourcesWithReasons(user: Address, solLamports: bigint | null, solUsd: number | null, solOffers: number[] | null, caps: TopUpCaps = OLD_APP_CAPS, split: Split | null = null): Promise<{ sources: TopUpSourceOffer[]; unavailable: TopUpUnavailable[] } | null> {
   if (solLamports === null || solUsd === null || solOffers === null) return null;
   const sol: TopUpSourceOffer = { mint: WSOL_MINT, symbol: "SOL", decimals: 9, valueCents: Math.floor((Number(solLamports) * solUsd) / 1e7), offers: solOffers, ...topUpCost(WSOL_MINT, split) };
   let held: { mint: Address; raw: bigint; decimals: number }[];
@@ -692,7 +714,21 @@ export async function topUpSources(user: Address, solLamports: bigint | null, so
     console.error(`topup: the token balances could not be read (${e instanceof Error ? e.message : String(e)})`);
     return null;
   }
-  if (held.length === 0 || solLamports < TOPUP_TOKEN_SOL_RESERVE_LAMPORTS) return [sol];
+  // Why a card coin cannot pay, from what was read: SOL from its own balance, SKR from the wallet's SKR account and its value.
+  const skrHeld = held.some((h) => h.mint === SKR_MINT);
+  const reasons = (sources: TopUpSourceOffer[], skrValueCents: number | null): { sources: TopUpSourceOffer[]; unavailable: TopUpUnavailable[] } => {
+    const why: Record<string, TopUpUnavailableReason | null> = {
+      [WSOL_MINT]: solLamports === 0n ? "none_here" : "not_enough",
+      [SKR_MINT]: !skrHeld ? "none_here" : skrValueCents !== null && skrValueCents > 0 && affordableTopUpsFor(skrValueCents).length === 0 ? "not_enough" : null,
+    };
+    const payable = new Set(sources.filter((x) => x.offers.length > 0).map((x) => x.mint));
+    const unavailable = TOPUP_CARD_COINS.flatMap((c) => {
+      const reason = why[c.mint];
+      return payable.has(c.mint) || !reason ? [] : [{ mint: c.mint, symbol: c.symbol, reason }];
+    });
+    return { sources, unavailable };
+  };
+  if (held.length === 0 || solLamports < TOPUP_TOKEN_SOL_RESERVE_LAMPORTS) return reasons([sol], null);
   let prices: Awaited<ReturnType<typeof pricesUsd>>;
   try {
     prices = await pricesUsd(held.map((h) => h.mint));
@@ -700,8 +736,9 @@ export async function topUpSources(user: Address, solLamports: bigint | null, so
     console.error(`topup: the token prices could not be read (${e instanceof Error ? e.message : String(e)})`);
     return null;
   }
-  const valued = held
-    .map((h) => ({ ...h, valueCents: prices[h.mint] ? Math.floor((Number(h.raw) / 10 ** h.decimals) * prices[h.mint].usdPrice * 100 + 1e-6) : 0 }))
+  const allValued = held.map((h) => ({ ...h, valueCents: prices[h.mint] ? Math.floor((Number(h.raw) / 10 ** h.decimals) * prices[h.mint].usdPrice * 100 + 1e-6) : 0 }));
+  const skrValue = allValued.find((h) => h.mint === SKR_MINT)?.valueCents ?? null;
+  const valued = allValued
     .filter((h) => affordableTopUpsFor(h.valueCents).length > 0)
     .sort((x, y) => y.valueCents - x.valueCents)
     .slice(0, TOPUP_MAX_TOKEN_SOURCES * 2);
@@ -719,7 +756,7 @@ export async function topUpSources(user: Address, solLamports: bigint | null, so
       }
     }),
   );
-  return [sol, ...checked.filter((x): x is TopUpSourceOffer => x !== null).slice(0, TOPUP_MAX_TOKEN_SOURCES)];
+  return reasons([sol, ...checked.filter((x): x is TopUpSourceOffer => x !== null).slice(0, TOPUP_MAX_TOKEN_SOURCES)], skrValue);
 }
 
 /**

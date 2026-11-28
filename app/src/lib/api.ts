@@ -6,7 +6,7 @@ import Constants from "expo-constants";
 const APP_VERSION: string = Constants.expoConfig?.version ?? "0.0.0";
 import { LEND_MOCK, mockAfter, mockBefore } from "./lend-mock";
 import type { Asset, AutoVenue, LendAsset, LiveAsset, Stop, Split, Pins, Venue } from "./coins";
-import type { TopUpSource } from "./topup";
+import type { TopUpSource, TopUpUnavailable } from "./topup";
 export { ASSETS } from "./coins";
 export type { Asset, AutoVenue, LendAsset, LiveAsset, Stop, Split, Pins, Venue } from "./coins";
 
@@ -87,6 +87,8 @@ export type WalletPause = { reason: "no_usdc"; needCents: number | null; resumeA
 /** GET /api/me/usdc (Home and Link a wallet read it): this phone's wallet's USDC, the top-up amounts its SOL covers ([] = none, the
  *  address to send USDC to is shown; null or absent = unknown), and (0.1.12 API, absent from an older one) the coins it can top up from. */
 export type MeUsdcResponse = { usdcRaw: string | null; topUpCents?: number[] | null; solLamports?: string | null; topUpSources?: TopUpSource[] | null;
+  /** 0.1.13 API, with ?sources=1 for a 0.1.13 phone: SKR and SOL when they cannot pay, and why (the no-USDC card's greyed rows). */
+  topUpUnavailable?: TopUpUnavailable[] | null;
   /** Task 17b, only with ?setup=1 (absent from an older API): this wallet's missing coin accounts a link would set up, 0..7. */
   setupAccounts?: number };
 
